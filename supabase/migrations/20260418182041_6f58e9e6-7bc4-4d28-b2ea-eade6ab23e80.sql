@@ -1,0 +1,1 @@
+ALTER VIEW public.purchase_projection_timeline SET (security_invoker = true);

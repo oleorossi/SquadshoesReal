@@ -1,0 +1,1 @@
+ALTER TABLE public.sale_order_items ADD COLUMN observation TEXT DEFAULT NULL;

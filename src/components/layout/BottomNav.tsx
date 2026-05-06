@@ -1,0 +1,121 @@
+import { useState, useEffect } from 'react';
+import { Home, Kanban, Package, ShoppingCart, MoreHorizontal, X } from 'lucide-react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { cn } from '@/lib/utils';
+import { menuGroups } from '@/data/navigation';
+
+const PRIMARY_ITEMS = [
+  { icon: Home,         label: 'Painel',   path: '/dashboard' },
+  { icon: ShoppingCart, label: 'Vendas',   path: '/sales' },
+  { icon: Kanban,       label: 'PCP',      path: '/pcp' },
+  { icon: Package,      label: 'Estoque',  path: '/estoque' },
+];
+
+export function BottomNav() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [moreOpen, setMoreOpen] = useState(false);
+
+  useEffect(() => { setMoreOpen(false); }, [location.pathname]);
+
+  const isActive = (path: string) =>
+    location.pathname === path ||
+    (path !== '/dashboard' && location.pathname.startsWith(path + '/'));
+
+  return (
+    <>
+      {/* Overlay */}
+      {moreOpen && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
+          onClick={() => setMoreOpen(false)}
+        />
+      )}
+
+      {/* "Mais" bottom sheet */}
+      {moreOpen && (
+        <div className="md:hidden fixed bottom-16 inset-x-0 z-50 bg-background/98 backdrop-blur-md border-t border-border rounded-t-2xl shadow-elevated pb-safe">
+          <div className="flex items-center justify-between px-4 pt-3 pb-2">
+            <p className="text-sm font-semibold text-foreground">Navegação</p>
+            <button
+              onClick={() => setMoreOpen(false)}
+              className="h-7 w-7 rounded-full bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="px-4 pb-4 space-y-4 max-h-[70vh] overflow-y-auto">
+            {menuGroups.map((group) => (
+              <div key={group.label}>
+                <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
+                  <group.icon className="h-3 w-3" />
+                  {group.label}
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {group.items.map((item) => {
+                    const active = isActive(item.path);
+                    return (
+                      <button
+                        key={item.path}
+                        onClick={() => { navigate(item.path); setMoreOpen(false); }}
+                        className={cn(
+                          "flex flex-col items-center gap-1 px-2 py-2.5 rounded-xl text-[11px] font-medium transition-all",
+                          active
+                            ? "bg-primary/10 text-primary"
+                            : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        )}
+                      >
+                        <item.icon className="h-4 w-4" />
+                        <span className="leading-none text-center">{item.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Bottom tab bar */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-md border-t border-border z-40 pb-safe">
+        <div className="flex justify-around items-stretch h-16 px-1">
+          {PRIMARY_ITEMS.map((item) => {
+            const active = isActive(item.path);
+            return (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                className="flex flex-col items-center justify-center gap-1 flex-1 h-full transition-colors relative pt-2"
+              >
+                <span className={cn(
+                  "absolute top-0 left-1/2 -translate-x-1/2 h-[3px] rounded-b-full bg-primary transition-all duration-300 ease-out",
+                  active ? "w-8 opacity-100" : "w-0 opacity-0"
+                )} />
+                <item.icon className={cn("h-5 w-5 transition-all duration-200", active ? "text-primary scale-110" : "text-muted-foreground")} />
+                <span className={cn("text-[10px] font-medium transition-colors leading-none", active ? "text-primary font-semibold" : "text-muted-foreground")}>
+                  {item.label}
+                </span>
+              </NavLink>
+            );
+          })}
+
+          {/* Mais */}
+          <button
+            onClick={() => setMoreOpen(v => !v)}
+            className="flex flex-col items-center justify-center gap-1 flex-1 h-full transition-colors relative pt-2"
+          >
+            <span className={cn(
+              "absolute top-0 left-1/2 -translate-x-1/2 h-[3px] rounded-b-full bg-primary transition-all duration-300 ease-out",
+              moreOpen ? "w-8 opacity-100" : "w-0 opacity-0"
+            )} />
+            <MoreHorizontal className={cn("h-5 w-5 transition-all duration-200", moreOpen ? "text-primary scale-110" : "text-muted-foreground")} />
+            <span className={cn("text-[10px] font-medium transition-colors leading-none", moreOpen ? "text-primary font-semibold" : "text-muted-foreground")}>
+              Mais
+            </span>
+          </button>
+        </div>
+      </nav>
+    </>
+  );
+}

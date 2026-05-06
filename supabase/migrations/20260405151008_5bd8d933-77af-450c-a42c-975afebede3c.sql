@@ -1,0 +1,1 @@
+ALTER FUNCTION public.sync_packaging_from_box_type() SET search_path = public;

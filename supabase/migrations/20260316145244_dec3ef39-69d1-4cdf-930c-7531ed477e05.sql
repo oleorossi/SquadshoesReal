@@ -1,0 +1,1 @@
+ALTER TABLE public.technical_sheets ADD COLUMN IF NOT EXISTS production_sectors jsonb NOT NULL DEFAULT '["Corte","Forração","Aviamento","Silk","Colagem","Montagem","Solagem","Acabamento"]'::jsonb;

@@ -1,0 +1,1 @@
+ALTER TABLE public.technical_sheets ADD COLUMN IF NOT EXISTS lining_accessories jsonb DEFAULT '[]'::jsonb;

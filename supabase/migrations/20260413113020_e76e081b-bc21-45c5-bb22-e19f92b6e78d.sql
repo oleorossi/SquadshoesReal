@@ -1,0 +1,1 @@
+ALTER TABLE public.service_orders ADD COLUMN IF NOT EXISTS sale_order_id UUID REFERENCES public.sale_orders(id) ON DELETE SET NULL;

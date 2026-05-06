@@ -1,0 +1,1 @@
+ALTER TABLE public.technical_sheets ADD COLUMN IF NOT EXISTS ncm text DEFAULT '';

@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Tests & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Critical: blocks merge if menu items diverge from the access-control
+      # module map (prevents bugs like "Ajuste de Estoque" disappearing because
+      # its route was admin-only while the menu showed it to all users).
+      - name: Navigation ↔ Access Control consistency
+        run: bunx vitest run src/__tests__/NavigationAccessConsistency.test.ts
+
+      - name: Full test suite
+        run: bun run test
+
+      - name: TypeScript type check
+        run: bunx tsc --noEmit
+
+      - name: Design tokens check
+        run: bash scripts/check-design-tokens.sh
+        continue-on-error: true
+
+      - name: Build production bundle
+        run: bun run build
+
+      - name: Branding Check
+        id: branding_check
+        run: bun run verify:no-branding
+
+      - name: Verify and Upload Branding Report
+        if: always() && steps.branding_check.outcome != 'skipped'
+        run: |
+          if [ -f "reports/branding-violations.json" ]; then
+            # Only upload if the file exists and is not an empty JSON array
+            SIZE=$(stat -c%s "reports/branding-violations.json")
+            if [ "$SIZE" -gt 2 ]; then
+              echo "Branding violations found. Uploading report..."
+            else
+              echo "No violations found (empty report). Skipping upload."
+              rm reports/branding-violations.json
+            fi
+          else
+            echo "Branding report not found."
+          fi
+
+      - name: Upload Artifact
+        if: always() && hashFiles('reports/branding-violations.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: branding-report
+          path: reports/branding-violations.json
+          if-no-files-found: ignore

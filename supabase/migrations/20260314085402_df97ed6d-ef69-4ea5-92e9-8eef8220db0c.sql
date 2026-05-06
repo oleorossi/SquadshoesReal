@@ -1,0 +1,1 @@
+UPDATE products SET unit = 'kg', unit_price = 17.8571 WHERE id = 'fbbe0f31-90f9-4685-9f7c-fae261617db0';

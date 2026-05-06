@@ -1,0 +1,1 @@
+ALTER TABLE public.products ADD COLUMN pairs_per_package integer NOT NULL DEFAULT 1;

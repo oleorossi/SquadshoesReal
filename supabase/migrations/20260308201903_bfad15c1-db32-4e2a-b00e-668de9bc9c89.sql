@@ -1,0 +1,3 @@
+ALTER TABLE public.stock_movements 
+ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) DEFAULT NULL,
+ADD COLUMN IF NOT EXISTS user_email TEXT DEFAULT '';

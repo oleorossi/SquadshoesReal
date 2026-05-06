@@ -1,0 +1,3 @@
+ALTER TABLE public.technical_sheets 
+ADD COLUMN IF NOT EXISTS brand TEXT,
+ADD COLUMN IF NOT EXISTS model TEXT;

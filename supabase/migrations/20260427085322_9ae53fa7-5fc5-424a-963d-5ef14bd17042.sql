@@ -1,0 +1,1 @@
+ALTER VIEW public.product_stock_with_reservations SET (security_invoker = true);

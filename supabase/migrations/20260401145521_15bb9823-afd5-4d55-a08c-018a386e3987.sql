@@ -1,0 +1,1 @@
+ALTER TABLE public.sale_orders ADD COLUMN packaging_mode text DEFAULT 'individual_amarrado';

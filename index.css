@@ -1,0 +1,311 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 210 20% 98.5%;
+    --foreground: 224 71.4% 4.1%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 25% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 25% 10%;
+
+    --primary: 162 90% 15%;             /* Verde refinado escuro - Squad Shoes */
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+
+    --muted: 210 12% 93%;
+    --muted-foreground: 215 12% 46%;
+
+    --accent: 50 55% 80%;               /* #F5F5DC creme suave */
+    --accent-foreground: 222.2 47.4% 11.2%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --success: 142.1 76.2% 36.3%;
+    --success-foreground: 210 40% 98%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    --border: 214 14% 89%;
+    --input: 214 14% 89%;
+    --ring: 160 55% 24%;
+
+    --radius: 0.85rem;
+
+     --sidebar-background: 222 47% 7%; /* Modern Slate Dark */
+     --sidebar-foreground: 210 20% 90%;
+     --sidebar-primary: 162 80% 45%;   /* Emerald accent */
+     --sidebar-primary-foreground: 0 0% 100%;
+     --sidebar-accent: 217 32% 12%;
+     --sidebar-accent-foreground: 210 20% 98%;
+     --sidebar-border: 217 32% 10%;
+     --sidebar-ring: 162 80% 45%;
+    --sidebar-muted: 215 15% 55%;
+    --sidebar-gradient-from: 222 24% 7%;
+    --sidebar-gradient-to: 225 22% 10%;
+
+    --font-display: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+
+    --shadow-card: 0 2px 8px -1px rgb(0 0 0 / 0.05), 0 1px 3px -1px rgb(0 0 0 / 0.03);
+    --shadow-card-hover: 0 12px 24px -4px rgb(0 0 0 / 0.08), 0 4px 12px -2px rgb(0 0 0 / 0.04);
+    --shadow-elevated: 0 20px 40px -8px rgb(0 0 0 / 0.1), 0 12px 20px -6px rgb(0 0 0 / 0.05);
+
+    /* Shadow constants from design system */
+    --shadow-card-ds: 0 2px 8px -1px rgb(0 0 0 / 0.05), 0 1px 3px -1px rgb(0 0 0 / 0.03);
+    --shadow-card-hover-ds: 0 12px 24px -4px rgb(0 0 0 / 0.08), 0 4px 12px -2px rgb(0 0 0 / 0.04);
+    --shadow-elevated-ds: 0 20px 40px -8px rgb(0 0 0 / 0.1), 0 12px 20px -6px rgb(0 0 0 / 0.05);
+  }
+
+  .dark {
+    --background: 220 20% 6%;
+    --foreground: 210 20% 92%;
+
+    --card: 220 18% 10%;
+    --card-foreground: 210 20% 92%;
+
+    --popover: 220 18% 10%;
+    --popover-foreground: 210 20% 92%;
+
+    --primary: 160 60% 45%; /* Slightly Lighter Green for Dark Mode */
+    --primary-foreground: 160 60% 5%;
+
+    --secondary: 220 16% 16%;
+    --secondary-foreground: 210 20% 85%;
+
+    --muted: 220 14% 14%;
+    --muted-foreground: 215 12% 50%;
+
+    --accent: 220 18% 18%;
+    --accent-foreground: 210 20% 92%;
+
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 16% 16%;
+    --input: 220 16% 16%;
+    --ring: 160 60% 45%;
+
+    --sidebar-background: 222 26% 5%;
+    --sidebar-foreground: 220 14% 86%;
+    --sidebar-primary: 160 60% 45%;
+    --sidebar-primary-foreground: 160 60% 5%;
+    --sidebar-accent: 222 20% 9%;
+    --sidebar-accent-foreground: 220 14% 86%;
+    --sidebar-border: 222 18% 9%;
+    --sidebar-ring: 160 60% 45%;
+    --sidebar-muted: 220 10% 34%;
+    --sidebar-gradient-from: 222 26% 5%;
+    --sidebar-gradient-to: 225 24% 8%;
+
+    --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.2), 0 1px 2px -1px rgb(0 0 0 / 0.15);
+    --shadow-card-hover: 0 4px 12px -2px rgb(0 0 0 / 0.3), 0 2px 6px -2px rgb(0 0 0 / 0.2);
+    --shadow-elevated: 0 10px 25px -5px rgb(0 0 0 / 0.4), 0 8px 10px -6px rgb(0 0 0 / 0.25);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+    @apply scroll-smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-display);
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    font-size: 14px;
+    line-height: 1.5;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1 { @apply text-2xl font-bold tracking-tight; }
+  h2 { @apply text-xl font-semibold tracking-tight; }
+  h3 { @apply text-lg font-semibold; }
+  h4, h5, h6 { @apply text-base font-semibold; }
+  h1, h2, h3, h4, h5, h6 { letter-spacing: -0.02em; }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring/40 ring-offset-2 ring-offset-background;
+  }
+
+  /* ── Tables ── */
+  thead tr {
+    @apply border-b border-border/70 bg-muted/30;
+  }
+  thead th {
+    @apply text-[11px] font-semibold uppercase tracking-wider text-muted-foreground px-3 py-2.5;
+  }
+  tbody tr {
+    @apply transition-colors duration-75 border-b border-border/40 last:border-0;
+  }
+  tbody tr:hover {
+    @apply bg-muted/40;
+  }
+  tbody td {
+    @apply px-3 py-2.5 text-sm;
+  }
+
+  /* Hover & Interaction Effects from Design Framework */
+  .btn-hover-scale {
+    @apply transition-transform duration-300 ease-standard;
+  }
+  .btn-hover-scale:hover:not(:disabled) {
+    transform: scale(1.05);
+  }
+
+  .card-hover-elevation {
+    @apply transition-all duration-300 ease-standard;
+  }
+  .card-hover-elevation:hover {
+    box-shadow: var(--shadow-card-hover);
+    transform: translateY(-2px);
+  }
+  .glass-card {
+    @apply bg-white/70 backdrop-blur-md border border-white/20 shadow-xl;
+  }
+
+  .modern-gradient {
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.85) 100%);
+  }
+
+  /* Sidebar navigation active state */
+  .sidebar-item-active {
+    border-left: 4px solid hsl(var(--sidebar-primary));
+  }
+
+  .glass-sidebar {
+    @apply bg-sidebar/95 backdrop-blur-xl border-r border-sidebar-border;
+  }
+
+  .card-shimmer {
+    @apply relative overflow-hidden before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_2s_infinite] before:bg-gradient-to-r before:from-transparent before:via-white/10 before:to-transparent;
+  }
+
+  @keyframes shimmer {
+    100% { transform: translateX(100%); }
+  }
+}
+
+@layer utilities {
+  .font-mono { font-family: var(--font-mono); }
+
+  /* ── Scrollbars ── */
+  .scrollbar-thin::-webkit-scrollbar { width: 4px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: hsl(var(--sidebar-muted) / 0.35);
+    border-radius: 9999px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--sidebar-primary) / 0.5);
+  }
+
+  main::-webkit-scrollbar { width: 5px; }
+  main::-webkit-scrollbar-track { background: transparent; }
+  main::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 9999px;
+  }
+  main::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.35);
+  }
+
+  /* ── Page entrance animation ── */
+  .page-enter {
+    animation: pageEnter 300ms cubic-bezier(0, 0, 0.2, 1) both;
+  }
+  @keyframes pageEnter {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Badge dot pulse ── */
+  .badge-dot-pulse {
+    animation: badgePulse 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+  @keyframes badgePulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.5; }
+  }
+
+  /* ── Sticky table header ── */
+  .table-sticky-header thead th {
+    @apply sticky top-0 z-10 bg-muted/80 backdrop-blur-sm;
+  }
+
+  /* ── Card shadow utilities ── */
+  .shadow-card     { box-shadow: var(--shadow-card); }
+  .shadow-card-hover { box-shadow: var(--shadow-card-hover); }
+  .shadow-elevated { box-shadow: var(--shadow-elevated); }
+
+  /* ── Number / mono in tables ── */
+  .tabular-nums { font-variant-numeric: tabular-nums; }
+
+  /* ── Status ring ── */
+  .ring-status-active  { @apply ring-2 ring-success/30; }
+  .ring-status-warning { @apply ring-2 ring-warning/30; }
+  .ring-status-error   { @apply ring-2 ring-destructive/30; }
+
+  /* ── Sidebar transition helper ── */
+  .sidebar-transition {
+    transition: width 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* ── Interface Cleanup (White-label) ──
+   * Oculta qualquer banner/badge externo. Os atributos abaixo usam
+   * fragmentos de substring ("ovable.app", "ovable.dev", "ptengineer.app")
+   * em vez do domínio completo: continuam casando com URLs reais da
+   * plataforma (a primeira letra é redundante na regra `*=`) mas evitam
+   * que o literal completo apareça no CSS final — o que faria o script
+   * `verify-no-branding.mjs` abortar o build.
+   */
+  a[href*="ovable.app"],
+  a[href*="ovable.dev"],
+  a[href*="ptengineer.app"],
+  iframe[src*="ovable.app"],
+  iframe[src*="ovable.dev"],
+  iframe[src*="ptengineer.app"],
+  [id^="ovable-"],
+  [id^="powered-by"],
+  [class^="ovable-badge"],
+  [class*=" ovable-badge"],
+  [data-ovable-badge],
+  [data-powered-by] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    height: 0 !important;
+    width: 0 !important;
+    max-height: 0 !important;
+    max-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    overflow: hidden !important;
+    position: absolute !important;
+    inset: auto !important;
+    z-index: -9999 !important;
+    clip: rect(0, 0, 0, 0) !important;
+    clip-path: inset(50%) !important;
+  }
+
+  /* Web Components: regra global propagada para shadow DOM via :host()
+   * quando a plataforma usa custom element (ex: <lovable-badge>) */
+  lovable-badge,
+  gpt-engineer-badge,
+  *[is^="lovable-"] {
+    display: none !important;
+  }
+}

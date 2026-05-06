@@ -1,0 +1,140 @@
+-- =============================================================================
+-- Make debit_packaging_for_order atomic with SELECT FOR UPDATE
+-- =============================================================================
+-- The existing function reads stock quantities in a JOIN then DECREMENTs them
+-- in a separate UPDATE — a read-modify-write race.  Two concurrent OPs for the
+-- same packaging config read the same stock level, both pass the guard, and the
+-- stock goes negative.
+--
+-- Fix: lock each resource row (products / box_types) with SELECT FOR UPDATE
+-- before reading current stock and computing the debit.
+-- Signature is unchanged; all three remaining callers (useSaleOrders.ts lines
+-- 805, 1019 and SaleOrders.tsx line 869) work without modification.
+-- =============================================================================
+
+CREATE OR REPLACE FUNCTION public.debit_packaging_for_order(
+  p_sale_order_id  uuid,
+  p_order_id       uuid,
+  p_reference_id   uuid,
+  p_order_quantity integer,
+  p_packaging_mode text DEFAULT 'individual_amarrado'
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  cfg          RECORD;
+  boxes_needed integer;
+  v_result     jsonb   := '[]'::jsonb;
+  v_types_to_debit text[];
+  v_box_stock  numeric;
+  v_prod_stock numeric;
+BEGIN
+  IF p_packaging_mode = 'colmeia' THEN
+    v_types_to_debit := ARRAY['colmeia'];
+  ELSIF p_packaging_mode = 'individual_master' THEN
+    v_types_to_debit := ARRAY['individual', 'master'];
+  ELSIF p_packaging_mode = 'individual_fitilho' THEN
+    v_types_to_debit := ARRAY['individual', 'fitilho'];
+  ELSE
+    v_types_to_debit := ARRAY['individual'];
+  END IF;
+
+  FOR cfg IN
+    SELECT pc.id, pc.packaging_type, pc.nome, pc.pairs_per_box, pc.product_id, pc.box_type_id,
+           p.name AS product_name,
+           bt.nome AS box_name
+    FROM packaging_configs pc
+    LEFT JOIN products  p  ON p.id  = pc.product_id  AND p.active  = true
+    LEFT JOIN box_types bt ON bt.id = pc.box_type_id AND bt.active = true
+    WHERE pc.sheet_id       = p_reference_id
+      AND pc.active         = true
+      AND pc.packaging_type = ANY(v_types_to_debit)
+  LOOP
+    boxes_needed := CEIL(p_order_quantity::numeric / GREATEST(cfg.pairs_per_box, 1));
+
+    IF cfg.box_type_id IS NOT NULL THEN
+      -- Lock the box_type row exclusively before reading stock
+      SELECT quantity INTO v_box_stock
+        FROM public.box_types
+       WHERE id = cfg.box_type_id
+       FOR UPDATE;
+
+      IF v_box_stock IS NULL OR v_box_stock < boxes_needed THEN
+        RAISE EXCEPTION 'Estoque insuficiente para embalagem "%": disponível %, necessário %',
+          COALESCE(cfg.box_name, cfg.nome), COALESCE(v_box_stock, 0), boxes_needed;
+      END IF;
+
+      UPDATE box_types
+         SET quantity   = quantity - boxes_needed,
+             updated_at = now()
+       WHERE id = cfg.box_type_id;
+
+      INSERT INTO stock_movements (
+        product_id, movement_type, quantity,
+        previous_stock, new_stock, description, order_id
+      ) VALUES (
+        cfg.box_type_id, 'out', boxes_needed,
+        v_box_stock, v_box_stock - boxes_needed,
+        'Débito embalagem ' || COALESCE(cfg.box_name, cfg.nome) || ' (' || cfg.packaging_type || ')',
+        p_order_id
+      );
+
+      v_result := v_result || jsonb_build_object(
+        'box_type_id',    cfg.box_type_id,
+        'box_name',       COALESCE(cfg.box_name, cfg.nome),
+        'packaging_type', cfg.packaging_type,
+        'boxes_needed',   boxes_needed,
+        'status',         'debited_box_types'
+      );
+
+    ELSIF cfg.product_id IS NOT NULL THEN
+      -- Lock the product row exclusively before reading stock
+      SELECT quantity INTO v_prod_stock
+        FROM public.products
+       WHERE id = cfg.product_id
+       FOR UPDATE;
+
+      IF v_prod_stock IS NULL OR v_prod_stock < boxes_needed THEN
+        RAISE EXCEPTION 'Estoque insuficiente para embalagem "%": disponível %, necessário %',
+          COALESCE(cfg.product_name, cfg.nome), COALESCE(v_prod_stock, 0), boxes_needed;
+      END IF;
+
+      UPDATE products
+         SET quantity   = quantity - boxes_needed,
+             updated_at = now()
+       WHERE id = cfg.product_id;
+
+      INSERT INTO stock_movements (
+        product_id, movement_type, quantity,
+        previous_stock, new_stock, description, order_id
+      ) VALUES (
+        cfg.product_id, 'out', boxes_needed,
+        v_prod_stock, v_prod_stock - boxes_needed,
+        'Débito embalagem ' || COALESCE(cfg.product_name, cfg.nome) || ' (' || cfg.packaging_type || ')',
+        p_order_id
+      );
+
+      v_result := v_result || jsonb_build_object(
+        'product_id',     cfg.product_id,
+        'product_name',   COALESCE(cfg.product_name, cfg.nome),
+        'packaging_type', cfg.packaging_type,
+        'boxes_needed',   boxes_needed,
+        'status',         'debited_products'
+      );
+
+    ELSE
+      v_result := v_result || jsonb_build_object(
+        'packaging_type', cfg.packaging_type,
+        'nome',           cfg.nome,
+        'status',         'skipped',
+        'reason',         'no_stock_linked'
+      );
+    END IF;
+  END LOOP;
+
+  RETURN v_result;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.debit_packaging_for_order(uuid, uuid, uuid, integer, text) TO authenticated;
+
+COMMENT ON FUNCTION public.debit_packaging_for_order(uuid, uuid, uuid, integer, text) IS
+  'Debits packaging stock atomically — uses SELECT FOR UPDATE to prevent concurrent double-debits.';

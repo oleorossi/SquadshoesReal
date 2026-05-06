@@ -1,0 +1,244 @@
+-- =============================================================================
+-- Fix: debit_sole_stock_by_grade pollution by metadata keys
+-- =============================================================================
+--
+-- Problem: 20260507120000_backfill-sole-grade-range-metadata.sql adds
+-- `_size_from` / `_size_to` keys to products.stock_grade (values are integers
+-- like 33, 40). The previous version of debit_sole_stock_by_grade
+-- (20260501130000) computes `v_prev_total` by iterating ALL keys of
+-- stock_grade — including the metadata keys — and summing their values as if
+-- they were stock counts. Result: stock_movements.previous_stock is wrong
+-- (inflated by sizeFrom + sizeTo, e.g. +73), corrupting reconciliation reports
+-- even though the actual products.quantity update remains correct.
+--
+-- Fix: skip any key starting with '_' when computing v_prev_total.
+-- The validation and debit loops already iterate v_effective_grade (not
+-- v_stock_grade), so they never see metadata keys — no further changes needed.
+-- =============================================================================
+
+CREATE OR REPLACE FUNCTION public.debit_sole_stock_by_grade(
+  p_reference_id uuid,
+  p_order_id     uuid,
+  p_color        text,
+  p_order_grade  jsonb
+)
+RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_sole_group_id       uuid;
+  v_sole_material       text;
+  v_mapped_sole_product_id uuid;
+  v_mapped_sole_group_id   uuid;
+  target_product_id    uuid;
+  target_name          text;
+  v_stock_grade        jsonb;
+  v_size               text;
+  v_size_qty           numeric;
+  v_available          numeric;
+  v_new_grade          jsonb;
+  v_total_debited      numeric := 0;
+  v_prev_total         numeric;
+  v_product_group_id   uuid;
+  v_effective_grade    jsonb;
+  v_conj_key           text;
+  v_existing_qty       numeric;
+  v_has_conjugations   boolean;
+BEGIN
+  SELECT ts.sole_group_id, ts.sole_material
+    INTO v_sole_group_id, v_sole_material
+    FROM public.technical_sheets ts
+   WHERE ts.id = p_reference_id;
+
+  IF (v_sole_group_id IS NULL AND (v_sole_material IS NULL OR v_sole_material = '')) THEN
+    RETURN;
+  END IF;
+
+  IF p_order_grade IS NULL OR jsonb_typeof(p_order_grade) <> 'object' THEN
+    RETURN;
+  END IF;
+
+  SELECT tsc.sole_product_id, tsc.sole_group_id
+    INTO v_mapped_sole_product_id, v_mapped_sole_group_id
+    FROM public.technical_sheet_sole_colors tsc
+   WHERE tsc.sheet_id = p_reference_id
+     AND UPPER(TRIM(tsc.product_color)) = UPPER(TRIM(COALESCE(p_color, '')))
+   LIMIT 1;
+
+  target_product_id := NULL;
+
+  IF v_mapped_sole_product_id IS NOT NULL THEN
+    SELECT p.id, p.name, p.stock_grade
+      INTO target_product_id, target_name, v_stock_grade
+      FROM public.products p
+     WHERE p.active = true AND p.id = v_mapped_sole_product_id
+     LIMIT 1;
+  END IF;
+
+  IF target_product_id IS NULL AND v_mapped_sole_group_id IS NOT NULL THEN
+    IF p_color IS NOT NULL AND p_color <> '' THEN
+      SELECT p.id, p.name, p.stock_grade
+        INTO target_product_id, target_name, v_stock_grade
+        FROM public.products p
+       WHERE p.active = true AND p.group_id = v_mapped_sole_group_id
+         AND UPPER(TRIM(COALESCE(p.color, ''))) = UPPER(TRIM(p_color))
+       LIMIT 1;
+    END IF;
+    IF target_product_id IS NULL THEN
+      SELECT p.id, p.name, p.stock_grade
+        INTO target_product_id, target_name, v_stock_grade
+        FROM public.products p
+       WHERE p.active = true AND p.group_id = v_mapped_sole_group_id
+       ORDER BY p.updated_at DESC NULLS LAST, p.created_at DESC NULLS LAST, p.id
+       LIMIT 1;
+    END IF;
+  END IF;
+
+  IF target_product_id IS NULL AND v_sole_group_id IS NOT NULL THEN
+    IF p_color IS NOT NULL AND p_color <> '' THEN
+      SELECT p.id, p.name, p.stock_grade
+        INTO target_product_id, target_name, v_stock_grade
+        FROM public.products p
+       WHERE p.active = true AND p.group_id = v_sole_group_id
+         AND UPPER(TRIM(COALESCE(p.color, ''))) = UPPER(TRIM(p_color))
+       LIMIT 1;
+    END IF;
+    IF target_product_id IS NULL THEN
+      SELECT p.id, p.name, p.stock_grade
+        INTO target_product_id, target_name, v_stock_grade
+        FROM public.products p
+       WHERE p.active = true AND p.group_id = v_sole_group_id
+       ORDER BY p.updated_at DESC NULLS LAST, p.created_at DESC NULLS LAST, p.id
+       LIMIT 1;
+    END IF;
+  END IF;
+
+  IF target_product_id IS NULL AND v_sole_material IS NOT NULL AND v_sole_material <> '' THEN
+    IF p_color IS NOT NULL AND p_color <> '' THEN
+      SELECT p.id, p.name, p.stock_grade
+        INTO target_product_id, target_name, v_stock_grade
+        FROM public.products p
+        JOIN public.product_groups pg ON pg.id = p.group_id
+       WHERE p.active = true AND pg.name = v_sole_material
+         AND UPPER(TRIM(COALESCE(p.color, ''))) = UPPER(TRIM(p_color))
+       LIMIT 1;
+    END IF;
+    IF target_product_id IS NULL THEN
+      SELECT p.id, p.name, p.stock_grade
+        INTO target_product_id, target_name, v_stock_grade
+        FROM public.products p
+        JOIN public.product_groups pg ON pg.id = p.group_id
+       WHERE p.active = true AND pg.name = v_sole_material
+       ORDER BY p.updated_at DESC NULLS LAST, p.created_at DESC NULLS LAST, p.id
+       LIMIT 1;
+    END IF;
+  END IF;
+
+  IF target_product_id IS NULL THEN RETURN; END IF;
+
+  IF v_stock_grade IS NULL THEN v_stock_grade := '{}'::jsonb; END IF;
+
+  SELECT p.group_id INTO v_product_group_id
+    FROM public.products p WHERE p.id = target_product_id;
+
+  SELECT EXISTS (
+    SELECT 1 FROM sole_size_conjugations WHERE sole_group_id = v_product_group_id
+  ) INTO v_has_conjugations;
+
+  -- Build effective debit grade
+  v_effective_grade := '{}'::jsonb;
+
+  FOR v_size, v_size_qty IN
+    SELECT key, value::numeric
+      FROM jsonb_each_text(p_order_grade)
+     WHERE value::numeric > 0
+       AND left(key, 1) <> '_'   -- defensive: drop metadata if caller passes it
+  LOOP
+    IF v_size LIKE '%/%' THEN
+      v_conj_key := v_size;
+    ELSIF v_has_conjugations AND v_product_group_id IS NOT NULL THEN
+      SELECT get_sole_size_key(v_product_group_id, v_size::integer) INTO v_conj_key;
+      IF v_conj_key IS NULL THEN v_conj_key := v_size; END IF;
+    ELSE
+      v_conj_key := v_size;
+    END IF;
+
+    v_existing_qty := COALESCE((v_effective_grade ->> v_conj_key)::numeric, 0);
+    v_effective_grade := jsonb_set(
+      v_effective_grade, ARRAY[v_conj_key], to_jsonb(v_existing_qty + v_size_qty)
+    );
+  END LOOP;
+
+  -- Compute previous total for stock_movements.previous_stock
+  -- IMPORTANT: skip metadata keys ('_size_from', '_size_to', etc.) so we don't
+  -- inflate the audit log by 73 (33 + 40) etc.
+  v_prev_total := 0;
+  FOR v_size IN
+    SELECT k FROM jsonb_object_keys(v_stock_grade) AS k
+     WHERE left(k, 1) <> '_'
+  LOOP
+    v_prev_total := v_prev_total + COALESCE((v_stock_grade ->> v_size)::numeric, 0);
+  END LOOP;
+
+  -- Validate stock availability
+  FOR v_size, v_size_qty IN
+    SELECT key, value::numeric FROM jsonb_each_text(v_effective_grade) WHERE value::numeric > 0
+  LOOP
+    v_available := COALESCE((v_stock_grade ->> v_size)::numeric, 0);
+    IF v_available < v_size_qty THEN
+      RAISE EXCEPTION 'Estoque insuficiente para Solado "%" tamanho %: disponível %, necessário %',
+        target_name, v_size, v_available, v_size_qty;
+    END IF;
+  END LOOP;
+
+  -- Debit stock
+  v_new_grade := v_stock_grade;
+  FOR v_size, v_size_qty IN
+    SELECT key, value::numeric FROM jsonb_each_text(v_effective_grade) WHERE value::numeric > 0
+  LOOP
+    v_available := COALESCE((v_stock_grade ->> v_size)::numeric, 0);
+    v_new_grade := jsonb_set(v_new_grade, ARRAY[v_size], to_jsonb(v_available - v_size_qty));
+    v_total_debited := v_total_debited + v_size_qty;
+  END LOOP;
+
+  IF v_total_debited > 0 THEN
+    UPDATE public.products
+       SET stock_grade = v_new_grade,
+           quantity    = GREATEST(0, quantity - v_total_debited),
+           updated_at  = now()
+     WHERE id = target_product_id;
+
+    INSERT INTO public.stock_movements (
+      product_id, movement_type, quantity, previous_stock, new_stock, description, order_id
+    ) VALUES (
+      target_product_id,
+      'out',
+      v_total_debited,
+      v_prev_total,
+      v_prev_total - v_total_debited,
+      'Débito Solado por grade (' || target_name || ')' ||
+        CASE WHEN COALESCE(p_color, '') <> '' THEN ' Cor: ' || p_color ELSE '' END,
+      p_order_id
+    );
+  END IF;
+END;
+$function$;
+
+-- =============================================================================
+-- B3: deterministic get_sole_size_key when conjugations overlap
+-- =============================================================================
+-- Previous version used LIMIT 1 with no ORDER BY — when a size appears in more
+-- than one row (e.g. {33/34: [33,34]} and {34/35: [34,35]}, sharing 34), the
+-- backend may resolve to either bucket non-deterministically. Force ORDER BY
+-- display_order so the lowest-priority conjugation wins consistently.
+CREATE OR REPLACE FUNCTION public.get_sole_size_key(p_sole_group_id uuid, p_shoe_size integer)
+RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
+AS $$
+  SELECT size_key
+  FROM sole_size_conjugations
+  WHERE sole_group_id = p_sole_group_id
+    AND p_shoe_size = ANY(sizes)
+  ORDER BY display_order, size_key
+  LIMIT 1;
+$$;

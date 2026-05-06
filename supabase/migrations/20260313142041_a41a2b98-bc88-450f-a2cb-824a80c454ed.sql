@@ -1,0 +1,166 @@
+
+-- Update debit_stock_for_order to accept and store order_id
+CREATE OR REPLACE FUNCTION public.debit_stock_for_order(p_reference_id uuid, p_order_quantity integer, p_color text DEFAULT ''::text, p_order_id uuid DEFAULT NULL)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  mat RECORD;
+  required numeric;
+  current_qty numeric;
+  target_product_id uuid;
+  target_name text;
+  target_qty numeric;
+  v_components jsonb;
+  v_item jsonb;
+  v_group_name text;
+  v_consumption numeric;
+  v_product_id uuid;
+BEGIN
+  -- ========== 1) DEBIT sheet_materials (BOM) ==========
+  FOR mat IN
+    SELECT sm.product_id, sm.quantity_per_unit, p.quantity AS current_stock, p.name, p.group_id, p.color AS product_color
+    FROM public.sheet_materials sm
+    JOIN public.products p ON p.id = sm.product_id
+    WHERE sm.sheet_id = p_reference_id
+  LOOP
+    required := mat.quantity_per_unit * p_order_quantity;
+    target_product_id := mat.product_id;
+    target_name := mat.name;
+    target_qty := mat.current_stock;
+    
+    IF p_color IS NOT NULL AND p_color <> '' AND mat.product_color <> p_color THEN
+      SELECT p.id, p.name, p.quantity INTO target_product_id, target_name, target_qty
+      FROM public.products p
+      WHERE p.active = true AND p.color = p_color
+        AND ((mat.group_id IS NOT NULL AND p.group_id = mat.group_id)
+             OR (mat.group_id IS NULL AND p.name = mat.name))
+      LIMIT 1;
+      IF target_product_id IS NULL THEN
+        target_product_id := mat.product_id;
+        target_name := mat.name;
+        target_qty := mat.current_stock;
+      END IF;
+    END IF;
+    
+    IF target_qty < required THEN
+      RAISE EXCEPTION 'Estoque insuficiente para "%" (%): disponivel %, necessario %', 
+        target_name, COALESCE(p_color, ''), target_qty, required;
+    END IF;
+  END LOOP;
+
+  FOR mat IN
+    SELECT sm.product_id, sm.quantity_per_unit, p.quantity AS current_stock, p.name, p.group_id, p.color AS product_color
+    FROM public.sheet_materials sm
+    JOIN public.products p ON p.id = sm.product_id
+    WHERE sm.sheet_id = p_reference_id
+  LOOP
+    required := mat.quantity_per_unit * p_order_quantity;
+    target_product_id := mat.product_id;
+    current_qty := mat.current_stock;
+    
+    IF p_color IS NOT NULL AND p_color <> '' AND mat.product_color <> p_color THEN
+      SELECT p.id, p.quantity INTO target_product_id, current_qty
+      FROM public.products p
+      WHERE p.active = true AND p.color = p_color
+        AND ((mat.group_id IS NOT NULL AND p.group_id = mat.group_id)
+             OR (mat.group_id IS NULL AND p.name = mat.name))
+      LIMIT 1;
+      IF target_product_id IS NULL THEN
+        target_product_id := mat.product_id;
+        current_qty := mat.current_stock;
+      END IF;
+    END IF;
+
+    UPDATE public.products SET quantity = quantity - required, updated_at = now() WHERE id = target_product_id;
+    INSERT INTO public.stock_movements (product_id, movement_type, quantity, previous_stock, new_stock, description, order_id)
+    VALUES (target_product_id, 'out', required, current_qty, current_qty - required, 
+            'Debito BOM' || CASE WHEN p_color <> '' THEN ' (Cor: ' || p_color || ')' ELSE '' END,
+            p_order_id);
+  END LOOP;
+
+  -- ========== 2) DEBIT components_accessories ==========
+  SELECT ts.components_accessories INTO v_components
+  FROM public.technical_sheets ts
+  WHERE ts.id = p_reference_id;
+
+  IF v_components IS NOT NULL AND jsonb_typeof(v_components) = 'array' AND jsonb_array_length(v_components) > 0 THEN
+    FOR v_item IN SELECT value FROM jsonb_array_elements(v_components) AS value
+    LOOP
+      v_consumption := COALESCE((v_item ->> 'consumption')::numeric, 0);
+      IF v_consumption <= 0 THEN
+        CONTINUE;
+      END IF;
+
+      required := v_consumption * p_order_quantity;
+
+      v_product_id := NULL;
+      BEGIN
+        v_product_id := (v_item ->> 'id')::uuid;
+      EXCEPTION WHEN OTHERS THEN
+        v_product_id := NULL;
+      END;
+
+      IF v_product_id IS NOT NULL THEN
+        SELECT p.id, p.name, p.quantity INTO target_product_id, target_name, target_qty
+        FROM public.products p WHERE p.id = v_product_id AND p.active = true;
+
+        IF target_product_id IS NULL THEN
+          RAISE EXCEPTION 'Componente nao encontrado no estoque (ID: %)', v_product_id;
+        END IF;
+      ELSE
+        v_group_name := v_item ->> 'material';
+        IF v_group_name IS NULL OR v_group_name = '' THEN
+          CONTINUE;
+        END IF;
+
+        target_product_id := NULL;
+        IF p_color IS NOT NULL AND p_color <> '' THEN
+          SELECT p.id, p.name, p.quantity INTO target_product_id, target_name, target_qty
+          FROM public.products p
+          JOIN public.product_groups pg ON pg.id = p.group_id
+          WHERE p.active = true AND pg.name = v_group_name AND p.color = p_color
+          LIMIT 1;
+        END IF;
+
+        IF target_product_id IS NULL THEN
+          SELECT p.id, p.name, p.quantity INTO target_product_id, target_name, target_qty
+          FROM public.products p
+          JOIN public.product_groups pg ON pg.id = p.group_id
+          WHERE p.active = true AND pg.name = v_group_name
+          LIMIT 1;
+        END IF;
+
+        IF target_product_id IS NULL THEN
+          RAISE EXCEPTION 'Material extra "%" nao encontrado no estoque', v_group_name;
+        END IF;
+      END IF;
+
+      IF target_qty < required THEN
+        RAISE EXCEPTION 'Estoque insuficiente para "%" : disponivel %, necessario %',
+          target_name, target_qty, required;
+      END IF;
+
+      UPDATE public.products SET quantity = quantity - required, updated_at = now() WHERE id = target_product_id;
+      INSERT INTO public.stock_movements (product_id, movement_type, quantity, previous_stock, new_stock, description, order_id)
+      VALUES (target_product_id, 'out', required, target_qty, target_qty - required,
+              'Debito Componente (' || target_name || ')' || CASE WHEN p_color <> '' THEN ' Cor: ' || p_color ELSE '' END,
+              p_order_id);
+    END LOOP;
+  END IF;
+END;
+$function$;
+
+-- Update the 2-param overload to forward to the main function
+CREATE OR REPLACE FUNCTION public.debit_stock_for_order(p_reference_id uuid, p_order_quantity integer)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  PERFORM public.debit_stock_for_order(p_reference_id, p_order_quantity, ''::text, NULL::uuid);
+END;
+$function$;

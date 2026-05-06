@@ -1,0 +1,1 @@
+ALTER TABLE public.print_jobs ADD COLUMN order_ids JSONB DEFAULT '[]'::jsonb;

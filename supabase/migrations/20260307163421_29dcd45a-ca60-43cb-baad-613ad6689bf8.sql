@@ -1,0 +1,1 @@
+ALTER TABLE public.products ADD COLUMN color text NOT NULL DEFAULT '';

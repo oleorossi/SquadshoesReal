@@ -1,0 +1,1 @@
+ALTER TABLE public.sole_technical_specs DROP COLUMN IF EXISTS upper_consumption_dm2;

@@ -1,0 +1,8 @@
+# No seu computador local:
+git clone <repo-principal>
+cd <repo-principal>
+git remote add claude <url-repo-claude>
+git fetch claude
+git merge claude/main --allow-unrelated-histories
+# Resolva conflitos se houver, depois:
+git push origin main

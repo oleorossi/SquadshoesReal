@@ -1,0 +1,1 @@
+ALTER TABLE public.sale_orders ADD COLUMN client_order_number text DEFAULT '' NOT NULL;

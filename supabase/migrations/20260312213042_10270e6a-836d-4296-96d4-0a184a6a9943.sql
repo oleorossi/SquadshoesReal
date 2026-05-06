@@ -1,0 +1,1 @@
+ALTER TABLE public.product_groups ADD COLUMN colors text DEFAULT '';

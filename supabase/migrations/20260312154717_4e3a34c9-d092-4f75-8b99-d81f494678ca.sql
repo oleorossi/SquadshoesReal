@@ -1,0 +1,1 @@
+ALTER TABLE public.product_groups ADD COLUMN auto_component_sheet boolean NOT NULL DEFAULT false;

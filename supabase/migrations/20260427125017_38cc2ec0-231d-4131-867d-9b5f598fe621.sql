@@ -1,0 +1,1 @@
+DELETE FROM public.purchase_orders WHERE id = 'f88ad29a-e687-428a-bbff-30debe731714';

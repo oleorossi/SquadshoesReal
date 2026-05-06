@@ -1,0 +1,213 @@
+import { useMemo } from "react";
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, PieChart, Pie, Cell, Legend
+} from "recharts";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { Skeleton } from "@/components/ui/skeleton";
+import { subMonths, format, startOfMonth, endOfMonth } from "date-fns";
+import { ptBR } from "date-fns/locale";
+
+const PRIMARY      = "hsl(162, 90%, 15%)";
+const CHART_BLUE   = "#3b82f6";
+const DONUT_COLORS = [PRIMARY, CHART_BLUE, "#6366f1", "#f59e0b", "#94a3b8"];
+
+const formatK   = (v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v);
+const formatBRL = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+
+const CARD_TOOLTIP_STYLE = {
+  fontSize: 12,
+  borderRadius: 8,
+  border: "1px solid hsl(var(--border))",
+  background: "hsl(var(--card))",
+  color: "hsl(var(--foreground))",
+  boxShadow: "0 4px 12px -2px rgb(0 0 0 / 0.1)",
+};
+
+export function ChartsRow() {
+  const months = useMemo(() => {
+    return Array.from({ length: 6 }, (_, i) => {
+      const d = subMonths(new Date(), 5 - i);
+      return {
+        label: format(d, "MMM", { locale: ptBR }),
+        start: startOfMonth(d).toISOString(),
+        end:   endOfMonth(d).toISOString(),
+        key:   format(d, "yyyy-MM"),
+      };
+    });
+  }, []);
+
+  const { data: salesData = [], isLoading: salesLoading } = useQuery({
+    queryKey: ["dashboard-charts-sales"],
+    queryFn: async () => {
+      const since = subMonths(new Date(), 6).toISOString();
+      const { data, error } = await supabase
+        .from("sale_orders")
+        .select("created_at, total")
+        .gte("created_at", since)
+        .not("status", "eq", "cancelled");
+      if (error) throw error;
+      return data ?? [];
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: productionData = [], isLoading: prodLoading } = useQuery({
+    queryKey: ["dashboard-charts-production"],
+    queryFn: async () => {
+      const since = subMonths(new Date(), 6).toISOString();
+      const { data, error } = await supabase
+        .from("orders")
+        .select("created_at, quantity")
+        .gte("created_at", since)
+        .not("status", "eq", "cancelled");
+      if (error) throw error;
+      return data ?? [];
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: stockByCategory = [], isLoading: stockLoading } = useQuery({
+    queryKey: ["dashboard-charts-stock"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("products")
+        .select("category, quantity")
+        .eq("active", true);
+      if (error) throw error;
+      return data ?? [];
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const areaData = useMemo(() => {
+    return months.map((m) => {
+      const vendas = salesData
+        .filter((s: any) => s.created_at >= m.start && s.created_at <= m.end)
+        .reduce((sum: number, s: any) => sum + (Number(s.total) || 0), 0);
+      const producao = productionData
+        .filter((o: any) => o.created_at >= m.start && o.created_at <= m.end)
+        .reduce((sum: number, o: any) => sum + (Number(o.quantity) || 0), 0);
+      return { month: m.label, vendas, producao };
+    });
+  }, [months, salesData, productionData]);
+
+  const donutData = useMemo(() => {
+    const grouped: Record<string, number> = {};
+    for (const p of stockByCategory) {
+      const cat = (p as any).category || "Outros";
+      grouped[cat] = (grouped[cat] || 0) + (Number((p as any).quantity) || 0);
+    }
+    return Object.entries(grouped)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([name, value]) => ({ name, value }));
+  }, [stockByCategory]);
+
+  if (salesLoading || prodLoading || stockLoading) {
+    return (
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-[1fr_340px] gap-3">
+        <Skeleton className="h-[220px] rounded-xl" />
+        <Skeleton className="h-[220px] rounded-xl" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-[1fr_340px] gap-3">
+
+      {/* ── Area chart ── */}
+      <div className="bg-card rounded-xl border border-border shadow-card hover:shadow-card-hover transition-shadow duration-200">
+        <div className="flex items-start justify-between px-5 py-4 border-b border-border/60">
+          <div>
+            <h3 className="text-[13px] font-semibold text-foreground tracking-tight">
+              Vendas vs Produção
+            </h3>
+            <p className="text-[11px] text-muted-foreground mt-0.5">últimos 6 meses</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <span className="w-2 h-2 rounded-full" style={{ background: PRIMARY }} />
+              Vendas
+            </div>
+            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <span className="w-2 h-2 rounded-full bg-blue-500" />
+              Produção
+            </div>
+          </div>
+        </div>
+        <div className="px-4 pt-3 pb-4">
+          <ResponsiveContainer width="100%" height={160}>
+            <AreaChart data={areaData} margin={{ top: 4, right: 4, left: -16, bottom: 0 }}>
+              <defs>
+                <linearGradient id="gradVendas" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%"  stopColor={PRIMARY}     stopOpacity={0.2} />
+                  <stop offset="95%" stopColor={PRIMARY}     stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="gradProd" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%"  stopColor={CHART_BLUE}  stopOpacity={0.15} />
+                  <stop offset="95%" stopColor={CHART_BLUE}  stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="hsl(var(--border))" vertical={false} strokeDasharray="3 3" />
+              <XAxis dataKey="month" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
+              <YAxis tickFormatter={formatK} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
+              <Tooltip
+                formatter={(v: number, name: string) => name === "vendas" ? formatBRL(v) : `${v} pares`}
+                labelFormatter={(l) => `Mês: ${l}`}
+                contentStyle={CARD_TOOLTIP_STYLE}
+              />
+              <Area type="monotone" dataKey="vendas"   stroke={PRIMARY}    strokeWidth={2}   fill="url(#gradVendas)" dot={{ r: 3, fill: PRIMARY, strokeWidth: 0 }} activeDot={{ r: 4, strokeWidth: 0 }} />
+              <Area type="monotone" dataKey="producao" stroke={CHART_BLUE} strokeWidth={1.5} strokeDasharray="4 2"  fill="url(#gradProd)"   dot={{ r: 2.5, fill: CHART_BLUE, strokeWidth: 0 }} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* ── Donut chart ── */}
+      <div className="bg-card rounded-xl border border-border shadow-card hover:shadow-card-hover transition-shadow duration-200">
+        <div className="px-5 py-4 border-b border-border/60">
+          <h3 className="text-[13px] font-semibold text-foreground tracking-tight">
+            Distribuição de Estoque
+          </h3>
+          <p className="text-[11px] text-muted-foreground mt-0.5">por categoria</p>
+        </div>
+        <div className="px-2 pt-2 pb-4">
+          {donutData.length === 0 ? (
+            <div className="flex items-center justify-center h-[160px] text-muted-foreground text-xs">
+              Sem dados de estoque
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={160}>
+              <PieChart>
+                <Pie
+                  data={donutData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={48}
+                  outerRadius={68}
+                  paddingAngle={3}
+                  dataKey="value"
+                >
+                  {donutData.map((_, i) => (
+                    <Cell key={i} fill={DONUT_COLORS[i % DONUT_COLORS.length]} stroke="hsl(var(--card))" strokeWidth={2} />
+                  ))}
+                </Pie>
+                <Legend
+                  iconType="circle"
+                  iconSize={7}
+                  formatter={(v) => <span style={{ fontSize: 10, color: "hsl(var(--muted-foreground))" }}>{v}</span>}
+                />
+                <Tooltip
+                  formatter={(v: number) => `${v.toLocaleString("pt-BR")} un.`}
+                  contentStyle={CARD_TOOLTIP_STYLE}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

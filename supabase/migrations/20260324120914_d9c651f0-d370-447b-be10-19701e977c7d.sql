@@ -1,0 +1,1 @@
+ALTER TABLE public.orders ALTER COLUMN sale_order_id SET NOT NULL;

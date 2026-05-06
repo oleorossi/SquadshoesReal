@@ -1,0 +1,5 @@
+ALTER TABLE public.box_types
+  ADD COLUMN IF NOT EXISTS quantity integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS min_stock integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS unit_price numeric NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS supplier_id uuid REFERENCES public.suppliers(id) ON DELETE SET NULL;

@@ -1,0 +1,1 @@
+ALTER TYPE public.production_stage_enum ADD VALUE IF NOT EXISTS 'mesa' AFTER 'solagem';

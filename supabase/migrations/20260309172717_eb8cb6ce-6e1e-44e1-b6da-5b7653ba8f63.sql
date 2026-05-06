@@ -1,0 +1,1 @@
+ALTER TABLE public.economic_groups ADD COLUMN logo_url text DEFAULT '' NULL;

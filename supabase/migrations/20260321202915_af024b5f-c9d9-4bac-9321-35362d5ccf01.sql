@@ -1,0 +1,1 @@
+ALTER TABLE public.technical_sheets ADD COLUMN insole_plate_product text DEFAULT '';

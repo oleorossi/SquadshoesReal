@@ -1,0 +1,1 @@
+ALTER TABLE public.orders ADD COLUMN item_observation TEXT DEFAULT NULL;

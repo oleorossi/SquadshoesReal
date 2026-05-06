@@ -1,0 +1,2 @@
+ALTER TABLE public.technical_sheets ADD COLUMN IF NOT EXISTS upper_consumption_per_size JSONB DEFAULT '{}'::jsonb;
+COMMENT ON COLUMN public.technical_sheets.upper_consumption_per_size IS 'Consumo do cabedal principal por numeração (em metros/par). Permite débito preciso por grade.';

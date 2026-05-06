@@ -1,0 +1,1 @@
+ALTER FUNCTION get_inventory_summary() SET search_path = public;

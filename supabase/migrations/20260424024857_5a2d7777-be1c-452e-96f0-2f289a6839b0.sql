@@ -1,0 +1,1 @@
+ALTER FUNCTION debit_packaging_for_order(uuid, uuid, uuid, integer, text) SET search_path = public;

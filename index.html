@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+     <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0" />
+     <meta http-equiv="Pragma" content="no-cache" />
+     <meta http-equiv="Expires" content="-1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Squad Shoes</title>
+    <script>
+      // Log imediato para depuração de cache
+      console.log("App Inicializando...");
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(regs => {
+          if (regs.length > 0) console.log("Service Workers ativos:", regs.length);
+        });
+      }
+    </script>
+    <meta name="description" content="Sistema de gestão industrial completo para fábricas de calçados — produção, estoque, financeiro e mais." />
+    <meta name="author" content="Squad Shoes" />
+
+    <!-- Performance: Preconnect to font origins (limit to most important) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <!-- Modulepreload for main entry to parallelize JS discovery -->
+    <link rel="modulepreload" href="/src/main.tsx" />
+
+    <!-- Critical CSS: Minimal variables to prevent FOUC during non-blocking CSS load -->
+    <style>
+      :root {
+        --background: 210 20% 98%;
+        --foreground: 220 25% 10%;
+        --primary: 160 55% 24%;
+      }
+      body {
+        background-color: hsl(210 20% 98%);
+        color: hsl(220 25% 10%);
+        margin: 0;
+        font-family: system-ui, -apple-system, sans-serif;
+      }
+    </style>
+
+    <!-- Optimized Font Loading: load only essential weights synchronously, rest async -->
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'" />
+
+    <link rel="icon" href="/favicon.jpg" type="image/jpeg" />
+    <link rel="stylesheet" href="/print.css" media="print" />
+    <!-- Leaflet CSS is now lazy-loaded by route components that need maps -->
+
+    <meta property="og:title" content="Squad Shoes - Gestão Industrial" />
+    <meta property="og:description" content="Sistema de gestão industrial completo para fábricas de calçados" />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="/favicon.jpg" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@SquadShoes" />
+    <meta name="twitter:image" content="/favicon.jpg" />
+
+    <!-- Script: module type defers automatically -->
+    <script type="module" src="/src/main.tsx"></script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

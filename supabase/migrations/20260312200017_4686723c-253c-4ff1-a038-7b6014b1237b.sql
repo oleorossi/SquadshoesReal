@@ -1,0 +1,2 @@
+ALTER TABLE public.sheet_materials DROP CONSTRAINT sheet_materials_product_id_fkey;
+ALTER TABLE public.sheet_materials ADD CONSTRAINT sheet_materials_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE CASCADE;

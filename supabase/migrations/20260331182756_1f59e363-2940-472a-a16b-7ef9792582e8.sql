@@ -1,0 +1,1 @@
+UPDATE products SET group_id = '50708143-2bbb-4f6f-a61b-003802e6f9e5', name = 'NAPA SOFT: BEGE' WHERE id = 'a0c6dcee-c72f-4e66-8f69-47be847957d3' AND group_id IS NULL;

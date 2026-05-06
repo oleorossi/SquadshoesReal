@@ -1,0 +1,1 @@
+UPDATE products SET group_id = 'e976852c-44ee-47b9-b95e-bbe68c6fe16c' WHERE id IN ('1d3bc95c-9475-4cdd-95e7-c16cb37c99aa', '84ba12fe-117f-42c7-ba20-52b3a2c9df02') AND group_id IS NULL;

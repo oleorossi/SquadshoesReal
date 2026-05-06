@@ -1,0 +1,1 @@
+DROP POLICY "Auth users can view advances" ON public.employee_advances;

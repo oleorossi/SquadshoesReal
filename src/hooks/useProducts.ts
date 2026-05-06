@@ -1,0 +1,346 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { ProductFormData } from '@/types/inventory';
+import { toast } from 'sonner';
+import { sanitizeUuidFields } from '@/lib/utils';
+import { z } from 'zod';
+
+export const ProductSchema = z.object({
+  name: z.string().min(1, "Nome é obrigatório").max(255),
+  sku: z.string().min(1, "SKU é obrigatório"),
+  quantity: z.number().min(0, "Quantidade deve ser positiva"),
+  unit_price: z.number().min(0, "Preço deve ser zero ou positivo"),
+  category: z.string().optional(),
+  color: z.string().optional(),
+  min_stock: z.number().optional(),
+  max_stock: z.number().optional(),
+  unit: z.string().optional(),
+  location: z.string().optional(),
+  group_id: z.string().nullable().optional(),
+  active: z.boolean().optional(),
+  image_url: z.string().optional(),
+  calculation_method: z.enum(['weight', 'meter', 'unit']).optional(),
+  lot_number: z.string().nullable().optional(),
+  expiration_date: z.string().nullable().optional(),
+  is_chemical: z.boolean().optional(),
+  linked_last_id: z.string().nullable().optional(),
+   sole_material: z.string().nullable().optional(),
+   heel_height: z.number().nullable().optional(),
+   is_standard_sole_item: z.boolean().optional(),
+ }).passthrough();
+
+
+export function useProducts() {
+  return useQuery({
+    queryKey: ['products'],
+    queryFn: async () => {
+      const PAGE = 1000;
+      // Get total count first so we can fetch all pages in parallel.
+      const { count, error: countError } = await supabase
+        .from('products')
+        .select('*', { count: 'exact', head: true });
+      if (countError) throw countError;
+      const total = count ?? 0;
+      if (total === 0) return [];
+      const pages = Math.ceil(total / PAGE);
+      const all: any[] = [];
+      // Fetch in batches of 5 concurrent requests to avoid overwhelming the API
+      for (let batch = 0; batch < pages; batch += 5) {
+        const batchPages = Array.from({ length: Math.min(5, pages - batch) }, (_, i) => batch + i);
+        const results = await Promise.all(batchPages.map(i =>
+          supabase
+            .from('products')
+            .select('*, product_groups(name)')
+            .order('updated_at', { ascending: false })
+            .range(i * PAGE, (i + 1) * PAGE - 1),
+        ));
+        for (const { data, error } of results) {
+          if (error) throw error;
+          if (data) all.push(...data);
+        }
+      }
+      return all;
+    },
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
+}
+
+export function useAddProduct() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (form: ProductFormData) => {
+      const payload = { ...sanitizeUuidFields(form), max_stock: (form as any).max_stock ?? 0 };
+      const { data, error } = await supabase
+        .from('products')
+        .insert(payload as any)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast.success('Produto adicionado com sucesso!');
+    },
+    onError: (err: Error) => toast.error(`Erro ao adicionar: ${err.message}`),
+  });
+}
+
+// Extrai o nome base do material (sem a última palavra que geralmente é cor/variação)
+// Regra: só agrupa quando o nome tem um separador claro (":" ou " - ") OU 3+ palavras.
+// Itens com 2 palavras (ex.: "COLA FORTE", "COLA PVC") são tratados como produtos
+// distintos, NÃO como variantes uns dos outros.
+export function getBaseName(name: string): string {
+  const colonIdx = name.lastIndexOf(':');
+  if (colonIdx > 0) return name.substring(0, colonIdx).trim();
+  const dashIdx = name.lastIndexOf(' - ');
+  if (dashIdx > 0) return name.substring(0, dashIdx).trim();
+  const words = name.trim().split(/\s+/);
+  // Need at least 3 words to safely derive a base by stripping the last token.
+  // With 2 words ("COLA FORTE"), the last word IS the differentiator, not a variant.
+  if (words.length < 3) return '';
+  return words.slice(0, -1).join(' ');
+}
+
+const SYNC_FIELDS = [
+  'category', 'unit', 'group_id', 'location',
+  'dimensions_length', 'dimensions_width', 'dimensions_thickness', 'dimensions_unit',
+  'yield_per_meter', 'yield_unit', 'unit_price', 'min_stock', 'max_stock',
+] as const;
+
+export type SyncInfo = {
+  siblingNames: string[];
+  siblingIds: string[];
+  changedFields: Record<string, any>;
+};
+
+export async function checkSiblings(
+  id: string,
+  data: ProductFormData,
+  previousData: ProductFormData
+): Promise<SyncInfo | null> {
+  const hasChanges = SYNC_FIELDS.some(f => data[f] !== previousData[f]);
+  if (!hasChanges || !data.name) return null;
+
+  const baseName = getBaseName(data.name);
+  if (!baseName) return null; // Single-word name, no siblings to sync
+  // Filter at DB level by base name prefix (avoids full-table scan).
+  // Escape ILIKE special chars in baseName so names with % or _ don't break the pattern.
+  const escaped = baseName.replace(/[%_\\]/g, c => `\\${c}`);
+  const { data: siblings } = await supabase
+    .from('products')
+    .select('id, name')
+    .neq('id', id)
+    .ilike('name', `${escaped}%`);
+
+  if (!siblings?.length) return null;
+
+  const matching = siblings.filter(p => getBaseName(p.name) === baseName);
+  if (!matching.length) return null;
+
+  const changedFields: Record<string, any> = {};
+  for (const field of SYNC_FIELDS) {
+    if (data[field] !== previousData[field]) {
+      changedFields[field] = data[field];
+    }
+  }
+
+  return {
+    siblingNames: matching.map(p => p.name),
+    siblingIds: matching.map(p => p.id),
+    changedFields,
+  };
+}
+
+export function useUpdateProduct() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: ProductFormData }) => {
+      // Strip quantity and stock_grade from the plain UPDATE — they must go
+      // through the adjust_stock RPC (with stock_movements audit row and
+      // concurrency control). A direct write races with debit RPCs and bypasses
+      // the audit trail; same guard applied to usePackaging (audit-37 [3]).
+      const { quantity, stock_grade, min_stock_grade, ...safeData } = data as any;
+      if (quantity !== undefined || stock_grade !== undefined) {
+        // Surface a developer warning; the stock adjustment page is the correct path.
+        console.warn('[useUpdateProduct] quantity/stock_grade stripped — use adjust_stock RPC or stock adjustment page.');
+      }
+      const { error } = await supabase
+        .from('products')
+        .update(sanitizeUuidFields(safeData) as any)
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast.success('Produto atualizado com sucesso!');
+    },
+    onError: (err: Error) => toast.error(`Erro ao atualizar: ${err.message}`),
+  });
+}
+
+export function useSyncSiblings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ siblingIds, changedFields }: { siblingIds: string[]; changedFields: Record<string, string | null> }) => {
+      const { error } = await supabase
+        .from('products')
+        .update(sanitizeUuidFields(changedFields) as any)
+        .in('id', siblingIds);
+      if (error) throw error;
+    },
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast.success(`${vars.siblingIds.length} material(is) similar(es) atualizado(s)`);
+    },
+    onError: (err: Error) => toast.error(`Erro ao sincronizar: ${err.message}`),
+  });
+}
+
+export function useDeleteProduct() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      // Block delete when the product is still referenced — ON DELETE CASCADE on
+      // sheet_materials/material_reservations would silently destroy BOMs and active
+      // reservations. Force the operator to deactivate instead.
+      const [
+        { count: smCount, error: e1 },
+        { count: resCount, error: e2 },
+        { count: poiCount, error: e3 },
+        { count: movCount, error: e4 },
+      ] = await Promise.all([
+        supabase.from('sheet_materials').select('id', { count: 'exact', head: true }).eq('product_id', id),
+        supabase.from('material_reservations').select('id', { count: 'exact', head: true })
+          .eq('product_id', id).in('status', ['reserved', 'partially_consumed']),
+        supabase.from('purchase_order_items').select('id', { count: 'exact', head: true }).eq('product_id', id),
+        supabase.from('stock_movements').select('id', { count: 'exact', head: true }).eq('product_id', id),
+      ]);
+      if (e1 || e2 || e3 || e4) throw new Error('Erro ao verificar vínculos do produto.');
+      const msgs: string[] = [];
+      if ((smCount ?? 0) > 0) msgs.push(`${smCount} ficha(s) técnica(s)`);
+      if ((resCount ?? 0) > 0) msgs.push(`${resCount} reserva(s) ativa(s)`);
+      if ((poiCount ?? 0) > 0) msgs.push(`${poiCount} item(ns) de OC`);
+      if ((movCount ?? 0) > 0) msgs.push(`${movCount} movimentação(ões) de estoque`);
+      if (msgs.length > 0) {
+        throw new Error(`Produto vinculado a ${msgs.join(', ')}. Desative-o em vez de excluir.`);
+      }
+      const { error } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast.success('Produto excluído com sucesso!');
+    },
+    onError: (err: Error) => toast.error(`Erro ao excluir: ${err.message}`),
+  });
+}
+
+export function useBatchAddProducts() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (items: ProductFormData[]) => {
+      const { data, error } = await supabase
+        .from('products')
+        .insert(items.map(i => sanitizeUuidFields(i)) as any)
+        .select();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast.success(`${data.length} itens criados com sucesso!`);
+    },
+    onError: (err: Error) => toast.error(`Erro ao criar itens: ${err.message}`),
+  });
+}
+
+export function useAutoGroupProducts() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (products: { id: string; name: string; group_id: string | null }[]) => {
+      // Group products by base name
+      const baseGroups = new Map<string, typeof products>();
+      for (const p of products) {
+        const base = getBaseName(p.name);
+        if (!base) continue;
+        const arr = baseGroups.get(base) || [];
+        arr.push(p);
+        baseGroups.set(base, arr);
+      }
+
+      // Only consider groups with 2+ items
+      const toGroup = Array.from(baseGroups.entries()).filter(([, items]) => items.length >= 2);
+      if (toGroup.length === 0) return { created: 0, assigned: 0 };
+
+      // Fetch existing groups
+      const { data: existingGroups } = await supabase.from('product_groups').select('id, name');
+      const groupMap = new Map<string, string>();
+      (existingGroups || []).forEach(g => groupMap.set(g.name.toUpperCase(), g.id));
+
+      let created = 0;
+      let assigned = 0;
+
+      for (const [baseName, items] of toGroup) {
+        const upperBase = baseName.toUpperCase();
+        let groupId = groupMap.get(upperBase);
+
+        // Create group if it doesn't exist
+        if (!groupId) {
+          const { data: newGroup, error } = await supabase
+            .from('product_groups')
+            .insert({ name: baseName, description: `Agrupamento automático: ${items.length} variações` })
+            .select()
+            .single();
+          if (error) continue;
+          groupId = newGroup.id;
+          groupMap.set(upperBase, groupId);
+          created++;
+        }
+
+        // Assign group to products that don't have one
+        const unassigned = items.filter(p => !p.group_id || p.group_id !== groupId);
+        if (unassigned.length > 0) {
+          const { error } = await supabase
+            .from('products')
+            .update({ group_id: groupId })
+            .in('id', unassigned.map(p => p.id));
+          if (!error) assigned += unassigned.length;
+        }
+      }
+
+      return { created, assigned };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['product_groups'] });
+      if (result.created === 0 && result.assigned === 0) {
+        toast.info('Nenhum agrupamento necessário — todos os itens já estão agrupados ou são únicos.');
+      } else {
+        toast.success(`${result.created} grupo(s) criado(s), ${result.assigned} item(ns) agrupado(s)!`);
+      }
+    },
+    onError: (err: Error) => toast.error(`Erro ao agrupar: ${err.message}`),
+  });
+}
+
+/** Find the group_id for a product name based on existing products' base names */
+export async function findGroupForProduct(productName: string): Promise<string | null> {
+  const baseName = getBaseName(productName);
+  if (!baseName) return null;
+
+  // Find a product with the same base name that already has a group
+  const { data: siblings } = await supabase
+    .from('products')
+    .select('group_id, name')
+    .not('group_id', 'is', null)
+    .limit(500);
+
+  if (!siblings?.length) return null;
+  const match = siblings.find(p => getBaseName(p.name) === baseName);
+  return match?.group_id || null;
+}

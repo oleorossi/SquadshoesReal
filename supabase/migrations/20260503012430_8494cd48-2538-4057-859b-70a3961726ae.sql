@@ -1,0 +1,1 @@
+ALTER TABLE public.orders RENAME COLUMN due_date TO planned_delivery;

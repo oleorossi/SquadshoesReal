@@ -1,0 +1,36 @@
+image: node:20
+
+stages:
+  - install
+  - test
+  - build
+
+cache:
+  paths:
+    - node_modules/
+
+install_dependencies:
+  stage: install
+  script:
+    - npm ci
+  artifacts:
+    paths:
+      - node_modules/
+
+run_tests:
+  stage: test
+  dependencies:
+    - install_dependencies
+  script:
+    - npm test
+
+build_project:
+  stage: build
+  dependencies:
+    - install_dependencies
+  script:
+    - npm run build
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 week

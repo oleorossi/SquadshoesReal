@@ -1,0 +1,1 @@
+ALTER VIEW public.v_wave_orders SET (security_invoker = true);

@@ -1,0 +1,1 @@
+ALTER TABLE public.sale_order_items ADD COLUMN IF NOT EXISTS strap_colors jsonb DEFAULT '[]'::jsonb;
