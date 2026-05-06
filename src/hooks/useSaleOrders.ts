@@ -911,8 +911,9 @@ export function useUpdateSaleOrderStatus() {
                     } as any);
                     if (soleErr) {
                       console.error('Erro ao debitar solado (Em Produção):', soleErr.message);
-                      // Attempt auto-PO for sole shortage before deciding to cancel
-                      let solePOHandled = false;
+                      // Attempt auto-PO for sole shortage so the operator has a tracked
+                      // replenishment to re-approve against once stock arrives.
+                      let autoPoNote = '';
                       try {
                         const po = await autoCreateSolePO({
                           referenceId: item.reference_id,
@@ -923,17 +924,19 @@ export function useUpdateSaleOrderStatus() {
                         });
                         if (po) {
                           toast.warning(
-                            `Solado insuficiente — OC ${po.poNumber} ${po.accumulated ? 'acumulada' : 'criada'} (${po.supplierName}).`,
+                            `Solado insuficiente — OC ${po.poNumber} ${po.accumulated ? 'acumulada' : 'criada'} (${po.supplierName}). Reaprovar a OP após recebimento.`,
                             { duration: 8000 },
                           );
-                          solePOHandled = true;
+                          autoPoNote = ` (OC ${po.poNumber} criada — reaprovar após recebimento)`;
                         }
                       } catch (poErr: any) {
                         console.error('Erro ao gerar OC de solado (Em Produção):', poErr?.message);
                       }
-                      if (!solePOHandled) {
-                        secondaryDebitErrors.push(`solado: ${soleErr.message}`);
-                      }
+                      // Sole debit failure ALWAYS cancels the OP. Allowing the OP to advance
+                      // "Em Produção" without sole debited (because an auto-PO was created)
+                      // produced silent inventory drift: nothing tied the incoming stock
+                      // to this OP, so a concurrent OP could consume it.
+                      secondaryDebitErrors.push(`solado: ${soleErr.message}${autoPoNote}`);
                     }
                   }
                   // Debit strap materials (Em Produção path)
