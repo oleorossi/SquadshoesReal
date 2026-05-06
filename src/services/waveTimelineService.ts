@@ -333,11 +333,24 @@ export async function autoCreateArtisanalServiceOrders(
       if (osRow?.id) insertedOsIds.push(osRow.id);
       created++;
     }
-  } catch (err) {
+  } catch (err: any) {
     // Compensating delete: remove OSs already created in this batch so the wave
     // doesn't end up with partial artisanal coverage and no signal to the operator.
+    // CRITICAL: surface delete failures so the operator knows OSs are stranded.
+    // Silently ignoring the delete error left orphan Pending OSs invisible to
+    // the wave-creation flow.
     if (insertedOsIds.length > 0) {
-      await (supabase as any).from('service_orders').delete().in('id', insertedOsIds);
+      const { error: delErr } = await (supabase as any)
+        .from('service_orders')
+        .delete()
+        .in('id', insertedOsIds);
+      if (delErr) {
+        const cause = err?.message ?? String(err);
+        throw new Error(
+          `${cause}. ATENÇÃO: ${insertedOsIds.length} OS(s) artesanal(is) já criada(s) ` +
+          `não puderam ser removidas (${delErr.message}). Remover manualmente: ${insertedOsIds.join(', ')}.`
+        );
+      }
     }
     throw err;
   }
