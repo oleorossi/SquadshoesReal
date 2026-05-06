@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS public.start_wave(p_wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.start_wave(p_wave_id uuid)
 RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$

@@ -16,6 +16,7 @@
 
 DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 
+DROP POLICY IF EXISTS "Users can update own non-privileged profile fields" ON public.profiles;
 CREATE POLICY "Users can update own non-privileged profile fields"
   ON public.profiles
   FOR UPDATE

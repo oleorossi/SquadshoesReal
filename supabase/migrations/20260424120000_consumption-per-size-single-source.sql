@@ -20,6 +20,12 @@
 
 -- ── 1. Helper: compute required quantity respecting per-size consumption ──────
 
+DROP FUNCTION IF EXISTS public.calc_required_for_grade(
+  p_consumption_per_size jsonb,    -- { "36": 0.42, "37": 0.44, ... }  (material unit per pair per size)
+  p_order_grade          jsonb,    -- { "36": 50,   "37": 100, ... }   (pairs per size)
+  p_quantity_per_unit    numeric,  -- fallback: average consumption per pair
+  p_total_quantity       numeric   -- fallback: total pairs
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.calc_required_for_grade(
   p_consumption_per_size jsonb,    -- { "36": 0.42, "37": 0.44, ... }  (material unit per pair per size)
   p_order_grade          jsonb,    -- { "36": 50,   "37": 100, ... }   (pairs per size)
@@ -70,6 +76,7 @@ $$;
 -- Replaces the old reference_materials-based check so the pre-approval
 -- validation matches what hybrid_debit_stock_for_order actually debits.
 
+DROP FUNCTION IF EXISTS public.check_stock_availability(p_reference_id uuid, p_order_quantity integer, p_color text, p_order_grade jsonb, "37": 100, ... }) CASCADE;
 CREATE OR REPLACE FUNCTION public.check_stock_availability(
   p_reference_id uuid,
   p_order_quantity integer,

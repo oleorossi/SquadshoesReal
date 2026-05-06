@@ -3,8 +3,11 @@
 INSERT INTO storage.buckets (id, name, public) VALUES ('certificates', 'certificates', false);
 
 -- RLS for certificates bucket - only authenticated users
+DROP POLICY IF EXISTS "Auth users can upload certificates" ON storage.objects;
 CREATE POLICY "Auth users can upload certificates" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'certificates');
+DROP POLICY IF EXISTS "Auth users can read certificates" ON storage.objects;
 CREATE POLICY "Auth users can read certificates" ON storage.objects FOR SELECT TO authenticated USING (bucket_id = 'certificates');
+DROP POLICY IF EXISTS "Auth users can delete certificates" ON storage.objects;
 CREATE POLICY "Auth users can delete certificates" ON storage.objects FOR DELETE TO authenticated USING (bucket_id = 'certificates');
 
 -- Fiscal configuration table
@@ -33,9 +36,13 @@ CREATE TABLE public.fiscal_config (
 );
 
 ALTER TABLE public.fiscal_config ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Auth users can view fiscal_config" ON public.fiscal_config;
 CREATE POLICY "Auth users can view fiscal_config" ON public.fiscal_config FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert fiscal_config" ON public.fiscal_config;
 CREATE POLICY "Auth users can insert fiscal_config" ON public.fiscal_config FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update fiscal_config" ON public.fiscal_config;
 CREATE POLICY "Auth users can update fiscal_config" ON public.fiscal_config FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete fiscal_config" ON public.fiscal_config;
 CREATE POLICY "Auth users can delete fiscal_config" ON public.fiscal_config FOR DELETE TO authenticated USING (true);
 
 -- NF-e emitidas table
@@ -58,7 +65,11 @@ CREATE TABLE public.nfe_emitidas (
 );
 
 ALTER TABLE public.nfe_emitidas ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Auth users can view nfe_emitidas" ON public.nfe_emitidas;
 CREATE POLICY "Auth users can view nfe_emitidas" ON public.nfe_emitidas FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert nfe_emitidas" ON public.nfe_emitidas;
 CREATE POLICY "Auth users can insert nfe_emitidas" ON public.nfe_emitidas FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update nfe_emitidas" ON public.nfe_emitidas;
 CREATE POLICY "Auth users can update nfe_emitidas" ON public.nfe_emitidas FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete nfe_emitidas" ON public.nfe_emitidas;
 CREATE POLICY "Auth users can delete nfe_emitidas" ON public.nfe_emitidas FOR DELETE TO authenticated USING (true);

@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS public.packaging_catalog (
 ALTER TABLE public.packaging_catalog ENABLE ROW LEVEL SECURITY;
 
 -- Create policies for packaging_catalog
+DROP POLICY IF EXISTS "Enable all for authenticated users" ON public.packaging_catalog;
 CREATE POLICY "Enable all for authenticated users" ON public.packaging_catalog
     FOR ALL
     USING (auth.role() = 'authenticated')
@@ -25,6 +26,7 @@ CREATE POLICY "Enable all for authenticated users" ON public.packaging_catalog
 ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS accepts_bundled_packaging BOOLEAN DEFAULT true;
 
 -- Create trigger for updated_at on packaging_catalog
+DROP FUNCTION IF EXISTS public.handle_updated_at() CASCADE;
 CREATE OR REPLACE FUNCTION public.handle_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN

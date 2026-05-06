@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS get_inventory_summary() CASCADE;
 CREATE OR REPLACE FUNCTION get_inventory_summary()
 RETURNS json AS $$
 DECLARE

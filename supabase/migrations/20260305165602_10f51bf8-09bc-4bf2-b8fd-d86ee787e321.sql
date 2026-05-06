@@ -22,13 +22,16 @@ CREATE TABLE public.stock_movements (
 
 ALTER TABLE public.stock_movements ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Auth users can view movements" ON public.stock_movements;
 CREATE POLICY "Auth users can view movements" ON public.stock_movements FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert movements" ON public.stock_movements;
 CREATE POLICY "Auth users can insert movements" ON public.stock_movements FOR INSERT TO authenticated WITH CHECK (true);
 
 -- Enable realtime for stock_movements
 ALTER PUBLICATION supabase_realtime ADD TABLE public.stock_movements;
 
 -- Replace the debit function to also validate stock and log movements
+DROP FUNCTION IF EXISTS public.debit_stock_for_order(p_reference_id uuid, p_order_quantity integer) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_stock_for_order(p_reference_id uuid, p_order_quantity integer)
 RETURNS void
 LANGUAGE plpgsql
@@ -78,6 +81,7 @@ END;
 $$;
 
 -- Function to check stock availability without debiting
+DROP FUNCTION IF EXISTS public.check_stock_availability(p_reference_id uuid, p_order_quantity integer) CASCADE;
 CREATE OR REPLACE FUNCTION public.check_stock_availability(p_reference_id uuid, p_order_quantity integer)
 RETURNS TABLE(product_id uuid, product_name text, required numeric, available numeric, sufficient boolean)
 LANGUAGE plpgsql

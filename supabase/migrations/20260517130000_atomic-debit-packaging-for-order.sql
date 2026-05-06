@@ -12,6 +12,7 @@
 -- 805, 1019 and SaleOrders.tsx line 869) work without modification.
 -- =============================================================================
 
+DROP FUNCTION IF EXISTS public.debit_packaging_for_order(p_sale_order_id  uuid, p_order_id       uuid, p_reference_id   uuid, p_order_quantity integer, p_packaging_mode text) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_packaging_for_order(
   p_sale_order_id  uuid,
   p_order_id       uuid,

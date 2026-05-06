@@ -19,6 +19,7 @@ ALTER TABLE public.sale_orders
 -- RLS
 ALTER TABLE public.factoring_config ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Authenticated users can manage factoring_config" ON public.factoring_config;
 CREATE POLICY "Authenticated users can manage factoring_config"
   ON public.factoring_config
   FOR ALL

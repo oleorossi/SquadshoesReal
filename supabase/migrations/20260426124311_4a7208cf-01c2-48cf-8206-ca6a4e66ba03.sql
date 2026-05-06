@@ -1,4 +1,5 @@
 -- Function to list applied migrations
+DROP FUNCTION IF EXISTS public.get_applied_migrations() CASCADE;
 CREATE OR REPLACE FUNCTION public.get_applied_migrations()
 RETURNS TABLE(version text, name text, statements_count integer)
 LANGUAGE sql
@@ -18,6 +19,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.get_applied_migrations() TO authenticated;
 
 -- Function to validate critical schema objects
+DROP FUNCTION IF EXISTS public.check_schema_objects() CASCADE;
 CREATE OR REPLACE FUNCTION public.check_schema_objects()
 RETURNS jsonb
 LANGUAGE plpgsql

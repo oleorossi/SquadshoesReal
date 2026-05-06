@@ -26,7 +26,9 @@ DROP POLICY IF EXISTS "Approved users can view technical_sheet_insole_colors" ON
 
 ALTER TABLE public.technical_sheet_palmilha_colors ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Enable read access for all users on palmilha colors" ON public.technical_sheet_palmilha_colors;
 CREATE POLICY "Enable read access for all users on palmilha colors" ON public.technical_sheet_palmilha_colors FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Enable all access for authenticated users on palmilha colors" ON public.technical_sheet_palmilha_colors;
 CREATE POLICY "Enable all access for authenticated users on palmilha colors" ON public.technical_sheet_palmilha_colors FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
 -- For technical_sheet_lining_colors
@@ -35,5 +37,7 @@ DROP POLICY IF EXISTS "Anyone can insert/update lining color mappings" ON public
 
 ALTER TABLE public.technical_sheet_lining_colors ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Enable read access for all users on lining colors" ON public.technical_sheet_lining_colors;
 CREATE POLICY "Enable read access for all users on lining colors" ON public.technical_sheet_lining_colors FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Enable all access for authenticated users on lining colors" ON public.technical_sheet_lining_colors;
 CREATE POLICY "Enable all access for authenticated users on lining colors" ON public.technical_sheet_lining_colors FOR ALL TO authenticated USING (true) WITH CHECK (true);

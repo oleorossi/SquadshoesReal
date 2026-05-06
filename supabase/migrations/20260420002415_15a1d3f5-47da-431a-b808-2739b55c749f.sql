@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS public.is_admin_or_gerente(_user_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.is_admin_or_gerente(_user_id uuid)
 RETURNS boolean
 LANGUAGE sql
@@ -13,6 +14,7 @@ AS $$
   )
 $$;
 
+DROP FUNCTION IF EXISTS public.assert_admin_or_gerente() CASCADE;
 CREATE OR REPLACE FUNCTION public.assert_admin_or_gerente()
 RETURNS void
 LANGUAGE plpgsql

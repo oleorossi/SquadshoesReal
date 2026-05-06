@@ -1,6 +1,7 @@
 -- Prevent "Rascunho" (draft) sale orders from being assigned to a production wave.
 -- A PV in Rascunho status has not been approved yet and should not enter production.
 
+DROP FUNCTION IF EXISTS trg_fn_block_rascunho_wave_assignment() CASCADE;
 CREATE OR REPLACE FUNCTION trg_fn_block_rascunho_wave_assignment()
 RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE

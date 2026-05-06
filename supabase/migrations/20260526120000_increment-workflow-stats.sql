@@ -8,6 +8,7 @@
 -- computes the delta against the locked row, not the stale cached value.
 -- =============================================================================
 
+DROP FUNCTION IF EXISTS public.increment_workflow_stats(p_id      uuid, p_success boolean) CASCADE;
 CREATE OR REPLACE FUNCTION public.increment_workflow_stats(
   p_id      uuid,
   p_success boolean DEFAULT true

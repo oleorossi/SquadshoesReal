@@ -17,6 +17,7 @@
 -- absorver qualquer variação de capitalização.
 -- ---------------------------------------------------------------
 
+DROP FUNCTION IF EXISTS public.fn_projected_demand() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_projected_demand()
 RETURNS TABLE (
   product_id uuid,

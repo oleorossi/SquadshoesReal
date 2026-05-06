@@ -1,4 +1,5 @@
 -- Create a view to calculate the current load per sector and category
+DROP VIEW IF EXISTS public.v_sector_load CASCADE;
 CREATE OR REPLACE VIEW public.v_sector_load AS
 WITH pending_stages AS (
     SELECT 
@@ -22,6 +23,7 @@ FROM pending_stages
 GROUP BY shoe_category;
 
 -- Create the main capacity-driven lead times view
+DROP VIEW IF EXISTS public.v_capacity_driven_lead_times CASCADE;
 CREATE OR REPLACE VIEW public.v_capacity_driven_lead_times AS
 SELECT 
     dlt.shoe_category,
@@ -55,6 +57,7 @@ FROM public.default_lead_times dlt
 LEFT JOIN public.v_sector_load sl ON dlt.shoe_category = sl.shoe_category;
 
 -- Helper function to get estimated delivery date
+DROP FUNCTION IF EXISTS public.estimate_delivery_date(p_shoe_category TEXT, p_quantity INTEGER) CASCADE;
 CREATE OR REPLACE FUNCTION public.estimate_delivery_date(p_shoe_category TEXT, p_quantity INTEGER)
 RETURNS DATE AS $$
 DECLARE

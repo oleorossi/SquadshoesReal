@@ -1,4 +1,5 @@
 -- 20260419120147_fix-sole-double-debit-and-grade-restore.sql
+DROP FUNCTION IF EXISTS public.hybrid_debit_stock_for_order(p_reference_id uuid, p_order_quantity numeric, p_color text, p_order_id uuid, p_order_grade jsonb) CASCADE;
 CREATE OR REPLACE FUNCTION public.hybrid_debit_stock_for_order(
   p_reference_id uuid,
   p_order_quantity numeric,
@@ -140,6 +141,9 @@ END;
 $$;
 GRANT EXECUTE ON FUNCTION public.hybrid_debit_stock_for_order(uuid, numeric, text, uuid, jsonb) TO authenticated;
 
+DROP FUNCTION IF EXISTS public.restore_sole_grade_for_order(
+  p_order_id uuid
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.restore_sole_grade_for_order(
   p_order_id uuid
 ) RETURNS void
@@ -208,6 +212,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.restore_sole_grade_for_order(uuid) TO authenticated;
 
 -- 20260419130000_fix-production-wave-engine.sql
+DROP FUNCTION IF EXISTS public.resolve_billing_week_for_order(p_sale_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.resolve_billing_week_for_order(p_sale_order_id uuid)
 RETURNS date
 LANGUAGE plpgsql
@@ -266,6 +271,7 @@ BEGIN
 END;
 $$;
 
+DROP FUNCTION IF EXISTS public.split_wave_to_finishing(p_wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.split_wave_to_finishing(p_wave_id uuid)
 RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
@@ -333,6 +339,7 @@ END;
 $$;
 GRANT EXECUTE ON FUNCTION public.split_wave_to_finishing(uuid) TO authenticated;
 
+DROP VIEW IF EXISTS public.v_sector_board CASCADE;
 CREATE OR REPLACE VIEW public.v_sector_board AS
 WITH stages AS (
   SELECT s.stage,
@@ -387,6 +394,7 @@ ALTER TABLE public.production_wave_item_sources
   UNIQUE (wave_item_id, sale_order_item_id);
 
 -- 20260419140000_perf-restore-product-stocks.sql
+DROP FUNCTION IF EXISTS public.restore_product_stocks_for_order(p_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.restore_product_stocks_for_order(p_order_id uuid)
 RETURNS void
 LANGUAGE plpgsql
@@ -453,6 +461,7 @@ CREATE INDEX IF NOT EXISTS idx_po_status           ON public.purchase_orders(sta
 CREATE INDEX IF NOT EXISTS idx_po_supplier_id      ON public.purchase_orders(supplier_id);
 CREATE INDEX IF NOT EXISTS idx_po_promised_date    ON public.purchase_orders(promised_date);
 
+DROP VIEW IF EXISTS public.v_client_credit_exposure CASCADE;
 CREATE OR REPLACE VIEW public.v_client_credit_exposure AS
 SELECT
   c.id                                                      AS client_id,
@@ -468,6 +477,7 @@ FROM public.clients c
 LEFT JOIN public.accounts_receivable ar ON ar.client_id = c.id
 GROUP BY c.id, c.razao_social, c.nome_fantasia, c.credit_limit;
 
+DROP VIEW IF EXISTS public.v_late_orders CASCADE;
 CREATE OR REPLACE VIEW public.v_late_orders AS
 SELECT
   o.id,
@@ -490,6 +500,7 @@ WHERE o.status IN ('Reservado', 'Em Produção')
   AND o.due_date IS NOT NULL
   AND o.due_date < CURRENT_DATE;
 
+DROP VIEW IF EXISTS public.v_overdue_purchase_orders CASCADE;
 CREATE OR REPLACE VIEW public.v_overdue_purchase_orders AS
 SELECT
   po.id,
@@ -506,6 +517,7 @@ WHERE po.status IN ('sent', 'approved')
   AND po.promised_date < CURRENT_DATE;
 
 -- Price history
+DROP VIEW IF EXISTS public.v_supplier_price_history CASCADE;
 CREATE OR REPLACE VIEW public.v_supplier_price_history AS
 SELECT
   ii.product_id,
@@ -526,6 +538,7 @@ WHERE ii.product_id IS NOT NULL
   AND i.issue_date  IS NOT NULL
 ORDER BY i.issue_date DESC;
 
+DROP VIEW IF EXISTS public.v_product_price_summary CASCADE;
 CREATE OR REPLACE VIEW public.v_product_price_summary AS
 SELECT
   product_id,

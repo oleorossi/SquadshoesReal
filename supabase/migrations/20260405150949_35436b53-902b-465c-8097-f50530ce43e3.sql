@@ -3,6 +3,7 @@
 ALTER TABLE public.packaging_configs ADD COLUMN IF NOT EXISTS box_type_id uuid REFERENCES public.box_types(id) ON DELETE SET NULL;
 
 -- Create function to sync packaging_configs dimensions from box_types when box_type_id is set
+DROP FUNCTION IF EXISTS public.sync_packaging_from_box_type() CASCADE;
 CREATE OR REPLACE FUNCTION public.sync_packaging_from_box_type()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE
@@ -33,6 +34,7 @@ CREATE TRIGGER trg_sync_packaging_box_type
   FOR EACH ROW EXECUTE FUNCTION public.sync_packaging_from_box_type();
 
 -- Update debit_packaging_for_order to also debit from box_types.quantity when box_type_id is set
+DROP FUNCTION IF EXISTS public.debit_packaging_for_order(p_sale_order_id uuid, p_order_id uuid, p_reference_id uuid, p_order_quantity integer, p_packaging_mode text) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_packaging_for_order(
   p_sale_order_id uuid,
   p_order_id uuid,

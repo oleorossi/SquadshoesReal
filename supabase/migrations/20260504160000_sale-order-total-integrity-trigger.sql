@@ -16,6 +16,7 @@
 -- por trigger é O(n) e roda em transação. Vale o custo.
 -- ---------------------------------------------------------------
 
+DROP FUNCTION IF EXISTS public.recalc_sale_order_total(p_sale_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.recalc_sale_order_total(p_sale_order_id uuid)
 RETURNS numeric
 LANGUAGE plpgsql
@@ -50,6 +51,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.recalc_sale_order_total(uuid) TO authenticated;
 
 -- Trigger function: dispara recálculo após qualquer mudança em itens.
+DROP FUNCTION IF EXISTS public.fn_sync_sale_order_total() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_sync_sale_order_total()
 RETURNS trigger
 LANGUAGE plpgsql

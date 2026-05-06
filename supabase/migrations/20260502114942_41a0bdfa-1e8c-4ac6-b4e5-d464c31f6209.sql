@@ -2,6 +2,7 @@ DROP VIEW IF EXISTS public.v_capacity_driven_lead_times;
 DROP VIEW IF EXISTS public.v_sector_load;
 
 -- Update v_sector_load to be more granular
+DROP VIEW IF EXISTS public.v_sector_load CASCADE;
 CREATE OR REPLACE VIEW public.v_sector_load AS
  WITH pending_stages AS (
          SELECT pr.shoe_category,
@@ -26,6 +27,7 @@ CREATE OR REPLACE VIEW public.v_sector_load AS
   GROUP BY shoe_category;
 
 -- Update v_capacity_driven_lead_times
+DROP VIEW IF EXISTS public.v_capacity_driven_lead_times CASCADE;
 CREATE OR REPLACE VIEW public.v_capacity_driven_lead_times AS
  SELECT dlt.shoe_category,
     dlt.notes,

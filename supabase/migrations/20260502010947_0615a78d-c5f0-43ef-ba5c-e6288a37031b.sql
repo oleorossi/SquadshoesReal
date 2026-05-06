@@ -1,4 +1,5 @@
 
+DROP FUNCTION IF EXISTS public.fn_enqueue_resync_for_sole_conjugation() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_enqueue_resync_for_sole_conjugation()
 RETURNS trigger
 LANGUAGE plpgsql

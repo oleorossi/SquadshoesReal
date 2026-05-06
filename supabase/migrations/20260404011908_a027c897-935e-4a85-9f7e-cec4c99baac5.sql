@@ -1,5 +1,6 @@
 
 -- Fix views
+DROP VIEW IF EXISTS public.vw_production_labels CASCADE;
 CREATE OR REPLACE VIEW public.vw_production_labels
 WITH (security_invoker = true)
 AS
@@ -8,6 +9,7 @@ SELECT v.id AS variant_id, v.sku, v.color_name, v.size,
     m.name AS product_name
 FROM product_variants v JOIN product_masters m ON v.master_id = m.id;
 
+DROP VIEW IF EXISTS public.vw_material_projected_availability CASCADE;
 CREATE OR REPLACE VIEW public.vw_material_projected_availability
 WITH (security_invoker = true)
 AS

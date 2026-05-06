@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS public.audit_unit_divergences() CASCADE;
 CREATE OR REPLACE FUNCTION public.audit_unit_divergences()
 RETURNS jsonb
 LANGUAGE plpgsql

@@ -1,6 +1,7 @@
 -- RPC that inserts time records using ON CONFLICT DO NOTHING at the DB level.
 -- This is the only 100% reliable way to skip already-imported days without
 -- triggering the unique constraint, regardless of how many rows exist in the DB.
+DROP FUNCTION IF EXISTS import_time_records_safe(records jsonb) CASCADE;
 CREATE OR REPLACE FUNCTION import_time_records_safe(records jsonb)
 RETURNS jsonb
 LANGUAGE plpgsql

@@ -1,4 +1,10 @@
 -- 1) Helper que respeita a variação
+DROP FUNCTION IF EXISTS public.resolve_upper_material_for_variant(
+  p_variant_id  uuid,
+  p_group_name  text,
+  p_color       text,
+  p_required    numeric
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.resolve_upper_material_for_variant(
   p_variant_id  uuid,
   p_group_name  text,

@@ -13,6 +13,7 @@
 
 
 -- 1. hybrid_debit_stock_for_order  (latest: 20260419120147)
+DROP FUNCTION IF EXISTS public.hybrid_debit_stock_for_order(p_reference_id uuid, p_order_quantity numeric, p_color text, p_order_id uuid, p_order_grade jsonb) CASCADE;
 CREATE OR REPLACE FUNCTION public.hybrid_debit_stock_for_order(
   p_reference_id uuid,
   p_order_quantity numeric,
@@ -187,6 +188,12 @@ GRANT EXECUTE ON FUNCTION public.hybrid_debit_stock_for_order(uuid, numeric, tex
 
 
 -- 2. debit_sole_stock_by_grade  (latest: 20260507140000)
+DROP FUNCTION IF EXISTS public.debit_sole_stock_by_grade(
+  p_reference_id uuid,
+  p_order_id     uuid,
+  p_color        text,
+  p_order_grade  jsonb
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_sole_stock_by_grade(
   p_reference_id uuid,
   p_order_id     uuid,
@@ -401,6 +408,7 @@ GRANT EXECUTE ON FUNCTION public.debit_sole_stock_by_grade(uuid, uuid, text, jso
 
 
 -- 3. debit_strap_stock  (latest: 20260427141032)
+DROP FUNCTION IF EXISTS public.debit_strap_stock(p_strap_colors jsonb, p_order_quantity integer, p_order_id uuid, p_order_grade jsonb) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_strap_stock(
   p_strap_colors jsonb,
   p_order_quantity integer,
@@ -554,6 +562,11 @@ GRANT EXECUTE ON FUNCTION public.debit_strap_stock(jsonb, integer, uuid, jsonb) 
 
 
 -- 4. process_order_stock_out  (latest: 20260417165306)
+DROP FUNCTION IF EXISTS public.process_order_stock_out(
+  p_order_id uuid,
+  p_product_id uuid,
+  p_quantity integer
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.process_order_stock_out(
   p_order_id uuid,
   p_product_id uuid,
@@ -651,6 +664,7 @@ GRANT EXECUTE ON FUNCTION public.process_order_stock_out(uuid, uuid, integer) TO
 
 
 -- 5. convert_reservation_to_out  (latest: 20260503140000)
+DROP FUNCTION IF EXISTS public.convert_reservation_to_out(p_order_id   uuid, p_product_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.convert_reservation_to_out(
   p_order_id   uuid,
   p_product_id uuid DEFAULT NULL::uuid
@@ -710,6 +724,7 @@ GRANT EXECUTE ON FUNCTION public.convert_reservation_to_out(uuid, uuid) TO authe
 
 
 -- 6. debit_packaging_for_order  (latest: 20260517130000)
+DROP FUNCTION IF EXISTS public.debit_packaging_for_order(p_sale_order_id  uuid, p_order_id       uuid, p_reference_id   uuid, p_order_quantity integer, p_packaging_mode text) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_packaging_for_order(
   p_sale_order_id  uuid,
   p_order_id       uuid,

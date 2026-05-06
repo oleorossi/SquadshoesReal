@@ -5,6 +5,7 @@ ALTER VIEW public.report_material_needs_by_group SET (security_invoker = true);
 
 -- 2. Fix functions missing search_path
 
+DROP FUNCTION IF EXISTS public.convert_reservation_to_out(p_order_id uuid, p_product_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.convert_reservation_to_out(p_order_id uuid, p_product_id uuid DEFAULT NULL::uuid)
  RETURNS void
  LANGUAGE plpgsql
@@ -35,6 +36,7 @@ BEGIN
 END;
 $function$;
 
+DROP FUNCTION IF EXISTS public.finalize_production_sector(p_order_id uuid, p_current_sector text) CASCADE;
 CREATE OR REPLACE FUNCTION public.finalize_production_sector(p_order_id uuid, p_current_sector text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -114,6 +116,7 @@ BEGIN
 END;
 $function$;
 
+DROP FUNCTION IF EXISTS public.get_order_material_status(p_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.get_order_material_status(p_order_id uuid)
  RETURNS text
  LANGUAGE plpgsql
@@ -156,6 +159,7 @@ BEGIN
 END;
 $function$;
 
+DROP FUNCTION IF EXISTS public.handle_updated_at() CASCADE;
 CREATE OR REPLACE FUNCTION public.handle_updated_at()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -167,6 +171,7 @@ BEGIN
 END;
 $function$;
 
+DROP FUNCTION IF EXISTS public.sync_order_stages_with_kanban() CASCADE;
 CREATE OR REPLACE FUNCTION public.sync_order_stages_with_kanban()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -209,6 +214,7 @@ BEGIN
 END;
 $function$;
 
+DROP FUNCTION IF EXISTS public.update_order_material_status() CASCADE;
 CREATE OR REPLACE FUNCTION public.update_order_material_status()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -225,14 +231,17 @@ DROP POLICY IF EXISTS "Allow authenticated users to insert sole structures" ON p
 DROP POLICY IF EXISTS "Allow authenticated users to update sole structures" ON public.sole_structures;
 DROP POLICY IF EXISTS "Allow authenticated users to delete sole structures" ON public.sole_structures;
 
+DROP POLICY IF EXISTS "Approved users can insert sole structures" ON public.sole_structures;
 CREATE POLICY "Approved users can insert sole structures"
   ON public.sole_structures FOR INSERT TO authenticated
   WITH CHECK (is_approved_user());
 
+DROP POLICY IF EXISTS "Approved users can update sole structures" ON public.sole_structures;
 CREATE POLICY "Approved users can update sole structures"
   ON public.sole_structures FOR UPDATE TO authenticated
   USING (is_approved_user());
 
+DROP POLICY IF EXISTS "Approved users can delete sole structures" ON public.sole_structures;
 CREATE POLICY "Approved users can delete sole structures"
   ON public.sole_structures FOR DELETE TO authenticated
   USING (is_approved_user());
@@ -241,10 +250,12 @@ CREATE POLICY "Approved users can delete sole structures"
 DROP POLICY IF EXISTS "Everyone can view active packaging types" ON public.packaging_types;
 DROP POLICY IF EXISTS "Authenticated users can manage packaging types" ON public.packaging_types;
 
+DROP POLICY IF EXISTS "Approved users can view active packaging types" ON public.packaging_types;
 CREATE POLICY "Approved users can view active packaging types"
   ON public.packaging_types FOR SELECT TO authenticated
   USING (is_active = true AND is_approved_user());
 
+DROP POLICY IF EXISTS "Approved users can manage packaging types" ON public.packaging_types;
 CREATE POLICY "Approved users can manage packaging types"
   ON public.packaging_types FOR ALL TO authenticated
   USING (is_approved_user())

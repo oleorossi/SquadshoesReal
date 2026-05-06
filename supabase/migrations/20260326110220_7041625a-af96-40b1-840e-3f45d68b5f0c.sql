@@ -39,6 +39,7 @@ CREATE TABLE public.goods_issue_items (
 
 CREATE SEQUENCE IF NOT EXISTS gi_number_seq START 1;
 
+DROP FUNCTION IF EXISTS public.generate_gi_number() CASCADE;
 CREATE OR REPLACE FUNCTION public.generate_gi_number()
 RETURNS trigger LANGUAGE plpgsql SET search_path TO 'public' AS $$
 BEGIN
@@ -100,6 +101,7 @@ CREATE TABLE public.finished_goods_receipts (
 
 CREATE SEQUENCE IF NOT EXISTS fgr_number_seq START 1;
 
+DROP FUNCTION IF EXISTS public.generate_fgr_number() CASCADE;
 CREATE OR REPLACE FUNCTION public.generate_fgr_number()
 RETURNS trigger LANGUAGE plpgsql SET search_path TO 'public' AS $$
 BEGIN
@@ -146,28 +148,47 @@ ALTER TABLE public.wip_ledger ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.finished_goods_receipts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cogs_entries ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Auth users can view goods_issues" ON public.goods_issues;
 CREATE POLICY "Auth users can view goods_issues" ON public.goods_issues FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Approved users can insert goods_issues" ON public.goods_issues;
 CREATE POLICY "Approved users can insert goods_issues" ON public.goods_issues FOR INSERT TO authenticated WITH CHECK (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can update goods_issues" ON public.goods_issues;
 CREATE POLICY "Approved users can update goods_issues" ON public.goods_issues FOR UPDATE TO authenticated USING (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can delete goods_issues" ON public.goods_issues;
 CREATE POLICY "Approved users can delete goods_issues" ON public.goods_issues FOR DELETE TO authenticated USING (is_approved_user());
 
+DROP POLICY IF EXISTS "Auth users can view goods_issue_items" ON public.goods_issue_items;
 CREATE POLICY "Auth users can view goods_issue_items" ON public.goods_issue_items FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Approved users can insert goods_issue_items" ON public.goods_issue_items;
 CREATE POLICY "Approved users can insert goods_issue_items" ON public.goods_issue_items FOR INSERT TO authenticated WITH CHECK (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can update goods_issue_items" ON public.goods_issue_items;
 CREATE POLICY "Approved users can update goods_issue_items" ON public.goods_issue_items FOR UPDATE TO authenticated USING (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can delete goods_issue_items" ON public.goods_issue_items;
 CREATE POLICY "Approved users can delete goods_issue_items" ON public.goods_issue_items FOR DELETE TO authenticated USING (is_approved_user());
 
+DROP POLICY IF EXISTS "Auth users can view wip_ledger" ON public.wip_ledger;
 CREATE POLICY "Auth users can view wip_ledger" ON public.wip_ledger FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Approved users can insert wip_ledger" ON public.wip_ledger;
 CREATE POLICY "Approved users can insert wip_ledger" ON public.wip_ledger FOR INSERT TO authenticated WITH CHECK (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can update wip_ledger" ON public.wip_ledger;
 CREATE POLICY "Approved users can update wip_ledger" ON public.wip_ledger FOR UPDATE TO authenticated USING (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can delete wip_ledger" ON public.wip_ledger;
 CREATE POLICY "Approved users can delete wip_ledger" ON public.wip_ledger FOR DELETE TO authenticated USING (is_approved_user());
 
+DROP POLICY IF EXISTS "Auth users can view finished_goods_receipts" ON public.finished_goods_receipts;
 CREATE POLICY "Auth users can view finished_goods_receipts" ON public.finished_goods_receipts FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Approved users can insert finished_goods_receipts" ON public.finished_goods_receipts;
 CREATE POLICY "Approved users can insert finished_goods_receipts" ON public.finished_goods_receipts FOR INSERT TO authenticated WITH CHECK (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can update finished_goods_receipts" ON public.finished_goods_receipts;
 CREATE POLICY "Approved users can update finished_goods_receipts" ON public.finished_goods_receipts FOR UPDATE TO authenticated USING (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can delete finished_goods_receipts" ON public.finished_goods_receipts;
 CREATE POLICY "Approved users can delete finished_goods_receipts" ON public.finished_goods_receipts FOR DELETE TO authenticated USING (is_approved_user());
 
+DROP POLICY IF EXISTS "Auth users can view cogs_entries" ON public.cogs_entries;
 CREATE POLICY "Auth users can view cogs_entries" ON public.cogs_entries FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Approved users can insert cogs_entries" ON public.cogs_entries;
 CREATE POLICY "Approved users can insert cogs_entries" ON public.cogs_entries FOR INSERT TO authenticated WITH CHECK (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can delete cogs_entries" ON public.cogs_entries;
 CREATE POLICY "Approved users can delete cogs_entries" ON public.cogs_entries FOR DELETE TO authenticated USING (is_approved_user());
 
 CREATE TRIGGER trg_updated_at_goods_issues BEFORE UPDATE ON public.goods_issues FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

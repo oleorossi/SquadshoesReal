@@ -1,4 +1,8 @@
 -- 20260507160000_atomic-purchase-order-item-upsert.sql
+DROP FUNCTION IF EXISTS public.upsert_purchase_order_items_atomic(
+    p_order_id UUID,
+    p_items JSONB
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.upsert_purchase_order_items_atomic(
     p_order_id UUID,
     p_items JSONB
@@ -12,6 +16,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- 20260507170000_audit2-critical-fixes.sql
+DROP FUNCTION IF EXISTS public.fn_audit_log_cleanup() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_audit_log_cleanup() RETURNS void AS $$
 BEGIN
     IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'audit_logs' AND table_schema = 'public') THEN
@@ -21,6 +26,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- 20260507190000_fix-resync-trigger-duplicate-status.sql
+DROP FUNCTION IF EXISTS public.fn_sync_production_status() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_sync_production_status()
 RETURNS TRIGGER AS $$
 BEGIN

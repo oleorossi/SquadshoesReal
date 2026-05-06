@@ -35,6 +35,7 @@ ALTER TABLE public.technical_sheets
   CHECK (max_insole_colors > 0 AND max_insole_colors <= 20);
 
 -- Função: sincroniza flags de roteiro com construction_type
+DROP FUNCTION IF EXISTS public.sync_construction_routing() CASCADE;
 CREATE OR REPLACE FUNCTION public.sync_construction_routing()
 RETURNS TRIGGER
 LANGUAGE plpgsql

@@ -19,17 +19,23 @@ CREATE TABLE IF NOT EXISTS public.notifications (
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
 -- Allow users to view their own notifications or sector notifications
+DROP POLICY IF EXISTS "Users can view relevant notifications" ON public.notifications;
 CREATE POLICY "Users can view relevant notifications" 
 ON public.notifications 
 FOR SELECT 
 USING (true); -- Simplified for now
 
+DROP POLICY IF EXISTS "Anyone can create notifications" ON public.notifications;
 CREATE POLICY "Anyone can create notifications" 
 ON public.notifications 
 FOR INSERT 
 WITH CHECK (true);
 
 -- Function to finalize a sector task and transition to the next
+DROP FUNCTION IF EXISTS public.finalize_production_sector(
+  p_order_id UUID,
+  p_current_sector TEXT
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.finalize_production_sector(
   p_order_id UUID,
   p_current_sector TEXT

@@ -1,4 +1,5 @@
 -- Helper imutável para classificar categorias como "debito imediato"
+DROP FUNCTION IF EXISTS public._is_immediate_debit_category(p_category text) CASCADE;
 CREATE OR REPLACE FUNCTION public._is_immediate_debit_category(p_category text)
 RETURNS boolean
 LANGUAGE sql
@@ -23,6 +24,7 @@ AS $$
 $$;
 
 -- Overload 1: quantity INTEGER
+DROP FUNCTION IF EXISTS public.hybrid_debit_stock_for_order(p_reference_id uuid, p_order_quantity integer, p_color text, p_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.hybrid_debit_stock_for_order(
   p_reference_id uuid,
   p_order_quantity integer,
@@ -322,6 +324,7 @@ END;
 $function$;
 
 -- Overload 2: quantity NUMERIC -- update only the classification line
+DROP FUNCTION IF EXISTS public.hybrid_debit_stock_for_order(p_reference_id uuid, p_order_quantity numeric, p_color text, p_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.hybrid_debit_stock_for_order(
   p_reference_id uuid,
   p_order_quantity numeric,

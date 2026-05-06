@@ -7,12 +7,14 @@ ALTER TABLE public.reference_color_variants ENABLE ROW LEVEL SECURITY;
 DO $$ 
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'reference_color_variants' AND policyname = 'Users can view color variants') THEN
-        CREATE POLICY "Users can view color variants" ON public.reference_color_variants
+        DROP POLICY IF EXISTS "Users can view color variants" ON public.reference_color_variants;
+CREATE POLICY "Users can view color variants" ON public.reference_color_variants
             FOR SELECT USING (auth.role() = 'authenticated');
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'reference_color_variants' AND policyname = 'Users can manage color variants') THEN
-        CREATE POLICY "Users can manage color variants" ON public.reference_color_variants
+        DROP POLICY IF EXISTS "Users can manage color variants" ON public.reference_color_variants;
+CREATE POLICY "Users can manage color variants" ON public.reference_color_variants
             FOR ALL USING (auth.role() = 'authenticated');
     END IF;
 END $$;
@@ -23,17 +25,20 @@ ALTER TABLE public.reference_materials ENABLE ROW LEVEL SECURITY;
 DO $$ 
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'reference_materials' AND policyname = 'Users can view reference materials') THEN
-        CREATE POLICY "Users can view reference materials" ON public.reference_materials
+        DROP POLICY IF EXISTS "Users can view reference materials" ON public.reference_materials;
+CREATE POLICY "Users can view reference materials" ON public.reference_materials
             FOR SELECT USING (auth.role() = 'authenticated');
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'reference_materials' AND policyname = 'Users can manage reference materials') THEN
-        CREATE POLICY "Users can manage reference materials" ON public.reference_materials
+        DROP POLICY IF EXISTS "Users can manage reference materials" ON public.reference_materials;
+CREATE POLICY "Users can manage reference materials" ON public.reference_materials
             FOR ALL USING (auth.role() = 'authenticated');
     END IF;
 END $$;
 
 -- Ensure consistency between reference materials and color variants
+DROP FUNCTION IF EXISTS public.check_reference_color_variant_consistency() CASCADE;
 CREATE OR REPLACE FUNCTION public.check_reference_color_variant_consistency()
 RETURNS TRIGGER AS $$
 BEGIN

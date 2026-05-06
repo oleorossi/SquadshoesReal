@@ -1,4 +1,5 @@
 
+DROP FUNCTION IF EXISTS public.log_product_audit() CASCADE;
 CREATE OR REPLACE FUNCTION public.log_product_audit()
  RETURNS trigger
  LANGUAGE plpgsql

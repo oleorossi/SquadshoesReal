@@ -16,9 +16,13 @@ CREATE TABLE public.component_sheets (
 
 ALTER TABLE public.component_sheets ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Auth users can view component_sheets" ON public.component_sheets;
 CREATE POLICY "Auth users can view component_sheets" ON public.component_sheets FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert component_sheets" ON public.component_sheets;
 CREATE POLICY "Auth users can insert component_sheets" ON public.component_sheets FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update component_sheets" ON public.component_sheets;
 CREATE POLICY "Auth users can update component_sheets" ON public.component_sheets FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete component_sheets" ON public.component_sheets;
 CREATE POLICY "Auth users can delete component_sheets" ON public.component_sheets FOR DELETE TO authenticated USING (true);
 
 CREATE TRIGGER update_component_sheets_updated_at BEFORE UPDATE ON public.component_sheets FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();

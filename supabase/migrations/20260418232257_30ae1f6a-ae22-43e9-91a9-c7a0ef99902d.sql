@@ -17,22 +17,26 @@ CREATE INDEX IF NOT EXISTS idx_ssic_item ON public.sole_standard_items_consumpti
 
 ALTER TABLE public.sole_standard_items_consumption ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Approved users can select sole standard items" ON public.sole_standard_items_consumption;
 CREATE POLICY "Approved users can select sole standard items"
   ON public.sole_standard_items_consumption FOR SELECT
   TO authenticated
   USING (is_approved_user());
 
+DROP POLICY IF EXISTS "Approved users can insert sole standard items" ON public.sole_standard_items_consumption;
 CREATE POLICY "Approved users can insert sole standard items"
   ON public.sole_standard_items_consumption FOR INSERT
   TO authenticated
   WITH CHECK (is_approved_user());
 
+DROP POLICY IF EXISTS "Approved users can update sole standard items" ON public.sole_standard_items_consumption;
 CREATE POLICY "Approved users can update sole standard items"
   ON public.sole_standard_items_consumption FOR UPDATE
   TO authenticated
   USING (is_approved_user())
   WITH CHECK (is_approved_user());
 
+DROP POLICY IF EXISTS "Approved users can delete sole standard items" ON public.sole_standard_items_consumption;
 CREATE POLICY "Approved users can delete sole standard items"
   ON public.sole_standard_items_consumption FOR DELETE
   TO authenticated

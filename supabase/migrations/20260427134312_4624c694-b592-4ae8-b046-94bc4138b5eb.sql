@@ -1,6 +1,7 @@
 -- Trigger: impede que o mesmo sale_order_id apareça em duas ondas de produção ativas
 -- (status NOT IN ('finished','cancelled')) ao mesmo tempo.
 
+DROP FUNCTION IF EXISTS public.check_sale_order_single_active_wave() CASCADE;
 CREATE OR REPLACE FUNCTION public.check_sale_order_single_active_wave()
 RETURNS TRIGGER
 LANGUAGE plpgsql

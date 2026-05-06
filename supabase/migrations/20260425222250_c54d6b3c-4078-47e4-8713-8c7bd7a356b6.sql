@@ -1,6 +1,7 @@
 -- ============================================================
 -- Migration 1/3: Fix debit_strap_stock — remove silent wrong-color fallback
 -- ============================================================
+DROP FUNCTION IF EXISTS public.debit_strap_stock(p_strap_colors jsonb, p_order_quantity integer, p_order_id uuid, p_order_grade jsonb) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_strap_stock(
   p_strap_colors jsonb,
   p_order_quantity integer,
@@ -138,6 +139,12 @@ $function$;
 -- ============================================================
 -- Migration 2/3: calc_required_for_grade + check_stock_availability per-size
 -- ============================================================
+DROP FUNCTION IF EXISTS public.calc_required_for_grade(
+  p_consumption_per_size jsonb,
+  p_order_grade          jsonb,
+  p_quantity_per_unit    numeric,
+  p_total_quantity       numeric
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.calc_required_for_grade(
   p_consumption_per_size jsonb,
   p_order_grade          jsonb,
@@ -181,6 +188,7 @@ BEGIN
 END;
 $$;
 
+DROP FUNCTION IF EXISTS public.check_stock_availability(p_reference_id uuid, p_order_quantity integer, p_color text, p_order_grade jsonb) CASCADE;
 CREATE OR REPLACE FUNCTION public.check_stock_availability(
   p_reference_id uuid,
   p_order_quantity integer,
@@ -259,6 +267,7 @@ GRANT EXECUTE ON FUNCTION public.check_stock_availability(uuid, integer, text, j
 -- ============================================================
 -- Migration 3/3: finalize_production_sector — dynamic sector flow + status fix
 -- ============================================================
+DROP FUNCTION IF EXISTS public.finalize_production_sector(p_order_id uuid, p_current_sector text) CASCADE;
 CREATE OR REPLACE FUNCTION public.finalize_production_sector(p_order_id uuid, p_current_sector text)
  RETURNS jsonb
  LANGUAGE plpgsql

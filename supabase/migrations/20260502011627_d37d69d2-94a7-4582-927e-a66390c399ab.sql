@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS public.technical_sheet_palmilha_colors (
 );
 
 -- Trigger para resincronizar OPs quando o mapeamento de cores da palmilha mudar
+DROP FUNCTION IF EXISTS public.fn_enqueue_resync_for_palmilha_colors() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_enqueue_resync_for_palmilha_colors()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -59,6 +60,7 @@ BEGIN
 END $$;
 
 -- 3. Atualizar calculate_order_consumption para tratar palmilha pronta como unidade
+DROP FUNCTION IF EXISTS public.calculate_order_consumption(p_reference_id uuid, p_order_quantity numeric, p_color text, p_size integer) CASCADE;
 CREATE OR REPLACE FUNCTION public.calculate_order_consumption(p_reference_id uuid, p_order_quantity numeric, p_color text, p_size integer DEFAULT NULL)
 RETURNS jsonb
 LANGUAGE plpgsql

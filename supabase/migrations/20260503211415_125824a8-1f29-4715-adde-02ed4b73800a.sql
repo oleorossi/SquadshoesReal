@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS public.sync_product_quantity_from_movements() CASCADE;
 CREATE OR REPLACE FUNCTION public.sync_product_quantity_from_movements()
 RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$

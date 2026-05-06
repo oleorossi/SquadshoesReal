@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS public.wave_is_active(wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.wave_is_active(wave_id uuid)
 RETURNS boolean
 LANGUAGE sql

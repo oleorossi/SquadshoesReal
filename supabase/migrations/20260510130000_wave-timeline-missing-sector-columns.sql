@@ -21,6 +21,7 @@ ALTER TABLE public.production_waves
 
 -- 2) Recreate update_wave_timeline() to also persist the three new columns.
 --    Signature and overall logic are unchanged — we only extend the UPDATE.
+DROP FUNCTION IF EXISTS public.update_wave_timeline(p_wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.update_wave_timeline(p_wave_id uuid)
 RETURNS void
 LANGUAGE plpgsql

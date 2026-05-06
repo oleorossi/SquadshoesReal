@@ -1,3 +1,4 @@
+DROP VIEW IF EXISTS public.v_sector_load CASCADE;
 CREATE OR REPLACE VIEW public.v_sector_load AS
  WITH pending_stages AS (
          SELECT pr.shoe_category,

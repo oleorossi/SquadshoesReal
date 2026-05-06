@@ -12,6 +12,7 @@ UPDATE public.clients SET client_number = 'CLI-' || lpad(nextval('client_number_
 UPDATE public.economic_groups SET group_number = 'GRP-' || lpad(nextval('economic_group_number_seq')::text, 4, '0') WHERE group_number IS NULL;
 
 -- Auto-generate on insert for clients
+DROP FUNCTION IF EXISTS public.generate_client_number() CASCADE;
 CREATE OR REPLACE FUNCTION public.generate_client_number()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -31,6 +32,7 @@ CREATE TRIGGER trg_generate_client_number
   FOR EACH ROW EXECUTE FUNCTION public.generate_client_number();
 
 -- Auto-generate on insert for economic_groups
+DROP FUNCTION IF EXISTS public.generate_group_number() CASCADE;
 CREATE OR REPLACE FUNCTION public.generate_group_number()
 RETURNS trigger
 LANGUAGE plpgsql

@@ -18,6 +18,7 @@ ALTER TABLE public.default_lead_times
   ADD COLUMN IF NOT EXISTS finishing_capacity_per_day integer DEFAULT 0;
 
 -- 3) Recreate view with dynamic lead times
+DROP VIEW IF EXISTS public.purchase_projection_timeline CASCADE;
 CREATE OR REPLACE VIEW public.purchase_projection_timeline AS
 WITH lt AS (
   SELECT o.id AS order_id,
@@ -97,6 +98,7 @@ FROM lt
   LEFT JOIN suppliers sup ON sup.id = m.supplier_id;
 
 -- 4) Trigger to auto-compute planned_start on orders based on delivery + dynamic lead times
+DROP FUNCTION IF EXISTS public.compute_order_planned_dates() CASCADE;
 CREATE OR REPLACE FUNCTION public.compute_order_planned_dates()
 RETURNS TRIGGER
 LANGUAGE plpgsql

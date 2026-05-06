@@ -14,6 +14,7 @@ ALTER TABLE public.production_waves
 -- Starts every wave in 'draft' or 'planning' status whose corte_start_date has
 -- arrived (corte_start_date <= CURRENT_DATE). Sets start_mode = 'auto'.
 -- Returns the number of waves started.
+DROP FUNCTION IF EXISTS public.auto_start_due_waves() CASCADE;
 CREATE OR REPLACE FUNCTION public.auto_start_due_waves()
 RETURNS int
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
@@ -51,6 +52,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.auto_start_due_waves() TO authenticated;
 
 -- ── 3. v_sector_board — add start_mode to active_wave JSONB ──────────────────
+DROP VIEW IF EXISTS public.v_sector_board CASCADE;
 CREATE OR REPLACE VIEW public.v_sector_board AS
 WITH stages AS (
   SELECT s.stage,

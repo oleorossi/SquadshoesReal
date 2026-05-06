@@ -19,9 +19,13 @@ CREATE TABLE public.employees (
 
 ALTER TABLE public.employees ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Auth users can view employees" ON public.employees;
 CREATE POLICY "Auth users can view employees" ON public.employees FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert employees" ON public.employees;
 CREATE POLICY "Auth users can insert employees" ON public.employees FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update employees" ON public.employees;
 CREATE POLICY "Auth users can update employees" ON public.employees FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete employees" ON public.employees;
 CREATE POLICY "Auth users can delete employees" ON public.employees FOR DELETE TO authenticated USING (true);
 
 -- Employee advances (vales) table
@@ -40,14 +44,21 @@ CREATE TABLE public.employee_advances (
 
 ALTER TABLE public.employee_advances ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Auth users can view advances" ON public.employee_advances;
 CREATE POLICY "Auth users can view advances" ON public.employee_advances FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert advances" ON public.employee_advances;
 CREATE POLICY "Auth users can insert advances" ON public.employee_advances FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update advances" ON public.employee_advances;
 CREATE POLICY "Auth users can update advances" ON public.employee_advances FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete advances" ON public.employee_advances;
 CREATE POLICY "Auth users can delete advances" ON public.employee_advances FOR DELETE TO authenticated USING (true);
 
 -- Storage bucket for advance receipts
 INSERT INTO storage.buckets (id, name, public) VALUES ('employee-receipts', 'employee-receipts', true);
 
+DROP POLICY IF EXISTS "Auth users can upload receipts" ON storage.objects;
 CREATE POLICY "Auth users can upload receipts" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'employee-receipts');
+DROP POLICY IF EXISTS "Anyone can view receipts" ON storage.objects;
 CREATE POLICY "Anyone can view receipts" ON storage.objects FOR SELECT USING (bucket_id = 'employee-receipts');
+DROP POLICY IF EXISTS "Auth users can delete receipts" ON storage.objects;
 CREATE POLICY "Auth users can delete receipts" ON storage.objects FOR DELETE TO authenticated USING (bucket_id = 'employee-receipts');

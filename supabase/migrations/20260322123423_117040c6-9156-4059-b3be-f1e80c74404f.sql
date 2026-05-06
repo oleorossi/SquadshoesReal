@@ -2,6 +2,7 @@
 -- ========== HYBRID STOCK DEBIT RPC ==========
 -- Aviamentos/Solas/Componentes = baixa imediata (hard)
 -- Couros/Forros/Materiais variáveis = reserva (soft)
+DROP FUNCTION IF EXISTS public.hybrid_debit_stock_for_order(p_reference_id uuid, p_order_quantity integer, p_color text, p_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.hybrid_debit_stock_for_order(
   p_reference_id uuid,
   p_order_quantity integer,
@@ -237,6 +238,7 @@ END;
 $$;
 
 -- ========== CONFIRM PICKING (convert soft reservation to hard debit) ==========
+DROP FUNCTION IF EXISTS public.confirm_picking_reservation(p_reservation_id uuid, p_picked_by text) CASCADE;
 CREATE OR REPLACE FUNCTION public.confirm_picking_reservation(
   p_reservation_id uuid,
   p_picked_by text DEFAULT ''

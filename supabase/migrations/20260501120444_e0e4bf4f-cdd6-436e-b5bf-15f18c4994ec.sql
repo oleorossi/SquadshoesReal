@@ -6,6 +6,11 @@
 --   Model 3: Tiras/Mesa (mesa_daily_capacity>0) → skip upper material
 -- ---------------------------------------------------------------
 
+DROP FUNCTION IF EXISTS public.calculate_order_consumption_by_grade(
+  p_reference_id uuid,
+  p_grade        jsonb,
+  p_color        text
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.calculate_order_consumption_by_grade(
   p_reference_id uuid,
   p_grade        jsonb,
@@ -339,6 +344,7 @@ GRANT EXECUTE ON FUNCTION public.calculate_order_consumption_by_grade(uuid, json
 -- ================================================================
 -- 2. calculate_order_consumption (single-size / average)
 -- ================================================================
+DROP FUNCTION IF EXISTS public.calculate_order_consumption(p_reference_id  uuid, p_order_quantity numeric, p_color         text, p_size          integer) CASCADE;
 CREATE OR REPLACE FUNCTION public.calculate_order_consumption(
   p_reference_id  uuid,
   p_order_quantity numeric,

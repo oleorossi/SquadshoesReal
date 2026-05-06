@@ -1,4 +1,5 @@
 -- Auto-create and start a production wave when a sale order moves to "Em Produção".
+DROP FUNCTION IF EXISTS public.create_wave_from_sale_order(p_sale_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.create_wave_from_sale_order(p_sale_order_id uuid)
 RETURNS uuid
 LANGUAGE plpgsql
@@ -132,6 +133,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.create_wave_from_sale_order(uuid) TO authenticated;
 
 -- Trigger: when a sale order transitions to "Em Produção", auto-create the wave.
+DROP FUNCTION IF EXISTS public.tg_sale_order_autostart_wave() CASCADE;
 CREATE OR REPLACE FUNCTION public.tg_sale_order_autostart_wave()
 RETURNS trigger
 LANGUAGE plpgsql

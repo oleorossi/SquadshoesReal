@@ -12,6 +12,7 @@
 -- =============================================================================
 
 -- 1. upsert_ready_stock_atomic
+DROP FUNCTION IF EXISTS public.upsert_ready_stock_atomic(p_reference_id uuid, p_color        text, p_size         text, p_qty_delta    numeric, p_location     text, p_notes        text) CASCADE;
 CREATE OR REPLACE FUNCTION public.upsert_ready_stock_atomic(
   p_reference_id uuid,
   p_color        text,
@@ -40,6 +41,11 @@ GRANT EXECUTE ON FUNCTION public.upsert_ready_stock_atomic(uuid, text, text, num
 
 
 -- 2. update_sale_order_atomic
+DROP FUNCTION IF EXISTS public.update_sale_order_atomic(
+  p_order_id uuid,
+  p_header   jsonb,
+  p_items    jsonb
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.update_sale_order_atomic(
   p_order_id uuid,
   p_header   jsonb,

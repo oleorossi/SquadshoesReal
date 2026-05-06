@@ -19,6 +19,7 @@
 -- usavam essa lógica desde 20260418182021 e 20260427240000 — esta é a
 -- última peça que faltava.
 
+DROP FUNCTION IF EXISTS public.compute_wave_timeline(p_sale_order_ids uuid[]) CASCADE;
 CREATE OR REPLACE FUNCTION public.compute_wave_timeline(p_sale_order_ids uuid[])
 RETURNS TABLE (
   earliest_deadline     date,

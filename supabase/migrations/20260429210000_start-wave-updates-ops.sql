@@ -3,6 +3,7 @@
 -- exiba o status correto. OPs criadas pelo fluxo 'Aprovado → WaveBuilder'
 -- ficavam em 'Reservado' mesmo durante a execução da onda.
 
+DROP FUNCTION IF EXISTS public.start_wave(p_wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.start_wave(p_wave_id uuid)
 RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$

@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS public.calculate_order_consumption(p_reference_id uuid, p_order_quantity numeric, p_color text, p_size integer) CASCADE;
 CREATE OR REPLACE FUNCTION public.calculate_order_consumption(p_reference_id uuid, p_order_quantity numeric, p_color text, p_size integer DEFAULT NULL::integer)
  RETURNS jsonb
  LANGUAGE plpgsql

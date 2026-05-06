@@ -83,6 +83,7 @@ DROP FUNCTION IF EXISTS public.debit_strap_stock(jsonb, integer);
 DROP FUNCTION IF EXISTS public.debit_strap_stock(jsonb, integer, uuid);
 
 -- ---------- 3) Validation trigger: reject consumption < 1 going forward ----------
+DROP FUNCTION IF EXISTS public.validate_strap_consumption_unit() CASCADE;
 CREATE OR REPLACE FUNCTION public.validate_strap_consumption_unit()
 RETURNS TRIGGER
 LANGUAGE plpgsql

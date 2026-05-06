@@ -3,6 +3,7 @@
 -- previous stage has been completed (except corte, which has no predecessor).
 -- Also keeps the start_mode field added in 20260429110000.
 
+DROP VIEW IF EXISTS public.v_sector_board CASCADE;
 CREATE OR REPLACE VIEW public.v_sector_board AS
 WITH stages AS (
   SELECT s.stage,

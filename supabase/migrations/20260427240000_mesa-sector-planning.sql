@@ -9,6 +9,7 @@
 --   entrega → acabamento → MESA → montagem → costura → corte → buffer → compra
 
 -- ── 1. Recreate view with Mesa ────────────────────────────────────────────────
+DROP VIEW IF EXISTS public.purchase_projection_timeline CASCADE;
 CREATE OR REPLACE VIEW public.purchase_projection_timeline AS
 WITH lt AS (
   SELECT
@@ -143,6 +144,7 @@ FROM lt
   LEFT JOIN public.suppliers sup ON sup.id = m.supplier_id;
 
 -- ── 2. Update planned_start trigger to include Mesa ───────────────────────────
+DROP FUNCTION IF EXISTS public.compute_order_planned_dates() CASCADE;
 CREATE OR REPLACE FUNCTION public.compute_order_planned_dates()
 RETURNS TRIGGER
 LANGUAGE plpgsql

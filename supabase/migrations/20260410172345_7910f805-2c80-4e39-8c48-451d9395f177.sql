@@ -16,9 +16,11 @@ CREATE TABLE IF NOT EXISTS public.material_reservations (
 ALTER TABLE public.material_reservations ENABLE ROW LEVEL SECURITY;
 
 -- Create policies (allowing authenticated users for now, adjust as needed)
+DROP POLICY IF EXISTS "Allow all access to material_reservations" ON public.material_reservations;
 CREATE POLICY "Allow all access to material_reservations" ON public.material_reservations FOR ALL USING (auth.role() = 'authenticated');
 
 -- 3. Function to reserve material
+DROP FUNCTION IF EXISTS reserve_material_for_order(p_order_id UUID, p_product_id UUID, p_quantity_needed NUMERIC) CASCADE;
 CREATE OR REPLACE FUNCTION reserve_material_for_order(p_order_id UUID, p_product_id UUID, p_quantity_needed NUMERIC)
 RETURNS void AS $$
 DECLARE
@@ -44,6 +46,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- 4. Function to convert reservation to actual output
+DROP FUNCTION IF EXISTS convert_reservation_to_out(p_order_id UUID, p_product_id UUID) CASCADE;
 CREATE OR REPLACE FUNCTION convert_reservation_to_out(p_order_id UUID, p_product_id UUID)
 RETURNS void AS $$
 DECLARE

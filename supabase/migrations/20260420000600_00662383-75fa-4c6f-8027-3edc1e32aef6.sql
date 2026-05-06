@@ -1,6 +1,7 @@
 
 -- 1) Sync function: reconciles a wave's items with current sale_order state
 -- Only runs if wave is still in draft/planning (not yet started production)
+DROP FUNCTION IF EXISTS public.sync_sale_order_wave_items(p_sale_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.sync_sale_order_wave_items(p_sale_order_id uuid)
 RETURNS void
 LANGUAGE plpgsql
@@ -114,6 +115,7 @@ END;
 $$;
 
 -- 2) Trigger on sale_order_items
+DROP FUNCTION IF EXISTS public.trg_sync_wave_on_sale_order_items() CASCADE;
 CREATE OR REPLACE FUNCTION public.trg_sync_wave_on_sale_order_items()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -139,6 +141,7 @@ FOR EACH ROW
 EXECUTE FUNCTION public.trg_sync_wave_on_sale_order_items();
 
 -- 3) Update existing sale_orders trigger to also call sync (handles billing_week changes)
+DROP FUNCTION IF EXISTS public.trg_auto_assign_wave_on_sale_order() CASCADE;
 CREATE OR REPLACE FUNCTION public.trg_auto_assign_wave_on_sale_order()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -165,6 +168,7 @@ DROP POLICY IF EXISTS "Public read reference-images" ON storage.objects;
 DROP POLICY IF EXISTS "Anyone can list reference images" ON storage.objects;
 
 -- Authenticated users can view & list
+DROP POLICY IF EXISTS "Authenticated can read reference-images" ON storage.objects;
 CREATE POLICY "Authenticated can read reference-images"
 ON storage.objects FOR SELECT
 TO authenticated

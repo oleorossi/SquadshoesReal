@@ -1,5 +1,6 @@
 DROP VIEW IF EXISTS public.sale_order_min_billing;
 
+DROP FUNCTION IF EXISTS public.compute_min_billing_date(p_sale_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.compute_min_billing_date(p_sale_order_id uuid)
 RETURNS date
 LANGUAGE plpgsql

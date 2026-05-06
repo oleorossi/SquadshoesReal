@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS public.auto_create_purchase_order() CASCADE;
 CREATE OR REPLACE FUNCTION public.auto_create_purchase_order()
  RETURNS trigger
  LANGUAGE plpgsql

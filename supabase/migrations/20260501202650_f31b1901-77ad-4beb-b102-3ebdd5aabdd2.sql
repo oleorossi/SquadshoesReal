@@ -67,6 +67,7 @@ GRANT EXECUTE ON FUNCTION public.fn_projected_demand() TO authenticated;
 
 -- Recriar a view v_mrp_needs que foi removida pelo CASCADE
 -- Usando a coluna 'quantity' da tabela products conforme o schema real
+DROP VIEW IF EXISTS public.v_mrp_needs CASCADE;
 CREATE OR REPLACE VIEW public.v_mrp_needs AS
 SELECT
     pd.product_id,
@@ -84,6 +85,7 @@ LEFT JOIN public.products p ON p.id = pd.product_id;
 -- 20260504160000_sale-order-total-integrity-trigger.sql
 -- ---------------------------------------------------------------
 
+DROP FUNCTION IF EXISTS public.recalc_sale_order_total(p_sale_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.recalc_sale_order_total(p_sale_order_id uuid)
 RETURNS numeric
 LANGUAGE plpgsql
@@ -116,6 +118,7 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.recalc_sale_order_total(uuid) TO authenticated;
 
+DROP FUNCTION IF EXISTS public.fn_sync_sale_order_total() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_sync_sale_order_total()
 RETURNS trigger
 LANGUAGE plpgsql

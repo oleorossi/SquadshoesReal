@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS public.stage_order(s production_stage_enum) CASCADE;
 CREATE OR REPLACE FUNCTION public.stage_order(s production_stage_enum)
 RETURNS integer LANGUAGE sql IMMUTABLE SET search_path = public AS $$
   SELECT CASE s
@@ -14,6 +15,7 @@ $$;
 ALTER TABLE public.technical_sheets
   ADD COLUMN IF NOT EXISTS palmilha_daily_capacity integer;
 
+DROP FUNCTION IF EXISTS public.create_production_wave(p_sale_order_ids uuid[], p_week_start date, p_start_mode text) CASCADE;
 CREATE OR REPLACE FUNCTION public.create_production_wave(
   p_sale_order_ids uuid[],
   p_week_start date DEFAULT NULL,
@@ -82,6 +84,7 @@ BEGIN
 END;
 $$;
 
+DROP FUNCTION IF EXISTS public.advance_wave_stage(p_wave_id uuid, p_stage production_stage_enum) CASCADE;
 CREATE OR REPLACE FUNCTION public.advance_wave_stage(p_wave_id uuid, p_stage production_stage_enum)
 RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$

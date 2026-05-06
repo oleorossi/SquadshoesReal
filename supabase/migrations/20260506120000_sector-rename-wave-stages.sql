@@ -51,6 +51,7 @@ ALTER TYPE public.production_stage_enum ADD VALUE IF NOT EXISTS 'expedicao';
 -- compatibility with existing production_wave_stages rows until they are
 -- migrated in section 6 below.
 
+DROP FUNCTION IF EXISTS public.stage_order(s production_stage_enum) CASCADE;
 CREATE OR REPLACE FUNCTION public.stage_order(s production_stage_enum)
 RETURNS integer LANGUAGE sql IMMUTABLE SET search_path = public AS $$
   SELECT CASE s
@@ -90,6 +91,7 @@ COMMENT ON FUNCTION public.stage_order(production_stage_enum) IS
 -- Case-insensitive, trims leading/trailing whitespace.
 -- Returns NULL for unknown names so callers can filter them out safely.
 
+DROP FUNCTION IF EXISTS public.sector_display_to_enum(p_name text) CASCADE;
 CREATE OR REPLACE FUNCTION public.sector_display_to_enum(p_name text)
 RETURNS production_stage_enum
 LANGUAGE sql IMMUTABLE SET search_path = public AS $$
@@ -140,6 +142,10 @@ COMMENT ON FUNCTION public.sector_display_to_enum(text) IS
 -- with the correct capacity_per_day sourced from the appropriate column.
 -- The wave_items / wave_item_sources loop and final UPDATE are unchanged.
 
+DROP FUNCTION IF EXISTS public.create_production_wave(
+  p_week_start date,
+  p_sale_order_ids uuid[]
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.create_production_wave(
   p_week_start date,
   p_sale_order_ids uuid[]

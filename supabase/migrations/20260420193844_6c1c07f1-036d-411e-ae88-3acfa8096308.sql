@@ -4,6 +4,7 @@
 -- - Updates existing 'Reservado'/'Rascunho' OPs to 'Em Produção'
 -- - Ensures order_stages exist for every OP
 -- - Restricted to admins via has_role()
+DROP FUNCTION IF EXISTS public.force_sale_order_production(p_sale_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.force_sale_order_production(p_sale_order_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql

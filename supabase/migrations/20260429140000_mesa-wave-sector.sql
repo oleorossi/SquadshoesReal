@@ -17,6 +17,7 @@
 ALTER TYPE public.production_stage_enum ADD VALUE IF NOT EXISTS 'mesa' AFTER 'solagem';
 
 -- ── 2. stage_order ─────────────────────────────────────────────────────────────
+DROP FUNCTION IF EXISTS public.stage_order(s production_stage_enum) CASCADE;
 CREATE OR REPLACE FUNCTION public.stage_order(s production_stage_enum)
 RETURNS integer LANGUAGE sql IMMUTABLE SET search_path = public AS $$
   SELECT CASE s
@@ -41,6 +42,10 @@ ALTER TABLE public.production_wave_stages
   ADD COLUMN IF NOT EXISTS capacity_per_day int NOT NULL DEFAULT 0;
 
 -- ── 5. create_production_wave ──────────────────────────────────────────────────
+DROP FUNCTION IF EXISTS public.create_production_wave(
+  p_week_start date,
+  p_sale_order_ids uuid[]
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.create_production_wave(
   p_week_start date,
   p_sale_order_ids uuid[]
@@ -131,6 +136,7 @@ GRANT EXECUTE ON FUNCTION public.create_production_wave(date, uuid[]) TO authent
 -- ── 6. advance_wave_stage ──────────────────────────────────────────────────────
 -- Uses dynamic stage lookup from production_wave_stages so that optional stages
 -- (like mesa) are only advanced when they actually exist for the wave.
+DROP FUNCTION IF EXISTS public.advance_wave_stage(p_wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.advance_wave_stage(p_wave_id uuid)
 RETURNS production_stage_enum
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
@@ -190,6 +196,7 @@ GRANT EXECUTE ON FUNCTION public.advance_wave_stage(uuid) TO authenticated;
 -- ── 7. compute_wave_timeline ───────────────────────────────────────────────────
 -- Mesa shifts corte_start_date and purchase_deadline earlier by lead_mesa days.
 -- lead_mesa = 0 when no item in the wave has mesa_daily_capacity > 0.
+DROP FUNCTION IF EXISTS public.compute_wave_timeline(p_sale_order_ids uuid[]) CASCADE;
 CREATE OR REPLACE FUNCTION public.compute_wave_timeline(p_sale_order_ids uuid[])
 RETURNS TABLE (
   earliest_deadline     date,
@@ -280,6 +287,7 @@ END;
 $$;
 
 -- ── 8. v_sector_board — expose capacity_per_day in active_wave JSONB ──────────
+DROP VIEW IF EXISTS public.v_sector_board CASCADE;
 CREATE OR REPLACE VIEW public.v_sector_board AS
 WITH stages AS (
   SELECT s.stage,

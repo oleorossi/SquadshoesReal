@@ -33,17 +33,25 @@ ADD COLUMN technical_sheet_id UUID REFERENCES public.technical_sheets(id);
 -- RLS for technical_sheets
 ALTER TABLE public.technical_sheets ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Auth users can view technical_sheets" ON public.technical_sheets;
 CREATE POLICY "Auth users can view technical_sheets" ON public.technical_sheets FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert technical_sheets" ON public.technical_sheets;
 CREATE POLICY "Auth users can insert technical_sheets" ON public.technical_sheets FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update technical_sheets" ON public.technical_sheets;
 CREATE POLICY "Auth users can update technical_sheets" ON public.technical_sheets FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete technical_sheets" ON public.technical_sheets;
 CREATE POLICY "Auth users can delete technical_sheets" ON public.technical_sheets FOR DELETE TO authenticated USING (true);
 
 -- RLS for sheet_materials
 ALTER TABLE public.sheet_materials ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Auth users can view sheet_materials" ON public.sheet_materials;
 CREATE POLICY "Auth users can view sheet_materials" ON public.sheet_materials FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert sheet_materials" ON public.sheet_materials;
 CREATE POLICY "Auth users can insert sheet_materials" ON public.sheet_materials FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update sheet_materials" ON public.sheet_materials;
 CREATE POLICY "Auth users can update sheet_materials" ON public.sheet_materials FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete sheet_materials" ON public.sheet_materials;
 CREATE POLICY "Auth users can delete sheet_materials" ON public.sheet_materials FOR DELETE TO authenticated USING (true);
 
 -- Updated_at trigger

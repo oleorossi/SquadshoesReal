@@ -9,16 +9,19 @@ CREATE TABLE public.group_colors (
 
 ALTER TABLE public.group_colors ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Authenticated users can read group_colors" ON public.group_colors;
 CREATE POLICY "Authenticated users can read group_colors"
   ON public.group_colors FOR SELECT
   TO authenticated
   USING (true);
 
+DROP POLICY IF EXISTS "Authenticated users can insert group_colors" ON public.group_colors;
 CREATE POLICY "Authenticated users can insert group_colors"
   ON public.group_colors FOR INSERT
   TO authenticated
   WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Authenticated users can delete group_colors" ON public.group_colors;
 CREATE POLICY "Authenticated users can delete group_colors"
   ON public.group_colors FOR DELETE
   TO authenticated

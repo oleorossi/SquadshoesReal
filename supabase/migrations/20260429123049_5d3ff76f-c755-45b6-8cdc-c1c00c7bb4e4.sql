@@ -1,6 +1,7 @@
 -- 20260429230000_integrity-fixes-locks-constraints.sql
 
 -- ── 1. confirm_picking_reservation: lock pessimista no início ────────────────
+DROP FUNCTION IF EXISTS public.confirm_picking_reservation(p_reservation_id uuid, p_picked_by text) CASCADE;
 CREATE OR REPLACE FUNCTION public.confirm_picking_reservation(
   p_reservation_id uuid,
   p_picked_by text DEFAULT ''
@@ -57,6 +58,7 @@ END;
 $$;
 
 -- ── 2. Trigger: SUM(stock_grade) == quantity ─────────────────────────────────
+DROP FUNCTION IF EXISTS public.check_grade_quantity_coherence() CASCADE;
 CREATE OR REPLACE FUNCTION public.check_grade_quantity_coherence()
 RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
@@ -152,6 +154,7 @@ DO $$ BEGIN
 END $$;
 
 -- ── 6. Trigger: ao cancelar OP, libera reservas ──────────────────────────────
+DROP FUNCTION IF EXISTS public.auto_release_reservations_on_op_cancel() CASCADE;
 CREATE OR REPLACE FUNCTION public.auto_release_reservations_on_op_cancel()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
@@ -174,6 +177,10 @@ CREATE TRIGGER trg_auto_release_reservations_on_op_cancel
   EXECUTE FUNCTION public.auto_release_reservations_on_op_cancel();
 
 -- ── 7. advance_wave_stage: FOR UPDATE na wave ────────────────────────────────
+DROP FUNCTION IF EXISTS public.advance_wave_stage(
+  p_wave_id uuid,
+  p_stage   production_stage_enum
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.advance_wave_stage(
   p_wave_id uuid,
   p_stage   production_stage_enum

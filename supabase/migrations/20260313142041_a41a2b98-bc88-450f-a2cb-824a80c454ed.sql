@@ -1,5 +1,6 @@
 
 -- Update debit_stock_for_order to accept and store order_id
+DROP FUNCTION IF EXISTS public.debit_stock_for_order(p_reference_id uuid, p_order_quantity integer, p_color text, p_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_stock_for_order(p_reference_id uuid, p_order_quantity integer, p_color text DEFAULT ''::text, p_order_id uuid DEFAULT NULL)
  RETURNS void
  LANGUAGE plpgsql
@@ -154,6 +155,7 @@ END;
 $function$;
 
 -- Update the 2-param overload to forward to the main function
+DROP FUNCTION IF EXISTS public.debit_stock_for_order(p_reference_id uuid, p_order_quantity integer) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_stock_for_order(p_reference_id uuid, p_order_quantity integer)
  RETURNS void
  LANGUAGE plpgsql

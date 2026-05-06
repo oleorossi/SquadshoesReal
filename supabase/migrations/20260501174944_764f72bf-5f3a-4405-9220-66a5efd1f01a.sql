@@ -10,6 +10,7 @@ ALTER TABLE public.production_consumptions
   DROP COLUMN IF EXISTS superseded_reason;
 
 -- Restaurar versão original de calculate_order_cost (removendo embalagem)
+DROP FUNCTION IF EXISTS public.calculate_order_cost(p_sale_order_id uuid, p_sale_order_item_id uuid, p_persist boolean) CASCADE;
 CREATE OR REPLACE FUNCTION public.calculate_order_cost(p_sale_order_id uuid, p_sale_order_item_id uuid DEFAULT NULL::uuid, p_persist boolean DEFAULT false)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -144,6 +145,7 @@ END;
 $function$;
 
 -- Restaurar versão original de fn_projected_demand
+DROP FUNCTION IF EXISTS public.fn_projected_demand(p_product_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_projected_demand(p_product_id uuid)
  RETURNS numeric
  LANGUAGE plpgsql

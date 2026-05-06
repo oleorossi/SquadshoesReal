@@ -1,4 +1,5 @@
 -- 1. Fix debit_strap_stock
+DROP FUNCTION IF EXISTS public.debit_strap_stock(p_strap_colors jsonb, p_order_quantity integer, p_order_id uuid, p_order_grade jsonb) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_strap_stock(
   p_strap_colors jsonb,
   p_order_quantity integer,
@@ -163,6 +164,7 @@ ALTER TABLE service_orders
   ADD COLUMN IF NOT EXISTS artisanal_base_color       TEXT,
   ADD COLUMN IF NOT EXISTS artisanal_stock_entry_done BOOLEAN DEFAULT false;
 
+DROP FUNCTION IF EXISTS artisanal_recipes_set_updated_at() CASCADE;
 CREATE OR REPLACE FUNCTION artisanal_recipes_set_updated_at()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
@@ -174,6 +176,12 @@ CREATE TRIGGER artisanal_recipes_updated_at
   FOR EACH ROW EXECUTE FUNCTION artisanal_recipes_set_updated_at();
 
 -- 4. Consumption Per Size (Single Source)
+DROP FUNCTION IF EXISTS public.calc_required_for_grade(
+  p_consumption_per_size jsonb,
+  p_order_grade          jsonb,
+  p_quantity_per_unit    numeric,
+  p_total_quantity       numeric
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.calc_required_for_grade(
   p_consumption_per_size jsonb,
   p_order_grade          jsonb,
@@ -216,6 +224,7 @@ BEGIN
 END;
 $$;
 
+DROP FUNCTION IF EXISTS public.check_stock_availability(p_reference_id uuid, p_order_quantity integer, p_color text, p_order_grade jsonb) CASCADE;
 CREATE OR REPLACE FUNCTION public.check_stock_availability(
   p_reference_id uuid,
   p_order_quantity integer,
@@ -292,6 +301,7 @@ GRANT EXECUTE ON FUNCTION public.calc_required_for_grade(jsonb, jsonb, numeric, 
 GRANT EXECUTE ON FUNCTION public.check_stock_availability(uuid, integer, text, jsonb) TO authenticated;
 
 -- 5. Fix production sector flow
+DROP FUNCTION IF EXISTS public.finalize_production_sector(p_order_id uuid, p_current_sector text) CASCADE;
 CREATE OR REPLACE FUNCTION public.finalize_production_sector(p_order_id uuid, p_current_sector text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -395,6 +405,7 @@ WHERE status LIKE 'EM_%'
   AND production_step NOT IN ('Pronto', 'Pendente', 'Finalizado');
 
 -- 6. Fix packaging debit stock movements
+DROP FUNCTION IF EXISTS public.debit_packaging_for_order(p_sale_order_id uuid, p_order_id uuid, p_reference_id uuid, p_order_quantity integer, p_packaging_mode text) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_packaging_for_order(
   p_sale_order_id uuid,
   p_order_id uuid,
@@ -503,6 +514,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.debit_packaging_for_order(uuid, uuid, uuid, integer, text) TO authenticated;
 
 -- 7. adjust_stock (Concurrency fix)
+DROP FUNCTION IF EXISTS public.adjust_stock(p_product_id UUID, p_expected_previous_qty NUMERIC, p_new_qty NUMERIC, p_delta NUMERIC, p_reason TEXT, p_new_grade JSONB) CASCADE;
 CREATE OR REPLACE FUNCTION public.adjust_stock(
     p_product_id UUID,
     p_expected_previous_qty NUMERIC,

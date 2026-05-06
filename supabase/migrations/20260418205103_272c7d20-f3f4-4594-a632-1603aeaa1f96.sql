@@ -5,6 +5,7 @@ UPDATE public.sale_orders SET status = 'Em Produção' WHERE status IN ('Faturad
 
 -- 2. Trigger function: when any order_stage transitions to em_andamento (in progress),
 -- bump the parent sale_order to 'Em Produção' (only if currently Aprovado).
+DROP FUNCTION IF EXISTS public.auto_promote_sale_order_to_production() CASCADE;
 CREATE OR REPLACE FUNCTION public.auto_promote_sale_order_to_production()
 RETURNS TRIGGER
 LANGUAGE plpgsql

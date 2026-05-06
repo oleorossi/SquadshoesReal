@@ -8,6 +8,7 @@
 -- =============================================================================
 
 -- 1. Generic "create product with initial stock" (used by AddToStockDialog)
+DROP FUNCTION IF EXISTS public.create_product_with_initial_stock(p_name         text, p_sku          text, p_category     text, p_unit         text, p_location     text, p_quantity     numeric, p_unit_price   numeric, p_min_stock    numeric, p_max_stock    numeric, p_group_id     uuid, p_description  text, p_supplier_id  uuid, p_reason       text) CASCADE;
 CREATE OR REPLACE FUNCTION public.create_product_with_initial_stock(
   p_name         text,
   p_sku          text DEFAULT NULL,
@@ -57,6 +58,7 @@ GRANT EXECUTE ON FUNCTION public.create_product_with_initial_stock(
 
 
 -- 2. Artisanal product creation (used by Contractors.tsx)
+DROP FUNCTION IF EXISTS public.create_artisanal_product_with_stock(p_name         text, p_color        text, p_quantity     numeric, p_unit         text, p_order_id     uuid, p_reason       text) CASCADE;
 CREATE OR REPLACE FUNCTION public.create_artisanal_product_with_stock(
   p_name         text,
   p_color        text DEFAULT '',
@@ -107,6 +109,7 @@ ALTER TABLE public.ready_stock
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ready_stock_ref_color_size
   ON public.ready_stock (reference_id, color, size);
 
+DROP FUNCTION IF EXISTS public.upsert_ready_stock_atomic(p_reference_id uuid, p_color        text, p_size         text, p_qty_delta    numeric, p_location     text, p_notes        text) CASCADE;
 CREATE OR REPLACE FUNCTION public.upsert_ready_stock_atomic(
   p_reference_id uuid,
   p_color        text,

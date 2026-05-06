@@ -44,6 +44,7 @@ ALTER TABLE service_orders
   ADD COLUMN IF NOT EXISTS artisanal_base_color       TEXT,
   ADD COLUMN IF NOT EXISTS artisanal_stock_entry_done BOOLEAN DEFAULT false;
 
+DROP FUNCTION IF EXISTS artisanal_recipes_set_updated_at() CASCADE;
 CREATE OR REPLACE FUNCTION artisanal_recipes_set_updated_at()
 RETURNS TRIGGER LANGUAGE plpgsql
 SET search_path = public

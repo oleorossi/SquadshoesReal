@@ -25,7 +25,8 @@
 -- Helper functions in the auth schema
 -- ---------------------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION auth.user_has_role(required_role text)
+DROP FUNCTION IF EXISTS public.user_has_role(required_role text) CASCADE;
+CREATE OR REPLACE FUNCTION public.user_has_role(required_role text)
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   SELECT EXISTS (
     SELECT 1 FROM user_roles
@@ -34,7 +35,8 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS
   );
 $$;
 
-CREATE OR REPLACE FUNCTION auth.user_has_any_role(roles text[])
+DROP FUNCTION IF EXISTS public.user_has_any_role(roles text[]) CASCADE;
+CREATE OR REPLACE FUNCTION public.user_has_any_role(roles text[])
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   SELECT EXISTS (
     SELECT 1 FROM user_roles
@@ -67,8 +69,8 @@ CREATE POLICY "rls_suppliers_select" ON public.suppliers
 
 CREATE POLICY "rls_suppliers_write" ON public.suppliers
   FOR ALL TO authenticated
-  USING  (auth.user_has_any_role(ARRAY['admin', 'gerente']))
-  WITH CHECK (auth.user_has_any_role(ARRAY['admin', 'gerente']));
+  USING  (public.user_has_any_role(ARRAY['admin', 'gerente']))
+  WITH CHECK (public.user_has_any_role(ARRAY['admin', 'gerente']));
 
 -- ---- products ----
 DROP POLICY IF EXISTS "Authenticated users can view products"    ON public.products;
@@ -86,8 +88,8 @@ CREATE POLICY "rls_products_select" ON public.products
 
 CREATE POLICY "rls_products_write" ON public.products
   FOR ALL TO authenticated
-  USING  (auth.user_has_any_role(ARRAY['admin', 'gerente']))
-  WITH CHECK (auth.user_has_any_role(ARRAY['admin', 'gerente']));
+  USING  (public.user_has_any_role(ARRAY['admin', 'gerente']))
+  WITH CHECK (public.user_has_any_role(ARRAY['admin', 'gerente']));
 
 -- ---- product_groups ----
 DROP POLICY IF EXISTS "rls_product_groups_select" ON public.product_groups;
@@ -100,8 +102,8 @@ CREATE POLICY "rls_product_groups_select" ON public.product_groups
 
 CREATE POLICY "rls_product_groups_write" ON public.product_groups
   FOR ALL TO authenticated
-  USING  (auth.user_has_any_role(ARRAY['admin', 'gerente']))
-  WITH CHECK (auth.user_has_any_role(ARRAY['admin', 'gerente']));
+  USING  (public.user_has_any_role(ARRAY['admin', 'gerente']))
+  WITH CHECK (public.user_has_any_role(ARRAY['admin', 'gerente']));
 
 -- ---- technical_sheets ----
 DROP POLICY IF EXISTS "Auth users can view technical_sheets"    ON public.technical_sheets;
@@ -118,8 +120,8 @@ CREATE POLICY "rls_technical_sheets_select" ON public.technical_sheets
 
 CREATE POLICY "rls_technical_sheets_write" ON public.technical_sheets
   FOR ALL TO authenticated
-  USING  (auth.user_has_any_role(ARRAY['admin', 'gerente']))
-  WITH CHECK (auth.user_has_any_role(ARRAY['admin', 'gerente']));
+  USING  (public.user_has_any_role(ARRAY['admin', 'gerente']))
+  WITH CHECK (public.user_has_any_role(ARRAY['admin', 'gerente']));
 
 -- ---- sole_technical_specs ----
 DROP POLICY IF EXISTS "Enable all for authenticated users" ON public.sole_technical_specs;
@@ -133,8 +135,8 @@ CREATE POLICY "rls_sole_technical_specs_select" ON public.sole_technical_specs
 
 CREATE POLICY "rls_sole_technical_specs_write" ON public.sole_technical_specs
   FOR ALL TO authenticated
-  USING  (auth.user_has_any_role(ARRAY['admin', 'gerente']))
-  WITH CHECK (auth.user_has_any_role(ARRAY['admin', 'gerente']));
+  USING  (public.user_has_any_role(ARRAY['admin', 'gerente']))
+  WITH CHECK (public.user_has_any_role(ARRAY['admin', 'gerente']));
 
 -- ---- component_sheets ----
 DROP POLICY IF EXISTS "Auth users can view component_sheets"    ON public.component_sheets;
@@ -154,8 +156,8 @@ CREATE POLICY "rls_component_sheets_select" ON public.component_sheets
 
 CREATE POLICY "rls_component_sheets_write" ON public.component_sheets
   FOR ALL TO authenticated
-  USING  (auth.user_has_any_role(ARRAY['admin', 'gerente']))
-  WITH CHECK (auth.user_has_any_role(ARRAY['admin', 'gerente']));
+  USING  (public.user_has_any_role(ARRAY['admin', 'gerente']))
+  WITH CHECK (public.user_has_any_role(ARRAY['admin', 'gerente']));
 
 -- ---- fiscal_config ----
 DROP POLICY IF EXISTS "Auth users can view fiscal_config"    ON public.fiscal_config;
@@ -172,8 +174,8 @@ CREATE POLICY "rls_fiscal_config_select" ON public.fiscal_config
 
 CREATE POLICY "rls_fiscal_config_write" ON public.fiscal_config
   FOR ALL TO authenticated
-  USING  (auth.user_has_any_role(ARRAY['admin', 'gerente']))
-  WITH CHECK (auth.user_has_any_role(ARRAY['admin', 'gerente']));
+  USING  (public.user_has_any_role(ARRAY['admin', 'gerente']))
+  WITH CHECK (public.user_has_any_role(ARRAY['admin', 'gerente']));
 
 -- ---- cost_policies ----
 DROP POLICY IF EXISTS "Auth users can view cost_policies"    ON public.cost_policies;
@@ -193,8 +195,8 @@ CREATE POLICY "rls_cost_policies_select" ON public.cost_policies
 
 CREATE POLICY "rls_cost_policies_write" ON public.cost_policies
   FOR ALL TO authenticated
-  USING  (auth.user_has_any_role(ARRAY['admin', 'gerente']))
-  WITH CHECK (auth.user_has_any_role(ARRAY['admin', 'gerente']));
+  USING  (public.user_has_any_role(ARRAY['admin', 'gerente']))
+  WITH CHECK (public.user_has_any_role(ARRAY['admin', 'gerente']));
 
 -- ---- factoring_config ----
 DROP POLICY IF EXISTS "Authenticated users can manage factoring_config" ON public.factoring_config;
@@ -208,8 +210,8 @@ CREATE POLICY "rls_factoring_config_select" ON public.factoring_config
 
 CREATE POLICY "rls_factoring_config_write" ON public.factoring_config
   FOR ALL TO authenticated
-  USING  (auth.user_has_any_role(ARRAY['admin', 'gerente']))
-  WITH CHECK (auth.user_has_any_role(ARRAY['admin', 'gerente']));
+  USING  (public.user_has_any_role(ARRAY['admin', 'gerente']))
+  WITH CHECK (public.user_has_any_role(ARRAY['admin', 'gerente']));
 
 -- ---- work_schedules ----
 DROP POLICY IF EXISTS "Auth users can view work_schedules"    ON public.work_schedules;
@@ -226,8 +228,8 @@ CREATE POLICY "rls_work_schedules_select" ON public.work_schedules
 
 CREATE POLICY "rls_work_schedules_write" ON public.work_schedules
   FOR ALL TO authenticated
-  USING  (auth.user_has_any_role(ARRAY['admin', 'gerente']))
-  WITH CHECK (auth.user_has_any_role(ARRAY['admin', 'gerente']));
+  USING  (public.user_has_any_role(ARRAY['admin', 'gerente']))
+  WITH CHECK (public.user_has_any_role(ARRAY['admin', 'gerente']));
 
 -- =============================================================================
 -- CATEGORY B — Operational data (all authenticated users can read and write)
@@ -381,8 +383,8 @@ ALTER TABLE public.financial_entries ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "rls_financial_entries_all" ON public.financial_entries
   FOR ALL TO authenticated
-  USING  (auth.user_has_any_role(ARRAY['admin', 'gerente']))
-  WITH CHECK (auth.user_has_any_role(ARRAY['admin', 'gerente']));
+  USING  (public.user_has_any_role(ARRAY['admin', 'gerente']))
+  WITH CHECK (public.user_has_any_role(ARRAY['admin', 'gerente']));
 
 -- ---- accounts_receivable ----
 DROP POLICY IF EXISTS "Auth users can view accounts_receivable"    ON public.accounts_receivable;
@@ -395,8 +397,8 @@ ALTER TABLE public.accounts_receivable ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "rls_accounts_receivable_all" ON public.accounts_receivable
   FOR ALL TO authenticated
-  USING  (auth.user_has_any_role(ARRAY['admin', 'gerente']))
-  WITH CHECK (auth.user_has_any_role(ARRAY['admin', 'gerente']));
+  USING  (public.user_has_any_role(ARRAY['admin', 'gerente']))
+  WITH CHECK (public.user_has_any_role(ARRAY['admin', 'gerente']));
 
 -- ---- accounts_payable ----
 DROP POLICY IF EXISTS "Auth users can view accounts_payable"       ON public.accounts_payable;
@@ -412,8 +414,8 @@ ALTER TABLE public.accounts_payable ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "rls_accounts_payable_all" ON public.accounts_payable
   FOR ALL TO authenticated
-  USING  (auth.user_has_any_role(ARRAY['admin', 'gerente']))
-  WITH CHECK (auth.user_has_any_role(ARRAY['admin', 'gerente']));
+  USING  (public.user_has_any_role(ARRAY['admin', 'gerente']))
+  WITH CHECK (public.user_has_any_role(ARRAY['admin', 'gerente']));
 
 -- ---- purchase_orders ----
 DROP POLICY IF EXISTS "Auth users can view purchase_orders"    ON public.purchase_orders;
@@ -426,8 +428,8 @@ ALTER TABLE public.purchase_orders ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "rls_purchase_orders_all" ON public.purchase_orders
   FOR ALL TO authenticated
-  USING  (auth.user_has_any_role(ARRAY['admin', 'gerente']))
-  WITH CHECK (auth.user_has_any_role(ARRAY['admin', 'gerente']));
+  USING  (public.user_has_any_role(ARRAY['admin', 'gerente']))
+  WITH CHECK (public.user_has_any_role(ARRAY['admin', 'gerente']));
 
 -- ---- purchase_order_items ----
 DROP POLICY IF EXISTS "Auth users can view purchase_order_items"    ON public.purchase_order_items;
@@ -440,8 +442,8 @@ ALTER TABLE public.purchase_order_items ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "rls_purchase_order_items_all" ON public.purchase_order_items
   FOR ALL TO authenticated
-  USING  (auth.user_has_any_role(ARRAY['admin', 'gerente']))
-  WITH CHECK (auth.user_has_any_role(ARRAY['admin', 'gerente']));
+  USING  (public.user_has_any_role(ARRAY['admin', 'gerente']))
+  WITH CHECK (public.user_has_any_role(ARRAY['admin', 'gerente']));
 
 -- ---- nfe_emitidas ----
 -- Note: prior migration dropped all policies via a DO loop before recreating them
@@ -463,8 +465,8 @@ ALTER TABLE public.nfe_emitidas ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "rls_nfe_emitidas_all" ON public.nfe_emitidas
   FOR ALL TO authenticated
-  USING  (auth.user_has_any_role(ARRAY['admin', 'gerente']))
-  WITH CHECK (auth.user_has_any_role(ARRAY['admin', 'gerente']));
+  USING  (public.user_has_any_role(ARRAY['admin', 'gerente']))
+  WITH CHECK (public.user_has_any_role(ARRAY['admin', 'gerente']));
 
 -- ---- cogs_entries ----
 DROP POLICY IF EXISTS "Auth users can view cogs_entries"       ON public.cogs_entries;
@@ -477,8 +479,8 @@ ALTER TABLE public.cogs_entries ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "rls_cogs_entries_all" ON public.cogs_entries
   FOR ALL TO authenticated
-  USING  (auth.user_has_any_role(ARRAY['admin', 'gerente']))
-  WITH CHECK (auth.user_has_any_role(ARRAY['admin', 'gerente']));
+  USING  (public.user_has_any_role(ARRAY['admin', 'gerente']))
+  WITH CHECK (public.user_has_any_role(ARRAY['admin', 'gerente']));
 
 -- =============================================================================
 -- CATEGORY D — User management
@@ -500,23 +502,27 @@ DROP POLICY IF EXISTS "rls_user_roles_delete"     ON public.user_roles;
 ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
 
 -- Allow a user to see their own role, or admin/gerente to see all
+DROP POLICY IF EXISTS "users_see_own_role" ON public.user_roles;
 CREATE POLICY "users_see_own_role" ON public.user_roles
   FOR SELECT TO authenticated
-  USING (user_id = auth.uid() OR auth.user_has_any_role(ARRAY['admin', 'gerente']));
+  USING (user_id = auth.uid() OR public.user_has_any_role(ARRAY['admin', 'gerente']));
 
 -- Only admin can modify role assignments
+DROP POLICY IF EXISTS "rls_user_roles_insert" ON public.user_roles;
 CREATE POLICY "rls_user_roles_insert" ON public.user_roles
   FOR INSERT TO authenticated
-  WITH CHECK (auth.user_has_role('admin'));
+  WITH CHECK (public.user_has_role('admin'));
 
+DROP POLICY IF EXISTS "rls_user_roles_update" ON public.user_roles;
 CREATE POLICY "rls_user_roles_update" ON public.user_roles
   FOR UPDATE TO authenticated
-  USING  (auth.user_has_role('admin'))
-  WITH CHECK (auth.user_has_role('admin'));
+  USING  (public.user_has_role('admin'))
+  WITH CHECK (public.user_has_role('admin'));
 
+DROP POLICY IF EXISTS "rls_user_roles_delete" ON public.user_roles;
 CREATE POLICY "rls_user_roles_delete" ON public.user_roles
   FOR DELETE TO authenticated
-  USING (auth.user_has_role('admin'));
+  USING (public.user_has_role('admin'));
 
 -- ---- companies ----
 DROP POLICY IF EXISTS "Auth users can manage companies" ON public.companies;
@@ -535,9 +541,10 @@ EXCEPTION WHEN undefined_table THEN NULL;
 END $$;
 
 DO $$ BEGIN
-  CREATE POLICY "rls_companies_write" ON public.companies
+  DROP POLICY IF EXISTS "rls_companies_write" ON public.companies;
+CREATE POLICY "rls_companies_write" ON public.companies
     FOR ALL TO authenticated
-    USING  (auth.user_has_any_role(ARRAY['admin', 'gerente']))
-    WITH CHECK (auth.user_has_any_role(ARRAY['admin', 'gerente']));
+    USING  (public.user_has_any_role(ARRAY['admin', 'gerente']))
+    WITH CHECK (public.user_has_any_role(ARRAY['admin', 'gerente']));
 EXCEPTION WHEN undefined_table THEN NULL;
 END $$;

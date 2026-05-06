@@ -21,6 +21,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.add_business_days(date, int) TO authenticated;
 
 -- Reaplica as dependências que usam essa função
+DROP FUNCTION IF EXISTS public.compute_wave_timeline(p_sale_order_ids uuid[]) CASCADE;
 CREATE OR REPLACE FUNCTION public.compute_wave_timeline(p_sale_order_ids uuid[])
 RETURNS TABLE (
   earliest_deadline    date,
@@ -67,6 +68,7 @@ END;
 $$;
 
 -- Travas de Integridade
+DROP FUNCTION IF EXISTS public.check_grade_quantity_coherence() CASCADE;
 CREATE OR REPLACE FUNCTION public.check_grade_quantity_coherence()
 RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE v_grade_sum numeric := 0;
@@ -91,6 +93,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_active_per_sale_order_item
   ON public.orders (sale_order_item_id) WHERE status <> 'Cancelada';
 
 -- Estorno automático de reservas
+DROP FUNCTION IF EXISTS public.auto_release_reservations_on_op_cancel() CASCADE;
 CREATE OR REPLACE FUNCTION public.auto_release_reservations_on_op_cancel()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN

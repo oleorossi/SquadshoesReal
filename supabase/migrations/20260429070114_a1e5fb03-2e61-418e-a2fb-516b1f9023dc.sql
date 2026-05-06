@@ -4,6 +4,7 @@
 -- =============================================================================
 
 -- 1) Reordenar stages: Mesa(1)‖Corte(1) → Palmilha(2)‖Costura(2) → Montagem(3) → Solagem(4) → Acabamento(5)
+DROP FUNCTION IF EXISTS public.stage_order(s production_stage_enum) CASCADE;
 CREATE OR REPLACE FUNCTION public.stage_order(s production_stage_enum)
 RETURNS integer LANGUAGE sql IMMUTABLE SET search_path = public AS $$
   SELECT CASE s
@@ -34,6 +35,7 @@ COMMENT ON COLUMN public.products.insole_mode IS
   'Aplica-se a SOLADOS: define como a palmilha vinculada será debitada. cortar=dm² de placa; pronta_na_cor=par/numeração seguindo grade.';
 
 -- 3) Helper para resolver o modo de palmilha a partir do produto-solado
+DROP FUNCTION IF EXISTS public.get_insole_mode(p_sole_product_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.get_insole_mode(p_sole_product_id uuid)
 RETURNS public.insole_mode_enum
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$

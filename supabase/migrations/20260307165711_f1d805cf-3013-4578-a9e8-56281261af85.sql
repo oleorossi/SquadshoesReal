@@ -40,15 +40,23 @@ ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.economic_groups ENABLE ROW LEVEL SECURITY;
 
 -- RLS policies for clients
+DROP POLICY IF EXISTS "Auth users can view clients" ON public.clients;
 CREATE POLICY "Auth users can view clients" ON public.clients FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert clients" ON public.clients;
 CREATE POLICY "Auth users can insert clients" ON public.clients FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update clients" ON public.clients;
 CREATE POLICY "Auth users can update clients" ON public.clients FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete clients" ON public.clients;
 CREATE POLICY "Auth users can delete clients" ON public.clients FOR DELETE TO authenticated USING (true);
 
 -- RLS policies for economic_groups
+DROP POLICY IF EXISTS "Auth users can view economic_groups" ON public.economic_groups;
 CREATE POLICY "Auth users can view economic_groups" ON public.economic_groups FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert economic_groups" ON public.economic_groups;
 CREATE POLICY "Auth users can insert economic_groups" ON public.economic_groups FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update economic_groups" ON public.economic_groups;
 CREATE POLICY "Auth users can update economic_groups" ON public.economic_groups FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete economic_groups" ON public.economic_groups;
 CREATE POLICY "Auth users can delete economic_groups" ON public.economic_groups FOR DELETE TO authenticated USING (true);
 
 -- Triggers for updated_at

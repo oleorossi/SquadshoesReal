@@ -64,6 +64,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.fn_projected_demand() TO authenticated;
 
 -- 3. Recriar a view v_mrp_needs
+DROP VIEW IF EXISTS public.v_mrp_needs CASCADE;
 CREATE OR REPLACE VIEW public.v_mrp_needs AS
 SELECT
     pd.product_id,

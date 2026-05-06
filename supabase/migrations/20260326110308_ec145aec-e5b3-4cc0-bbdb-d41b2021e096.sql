@@ -119,6 +119,7 @@ CREATE TABLE public.cycle_count_items (
 
 CREATE SEQUENCE IF NOT EXISTS cc_number_seq START 1;
 
+DROP FUNCTION IF EXISTS public.generate_cc_number() CASCADE;
 CREATE OR REPLACE FUNCTION public.generate_cc_number()
 RETURNS trigger LANGUAGE plpgsql SET search_path TO 'public' AS $$
 BEGIN
@@ -171,43 +172,70 @@ ALTER TABLE public.cycle_count_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cost_variance_reports ENABLE ROW LEVEL SECURITY;
 
 -- MRP Suggestions
+DROP POLICY IF EXISTS "Auth users can view mrp_suggestions" ON public.mrp_suggestions;
 CREATE POLICY "Auth users can view mrp_suggestions" ON public.mrp_suggestions FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Approved users can insert mrp_suggestions" ON public.mrp_suggestions;
 CREATE POLICY "Approved users can insert mrp_suggestions" ON public.mrp_suggestions FOR INSERT TO authenticated WITH CHECK (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can update mrp_suggestions" ON public.mrp_suggestions;
 CREATE POLICY "Approved users can update mrp_suggestions" ON public.mrp_suggestions FOR UPDATE TO authenticated USING (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can delete mrp_suggestions" ON public.mrp_suggestions;
 CREATE POLICY "Approved users can delete mrp_suggestions" ON public.mrp_suggestions FOR DELETE TO authenticated USING (is_approved_user());
 
 -- Bin Locations
+DROP POLICY IF EXISTS "Auth users can view bin_locations" ON public.bin_locations;
 CREATE POLICY "Auth users can view bin_locations" ON public.bin_locations FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Approved users can insert bin_locations" ON public.bin_locations;
 CREATE POLICY "Approved users can insert bin_locations" ON public.bin_locations FOR INSERT TO authenticated WITH CHECK (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can update bin_locations" ON public.bin_locations;
 CREATE POLICY "Approved users can update bin_locations" ON public.bin_locations FOR UPDATE TO authenticated USING (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can delete bin_locations" ON public.bin_locations;
 CREATE POLICY "Approved users can delete bin_locations" ON public.bin_locations FOR DELETE TO authenticated USING (is_approved_user());
 
 -- Lot Tracking
+DROP POLICY IF EXISTS "Auth users can view lot_tracking" ON public.lot_tracking;
 CREATE POLICY "Auth users can view lot_tracking" ON public.lot_tracking FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Approved users can insert lot_tracking" ON public.lot_tracking;
 CREATE POLICY "Approved users can insert lot_tracking" ON public.lot_tracking FOR INSERT TO authenticated WITH CHECK (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can update lot_tracking" ON public.lot_tracking;
 CREATE POLICY "Approved users can update lot_tracking" ON public.lot_tracking FOR UPDATE TO authenticated USING (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can delete lot_tracking" ON public.lot_tracking;
 CREATE POLICY "Approved users can delete lot_tracking" ON public.lot_tracking FOR DELETE TO authenticated USING (is_approved_user());
 
 -- Quarantine Stock
+DROP POLICY IF EXISTS "Auth users can view quarantine_stock" ON public.quarantine_stock;
 CREATE POLICY "Auth users can view quarantine_stock" ON public.quarantine_stock FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Approved users can insert quarantine_stock" ON public.quarantine_stock;
 CREATE POLICY "Approved users can insert quarantine_stock" ON public.quarantine_stock FOR INSERT TO authenticated WITH CHECK (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can update quarantine_stock" ON public.quarantine_stock;
 CREATE POLICY "Approved users can update quarantine_stock" ON public.quarantine_stock FOR UPDATE TO authenticated USING (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can delete quarantine_stock" ON public.quarantine_stock;
 CREATE POLICY "Approved users can delete quarantine_stock" ON public.quarantine_stock FOR DELETE TO authenticated USING (is_approved_user());
 
 -- Cycle Counts
+DROP POLICY IF EXISTS "Auth users can view cycle_counts" ON public.cycle_counts;
 CREATE POLICY "Auth users can view cycle_counts" ON public.cycle_counts FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Approved users can insert cycle_counts" ON public.cycle_counts;
 CREATE POLICY "Approved users can insert cycle_counts" ON public.cycle_counts FOR INSERT TO authenticated WITH CHECK (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can update cycle_counts" ON public.cycle_counts;
 CREATE POLICY "Approved users can update cycle_counts" ON public.cycle_counts FOR UPDATE TO authenticated USING (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can delete cycle_counts" ON public.cycle_counts;
 CREATE POLICY "Approved users can delete cycle_counts" ON public.cycle_counts FOR DELETE TO authenticated USING (is_approved_user());
 
+DROP POLICY IF EXISTS "Auth users can view cycle_count_items" ON public.cycle_count_items;
 CREATE POLICY "Auth users can view cycle_count_items" ON public.cycle_count_items FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Approved users can insert cycle_count_items" ON public.cycle_count_items;
 CREATE POLICY "Approved users can insert cycle_count_items" ON public.cycle_count_items FOR INSERT TO authenticated WITH CHECK (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can update cycle_count_items" ON public.cycle_count_items;
 CREATE POLICY "Approved users can update cycle_count_items" ON public.cycle_count_items FOR UPDATE TO authenticated USING (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can delete cycle_count_items" ON public.cycle_count_items;
 CREATE POLICY "Approved users can delete cycle_count_items" ON public.cycle_count_items FOR DELETE TO authenticated USING (is_approved_user());
 
 -- Cost Variance Reports
+DROP POLICY IF EXISTS "Auth users can view cost_variance_reports" ON public.cost_variance_reports;
 CREATE POLICY "Auth users can view cost_variance_reports" ON public.cost_variance_reports FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Approved users can insert cost_variance_reports" ON public.cost_variance_reports;
 CREATE POLICY "Approved users can insert cost_variance_reports" ON public.cost_variance_reports FOR INSERT TO authenticated WITH CHECK (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can delete cost_variance_reports" ON public.cost_variance_reports;
 CREATE POLICY "Approved users can delete cost_variance_reports" ON public.cost_variance_reports FOR DELETE TO authenticated USING (is_approved_user());
 
 -- Updated_at triggers

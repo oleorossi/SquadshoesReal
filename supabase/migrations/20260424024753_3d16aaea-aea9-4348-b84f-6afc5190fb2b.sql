@@ -1,4 +1,5 @@
 -- Atualizar get_inventory_summary para incluir box_types
+DROP FUNCTION IF EXISTS get_inventory_summary() CASCADE;
 CREATE OR REPLACE FUNCTION get_inventory_summary()
 RETURNS json AS $$
 DECLARE
@@ -27,6 +28,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Atualizar debit_packaging_for_order para incluir fitilho e melhorar colmeia
+DROP FUNCTION IF EXISTS public.debit_packaging_for_order(p_sale_order_id uuid, p_order_id uuid, p_reference_id uuid, p_order_quantity integer, p_packaging_mode text) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_packaging_for_order(
   p_sale_order_id uuid,
   p_order_id uuid,

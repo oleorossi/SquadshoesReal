@@ -29,6 +29,7 @@ ALTER TABLE public.reference_material_variants
   DROP CONSTRAINT IF EXISTS reference_material_variants_reference_id_material_name_key;
 
 -- 2. Add a normalization trigger (trim whitespace before insert/update).
+DROP FUNCTION IF EXISTS public.fn_normalize_material_variant_name() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_normalize_material_variant_name()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN

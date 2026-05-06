@@ -20,12 +20,14 @@ CREATE TABLE public.material_audit_log (
 
 ALTER TABLE public.material_audit_log ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Admins can manage audit log" ON public.material_audit_log;
 CREATE POLICY "Admins can manage audit log"
 ON public.material_audit_log FOR ALL TO authenticated
 USING (public.has_role(auth.uid(), 'admin'))
 WITH CHECK (public.has_role(auth.uid(), 'admin'));
 
 -- Trigger function to auto-log product changes
+DROP FUNCTION IF EXISTS public.log_product_audit() CASCADE;
 CREATE OR REPLACE FUNCTION public.log_product_audit()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
 AS $$
@@ -66,6 +68,7 @@ AFTER INSERT OR UPDATE OR DELETE ON public.products
 FOR EACH ROW EXECUTE FUNCTION public.log_product_audit();
 
 -- Cleanup function for logs older than 15 days
+DROP FUNCTION IF EXISTS public.cleanup_old_audit_logs() CASCADE;
 CREATE OR REPLACE FUNCTION public.cleanup_old_audit_logs()
 RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path TO 'public'
 AS $$

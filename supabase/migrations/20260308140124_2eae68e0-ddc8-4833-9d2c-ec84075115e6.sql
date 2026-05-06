@@ -15,9 +15,13 @@ CREATE UNIQUE INDEX ready_stock_ref_color_size_idx ON public.ready_stock (refere
 
 ALTER TABLE public.ready_stock ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Auth users can view ready_stock" ON public.ready_stock;
 CREATE POLICY "Auth users can view ready_stock" ON public.ready_stock FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert ready_stock" ON public.ready_stock;
 CREATE POLICY "Auth users can insert ready_stock" ON public.ready_stock FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update ready_stock" ON public.ready_stock;
 CREATE POLICY "Auth users can update ready_stock" ON public.ready_stock FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete ready_stock" ON public.ready_stock;
 CREATE POLICY "Auth users can delete ready_stock" ON public.ready_stock FOR DELETE TO authenticated USING (true);
 
 CREATE TRIGGER update_ready_stock_updated_at BEFORE UPDATE ON public.ready_stock

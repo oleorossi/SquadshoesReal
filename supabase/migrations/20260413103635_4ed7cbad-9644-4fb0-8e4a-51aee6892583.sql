@@ -4,6 +4,7 @@ ADD COLUMN IF NOT EXISTS requires_sewing BOOLEAN DEFAULT false;
 
 -- 2. View de fila de costura adaptada ao schema real
 -- Usa order_stages (que já rastreia setores) em vez de tabelas inexistentes
+DROP VIEW IF EXISTS public.vw_costura_queue CASCADE;
 CREATE OR REPLACE VIEW public.vw_costura_queue
 WITH (security_invoker = true) AS
 SELECT 

@@ -19,6 +19,7 @@
 ALTER TYPE public.production_stage_enum ADD VALUE IF NOT EXISTS 'palmilha' AFTER 'corte';
 
 -- ── 2. stage_order ─────────────────────────────────────────────────────────────
+DROP FUNCTION IF EXISTS public.stage_order(s production_stage_enum) CASCADE;
 CREATE OR REPLACE FUNCTION public.stage_order(s production_stage_enum)
 RETURNS integer LANGUAGE sql IMMUTABLE SET search_path = public AS $$
   SELECT CASE s
@@ -33,6 +34,10 @@ RETURNS integer LANGUAGE sql IMMUTABLE SET search_path = public AS $$
 $$;
 
 -- ── 3. create_production_wave ──────────────────────────────────────────────────
+DROP FUNCTION IF EXISTS public.create_production_wave(
+  p_week_start date,
+  p_sale_order_ids uuid[]
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.create_production_wave(
   p_week_start date,
   p_sale_order_ids uuid[]
@@ -236,6 +241,7 @@ GRANT EXECUTE ON FUNCTION public.advance_wave_stage(uuid, production_stage_enum)
 -- ── 5. v_sector_board — fix parallel-stage predecessor check ───────────────────
 -- next_wave: a wave's stage is ready to queue when ALL stages at the immediately
 -- preceding order level are complete (not just any one of them).
+DROP VIEW IF EXISTS public.v_sector_board CASCADE;
 CREATE OR REPLACE VIEW public.v_sector_board AS
 WITH stages AS (
   SELECT s.stage,

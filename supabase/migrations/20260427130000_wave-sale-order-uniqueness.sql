@@ -6,6 +6,7 @@
 -- but only once in a wave whose status is draft / planning / running.
 
 -- Helper function used by the constraint
+DROP FUNCTION IF EXISTS public.wave_is_active(wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.wave_is_active(wave_id uuid)
 RETURNS boolean
 LANGUAGE sql
@@ -22,6 +23,7 @@ $$;
 -- Cannot use a direct partial index on a FK-resolved value, so we use an
 -- EXCLUDE constraint via a trigger instead.
 
+DROP FUNCTION IF EXISTS public.check_sale_order_single_active_wave() CASCADE;
 CREATE OR REPLACE FUNCTION public.check_sale_order_single_active_wave()
 RETURNS trigger
 LANGUAGE plpgsql

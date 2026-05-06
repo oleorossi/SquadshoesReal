@@ -22,6 +22,7 @@
 -- =============================================================================
 
 -- ── 1. wave stage enum → list of Kanban stage names (lower-cased) ────────────
+DROP FUNCTION IF EXISTS public.wave_stage_to_kanban_stages(s production_stage_enum) CASCADE;
 CREATE OR REPLACE FUNCTION public.wave_stage_to_kanban_stages(s production_stage_enum)
 RETURNS text[]
 LANGUAGE sql IMMUTABLE SET search_path = public AS $$
@@ -53,6 +54,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.wave_stage_to_kanban_stages(production_stage_enum) TO authenticated;
 
 -- ── 2. Kanban stage name → wave enum stage ──────────────────────────────────
+DROP FUNCTION IF EXISTS public.kanban_stage_to_wave_stage(p_stage_name text) CASCADE;
 CREATE OR REPLACE FUNCTION public.kanban_stage_to_wave_stage(p_stage_name text)
 RETURNS production_stage_enum
 LANGUAGE sql IMMUTABLE SET search_path = public AS $$

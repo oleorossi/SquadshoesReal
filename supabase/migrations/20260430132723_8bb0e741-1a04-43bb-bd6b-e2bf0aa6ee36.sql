@@ -1,6 +1,7 @@
 -- Drop e recriação da view para evitar erro de mudança de nome de coluna
 DROP VIEW IF EXISTS public.product_stock_with_reservations;
 
+DROP VIEW IF EXISTS public.product_stock_with_reservations CASCADE;
 CREATE OR REPLACE VIEW public.product_stock_with_reservations AS
 SELECT p.*,
   COALESCE(r.reserved_qty, 0) AS reserved_quantity,
@@ -20,6 +21,7 @@ LEFT JOIN (
 -- Reaplica o restante do GRUPO D (sem a view já tratada acima)
 
 -- ========== 20260427100000_mrp-reserved-stock.sql (Funções) ==========
+DROP FUNCTION IF EXISTS public.get_in_production_stock() CASCADE;
 CREATE OR REPLACE FUNCTION public.get_in_production_stock()
 RETURNS TABLE(product_id uuid, in_production_quantity numeric)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
@@ -30,6 +32,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   GROUP BY sm.product_id;
 $$;
 
+DROP FUNCTION IF EXISTS public.parse_iso_billing_week(p_text text) CASCADE;
 CREATE OR REPLACE FUNCTION public.parse_iso_billing_week(p_text text)
 RETURNS date LANGUAGE plpgsql IMMUTABLE AS $$
 DECLARE
@@ -58,6 +61,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_accounts_payable_supplier_desc_pending
   WHERE status IN ('pending', 'approved');
 
 -- ========== 20260427130000_wave-sale-order-uniqueness.sql ==========
+DROP FUNCTION IF EXISTS public.wave_is_active(wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.wave_is_active(wave_id uuid)
 RETURNS boolean LANGUAGE sql STABLE AS $$
   SELECT EXISTS (
@@ -66,6 +70,7 @@ RETURNS boolean LANGUAGE sql STABLE AS $$
   );
 $$;
 
+DROP FUNCTION IF EXISTS public.check_sale_order_single_active_wave() CASCADE;
 CREATE OR REPLACE FUNCTION public.check_sale_order_single_active_wave()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -139,13 +144,16 @@ ALTER TABLE public.automation_executions ENABLE ROW LEVEL SECURITY;
 DO $$ 
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'auto_workflows_all') THEN
-    CREATE POLICY "auto_workflows_all"  ON public.automation_workflows  FOR ALL USING (true) WITH CHECK (true);
+    DROP POLICY IF EXISTS "auto_workflows_all" ON public.automation_workflows;
+CREATE POLICY "auto_workflows_all"  ON public.automation_workflows  FOR ALL USING (true) WITH CHECK (true);
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'auto_executions_all') THEN
-    CREATE POLICY "auto_executions_all" ON public.automation_executions FOR ALL USING (true) WITH CHECK (true);
+    DROP POLICY IF EXISTS "auto_executions_all" ON public.automation_executions;
+CREATE POLICY "auto_executions_all" ON public.automation_executions FOR ALL USING (true) WITH CHECK (true);
   END IF;
 END $$;
 
+DROP FUNCTION IF EXISTS public.touch_automation_workflow() CASCADE;
 CREATE OR REPLACE FUNCTION public.touch_automation_workflow()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
@@ -173,7 +181,8 @@ ALTER TABLE public.technical_sheet_palmilha_colors ENABLE ROW LEVEL SECURITY;
 DO $$ 
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'allow_all_palmilha_colors') THEN
-    CREATE POLICY "allow_all_palmilha_colors" ON public.technical_sheet_palmilha_colors FOR ALL USING (true) WITH CHECK (true);
+    DROP POLICY IF EXISTS "allow_all_palmilha_colors" ON public.technical_sheet_palmilha_colors;
+CREATE POLICY "allow_all_palmilha_colors" ON public.technical_sheet_palmilha_colors FOR ALL USING (true) WITH CHECK (true);
   END IF;
 END $$;
 

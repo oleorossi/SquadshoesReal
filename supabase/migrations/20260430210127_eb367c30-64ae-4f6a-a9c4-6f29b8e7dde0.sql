@@ -36,6 +36,7 @@ CREATE POLICY "Approved users can delete import logs"
 ON public.time_import_logs FOR DELETE TO authenticated
 USING (public.is_approved_user());
 
+DROP FUNCTION IF EXISTS public.import_time_records_safe(records jsonb) CASCADE;
 CREATE OR REPLACE FUNCTION public.import_time_records_safe(records jsonb)
 RETURNS jsonb
 LANGUAGE plpgsql

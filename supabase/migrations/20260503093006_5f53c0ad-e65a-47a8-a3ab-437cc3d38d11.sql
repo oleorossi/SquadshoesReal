@@ -1,3 +1,8 @@
+DROP FUNCTION IF EXISTS public.update_sale_order_atomic(
+  p_order_id uuid,
+  p_header   jsonb,
+  p_items    jsonb
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.update_sale_order_atomic(
   p_order_id uuid,
   p_header   jsonb,

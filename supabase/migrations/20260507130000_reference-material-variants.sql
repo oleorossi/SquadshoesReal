@@ -62,6 +62,7 @@ CREATE INDEX IF NOT EXISTS idx_soi_material_variant
   WHERE material_variant_id IS NOT NULL;
 
 -- ── Timestamps trigger (reuse same pattern as other tables) ──────────────────
+DROP FUNCTION IF EXISTS public.fn_touch_ref_mat_variant() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_touch_ref_mat_variant()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN

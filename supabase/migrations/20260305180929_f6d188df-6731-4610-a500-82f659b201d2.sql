@@ -12,9 +12,13 @@ CREATE TABLE public.product_groups (
 ALTER TABLE public.product_groups ENABLE ROW LEVEL SECURITY;
 
 -- RLS policies
+DROP POLICY IF EXISTS "Auth users can view groups" ON public.product_groups;
 CREATE POLICY "Auth users can view groups" ON public.product_groups FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Auth users can insert groups" ON public.product_groups;
 CREATE POLICY "Auth users can insert groups" ON public.product_groups FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update groups" ON public.product_groups;
 CREATE POLICY "Auth users can update groups" ON public.product_groups FOR UPDATE USING (true);
+DROP POLICY IF EXISTS "Auth users can delete groups" ON public.product_groups;
 CREATE POLICY "Auth users can delete groups" ON public.product_groups FOR DELETE USING (true);
 
 -- Add group_id to products

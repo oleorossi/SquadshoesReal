@@ -5,6 +5,7 @@ ALTER TABLE public.production_waves
   ADD COLUMN IF NOT EXISTS purchase_deadline   date,
   ADD COLUMN IF NOT EXISTS material_ready_date date;
 
+DROP FUNCTION IF EXISTS public.compute_wave_timeline(p_sale_order_ids uuid[]) CASCADE;
 CREATE OR REPLACE FUNCTION public.compute_wave_timeline(p_sale_order_ids uuid[])
 RETURNS TABLE (
   earliest_deadline     date,
@@ -64,6 +65,7 @@ BEGIN
 END;
 $$;
 
+DROP FUNCTION IF EXISTS public.get_wave_material_needs(p_sale_order_ids uuid[]) CASCADE;
 CREATE OR REPLACE FUNCTION public.get_wave_material_needs(p_sale_order_ids uuid[])
 RETURNS TABLE (
   product_id              uuid,
@@ -153,6 +155,7 @@ BEGIN
 END;
 $$;
 
+DROP FUNCTION IF EXISTS public.update_wave_timeline(p_wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.update_wave_timeline(p_wave_id uuid)
 RETURNS void
 LANGUAGE plpgsql

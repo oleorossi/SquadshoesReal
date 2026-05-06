@@ -27,6 +27,7 @@ ALTER TABLE public.service_orders
 
 -- Remover duplicatas de colunas se houver erro (IF NOT EXISTS já cuida disso)
 
+DROP FUNCTION IF EXISTS public.artisanal_recipes_set_updated_at() CASCADE;
 CREATE OR REPLACE FUNCTION public.artisanal_recipes_set_updated_at()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
@@ -44,15 +45,19 @@ GRANT ALL ON public.artisanal_recipes TO authenticated;
 DO $$ 
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow authenticated select artisanal_recipes') THEN
-    CREATE POLICY "Allow authenticated select artisanal_recipes" ON public.artisanal_recipes FOR SELECT TO authenticated USING (true);
+    DROP POLICY IF EXISTS "Allow authenticated select artisanal_recipes" ON public.artisanal_recipes;
+CREATE POLICY "Allow authenticated select artisanal_recipes" ON public.artisanal_recipes FOR SELECT TO authenticated USING (true);
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow authenticated insert artisanal_recipes') THEN
-    CREATE POLICY "Allow authenticated insert artisanal_recipes" ON public.artisanal_recipes FOR INSERT TO authenticated WITH CHECK (true);
+    DROP POLICY IF EXISTS "Allow authenticated insert artisanal_recipes" ON public.artisanal_recipes;
+CREATE POLICY "Allow authenticated insert artisanal_recipes" ON public.artisanal_recipes FOR INSERT TO authenticated WITH CHECK (true);
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow authenticated update artisanal_recipes') THEN
-    CREATE POLICY "Allow authenticated update artisanal_recipes" ON public.artisanal_recipes FOR UPDATE TO authenticated USING (true);
+    DROP POLICY IF EXISTS "Allow authenticated update artisanal_recipes" ON public.artisanal_recipes;
+CREATE POLICY "Allow authenticated update artisanal_recipes" ON public.artisanal_recipes FOR UPDATE TO authenticated USING (true);
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow authenticated delete artisanal_recipes') THEN
-    CREATE POLICY "Allow authenticated delete artisanal_recipes" ON public.artisanal_recipes FOR DELETE TO authenticated USING (true);
+    DROP POLICY IF EXISTS "Allow authenticated delete artisanal_recipes" ON public.artisanal_recipes;
+CREATE POLICY "Allow authenticated delete artisanal_recipes" ON public.artisanal_recipes FOR DELETE TO authenticated USING (true);
   END IF;
 END $$;

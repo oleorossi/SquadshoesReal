@@ -1,6 +1,7 @@
 -- Price history view: tracks unit_price per product across all received invoices.
 -- Joins invoice_items → invoices → suppliers to provide trend data.
 
+DROP VIEW IF EXISTS public.v_supplier_price_history CASCADE;
 CREATE OR REPLACE VIEW public.v_supplier_price_history AS
 SELECT
   ii.product_id,
@@ -22,6 +23,7 @@ WHERE ii.product_id IS NOT NULL
 ORDER BY i.issue_date DESC;
 
 -- Aggregate view: latest price and trend per product per supplier
+DROP VIEW IF EXISTS public.v_product_price_summary CASCADE;
 CREATE OR REPLACE VIEW public.v_product_price_summary AS
 SELECT
   product_id,

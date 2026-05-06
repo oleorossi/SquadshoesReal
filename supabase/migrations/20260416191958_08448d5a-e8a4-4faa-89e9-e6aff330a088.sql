@@ -1,6 +1,7 @@
 -- Prevent users from self-approving by changing the 'approved' field on their own profile.
 -- A trigger blocks any attempt to alter `approved` unless the caller is an admin.
 
+DROP FUNCTION IF EXISTS public.prevent_self_approval() CASCADE;
 CREATE OR REPLACE FUNCTION public.prevent_self_approval()
 RETURNS TRIGGER
 LANGUAGE plpgsql

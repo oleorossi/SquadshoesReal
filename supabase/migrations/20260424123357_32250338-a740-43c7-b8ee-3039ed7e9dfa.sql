@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS public.sync_sale_order_wave_items(p_sale_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.sync_sale_order_wave_items(p_sale_order_id uuid)
 RETURNS void
 LANGUAGE plpgsql

@@ -139,3 +139,32 @@ export function useWaveSaleOrders(waveId: string | null) {
     staleTime: 30_000,
   });
 }
+
+
+export function useCancelWave() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { waveId: string; reason?: string }) =>
+      cancelWave(args.waveId, args.reason),
+    onSuccess: (_r, args) => {
+      qc.invalidateQueries({ queryKey: ['waves'] });
+      qc.invalidateQueries({ queryKey: ['wave-detail', args.waveId] });
+      sonnerToast.success('Onda cancelada');
+    },
+    onError: (err: Error) =>
+      sonnerToast.error('Não foi possível cancelar', {
+        description: err.message,
+        duration: 8000,
+      }),
+  });
+}
+
+
+export function useWaveOrders(waveId: string | null) {
+  return useQuery({
+    queryKey: ['wave-orders', waveId],
+    queryFn: () => listWaveOrders(waveId!),
+    enabled: Boolean(waveId),
+    staleTime: 30_000,
+  });
+}

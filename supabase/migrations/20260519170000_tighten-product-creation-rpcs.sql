@@ -13,6 +13,7 @@
 -- =============================================================================
 
 -- 1. create_product_with_initial_stock
+DROP FUNCTION IF EXISTS public.create_product_with_initial_stock(p_name         text, p_sku          text, p_category     text, p_unit         text, p_location     text, p_quantity     numeric, p_unit_price   numeric, p_min_stock    numeric, p_max_stock    numeric, p_group_id     uuid, p_description  text, p_supplier_id  uuid, p_reason       text) CASCADE;
 CREATE OR REPLACE FUNCTION public.create_product_with_initial_stock(
   p_name         text,
   p_sku          text DEFAULT NULL,
@@ -66,6 +67,7 @@ GRANT EXECUTE ON FUNCTION public.create_product_with_initial_stock(
 
 
 -- 2. create_artisanal_product_with_stock
+DROP FUNCTION IF EXISTS public.create_artisanal_product_with_stock(p_name         text, p_color        text, p_quantity     numeric, p_unit         text, p_order_id     uuid, p_reason       text) CASCADE;
 CREATE OR REPLACE FUNCTION public.create_artisanal_product_with_stock(
   p_name         text,
   p_color        text DEFAULT '',

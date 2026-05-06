@@ -1,4 +1,5 @@
 -- 1. Refactor resync_op_atomic to ensure correct sector names
+DROP FUNCTION IF EXISTS public.resync_op_atomic(p_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.resync_op_atomic(p_order_id uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -120,6 +121,7 @@ BEGIN
 END $$;
 
 -- 3. Implement atomic UPSERT for PO items with automatic total synchronization
+DROP FUNCTION IF EXISTS public.upsert_po_item_atomic(p_purchase_order_id uuid, p_product_id uuid, p_quantity numeric, p_unit_price numeric, p_notes text) CASCADE;
 CREATE OR REPLACE FUNCTION public.upsert_po_item_atomic(
     p_purchase_order_id uuid,
     p_product_id uuid,
@@ -178,6 +180,7 @@ END;
 $function$;
 
 -- 4. Update the mass upsert function to use the atomic logic if needed
+DROP FUNCTION IF EXISTS public.upsert_purchase_order_items(p_order_id uuid, p_items jsonb) CASCADE;
 CREATE OR REPLACE FUNCTION public.upsert_purchase_order_items(p_order_id uuid, p_items jsonb)
  RETURNS void
  LANGUAGE plpgsql

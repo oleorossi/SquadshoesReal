@@ -19,6 +19,7 @@ FROM public.products p
 WHERE sm.product_id = p.id AND p.group_id IS NOT NULL AND sm.group_id IS NULL;
 
 -- Update debit_stock_for_order to use sm.group_id when available
+DROP FUNCTION IF EXISTS public.debit_stock_for_order(p_reference_id uuid, p_order_quantity integer, p_color text, p_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_stock_for_order(
   p_reference_id uuid,
   p_order_quantity integer,

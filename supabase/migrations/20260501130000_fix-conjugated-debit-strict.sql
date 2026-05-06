@@ -16,6 +16,12 @@
 --   • New orders stored with conjugated grades  (case 1)
 --   • Old orders stored with individual grades  (cases 2/3 — backwards compat)
 
+DROP FUNCTION IF EXISTS public.debit_sole_stock_by_grade(
+  p_reference_id uuid,
+  p_order_id     uuid,
+  p_color        text,
+  p_order_grade  jsonb
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_sole_stock_by_grade(
   p_reference_id uuid,
   p_order_id     uuid,

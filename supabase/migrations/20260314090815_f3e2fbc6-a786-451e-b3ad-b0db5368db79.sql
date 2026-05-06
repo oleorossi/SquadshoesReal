@@ -17,9 +17,13 @@ CREATE TABLE public.bom_operations (
 );
 
 ALTER TABLE public.bom_operations ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Auth users can view bom_operations" ON public.bom_operations;
 CREATE POLICY "Auth users can view bom_operations" ON public.bom_operations FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert bom_operations" ON public.bom_operations;
 CREATE POLICY "Auth users can insert bom_operations" ON public.bom_operations FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update bom_operations" ON public.bom_operations;
 CREATE POLICY "Auth users can update bom_operations" ON public.bom_operations FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete bom_operations" ON public.bom_operations;
 CREATE POLICY "Auth users can delete bom_operations" ON public.bom_operations FOR DELETE TO authenticated USING (true);
 
 -- 2) BOM Versions: snapshots de versões da ficha técnica
@@ -39,9 +43,13 @@ CREATE TABLE public.bom_versions (
 );
 
 ALTER TABLE public.bom_versions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Auth users can view bom_versions" ON public.bom_versions;
 CREATE POLICY "Auth users can view bom_versions" ON public.bom_versions FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert bom_versions" ON public.bom_versions;
 CREATE POLICY "Auth users can insert bom_versions" ON public.bom_versions FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update bom_versions" ON public.bom_versions;
 CREATE POLICY "Auth users can update bom_versions" ON public.bom_versions FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete bom_versions" ON public.bom_versions;
 CREATE POLICY "Auth users can delete bom_versions" ON public.bom_versions FOR DELETE TO authenticated USING (true);
 
 -- 3) Production Consumptions: consumo real por OP (padrão vs real)
@@ -63,9 +71,13 @@ CREATE TABLE public.production_consumptions (
 );
 
 ALTER TABLE public.production_consumptions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Auth users can view production_consumptions" ON public.production_consumptions;
 CREATE POLICY "Auth users can view production_consumptions" ON public.production_consumptions FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert production_consumptions" ON public.production_consumptions;
 CREATE POLICY "Auth users can insert production_consumptions" ON public.production_consumptions FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update production_consumptions" ON public.production_consumptions;
 CREATE POLICY "Auth users can update production_consumptions" ON public.production_consumptions FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete production_consumptions" ON public.production_consumptions;
 CREATE POLICY "Auth users can delete production_consumptions" ON public.production_consumptions FOR DELETE TO authenticated USING (true);
 
 -- 4) Cost Policies: configurações globais de custeio
@@ -84,9 +96,13 @@ CREATE TABLE public.cost_policies (
 );
 
 ALTER TABLE public.cost_policies ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Auth users can view cost_policies" ON public.cost_policies;
 CREATE POLICY "Auth users can view cost_policies" ON public.cost_policies FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert cost_policies" ON public.cost_policies;
 CREATE POLICY "Auth users can insert cost_policies" ON public.cost_policies FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update cost_policies" ON public.cost_policies;
 CREATE POLICY "Auth users can update cost_policies" ON public.cost_policies FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete cost_policies" ON public.cost_policies;
 CREATE POLICY "Auth users can delete cost_policies" ON public.cost_policies FOR DELETE TO authenticated USING (true);
 
 -- 5) Audit Logs: rastreabilidade de alterações
@@ -104,7 +120,9 @@ CREATE TABLE public.audit_logs (
 );
 
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Auth users can view audit_logs" ON public.audit_logs;
 CREATE POLICY "Auth users can view audit_logs" ON public.audit_logs FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert audit_logs" ON public.audit_logs;
 CREATE POLICY "Auth users can insert audit_logs" ON public.audit_logs FOR INSERT TO authenticated WITH CHECK (true);
 
 -- 6) Add standard/actual cost fields to orders table

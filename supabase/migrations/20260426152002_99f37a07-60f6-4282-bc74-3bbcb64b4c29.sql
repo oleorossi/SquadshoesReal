@@ -1,6 +1,7 @@
 -- ----------------------------------------------------------------
 -- 20260426120000_consumption-per-size-as-primary-source.sql
 -- ----------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.calculate_order_consumption(p_reference_id uuid, p_order_quantity numeric, p_color text, p_size integer) CASCADE;
 CREATE OR REPLACE FUNCTION public.calculate_order_consumption(
   p_reference_id uuid,
   p_order_quantity numeric,
@@ -186,6 +187,11 @@ BEGIN
 END;
 $function$;
 
+DROP FUNCTION IF EXISTS public.calculate_order_consumption_by_grade(
+  p_reference_id uuid,
+  p_grade jsonb,
+  p_color text
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.calculate_order_consumption_by_grade(
   p_reference_id uuid,
   p_grade jsonb,
@@ -437,6 +443,7 @@ CREATE POLICY "Authenticated users can manage sole size conjugations"
   ON public.sole_size_conjugations FOR ALL
   TO authenticated USING (true) WITH CHECK (true);
 
+DROP FUNCTION IF EXISTS public.get_sole_size_key(p_sole_group_id uuid, p_shoe_size integer) CASCADE;
 CREATE OR REPLACE FUNCTION public.get_sole_size_key(p_sole_group_id uuid, p_shoe_size integer)
 RETURNS text
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
@@ -448,6 +455,7 @@ AS $$
   LIMIT 1;
 $$;
 
+DROP FUNCTION IF EXISTS public.get_sole_group_id_for_product(p_product_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.get_sole_group_id_for_product(p_product_id uuid)
 RETURNS uuid
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
@@ -458,6 +466,12 @@ $$;
 -- ----------------------------------------------------------------
 -- 20260426140000_fix-conjugation-debit-legacy-fallback.sql
 -- ----------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.debit_sole_stock_by_grade(
+  p_reference_id uuid,
+  p_order_id uuid,
+  p_color text,
+  p_order_grade jsonb
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_sole_stock_by_grade(
   p_reference_id uuid,
   p_order_id uuid,

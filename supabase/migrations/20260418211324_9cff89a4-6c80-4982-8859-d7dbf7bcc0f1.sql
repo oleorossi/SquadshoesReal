@@ -31,10 +31,13 @@ DROP POLICY IF EXISTS ts_snap_delete ON public.technical_sheet_snapshots;
 
 CREATE POLICY ts_snap_select ON public.technical_sheet_snapshots
   FOR SELECT TO authenticated USING (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS ts_snap_insert ON public.technical_sheet_snapshots;
 CREATE POLICY ts_snap_insert ON public.technical_sheet_snapshots
   FOR INSERT TO authenticated WITH CHECK (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS ts_snap_update ON public.technical_sheet_snapshots;
 CREATE POLICY ts_snap_update ON public.technical_sheet_snapshots
   FOR UPDATE TO authenticated USING (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS ts_snap_delete ON public.technical_sheet_snapshots;
 CREATE POLICY ts_snap_delete ON public.technical_sheet_snapshots
   FOR DELETE TO authenticated USING (auth.uid() IS NOT NULL);
 
@@ -42,6 +45,7 @@ CREATE POLICY ts_snap_delete ON public.technical_sheet_snapshots
 ALTER TABLE public.technical_sheets
   ADD COLUMN IF NOT EXISTS version integer NOT NULL DEFAULT 1;
 
+DROP FUNCTION IF EXISTS public.fn_bump_sheet_version() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_bump_sheet_version()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
@@ -63,6 +67,7 @@ AFTER INSERT OR UPDATE OR DELETE ON public.sheet_materials
 FOR EACH ROW EXECUTE FUNCTION public.fn_bump_sheet_version();
 
 -- ============ 3) FUNÇÃO DE SNAPSHOT =====================================
+DROP FUNCTION IF EXISTS public.freeze_technical_sheet(p_reference_id uuid, p_sale_order_id uuid, p_sale_order_item_id uuid, p_color text, p_quantity numeric, p_size integer) CASCADE;
 CREATE OR REPLACE FUNCTION public.freeze_technical_sheet(
   p_reference_id uuid,
   p_sale_order_id uuid,
@@ -132,6 +137,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.freeze_technical_sheet(uuid, uuid, uuid, text, numeric, integer) TO authenticated;
 
 -- ============ 4) hybrid_debit_stock_for_order COM LOCK ==================
+DROP FUNCTION IF EXISTS public.hybrid_debit_stock_for_order(p_reference_id uuid, p_order_quantity numeric, p_color text, p_order_id uuid, p_order_grade jsonb) CASCADE;
 CREATE OR REPLACE FUNCTION public.hybrid_debit_stock_for_order(
   p_reference_id uuid,
   p_order_quantity numeric,

@@ -11,6 +11,7 @@ ALTER TABLE public.technical_sheets
   ALTER COLUMN sole_consumption SET DEFAULT 1;
 
 -- 3) Trigger para forçar sempre 1 quando sole_material definido
+DROP FUNCTION IF EXISTS public.enforce_sole_consumption_one() CASCADE;
 CREATE OR REPLACE FUNCTION public.enforce_sole_consumption_one()
 RETURNS TRIGGER
 LANGUAGE plpgsql

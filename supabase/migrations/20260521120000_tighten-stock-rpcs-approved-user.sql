@@ -12,6 +12,7 @@
 -- =============================================================================
 
 -- 1. adjust_stock
+DROP FUNCTION IF EXISTS public.adjust_stock(p_product_id UUID, p_expected_previous_qty NUMERIC, p_new_qty NUMERIC, p_delta NUMERIC, p_reason TEXT, p_new_grade JSONB, p_order_id UUID) CASCADE;
 CREATE OR REPLACE FUNCTION public.adjust_stock(
     p_product_id UUID,
     p_expected_previous_qty NUMERIC,
@@ -85,6 +86,7 @@ GRANT EXECUTE ON FUNCTION public.adjust_stock(uuid, numeric, numeric, numeric, t
 
 
 -- 2. restore_product_stocks_for_order
+DROP FUNCTION IF EXISTS public.restore_product_stocks_for_order(p_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.restore_product_stocks_for_order(p_order_id uuid)
 RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
@@ -132,6 +134,9 @@ GRANT EXECUTE ON FUNCTION public.restore_product_stocks_for_order(uuid) TO authe
 
 
 -- 3. restore_sole_grade_for_order
+DROP FUNCTION IF EXISTS public.restore_sole_grade_for_order(
+  p_order_id uuid
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.restore_sole_grade_for_order(
   p_order_id uuid
 ) RETURNS void
@@ -214,6 +219,7 @@ GRANT EXECUTE ON FUNCTION public.restore_sole_grade_for_order(uuid) TO authentic
 
 
 -- 4. release_order_reservations
+DROP FUNCTION IF EXISTS public.release_order_reservations(p_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.release_order_reservations(p_order_id uuid)
 RETURNS void
 LANGUAGE plpgsql
@@ -235,6 +241,7 @@ GRANT EXECUTE ON FUNCTION public.release_order_reservations(uuid) TO authenticat
 
 
 -- 5. finalize_production_sector
+DROP FUNCTION IF EXISTS public.finalize_production_sector(p_order_id uuid, p_current_sector text) CASCADE;
 CREATE OR REPLACE FUNCTION public.finalize_production_sector(p_order_id uuid, p_current_sector text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -340,6 +347,10 @@ GRANT EXECUTE ON FUNCTION public.finalize_production_sector(uuid, text) TO authe
 
 
 -- 6. complete_order_stages_bulk
+DROP FUNCTION IF EXISTS public.complete_order_stages_bulk(
+  p_order_id uuid,
+  p_stage_names text[]
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.complete_order_stages_bulk(
   p_order_id uuid,
   p_stage_names text[]

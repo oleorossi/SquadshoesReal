@@ -1,0 +1,13 @@
+project_id = "qrdvwoijghmgugejponz"
+
+[functions.emit-nfe]
+verify_jwt = false
+
+[functions.nfe-status]
+verify_jwt = false
+
+[functions.recolor-image]
+verify_jwt = false
+
+[functions.time-control]
+verify_jwt = false

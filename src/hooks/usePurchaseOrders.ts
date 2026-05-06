@@ -206,3 +206,31 @@ export function useCreatePurchaseOrder() {
     onError: (e: Error) => toast.error(e.message),
   });
 }
+
+
+export function useCapacityDrivenLeadTimes() {
+   return useQuery({
+     queryKey: ['capacity_driven_lead_times'],
+     queryFn: async () => {
+       const { data, error } = await supabase
+         .from('v_capacity_driven_lead_times' as any)
+         .select('*');
+       if (error) throw error;
+       return (data || []) as unknown as DynamicLeadTime[];
+     },
+   });
+ }
+ 
+export function usePurchaseOrders() {
+  return useQuery({
+    queryKey: ['purchase_orders'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('purchase_orders')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data || []) as unknown as PurchaseOrder[];
+    },
+  });
+}

@@ -10,6 +10,7 @@
 -- 1. Returns (product_id, in_production_quantity) for every product
 --    that has at least one out-movement on an active OP.
 --    "Active OP" = status IN ('Reservado', 'Em Produção').
+DROP FUNCTION IF EXISTS public.get_in_production_stock() CASCADE;
 CREATE OR REPLACE FUNCTION public.get_in_production_stock()
 RETURNS TABLE(product_id uuid, in_production_quantity numeric)
 LANGUAGE sql
@@ -32,6 +33,7 @@ COMMENT ON FUNCTION public.get_in_production_stock IS
   'This represents material that has been hard-debited but is still being processed in production.';
 
 -- 2. Parse ISO billing-week text (e.g. "2026-W16") to the Monday of that week.
+DROP FUNCTION IF EXISTS public.parse_iso_billing_week(p_text text) CASCADE;
 CREATE OR REPLACE FUNCTION public.parse_iso_billing_week(p_text text)
 RETURNS date
 LANGUAGE plpgsql
@@ -64,6 +66,7 @@ COMMENT ON FUNCTION public.parse_iso_billing_week IS
 --    • reserved_quantity  – soft reservations from material_reservations (status = reserved/partially_consumed)
 --    • in_production_quantity – hard-debited materials still in active OPs (from stock_movements)
 --    • available_quantity – products.quantity (free stock after debits)
+DROP VIEW IF EXISTS public.product_stock_with_reservations CASCADE;
 CREATE OR REPLACE VIEW public.product_stock_with_reservations AS
 SELECT
   p.*,

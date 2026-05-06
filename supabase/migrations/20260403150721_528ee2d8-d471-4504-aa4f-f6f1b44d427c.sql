@@ -22,24 +22,30 @@ CREATE INDEX idx_finance_attachments_account ON public.finance_attachments(accou
 -- RLS
 ALTER TABLE public.finance_attachments ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Authenticated users can view finance attachments" ON public.finance_attachments;
 CREATE POLICY "Authenticated users can view finance attachments"
   ON public.finance_attachments FOR SELECT TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Authenticated users can insert finance attachments" ON public.finance_attachments;
 CREATE POLICY "Authenticated users can insert finance attachments"
   ON public.finance_attachments FOR INSERT TO authenticated WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Authenticated users can delete finance attachments" ON public.finance_attachments;
 CREATE POLICY "Authenticated users can delete finance attachments"
   ON public.finance_attachments FOR DELETE TO authenticated USING (true);
 
 -- Storage RLS policies
+DROP POLICY IF EXISTS "Authenticated users can upload finance attachments" ON storage.objects;
 CREATE POLICY "Authenticated users can upload finance attachments"
   ON storage.objects FOR INSERT TO authenticated
   WITH CHECK (bucket_id = 'finance-attachments');
 
+DROP POLICY IF EXISTS "Authenticated users can view finance attachments" ON storage.objects;
 CREATE POLICY "Authenticated users can view finance attachments"
   ON storage.objects FOR SELECT TO authenticated
   USING (bucket_id = 'finance-attachments');
 
+DROP POLICY IF EXISTS "Authenticated users can delete finance attachments" ON storage.objects;
 CREATE POLICY "Authenticated users can delete finance attachments"
   ON storage.objects FOR DELETE TO authenticated
   USING (bucket_id = 'finance-attachments');

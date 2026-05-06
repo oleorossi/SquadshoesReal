@@ -44,9 +44,11 @@ ALTER TABLE public.employee_bank_hours ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.employee_absences ENABLE ROW LEVEL SECURITY;
 
 -- Políticas para Folha de Pagamento
+DROP POLICY IF EXISTS "Users can view their own payroll" ON public.employee_payroll;
 CREATE POLICY "Users can view their own payroll" ON public.employee_payroll
     FOR SELECT USING (auth.uid() = employee_id);
 
+DROP POLICY IF EXISTS "Admins can manage all payroll" ON public.employee_payroll;
 CREATE POLICY "Admins can manage all payroll" ON public.employee_payroll
     FOR ALL USING (
         EXISTS (
@@ -56,9 +58,11 @@ CREATE POLICY "Admins can manage all payroll" ON public.employee_payroll
     );
 
 -- Políticas para Banco de Horas
+DROP POLICY IF EXISTS "Users can view their own bank hours" ON public.employee_bank_hours;
 CREATE POLICY "Users can view their own bank hours" ON public.employee_bank_hours
     FOR SELECT USING (auth.uid() = employee_id);
 
+DROP POLICY IF EXISTS "Admins can manage all bank hours" ON public.employee_bank_hours;
 CREATE POLICY "Admins can manage all bank hours" ON public.employee_bank_hours
     FOR ALL USING (
         EXISTS (
@@ -68,9 +72,11 @@ CREATE POLICY "Admins can manage all bank hours" ON public.employee_bank_hours
     );
 
 -- Políticas para Faltas
+DROP POLICY IF EXISTS "Users can view their own absences" ON public.employee_absences;
 CREATE POLICY "Users can view their own absences" ON public.employee_absences
     FOR SELECT USING (auth.uid() = employee_id);
 
+DROP POLICY IF EXISTS "Admins can manage all absences" ON public.employee_absences;
 CREATE POLICY "Admins can manage all absences" ON public.employee_absences
     FOR ALL USING (
         EXISTS (

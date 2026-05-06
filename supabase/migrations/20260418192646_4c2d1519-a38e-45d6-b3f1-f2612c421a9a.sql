@@ -14,6 +14,7 @@ DO $$ BEGIN
     ('pending', 'in_progress', 'completed', 'blocked');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+DROP FUNCTION IF EXISTS public.stage_order(s production_stage_enum) CASCADE;
 CREATE OR REPLACE FUNCTION public.stage_order(s production_stage_enum)
 RETURNS integer LANGUAGE sql IMMUTABLE SET search_path = public AS $$
   SELECT CASE s
@@ -114,6 +115,7 @@ CREATE TABLE IF NOT EXISTS public.production_finishing_packages (
 CREATE INDEX IF NOT EXISTS idx_pkgs_wave ON public.production_finishing_packages(wave_id);
 CREATE INDEX IF NOT EXISTS idx_pkgs_store ON public.production_finishing_packages(store_name);
 
+DROP FUNCTION IF EXISTS public.fn_compute_wave_item_sort() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_compute_wave_item_sort()
 RETURNS trigger LANGUAGE plpgsql SET search_path = public AS $$
 DECLARE
@@ -136,6 +138,7 @@ CREATE TRIGGER trg_wave_item_sort
 BEFORE INSERT OR UPDATE ON public.production_wave_items
 FOR EACH ROW EXECUTE FUNCTION public.fn_compute_wave_item_sort();
 
+DROP FUNCTION IF EXISTS public.fn_guard_wave_stage_transition() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_guard_wave_stage_transition()
 RETURNS trigger LANGUAGE plpgsql SET search_path = public AS $$
 DECLARE
@@ -181,6 +184,10 @@ CREATE TRIGGER trg_guard_wave_stage
 BEFORE UPDATE ON public.production_wave_stages
 FOR EACH ROW EXECUTE FUNCTION public.fn_guard_wave_stage_transition();
 
+DROP FUNCTION IF EXISTS public.create_production_wave(
+  p_week_start date,
+  p_sale_order_ids uuid[]
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.create_production_wave(
   p_week_start date,
   p_sale_order_ids uuid[]
@@ -253,6 +260,7 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.create_production_wave(date, uuid[]) TO authenticated;
 
+DROP FUNCTION IF EXISTS public.start_wave(p_wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.start_wave(p_wave_id uuid)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
@@ -274,6 +282,7 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.start_wave(uuid) TO authenticated;
 
+DROP FUNCTION IF EXISTS public.advance_wave_stage(p_wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.advance_wave_stage(p_wave_id uuid)
 RETURNS production_stage_enum
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
@@ -325,6 +334,7 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.advance_wave_stage(uuid) TO authenticated;
 
+DROP FUNCTION IF EXISTS public.split_wave_to_finishing(p_wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.split_wave_to_finishing(p_wave_id uuid)
 RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
@@ -364,6 +374,7 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.split_wave_to_finishing(uuid) TO authenticated;
 
+DROP VIEW IF EXISTS public.v_sector_board CASCADE;
 CREATE OR REPLACE VIEW public.v_sector_board AS
 WITH stages AS (
   SELECT s.stage,
@@ -402,6 +413,7 @@ ORDER BY ord;
 
 GRANT SELECT ON public.v_sector_board TO authenticated;
 
+DROP VIEW IF EXISTS public.v_wave_detail CASCADE;
 CREATE OR REPLACE VIEW public.v_wave_detail AS
 SELECT
   w.id AS wave_id,
@@ -443,17 +455,22 @@ ALTER TABLE public.production_wave_stages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.production_finishing_packages ENABLE ROW LEVEL SECURITY;
 
 DO $$ BEGIN
-  CREATE POLICY auth_all_waves ON public.production_waves FOR ALL TO authenticated USING (true) WITH CHECK (true);
+  DROP POLICY IF EXISTS auth_all_waves ON public.production_waves;
+CREATE POLICY auth_all_waves ON public.production_waves FOR ALL TO authenticated USING (true) WITH CHECK (true);
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN
-  CREATE POLICY auth_all_wave_items ON public.production_wave_items FOR ALL TO authenticated USING (true) WITH CHECK (true);
+  DROP POLICY IF EXISTS auth_all_wave_items ON public.production_wave_items;
+CREATE POLICY auth_all_wave_items ON public.production_wave_items FOR ALL TO authenticated USING (true) WITH CHECK (true);
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN
-  CREATE POLICY auth_all_wave_src ON public.production_wave_item_sources FOR ALL TO authenticated USING (true) WITH CHECK (true);
+  DROP POLICY IF EXISTS auth_all_wave_src ON public.production_wave_item_sources;
+CREATE POLICY auth_all_wave_src ON public.production_wave_item_sources FOR ALL TO authenticated USING (true) WITH CHECK (true);
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN
-  CREATE POLICY auth_all_wave_stages ON public.production_wave_stages FOR ALL TO authenticated USING (true) WITH CHECK (true);
+  DROP POLICY IF EXISTS auth_all_wave_stages ON public.production_wave_stages;
+CREATE POLICY auth_all_wave_stages ON public.production_wave_stages FOR ALL TO authenticated USING (true) WITH CHECK (true);
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN
-  CREATE POLICY auth_all_wave_pkgs ON public.production_finishing_packages FOR ALL TO authenticated USING (true) WITH CHECK (true);
+  DROP POLICY IF EXISTS auth_all_wave_pkgs ON public.production_finishing_packages;
+CREATE POLICY auth_all_wave_pkgs ON public.production_finishing_packages FOR ALL TO authenticated USING (true) WITH CHECK (true);
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;

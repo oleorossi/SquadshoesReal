@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS public.resolve_billing_week_for_order(p_sale_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.resolve_billing_week_for_order(p_sale_order_id uuid)
 RETURNS date
 LANGUAGE plpgsql

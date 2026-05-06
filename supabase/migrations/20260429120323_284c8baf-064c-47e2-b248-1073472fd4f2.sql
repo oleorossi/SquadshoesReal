@@ -1,6 +1,7 @@
 -- 20260429220000_consolidate-stage-order-and-business-days.sql
 
 -- Define a ordem numérica das etapas
+DROP FUNCTION IF EXISTS public.stage_order(p_stage text) CASCADE;
 CREATE OR REPLACE FUNCTION public.stage_order(p_stage text)
 RETURNS integer
 LANGUAGE sql IMMUTABLE AS $$
@@ -17,6 +18,7 @@ LANGUAGE sql IMMUTABLE AS $$
 $$;
 
 -- Função auxiliar para adicionar dias úteis (pula Sábado e Domingo)
+DROP FUNCTION IF EXISTS public.add_business_days(p_start_date timestamptz, p_days integer) CASCADE;
 CREATE OR REPLACE FUNCTION public.add_business_days(p_start_date timestamptz, p_days integer)
 RETURNS timestamptz
 LANGUAGE plpgsql IMMUTABLE AS $$

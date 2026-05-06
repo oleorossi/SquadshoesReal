@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS public.product_technical_sheets (
 -- Enable RLS for product_technical_sheets
 ALTER TABLE public.product_technical_sheets ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Allow full access for authenticated users to technical sheets" ON public.product_technical_sheets;
 CREATE POLICY "Allow full access for authenticated users to technical sheets"
 ON public.product_technical_sheets
 FOR ALL
@@ -30,6 +31,7 @@ CREATE TABLE IF NOT EXISTS public.inventory_transactions (
 -- Enable RLS for inventory_transactions
 ALTER TABLE public.inventory_transactions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Allow full access for authenticated users to inventory transactions" ON public.inventory_transactions;
 CREATE POLICY "Allow full access for authenticated users to inventory transactions"
 ON public.inventory_transactions
 FOR ALL
@@ -49,6 +51,7 @@ BEGIN
 END $$;
 
 -- SQL Function to process order stock out
+DROP FUNCTION IF EXISTS process_order_stock_out(p_order_id UUID, p_product_id UUID, p_quantity INT) CASCADE;
 CREATE OR REPLACE FUNCTION process_order_stock_out(p_order_id UUID, p_product_id UUID, p_quantity INT)
 RETURNS void AS $$
 DECLARE
@@ -79,6 +82,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Trigger for updated_at
+DROP FUNCTION IF EXISTS public.handle_updated_at() CASCADE;
 CREATE OR REPLACE FUNCTION public.handle_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN

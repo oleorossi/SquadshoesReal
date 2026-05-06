@@ -4,6 +4,7 @@
 DROP FUNCTION IF EXISTS public.compute_wave_timeline(uuid[]);
 
 -- 1. stage_order — mapa de níveis
+DROP FUNCTION IF EXISTS public.stage_order(s production_stage_enum) CASCADE;
 CREATE OR REPLACE FUNCTION public.stage_order(s production_stage_enum)
 RETURNS integer LANGUAGE sql IMMUTABLE SET search_path = public AS $$
   SELECT CASE s
@@ -18,12 +19,14 @@ RETURNS integer LANGUAGE sql IMMUTABLE SET search_path = public AS $$
 $$;
 
 -- 2. stage_starts_with_wave — quais setores iniciam imediatamente
+DROP FUNCTION IF EXISTS public.stage_starts_with_wave(s production_stage_enum) CASCADE;
 CREATE OR REPLACE FUNCTION public.stage_starts_with_wave(s production_stage_enum)
 RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path = public AS $$
   SELECT s = 'mesa';
 $$;
 
 -- 3. start_wave
+DROP FUNCTION IF EXISTS public.start_wave(p_wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.start_wave(p_wave_id uuid)
 RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
@@ -64,6 +67,7 @@ GRANT EXECUTE ON FUNCTION public.start_wave(uuid)                              T
 GRANT EXECUTE ON FUNCTION public.stage_starts_with_wave(production_stage_enum) TO authenticated;
 
 -- 4. add_business_days
+DROP FUNCTION IF EXISTS public.add_business_days(p_start date, p_days int) CASCADE;
 CREATE OR REPLACE FUNCTION public.add_business_days(p_start date, p_days int)
 RETURNS date LANGUAGE plpgsql IMMUTABLE SET search_path = public AS $$
 DECLARE
@@ -85,6 +89,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.add_business_days(date, int) TO authenticated;
 
 -- 5. compute_wave_timeline
+DROP FUNCTION IF EXISTS public.compute_wave_timeline(p_sale_order_ids uuid[]) CASCADE;
 CREATE OR REPLACE FUNCTION public.compute_wave_timeline(p_sale_order_ids uuid[])
 RETURNS TABLE (
   earliest_deadline    date,

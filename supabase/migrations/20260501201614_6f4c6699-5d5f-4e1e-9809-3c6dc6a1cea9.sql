@@ -3,6 +3,11 @@ ALTER TABLE technical_sheets
   ADD COLUMN IF NOT EXISTS corte_a_faca boolean NOT NULL DEFAULT false;
 
 -- === 20260501120000_fix-consumption-by-grade-per-size.sql ===
+DROP FUNCTION IF EXISTS public.calculate_order_consumption_by_grade(
+  p_reference_id uuid,
+  p_grade        jsonb,
+  p_color        text
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.calculate_order_consumption_by_grade(
   p_reference_id uuid,
   p_grade        jsonb,
@@ -264,6 +269,7 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.calculate_order_consumption_by_grade(uuid, jsonb, text) TO authenticated;
 
+DROP FUNCTION IF EXISTS public.calculate_order_consumption(p_reference_id  uuid, p_order_quantity numeric, p_color         text, p_size          integer) CASCADE;
 CREATE OR REPLACE FUNCTION public.calculate_order_consumption(
   p_reference_id  uuid,
   p_order_quantity numeric,
@@ -479,6 +485,12 @@ GRANT EXECUTE ON FUNCTION public.calculate_order_consumption(uuid, numeric, text
 
 -- === 20260501130000_fix-conjugated-debit-strict.sql ===
 
+DROP FUNCTION IF EXISTS public.debit_sole_stock_by_grade(
+  p_reference_id uuid,
+  p_order_id     uuid,
+  p_color        text,
+  p_order_grade  jsonb
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_sole_stock_by_grade(
   p_reference_id uuid,
   p_order_id     uuid,
@@ -684,7 +696,8 @@ GRANT EXECUTE ON FUNCTION public.debit_sole_stock_by_grade(uuid, uuid, text, jso
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Approved users can view artisanal_recipes' AND tablename = 'artisanal_recipes') THEN
-      CREATE POLICY "Approved users can view artisanal_recipes" ON public.artisanal_recipes FOR SELECT TO authenticated USING (public.is_approved_user());
+      DROP POLICY IF EXISTS "Approved users can view artisanal_recipes" ON public.artisanal_recipes;
+CREATE POLICY "Approved users can view artisanal_recipes" ON public.artisanal_recipes FOR SELECT TO authenticated USING (public.is_approved_user());
     END IF;
     -- Adicionar as outras políticas de forma similar para evitar erros de duplicidade
 END $$;

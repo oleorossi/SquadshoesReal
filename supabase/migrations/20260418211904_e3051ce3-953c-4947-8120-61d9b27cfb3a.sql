@@ -5,6 +5,7 @@ ALTER TABLE public.products
   ADD COLUMN IF NOT EXISTS lead_time_days integer NOT NULL DEFAULT 15,
   ADD COLUMN IF NOT EXISTS preferred_supplier_id uuid REFERENCES public.suppliers(id) ON DELETE SET NULL;
 
+DROP FUNCTION IF EXISTS public.fn_projected_demand() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_projected_demand()
 RETURNS TABLE (
   product_id uuid,
@@ -57,6 +58,7 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.fn_projected_demand() TO authenticated;
 
+DROP VIEW IF EXISTS public.v_mrp_needs CASCADE;
 CREATE OR REPLACE VIEW public.v_mrp_needs
 WITH (security_invoker = true) AS
 WITH demand AS (SELECT * FROM public.fn_projected_demand()),
@@ -104,6 +106,7 @@ LEFT JOIN public.suppliers s ON s.id = p.preferred_supplier_id
 WHERE COALESCE(d.total_required, 0) > 0
    OR p.quantity < p.min_stock;
 
+DROP FUNCTION IF EXISTS public.generate_purchase_orders_from_mrp(p_product_ids uuid[]) CASCADE;
 CREATE OR REPLACE FUNCTION public.generate_purchase_orders_from_mrp(
   p_product_ids uuid[] DEFAULT NULL
 ) RETURNS SETOF uuid
@@ -201,6 +204,7 @@ DROP POLICY IF EXISTS rework_rw ON public.production_wave_rework;
 CREATE POLICY rework_rw ON public.production_wave_rework
   FOR ALL TO authenticated USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
 
+DROP FUNCTION IF EXISTS public.register_defect_and_adjust_wave(p_wave_stage_id uuid, p_defect_qty numeric, p_reason text, p_product_ref uuid, p_color text) CASCADE;
 CREATE OR REPLACE FUNCTION public.register_defect_and_adjust_wave(
   p_wave_stage_id uuid,
   p_defect_qty numeric,
@@ -258,6 +262,7 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.register_defect_and_adjust_wave(uuid, numeric, text, uuid, text) TO authenticated;
 
+DROP VIEW IF EXISTS public.v_stage_quality CASCADE;
 CREATE OR REPLACE VIEW public.v_stage_quality
 WITH (security_invoker = true) AS
 SELECT
@@ -279,6 +284,7 @@ GROUP BY pws.id, pws.wave_id, pws.stage, pws.produced_quantity;
 -- =========================================================================
 -- PATCH 7 — GUARDAS DE INTEGRIDADE
 -- =========================================================================
+DROP FUNCTION IF EXISTS public.fn_guard_delete_technical_sheet() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_guard_delete_technical_sheet()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE v_count integer;
@@ -314,6 +320,7 @@ CREATE TRIGGER trg_guard_del_ts
 BEFORE DELETE ON public.technical_sheets
 FOR EACH ROW EXECUTE FUNCTION public.fn_guard_delete_technical_sheet();
 
+DROP FUNCTION IF EXISTS public.fn_guard_delete_product() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_guard_delete_product()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE v_count integer;
@@ -361,6 +368,7 @@ DROP POLICY IF EXISTS price_log_ins ON public.product_price_log;
 CREATE POLICY price_log_ins ON public.product_price_log
   FOR INSERT TO authenticated WITH CHECK (auth.uid() IS NOT NULL);
 
+DROP FUNCTION IF EXISTS public.fn_log_price_change() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_log_price_change()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN

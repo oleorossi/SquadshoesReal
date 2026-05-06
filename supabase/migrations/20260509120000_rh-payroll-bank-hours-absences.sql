@@ -111,6 +111,7 @@ COMMENT ON TABLE public.bank_hours_movements IS
   'compensation (compensação em outro dia), payout (banco zerado por pagamento).';
 
 -- View consolidada do saldo
+DROP VIEW IF EXISTS public.bank_hours_balance CASCADE;
 CREATE OR REPLACE VIEW public.bank_hours_balance AS
 SELECT
   e.id                          AS employee_id,

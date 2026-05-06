@@ -11,6 +11,7 @@ REVOKE EXECUTE ON FUNCTION public.try_reserve_materials(
   uuid, uuid, numeric, text, date, boolean, boolean, text, boolean, boolean
 ) FROM PUBLIC;
 
+DROP FUNCTION IF EXISTS public.try_reserve_materials(p_order_id uuid, p_reference_id uuid, p_order_quantity numeric, p_color text, p_production_date date, p_permit_partial boolean, p_consider_safety_stock boolean, p_priority text, p_allow_expedite boolean, p_consolidate_po boolean) CASCADE;
 CREATE OR REPLACE FUNCTION public.try_reserve_materials(
   p_order_id uuid,
   p_reference_id uuid,

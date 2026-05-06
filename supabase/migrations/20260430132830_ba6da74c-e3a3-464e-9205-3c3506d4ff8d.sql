@@ -23,6 +23,7 @@ ALTER TABLE public.sole_silk_registrations
 
 
 -- ========== 20260428150000_block-rascunho-wave-assignment.sql ==========
+DROP FUNCTION IF EXISTS public.trg_fn_block_rascunho_wave_assignment() CASCADE;
 CREATE OR REPLACE FUNCTION public.trg_fn_block_rascunho_wave_assignment()
 RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE v_status TEXT; v_order_number TEXT;
@@ -98,7 +99,8 @@ ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
 DO $$ 
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Auth users can manage companies') THEN
-    CREATE POLICY "Auth users can manage companies" ON public.companies FOR ALL TO authenticated USING (true) WITH CHECK (true);
+    DROP POLICY IF EXISTS "Auth users can manage companies" ON public.companies;
+CREATE POLICY "Auth users can manage companies" ON public.companies FOR ALL TO authenticated USING (true) WITH CHECK (true);
   END IF;
 END $$;
 
@@ -108,6 +110,7 @@ ALTER TABLE public.nfe_emitidas
   ADD COLUMN IF NOT EXISTS justificativa_cancelamento text DEFAULT '',
   ADD COLUMN IF NOT EXISTS data_cancelamento timestamptz;
 
+DROP FUNCTION IF EXISTS public.set_companies_updated_at() CASCADE;
 CREATE OR REPLACE FUNCTION public.set_companies_updated_at()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN NEW.updated_at = now(); RETURN NEW; END;
@@ -127,6 +130,7 @@ ALTER TABLE public.production_waves
   ADD COLUMN IF NOT EXISTS purchase_deadline   date,
   ADD COLUMN IF NOT EXISTS material_ready_date date;
 
+DROP FUNCTION IF EXISTS public.compute_wave_timeline(p_sale_order_ids uuid[]) CASCADE;
 CREATE OR REPLACE FUNCTION public.compute_wave_timeline(p_sale_order_ids uuid[])
 RETURNS TABLE (
   earliest_deadline date, corte_start_date date, costura_start_date date,
@@ -161,6 +165,7 @@ BEGIN
 END;
 $$;
 
+DROP FUNCTION IF EXISTS public.get_wave_material_needs(p_sale_order_ids uuid[]) CASCADE;
 CREATE OR REPLACE FUNCTION public.get_wave_material_needs(p_sale_order_ids uuid[])
 RETURNS TABLE (
   product_id uuid, product_name text, unit text, color text,
@@ -215,6 +220,7 @@ BEGIN
 END;
 $$;
 
+DROP FUNCTION IF EXISTS public.update_wave_timeline(p_wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.update_wave_timeline(p_wave_id uuid)
 RETURNS void LANGUAGE plpgsql AS $$
 DECLARE v_order_ids uuid[]; v_tl record;

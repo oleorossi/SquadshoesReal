@@ -5,6 +5,7 @@ ALTER TABLE public.suppliers
   ADD COLUMN IF NOT EXISTS last_purchase_date date;
 
 -- Batch stock restore RPC for order deletion
+DROP FUNCTION IF EXISTS public.restore_product_stocks_for_order(p_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.restore_product_stocks_for_order(p_order_id uuid)
 RETURNS void
 LANGUAGE plpgsql

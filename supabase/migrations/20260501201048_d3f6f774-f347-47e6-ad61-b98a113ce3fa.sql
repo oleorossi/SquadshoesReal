@@ -15,6 +15,7 @@ CREATE INDEX IF NOT EXISTS idx_po_status           ON public.purchase_orders(sta
 CREATE INDEX IF NOT EXISTS idx_po_supplier_id      ON public.purchase_orders(supplier_id);
 
 -- View de Exposição de Crédito
+DROP VIEW IF EXISTS public.v_client_credit_exposure CASCADE;
 CREATE OR REPLACE VIEW public.v_client_credit_exposure AS
 SELECT
   c.id                                                      AS client_id,
@@ -31,6 +32,7 @@ LEFT JOIN public.accounts_receivable ar ON ar.client_cnpj = c.cnpj
 GROUP BY c.id, c.razao_social, c.nome_fantasia, c.credit_limit;
 
 -- View de Ordens Atrasadas
+DROP VIEW IF EXISTS public.v_late_orders CASCADE;
 CREATE OR REPLACE VIEW public.v_late_orders AS
 SELECT
   o.id,
@@ -54,6 +56,7 @@ WHERE o.status IN ('Reservado', 'Em Produção')
   AND o.created_at::date < CURRENT_DATE;
 
 -- View de Ordens de Compra Atrasadas
+DROP VIEW IF EXISTS public.v_overdue_purchase_orders CASCADE;
 CREATE OR REPLACE VIEW public.v_overdue_purchase_orders AS
 SELECT
   po.id,

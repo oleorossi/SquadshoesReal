@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS public.auto_assign_sale_order_to_wave(p_sale_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.auto_assign_sale_order_to_wave(p_sale_order_id uuid)
 RETURNS uuid
 LANGUAGE plpgsql

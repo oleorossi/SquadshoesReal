@@ -10,9 +10,13 @@ CREATE TABLE public.product_references (
 
 ALTER TABLE public.product_references ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Auth users can view references" ON public.product_references;
 CREATE POLICY "Auth users can view references" ON public.product_references FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert references" ON public.product_references;
 CREATE POLICY "Auth users can insert references" ON public.product_references FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update references" ON public.product_references;
 CREATE POLICY "Auth users can update references" ON public.product_references FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete references" ON public.product_references;
 CREATE POLICY "Auth users can delete references" ON public.product_references FOR DELETE TO authenticated USING (true);
 
 -- Trigger for updated_at
@@ -31,9 +35,13 @@ CREATE TABLE public.reference_materials (
 
 ALTER TABLE public.reference_materials ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Auth users can view ref materials" ON public.reference_materials;
 CREATE POLICY "Auth users can view ref materials" ON public.reference_materials FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert ref materials" ON public.reference_materials;
 CREATE POLICY "Auth users can insert ref materials" ON public.reference_materials FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update ref materials" ON public.reference_materials;
 CREATE POLICY "Auth users can update ref materials" ON public.reference_materials FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete ref materials" ON public.reference_materials;
 CREATE POLICY "Auth users can delete ref materials" ON public.reference_materials FOR DELETE TO authenticated USING (true);
 
 -- Table: production orders
@@ -49,9 +57,13 @@ CREATE TABLE public.orders (
 
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Auth users can view orders" ON public.orders;
 CREATE POLICY "Auth users can view orders" ON public.orders FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert orders" ON public.orders;
 CREATE POLICY "Auth users can insert orders" ON public.orders FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update orders" ON public.orders;
 CREATE POLICY "Auth users can update orders" ON public.orders FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete orders" ON public.orders;
 CREATE POLICY "Auth users can delete orders" ON public.orders FOR DELETE TO authenticated USING (true);
 
 CREATE TRIGGER update_orders_updated_at
@@ -59,6 +71,7 @@ CREATE TRIGGER update_orders_updated_at
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 -- Function to debit stock when an order is placed
+DROP FUNCTION IF EXISTS public.debit_stock_for_order(p_reference_id uuid, p_order_quantity integer) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_stock_for_order(p_reference_id uuid, p_order_quantity integer)
 RETURNS void
 LANGUAGE plpgsql

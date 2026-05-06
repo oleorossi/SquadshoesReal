@@ -48,14 +48,22 @@ CREATE TABLE public.group_supplier_materials (
 ALTER TABLE public.group_suppliers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.group_supplier_materials ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Auth users can view group_suppliers" ON public.group_suppliers;
 CREATE POLICY "Auth users can view group_suppliers" ON public.group_suppliers FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert group_suppliers" ON public.group_suppliers;
 CREATE POLICY "Auth users can insert group_suppliers" ON public.group_suppliers FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update group_suppliers" ON public.group_suppliers;
 CREATE POLICY "Auth users can update group_suppliers" ON public.group_suppliers FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete group_suppliers" ON public.group_suppliers;
 CREATE POLICY "Auth users can delete group_suppliers" ON public.group_suppliers FOR DELETE TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Auth users can view group_supplier_materials" ON public.group_supplier_materials;
 CREATE POLICY "Auth users can view group_supplier_materials" ON public.group_supplier_materials FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert group_supplier_materials" ON public.group_supplier_materials;
 CREATE POLICY "Auth users can insert group_supplier_materials" ON public.group_supplier_materials FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update group_supplier_materials" ON public.group_supplier_materials;
 CREATE POLICY "Auth users can update group_supplier_materials" ON public.group_supplier_materials FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete group_supplier_materials" ON public.group_supplier_materials;
 CREATE POLICY "Auth users can delete group_supplier_materials" ON public.group_supplier_materials FOR DELETE TO authenticated USING (true);
 
 -- Trigger updated_at

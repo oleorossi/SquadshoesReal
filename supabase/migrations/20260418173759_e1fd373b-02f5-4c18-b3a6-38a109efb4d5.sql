@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS public.resolve_material_product(p_group_name text, p_color text, p_required numeric, p_check_stock boolean) CASCADE;
 CREATE OR REPLACE FUNCTION public.resolve_material_product(
   p_group_name text,
   p_color text,

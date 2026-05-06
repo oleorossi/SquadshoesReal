@@ -1,6 +1,7 @@
 -- Trigger automático: quando TODAS as etapas de uma OP estão 'concluido', marca a OP como 'Finalizado'
 -- Isso garante consistência independente de qual módulo atualize order_stages (Kanban, RPC, página de setor, etc.)
 
+DROP FUNCTION IF EXISTS public.auto_finalize_order_on_all_stages_done() CASCADE;
 CREATE OR REPLACE FUNCTION public.auto_finalize_order_on_all_stages_done()
 RETURNS TRIGGER
 LANGUAGE plpgsql

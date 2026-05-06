@@ -12,6 +12,7 @@ CREATE TABLE public.sole_structures (
 ALTER TABLE public.sole_structures ENABLE ROW LEVEL SECURITY;
 
 -- Create policies (allowing authenticated users access for now)
+DROP POLICY IF EXISTS "Authenticated users can manage sole structures" ON public.sole_structures;
 CREATE POLICY "Authenticated users can manage sole structures" 
 ON public.sole_structures 
 FOR ALL 
@@ -19,6 +20,7 @@ TO authenticated
 USING (true);
 
 -- Add update trigger
+DROP FUNCTION IF EXISTS public.handle_updated_at() CASCADE;
 CREATE OR REPLACE FUNCTION public.handle_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN

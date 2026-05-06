@@ -49,9 +49,13 @@ ALTER TABLE public.print_jobs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.print_job_items ENABLE ROW LEVEL SECURITY;
 
 -- Simple Policies
+DROP POLICY IF EXISTS "Public read care_instructions" ON public.care_instructions;
 CREATE POLICY "Public read care_instructions" ON public.care_instructions FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Public read templates" ON public.label_templates;
 CREATE POLICY "Public read templates" ON public.label_templates FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Public read print_jobs" ON public.print_jobs;
 CREATE POLICY "Public read print_jobs" ON public.print_jobs FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Public read print_job_items" ON public.print_job_items;
 CREATE POLICY "Public read print_job_items" ON public.print_job_items FOR SELECT USING (true);
 
 -- Add sample data

@@ -3,6 +3,7 @@
 -- =============================================================================
 
 -- Helper: resolve billing week for a sale order
+DROP FUNCTION IF EXISTS public.resolve_billing_week_for_order(p_sale_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.resolve_billing_week_for_order(p_sale_order_id uuid)
 RETURNS date
 LANGUAGE plpgsql
@@ -75,6 +76,7 @@ END;
 $$;
 
 -- Auto-assign one sale order to its wave (idempotent)
+DROP FUNCTION IF EXISTS public.auto_assign_sale_order_to_wave(p_sale_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.auto_assign_sale_order_to_wave(p_sale_order_id uuid)
 RETURNS uuid
 LANGUAGE plpgsql
@@ -171,6 +173,7 @@ END;
 $$;
 
 -- Trigger function (skip when service role / no auth context but order is manually edited)
+DROP FUNCTION IF EXISTS public.trg_auto_assign_wave_on_sale_order() CASCADE;
 CREATE OR REPLACE FUNCTION public.trg_auto_assign_wave_on_sale_order()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -199,6 +202,7 @@ CREATE TRIGGER trg_auto_assign_wave
   EXECUTE FUNCTION public.trg_auto_assign_wave_on_sale_order();
 
 -- Maintenance helper to backfill existing approved orders not yet on a wave
+DROP FUNCTION IF EXISTS public.repair_missing_wave_assignments() CASCADE;
 CREATE OR REPLACE FUNCTION public.repair_missing_wave_assignments()
 RETURNS int
 LANGUAGE plpgsql

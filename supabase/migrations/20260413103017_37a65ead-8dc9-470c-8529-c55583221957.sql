@@ -11,6 +11,7 @@ CREATE TABLE public.production_equipment (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 ALTER TABLE public.production_equipment ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Approved users can manage equipment" ON public.production_equipment;
 CREATE POLICY "Approved users can manage equipment"
   ON public.production_equipment FOR ALL TO authenticated
   USING (public.is_approved_user()) WITH CHECK (public.is_approved_user());
@@ -29,6 +30,7 @@ CREATE TABLE public.equipment_downtime (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 ALTER TABLE public.equipment_downtime ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Approved users can manage downtime" ON public.equipment_downtime;
 CREATE POLICY "Approved users can manage downtime"
   ON public.equipment_downtime FOR ALL TO authenticated
   USING (public.is_approved_user()) WITH CHECK (public.is_approved_user());
@@ -41,6 +43,7 @@ CREATE TABLE public.quality_checklists (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 ALTER TABLE public.quality_checklists ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Approved users can manage checklists" ON public.quality_checklists;
 CREATE POLICY "Approved users can manage checklists"
   ON public.quality_checklists FOR ALL TO authenticated
   USING (public.is_approved_user()) WITH CHECK (public.is_approved_user());
@@ -57,6 +60,7 @@ CREATE TABLE public.quality_inspections (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 ALTER TABLE public.quality_inspections ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Approved users can manage inspections" ON public.quality_inspections;
 CREATE POLICY "Approved users can manage inspections"
   ON public.quality_inspections FOR ALL TO authenticated
   USING (public.is_approved_user()) WITH CHECK (public.is_approved_user());
@@ -70,6 +74,7 @@ CREATE TABLE public.employee_skills (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 ALTER TABLE public.employee_skills ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Approved users can manage skills" ON public.employee_skills;
 CREATE POLICY "Approved users can manage skills"
   ON public.employee_skills FOR ALL TO authenticated
   USING (public.is_approved_user()) WITH CHECK (public.is_approved_user());
@@ -90,11 +95,13 @@ CREATE TABLE public.sales_targets (
     UNIQUE(representative_id, period_month, period_year)
 );
 ALTER TABLE public.sales_targets ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Approved users can manage sales targets" ON public.sales_targets;
 CREATE POLICY "Approved users can manage sales targets"
   ON public.sales_targets FOR ALL TO authenticated
   USING (public.is_approved_user()) WITH CHECK (public.is_approved_user());
 
 -- 8. View Ranking Fornecedores (corrigido: suppliers.name, não razao_social)
+DROP VIEW IF EXISTS public.vw_supplier_quality_rating CASCADE;
 CREATE OR REPLACE VIEW public.vw_supplier_quality_rating
 WITH (security_invoker = true) AS
 SELECT 
@@ -111,6 +118,7 @@ LEFT JOIN public.finished_goods_receipts fgr ON fgr.order_id = o.id
 GROUP BY s.id, s.name;
 
 -- 9. View Fluxo de Caixa Projetado
+DROP VIEW IF EXISTS public.vw_cash_flow_projection CASCADE;
 CREATE OR REPLACE VIEW public.vw_cash_flow_projection
 WITH (security_invoker = true) AS
 WITH entries AS (

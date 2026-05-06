@@ -1,4 +1,5 @@
 
+DROP FUNCTION IF EXISTS public.debit_stock_for_order(p_reference_id uuid, p_order_quantity integer, p_color text) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_stock_for_order(p_reference_id uuid, p_order_quantity integer, p_color text DEFAULT ''::text)
  RETURNS void
  LANGUAGE plpgsql

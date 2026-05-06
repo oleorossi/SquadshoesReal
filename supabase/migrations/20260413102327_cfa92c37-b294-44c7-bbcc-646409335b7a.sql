@@ -2,6 +2,7 @@
 DROP POLICY IF EXISTS "Authenticated users can view finance attachments" ON storage.objects;
 DROP POLICY IF EXISTS "Users can view finance attachments" ON storage.objects;
 
+DROP POLICY IF EXISTS "Approved users can view finance attachments" ON storage.objects;
 CREATE POLICY "Approved users can view finance attachments"
   ON storage.objects FOR SELECT
   TO authenticated
@@ -12,6 +13,7 @@ DROP POLICY IF EXISTS "Authenticated users can view finance attachments" ON publ
 DROP POLICY IF EXISTS "Users can view finance attachments" ON public.finance_attachments;
 DROP POLICY IF EXISTS "finance_attachments_select" ON public.finance_attachments;
 
+DROP POLICY IF EXISTS "Approved users can view finance attachments" ON public.finance_attachments;
 CREATE POLICY "Approved users can view finance attachments"
   ON public.finance_attachments FOR SELECT
   TO authenticated

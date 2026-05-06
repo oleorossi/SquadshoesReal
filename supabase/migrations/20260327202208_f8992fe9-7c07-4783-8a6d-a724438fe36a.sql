@@ -7,6 +7,7 @@ ALTER TABLE public.service_orders
   ADD COLUMN IF NOT EXISTS receipt_generated_at timestamptz;
 
 -- Auto-generate receipt number
+DROP FUNCTION IF EXISTS public.generate_receipt_number() CASCADE;
 CREATE OR REPLACE FUNCTION public.generate_receipt_number()
 RETURNS trigger
 LANGUAGE plpgsql

@@ -15,21 +15,25 @@ CREATE TABLE public.sole_silk_registrations (
 ALTER TABLE public.sole_silk_registrations ENABLE ROW LEVEL SECURITY;
 
 -- Create policies
+DROP POLICY IF EXISTS "Allow authenticated users to view silk registrations" ON public.sole_silk_registrations;
 CREATE POLICY "Allow authenticated users to view silk registrations"
 ON public.sole_silk_registrations FOR SELECT
 TO authenticated
 USING (true);
 
+DROP POLICY IF EXISTS "Allow authenticated users to insert silk registrations" ON public.sole_silk_registrations;
 CREATE POLICY "Allow authenticated users to insert silk registrations"
 ON public.sole_silk_registrations FOR INSERT
 TO authenticated
 WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Allow authenticated users to update silk registrations" ON public.sole_silk_registrations;
 CREATE POLICY "Allow authenticated users to update silk registrations"
 ON public.sole_silk_registrations FOR UPDATE
 TO authenticated
 USING (true);
 
+DROP POLICY IF EXISTS "Allow authenticated users to delete silk registrations" ON public.sole_silk_registrations;
 CREATE POLICY "Allow authenticated users to delete silk registrations"
 ON public.sole_silk_registrations FOR DELETE
 TO authenticated

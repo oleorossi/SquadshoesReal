@@ -3,6 +3,7 @@ ALTER TABLE public.products
 ADD COLUMN IF NOT EXISTS supplier_lead_time_days INT DEFAULT 7;
 
 -- 2. Create the purchase projection timeline view
+DROP VIEW IF EXISTS public.purchase_projection_timeline CASCADE;
 CREATE OR REPLACE VIEW public.purchase_projection_timeline AS
 SELECT 
     o.id AS order_id,

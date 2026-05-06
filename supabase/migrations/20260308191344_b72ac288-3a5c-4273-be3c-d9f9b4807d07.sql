@@ -32,6 +32,7 @@ CREATE TABLE public.purchase_order_items (
 CREATE SEQUENCE IF NOT EXISTS oc_number_seq START 1;
 
 -- Auto-generate OC number
+DROP FUNCTION IF EXISTS public.generate_oc_number() CASCADE;
 CREATE OR REPLACE FUNCTION public.generate_oc_number()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -58,17 +59,26 @@ CREATE TRIGGER trg_purchase_orders_updated
 ALTER TABLE public.purchase_orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.purchase_order_items ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Auth users can view purchase_orders" ON public.purchase_orders;
 CREATE POLICY "Auth users can view purchase_orders" ON public.purchase_orders FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert purchase_orders" ON public.purchase_orders;
 CREATE POLICY "Auth users can insert purchase_orders" ON public.purchase_orders FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update purchase_orders" ON public.purchase_orders;
 CREATE POLICY "Auth users can update purchase_orders" ON public.purchase_orders FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete purchase_orders" ON public.purchase_orders;
 CREATE POLICY "Auth users can delete purchase_orders" ON public.purchase_orders FOR DELETE TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Auth users can view purchase_order_items" ON public.purchase_order_items;
 CREATE POLICY "Auth users can view purchase_order_items" ON public.purchase_order_items FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert purchase_order_items" ON public.purchase_order_items;
 CREATE POLICY "Auth users can insert purchase_order_items" ON public.purchase_order_items FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update purchase_order_items" ON public.purchase_order_items;
 CREATE POLICY "Auth users can update purchase_order_items" ON public.purchase_order_items FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete purchase_order_items" ON public.purchase_order_items;
 CREATE POLICY "Auth users can delete purchase_order_items" ON public.purchase_order_items FOR DELETE TO authenticated USING (true);
 
 -- Function to auto-create purchase order when stock hits min
+DROP FUNCTION IF EXISTS public.auto_create_purchase_order() CASCADE;
 CREATE OR REPLACE FUNCTION public.auto_create_purchase_order()
 RETURNS trigger
 LANGUAGE plpgsql

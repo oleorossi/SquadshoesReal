@@ -30,6 +30,7 @@ COMMENT ON COLUMN public.clients.endereco_updated_at IS
 -- Trigger: quando qualquer campo de endereço é atualizado em UPDATE
 -- sem que o sync explicitamente passe `endereco_updated_at`, considera
 -- como edição humana e marca o override automaticamente.
+DROP FUNCTION IF EXISTS public.fn_track_client_address_manual_edit() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_track_client_address_manual_edit()
 RETURNS trigger
 LANGUAGE plpgsql

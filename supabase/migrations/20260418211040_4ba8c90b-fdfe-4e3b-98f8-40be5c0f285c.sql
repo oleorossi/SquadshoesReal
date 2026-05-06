@@ -1,6 +1,7 @@
 -- Auto-finalize sale orders when all OPs finish Acabamento.
 -- Also when sale_order is set to Faturado, mark child OPs as Finalizado.
 
+DROP FUNCTION IF EXISTS public.auto_bill_sale_order_on_finishing() CASCADE;
 CREATE OR REPLACE FUNCTION public.auto_bill_sale_order_on_finishing()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -74,6 +75,7 @@ EXECUTE FUNCTION public.auto_bill_sale_order_on_finishing();
 
 
 -- When a sale_order is manually flipped to Faturado, finalize all its child OPs
+DROP FUNCTION IF EXISTS public.finalize_orders_on_sale_order_billed() CASCADE;
 CREATE OR REPLACE FUNCTION public.finalize_orders_on_sale_order_billed()
 RETURNS trigger
 LANGUAGE plpgsql

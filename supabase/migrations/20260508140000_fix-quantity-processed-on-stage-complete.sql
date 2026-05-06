@@ -25,6 +25,7 @@
 -- =============================================================================
 
 -- ── 1. Recreate finalize_production_sector with quantity_processed assignment ─
+DROP FUNCTION IF EXISTS public.finalize_production_sector(p_order_id uuid, p_current_sector text) CASCADE;
 CREATE OR REPLACE FUNCTION public.finalize_production_sector(p_order_id uuid, p_current_sector text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -127,6 +128,10 @@ END;
 $function$;
 
 -- ── 2. Bulk completion RPC for jumpToSector and similar callers ──────────────
+DROP FUNCTION IF EXISTS public.complete_order_stages_bulk(
+  p_order_id uuid,
+  p_stage_names text[]
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.complete_order_stages_bulk(
   p_order_id uuid,
   p_stage_names text[]

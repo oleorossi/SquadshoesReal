@@ -22,9 +22,13 @@ CREATE TABLE public.order_stages (
 ALTER TABLE public.order_stages ENABLE ROW LEVEL SECURITY;
 
 -- RLS policies - authenticated users can CRUD
+DROP POLICY IF EXISTS "Auth users can view order_stages" ON public.order_stages;
 CREATE POLICY "Auth users can view order_stages" ON public.order_stages FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert order_stages" ON public.order_stages;
 CREATE POLICY "Auth users can insert order_stages" ON public.order_stages FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update order_stages" ON public.order_stages;
 CREATE POLICY "Auth users can update order_stages" ON public.order_stages FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete order_stages" ON public.order_stages;
 CREATE POLICY "Auth users can delete order_stages" ON public.order_stages FOR DELETE TO authenticated USING (true);
 
 -- Enable realtime

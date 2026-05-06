@@ -4,6 +4,7 @@
 -- - Remove o fallback silencioso para qualquer cor; lança exceção clara quando
 --   só existe produto de cor diferente no grupo.
 
+DROP FUNCTION IF EXISTS public.debit_strap_stock(p_strap_colors jsonb, p_order_quantity integer, p_order_id uuid, p_order_grade jsonb) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_strap_stock(
   p_strap_colors jsonb,
   p_order_quantity integer,

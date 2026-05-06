@@ -1,4 +1,5 @@
 -- Cria a função para obter o status dos materiais de uma ordem
+DROP FUNCTION IF EXISTS public.get_order_material_status(p_order_id UUID) CASCADE;
 CREATE OR REPLACE FUNCTION public.get_order_material_status(p_order_id UUID)
 RETURNS TEXT AS $$
 DECLARE
@@ -54,6 +55,7 @@ BEGIN
 END $$;
 
 -- Função para atualizar o material_status
+DROP FUNCTION IF EXISTS public.update_order_material_status() CASCADE;
 CREATE OR REPLACE FUNCTION public.update_order_material_status()
 RETURNS TRIGGER AS $$
 BEGIN

@@ -20,13 +20,15 @@ ALTER TABLE public.sheet_material_grading ENABLE ROW LEVEL SECURITY;
 
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'sheet_material_grading' AND policyname = 'Approved users can manage grading') THEN
-    CREATE POLICY "Approved users can manage grading"
+    DROP POLICY IF EXISTS "Approved users can manage grading" ON public.sheet_material_grading;
+CREATE POLICY "Approved users can manage grading"
       ON public.sheet_material_grading FOR ALL TO authenticated
       USING (public.is_approved_user()) WITH CHECK (public.is_approved_user());
   END IF;
 END $$;
 
 -- 3. Views
+DROP VIEW IF EXISTS public.vw_necessidade_corte CASCADE;
 CREATE OR REPLACE VIEW public.vw_necessidade_corte
 WITH (security_invoker = true) AS
 SELECT 
@@ -46,6 +48,7 @@ JOIN public.products p ON p.id = sm.product_id
 WHERE sm.sector = 'corte'
   AND o.status NOT IN ('Finalizada', 'Cancelada');
 
+DROP VIEW IF EXISTS public.vw_necessidade_costura CASCADE;
 CREATE OR REPLACE VIEW public.vw_necessidade_costura
 WITH (security_invoker = true) AS
 SELECT 

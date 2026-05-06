@@ -6,6 +6,7 @@
 --   The first stage (no predecessor) is always allowed to start.
 --   Completing a stage (→ concluido) is never blocked.
 
+DROP FUNCTION IF EXISTS public.fn_guard_manual_stage_transition() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_guard_manual_stage_transition()
 RETURNS TRIGGER
 LANGUAGE plpgsql

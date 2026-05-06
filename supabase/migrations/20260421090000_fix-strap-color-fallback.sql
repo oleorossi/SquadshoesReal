@@ -3,6 +3,7 @@
 -- Now: only fall back when the found product has no specific color (generic/multi-color stock).
 -- If the fallback product has a DIFFERENT specific color, raise a clear exception.
 
+DROP FUNCTION IF EXISTS public.debit_strap_stock(p_strap_colors jsonb, p_order_quantity integer, p_order_id uuid, p_order_grade jsonb) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_strap_stock(
   p_strap_colors jsonb,
   p_order_quantity integer,

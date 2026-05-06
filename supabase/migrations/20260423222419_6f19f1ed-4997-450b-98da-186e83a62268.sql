@@ -3,14 +3,17 @@ DROP POLICY IF EXISTS "Allow authenticated users to insert silk registrations" O
 DROP POLICY IF EXISTS "Allow authenticated users to update silk registrations" ON public.sole_silk_registrations;
 DROP POLICY IF EXISTS "Allow authenticated users to delete silk registrations" ON public.sole_silk_registrations;
 
+DROP POLICY IF EXISTS "Approved users can insert silk registrations" ON public.sole_silk_registrations;
 CREATE POLICY "Approved users can insert silk registrations" 
 ON public.sole_silk_registrations FOR INSERT 
 WITH CHECK (is_approved_user());
 
+DROP POLICY IF EXISTS "Approved users can update silk registrations" ON public.sole_silk_registrations;
 CREATE POLICY "Approved users can update silk registrations" 
 ON public.sole_silk_registrations FOR UPDATE 
 USING (is_approved_user());
 
+DROP POLICY IF EXISTS "Approved users can delete silk registrations" ON public.sole_silk_registrations;
 CREATE POLICY "Approved users can delete silk registrations" 
 ON public.sole_silk_registrations FOR DELETE 
 USING (is_approved_user());

@@ -1,5 +1,6 @@
 DROP POLICY "Authenticated users can manage catalog models" ON public.sheet_catalog_models;
 
+DROP POLICY IF EXISTS "Approved users can manage catalog models" ON public.sheet_catalog_models;
 CREATE POLICY "Approved users can manage catalog models"
   ON public.sheet_catalog_models
   FOR ALL

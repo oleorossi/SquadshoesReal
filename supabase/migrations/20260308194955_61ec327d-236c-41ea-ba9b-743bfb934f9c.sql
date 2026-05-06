@@ -3,6 +3,7 @@
 ALTER TABLE public.product_references ADD COLUMN IF NOT EXISTS barcode text DEFAULT '';
 
 -- Create a function to auto-generate EAN-13 style barcodes for references
+DROP FUNCTION IF EXISTS public.generate_reference_barcode() CASCADE;
 CREATE OR REPLACE FUNCTION public.generate_reference_barcode()
 RETURNS trigger
 LANGUAGE plpgsql

@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS public.technical_sheet_palmilha_colors (
 
 ALTER TABLE public.technical_sheet_palmilha_colors ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "allow_all_palmilha_colors" ON public.technical_sheet_palmilha_colors;
 CREATE POLICY "allow_all_palmilha_colors"
   ON public.technical_sheet_palmilha_colors
   FOR ALL USING (true) WITH CHECK (true);

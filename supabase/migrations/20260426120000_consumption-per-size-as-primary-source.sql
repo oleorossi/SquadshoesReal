@@ -1,6 +1,7 @@
 -- Make technical_sheets.*_consumption_per_size the primary source for all consumption calculations.
 -- Priority: sheet per-size → sole_technical_specs (if sole_drives_consumption) → scalar fallback.
 
+DROP FUNCTION IF EXISTS public.calculate_order_consumption(p_reference_id uuid, p_order_quantity numeric, p_color text, p_size integer) CASCADE;
 CREATE OR REPLACE FUNCTION public.calculate_order_consumption(
   p_reference_id uuid,
   p_order_quantity numeric,
@@ -238,6 +239,11 @@ $function$;
 
 -- Grade-based version: reads technical_sheets.*_consumption_per_size per size (primary),
 -- falls back to sole_technical_specs, then to sheet scalar.
+DROP FUNCTION IF EXISTS public.calculate_order_consumption_by_grade(
+  p_reference_id uuid,
+  p_grade jsonb,
+  p_color text
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.calculate_order_consumption_by_grade(
   p_reference_id uuid,
   p_grade jsonb,

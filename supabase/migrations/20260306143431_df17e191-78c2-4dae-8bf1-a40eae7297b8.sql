@@ -11,6 +11,7 @@ CREATE TABLE public.user_roles (
 
 ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
 
+DROP FUNCTION IF EXISTS public.has_role(_user_id uuid, _role app_role) CASCADE;
 CREATE OR REPLACE FUNCTION public.has_role(_user_id uuid, _role app_role)
 RETURNS boolean
 LANGUAGE sql
@@ -35,6 +36,7 @@ CREATE TABLE public.profiles (
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
+DROP FUNCTION IF EXISTS public.is_approved(_user_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.is_approved(_user_id uuid)
 RETURNS boolean
 LANGUAGE sql
@@ -60,31 +62,43 @@ CREATE TABLE public.user_permissions (
 ALTER TABLE public.user_permissions ENABLE ROW LEVEL SECURITY;
 
 -- Step 4: RLS Policies
+DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
 CREATE POLICY "Users can view own profile" ON public.profiles FOR SELECT TO authenticated
   USING (id = auth.uid() OR public.has_role(auth.uid(), 'admin'));
+DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE TO authenticated
   USING (id = auth.uid());
+DROP POLICY IF EXISTS "Admins can update any profile" ON public.profiles;
 CREATE POLICY "Admins can update any profile" ON public.profiles FOR UPDATE TO authenticated
   USING (public.has_role(auth.uid(), 'admin'));
+DROP POLICY IF EXISTS "System can insert profiles" ON public.profiles;
 CREATE POLICY "System can insert profiles" ON public.profiles FOR INSERT WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Users can view own roles" ON public.user_roles;
 CREATE POLICY "Users can view own roles" ON public.user_roles FOR SELECT TO authenticated
   USING (user_id = auth.uid() OR public.has_role(auth.uid(), 'admin'));
+DROP POLICY IF EXISTS "Admins can insert roles" ON public.user_roles;
 CREATE POLICY "Admins can insert roles" ON public.user_roles FOR INSERT TO authenticated
   WITH CHECK (public.has_role(auth.uid(), 'admin'));
+DROP POLICY IF EXISTS "Admins can delete roles" ON public.user_roles;
 CREATE POLICY "Admins can delete roles" ON public.user_roles FOR DELETE TO authenticated
   USING (public.has_role(auth.uid(), 'admin'));
 
+DROP POLICY IF EXISTS "Users can view own permissions" ON public.user_permissions;
 CREATE POLICY "Users can view own permissions" ON public.user_permissions FOR SELECT TO authenticated
   USING (user_id = auth.uid() OR public.has_role(auth.uid(), 'admin'));
+DROP POLICY IF EXISTS "Admins can manage permissions" ON public.user_permissions;
 CREATE POLICY "Admins can manage permissions" ON public.user_permissions FOR INSERT TO authenticated
   WITH CHECK (public.has_role(auth.uid(), 'admin'));
+DROP POLICY IF EXISTS "Admins can update permissions" ON public.user_permissions;
 CREATE POLICY "Admins can update permissions" ON public.user_permissions FOR UPDATE TO authenticated
   USING (public.has_role(auth.uid(), 'admin'));
+DROP POLICY IF EXISTS "Admins can delete permissions" ON public.user_permissions;
 CREATE POLICY "Admins can delete permissions" ON public.user_permissions FOR DELETE TO authenticated
   USING (public.has_role(auth.uid(), 'admin'));
 
 -- Step 5: Auto-create profile on signup
+DROP FUNCTION IF EXISTS public.handle_new_user() CASCADE;
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger
 LANGUAGE plpgsql

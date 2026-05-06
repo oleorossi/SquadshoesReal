@@ -1,6 +1,7 @@
 ALTER TABLE public.order_costs
   ADD COLUMN IF NOT EXISTS packaging_cost numeric DEFAULT 0;
 
+DROP FUNCTION IF EXISTS public.calculate_order_cost(p_sale_order_id uuid, p_sale_order_item_id uuid, p_persist boolean) CASCADE;
 CREATE OR REPLACE FUNCTION public.calculate_order_cost(
   p_sale_order_id uuid,
   p_sale_order_item_id uuid DEFAULT NULL,

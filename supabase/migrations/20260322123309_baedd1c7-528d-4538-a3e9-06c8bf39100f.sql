@@ -19,9 +19,13 @@ CREATE TABLE public.material_reservations (
 
 ALTER TABLE public.material_reservations ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Auth users can view material_reservations" ON public.material_reservations;
 CREATE POLICY "Auth users can view material_reservations" ON public.material_reservations FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Approved users can insert material_reservations" ON public.material_reservations;
 CREATE POLICY "Approved users can insert material_reservations" ON public.material_reservations FOR INSERT TO authenticated WITH CHECK (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can update material_reservations" ON public.material_reservations;
 CREATE POLICY "Approved users can update material_reservations" ON public.material_reservations FOR UPDATE TO authenticated USING (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can delete material_reservations" ON public.material_reservations;
 CREATE POLICY "Approved users can delete material_reservations" ON public.material_reservations FOR DELETE TO authenticated USING (is_approved_user());
 
 CREATE INDEX idx_material_reservations_order ON public.material_reservations(order_id);
@@ -50,9 +54,13 @@ CREATE TABLE public.quality_records (
 
 ALTER TABLE public.quality_records ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Auth users can view quality_records" ON public.quality_records;
 CREATE POLICY "Auth users can view quality_records" ON public.quality_records FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Approved users can insert quality_records" ON public.quality_records;
 CREATE POLICY "Approved users can insert quality_records" ON public.quality_records FOR INSERT TO authenticated WITH CHECK (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can update quality_records" ON public.quality_records;
 CREATE POLICY "Approved users can update quality_records" ON public.quality_records FOR UPDATE TO authenticated USING (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can delete quality_records" ON public.quality_records;
 CREATE POLICY "Approved users can delete quality_records" ON public.quality_records FOR DELETE TO authenticated USING (is_approved_user());
 
 CREATE INDEX idx_quality_records_order ON public.quality_records(order_id);
@@ -74,9 +82,13 @@ CREATE TABLE public.picking_lists (
 
 ALTER TABLE public.picking_lists ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Auth users can view picking_lists" ON public.picking_lists;
 CREATE POLICY "Auth users can view picking_lists" ON public.picking_lists FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Approved users can insert picking_lists" ON public.picking_lists;
 CREATE POLICY "Approved users can insert picking_lists" ON public.picking_lists FOR INSERT TO authenticated WITH CHECK (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can update picking_lists" ON public.picking_lists;
 CREATE POLICY "Approved users can update picking_lists" ON public.picking_lists FOR UPDATE TO authenticated USING (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can delete picking_lists" ON public.picking_lists;
 CREATE POLICY "Approved users can delete picking_lists" ON public.picking_lists FOR DELETE TO authenticated USING (is_approved_user());
 
 CREATE INDEX idx_picking_lists_order ON public.picking_lists(order_id);
@@ -99,9 +111,13 @@ CREATE TABLE public.picking_list_items (
 
 ALTER TABLE public.picking_list_items ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Auth users can view picking_list_items" ON public.picking_list_items;
 CREATE POLICY "Auth users can view picking_list_items" ON public.picking_list_items FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Approved users can insert picking_list_items" ON public.picking_list_items;
 CREATE POLICY "Approved users can insert picking_list_items" ON public.picking_list_items FOR INSERT TO authenticated WITH CHECK (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can update picking_list_items" ON public.picking_list_items;
 CREATE POLICY "Approved users can update picking_list_items" ON public.picking_list_items FOR UPDATE TO authenticated USING (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can delete picking_list_items" ON public.picking_list_items;
 CREATE POLICY "Approved users can delete picking_list_items" ON public.picking_list_items FOR DELETE TO authenticated USING (is_approved_user());
 
 CREATE INDEX idx_picking_list_items_list ON public.picking_list_items(picking_list_id);

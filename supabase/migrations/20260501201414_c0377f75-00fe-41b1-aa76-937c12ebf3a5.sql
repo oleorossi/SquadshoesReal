@@ -2,6 +2,7 @@
 
 DROP VIEW IF EXISTS public.purchase_projection_timeline;
 
+DROP VIEW IF EXISTS public.purchase_projection_timeline CASCADE;
 CREATE OR REPLACE VIEW public.purchase_projection_timeline AS
 WITH lt AS (
   SELECT
@@ -129,6 +130,7 @@ FROM lt
   LEFT JOIN public.suppliers sup ON sup.id = m.supplier_id;
 
 -- Function: compute_order_planned_dates
+DROP FUNCTION IF EXISTS public.compute_order_planned_dates() CASCADE;
 CREATE OR REPLACE FUNCTION public.compute_order_planned_dates()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -195,6 +197,7 @@ BEFORE INSERT OR UPDATE OF quantity, sale_order_id, reference_id ON public.order
 FOR EACH ROW EXECUTE FUNCTION public.compute_order_planned_dates();
 
 -- Function: trg_fn_block_rascunho_wave_assignment
+DROP FUNCTION IF EXISTS trg_fn_block_rascunho_wave_assignment() CASCADE;
 CREATE OR REPLACE FUNCTION trg_fn_block_rascunho_wave_assignment()
 RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
@@ -255,7 +258,8 @@ DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Auth users can manage companies' AND tablename = 'companies') THEN
         ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
-        CREATE POLICY "Auth users can manage companies" ON public.companies
+        DROP POLICY IF EXISTS "Auth users can manage companies" ON public.companies;
+CREATE POLICY "Auth users can manage companies" ON public.companies
           FOR ALL TO authenticated USING (true) WITH CHECK (true);
     END IF;
 END $$;
@@ -268,6 +272,7 @@ ALTER TABLE public.nfe_emitidas
   ADD COLUMN IF NOT EXISTS justificativa_cancelamento text DEFAULT '',
   ADD COLUMN IF NOT EXISTS data_cancelamento timestamptz;
 
+DROP FUNCTION IF EXISTS public.set_companies_updated_at() CASCADE;
 CREATE OR REPLACE FUNCTION public.set_companies_updated_at()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -290,6 +295,7 @@ ALTER TABLE public.production_waves
   ADD COLUMN IF NOT EXISTS material_ready_date date;
 
 -- Function: import_time_records_safe
+DROP FUNCTION IF EXISTS import_time_records_safe(records jsonb) CASCADE;
 CREATE OR REPLACE FUNCTION import_time_records_safe(records jsonb)
 RETURNS jsonb
 LANGUAGE plpgsql

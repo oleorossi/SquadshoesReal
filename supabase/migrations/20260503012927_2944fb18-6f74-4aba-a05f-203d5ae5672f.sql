@@ -1,5 +1,6 @@
 DROP VIEW IF EXISTS public.purchase_projection_timeline;
 
+DROP VIEW IF EXISTS public.purchase_projection_timeline CASCADE;
 CREATE OR REPLACE VIEW public.purchase_projection_timeline AS 
 WITH lt AS (
     SELECT o.id AS order_id,

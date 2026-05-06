@@ -9,6 +9,7 @@
 
 -- ============ 1. FIX audit_logs: restrict INSERT to authenticated ============
 DROP POLICY IF EXISTS "Anyone can insert audit logs" ON public.audit_logs;
+DROP POLICY IF EXISTS "Auth users can insert audit logs" ON public.audit_logs;
 CREATE POLICY "Auth users can insert audit logs" ON public.audit_logs
   FOR INSERT TO authenticated WITH CHECK (true);
 

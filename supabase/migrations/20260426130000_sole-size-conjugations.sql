@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS public.sole_size_conjugations (
 );
 
 -- Helper: for a sole group + shoe size, return the conjugated key (or NULL if not configured)
+DROP FUNCTION IF EXISTS public.get_sole_size_key(p_sole_group_id uuid, p_shoe_size integer) CASCADE;
 CREATE OR REPLACE FUNCTION public.get_sole_size_key(p_sole_group_id uuid, p_shoe_size integer)
 RETURNS text
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
@@ -22,6 +23,7 @@ AS $$
 $$;
 
 -- Helper: return group_id for a given product_id
+DROP FUNCTION IF EXISTS public.get_sole_group_id_for_product(p_product_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.get_sole_group_id_for_product(p_product_id uuid)
 RETURNS uuid
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
@@ -30,6 +32,12 @@ AS $$
 $$;
 
 -- Updated debit_sole_stock_by_grade with conjugation support
+DROP FUNCTION IF EXISTS public.debit_sole_stock_by_grade(
+  p_reference_id uuid,
+  p_order_id uuid,
+  p_color text,
+  p_order_grade jsonb
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_sole_stock_by_grade(
   p_reference_id uuid,
   p_order_id uuid,

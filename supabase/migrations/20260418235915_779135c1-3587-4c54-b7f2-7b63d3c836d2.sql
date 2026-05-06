@@ -1,6 +1,11 @@
 -- ============================================================
 -- Per-size consumption engine (exatidão por numeração)
 -- ============================================================
+DROP FUNCTION IF EXISTS public.calculate_order_consumption_by_grade(
+  p_reference_id uuid,
+  p_grade jsonb,
+  p_color text
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.calculate_order_consumption_by_grade(
   p_reference_id uuid,
   p_grade jsonb,
@@ -320,6 +325,7 @@ GRANT EXECUTE ON FUNCTION public.calculate_order_consumption_by_grade(uuid, json
 -- ============================================================
 -- freeze_technical_sheet com suporte à grade
 -- ============================================================
+DROP FUNCTION IF EXISTS public.freeze_technical_sheet(p_reference_id uuid, p_sale_order_id uuid, p_sale_order_item_id uuid, p_color text, p_quantity numeric, p_size integer, p_grade jsonb) CASCADE;
 CREATE OR REPLACE FUNCTION public.freeze_technical_sheet(
   p_reference_id uuid,
   p_sale_order_id uuid,
@@ -389,6 +395,7 @@ GRANT EXECUTE ON FUNCTION public.freeze_technical_sheet(uuid, uuid, uuid, text, 
 -- ============================================================
 -- hybrid_debit_stock_for_order: passa grade para freeze
 -- ============================================================
+DROP FUNCTION IF EXISTS public.hybrid_debit_stock_for_order(p_reference_id uuid, p_order_quantity numeric, p_color text, p_order_id uuid, p_order_grade jsonb) CASCADE;
 CREATE OR REPLACE FUNCTION public.hybrid_debit_stock_for_order(
   p_reference_id uuid,
   p_order_quantity numeric,

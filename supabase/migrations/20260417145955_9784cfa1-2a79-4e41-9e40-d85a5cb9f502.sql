@@ -1,3 +1,7 @@
+DROP FUNCTION IF EXISTS public.propagate_component_sole_to_sheets(
+  p_component_sheet_id uuid,
+  p_sole_group_id uuid
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.propagate_component_sole_to_sheets(
   p_component_sheet_id uuid,
   p_sole_group_id uuid

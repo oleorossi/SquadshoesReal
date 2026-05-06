@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS public.shoe_category_lead_times (
 
 ALTER TABLE public.shoe_category_lead_times ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "allow all authenticated" ON public.shoe_category_lead_times;
 CREATE POLICY "allow all authenticated" ON public.shoe_category_lead_times
   FOR ALL USING (auth.role() = 'authenticated');
 
@@ -36,6 +37,7 @@ VALUES
 ON CONFLICT (shoe_category) DO NOTHING;
 
 -- ── 2. compute_wave_timeline with 3-level fallback ────────────────────────────
+DROP FUNCTION IF EXISTS public.compute_wave_timeline(p_sale_order_ids uuid[]) CASCADE;
 CREATE OR REPLACE FUNCTION public.compute_wave_timeline(p_sale_order_ids uuid[])
 RETURNS TABLE (
   earliest_deadline     date,

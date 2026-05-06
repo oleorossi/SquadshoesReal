@@ -10,6 +10,7 @@ CREATE TABLE public.technical_sheet_sole_colors (
 
 ALTER TABLE public.technical_sheet_sole_colors ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Allow all access to technical_sheet_sole_colors" ON public.technical_sheet_sole_colors;
 CREATE POLICY "Allow all access to technical_sheet_sole_colors"
   ON public.technical_sheet_sole_colors
   FOR ALL
@@ -17,6 +18,7 @@ CREATE POLICY "Allow all access to technical_sheet_sole_colors"
   USING (true)
   WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Allow anon read on technical_sheet_sole_colors" ON public.technical_sheet_sole_colors;
 CREATE POLICY "Allow anon read on technical_sheet_sole_colors"
   ON public.technical_sheet_sole_colors
   FOR SELECT

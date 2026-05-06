@@ -1,6 +1,7 @@
 -- Create views for labels and inventory monitoring
 
 -- View for production labels (etiquetas)
+DROP VIEW IF EXISTS public.vw_production_labels CASCADE;
 CREATE OR REPLACE VIEW public.vw_production_labels AS
 SELECT 
     v.id AS variant_id,
@@ -13,6 +14,7 @@ FROM public.product_variants v
 JOIN public.product_masters m ON v.master_id = m.id;
 
 -- View for projected material availability (Automatic Purchase Orders)
+DROP VIEW IF EXISTS public.vw_material_projected_availability CASCADE;
 CREATE OR REPLACE VIEW public.vw_material_projected_availability AS
 SELECT 
     mat.id,

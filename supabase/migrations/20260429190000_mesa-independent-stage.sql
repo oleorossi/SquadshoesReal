@@ -22,6 +22,7 @@
 --   2. start_wave(): inicia ord=1 E 'mesa' especificamente
 
 -- ── 1. stage_order ─────────────────────────────────────────────────────────────
+DROP FUNCTION IF EXISTS public.stage_order(s production_stage_enum) CASCADE;
 CREATE OR REPLACE FUNCTION public.stage_order(s production_stage_enum)
 RETURNS integer LANGUAGE sql IMMUTABLE SET search_path = public AS $$
   SELECT CASE s
@@ -36,6 +37,7 @@ RETURNS integer LANGUAGE sql IMMUTABLE SET search_path = public AS $$
 $$;
 
 -- ── 2. start_wave — inicia Corte (ord=1) e Mesa imediatamente ──────────────────
+DROP FUNCTION IF EXISTS public.start_wave(p_wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.start_wave(p_wave_id uuid)
 RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$

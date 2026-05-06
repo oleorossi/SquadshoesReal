@@ -95,6 +95,7 @@ FROM lt
   LEFT JOIN public.product_groups pg ON pg.id = m.group_id
   LEFT JOIN public.suppliers sup ON sup.id = m.supplier_id;
 
+DROP FUNCTION IF EXISTS public.compute_order_planned_dates() CASCADE;
 CREATE OR REPLACE FUNCTION public.compute_order_planned_dates() RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE v_delivery date; v_corte int; v_costura int; v_montagem int; v_mesa int; v_acabamento int;
 BEGIN
@@ -117,6 +118,7 @@ DROP TRIGGER IF EXISTS trg_compute_order_planned_dates ON public.orders;
 CREATE TRIGGER trg_compute_order_planned_dates BEFORE INSERT OR UPDATE OF quantity, sale_order_id, reference_id ON public.orders FOR EACH ROW EXECUTE FUNCTION public.compute_order_planned_dates();
 
 -- 2. 20260428150000_block-rascunho-wave-assignment.sql
+DROP FUNCTION IF EXISTS trg_fn_block_rascunho_wave_assignment() CASCADE;
 CREATE OR REPLACE FUNCTION trg_fn_block_rascunho_wave_assignment() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE v_status TEXT; v_order_number TEXT;
 BEGIN
@@ -164,6 +166,7 @@ ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Auth users can manage companies" ON public.companies;
 CREATE POLICY "Auth users can manage companies" ON public.companies FOR ALL TO authenticated USING (true) WITH CHECK (true);
 ALTER TABLE public.nfe_emitidas ADD COLUMN IF NOT EXISTS company_id uuid REFERENCES public.companies(id) ON DELETE SET NULL, ADD COLUMN IF NOT EXISTS cnpj_emitente text DEFAULT '', ADD COLUMN IF NOT EXISTS justificativa_cancelamento text DEFAULT '', ADD COLUMN IF NOT EXISTS data_cancelamento timestamptz;
+DROP FUNCTION IF EXISTS public.set_companies_updated_at() CASCADE;
 CREATE OR REPLACE FUNCTION public.set_companies_updated_at() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN NEW.updated_at = now(); RETURN NEW; END; $$;
 DROP TRIGGER IF EXISTS trg_companies_updated_at ON public.companies;
 CREATE TRIGGER trg_companies_updated_at BEFORE UPDATE ON public.companies FOR EACH ROW EXECUTE FUNCTION public.set_companies_updated_at();
@@ -197,6 +200,7 @@ BEGIN
 END; $$;
 
 -- 7. 20260430120000_import-time-records-safe-rpc.sql
+DROP FUNCTION IF EXISTS import_time_records_safe(records jsonb) CASCADE;
 CREATE OR REPLACE FUNCTION import_time_records_safe(records jsonb) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE rec jsonb; ins_count integer := 0; skp_count integer := 0;
 BEGIN

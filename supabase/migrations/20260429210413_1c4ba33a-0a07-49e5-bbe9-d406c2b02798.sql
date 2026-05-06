@@ -1,4 +1,5 @@
 -- ── 1. Mapeamento: estágio da onda → nomes de setores no Kanban ──────────────
+DROP FUNCTION IF EXISTS public.wave_stage_to_kanban_stages(s production_stage_enum) CASCADE;
 CREATE OR REPLACE FUNCTION public.wave_stage_to_kanban_stages(s production_stage_enum)
 RETURNS text[]
 LANGUAGE sql IMMUTABLE SET search_path = public AS $$
@@ -15,6 +16,7 @@ LANGUAGE sql IMMUTABLE SET search_path = public AS $$
 $$;
 GRANT EXECUTE ON FUNCTION public.wave_stage_to_kanban_stages(production_stage_enum) TO authenticated;
 
+DROP FUNCTION IF EXISTS public.kanban_stage_to_wave_stage(p_stage_name text) CASCADE;
 CREATE OR REPLACE FUNCTION public.kanban_stage_to_wave_stage(p_stage_name text)
 RETURNS production_stage_enum
 LANGUAGE sql IMMUTABLE SET search_path = public AS $$
@@ -41,6 +43,7 @@ LANGUAGE sql IMMUTABLE SET search_path = public AS $$
 $$;
 GRANT EXECUTE ON FUNCTION public.kanban_stage_to_wave_stage(text) TO authenticated;
 
+DROP FUNCTION IF EXISTS public.sync_wave_from_kanban(p_wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.sync_wave_from_kanban(p_wave_id uuid)
 RETURNS production_stage_enum
 LANGUAGE plpgsql
@@ -133,6 +136,7 @@ END;
 $$;
 GRANT EXECUTE ON FUNCTION public.sync_wave_from_kanban(uuid) TO authenticated;
 
+DROP FUNCTION IF EXISTS public.fn_sync_wave_on_stage_complete() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_sync_wave_on_stage_complete()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -173,6 +177,7 @@ CREATE TRIGGER trg_sync_wave_on_stage_complete
   FOR EACH ROW
   EXECUTE FUNCTION public.fn_sync_wave_on_stage_complete();
 
+DROP FUNCTION IF EXISTS public.advance_wave_stage(p_wave_id uuid, p_stage   production_stage_enum) CASCADE;
 CREATE OR REPLACE FUNCTION public.advance_wave_stage(
   p_wave_id uuid,
   p_stage   production_stage_enum DEFAULT NULL

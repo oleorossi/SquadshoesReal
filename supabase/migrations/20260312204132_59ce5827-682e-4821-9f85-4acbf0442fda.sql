@@ -1,5 +1,6 @@
 
 -- Update debit_stock_for_order to use sheet_materials instead of reference_materials
+DROP FUNCTION IF EXISTS public.debit_stock_for_order(p_reference_id uuid, p_order_quantity integer, p_color text) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_stock_for_order(p_reference_id uuid, p_order_quantity integer, p_color text DEFAULT ''::text)
  RETURNS void
  LANGUAGE plpgsql
@@ -97,6 +98,7 @@ END;
 $function$;
 
 -- Update check_stock_availability to use sheet_materials
+DROP FUNCTION IF EXISTS public.check_stock_availability(p_reference_id uuid, p_order_quantity integer, p_color text) CASCADE;
 CREATE OR REPLACE FUNCTION public.check_stock_availability(p_reference_id uuid, p_order_quantity integer, p_color text DEFAULT ''::text)
  RETURNS TABLE(product_id uuid, product_name text, required numeric, available numeric, sufficient boolean)
  LANGUAGE plpgsql
@@ -154,6 +156,7 @@ END;
 $function$;
 
 -- Also update the simpler overloads
+DROP FUNCTION IF EXISTS public.debit_stock_for_order(p_reference_id uuid, p_order_quantity integer) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_stock_for_order(p_reference_id uuid, p_order_quantity integer)
  RETURNS void
  LANGUAGE plpgsql
@@ -165,6 +168,7 @@ BEGIN
 END;
 $function$;
 
+DROP FUNCTION IF EXISTS public.check_stock_availability(p_reference_id uuid, p_order_quantity integer) CASCADE;
 CREATE OR REPLACE FUNCTION public.check_stock_availability(p_reference_id uuid, p_order_quantity integer)
  RETURNS TABLE(product_id uuid, product_name text, required numeric, available numeric, sufficient boolean)
  LANGUAGE plpgsql

@@ -1,4 +1,5 @@
 -- Reorder: corte=1, mesa=1, costura=2, palmilha=2, montagem=3, solagem=4, acabamento=5
+DROP FUNCTION IF EXISTS public.stage_order(s production_stage_enum) CASCADE;
 CREATE OR REPLACE FUNCTION public.stage_order(s production_stage_enum)
 RETURNS integer LANGUAGE sql IMMUTABLE SET search_path = public AS $$
   SELECT CASE s
@@ -12,6 +13,10 @@ RETURNS integer LANGUAGE sql IMMUTABLE SET search_path = public AS $$
   END;
 $$;
 
+DROP FUNCTION IF EXISTS public.create_production_wave(
+  p_week_start date,
+  p_sale_order_ids uuid[]
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.create_production_wave(
   p_week_start date,
   p_sale_order_ids uuid[]
@@ -203,6 +208,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.advance_wave_stage(uuid, production_stage_enum) TO authenticated;
 
 -- Sector board view: next_wave only when ALL stages at previous level are completed
+DROP VIEW IF EXISTS public.v_sector_board CASCADE;
 CREATE OR REPLACE VIEW public.v_sector_board AS
 WITH stages AS (
   SELECT s.stage,

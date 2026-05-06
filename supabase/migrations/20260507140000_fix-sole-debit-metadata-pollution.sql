@@ -16,6 +16,12 @@
 -- v_stock_grade), so they never see metadata keys — no further changes needed.
 -- =============================================================================
 
+DROP FUNCTION IF EXISTS public.debit_sole_stock_by_grade(
+  p_reference_id uuid,
+  p_order_id     uuid,
+  p_color        text,
+  p_order_grade  jsonb
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_sole_stock_by_grade(
   p_reference_id uuid,
   p_order_id     uuid,
@@ -231,6 +237,7 @@ $function$;
 -- than one row (e.g. {33/34: [33,34]} and {34/35: [34,35]}, sharing 34), the
 -- backend may resolve to either bucket non-deterministically. Force ORDER BY
 -- display_order so the lowest-priority conjugation wins consistently.
+DROP FUNCTION IF EXISTS public.get_sole_size_key(p_sole_group_id uuid, p_shoe_size integer) CASCADE;
 CREATE OR REPLACE FUNCTION public.get_sole_size_key(p_sole_group_id uuid, p_shoe_size integer)
 RETURNS text
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'

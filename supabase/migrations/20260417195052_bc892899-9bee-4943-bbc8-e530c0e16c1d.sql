@@ -1,6 +1,12 @@
 -- Helper: calculates the per-size-aware required quantity for a material.
 -- Returns: consumption_per_size json mapped against order grade, multiplied by fichas (when grade exists),
 -- otherwise falls back to fallback_consumption * order_quantity.
+DROP FUNCTION IF EXISTS public._calc_required_per_size(
+  p_consumption_per_size jsonb,
+  p_fallback_consumption numeric,
+  p_order_grade jsonb,
+  p_order_quantity numeric
+) CASCADE;
 CREATE OR REPLACE FUNCTION public._calc_required_per_size(
   p_consumption_per_size jsonb,
   p_fallback_consumption numeric,
@@ -57,6 +63,10 @@ $$;
 
 -- Helper: pick the cabedal option (principal or alternative) whose group has products in the order color.
 -- Returns selected (group_name, consumption, consumption_per_size).
+DROP FUNCTION IF EXISTS public._resolve_upper_option(
+  p_reference_id uuid,
+  p_color text
+) CASCADE;
 CREATE OR REPLACE FUNCTION public._resolve_upper_option(
   p_reference_id uuid,
   p_color text
@@ -135,6 +145,7 @@ END;
 $$;
 
 -- Replace the main 5-arg overload (called from useSaleOrders/useOrders/resyncOPs)
+DROP FUNCTION IF EXISTS public.hybrid_debit_stock_for_order(p_reference_id uuid, p_order_quantity numeric, p_color text, p_order_id uuid, p_order_grade jsonb) CASCADE;
 CREATE OR REPLACE FUNCTION public.hybrid_debit_stock_for_order(
   p_reference_id uuid,
   p_order_quantity numeric,

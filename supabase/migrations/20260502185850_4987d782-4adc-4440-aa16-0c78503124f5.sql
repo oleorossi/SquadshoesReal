@@ -2,6 +2,7 @@
 -- Fix: quantity_processed on stage complete
 -- =============================================================================
 
+DROP FUNCTION IF EXISTS public.process_stage_completion() CASCADE;
 CREATE OR REPLACE FUNCTION public.process_stage_completion()
 RETURNS trigger
 LANGUAGE plpgsql

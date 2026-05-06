@@ -17,6 +17,7 @@
 --   3. compute_wave_timeline(): remove mesa from the backward cascade
 
 -- ── 1. stage_order ─────────────────────────────────────────────────────────────
+DROP FUNCTION IF EXISTS public.stage_order(s production_stage_enum) CASCADE;
 CREATE OR REPLACE FUNCTION public.stage_order(s production_stage_enum)
 RETURNS integer LANGUAGE sql IMMUTABLE SET search_path = public AS $$
   SELECT CASE s
@@ -31,6 +32,7 @@ RETURNS integer LANGUAGE sql IMMUTABLE SET search_path = public AS $$
 $$;
 
 -- ── 2. start_wave — start ALL level-1 stages ────────────────────────────────────
+DROP FUNCTION IF EXISTS public.start_wave(p_wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.start_wave(p_wave_id uuid)
 RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
@@ -72,6 +74,7 @@ GRANT EXECUTE ON FUNCTION public.start_wave(uuid) TO authenticated;
 -- ── 3. compute_wave_timeline — mesa removed from cascade ────────────────────────
 -- Mesa runs in parallel with Corte at level 1 and is not on the critical path.
 -- Cascade is now: deadline → -acab → -montagem → -costura → -corte → -buffer → -supplier
+DROP FUNCTION IF EXISTS public.compute_wave_timeline(p_sale_order_ids uuid[]) CASCADE;
 CREATE OR REPLACE FUNCTION public.compute_wave_timeline(p_sale_order_ids uuid[])
 RETURNS TABLE (
   earliest_deadline     date,

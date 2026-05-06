@@ -14,6 +14,7 @@
 --   v2 (20260419005802): via products table + LOWER(ts.name) = LOWER(p.name)  (fragile name match)
 -- Correct: JOIN technical_sheets ts ON ts.id = soi.reference_id
 
+DROP FUNCTION IF EXISTS public.resolve_billing_week_for_order(p_sale_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.resolve_billing_week_for_order(p_sale_order_id uuid)
 RETURNS date
 LANGUAGE plpgsql
@@ -90,6 +91,7 @@ $$;
 --          Additionally, the LATERAL join multiplied src.quantity by the number of grade keys.
 -- Fix: separate quantity aggregation (no LATERAL) from grade aggregation (with SUM per key).
 
+DROP FUNCTION IF EXISTS public.split_wave_to_finishing(p_wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.split_wave_to_finishing(p_wave_id uuid)
 RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
@@ -173,6 +175,7 @@ GRANT EXECUTE ON FUNCTION public.split_wave_to_finishing(uuid) TO authenticated;
 --          sector, corte).
 -- Fix: add existence check on the previous stage being 'completed' for that specific wave.
 
+DROP VIEW IF EXISTS public.v_sector_board CASCADE;
 CREATE OR REPLACE VIEW public.v_sector_board AS
 WITH stages AS (
   SELECT s.stage,

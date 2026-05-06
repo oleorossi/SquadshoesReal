@@ -15,12 +15,14 @@ CREATE TABLE IF NOT EXISTS public.sole_technical_specs (
 ALTER TABLE public.sole_technical_specs ENABLE ROW LEVEL SECURITY;
 
 -- Basic policies (adjust if needed based on existing roles)
+DROP POLICY IF EXISTS "Enable all for authenticated users" ON public.sole_technical_specs;
 CREATE POLICY "Enable all for authenticated users" ON public.sole_technical_specs
     FOR ALL
     USING (auth.role() = 'authenticated')
     WITH CHECK (auth.role() = 'authenticated');
 
 -- Trigger for updated_at
+DROP FUNCTION IF EXISTS public.handle_updated_at() CASCADE;
 CREATE OR REPLACE FUNCTION public.handle_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN

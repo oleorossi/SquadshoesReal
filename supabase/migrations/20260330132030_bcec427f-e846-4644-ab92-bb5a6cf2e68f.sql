@@ -1,4 +1,8 @@
 -- Update the function to also mark the current stage as completed
+DROP FUNCTION IF EXISTS public.finalize_production_sector(
+  p_order_id UUID,
+  p_current_sector TEXT
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.finalize_production_sector(
   p_order_id UUID,
   p_current_sector TEXT

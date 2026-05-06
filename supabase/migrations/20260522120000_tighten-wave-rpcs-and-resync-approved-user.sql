@@ -15,6 +15,7 @@
 -- =============================================================================
 
 -- ── 1. resync_op_atomic ───────────────────────────────────────────────────────
+DROP FUNCTION IF EXISTS public.resync_op_atomic(p_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.resync_op_atomic(p_order_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -156,6 +157,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.resync_op_atomic(uuid) TO authenticated;
 
 -- ── 2. process_resync_queue ───────────────────────────────────────────────────
+DROP FUNCTION IF EXISTS public.process_resync_queue(p_limit integer) CASCADE;
 CREATE OR REPLACE FUNCTION public.process_resync_queue(p_limit integer DEFAULT 50)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -204,6 +206,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.process_resync_queue(integer) TO authenticated;
 
 -- ── 3. debit_packaging_for_order_atomic ───────────────────────────────────────
+DROP FUNCTION IF EXISTS public.debit_packaging_for_order_atomic(p_order_id uuid, p_packaging_product_id uuid, p_quantity numeric, p_packaging_type text) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_packaging_for_order_atomic(
   p_order_id uuid,
   p_packaging_product_id uuid,
@@ -279,6 +282,7 @@ GRANT EXECUTE ON FUNCTION public.debit_packaging_for_order_atomic(uuid, uuid, nu
   TO authenticated;
 
 -- ── 4. start_wave ────────────────────────────────────────────────────────────
+DROP FUNCTION IF EXISTS public.start_wave(p_wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.start_wave(p_wave_id uuid)
 RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
@@ -318,6 +322,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.start_wave(uuid) TO authenticated;
 
 -- ── 5. advance_wave_stage ────────────────────────────────────────────────────
+DROP FUNCTION IF EXISTS public.advance_wave_stage(p_wave_id uuid, p_stage   production_stage_enum) CASCADE;
 CREATE OR REPLACE FUNCTION public.advance_wave_stage(
   p_wave_id uuid,
   p_stage   production_stage_enum DEFAULT NULL
@@ -429,6 +434,10 @@ $$;
 GRANT EXECUTE ON FUNCTION public.advance_wave_stage(uuid, production_stage_enum) TO authenticated;
 
 -- ── 6. create_production_wave ─────────────────────────────────────────────────
+DROP FUNCTION IF EXISTS public.create_production_wave(
+  p_week_start date,
+  p_sale_order_ids uuid[]
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.create_production_wave(
   p_week_start date,
   p_sale_order_ids uuid[]
@@ -560,6 +569,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.create_production_wave(date, uuid[]) TO authenticated;
 
 -- ── 7. sync_wave_from_kanban ──────────────────────────────────────────────────
+DROP FUNCTION IF EXISTS public.sync_wave_from_kanban(p_wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.sync_wave_from_kanban(p_wave_id uuid)
 RETURNS production_stage_enum
 LANGUAGE plpgsql
@@ -658,6 +668,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.sync_wave_from_kanban(uuid) TO authenticated;
 
 -- ── 8. split_wave_to_finishing ────────────────────────────────────────────────
+DROP FUNCTION IF EXISTS public.split_wave_to_finishing(p_wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.split_wave_to_finishing(p_wave_id uuid)
 RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
@@ -730,6 +741,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.split_wave_to_finishing(uuid) TO authenticated;
 
 -- ── 9. auto_start_due_waves ───────────────────────────────────────────────────
+DROP FUNCTION IF EXISTS public.auto_start_due_waves() CASCADE;
 CREATE OR REPLACE FUNCTION public.auto_start_due_waves()
 RETURNS int
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$

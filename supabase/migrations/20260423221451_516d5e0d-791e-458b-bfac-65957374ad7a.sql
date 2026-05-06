@@ -1,4 +1,5 @@
 -- Function to get conversion factor and waste for a product
+DROP FUNCTION IF EXISTS public.get_material_conversion_info(p_product_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.get_material_conversion_info(p_product_id uuid)
 RETURNS TABLE (
   dm2_per_unit numeric,
@@ -58,6 +59,7 @@ END;
 $$ LANGUAGE plpgsql STABLE;
 
 -- Update calculate_order_consumption
+DROP FUNCTION IF EXISTS public.calculate_order_consumption(p_reference_id uuid, p_order_quantity numeric, p_color text, p_size integer) CASCADE;
 CREATE OR REPLACE FUNCTION public.calculate_order_consumption(p_reference_id uuid, p_order_quantity numeric, p_color text, p_size integer DEFAULT NULL::integer)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -260,6 +262,7 @@ END;
 $function$;
 
 -- Update calculate_order_consumption_by_grade (similar logic)
+DROP FUNCTION IF EXISTS public.calculate_order_consumption_by_grade(p_reference_id uuid, p_grade jsonb, p_color text) CASCADE;
 CREATE OR REPLACE FUNCTION public.calculate_order_consumption_by_grade(p_reference_id uuid, p_grade jsonb, p_color text)
  RETURNS jsonb
  LANGUAGE plpgsql

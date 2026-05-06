@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS public.normalize_product_unit() CASCADE;
 CREATE OR REPLACE FUNCTION public.normalize_product_unit()
 RETURNS TRIGGER
 LANGUAGE plpgsql

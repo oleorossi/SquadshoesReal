@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS public.upsert_po_item_atomic(p_po_id          uuid, p_product_id     uuid, p_qty_delta      numeric, p_unit_price     numeric, p_unit           text, p_current_stock  numeric, p_min_stock      numeric, p_max_stock      numeric, p_grade_delta    jsonb, p_color          text) CASCADE;
 CREATE OR REPLACE FUNCTION public.upsert_po_item_atomic(
   p_po_id          uuid,
   p_product_id     uuid,

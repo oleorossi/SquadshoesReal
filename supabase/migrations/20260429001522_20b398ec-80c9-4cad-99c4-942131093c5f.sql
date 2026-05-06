@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS public.cancel_wave(p_wave_id uuid, p_reason text) CASCADE;
 CREATE OR REPLACE FUNCTION public.cancel_wave(p_wave_id uuid, p_reason text DEFAULT NULL)
 RETURNS void
 LANGUAGE plpgsql
@@ -26,6 +27,7 @@ BEGIN
 END;
 $$;
 
+DROP VIEW IF EXISTS public.v_wave_orders CASCADE;
 CREATE OR REPLACE VIEW public.v_wave_orders AS
 SELECT
   wi.wave_id,

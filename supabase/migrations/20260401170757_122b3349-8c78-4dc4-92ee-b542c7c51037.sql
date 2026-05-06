@@ -1,5 +1,6 @@
 
 -- Auto-generate sequential client_number on insert
+DROP FUNCTION IF EXISTS public.auto_assign_client_number() CASCADE;
 CREATE OR REPLACE FUNCTION public.auto_assign_client_number()
 RETURNS TRIGGER
 LANGUAGE plpgsql

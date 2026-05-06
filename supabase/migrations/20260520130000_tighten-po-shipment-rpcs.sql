@@ -13,6 +13,7 @@
 -- =============================================================================
 
 -- 1. upsert_po_item_atomic
+DROP FUNCTION IF EXISTS public.upsert_po_item_atomic(p_po_id          uuid, p_product_id     uuid, p_qty_delta      numeric, p_unit_price     numeric, p_unit           text, p_current_stock  numeric, p_min_stock      numeric, p_max_stock      numeric, p_grade_delta    jsonb, p_color          text) CASCADE;
 CREATE OR REPLACE FUNCTION public.upsert_po_item_atomic(
   p_po_id          uuid,
   p_product_id     uuid,
@@ -110,6 +111,7 @@ GRANT EXECUTE ON FUNCTION public.upsert_po_item_atomic(uuid, uuid, numeric, nume
 
 
 -- 2. register_order_shipment
+DROP FUNCTION IF EXISTS public.register_order_shipment(p_sale_order_ids uuid[], p_manifest_id    uuid, p_checked_by     text) CASCADE;
 CREATE OR REPLACE FUNCTION public.register_order_shipment(
   p_sale_order_ids uuid[],
   p_manifest_id    uuid  DEFAULT NULL,

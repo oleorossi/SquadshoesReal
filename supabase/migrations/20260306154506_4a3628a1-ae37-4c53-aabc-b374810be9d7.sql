@@ -63,19 +63,31 @@ ALTER TABLE public.suppliers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.invoices ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.invoice_items ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Auth users can view suppliers" ON public.suppliers;
 CREATE POLICY "Auth users can view suppliers" ON public.suppliers FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert suppliers" ON public.suppliers;
 CREATE POLICY "Auth users can insert suppliers" ON public.suppliers FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update suppliers" ON public.suppliers;
 CREATE POLICY "Auth users can update suppliers" ON public.suppliers FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete suppliers" ON public.suppliers;
 CREATE POLICY "Auth users can delete suppliers" ON public.suppliers FOR DELETE TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Auth users can view invoices" ON public.invoices;
 CREATE POLICY "Auth users can view invoices" ON public.invoices FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert invoices" ON public.invoices;
 CREATE POLICY "Auth users can insert invoices" ON public.invoices FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update invoices" ON public.invoices;
 CREATE POLICY "Auth users can update invoices" ON public.invoices FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete invoices" ON public.invoices;
 CREATE POLICY "Auth users can delete invoices" ON public.invoices FOR DELETE TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Auth users can view invoice_items" ON public.invoice_items;
 CREATE POLICY "Auth users can view invoice_items" ON public.invoice_items FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert invoice_items" ON public.invoice_items;
 CREATE POLICY "Auth users can insert invoice_items" ON public.invoice_items FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update invoice_items" ON public.invoice_items;
 CREATE POLICY "Auth users can update invoice_items" ON public.invoice_items FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete invoice_items" ON public.invoice_items;
 CREATE POLICY "Auth users can delete invoice_items" ON public.invoice_items FOR DELETE TO authenticated USING (true);
 
 -- Triggers

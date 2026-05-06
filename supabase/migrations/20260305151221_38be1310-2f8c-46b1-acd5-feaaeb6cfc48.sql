@@ -17,12 +17,17 @@ CREATE TABLE public.products (
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
 
 -- Public access policies (no auth required for this inventory app)
+DROP POLICY IF EXISTS "Anyone can view products" ON public.products;
 CREATE POLICY "Anyone can view products" ON public.products FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Anyone can insert products" ON public.products;
 CREATE POLICY "Anyone can insert products" ON public.products FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Anyone can update products" ON public.products;
 CREATE POLICY "Anyone can update products" ON public.products FOR UPDATE USING (true);
+DROP POLICY IF EXISTS "Anyone can delete products" ON public.products;
 CREATE POLICY "Anyone can delete products" ON public.products FOR DELETE USING (true);
 
 -- Create function to update timestamps
+DROP FUNCTION IF EXISTS public.update_updated_at_column() CASCADE;
 CREATE OR REPLACE FUNCTION public.update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN

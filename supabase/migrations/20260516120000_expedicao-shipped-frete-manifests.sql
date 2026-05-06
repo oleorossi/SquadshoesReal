@@ -72,10 +72,12 @@ CREATE TABLE IF NOT EXISTS public.loading_manifest_items (
 ALTER TABLE public.loading_manifests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.loading_manifest_items ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "authenticated_all_loading_manifests" ON public.loading_manifests;
 CREATE POLICY "authenticated_all_loading_manifests"
   ON public.loading_manifests FOR ALL TO authenticated
   USING (public.is_approved_user()) WITH CHECK (public.is_approved_user());
 
+DROP POLICY IF EXISTS "authenticated_all_loading_manifest_items" ON public.loading_manifest_items;
 CREATE POLICY "authenticated_all_loading_manifest_items"
   ON public.loading_manifest_items FOR ALL TO authenticated
   USING (public.is_approved_user()) WITH CHECK (public.is_approved_user());
@@ -84,6 +86,7 @@ CREATE POLICY "authenticated_all_loading_manifest_items"
 -- Registra a expedição em lote: seta shipped_at em todos os PVs e retorna
 -- os IDs atualizados.
 
+DROP FUNCTION IF EXISTS public.register_order_shipment(p_sale_order_ids    uuid[], p_manifest_id       uuid, p_checked_by        text) CASCADE;
 CREATE OR REPLACE FUNCTION public.register_order_shipment(
   p_sale_order_ids    uuid[],
   p_manifest_id       uuid     DEFAULT NULL,
@@ -122,6 +125,7 @@ GRANT EXECUTE ON FUNCTION public.register_order_shipment(uuid[], uuid, text) TO 
 
 CREATE SEQUENCE IF NOT EXISTS public.loading_manifest_seq START 1;
 
+DROP FUNCTION IF EXISTS public.next_manifest_number() CASCADE;
 CREATE OR REPLACE FUNCTION public.next_manifest_number()
 RETURNS text LANGUAGE sql AS $$
   SELECT 'ROM-' || EXTRACT(YEAR FROM now())::text || '-' ||

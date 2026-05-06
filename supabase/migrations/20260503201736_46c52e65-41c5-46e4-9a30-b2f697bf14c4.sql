@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS public.register_order_shipment(p_sale_order_ids uuid[], p_manifest_id    uuid, p_checked_by     text) CASCADE;
 CREATE OR REPLACE FUNCTION public.register_order_shipment(
   p_sale_order_ids uuid[],
   p_manifest_id    uuid DEFAULT NULL,

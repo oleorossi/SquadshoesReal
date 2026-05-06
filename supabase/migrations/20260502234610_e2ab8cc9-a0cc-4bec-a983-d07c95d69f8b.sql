@@ -21,10 +21,12 @@ ADD COLUMN IF NOT EXISTS material_color_group_id UUID REFERENCES public.material
 ALTER TABLE public.material_color_groups ENABLE ROW LEVEL SECURITY;
 
 -- Cria políticas de visualização e edição
+DROP POLICY IF EXISTS "Leitura pública para grupos de cores" ON public.material_color_groups;
 CREATE POLICY "Leitura pública para grupos de cores" 
 ON public.material_color_groups FOR SELECT 
 USING (true);
 
+DROP POLICY IF EXISTS "Apenas administradores podem gerenciar grupos de cores" ON public.material_color_groups;
 CREATE POLICY "Apenas administradores podem gerenciar grupos de cores" 
 ON public.material_color_groups FOR ALL 
 USING (auth.jwt() ->> 'role' = 'admin' OR auth.jwt() ->> 'role' = 'service_role');

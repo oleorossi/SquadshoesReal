@@ -31,16 +31,7 @@ DROP FUNCTION IF EXISTS public.compute_wave_timeline(uuid[]);
 
 CREATE OR REPLACE FUNCTION public.compute_wave_timeline(p_sale_order_ids uuid[])
 RETURNS TABLE (
-  earliest_deadline             date,
-  corte_palmilha_start_date     date,
-  corte_forracao_start_date     date,
-  montagem_start_date           date,
-  acabamento_start_date         date,
-  silk_start_date               date,
-  colagem_start_date            date,
-  solagem_start_date            date,
-  material_ready_date           date,
-  purchase_deadline             date
+  earliest_deadline             date, corte_palmilha_start_date     date, corte_forracao_start_date     date, montagem_start_date           date, acabamento_start_date         date, silk_start_date               date, colagem_start_date            date, solagem_start_date            date, material_ready_date           date, purchase_deadline             date
 )
 LANGUAGE plpgsql STABLE AS $$
 DECLARE
@@ -238,8 +229,7 @@ BEGIN
   ), 0)
     INTO v_lead_supplier
     FROM (
-      SELECT sm.product_id,
-             SUM(sm.quantity_per_unit * soi.quantity) AS total_needed
+      SELECT sm.product_id, SUM(sm.quantity_per_unit * soi.quantity) AS total_needed
         FROM sale_order_items soi
         JOIN sheet_materials sm ON sm.sheet_id = soi.reference_id
        WHERE soi.sale_order_id = ANY(p_sale_order_ids)
@@ -251,53 +241,44 @@ BEGIN
     v_deadline                                             AS earliest_deadline,
 
     add_business_days(
-      v_deadline,
-      -(v_lead_acab + v_lead_solagem + v_lead_montagem
+      v_deadline, -(v_lead_acab + v_lead_solagem + v_lead_montagem
         + v_lead_colagem + v_lead_silk + v_lead_forracao + v_lead_palmilha)
     )::date                                                AS corte_palmilha_start_date,
 
     add_business_days(
-      v_deadline,
-      -(v_lead_acab + v_lead_solagem + v_lead_montagem
+      v_deadline, -(v_lead_acab + v_lead_solagem + v_lead_montagem
         + v_lead_colagem + v_lead_silk + v_lead_forracao)
     )::date                                                AS corte_forracao_start_date,
 
     add_business_days(
-      v_deadline,
-      -(v_lead_acab + v_lead_solagem + v_lead_montagem)
+      v_deadline, -(v_lead_acab + v_lead_solagem + v_lead_montagem)
     )::date                                                AS montagem_start_date,
 
     add_business_days(
-      v_deadline,
-      -v_lead_acab
+      v_deadline, -v_lead_acab
     )::date                                                AS acabamento_start_date,
 
     add_business_days(
-      v_deadline,
-      -(v_lead_acab + v_lead_solagem + v_lead_montagem
+      v_deadline, -(v_lead_acab + v_lead_solagem + v_lead_montagem
         + v_lead_colagem + v_lead_silk)
     )::date                                                AS silk_start_date,
 
     add_business_days(
-      v_deadline,
-      -(v_lead_acab + v_lead_solagem + v_lead_montagem + v_lead_colagem)
+      v_deadline, -(v_lead_acab + v_lead_solagem + v_lead_montagem + v_lead_colagem)
     )::date                                                AS colagem_start_date,
 
     add_business_days(
-      v_deadline,
-      -(v_lead_acab + v_lead_solagem)
+      v_deadline, -(v_lead_acab + v_lead_solagem)
     )::date                                                AS solagem_start_date,
 
     add_business_days(
-      v_deadline,
-      -(v_lead_acab + v_lead_solagem + v_lead_montagem
+      v_deadline, -(v_lead_acab + v_lead_solagem + v_lead_montagem
         + v_lead_colagem + v_lead_silk + v_lead_forracao
         + v_lead_palmilha + v_lead_buffer)
     )::date                                                AS material_ready_date,
 
     add_business_days(
-      v_deadline,
-      -(v_lead_acab + v_lead_solagem + v_lead_montagem
+      v_deadline, -(v_lead_acab + v_lead_solagem + v_lead_montagem
         + v_lead_colagem + v_lead_silk + v_lead_forracao
         + v_lead_palmilha + v_lead_buffer + v_lead_supplier)
     )::date                                                AS purchase_deadline;
@@ -310,6 +291,7 @@ COMMENT ON FUNCTION public.compute_wave_timeline(uuid[]) IS
   'foram renomeadas para corte_palmilha_start_date / corte_forracao_start_date.';
 
 -- ── 3) Recria update_wave_timeline com nomes novos ──────────────────────────
+DROP FUNCTION IF EXISTS public.update_wave_timeline(p_wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.update_wave_timeline(p_wave_id uuid)
 RETURNS void
 LANGUAGE plpgsql
@@ -346,6 +328,7 @@ END;
 $$;
 
 -- ── 4) Recria get_wave_material_needs com nome novo ─────────────────────────
+DROP FUNCTION IF EXISTS public.get_wave_material_needs(p_sale_order_ids uuid[]) CASCADE;
 CREATE OR REPLACE FUNCTION public.get_wave_material_needs(p_sale_order_ids uuid[])
 RETURNS TABLE (
   product_id              uuid,

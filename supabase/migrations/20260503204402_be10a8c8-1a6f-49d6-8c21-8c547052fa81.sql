@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS public.recalc_purchase_order_total() CASCADE;
 CREATE OR REPLACE FUNCTION public.recalc_purchase_order_total()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN

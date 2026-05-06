@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS public.create_solo_wave(p_sale_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.create_solo_wave(p_sale_order_id uuid)
 RETURNS uuid
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
@@ -109,6 +110,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.create_solo_wave(uuid) TO authenticated;
 
 -- Trigger do PV passa a chamar create_solo_wave
+DROP FUNCTION IF EXISTS public.tg_sale_order_autostart_wave() CASCADE;
 CREATE OR REPLACE FUNCTION public.tg_sale_order_autostart_wave()
 RETURNS trigger
 LANGUAGE plpgsql

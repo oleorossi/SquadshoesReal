@@ -24,6 +24,11 @@
 -- This migration restores the conversion+waste pipeline in the graded path.
 -- =============================================================================
 
+DROP FUNCTION IF EXISTS public.calculate_order_consumption_by_grade(
+  p_reference_id uuid,
+  p_grade        jsonb,
+  p_color        text
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.calculate_order_consumption_by_grade(
   p_reference_id uuid,
   p_grade        jsonb,

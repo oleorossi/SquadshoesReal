@@ -1,4 +1,10 @@
 -- ========== 20260424120000_consumption-per-size-single-source.sql ==========
+DROP FUNCTION IF EXISTS public.calc_required_for_grade(
+  p_consumption_per_size jsonb,
+  p_order_grade          jsonb,
+  p_quantity_per_unit    numeric,
+  p_total_quantity       numeric
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.calc_required_for_grade(
   p_consumption_per_size jsonb,
   p_order_grade          jsonb,
@@ -28,6 +34,7 @@ BEGIN
 END;
 $$;
 
+DROP FUNCTION IF EXISTS public.check_stock_availability(p_reference_id uuid, p_order_quantity integer, p_color text, p_order_grade jsonb) CASCADE;
 CREATE OR REPLACE FUNCTION public.check_stock_availability(
   p_reference_id uuid,
   p_order_quantity integer,
@@ -75,6 +82,7 @@ GRANT EXECUTE ON FUNCTION public.check_stock_availability(uuid, integer, text, j
 
 
 -- ========== 20260424140000_fix-production-sector-flow.sql ==========
+DROP FUNCTION IF EXISTS public.finalize_production_sector(p_order_id uuid, p_current_sector text) CASCADE;
 CREATE OR REPLACE FUNCTION public.finalize_production_sector(p_order_id uuid, p_current_sector text)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $function$
 DECLARE
@@ -123,6 +131,7 @@ WHERE status LIKE 'EM_%' AND production_step IS NOT NULL
 
 
 -- ========== 20260424180000_fix-packaging-debit-stock-movements.sql ==========
+DROP FUNCTION IF EXISTS public.debit_packaging_for_order(p_sale_order_id uuid, p_order_id uuid, p_reference_id uuid, p_order_quantity integer, p_packaging_mode text) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_packaging_for_order(
   p_sale_order_id uuid, p_order_id uuid, p_reference_id uuid,
   p_order_quantity integer, p_packaging_mode text DEFAULT 'individual_amarrado'
@@ -181,6 +190,7 @@ GRANT EXECUTE ON FUNCTION public.debit_packaging_for_order(uuid, uuid, uuid, int
 
 
 -- ========== 20260426120000_consumption-per-size-as-primary-source.sql ==========
+DROP FUNCTION IF EXISTS public.calculate_order_consumption(p_reference_id uuid, p_order_quantity numeric, p_color text, p_size integer) CASCADE;
 CREATE OR REPLACE FUNCTION public.calculate_order_consumption(
   p_reference_id uuid, p_order_quantity numeric, p_color text, p_size integer DEFAULT NULL::integer
 )
@@ -317,6 +327,9 @@ BEGIN
 END;
 $function$;
 
+DROP FUNCTION IF EXISTS public.calculate_order_consumption_by_grade(
+  p_reference_id uuid, p_grade jsonb, p_color text
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.calculate_order_consumption_by_grade(
   p_reference_id uuid, p_grade jsonb, p_color text
 )
@@ -514,12 +527,14 @@ CREATE TABLE IF NOT EXISTS public.sole_size_conjugations (
   UNIQUE(sole_group_id, size_key)
 );
 
+DROP FUNCTION IF EXISTS public.get_sole_size_key(p_sole_group_id uuid, p_shoe_size integer) CASCADE;
 CREATE OR REPLACE FUNCTION public.get_sole_size_key(p_sole_group_id uuid, p_shoe_size integer)
 RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $$
   SELECT size_key FROM public.sole_size_conjugations
   WHERE sole_group_id = p_sole_group_id AND p_shoe_size = ANY(sizes) LIMIT 1;
 $$;
 
+DROP FUNCTION IF EXISTS public.get_sole_group_id_for_product(p_product_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.get_sole_group_id_for_product(p_product_id uuid)
 RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $$
   SELECT group_id FROM public.products WHERE id = p_product_id LIMIT 1;
@@ -527,6 +542,9 @@ $$;
 
 
 -- ========== 20260426140000_fix-conjugation-debit-legacy-fallback.sql ==========
+DROP FUNCTION IF EXISTS public.debit_sole_stock_by_grade(
+  p_reference_id uuid, p_order_id uuid, p_color text, p_order_grade jsonb
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_sole_stock_by_grade(
   p_reference_id uuid, p_order_id uuid, p_color text, p_order_grade jsonb
 )
@@ -640,6 +658,7 @@ $function$;
 
 
 -- ========== 20260426160000_fix-restore-box-types-stock.sql ==========
+DROP FUNCTION IF EXISTS public.restore_product_stocks_for_order(p_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.restore_product_stocks_for_order(p_order_id uuid)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE v_row RECORD; v_prev_qty numeric; v_new_qty numeric;
@@ -668,6 +687,7 @@ GRANT EXECUTE ON FUNCTION public.restore_product_stocks_for_order(uuid) TO authe
 
 
 -- ========== 20260426170000_fix-strap-flat-consumption-unit.sql ==========
+DROP FUNCTION IF EXISTS public.debit_strap_stock(p_strap_colors jsonb, p_order_quantity integer, p_order_id uuid, p_order_grade jsonb) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_strap_stock(
   p_strap_colors jsonb, p_order_quantity integer,
   p_order_id uuid DEFAULT NULL::uuid, p_order_grade jsonb DEFAULT NULL::jsonb

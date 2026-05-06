@@ -1,5 +1,6 @@
 
 -- 1. Create no-op debit_strap_materials so debit_stock_for_order doesn't crash
+DROP FUNCTION IF EXISTS public.debit_strap_materials(p_reference_id uuid, p_order_quantity integer, p_color text, p_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_strap_materials(p_reference_id uuid, p_order_quantity integer, p_color text, p_order_id uuid)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
@@ -9,6 +10,7 @@ END;
 $$;
 
 -- 2. Recreate debit_strap_stock with optional order_id parameter
+DROP FUNCTION IF EXISTS public.debit_strap_stock(p_strap_colors jsonb, p_order_quantity integer, p_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_strap_stock(p_strap_colors jsonb, p_order_quantity integer, p_order_id uuid DEFAULT NULL)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE

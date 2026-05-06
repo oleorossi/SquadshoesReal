@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS public.convert_reservation_to_out(p_order_id   uuid, p_product_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.convert_reservation_to_out(
   p_order_id   uuid,
   p_product_id uuid DEFAULT NULL::uuid

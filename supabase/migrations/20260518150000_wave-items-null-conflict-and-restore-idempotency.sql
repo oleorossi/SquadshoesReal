@@ -37,6 +37,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_wave_items_unique
 -- INSERT so the movement is only written when credit > 0.
 -- =============================================================================
 
+DROP FUNCTION IF EXISTS public.restore_product_stocks_for_order(p_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.restore_product_stocks_for_order(p_order_id uuid)
 RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$

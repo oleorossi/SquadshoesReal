@@ -8,6 +8,7 @@
 -- dispara exceção silenciosa) e o auto-start nunca ocorre.
 -- =============================================================================
 
+DROP FUNCTION IF EXISTS public.auto_start_due_waves() CASCADE;
 CREATE OR REPLACE FUNCTION public.auto_start_due_waves()
 RETURNS int
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$

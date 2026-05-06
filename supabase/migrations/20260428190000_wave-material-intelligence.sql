@@ -21,6 +21,7 @@ ALTER TABLE public.production_waves
 -- ── 2. compute_wave_timeline ───────────────────────────────────────────────────
 -- Back-calculates stage start dates from the earliest delivery_deadline among the
 -- given sale orders. Uses MAX lead-time values from technical_sheets (conservative).
+DROP FUNCTION IF EXISTS public.compute_wave_timeline(p_sale_order_ids uuid[]) CASCADE;
 CREATE OR REPLACE FUNCTION public.compute_wave_timeline(p_sale_order_ids uuid[])
 RETURNS TABLE (
   earliest_deadline    date,
@@ -97,6 +98,7 @@ $$;
 -- ── 3. get_wave_material_needs ─────────────────────────────────────────────────
 -- Returns one row per (material, color) combination needed by the given sale orders.
 -- For artisanal materials: also returns base-material requirements and OS send date.
+DROP FUNCTION IF EXISTS public.get_wave_material_needs(p_sale_order_ids uuid[]) CASCADE;
 CREATE OR REPLACE FUNCTION public.get_wave_material_needs(p_sale_order_ids uuid[])
 RETURNS TABLE (
   product_id              uuid,
@@ -223,6 +225,7 @@ $$;
 -- ── 4. update_wave_timeline ────────────────────────────────────────────────────
 -- Computes and persists timeline columns for an already-created wave.
 -- Called by the application after wave creation.
+DROP FUNCTION IF EXISTS public.update_wave_timeline(p_wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.update_wave_timeline(p_wave_id uuid)
 RETURNS void LANGUAGE plpgsql AS $$
 DECLARE

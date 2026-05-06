@@ -12,6 +12,7 @@ COMMENT ON COLUMN public.sale_orders.manual_override_reason IS
   'Motivo informado pelo usuário ao baixar a data abaixo do mínimo';
 
 -- 2. Função que calcula data mínima a partir de hoje
+DROP FUNCTION IF EXISTS public.compute_min_billing_date(p_sale_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.compute_min_billing_date(p_sale_order_id uuid)
 RETURNS date
 LANGUAGE plpgsql
@@ -89,6 +90,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.compute_min_billing_date(uuid) TO authenticated, anon;
 
 -- 3. View para consulta em lote
+DROP VIEW IF EXISTS public.sale_order_min_billing CASCADE;
 CREATE OR REPLACE VIEW public.sale_order_min_billing AS
 SELECT
   so.id AS sale_order_id,

@@ -14,6 +14,7 @@
 -- com SELECT FOR UPDATE e faz tudo em transação única.
 -- ---------------------------------------------------------------
 
+DROP FUNCTION IF EXISTS public.debit_packaging_for_order_atomic(p_order_id uuid, p_packaging_product_id uuid, p_quantity numeric, p_packaging_type text) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_packaging_for_order_atomic(
   p_order_id uuid,
   p_packaging_product_id uuid,

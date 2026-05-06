@@ -11,6 +11,11 @@
 -- ---------------------------------------------------------------
 
 -- ── 1. Patch calculate_order_consumption_by_grade ─────────────────────────────
+DROP FUNCTION IF EXISTS public.calculate_order_consumption_by_grade(
+  p_reference_id uuid,
+  p_color        text,
+  p_grade        jsonb
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.calculate_order_consumption_by_grade(
   p_reference_id uuid,
   p_color        text,
@@ -286,7 +291,12 @@ BEGIN
 
   EXECUTE format(
     $sql$
-    CREATE OR REPLACE FUNCTION public.calculate_order_consumption(
+    DROP FUNCTION IF EXISTS public.calculate_order_consumption(
+      p_reference_id uuid,
+      p_color        text,
+      p_order_quantity numeric
+    ) CASCADE;
+CREATE OR REPLACE FUNCTION public.calculate_order_consumption(
       p_reference_id uuid,
       p_color        text,
       p_order_quantity numeric

@@ -11,12 +11,15 @@ CREATE TABLE public.silk_shoe_category (
 ALTER TABLE public.silk_shoe_category ENABLE ROW LEVEL SECURITY;
 
 -- Add policies for silk_shoe_category
+DROP POLICY IF EXISTS "Categories are viewable by everyone" ON public.silk_shoe_category;
 CREATE POLICY "Categories are viewable by everyone" 
 ON public.silk_shoe_category FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Categories can be inserted by authenticated users" ON public.silk_shoe_category;
 CREATE POLICY "Categories can be inserted by authenticated users" 
 ON public.silk_shoe_category FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 
+DROP POLICY IF EXISTS "Categories can be updated by authenticated users" ON public.silk_shoe_category;
 CREATE POLICY "Categories can be updated by authenticated users" 
 ON public.silk_shoe_category FOR UPDATE USING (auth.role() = 'authenticated');
 

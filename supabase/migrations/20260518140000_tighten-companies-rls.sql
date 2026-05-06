@@ -12,18 +12,21 @@
 DROP POLICY IF EXISTS "Auth users can manage companies" ON public.companies;
 
 -- SELECT: only approved users
+DROP POLICY IF EXISTS "Approved users can read companies" ON public.companies;
 CREATE POLICY "Approved users can read companies"
   ON public.companies FOR SELECT
   TO authenticated
   USING (public.is_approved_user());
 
 -- INSERT: only approved users
+DROP POLICY IF EXISTS "Approved users can insert companies" ON public.companies;
 CREATE POLICY "Approved users can insert companies"
   ON public.companies FOR INSERT
   TO authenticated
   WITH CHECK (public.is_approved_user());
 
 -- UPDATE: only approved users
+DROP POLICY IF EXISTS "Approved users can update companies" ON public.companies;
 CREATE POLICY "Approved users can update companies"
   ON public.companies FOR UPDATE
   TO authenticated
@@ -31,6 +34,7 @@ CREATE POLICY "Approved users can update companies"
   WITH CHECK (public.is_approved_user());
 
 -- DELETE: only approved users
+DROP POLICY IF EXISTS "Approved users can delete companies" ON public.companies;
 CREATE POLICY "Approved users can delete companies"
   ON public.companies FOR DELETE
   TO authenticated

@@ -7,12 +7,14 @@ ALTER TABLE public.reference_color_variants ENABLE ROW LEVEL SECURITY;
 DO $$ 
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'reference_color_variants' AND policyname = 'Users can view color variants') THEN
-        CREATE POLICY "Users can view color variants" ON public.reference_color_variants
+        DROP POLICY IF EXISTS "Users can view color variants" ON public.reference_color_variants;
+CREATE POLICY "Users can view color variants" ON public.reference_color_variants
             FOR SELECT USING (auth.role() = 'authenticated');
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'reference_color_variants' AND policyname = 'Users can manage color variants') THEN
-        CREATE POLICY "Users can manage color variants" ON public.reference_color_variants
+        DROP POLICY IF EXISTS "Users can manage color variants" ON public.reference_color_variants;
+CREATE POLICY "Users can manage color variants" ON public.reference_color_variants
             FOR ALL USING (auth.role() = 'authenticated');
     END IF;
 END $$;
@@ -23,17 +25,20 @@ ALTER TABLE public.reference_materials ENABLE ROW LEVEL SECURITY;
 DO $$ 
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'reference_materials' AND policyname = 'Users can view reference materials') THEN
-        CREATE POLICY "Users can view reference materials" ON public.reference_materials
+        DROP POLICY IF EXISTS "Users can view reference materials" ON public.reference_materials;
+CREATE POLICY "Users can view reference materials" ON public.reference_materials
             FOR SELECT USING (auth.role() = 'authenticated');
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'reference_materials' AND policyname = 'Users can manage reference materials') THEN
-        CREATE POLICY "Users can manage reference materials" ON public.reference_materials
+        DROP POLICY IF EXISTS "Users can manage reference materials" ON public.reference_materials;
+CREATE POLICY "Users can manage reference materials" ON public.reference_materials
             FOR ALL USING (auth.role() = 'authenticated');
     END IF;
 END $$;
 
 -- Ensure consistency between reference materials and color variants
+DROP FUNCTION IF EXISTS public.check_reference_color_variant_consistency() CASCADE;
 CREATE OR REPLACE FUNCTION public.check_reference_color_variant_consistency()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -74,22 +79,9 @@ DROP COLUMN IF EXISTS insole_has_lining;
 
 -- Reference Material Variants Table
 CREATE TABLE IF NOT EXISTS public.reference_material_variants (
-  id                        uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-  reference_id              uuid        NOT NULL
-                              REFERENCES public.technical_sheets(id) ON DELETE CASCADE,
-  material_name             text        NOT NULL,
-  sku                       text,
-  barcode                   text,
-  ncm                       text,
-  description_override      text,
-  upper_material_product_id uuid
-                              REFERENCES public.products(id) ON DELETE SET NULL,
-  unit_price_override       numeric,
-  active                    boolean     NOT NULL DEFAULT true,
-  display_order             integer     NOT NULL DEFAULT 0,
-  created_at                timestamptz DEFAULT now(),
-  updated_at                timestamptz DEFAULT now(),
-  UNIQUE (reference_id, material_name)
+  id                        uuid        PRIMARY KEY, reference_id              uuid        NOT NULL
+                              REFERENCES public.technical_sheets(id) ON DELETE CASCADE, material_name             text        NOT NULL, sku                       text, barcode                   text, ncm                       text, description_override      text, upper_material_product_id uuid
+                              REFERENCES public.products(id) ON DELETE SET NULL, unit_price_override       numeric, active                    boolean     NOT NULL, display_order             integer     NOT NULL, created_at                timestamptz, updated_at                timestamptz, UNIQUE (reference_id, material_name)
 );
 
 CREATE INDEX IF NOT EXISTS idx_ref_mat_variants_reference
@@ -104,7 +96,8 @@ BEGIN
     WHERE tablename = 'reference_material_variants' 
     AND policyname = 'authenticated_rw_ref_mat_variants'
   ) THEN
-    CREATE POLICY "authenticated_rw_ref_mat_variants"
+    DROP POLICY IF EXISTS "authenticated_rw_ref_mat_variants" ON public.reference_material_variants;
+CREATE POLICY "authenticated_rw_ref_mat_variants"
       ON public.reference_material_variants
       FOR ALL TO authenticated
       USING (true) WITH CHECK (true);
@@ -119,6 +112,7 @@ CREATE INDEX IF NOT EXISTS idx_soi_material_variant
   ON public.sale_order_items(material_variant_id)
   WHERE material_variant_id IS NOT NULL;
 
+DROP FUNCTION IF EXISTS public.fn_touch_ref_mat_variant() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_touch_ref_mat_variant()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN

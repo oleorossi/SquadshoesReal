@@ -1,4 +1,8 @@
 
+DROP FUNCTION IF EXISTS public.debit_strap_stock(
+  p_strap_colors jsonb,
+  p_order_quantity integer
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_strap_stock(
   p_strap_colors jsonb,
   p_order_quantity integer

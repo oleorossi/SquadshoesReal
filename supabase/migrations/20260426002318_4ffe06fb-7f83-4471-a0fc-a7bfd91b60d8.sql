@@ -31,6 +31,7 @@ create policy "Approved users can view audit"
   using (public.is_approved_user());
 
 -- Block direct INSERT/UPDATE/DELETE — only the trigger (security definer) writes here.
+DROP POLICY IF EXISTS "Block client writes audit" ON public.sole_standard_items_audit;
 create policy "Block client writes audit"
   on public.sole_standard_items_audit
   for all
@@ -39,6 +40,7 @@ create policy "Block client writes audit"
   with check (false);
 
 -- ─── Trigger function ───────────────────────────────────────────────────────
+DROP FUNCTION IF EXISTS public.log_sole_standard_items_change() CASCADE;
 create or replace function public.log_sole_standard_items_change()
 returns trigger
 language plpgsql

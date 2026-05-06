@@ -1,4 +1,5 @@
 -- Update restore_product_stocks_for_order to handle box_types (packaging)
+DROP FUNCTION IF EXISTS public.restore_product_stocks_for_order(p_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.restore_product_stocks_for_order(p_order_id uuid)
 RETURNS void
 LANGUAGE plpgsql
@@ -55,6 +56,7 @@ END;
 $$;
 
 -- Fix the column name in the INSERT (v_new_qty was a typo in my thought, fixing to new_stock)
+DROP FUNCTION IF EXISTS public.restore_product_stocks_for_order(p_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.restore_product_stocks_for_order(p_order_id uuid)
 RETURNS void
 LANGUAGE plpgsql

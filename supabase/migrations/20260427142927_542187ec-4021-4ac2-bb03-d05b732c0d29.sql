@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS public.check_sale_order_single_active_wave() CASCADE;
 CREATE OR REPLACE FUNCTION public.check_sale_order_single_active_wave()
 RETURNS trigger
 LANGUAGE plpgsql

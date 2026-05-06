@@ -1,4 +1,5 @@
 
+DROP FUNCTION IF EXISTS public.hybrid_debit_stock_for_order(p_reference_id uuid, p_order_quantity numeric, p_color text, p_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.hybrid_debit_stock_for_order(p_reference_id uuid, p_order_quantity numeric, p_color text DEFAULT ''::text, p_order_id uuid DEFAULT NULL::uuid)
  RETURNS jsonb
  LANGUAGE plpgsql

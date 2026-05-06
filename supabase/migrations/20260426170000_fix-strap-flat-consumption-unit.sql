@@ -9,6 +9,7 @@
 -- divide by 100 to convert cm → meters before multiplying by order quantity.
 -- Legacy data (no v_per_size) keeps the original meters-direct behaviour.
 
+DROP FUNCTION IF EXISTS public.debit_strap_stock(p_strap_colors jsonb, p_order_quantity integer, p_order_id uuid, p_order_grade jsonb) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_strap_stock(
   p_strap_colors jsonb,
   p_order_quantity integer,

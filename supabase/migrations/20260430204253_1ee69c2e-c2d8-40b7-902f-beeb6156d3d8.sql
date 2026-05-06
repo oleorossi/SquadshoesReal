@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS import_time_records_safe(records jsonb) CASCADE;
 CREATE OR REPLACE FUNCTION import_time_records_safe(records jsonb)
 RETURNS jsonb
 LANGUAGE plpgsql

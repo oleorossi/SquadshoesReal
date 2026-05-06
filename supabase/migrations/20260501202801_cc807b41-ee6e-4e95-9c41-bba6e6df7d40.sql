@@ -43,6 +43,7 @@ CREATE INDEX IF NOT EXISTS idx_prod_cons_active
   ON public.production_consumptions (order_id)
   WHERE superseded_at IS NULL;
 
+DROP FUNCTION IF EXISTS public.fn_enqueue_resync_for_sole_conjugation() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_enqueue_resync_for_sole_conjugation()
 RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
@@ -69,6 +70,7 @@ CREATE TRIGGER trg_resync_for_sole_conjugation
   FOR EACH ROW
   EXECUTE FUNCTION public.fn_enqueue_resync_for_sole_conjugation();
 
+DROP FUNCTION IF EXISTS public.fn_enqueue_resync_for_palmilha_colors() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_enqueue_resync_for_palmilha_colors()
 RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
@@ -98,7 +100,8 @@ BEGIN
               WHERE table_schema = 'public' AND table_name = 'artisanal_orders') THEN
 
     EXECUTE $f$
-      CREATE OR REPLACE FUNCTION public.fn_enqueue_resync_for_artisanal_recipe()
+      DROP FUNCTION IF EXISTS public.fn_enqueue_resync_for_artisanal_recipe() CASCADE;
+CREATE OR REPLACE FUNCTION public.fn_enqueue_resync_for_artisanal_recipe()
       RETURNS trigger LANGUAGE plpgsql AS $g$
       DECLARE
         v_recipe_id uuid;
@@ -133,6 +136,7 @@ BEGIN
 END;
 $$;
 
+DROP FUNCTION IF EXISTS public.resync_op_atomic(p_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.resync_op_atomic(p_order_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -269,6 +273,7 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.resync_op_atomic(uuid) TO authenticated;
 
+DROP FUNCTION IF EXISTS public.process_resync_queue(p_limit integer) CASCADE;
 CREATE OR REPLACE FUNCTION public.process_resync_queue(p_limit integer DEFAULT 50)
 RETURNS jsonb
 LANGUAGE plpgsql

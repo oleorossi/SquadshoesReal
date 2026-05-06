@@ -1,4 +1,5 @@
 -- Função para retornar o resumo do estoque sem baixar todas as linhas
+DROP FUNCTION IF EXISTS get_inventory_summary() CASCADE;
 CREATE OR REPLACE FUNCTION get_inventory_summary()
 RETURNS json AS $$
 DECLARE

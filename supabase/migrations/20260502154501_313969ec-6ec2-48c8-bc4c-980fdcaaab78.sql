@@ -1,4 +1,8 @@
 -- Criar ou atualizar função para garantir atomicidade em itens de pedido de compra
+DROP FUNCTION IF EXISTS public.upsert_purchase_order_items(
+  p_order_id UUID,
+  p_items JSONB
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.upsert_purchase_order_items(
   p_order_id UUID,
   p_items JSONB

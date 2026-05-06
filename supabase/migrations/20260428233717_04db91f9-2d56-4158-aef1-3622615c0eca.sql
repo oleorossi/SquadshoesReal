@@ -30,6 +30,7 @@ CREATE POLICY "Approved users can delete sole size conjugations"
   ON public.sole_size_conjugations FOR DELETE TO authenticated
   USING (public.is_approved(auth.uid()));
 
+DROP FUNCTION IF EXISTS public.get_sole_size_key(p_sole_group_id uuid, p_shoe_size integer) CASCADE;
 CREATE OR REPLACE FUNCTION public.get_sole_size_key(p_sole_group_id uuid, p_shoe_size integer)
 RETURNS text
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
@@ -41,6 +42,7 @@ AS $$
   LIMIT 1;
 $$;
 
+DROP FUNCTION IF EXISTS public.get_sole_group_id_for_product(p_product_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.get_sole_group_id_for_product(p_product_id uuid)
 RETURNS uuid
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
@@ -48,6 +50,12 @@ AS $$
   SELECT group_id FROM public.products WHERE id = p_product_id LIMIT 1;
 $$;
 
+DROP FUNCTION IF EXISTS public.debit_sole_stock_by_grade(
+  p_reference_id uuid,
+  p_order_id uuid,
+  p_color text,
+  p_order_grade jsonb
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_sole_stock_by_grade(
   p_reference_id uuid,
   p_order_id uuid,

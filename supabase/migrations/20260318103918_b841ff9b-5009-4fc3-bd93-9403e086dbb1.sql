@@ -6,6 +6,9 @@ DROP POLICY IF EXISTS "Anyone can view client logos" ON storage.objects;
 DROP POLICY IF EXISTS "Anyone can view receipts" ON storage.objects;
 
 -- Criar políticas de SELECT para usuários autenticados onde faltam
+DROP POLICY IF EXISTS "Auth users can view avatars" ON storage.objects;
 CREATE POLICY "Auth users can view avatars" ON storage.objects FOR SELECT TO authenticated USING (bucket_id = 'avatars');
+DROP POLICY IF EXISTS "Auth users can view client logos" ON storage.objects;
 CREATE POLICY "Auth users can view client logos" ON storage.objects FOR SELECT TO authenticated USING (bucket_id = 'client-logos');
+DROP POLICY IF EXISTS "Auth users can view receipts" ON storage.objects;
 CREATE POLICY "Auth users can view receipts" ON storage.objects FOR SELECT TO authenticated USING (bucket_id = 'employee-receipts');

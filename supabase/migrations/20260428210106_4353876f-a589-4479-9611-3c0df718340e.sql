@@ -1,4 +1,5 @@
 -- Re-creating missing views for price history
+DROP VIEW IF EXISTS public.v_supplier_price_history CASCADE;
 CREATE OR REPLACE VIEW public.v_supplier_price_history WITH (security_invoker = true) AS
 SELECT
   ii.product_id,
@@ -19,6 +20,7 @@ WHERE ii.product_id IS NOT NULL
   AND i.issue_date  IS NOT NULL
 ORDER BY i.issue_date DESC;
 
+DROP VIEW IF EXISTS public.v_product_price_summary CASCADE;
 CREATE OR REPLACE VIEW public.v_product_price_summary WITH (security_invoker = true) AS
 SELECT
   product_id,

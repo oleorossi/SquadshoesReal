@@ -3,6 +3,7 @@ ALTER TABLE public.technical_sheets
   ADD COLUMN IF NOT EXISTS requires_cutting_cabedal boolean NOT NULL DEFAULT true;
 
 -- 2) Atualiza a função de sincronização do roteiro
+DROP FUNCTION IF EXISTS public.sync_construction_routing() CASCADE;
 CREATE OR REPLACE FUNCTION public.sync_construction_routing()
 RETURNS TRIGGER
 LANGUAGE plpgsql

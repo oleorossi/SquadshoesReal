@@ -35,10 +35,13 @@ CREATE INDEX IF NOT EXISTS idx_auto_exec_executed_at  ON public.automation_execu
 ALTER TABLE public.automation_workflows ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.automation_executions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "auto_workflows_all" ON public.automation_workflows;
 CREATE POLICY "auto_workflows_all"  ON public.automation_workflows  FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "auto_executions_all" ON public.automation_executions;
 CREATE POLICY "auto_executions_all" ON public.automation_executions FOR ALL USING (true) WITH CHECK (true);
 
 -- auto-update updated_at on edit
+DROP FUNCTION IF EXISTS public.touch_automation_workflow() CASCADE;
 CREATE OR REPLACE FUNCTION public.touch_automation_workflow()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN NEW.updated_at = NOW(); RETURN NEW; END;

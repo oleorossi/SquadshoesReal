@@ -17,6 +17,7 @@
 -- =============================================================================
 
 -- ── Fix #1: resync_op_atomic — replace legacy sector fallback ───────────────
+DROP FUNCTION IF EXISTS public.resync_op_atomic(p_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.resync_op_atomic(p_order_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql

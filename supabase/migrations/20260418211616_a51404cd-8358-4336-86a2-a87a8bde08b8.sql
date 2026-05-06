@@ -62,6 +62,7 @@ CREATE POLICY ts_ops_rw ON public.technical_sheet_operations
   FOR ALL TO authenticated USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
 
 -- ============ 4) RPC calculate_order_cost ==============================
+DROP FUNCTION IF EXISTS public.calculate_order_cost(p_sale_order_id uuid, p_sale_order_item_id uuid, p_persist boolean) CASCADE;
 CREATE OR REPLACE FUNCTION public.calculate_order_cost(
   p_sale_order_id uuid,
   p_sale_order_item_id uuid DEFAULT NULL,
@@ -203,6 +204,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.calculate_order_cost(uuid, uuid, boolean) TO authenticated;
 
 -- ============ 5) VIEW DE LUCRATIVIDADE ==================================
+DROP VIEW IF EXISTS public.v_order_profitability CASCADE;
 CREATE OR REPLACE VIEW public.v_order_profitability
 WITH (security_invoker = true) AS
 SELECT

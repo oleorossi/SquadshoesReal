@@ -1,6 +1,7 @@
 -- MIGRATION: 20260510130000_wave-timeline-missing-sector-columns.sql
 DROP VIEW IF EXISTS public.purchase_projection_timeline;
 
+DROP VIEW IF EXISTS public.purchase_projection_timeline CASCADE;
 CREATE OR REPLACE VIEW public.purchase_projection_timeline AS 
 WITH lt AS (
     SELECT o.id AS order_id,
@@ -106,6 +107,7 @@ FROM lt
     LEFT JOIN suppliers sup ON sup.id = m.supplier_id;
 
 -- MIGRATION: 20260510140000_fix-graded-consumption-waste-conversion.sql
+DROP FUNCTION IF EXISTS public.calculate_order_consumption_by_grade(p_reference_id uuid, p_grade jsonb, p_color text) CASCADE;
 CREATE OR REPLACE FUNCTION public.calculate_order_consumption_by_grade(p_reference_id uuid, p_grade jsonb, p_color text)
  RETURNS jsonb
  LANGUAGE plpgsql

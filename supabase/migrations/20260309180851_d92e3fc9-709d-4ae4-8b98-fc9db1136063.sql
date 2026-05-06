@@ -14,15 +14,20 @@ CREATE TABLE public.reference_color_variants (
 
 ALTER TABLE public.reference_color_variants ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Auth users can view reference_color_variants" ON public.reference_color_variants;
 CREATE POLICY "Auth users can view reference_color_variants" ON public.reference_color_variants FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert reference_color_variants" ON public.reference_color_variants;
 CREATE POLICY "Auth users can insert reference_color_variants" ON public.reference_color_variants FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update reference_color_variants" ON public.reference_color_variants;
 CREATE POLICY "Auth users can update reference_color_variants" ON public.reference_color_variants FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete reference_color_variants" ON public.reference_color_variants;
 CREATE POLICY "Auth users can delete reference_color_variants" ON public.reference_color_variants FOR DELETE TO authenticated USING (true);
 
 -- Sequence for variant barcodes
 CREATE SEQUENCE IF NOT EXISTS variant_barcode_seq START 100000;
 
 -- Auto-generate barcode for color variants
+DROP FUNCTION IF EXISTS public.generate_variant_barcode() CASCADE;
 CREATE OR REPLACE FUNCTION public.generate_variant_barcode()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -57,6 +62,7 @@ CREATE TRIGGER trigger_generate_variant_barcode
   FOR EACH ROW EXECUTE FUNCTION public.generate_variant_barcode();
 
 -- Auto-generate SKU for color variants
+DROP FUNCTION IF EXISTS public.generate_variant_sku() CASCADE;
 CREATE OR REPLACE FUNCTION public.generate_variant_sku()
 RETURNS trigger
 LANGUAGE plpgsql

@@ -47,14 +47,22 @@ CREATE TABLE public.accounts_receivable (
 ALTER TABLE public.accounts_payable ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.accounts_receivable ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Auth users can view accounts_payable" ON public.accounts_payable;
 CREATE POLICY "Auth users can view accounts_payable" ON public.accounts_payable FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert accounts_payable" ON public.accounts_payable;
 CREATE POLICY "Auth users can insert accounts_payable" ON public.accounts_payable FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update accounts_payable" ON public.accounts_payable;
 CREATE POLICY "Auth users can update accounts_payable" ON public.accounts_payable FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete accounts_payable" ON public.accounts_payable;
 CREATE POLICY "Auth users can delete accounts_payable" ON public.accounts_payable FOR DELETE TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Auth users can view accounts_receivable" ON public.accounts_receivable;
 CREATE POLICY "Auth users can view accounts_receivable" ON public.accounts_receivable FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert accounts_receivable" ON public.accounts_receivable;
 CREATE POLICY "Auth users can insert accounts_receivable" ON public.accounts_receivable FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update accounts_receivable" ON public.accounts_receivable;
 CREATE POLICY "Auth users can update accounts_receivable" ON public.accounts_receivable FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete accounts_receivable" ON public.accounts_receivable;
 CREATE POLICY "Auth users can delete accounts_receivable" ON public.accounts_receivable FOR DELETE TO authenticated USING (true);
 
 -- Triggers for updated_at

@@ -2,6 +2,7 @@
 DROP FUNCTION IF EXISTS public.compute_wave_timeline(uuid[]);
 
 -- 2. REPLACE stage_order()
+DROP FUNCTION IF EXISTS public.stage_order(s production_stage_enum) CASCADE;
 CREATE OR REPLACE FUNCTION public.stage_order(s production_stage_enum)
 RETURNS integer LANGUAGE sql IMMUTABLE SET search_path = public AS $$
   SELECT CASE s
@@ -24,6 +25,7 @@ RETURNS integer LANGUAGE sql IMMUTABLE SET search_path = public AS $$
 $$;
 
 -- 3. CREATE sector_display_to_enum()
+DROP FUNCTION IF EXISTS public.sector_display_to_enum(p_name text) CASCADE;
 CREATE OR REPLACE FUNCTION public.sector_display_to_enum(p_name text)
 RETURNS production_stage_enum
 LANGUAGE sql IMMUTABLE SET search_path = public AS $$
@@ -56,6 +58,10 @@ $$;
 GRANT EXECUTE ON FUNCTION public.sector_display_to_enum(text) TO authenticated;
 
 -- 4. REPLACE create_production_wave()
+DROP FUNCTION IF EXISTS public.create_production_wave(
+  p_week_start date,
+  p_sale_order_ids uuid[]
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.create_production_wave(
   p_week_start date,
   p_sale_order_ids uuid[]
@@ -188,6 +194,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.create_production_wave(date, uuid[]) TO authenticated;
 
 -- 5. REPLACE compute_wave_timeline()
+DROP FUNCTION IF EXISTS public.compute_wave_timeline(p_sale_order_ids uuid[]) CASCADE;
 CREATE OR REPLACE FUNCTION public.compute_wave_timeline(p_sale_order_ids uuid[])
 RETURNS TABLE (
   earliest_deadline     date,

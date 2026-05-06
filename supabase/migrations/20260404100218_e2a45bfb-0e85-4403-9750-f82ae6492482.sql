@@ -10,6 +10,7 @@ USING (user_id = auth.uid() OR user_id IS NULL);
 -- Fix profiles: restrict DELETE to admin only
 DROP POLICY IF EXISTS "Approved users can delete profiles" ON public.profiles;
 
+DROP POLICY IF EXISTS "Admins can delete profiles" ON public.profiles;
 CREATE POLICY "Admins can delete profiles"
 ON public.profiles
 FOR DELETE

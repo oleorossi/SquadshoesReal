@@ -21,6 +21,7 @@ CREATE TABLE public.audit_logs (
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
 -- Allow authenticated users to insert audit logs
+DROP POLICY IF EXISTS "Users can insert their own audit logs" ON public.audit_logs;
 CREATE POLICY "Users can insert their own audit logs"
 ON public.audit_logs
 FOR INSERT
@@ -29,6 +30,7 @@ WITH CHECK (auth.uid() = user_id);
 
 -- Allow admins to view all logs (assuming there's an admin role or just for now let's allow service role/admins)
 -- For now, let's keep it simple as the user didn't specify
+DROP POLICY IF EXISTS "Admins can view all audit logs" ON public.audit_logs;
 CREATE POLICY "Admins can view all audit logs"
 ON public.audit_logs
 FOR SELECT

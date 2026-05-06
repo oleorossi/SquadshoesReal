@@ -10,6 +10,14 @@ ALTER TABLE public.purchase_orders
 ALTER TABLE public.clients
   ADD COLUMN IF NOT EXISTS credit_limit numeric NOT NULL DEFAULT 0;
 
+-- ─── orders: due_date column (added here so following indexes/views work) ────
+ALTER TABLE public.orders
+  ADD COLUMN IF NOT EXISTS due_date date;
+
+-- ─── accounts_receivable: client_id (added so index/view works) ──────────────
+ALTER TABLE public.accounts_receivable
+  ADD COLUMN IF NOT EXISTS client_id uuid;
+
 -- ─── Performance indexes ──────────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_orders_status       ON public.orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_due_date     ON public.orders(due_date);
@@ -25,6 +33,7 @@ CREATE INDEX IF NOT EXISTS idx_po_supplier_id      ON public.purchase_orders(sup
 CREATE INDEX IF NOT EXISTS idx_po_promised_date    ON public.purchase_orders(promised_date);
 
 -- ─── View: client credit exposure ────────────────────────────────────────────
+DROP VIEW IF EXISTS public.v_client_credit_exposure CASCADE;
 CREATE OR REPLACE VIEW public.v_client_credit_exposure AS
 SELECT
   c.id                                                      AS client_id,
@@ -44,6 +53,7 @@ GROUP BY c.id, c.razao_social, c.nome_fantasia, c.credit_limit;
 DROP POLICY IF EXISTS "Auth users can view v_client_credit_exposure" ON public.v_client_credit_exposure;
 
 -- ─── View: late production orders ────────────────────────────────────────────
+DROP VIEW IF EXISTS public.v_late_orders CASCADE;
 CREATE OR REPLACE VIEW public.v_late_orders AS
 SELECT
   o.id,
@@ -67,6 +77,7 @@ WHERE o.status IN ('Reservado', 'Em Produção')
   AND o.due_date < CURRENT_DATE;
 
 -- ─── View: purchase orders overdue (sent but promised_date passed) ────────────
+DROP VIEW IF EXISTS public.v_overdue_purchase_orders CASCADE;
 CREATE OR REPLACE VIEW public.v_overdue_purchase_orders AS
 SELECT
   po.id,

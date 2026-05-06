@@ -11,6 +11,7 @@ CREATE TABLE public.variant_group_images (
 
 ALTER TABLE public.variant_group_images ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Authenticated users can manage variant group images" ON public.variant_group_images;
 CREATE POLICY "Authenticated users can manage variant group images"
   ON public.variant_group_images
   FOR ALL

@@ -15,6 +15,7 @@ ALTER TABLE public.sole_technical_specs
 -- ----------------------------------------------------------------
 -- 3. Atualiza calculate_order_consumption para incluir Fachete
 -- ----------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.calculate_order_consumption(p_reference_id uuid, p_order_quantity numeric, p_color text, p_size integer) CASCADE;
 CREATE OR REPLACE FUNCTION public.calculate_order_consumption(
   p_reference_id uuid,
   p_order_quantity numeric,
@@ -229,6 +230,11 @@ $function$;
 -- ----------------------------------------------------------------
 -- 4. Atualiza calculate_order_consumption_by_grade para incluir Fachete
 -- ----------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.calculate_order_consumption_by_grade(
+  p_reference_id uuid,
+  p_grade jsonb,
+  p_color text
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.calculate_order_consumption_by_grade(
   p_reference_id uuid,
   p_grade jsonb,

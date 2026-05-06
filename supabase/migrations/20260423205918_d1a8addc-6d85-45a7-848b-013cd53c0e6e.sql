@@ -52,6 +52,7 @@ WHERE COALESCE(d.total_required, 0) > 0
    OR p.quantity < p.min_stock;
 
 -- Update generate_purchase_orders_from_mrp function to handle conversion
+DROP FUNCTION IF EXISTS public.generate_purchase_orders_from_mrp(p_product_ids uuid[]) CASCADE;
 CREATE OR REPLACE FUNCTION public.generate_purchase_orders_from_mrp(
   p_product_ids uuid[] DEFAULT NULL
 ) RETURNS SETOF uuid

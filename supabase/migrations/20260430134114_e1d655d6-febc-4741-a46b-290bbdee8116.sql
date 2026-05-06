@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS public.advance_wave_stage(p_wave_id uuid, p_stage   production_stage_enum) CASCADE;
 CREATE OR REPLACE FUNCTION public.advance_wave_stage(
   p_wave_id uuid,
   p_stage   production_stage_enum DEFAULT NULL

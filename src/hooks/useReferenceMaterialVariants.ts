@@ -1,48 +1,113 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
-
-export interface ReferenceMaterialVariant {
-  id: string;
-  reference_id: string;
-  material_name: string;
-  sku: string | null;
-  barcode: string | null;
-  ncm: string | null;
-  description_override: string | null;
-  upper_material_product_id: string | null;
-  unit_price_override: number | null;
-  available_colors: string[];
-  active: boolean;
-  display_order: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export type ReferenceMaterialVariantInsert = Omit<ReferenceMaterialVariant, 'id' | 'created_at' | 'updated_at'>;
-export type ReferenceMaterialVariantUpdate = Partial<Omit<ReferenceMaterialVariant, 'id' | 'reference_id' | 'created_at' | 'updated_at'>>;
-
-const QUERY_KEY = (referenceId: string | null) => ['reference_material_variants', referenceId];
-
-export function useReferenceMaterialVariants(referenceId: string | null) {
-  return useQuery({
-    queryKey: QUERY_KEY(referenceId),
-    enabled: !!referenceId,
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from('reference_material_variants')
-        .select('*')
-        .eq('reference_id', referenceId!)
-        .order('display_order')
-        .order('material_name');
-      if (error) throw error;
-      return (data || []) as ReferenceMaterialVariant[];
-    },
-    staleTime: 60_000,
-  });
-}
-
-const ALL_ACTIVE_KEY = ['reference_material_variants_all_active'];
+ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+ import { supabase } from '@/integrations/supabase/client';
+ import { toast } from 'sonner';
+ 
+ export type ReferenceMaterialVariant = {
+   id: string;
+   reference_id: string;
+   material_name: string;
+   sku: string;
+   barcode: string;
+   ncm: string;
+   description_override: string;
+   upper_material_product_id: string | null;
+   unit_price_override: number | null;
+   active: boolean;
+   display_order: number;
+   created_at: string;
+   updated_at: string;
+ };
+ 
+ export function useReferenceMaterialVariants(referenceId?: string) {
+   return useQuery({
+     queryKey: ['reference_material_variants', referenceId],
+     enabled: !!referenceId,
+     queryFn: async () => {
+       const { data, error } = await supabase
+         .from('reference_material_variants')
+         .select('*')
+         .eq('reference_id', referenceId!)
+         .order('display_order', { ascending: true });
+       if (error) throw error;
+       return data as ReferenceMaterialVariant[];
+     },
+   });
+ }
+ 
+ export function useAddReferenceMaterialVariant() {
+   const qc = useQueryClient();
+   return useMutation({
+     mutationFn: async (data: Partial<ReferenceMaterialVariant>) => {
+       const { data: result, error } = await supabase
+         .from('reference_material_variants')
+         .insert(data as any)
+         .select()
+         .single();
+       if (error) throw error;
+       return result as ReferenceMaterialVariant;
+     },
+     onSuccess: (_d, vars) => {
+       qc.invalidateQueries({ queryKey: ['reference_material_variants', vars.reference_id] });
+       toast.success('Variante de material adicionada');
+     },
+     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
+   });
+ }
+ 
+ export function useUpdateReferenceMaterialVariant() {
+   const qc = useQueryClient();
+   return useMutation({
+     mutationFn: async ({ id, data }: { id: string; data: Partial<ReferenceMaterialVariant> }) => {
+       const { error } = await supabase
+         .from('reference_material_variants')
+         .update(data as any)
+         .eq('id', id);
+       if (error) throw error;
+     },
+     onSuccess: () => {
+       qc.invalidateQueries({ queryKey: ['reference_material_variants'] });
+       toast.success('Variante de material atualizada');
+     },
+     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
+   });
+ }
+ 
+ export function useDeleteReferenceMaterialVariant() {
+   const qc = useQueryClient();
+   return useMutation({
+     mutationFn: async (id: string) => {
+       const { error } = await supabase
+         .from('reference_material_variants')
+         .delete()
+         .eq('id', id);
+       if (error) throw error;
+     },
+     onSuccess: () => {
+       qc.invalidateQueries({ queryKey: ['reference_material_variants'] });
+       toast.success('Variante de material removida');
+     },
+     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
+   });
+ }
+ 
+ export function useReorderReferenceMaterialVariants() {
+   const qc = useQueryClient();
+   return useMutation({
+     mutationFn: async (variants: { id: string; display_order: number }[]) => {
+       // Batch updates using multiple calls since Supabase doesn't support bulk update with different values easily in a single RPC without custom DB function
+       const updates = variants.map(v => 
+         supabase.from('reference_material_variants').update({ display_order: v.display_order }).eq('id', v.id)
+       );
+       const results = await Promise.all(updates);
+       const firstError = results.find(r => r.error)?.error;
+       if (firstError) throw firstError;
+     },
+     onSuccess: () => {
+       qc.invalidateQueries({ queryKey: ['reference_material_variants'] });
+     },
+     onError: (err: Error) => toast.error(`Erro ao reordenar: ${err.message}`),
+   });
+ }
 
 export function useUpsertReferenceMaterialVariant() {
   const qc = useQueryClient();
@@ -75,28 +140,7 @@ export function useUpsertReferenceMaterialVariant() {
   });
 }
 
-export function useDeleteReferenceMaterialVariant() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, referenceId }: { id: string; referenceId: string }) => {
-      const { error } = await (supabase as any)
-        .from('reference_material_variants')
-        .delete()
-        .eq('id', id);
-      if (error) throw error;
-      return referenceId;
-    },
-    onSuccess: (_data, variables) => {
-      qc.invalidateQueries({ queryKey: QUERY_KEY(variables.referenceId) });
-      qc.invalidateQueries({ queryKey: ALL_ACTIVE_KEY });
-    },
-    onError: (err: any) => toast.error(`Erro ao excluir variação: ${err.message}`),
-  });
-}
 
-export type VariantSummary = { id: string; material_name: string; sku: string | null; available_colors: string[] };
-
-/** Fetches all active material variants for all references in one query. */
 export function useAllActiveReferenceMaterialVariants() {
   return useQuery({
     queryKey: ALL_ACTIVE_KEY,
@@ -118,3 +162,12 @@ export function useAllActiveReferenceMaterialVariants() {
     staleTime: 60_000,
   });
 }
+
+
+export type VariantSummary = { id: string; material_name: string; sku: string | null; available_colors: string[] };
+
+
+export type ReferenceMaterialVariantInsert = Omit<ReferenceMaterialVariant, 'id' | 'created_at' | 'updated_at'>;
+
+
+export type ReferenceMaterialVariantUpdate = Partial<Omit<ReferenceMaterialVariant, 'id' | 'reference_id' | 'created_at' | 'updated_at'>>;

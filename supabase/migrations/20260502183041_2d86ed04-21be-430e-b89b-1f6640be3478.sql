@@ -33,7 +33,8 @@ BEGIN
     WHERE tablename = 'reference_material_variants' 
     AND policyname = 'authenticated_rw_ref_mat_variants'
   ) THEN
-    CREATE POLICY "authenticated_rw_ref_mat_variants"
+    DROP POLICY IF EXISTS "authenticated_rw_ref_mat_variants" ON public.reference_material_variants;
+CREATE POLICY "authenticated_rw_ref_mat_variants"
       ON public.reference_material_variants
       FOR ALL TO authenticated
       USING (true) WITH CHECK (true);
@@ -48,6 +49,7 @@ CREATE INDEX IF NOT EXISTS idx_soi_material_variant
   ON public.sale_order_items(material_variant_id)
   WHERE material_variant_id IS NOT NULL;
 
+DROP FUNCTION IF EXISTS public.fn_touch_ref_mat_variant() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_touch_ref_mat_variant()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN

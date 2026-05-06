@@ -10,16 +10,7 @@ DROP FUNCTION IF EXISTS public.compute_wave_timeline(uuid[]);
 
 CREATE OR REPLACE FUNCTION public.compute_wave_timeline(p_sale_order_ids uuid[])
 RETURNS TABLE (
-  earliest_deadline             date,
-  corte_palmilha_start_date     date,
-  corte_forracao_start_date     date,
-  montagem_start_date           date,
-  acabamento_start_date         date,
-  silk_start_date               date,
-  colagem_start_date            date,
-  solagem_start_date            date,
-  material_ready_date           date,
-  purchase_deadline             date
+  earliest_deadline             date, corte_palmilha_start_date     date, corte_forracao_start_date     date, montagem_start_date           date, acabamento_start_date         date, silk_start_date               date, colagem_start_date            date, solagem_start_date            date, material_ready_date           date, purchase_deadline             date
 )
 LANGUAGE plpgsql STABLE AS $$
 DECLARE
@@ -44,15 +35,15 @@ BEGIN
   IF v_deadline IS NULL THEN RETURN; END IF;
 
   SELECT
-    COALESCE(MAX(CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(ts.production_sectors,'[]'::jsonb)) x WHERE sector_display_to_enum(x.value)='corte_palmilha') THEN CASE WHEN COALESCE(NULLIF(ts.sewing_capacity_per_day,0),dlt.sewing_capacity_per_day,0)>0 THEN GREATEST(1,CEIL(soi.quantity::numeric/COALESCE(NULLIF(ts.sewing_capacity_per_day,0),dlt.sewing_capacity_per_day)::numeric)::int) ELSE COALESCE(NULLIF(ts.lead_time_costura_dias,0),dlt.lead_time_costura_dias,(SELECT sc.costura_dias FROM shoe_category_lead_times sc WHERE sc.shoe_category=ts.shoe_category LIMIT 1),1) END ELSE 0 END),1),
-    COALESCE(MAX(CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(ts.production_sectors,'[]'::jsonb)) x WHERE sector_display_to_enum(x.value)='corte_forracao') THEN CASE WHEN COALESCE(NULLIF(ts.cutting_capacity_per_day,0),dlt.cutting_capacity_per_day,0)>0 THEN GREATEST(1,CEIL(soi.quantity::numeric/COALESCE(NULLIF(ts.cutting_capacity_per_day,0),dlt.cutting_capacity_per_day)::numeric)::int) ELSE COALESCE(NULLIF(ts.lead_time_corte_dias,0),dlt.lead_time_corte_dias,(SELECT sc.corte_dias FROM shoe_category_lead_times sc WHERE sc.shoe_category=ts.shoe_category LIMIT 1),2) END ELSE 0 END),0),
-    COALESCE(MAX(CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(ts.production_sectors,'[]'::jsonb)) x WHERE sector_display_to_enum(x.value)='mesa') THEN CASE WHEN COALESCE(NULLIF(ts.mesa_daily_capacity,0),0)>0 THEN GREATEST(1,CEIL(soi.quantity::numeric/ts.mesa_daily_capacity::numeric)::int) ELSE 1 END ELSE 0 END),0),
-    COALESCE(MAX(CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(ts.production_sectors,'[]'::jsonb)) x WHERE sector_display_to_enum(x.value)='silk') THEN CASE WHEN COALESCE(NULLIF(ts.silk_capacity_per_day,0),0)>0 THEN GREATEST(1,CEIL(soi.quantity::numeric/ts.silk_capacity_per_day::numeric)::int) ELSE 1 END ELSE 0 END),0),
-    COALESCE(MAX(CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(ts.production_sectors,'[]'::jsonb)) x WHERE sector_display_to_enum(x.value)='colagem') THEN CASE WHEN COALESCE(NULLIF(ts.gluing_capacity_per_day,0),0)>0 THEN GREATEST(1,CEIL(soi.quantity::numeric/ts.gluing_capacity_per_day::numeric)::int) ELSE 1 END ELSE 0 END),0),
-    COALESCE(MAX(CASE WHEN COALESCE(NULLIF(ts.assembly_capacity_per_day,0),dlt.assembly_capacity_per_day,0)>0 THEN GREATEST(1,CEIL(soi.quantity::numeric/COALESCE(NULLIF(ts.assembly_capacity_per_day,0),dlt.assembly_capacity_per_day)::numeric)::int) ELSE COALESCE(NULLIF(ts.lead_time_montagem_dias,0),dlt.lead_time_montagem_dias,(SELECT sc.montagem_dias FROM shoe_category_lead_times sc WHERE sc.shoe_category=ts.shoe_category LIMIT 1),2) END),2),
-    COALESCE(MAX(CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(ts.production_sectors,'[]'::jsonb)) x WHERE sector_display_to_enum(x.value)='solagem') THEN CASE WHEN COALESCE(NULLIF(ts.soling_capacity_per_day,0),0)>0 THEN GREATEST(1,CEIL(soi.quantity::numeric/ts.soling_capacity_per_day::numeric)::int) ELSE 1 END ELSE 0 END),0),
-    COALESCE(MAX(CASE WHEN COALESCE(NULLIF(ts.finishing_capacity_per_day,0),dlt.finishing_capacity_per_day,0)>0 THEN GREATEST(1,CEIL(soi.quantity::numeric/COALESCE(NULLIF(ts.finishing_capacity_per_day,0),dlt.finishing_capacity_per_day)::numeric)::int) ELSE COALESCE(NULLIF(ts.lead_time_acabamento_dias,0),dlt.lead_time_acabamento_dias,(SELECT sc.acabamento_dias FROM shoe_category_lead_times sc WHERE sc.shoe_category=ts.shoe_category LIMIT 1),1) END),1),
-    COALESCE(MAX(COALESCE(NULLIF(ts.lead_time_buffer_material_dias,0),dlt.lead_time_buffer_material_dias,(SELECT sc.buffer_material_dias FROM shoe_category_lead_times sc WHERE sc.shoe_category=ts.shoe_category LIMIT 1),2)),2)
+    COALESCE(MAX(CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(ts.production_sectors,'[]'::jsonb)) x WHERE sector_display_to_enum(x.value)='corte_palmilha') THEN CASE WHEN COALESCE(NULLIF(ts.sewing_capacity_per_day,0),dlt.sewing_capacity_per_day,0)>0 THEN GREATEST(1,CEIL(soi.quantity::numeric/COALESCE(NULLIF(ts.sewing_capacity_per_day,0),dlt.sewing_capacity_per_day)::numeric)::int) ELSE COALESCE(NULLIF(ts.lead_time_costura_dias,0),dlt.lead_time_costura_dias,(SELECT sc.costura_dias FROM shoe_category_lead_times sc WHERE sc.shoe_category=ts.shoe_category LIMIT 1),1) END ELSE 0 END), 1),
+    COALESCE(MAX(CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(ts.production_sectors,'[]'::jsonb)) x WHERE sector_display_to_enum(x.value)='corte_forracao') THEN CASE WHEN COALESCE(NULLIF(ts.cutting_capacity_per_day,0),dlt.cutting_capacity_per_day,0)>0 THEN GREATEST(1,CEIL(soi.quantity::numeric/COALESCE(NULLIF(ts.cutting_capacity_per_day,0),dlt.cutting_capacity_per_day)::numeric)::int) ELSE COALESCE(NULLIF(ts.lead_time_corte_dias,0),dlt.lead_time_corte_dias,(SELECT sc.corte_dias FROM shoe_category_lead_times sc WHERE sc.shoe_category=ts.shoe_category LIMIT 1),2) END ELSE 0 END), 0),
+    COALESCE(MAX(CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(ts.production_sectors,'[]'::jsonb)) x WHERE sector_display_to_enum(x.value)='mesa') THEN CASE WHEN COALESCE(NULLIF(ts.mesa_daily_capacity,0),0)>0 THEN GREATEST(1,CEIL(soi.quantity::numeric/ts.mesa_daily_capacity::numeric)::int) ELSE 1 END ELSE 0 END), 0),
+    COALESCE(MAX(CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(ts.production_sectors,'[]'::jsonb)) x WHERE sector_display_to_enum(x.value)='silk') THEN CASE WHEN COALESCE(NULLIF(ts.silk_capacity_per_day,0),0)>0 THEN GREATEST(1,CEIL(soi.quantity::numeric/ts.silk_capacity_per_day::numeric)::int) ELSE 1 END ELSE 0 END), 0),
+    COALESCE(MAX(CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(ts.production_sectors,'[]'::jsonb)) x WHERE sector_display_to_enum(x.value)='colagem') THEN CASE WHEN COALESCE(NULLIF(ts.gluing_capacity_per_day,0),0)>0 THEN GREATEST(1,CEIL(soi.quantity::numeric/ts.gluing_capacity_per_day::numeric)::int) ELSE 1 END ELSE 0 END), 0),
+    COALESCE(MAX(CASE WHEN COALESCE(NULLIF(ts.assembly_capacity_per_day,0),dlt.assembly_capacity_per_day,0)>0 THEN GREATEST(1,CEIL(soi.quantity::numeric/COALESCE(NULLIF(ts.assembly_capacity_per_day,0),dlt.assembly_capacity_per_day)::numeric)::int) ELSE COALESCE(NULLIF(ts.lead_time_montagem_dias,0),dlt.lead_time_montagem_dias,(SELECT sc.montagem_dias FROM shoe_category_lead_times sc WHERE sc.shoe_category=ts.shoe_category LIMIT 1),2) END), 2),
+    COALESCE(MAX(CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(ts.production_sectors,'[]'::jsonb)) x WHERE sector_display_to_enum(x.value)='solagem') THEN CASE WHEN COALESCE(NULLIF(ts.soling_capacity_per_day,0),0)>0 THEN GREATEST(1,CEIL(soi.quantity::numeric/ts.soling_capacity_per_day::numeric)::int) ELSE 1 END ELSE 0 END), 0),
+    COALESCE(MAX(CASE WHEN COALESCE(NULLIF(ts.finishing_capacity_per_day,0),dlt.finishing_capacity_per_day,0)>0 THEN GREATEST(1,CEIL(soi.quantity::numeric/COALESCE(NULLIF(ts.finishing_capacity_per_day,0),dlt.finishing_capacity_per_day)::numeric)::int) ELSE COALESCE(NULLIF(ts.lead_time_acabamento_dias,0),dlt.lead_time_acabamento_dias,(SELECT sc.acabamento_dias FROM shoe_category_lead_times sc WHERE sc.shoe_category=ts.shoe_category LIMIT 1),1) END), 1),
+    COALESCE(MAX(COALESCE(NULLIF(ts.lead_time_buffer_material_dias,0),dlt.lead_time_buffer_material_dias,(SELECT sc.buffer_material_dias FROM shoe_category_lead_times sc WHERE sc.shoe_category=ts.shoe_category LIMIT 1),2)), 2)
   INTO
     v_lead_palmilha, v_lead_forracao, v_lead_mesa,
     v_lead_silk, v_lead_colagem,
@@ -63,7 +54,7 @@ BEGIN
   LEFT JOIN default_lead_times dlt ON dlt.shoe_category = ts.shoe_category
   WHERE soi.sale_order_id = ANY(p_sale_order_ids);
 
-  SELECT COALESCE(MAX(CASE WHEN COALESCE(needed.total_needed,0)>COALESCE(p.quantity,0) THEN COALESCE(p.supplier_lead_time_days,10) ELSE 0 END),0)
+  SELECT COALESCE(MAX(CASE WHEN COALESCE(needed.total_needed,0)>COALESCE(p.quantity,0) THEN COALESCE(p.supplier_lead_time_days,10) ELSE 0 END), 0)
     INTO v_lead_supplier
     FROM (SELECT sm.product_id, SUM(sm.quantity_per_unit*soi.quantity) AS total_needed
             FROM sale_order_items soi JOIN sheet_materials sm ON sm.sheet_id=soi.reference_id
@@ -72,19 +63,20 @@ BEGIN
 
   RETURN QUERY SELECT
     v_deadline,
-    add_business_days(v_deadline,-(v_lead_acab+v_lead_solagem+v_lead_montagem+v_lead_colagem+v_lead_silk+v_lead_forracao+v_lead_palmilha))::date,
-    add_business_days(v_deadline,-(v_lead_acab+v_lead_solagem+v_lead_montagem+v_lead_colagem+v_lead_silk+v_lead_forracao))::date,
-    add_business_days(v_deadline,-(v_lead_acab+v_lead_solagem+v_lead_montagem))::date,
-    add_business_days(v_deadline,-v_lead_acab)::date,
-    add_business_days(v_deadline,-(v_lead_acab+v_lead_solagem+v_lead_montagem+v_lead_colagem+v_lead_silk))::date,
-    add_business_days(v_deadline,-(v_lead_acab+v_lead_solagem+v_lead_montagem+v_lead_colagem))::date,
-    add_business_days(v_deadline,-(v_lead_acab+v_lead_solagem))::date,
-    add_business_days(v_deadline,-(v_lead_acab+v_lead_solagem+v_lead_montagem+v_lead_colagem+v_lead_silk+v_lead_forracao+v_lead_palmilha+v_lead_buffer))::date,
-    add_business_days(v_deadline,-(v_lead_acab+v_lead_solagem+v_lead_montagem+v_lead_colagem+v_lead_silk+v_lead_forracao+v_lead_palmilha+v_lead_buffer+v_lead_supplier))::date;
+    add_business_days(v_deadline, -(v_lead_acab+v_lead_solagem+v_lead_montagem+v_lead_colagem+v_lead_silk+v_lead_forracao+v_lead_palmilha))::date,
+    add_business_days(v_deadline, -(v_lead_acab+v_lead_solagem+v_lead_montagem+v_lead_colagem+v_lead_silk+v_lead_forracao))::date,
+    add_business_days(v_deadline, -(v_lead_acab+v_lead_solagem+v_lead_montagem))::date,
+    add_business_days(v_deadline, -v_lead_acab)::date,
+    add_business_days(v_deadline, -(v_lead_acab+v_lead_solagem+v_lead_montagem+v_lead_colagem+v_lead_silk))::date,
+    add_business_days(v_deadline, -(v_lead_acab+v_lead_solagem+v_lead_montagem+v_lead_colagem))::date,
+    add_business_days(v_deadline, -(v_lead_acab+v_lead_solagem))::date,
+    add_business_days(v_deadline, -(v_lead_acab+v_lead_solagem+v_lead_montagem+v_lead_colagem+v_lead_silk+v_lead_forracao+v_lead_palmilha+v_lead_buffer))::date,
+    add_business_days(v_deadline, -(v_lead_acab+v_lead_solagem+v_lead_montagem+v_lead_colagem+v_lead_silk+v_lead_forracao+v_lead_palmilha+v_lead_buffer+v_lead_supplier))::date;
 END;
 $$;
 
 -- 3) Recria update_wave_timeline com nomes novos
+DROP FUNCTION IF EXISTS public.update_wave_timeline(p_wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.update_wave_timeline(p_wave_id uuid)
 RETURNS void
 LANGUAGE plpgsql
@@ -121,6 +113,7 @@ END;
 $$;
 
 -- 4) Recria get_wave_material_needs com nome novo
+DROP FUNCTION IF EXISTS public.get_wave_material_needs(p_sale_order_ids uuid[]) CASCADE;
 CREATE OR REPLACE FUNCTION public.get_wave_material_needs(p_sale_order_ids uuid[])
 RETURNS TABLE (
   product_id              uuid,

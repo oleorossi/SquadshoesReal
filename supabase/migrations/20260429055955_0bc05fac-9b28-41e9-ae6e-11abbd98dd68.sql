@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS public.stage_order(s production_stage_enum) CASCADE;
 CREATE OR REPLACE FUNCTION public.stage_order(s production_stage_enum)
 RETURNS integer LANGUAGE sql IMMUTABLE SET search_path = public AS $$
   SELECT CASE s
@@ -16,6 +17,10 @@ ALTER TABLE public.technical_sheets
 ALTER TABLE public.production_wave_stages
   ADD COLUMN IF NOT EXISTS capacity_per_day int NOT NULL DEFAULT 0;
 
+DROP FUNCTION IF EXISTS public.create_production_wave(
+  p_week_start date,
+  p_sale_order_ids uuid[]
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.create_production_wave(
   p_week_start date,
   p_sale_order_ids uuid[]
@@ -101,6 +106,7 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.create_production_wave(date, uuid[]) TO authenticated;
 
+DROP FUNCTION IF EXISTS public.advance_wave_stage(p_wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.advance_wave_stage(p_wave_id uuid)
 RETURNS production_stage_enum
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
@@ -154,6 +160,7 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.advance_wave_stage(uuid) TO authenticated;
 
+DROP FUNCTION IF EXISTS public.compute_wave_timeline(p_sale_order_ids uuid[]) CASCADE;
 CREATE OR REPLACE FUNCTION public.compute_wave_timeline(p_sale_order_ids uuid[])
 RETURNS TABLE (
   earliest_deadline     date,
@@ -233,6 +240,7 @@ BEGIN
 END;
 $$;
 
+DROP VIEW IF EXISTS public.v_sector_board CASCADE;
 CREATE OR REPLACE VIEW public.v_sector_board AS
 WITH stages AS (
   SELECT s.stage,

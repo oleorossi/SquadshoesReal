@@ -17,6 +17,7 @@ CREATE TABLE public.time_exceptions (
 
 ALTER TABLE public.time_exceptions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Allow authenticated users full access to time_exceptions" ON public.time_exceptions;
 CREATE POLICY "Allow authenticated users full access to time_exceptions"
   ON public.time_exceptions
   FOR ALL

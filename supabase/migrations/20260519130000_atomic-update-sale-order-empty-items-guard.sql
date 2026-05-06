@@ -8,6 +8,11 @@
 -- Note: this patches only the guard; the rest of the function body is
 -- unchanged from migration 20260510180000.
 
+DROP FUNCTION IF EXISTS public.update_sale_order_atomic(
+  p_order_id uuid,
+  p_header   jsonb,
+  p_items    jsonb
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.update_sale_order_atomic(
   p_order_id uuid,
   p_header   jsonb,

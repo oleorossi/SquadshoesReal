@@ -6,6 +6,7 @@
 --   - Onda iniciada automaticamente (start_wave é chamado internamente)
 --   - Destinada a pedidos urgentes ou fora do ciclo de planejamento semanal
 
+DROP FUNCTION IF EXISTS public.create_solo_wave(p_sale_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.create_solo_wave(p_sale_order_id uuid)
 RETURNS uuid
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$

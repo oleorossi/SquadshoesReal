@@ -69,13 +69,19 @@ ALTER TABLE public.bill_of_materials ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.production_orders ENABLE ROW LEVEL SECURITY;
 
 -- Simple RLS Policies (allowing authenticated users)
+DROP POLICY IF EXISTS "Allow authenticated access to product_masters" ON public.product_masters;
 CREATE POLICY "Allow authenticated access to product_masters" ON public.product_masters FOR ALL USING (auth.role() = 'authenticated');
+DROP POLICY IF EXISTS "Allow authenticated access to product_variants" ON public.product_variants;
 CREATE POLICY "Allow authenticated access to product_variants" ON public.product_variants FOR ALL USING (auth.role() = 'authenticated');
+DROP POLICY IF EXISTS "Allow authenticated access to materials" ON public.materials;
 CREATE POLICY "Allow authenticated access to materials" ON public.materials FOR ALL USING (auth.role() = 'authenticated');
+DROP POLICY IF EXISTS "Allow authenticated access to bill_of_materials" ON public.bill_of_materials;
 CREATE POLICY "Allow authenticated access to bill_of_materials" ON public.bill_of_materials FOR ALL USING (auth.role() = 'authenticated');
+DROP POLICY IF EXISTS "Allow authenticated access to production_orders" ON public.production_orders;
 CREATE POLICY "Allow authenticated access to production_orders" ON public.production_orders FOR ALL USING (auth.role() = 'authenticated');
 
 -- Trigger for updated_at
+DROP FUNCTION IF EXISTS public.update_updated_at_column() CASCADE;
 CREATE OR REPLACE FUNCTION public.update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN

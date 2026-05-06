@@ -15,6 +15,7 @@
 -- never finds the legacy 'corte' row → solo waves never auto-start.
 -- =============================================================================
 
+DROP FUNCTION IF EXISTS public.create_solo_wave(p_sale_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.create_solo_wave(p_sale_order_id uuid)
 RETURNS uuid
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$

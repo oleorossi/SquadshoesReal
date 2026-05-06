@@ -20,9 +20,13 @@ CREATE TABLE public.work_schedules (
 );
 
 ALTER TABLE public.work_schedules ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Auth users can view work_schedules" ON public.work_schedules;
 CREATE POLICY "Auth users can view work_schedules" ON public.work_schedules FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert work_schedules" ON public.work_schedules;
 CREATE POLICY "Auth users can insert work_schedules" ON public.work_schedules FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update work_schedules" ON public.work_schedules;
 CREATE POLICY "Auth users can update work_schedules" ON public.work_schedules FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete work_schedules" ON public.work_schedules;
 CREATE POLICY "Auth users can delete work_schedules" ON public.work_schedules FOR DELETE TO authenticated USING (true);
 
 -- Holidays table
@@ -35,9 +39,13 @@ CREATE TABLE public.holidays (
 );
 
 ALTER TABLE public.holidays ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Auth users can view holidays" ON public.holidays;
 CREATE POLICY "Auth users can view holidays" ON public.holidays FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert holidays" ON public.holidays;
 CREATE POLICY "Auth users can insert holidays" ON public.holidays FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update holidays" ON public.holidays;
 CREATE POLICY "Auth users can update holidays" ON public.holidays FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete holidays" ON public.holidays;
 CREATE POLICY "Auth users can delete holidays" ON public.holidays FOR DELETE TO authenticated USING (true);
 
 -- Time records (imported from xlsx)
@@ -53,7 +61,11 @@ CREATE TABLE public.time_records (
 );
 
 ALTER TABLE public.time_records ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Auth users can view time_records" ON public.time_records;
 CREATE POLICY "Auth users can view time_records" ON public.time_records FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert time_records" ON public.time_records;
 CREATE POLICY "Auth users can insert time_records" ON public.time_records FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update time_records" ON public.time_records;
 CREATE POLICY "Auth users can update time_records" ON public.time_records FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete time_records" ON public.time_records;
 CREATE POLICY "Auth users can delete time_records" ON public.time_records FOR DELETE TO authenticated USING (true);

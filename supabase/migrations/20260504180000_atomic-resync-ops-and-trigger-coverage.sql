@@ -82,6 +82,7 @@ CREATE INDEX IF NOT EXISTS idx_prod_cons_active
 -- =====================================================================
 
 -- 3a) sole_size_conjugations — afeta débito de solado por grade
+DROP FUNCTION IF EXISTS public.fn_enqueue_resync_for_sole_conjugation() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_enqueue_resync_for_sole_conjugation()
 RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
@@ -110,6 +111,7 @@ CREATE TRIGGER trg_resync_for_sole_conjugation
   EXECUTE FUNCTION public.fn_enqueue_resync_for_sole_conjugation();
 
 -- 3b) technical_sheet_palmilha_colors — afeta débito de palmilha quando insole_has_lining=false
+DROP FUNCTION IF EXISTS public.fn_enqueue_resync_for_palmilha_colors() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_enqueue_resync_for_palmilha_colors()
 RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
@@ -142,7 +144,8 @@ BEGIN
               WHERE table_schema = 'public' AND table_name = 'artisanal_orders') THEN
 
     EXECUTE $f$
-      CREATE OR REPLACE FUNCTION public.fn_enqueue_resync_for_artisanal_recipe()
+      DROP FUNCTION IF EXISTS public.fn_enqueue_resync_for_artisanal_recipe() CASCADE;
+CREATE OR REPLACE FUNCTION public.fn_enqueue_resync_for_artisanal_recipe()
       RETURNS trigger LANGUAGE plpgsql AS $g$
       DECLARE
         v_recipe_id uuid;
@@ -180,6 +183,7 @@ $$;
 -- =====================================================================
 -- 4) RPC atômica que faz o resync de uma única OP em transação
 -- =====================================================================
+DROP FUNCTION IF EXISTS public.resync_op_atomic(p_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.resync_op_atomic(p_order_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -332,6 +336,7 @@ GRANT EXECUTE ON FUNCTION public.resync_op_atomic(uuid) TO authenticated;
 -- =====================================================================
 -- 5) RPC para processar a fila — batch processor
 -- =====================================================================
+DROP FUNCTION IF EXISTS public.process_resync_queue(p_limit integer) CASCADE;
 CREATE OR REPLACE FUNCTION public.process_resync_queue(p_limit integer DEFAULT 50)
 RETURNS jsonb
 LANGUAGE plpgsql

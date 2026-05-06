@@ -13,6 +13,10 @@
 --   })
 -- ---------------------------------------------------------------
 
+DROP FUNCTION IF EXISTS public.increment_purchase_order_total(
+  p_po_id uuid,
+  p_delta numeric
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.increment_purchase_order_total(
   p_po_id uuid,
   p_delta numeric

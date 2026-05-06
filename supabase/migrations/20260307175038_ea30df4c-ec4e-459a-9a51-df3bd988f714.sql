@@ -19,9 +19,13 @@ CREATE TABLE public.contractors (
 
 ALTER TABLE public.contractors ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Auth users can view contractors" ON public.contractors;
 CREATE POLICY "Auth users can view contractors" ON public.contractors FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert contractors" ON public.contractors;
 CREATE POLICY "Auth users can insert contractors" ON public.contractors FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update contractors" ON public.contractors;
 CREATE POLICY "Auth users can update contractors" ON public.contractors FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete contractors" ON public.contractors;
 CREATE POLICY "Auth users can delete contractors" ON public.contractors FOR DELETE TO authenticated USING (true);
 
 -- Tabela de pedidos de serviço
@@ -43,14 +47,19 @@ CREATE TABLE public.service_orders (
 
 ALTER TABLE public.service_orders ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Auth users can view service_orders" ON public.service_orders;
 CREATE POLICY "Auth users can view service_orders" ON public.service_orders FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert service_orders" ON public.service_orders;
 CREATE POLICY "Auth users can insert service_orders" ON public.service_orders FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update service_orders" ON public.service_orders;
 CREATE POLICY "Auth users can update service_orders" ON public.service_orders FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete service_orders" ON public.service_orders;
 CREATE POLICY "Auth users can delete service_orders" ON public.service_orders FOR DELETE TO authenticated USING (true);
 
 -- Sequence para numeração automática dos pedidos de serviço
 CREATE SEQUENCE IF NOT EXISTS so_number_seq START 1;
 
+DROP FUNCTION IF EXISTS public.generate_so_number() CASCADE;
 CREATE OR REPLACE FUNCTION public.generate_so_number()
 RETURNS trigger
 LANGUAGE plpgsql

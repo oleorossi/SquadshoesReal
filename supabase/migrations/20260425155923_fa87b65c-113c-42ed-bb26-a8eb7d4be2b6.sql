@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS public.adjust_stock(p_product_id UUID, p_expected_previous_qty NUMERIC, p_new_qty NUMERIC, p_delta NUMERIC, p_reason TEXT, p_new_grade JSONB) CASCADE;
 CREATE OR REPLACE FUNCTION public.adjust_stock(
     p_product_id UUID,
     p_expected_previous_qty NUMERIC,

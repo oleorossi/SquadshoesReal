@@ -7,6 +7,7 @@
 -- create production_waves rows, corrupting wave numbering and capacity planning.
 -- =============================================================================
 
+DROP FUNCTION IF EXISTS public.create_solo_wave(p_sale_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.create_solo_wave(p_sale_order_id uuid)
 RETURNS uuid
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$

@@ -12,12 +12,14 @@ CREATE TABLE IF NOT EXISTS public.technical_sheet_overhead_history (
 ALTER TABLE public.technical_sheet_overhead_history ENABLE ROW LEVEL SECURITY;
 
 -- Policies
+DROP POLICY IF EXISTS "Users can view history of sheets they can access" ON public.technical_sheet_overhead_history;
 CREATE POLICY "Users can view history of sheets they can access"
     ON public.technical_sheet_overhead_history
     FOR SELECT
     USING (EXISTS (SELECT 1 FROM public.technical_sheets WHERE id = sheet_id));
 
 -- Trigger function to log overhead changes
+DROP FUNCTION IF EXISTS public.log_technical_sheet_overhead_change() CASCADE;
 CREATE OR REPLACE FUNCTION public.log_technical_sheet_overhead_change()
 RETURNS TRIGGER AS $$
 BEGIN

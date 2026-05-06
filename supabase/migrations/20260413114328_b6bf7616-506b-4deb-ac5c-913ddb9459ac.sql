@@ -1,3 +1,4 @@
+DROP VIEW IF EXISTS public.vw_virtual_cfo_cashflow CASCADE;
 CREATE OR REPLACE VIEW public.vw_virtual_cfo_cashflow
 WITH (security_invoker = true)
 AS

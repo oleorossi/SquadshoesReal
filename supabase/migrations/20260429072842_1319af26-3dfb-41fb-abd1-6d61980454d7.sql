@@ -1,4 +1,5 @@
 -- Reordena stage_order para refletir os níveis lógicos
+DROP FUNCTION IF EXISTS public.stage_order(s production_stage_enum) CASCADE;
 CREATE OR REPLACE FUNCTION public.stage_order(s production_stage_enum)
 RETURNS integer LANGUAGE sql IMMUTABLE SET search_path = public AS $$
   SELECT CASE s
@@ -13,6 +14,10 @@ RETURNS integer LANGUAGE sql IMMUTABLE SET search_path = public AS $$
 $$;
 
 -- advance_wave_stage com regras explícitas por estágio
+DROP FUNCTION IF EXISTS public.advance_wave_stage(
+  p_wave_id uuid,
+  p_stage   production_stage_enum
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.advance_wave_stage(
   p_wave_id uuid,
   p_stage   production_stage_enum
@@ -105,6 +110,7 @@ END;
 $$;
 
 -- start_wave: abre Corte e Mesa simultaneamente (se Mesa existir na onda)
+DROP FUNCTION IF EXISTS public.start_wave(p_wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.start_wave(p_wave_id uuid)
 RETURNS void
 LANGUAGE plpgsql
@@ -139,6 +145,7 @@ END;
 $$;
 
 -- v_sector_board: "next_wave" só aparece quando todas as dependências do estágio estiverem prontas
+DROP VIEW IF EXISTS public.v_sector_board CASCADE;
 CREATE OR REPLACE VIEW public.v_sector_board AS
 WITH stages AS (
   SELECT s.stage,

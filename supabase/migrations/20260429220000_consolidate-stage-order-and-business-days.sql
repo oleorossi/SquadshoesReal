@@ -24,6 +24,7 @@
 -- Define o nível de execução de cada setor. Setores com o mesmo nível executam
 -- em paralelo. advance_wave_stage só avança ao próximo nível quando todos os
 -- estágios do nível atual estiverem 'completed'.
+DROP FUNCTION IF EXISTS public.stage_order(s production_stage_enum) CASCADE;
 CREATE OR REPLACE FUNCTION public.stage_order(s production_stage_enum)
 RETURNS integer LANGUAGE sql IMMUTABLE SET search_path = public AS $$
   SELECT CASE s
@@ -40,12 +41,14 @@ $$;
 -- ── 2. stage_starts_with_wave — quais setores iniciam imediatamente ──────────
 -- Encapsula a regra "este setor inicia junto com a onda" (em vez de hardcoded
 -- 'mesa' espalhado pelo código). Adicionar novos setores independentes aqui.
+DROP FUNCTION IF EXISTS public.stage_starts_with_wave(s production_stage_enum) CASCADE;
 CREATE OR REPLACE FUNCTION public.stage_starts_with_wave(s production_stage_enum)
 RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path = public AS $$
   SELECT s = 'mesa';  -- Mesa é independente: começa quando a onda começa
 $$;
 
 -- ── 3. start_wave — usa stage_starts_with_wave em vez de hardcoded 'mesa' ────
+DROP FUNCTION IF EXISTS public.start_wave(p_wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.start_wave(p_wave_id uuid)
 RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
@@ -91,6 +94,7 @@ GRANT EXECUTE ON FUNCTION public.stage_starts_with_wave(production_stage_enum) T
 -- Não considera feriados nacionais/estaduais por enquanto. Para suportar
 -- feriados, criar tabela `holidays(date)` e cruzar aqui.
 -- p_days pode ser negativo (subtração).
+DROP FUNCTION IF EXISTS public.add_business_days(p_start date, p_days int) CASCADE;
 CREATE OR REPLACE FUNCTION public.add_business_days(p_start date, p_days int)
 RETURNS date LANGUAGE plpgsql IMMUTABLE SET search_path = public AS $$
 DECLARE
@@ -115,6 +119,7 @@ GRANT EXECUTE ON FUNCTION public.add_business_days(date, int) TO authenticated;
 -- ── 5. compute_wave_timeline — cronograma em DIAS ÚTEIS ──────────────────────
 -- Substitui a versão anterior (subtração corrida) para evitar planejar início
 -- em fim de semana. Mantém a mesma assinatura — chamadores não precisam mudar.
+DROP FUNCTION IF EXISTS public.compute_wave_timeline(p_sale_order_ids uuid[]) CASCADE;
 CREATE OR REPLACE FUNCTION public.compute_wave_timeline(p_sale_order_ids uuid[])
 RETURNS TABLE (
   earliest_deadline    date,

@@ -3,6 +3,7 @@
 -- =============================================================================
 
 -- 1. Trigger for Atomic Total Sync in Purchase Orders
+DROP FUNCTION IF EXISTS public.sync_purchase_order_total() CASCADE;
 CREATE OR REPLACE FUNCTION public.sync_purchase_order_total()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -28,6 +29,7 @@ AFTER INSERT OR UPDATE OR DELETE ON public.purchase_order_items
 FOR EACH ROW EXECUTE FUNCTION public.sync_purchase_order_total();
 
 -- 2. Atomic PO Item Upsert Function
+DROP FUNCTION IF EXISTS public.upsert_po_item_atomic(p_order_id uuid, p_product_id uuid, p_quantity numeric, p_unit_price numeric, p_notes text, p_grade jsonb, p_color text) CASCADE;
 CREATE OR REPLACE FUNCTION public.upsert_po_item_atomic(
   p_order_id uuid,
   p_product_id uuid,
@@ -80,6 +82,7 @@ END;
 $function$;
 
 -- 3. Resync OP Atomic - Sector Rename & Sequencing
+DROP FUNCTION IF EXISTS public.resync_op_atomic(p_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.resync_op_atomic(p_order_id uuid)
  RETURNS jsonb
  LANGUAGE plpgsql

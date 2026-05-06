@@ -3,6 +3,7 @@ ALTER TABLE public.sale_order_items ADD COLUMN IF NOT EXISTS item_size INTEGER;
 ALTER TABLE public.sole_technical_specs ADD COLUMN IF NOT EXISTS consumption NUMERIC DEFAULT 0;
 
 -- Create the view adapted to the current database schema
+DROP VIEW IF EXISTS public.report_material_needs_by_group CASCADE;
 CREATE OR REPLACE VIEW public.report_material_needs_by_group AS
 SELECT 
     mg.name AS group_name,

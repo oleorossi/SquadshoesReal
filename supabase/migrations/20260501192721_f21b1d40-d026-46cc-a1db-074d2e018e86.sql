@@ -1,4 +1,5 @@
 -- 1) 20260504120000 — calculate_order_cost com packaging + grade
+DROP FUNCTION IF EXISTS public.calculate_order_cost(p_sale_order_id uuid, p_sale_order_item_id uuid, p_persist boolean) CASCADE;
 CREATE OR REPLACE FUNCTION public.calculate_order_cost(
   p_sale_order_id uuid,
   p_sale_order_item_id uuid DEFAULT NULL,
@@ -156,6 +157,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.calculate_order_cost(uuid, uuid, boolean) TO authenticated;
 
 -- 2) 20260504130000 — debit_packaging_for_order_atomic (RPC)
+DROP FUNCTION IF EXISTS public.debit_packaging_for_order_atomic(p_order_id uuid, p_packaging_product_id uuid, p_quantity numeric, p_packaging_type text) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_packaging_for_order_atomic(
   p_order_id uuid,
   p_packaging_product_id uuid,
@@ -231,6 +233,7 @@ ALTER TABLE public.clients
   ADD COLUMN IF NOT EXISTS endereco_manual_override boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS endereco_updated_at timestamptz;
 
+DROP FUNCTION IF EXISTS public.fn_track_client_address_manual_edit() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_track_client_address_manual_edit()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -261,6 +264,7 @@ UPDATE public.clients
    AND endereco_updated_at IS NULL;
 
 -- 4) 20260504150000 — fn_projected_demand status case-insensitive
+DROP FUNCTION IF EXISTS public.fn_projected_demand() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_projected_demand()
 RETURNS TABLE (
   product_id uuid,
@@ -319,6 +323,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.fn_projected_demand() TO authenticated;
 
 -- 5) 20260504160000 — sale_orders.total trigger + backfill
+DROP FUNCTION IF EXISTS public.recalc_sale_order_total(p_sale_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.recalc_sale_order_total(p_sale_order_id uuid)
 RETURNS numeric
 LANGUAGE plpgsql
@@ -351,6 +356,7 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.recalc_sale_order_total(uuid) TO authenticated;
 
+DROP FUNCTION IF EXISTS public.fn_sync_sale_order_total() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_sync_sale_order_total()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -433,6 +439,7 @@ ALTER TABLE public.production_consumptions
   ADD COLUMN IF NOT EXISTS superseded_at timestamptz,
   ADD COLUMN IF NOT EXISTS superseded_reason text;
 
+DROP FUNCTION IF EXISTS public.fn_enqueue_resync_for_sole_conjugation() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_enqueue_resync_for_sole_conjugation()
 RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
@@ -458,6 +465,7 @@ CREATE TRIGGER trg_resync_for_sole_conjugation
   FOR EACH ROW
   EXECUTE FUNCTION public.fn_enqueue_resync_for_sole_conjugation();
 
+DROP FUNCTION IF EXISTS public.resync_op_atomic(p_order_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.resync_op_atomic(p_order_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -588,6 +596,7 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.resync_op_atomic(uuid) TO authenticated;
 
+DROP FUNCTION IF EXISTS public.process_resync_queue(p_limit integer) CASCADE;
 CREATE OR REPLACE FUNCTION public.process_resync_queue(p_limit integer DEFAULT 50)
 RETURNS jsonb
 LANGUAGE plpgsql

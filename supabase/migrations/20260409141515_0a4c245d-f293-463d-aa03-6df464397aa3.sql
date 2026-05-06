@@ -1,5 +1,6 @@
 
 -- Update group number function: G + 3 digits
+DROP FUNCTION IF EXISTS public.generate_group_number() CASCADE;
 CREATE OR REPLACE FUNCTION public.generate_group_number()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -14,6 +15,7 @@ END;
 $function$;
 
 -- Update client number function: L + 3 digits
+DROP FUNCTION IF EXISTS public.generate_client_number() CASCADE;
 CREATE OR REPLACE FUNCTION public.generate_client_number()
 RETURNS trigger
 LANGUAGE plpgsql

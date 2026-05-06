@@ -18,6 +18,7 @@
 
 -- ── 1. Mapeamento: estágio da onda → nomes de setores no Kanban ──────────────
 -- Nomes em lowercase para comparação case-insensitive.
+DROP FUNCTION IF EXISTS public.wave_stage_to_kanban_stages(s production_stage_enum) CASCADE;
 CREATE OR REPLACE FUNCTION public.wave_stage_to_kanban_stages(s production_stage_enum)
 RETURNS text[]
 LANGUAGE sql IMMUTABLE SET search_path = public AS $$
@@ -36,6 +37,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.wave_stage_to_kanban_stages(production_stage_enum) TO authenticated;
 
 -- ── 2. Mapeamento: nome de setor do Kanban → estágio da onda ─────────────────
+DROP FUNCTION IF EXISTS public.kanban_stage_to_wave_stage(p_stage_name text) CASCADE;
 CREATE OR REPLACE FUNCTION public.kanban_stage_to_wave_stage(p_stage_name text)
 RETURNS production_stage_enum
 LANGUAGE sql IMMUTABLE SET search_path = public AS $$
@@ -69,6 +71,7 @@ GRANT EXECUTE ON FUNCTION public.kanban_stage_to_wave_stage(text) TO authenticat
 -- Se sim → marca o wave_stage como 'completed'.
 -- Primeiro wave_stage não concluído → 'in_progress' e define current_stage.
 -- Retorna o novo current_stage (NULL se onda finalizada).
+DROP FUNCTION IF EXISTS public.sync_wave_from_kanban(p_wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.sync_wave_from_kanban(p_wave_id uuid)
 RETURNS production_stage_enum
 LANGUAGE plpgsql
@@ -172,6 +175,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.sync_wave_from_kanban(uuid) TO authenticated;
 
 -- ── 4. Trigger: quando um order_stage é concluído, tenta sincronizar a onda ──
+DROP FUNCTION IF EXISTS public.fn_sync_wave_on_stage_complete() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_sync_wave_on_stage_complete()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -217,6 +221,7 @@ CREATE TRIGGER trg_sync_wave_on_stage_complete
 -- ── 5. advance_wave_stage: também atualiza order_stages ao avançar a onda ────
 -- Aceita p_stage opcional para avançar um setor específico (ex.: mesa paralela).
 -- Mantém compatibilidade retroativa com chamadas sem p_stage.
+DROP FUNCTION IF EXISTS public.advance_wave_stage(p_wave_id uuid, p_stage   production_stage_enum) CASCADE;
 CREATE OR REPLACE FUNCTION public.advance_wave_stage(
   p_wave_id uuid,
   p_stage   production_stage_enum DEFAULT NULL
@@ -337,5 +342,9 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.advance_wave_stage(uuid, production_stage_enum) TO authenticated;
--- Mantém assinatura original (sem p_stage) para retrocompatibilidade
-GRANT EXECUTE ON FUNCTION public.advance_wave_stage(uuid) TO authenticated;
+-- Mantém assinatura original (sem p_stage) para retrocompatibilidade (skip se overload nao existir)
+DO $$
+BEGIN
+  EXECUTE 'GRANT EXECUTE ON FUNCTION public.advance_wave_stage(uuid) TO authenticated';
+EXCEPTION WHEN undefined_function THEN NULL;
+END $$;

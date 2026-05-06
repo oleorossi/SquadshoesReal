@@ -35,9 +35,13 @@ CREATE TABLE IF NOT EXISTS public.sale_orders (
 
 ALTER TABLE public.sale_orders ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Auth users can view sale_orders" ON public.sale_orders;
 CREATE POLICY "Auth users can view sale_orders" ON public.sale_orders FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert sale_orders" ON public.sale_orders;
 CREATE POLICY "Auth users can insert sale_orders" ON public.sale_orders FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update sale_orders" ON public.sale_orders;
 CREATE POLICY "Auth users can update sale_orders" ON public.sale_orders FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete sale_orders" ON public.sale_orders;
 CREATE POLICY "Auth users can delete sale_orders" ON public.sale_orders FOR DELETE TO authenticated USING (true);
 
 -- Sale order items
@@ -54,9 +58,13 @@ CREATE TABLE IF NOT EXISTS public.sale_order_items (
 
 ALTER TABLE public.sale_order_items ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Auth users can view sale_order_items" ON public.sale_order_items;
 CREATE POLICY "Auth users can view sale_order_items" ON public.sale_order_items FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can insert sale_order_items" ON public.sale_order_items;
 CREATE POLICY "Auth users can insert sale_order_items" ON public.sale_order_items FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Auth users can update sale_order_items" ON public.sale_order_items;
 CREATE POLICY "Auth users can update sale_order_items" ON public.sale_order_items FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Auth users can delete sale_order_items" ON public.sale_order_items;
 CREATE POLICY "Auth users can delete sale_order_items" ON public.sale_order_items FOR DELETE TO authenticated USING (true);
 
 -- Add FK from orders to sale_orders
@@ -65,6 +73,7 @@ ALTER TABLE public.orders
   FOREIGN KEY (sale_order_id) REFERENCES public.sale_orders(id) ON DELETE SET NULL;
 
 -- Auto-generate OP number
+DROP FUNCTION IF EXISTS public.generate_op_number() CASCADE;
 CREATE OR REPLACE FUNCTION public.generate_op_number()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -86,6 +95,7 @@ CREATE TRIGGER set_op_number
   EXECUTE FUNCTION public.generate_op_number();
 
 -- Auto-generate PV number  
+DROP FUNCTION IF EXISTS public.generate_pv_number() CASCADE;
 CREATE OR REPLACE FUNCTION public.generate_pv_number()
 RETURNS trigger
 LANGUAGE plpgsql

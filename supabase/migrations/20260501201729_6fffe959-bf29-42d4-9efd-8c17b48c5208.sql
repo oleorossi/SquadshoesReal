@@ -2,6 +2,7 @@
 -- 20260504120000_fix-order-cost-packaging-and-grade.sql
 -- ---------------------------------------------------------------
 
+DROP FUNCTION IF EXISTS public.calculate_order_cost(p_sale_order_id uuid, p_sale_order_item_id uuid, p_persist boolean) CASCADE;
 CREATE OR REPLACE FUNCTION public.calculate_order_cost(
   p_sale_order_id uuid,
   p_sale_order_item_id uuid DEFAULT NULL,
@@ -162,6 +163,7 @@ GRANT EXECUTE ON FUNCTION public.calculate_order_cost(uuid, uuid, boolean) TO au
 -- 20260504130000_atomic-packaging-debit-rpc.sql
 -- ---------------------------------------------------------------
 
+DROP FUNCTION IF EXISTS public.debit_packaging_for_order_atomic(p_order_id uuid, p_packaging_product_id uuid, p_quantity numeric, p_packaging_type text) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_packaging_for_order_atomic(
   p_order_id uuid,
   p_packaging_product_id uuid,
@@ -240,6 +242,7 @@ ALTER TABLE public.clients
   ADD COLUMN IF NOT EXISTS endereco_manual_override boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS endereco_updated_at timestamptz;
 
+DROP FUNCTION IF EXISTS public.fn_track_client_address_manual_edit() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_track_client_address_manual_edit()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -273,6 +276,7 @@ UPDATE public.clients
 -- 20260504150000_normalize-mrp-status-filter.sql
 -- ---------------------------------------------------------------
 
+DROP FUNCTION IF EXISTS public.fn_projected_demand() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_projected_demand()
 RETURNS TABLE (
   product_id uuid,

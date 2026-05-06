@@ -23,6 +23,7 @@ ALTER TABLE public.packaging_configs
     CHECK (sheet_id IS NOT NULL OR sole_group_id IS NOT NULL);
 
 -- 5. Update debit function to prefer sole-level packaging
+DROP FUNCTION IF EXISTS public.debit_packaging_for_order(p_sale_order_id uuid, p_order_id uuid, p_reference_id uuid, p_order_quantity integer, p_packaging_mode text) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_packaging_for_order(
   p_sale_order_id uuid,
   p_order_id uuid,

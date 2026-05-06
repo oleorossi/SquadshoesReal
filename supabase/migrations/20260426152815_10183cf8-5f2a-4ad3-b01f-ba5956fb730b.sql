@@ -20,6 +20,7 @@ ALTER TABLE public.stock_movements
   CHECK (previous_stock >= 0);
 
 -- 4) Trigger em products: impedir quantity < 0 com mensagem clara
+DROP FUNCTION IF EXISTS public.prevent_negative_product_stock() CASCADE;
 CREATE OR REPLACE FUNCTION public.prevent_negative_product_stock()
 RETURNS TRIGGER
 LANGUAGE plpgsql

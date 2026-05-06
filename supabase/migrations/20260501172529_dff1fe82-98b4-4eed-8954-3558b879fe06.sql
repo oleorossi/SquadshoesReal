@@ -1,3 +1,6 @@
+DROP FUNCTION IF EXISTS public.debit_packaging_stock(
+  p_order_id uuid
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_packaging_stock(
   p_order_id uuid
 )

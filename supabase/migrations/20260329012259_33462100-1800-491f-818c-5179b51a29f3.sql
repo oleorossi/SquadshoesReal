@@ -17,6 +17,7 @@ CREATE TABLE public.packaging_configs (
 
 ALTER TABLE public.packaging_configs ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Authenticated users can manage packaging_configs" ON public.packaging_configs;
 CREATE POLICY "Authenticated users can manage packaging_configs"
 ON public.packaging_configs
 FOR ALL

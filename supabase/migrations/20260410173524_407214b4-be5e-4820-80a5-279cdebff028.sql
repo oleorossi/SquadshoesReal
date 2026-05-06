@@ -3,7 +3,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Create packaging_types table
 CREATE TABLE IF NOT EXISTS public.packaging_types (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL, -- Ex: "Caixa Bota Cano Curto", "Master 12 Pares", "Colmeia G"
     type TEXT CHECK (type IN ('individual', 'master', 'colmeia')),
     length_cm NUMERIC,
@@ -19,13 +19,16 @@ CREATE TABLE IF NOT EXISTS public.packaging_types (
 ALTER TABLE public.packaging_types ENABLE ROW LEVEL SECURITY;
 
 -- Create policies (allowing authenticated users for now)
+DROP POLICY IF EXISTS "Everyone can view active packaging types" ON public.packaging_types;
 CREATE POLICY "Everyone can view active packaging types" ON public.packaging_types
     FOR SELECT USING (is_active = true);
 
+DROP POLICY IF EXISTS "Authenticated users can manage packaging types" ON public.packaging_types;
 CREATE POLICY "Authenticated users can manage packaging types" ON public.packaging_types
     FOR ALL USING (auth.role() = 'authenticated');
 
 -- Trigger for updated_at
+DROP FUNCTION IF EXISTS public.handle_updated_at() CASCADE;
 CREATE OR REPLACE FUNCTION public.handle_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN

@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS public.check_grade_quantity_coherence() CASCADE;
 CREATE OR REPLACE FUNCTION public.check_grade_quantity_coherence()
  RETURNS trigger
  LANGUAGE plpgsql

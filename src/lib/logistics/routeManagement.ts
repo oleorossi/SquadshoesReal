@@ -150,3 +150,14 @@ export function resolveOrdersToClients<T extends RouteClientRecord>(
 
   return { readyClients, blockedClients, unresolvedOrders };
 }
+// Statuses que indicam que o pedido esta pronto pra ser despachado.
+// Usado por hooks de expedicao e picking pra filtrar a queue de envio.
+export const READY_TO_SHIP_STATUSES = [
+  'Pronto',
+  'pronto',
+  'Aguardando expedição',
+  'aguardando_expedicao',
+  'Aguardando expedicao',
+  'ready',
+  'ready_to_ship',
+] as const;

@@ -17,9 +17,13 @@ CREATE TABLE public.colors (
 
 ALTER TABLE public.colors ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Auth users can view colors" ON public.colors;
 CREATE POLICY "Auth users can view colors" ON public.colors FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Approved users can insert colors" ON public.colors;
 CREATE POLICY "Approved users can insert colors" ON public.colors FOR INSERT TO authenticated WITH CHECK (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can update colors" ON public.colors;
 CREATE POLICY "Approved users can update colors" ON public.colors FOR UPDATE TO authenticated USING (is_approved_user());
+DROP POLICY IF EXISTS "Approved users can delete colors" ON public.colors;
 CREATE POLICY "Approved users can delete colors" ON public.colors FOR DELETE TO authenticated USING (is_approved_user());
 
 -- 2. Add new fields to technical_sheets

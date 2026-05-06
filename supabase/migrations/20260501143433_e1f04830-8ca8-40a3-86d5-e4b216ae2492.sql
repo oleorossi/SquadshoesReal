@@ -2,6 +2,7 @@
 -- Trigger: recalcula purchase_orders.total_value automaticamente
 -- sempre que um item é inserido, atualizado ou excluído.
 
+DROP FUNCTION IF EXISTS public.sync_purchase_order_total() CASCADE;
 CREATE OR REPLACE FUNCTION public.sync_purchase_order_total()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -45,6 +46,7 @@ CREATE TRIGGER trg_sync_po_total
   EXECUTE FUNCTION public.sync_purchase_order_total();
 
 -- Se o item muda de PO (raro, mas seguro), atualiza a PO antiga também
+DROP FUNCTION IF EXISTS public.sync_purchase_order_total_on_move() CASCADE;
 CREATE OR REPLACE FUNCTION public.sync_purchase_order_total_on_move()
 RETURNS trigger
 LANGUAGE plpgsql

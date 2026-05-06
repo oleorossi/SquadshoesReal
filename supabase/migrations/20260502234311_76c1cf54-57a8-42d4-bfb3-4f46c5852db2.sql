@@ -17,6 +17,7 @@ WHERE current_stock IS NULL;
 -- 20260508140000_fix-quantity-processed-on-stage-complete.sql
 -- Ensure produced quantity correctly reflects completion in production wave stages
 -- We use total_items from production_waves as the target for completion
+DROP FUNCTION IF EXISTS public.fn_update_produced_quantity_on_complete() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_update_produced_quantity_on_complete()
 RETURNS TRIGGER AS $$
 DECLARE

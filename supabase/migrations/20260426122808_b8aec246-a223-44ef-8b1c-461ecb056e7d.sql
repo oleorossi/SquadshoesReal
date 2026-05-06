@@ -11,18 +11,21 @@ CREATE TABLE IF NOT EXISTS public.sole_size_conjugations (
 
 ALTER TABLE public.sole_size_conjugations ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Authenticated users can view sole size conjugations" ON public.sole_size_conjugations;
 CREATE POLICY "Authenticated users can view sole size conjugations"
 ON public.sole_size_conjugations
 FOR SELECT
 TO authenticated
 USING (true);
 
+DROP POLICY IF EXISTS "Authenticated users can insert sole size conjugations" ON public.sole_size_conjugations;
 CREATE POLICY "Authenticated users can insert sole size conjugations"
 ON public.sole_size_conjugations
 FOR INSERT
 TO authenticated
 WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Authenticated users can update sole size conjugations" ON public.sole_size_conjugations;
 CREATE POLICY "Authenticated users can update sole size conjugations"
 ON public.sole_size_conjugations
 FOR UPDATE
@@ -30,6 +33,7 @@ TO authenticated
 USING (true)
 WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Authenticated users can delete sole size conjugations" ON public.sole_size_conjugations;
 CREATE POLICY "Authenticated users can delete sole size conjugations"
 ON public.sole_size_conjugations
 FOR DELETE
@@ -40,6 +44,7 @@ CREATE INDEX IF NOT EXISTS idx_sole_size_conjugations_group
   ON public.sole_size_conjugations(sole_group_id);
 
 -- Helper: for a sole group + shoe size, return the conjugated key
+DROP FUNCTION IF EXISTS public.get_sole_size_key(p_sole_group_id uuid, p_shoe_size integer) CASCADE;
 CREATE OR REPLACE FUNCTION public.get_sole_size_key(p_sole_group_id uuid, p_shoe_size integer)
 RETURNS text
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
@@ -52,6 +57,7 @@ AS $$
 $$;
 
 -- Helper: return group_id for a given product_id
+DROP FUNCTION IF EXISTS public.get_sole_group_id_for_product(p_product_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.get_sole_group_id_for_product(p_product_id uuid)
 RETURNS uuid
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
@@ -60,6 +66,12 @@ AS $$
 $$;
 
 -- Updated debit_sole_stock_by_grade with conjugation support
+DROP FUNCTION IF EXISTS public.debit_sole_stock_by_grade(
+  p_reference_id uuid,
+  p_order_id uuid,
+  p_color text,
+  p_order_grade jsonb
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_sole_stock_by_grade(
   p_reference_id uuid,
   p_order_id uuid,

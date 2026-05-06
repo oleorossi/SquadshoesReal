@@ -1,4 +1,5 @@
 -- 1. Fix debit_strap_stock
+DROP FUNCTION IF EXISTS public.debit_strap_stock(p_strap_colors jsonb, p_order_quantity integer, p_order_id uuid, p_order_grade jsonb) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_strap_stock(
   p_strap_colors jsonb,
   p_order_quantity integer,
@@ -139,18 +140,22 @@ CREATE TABLE IF NOT EXISTS public.artisanal_recipes (
 
 ALTER TABLE public.artisanal_recipes ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Approved users can view artisanal_recipes" ON public.artisanal_recipes;
 CREATE POLICY "Approved users can view artisanal_recipes"
   ON public.artisanal_recipes FOR SELECT TO authenticated
   USING (public.is_approved_user());
 
+DROP POLICY IF EXISTS "Approved users can insert artisanal_recipes" ON public.artisanal_recipes;
 CREATE POLICY "Approved users can insert artisanal_recipes"
   ON public.artisanal_recipes FOR INSERT TO authenticated
   WITH CHECK (public.is_approved_user());
 
+DROP POLICY IF EXISTS "Approved users can update artisanal_recipes" ON public.artisanal_recipes;
 CREATE POLICY "Approved users can update artisanal_recipes"
   ON public.artisanal_recipes FOR UPDATE TO authenticated
   USING (public.is_approved_user());
 
+DROP POLICY IF EXISTS "Approved users can delete artisanal_recipes" ON public.artisanal_recipes;
 CREATE POLICY "Approved users can delete artisanal_recipes"
   ON public.artisanal_recipes FOR DELETE TO authenticated
   USING (public.is_approved_user());
@@ -167,6 +172,7 @@ ALTER TABLE public.service_orders
   ADD COLUMN IF NOT EXISTS artisanal_base_color       TEXT,
   ADD COLUMN IF NOT EXISTS artisanal_stock_entry_done BOOLEAN DEFAULT false;
 
+DROP FUNCTION IF EXISTS public.artisanal_recipes_set_updated_at() CASCADE;
 CREATE OR REPLACE FUNCTION public.artisanal_recipes_set_updated_at()
 RETURNS TRIGGER LANGUAGE plpgsql
 SET search_path = public

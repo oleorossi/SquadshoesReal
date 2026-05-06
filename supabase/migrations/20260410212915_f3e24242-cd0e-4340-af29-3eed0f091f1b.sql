@@ -1,4 +1,8 @@
 -- 1. Update finalize_production_sector to also update production_step
+DROP FUNCTION IF EXISTS public.finalize_production_sector(
+  p_order_id UUID,
+  p_current_sector TEXT
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.finalize_production_sector(
   p_order_id UUID,
   p_current_sector TEXT
@@ -88,6 +92,7 @@ END;
 $$;
 
 -- 2. Create a trigger function to sync order_stages when production_step changes
+DROP FUNCTION IF EXISTS public.sync_order_stages_with_kanban() CASCADE;
 CREATE OR REPLACE FUNCTION public.sync_order_stages_with_kanban()
 RETURNS TRIGGER AS $$
 BEGIN

@@ -8,8 +8,11 @@ DROP POLICY IF EXISTS "Auth users can insert eg_representatives" ON public.econo
 DROP POLICY IF EXISTS "Auth users can delete advances" ON public.employee_advances;
 DROP POLICY IF EXISTS "Auth users can insert advances" ON public.employee_advances;
 DROP POLICY IF EXISTS "Auth users can update advances" ON public.employee_advances;
+DROP POLICY IF EXISTS "Approved users can insert advances" ON public.employee_advances;
 CREATE POLICY "Approved users can insert advances" ON public.employee_advances FOR INSERT TO authenticated WITH CHECK (public.is_approved_user());
+DROP POLICY IF EXISTS "Approved users can update advances" ON public.employee_advances;
 CREATE POLICY "Approved users can update advances" ON public.employee_advances FOR UPDATE TO authenticated USING (public.is_approved_user());
+DROP POLICY IF EXISTS "Approved users can delete advances" ON public.employee_advances;
 CREATE POLICY "Approved users can delete advances" ON public.employee_advances FOR DELETE TO authenticated USING (public.is_approved_user());
 
 -- product_groups (different policy names)

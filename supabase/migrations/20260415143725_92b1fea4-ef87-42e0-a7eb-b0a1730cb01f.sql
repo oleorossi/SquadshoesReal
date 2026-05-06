@@ -13,18 +13,22 @@ CREATE TABLE public.technical_sheet_insole_colors (
 ALTER TABLE public.technical_sheet_insole_colors ENABLE ROW LEVEL SECURITY;
 
 -- Policies for approved users
+DROP POLICY IF EXISTS "Approved users can view insole color mappings" ON public.technical_sheet_insole_colors;
 CREATE POLICY "Approved users can view insole color mappings"
   ON public.technical_sheet_insole_colors FOR SELECT
   USING (public.is_approved_user());
 
+DROP POLICY IF EXISTS "Approved users can insert insole color mappings" ON public.technical_sheet_insole_colors;
 CREATE POLICY "Approved users can insert insole color mappings"
   ON public.technical_sheet_insole_colors FOR INSERT
   WITH CHECK (public.is_approved_user());
 
+DROP POLICY IF EXISTS "Approved users can update insole color mappings" ON public.technical_sheet_insole_colors;
 CREATE POLICY "Approved users can update insole color mappings"
   ON public.technical_sheet_insole_colors FOR UPDATE
   USING (public.is_approved_user());
 
+DROP POLICY IF EXISTS "Approved users can delete insole color mappings" ON public.technical_sheet_insole_colors;
 CREATE POLICY "Approved users can delete insole color mappings"
   ON public.technical_sheet_insole_colors FOR DELETE
   USING (public.is_approved_user());

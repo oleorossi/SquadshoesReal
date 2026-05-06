@@ -19,5 +19,6 @@ CREATE TABLE IF NOT EXISTS public.reservation_batches (
 );
 
 ALTER TABLE public.reservation_batches ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Authenticated users can manage reservation batches" ON public.reservation_batches;
 CREATE POLICY "Authenticated users can manage reservation batches" ON public.reservation_batches
   FOR ALL TO authenticated USING (true) WITH CHECK (true);

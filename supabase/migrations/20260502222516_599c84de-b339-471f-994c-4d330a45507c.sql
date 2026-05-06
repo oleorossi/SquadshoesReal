@@ -40,6 +40,7 @@ CREATE INDEX IF NOT EXISTS idx_soi_material_variant
   ON public.sale_order_items(material_variant_id)
   WHERE material_variant_id IS NOT NULL;
 
+DROP FUNCTION IF EXISTS public.fn_touch_ref_mat_variant() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_touch_ref_mat_variant()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -61,6 +62,7 @@ CREATE TRIGGER trg_touch_ref_mat_variant
 ALTER TABLE public.reference_material_variants
   DROP CONSTRAINT IF EXISTS reference_material_variants_reference_id_material_name_key;
 
+DROP FUNCTION IF EXISTS public.fn_normalize_material_variant_name() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_normalize_material_variant_name()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN

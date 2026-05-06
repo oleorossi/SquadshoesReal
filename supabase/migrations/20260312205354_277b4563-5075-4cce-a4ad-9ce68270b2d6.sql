@@ -1,4 +1,5 @@
 
+DROP FUNCTION IF EXISTS public.check_stock_availability(p_reference_id uuid, p_order_quantity integer, p_color text) CASCADE;
 CREATE OR REPLACE FUNCTION public.check_stock_availability(p_reference_id uuid, p_order_quantity integer, p_color text DEFAULT ''::text)
  RETURNS TABLE(product_id uuid, product_name text, required numeric, available numeric, sufficient boolean)
  LANGUAGE plpgsql

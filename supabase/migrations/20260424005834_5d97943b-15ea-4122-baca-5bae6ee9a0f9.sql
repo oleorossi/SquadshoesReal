@@ -1,4 +1,5 @@
 -- 1. Update finalize_production_sector to calculate actual_time_minutes
+DROP FUNCTION IF EXISTS public.finalize_production_sector(p_order_id uuid, p_current_sector text) CASCADE;
 CREATE OR REPLACE FUNCTION public.finalize_production_sector(p_order_id uuid, p_current_sector text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -95,6 +96,7 @@ END;
 $function$;
 
 -- 2. Update advance_wave_stage to record started_at and finished_at
+DROP FUNCTION IF EXISTS public.advance_wave_stage(p_wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.advance_wave_stage(p_wave_id uuid)
  RETURNS production_stage_enum
  LANGUAGE plpgsql
@@ -159,6 +161,7 @@ END;
 $function$;
 
 -- 3. Update start_wave to record started_at on the first stage
+DROP FUNCTION IF EXISTS public.start_wave(p_wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.start_wave(p_wave_id uuid)
  RETURNS void
  LANGUAGE plpgsql

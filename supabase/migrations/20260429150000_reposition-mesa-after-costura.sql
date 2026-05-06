@@ -4,6 +4,7 @@
 --   deadline → -acabamento → -montagem → -mesa → -costura → -corte → -buffer → -supplier
 
 -- ── 1. stage_order ─────────────────────────────────────────────────────────────
+DROP FUNCTION IF EXISTS public.stage_order(s production_stage_enum) CASCADE;
 CREATE OR REPLACE FUNCTION public.stage_order(s production_stage_enum)
 RETURNS integer LANGUAGE sql IMMUTABLE SET search_path = public AS $$
   SELECT CASE s
@@ -19,6 +20,7 @@ $$;
 -- ── 2. compute_wave_timeline ───────────────────────────────────────────────────
 -- Mesa is now between costura and montagem, so montagem_start no longer
 -- subtracts lead_mesa (mesa comes after montagem going backwards).
+DROP FUNCTION IF EXISTS public.compute_wave_timeline(p_sale_order_ids uuid[]) CASCADE;
 CREATE OR REPLACE FUNCTION public.compute_wave_timeline(p_sale_order_ids uuid[])
 RETURNS TABLE (
   earliest_deadline     date,

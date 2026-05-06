@@ -1,5 +1,6 @@
 -- ========== 20260430100000_sync-kanban-wave-bidirectional.sql ==========
 
+DROP FUNCTION IF EXISTS public.wave_stage_to_kanban_stages(s production_stage_enum) CASCADE;
 CREATE OR REPLACE FUNCTION public.wave_stage_to_kanban_stages(s production_stage_enum)
 RETURNS text[]
 LANGUAGE sql IMMUTABLE SET search_path = public AS $$
@@ -17,6 +18,7 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.wave_stage_to_kanban_stages(production_stage_enum) TO authenticated;
 
+DROP FUNCTION IF EXISTS public.kanban_stage_to_wave_stage(p_stage_name text) CASCADE;
 CREATE OR REPLACE FUNCTION public.kanban_stage_to_wave_stage(p_stage_name text)
 RETURNS production_stage_enum
 LANGUAGE sql IMMUTABLE SET search_path = public AS $$
@@ -44,6 +46,7 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.kanban_stage_to_wave_stage(text) TO authenticated;
 
+DROP FUNCTION IF EXISTS public.sync_wave_from_kanban(p_wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.sync_wave_from_kanban(p_wave_id uuid)
 RETURNS production_stage_enum
 LANGUAGE plpgsql
@@ -135,6 +138,7 @@ BEGIN
 END;
 $$;
 
+DROP FUNCTION IF EXISTS public.fn_sync_wave_on_stage_complete() CASCADE;
 CREATE OR REPLACE FUNCTION public.fn_sync_wave_on_stage_complete()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -177,6 +181,7 @@ CREATE TRIGGER trg_sync_wave_on_stage_complete
 
 -- ========== 20260430110000_fix-sole-qty-in-wave-material-needs.sql ==========
 
+DROP FUNCTION IF EXISTS public.get_wave_material_needs(p_sale_order_ids uuid[]) CASCADE;
 CREATE OR REPLACE FUNCTION public.get_wave_material_needs(p_sale_order_ids uuid[])
 RETURNS TABLE (
   product_id              uuid,
@@ -340,6 +345,7 @@ ALTER TABLE public.packaging_configs
       OR sole_product_id IS NOT NULL
     );
 
+DROP FUNCTION IF EXISTS public.debit_packaging_for_order(p_sale_order_id  uuid, p_order_id       uuid, p_reference_id   uuid, p_order_quantity integer, p_packaging_mode text) CASCADE;
 CREATE OR REPLACE FUNCTION public.debit_packaging_for_order(
   p_sale_order_id  uuid,
   p_order_id       uuid,

@@ -28,6 +28,7 @@ CREATE TABLE public.companies (
 );
 
 ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Auth users can manage companies" ON public.companies;
 CREATE POLICY "Auth users can manage companies" ON public.companies
   FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
@@ -42,6 +43,7 @@ ALTER TABLE public.nfe_emitidas
   ADD COLUMN IF NOT EXISTS data_cancelamento timestamptz;
 
 -- Trigger to keep updated_at fresh on companies
+DROP FUNCTION IF EXISTS public.set_companies_updated_at() CASCADE;
 CREATE OR REPLACE FUNCTION public.set_companies_updated_at()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN

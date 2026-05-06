@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS public.run_consumption_integration_tests() CASCADE;
 CREATE OR REPLACE FUNCTION public.run_consumption_integration_tests()
 RETURNS TABLE(case_name text, ok boolean, message text)
 LANGUAGE plpgsql

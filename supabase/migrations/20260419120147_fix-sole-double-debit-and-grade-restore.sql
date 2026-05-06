@@ -13,6 +13,7 @@
 -- única fonte de verdade para o débito por numeração.
 -- ============================================================
 
+DROP FUNCTION IF EXISTS public.hybrid_debit_stock_for_order(p_reference_id uuid, p_order_quantity numeric, p_color text, p_order_id uuid, p_order_grade jsonb) CASCADE;
 CREATE OR REPLACE FUNCTION public.hybrid_debit_stock_for_order(
   p_reference_id uuid,
   p_order_quantity numeric,
@@ -192,6 +193,9 @@ GRANT EXECUTE ON FUNCTION public.hybrid_debit_stock_for_order(uuid, numeric, tex
 -- grade da OP excluída e devolve os pares por numeração.
 -- ============================================================
 
+DROP FUNCTION IF EXISTS public.restore_sole_grade_for_order(
+  p_order_id uuid
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.restore_sole_grade_for_order(
   p_order_id uuid
 ) RETURNS void

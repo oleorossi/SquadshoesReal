@@ -1,3 +1,7 @@
+DROP FUNCTION IF EXISTS public.resolve_sole_color(
+  p_sheet_id uuid,
+  p_product_color text
+) CASCADE;
 CREATE OR REPLACE FUNCTION public.resolve_sole_color(
   p_sheet_id uuid,
   p_product_color text
@@ -33,6 +37,7 @@ BEGIN
 END;
 $$;
 
+DROP FUNCTION IF EXISTS public.calculate_order_consumption(p_reference_id uuid, p_order_quantity numeric, p_color text, p_size integer) CASCADE;
 CREATE OR REPLACE FUNCTION public.calculate_order_consumption(
   p_reference_id uuid,
   p_order_quantity numeric,

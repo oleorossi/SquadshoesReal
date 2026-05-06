@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS public.get_distinct_batches() CASCADE;
 CREATE OR REPLACE FUNCTION public.get_distinct_batches()
 RETURNS TABLE(import_batch text) 
 LANGUAGE sql STABLE SECURITY DEFINER

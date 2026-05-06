@@ -12,6 +12,7 @@ CREATE TABLE public.sheet_catalog_models (
 
 ALTER TABLE public.sheet_catalog_models ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Authenticated users can manage catalog models" ON public.sheet_catalog_models;
 CREATE POLICY "Authenticated users can manage catalog models"
   ON public.sheet_catalog_models
   FOR ALL

@@ -65,21 +65,29 @@ ALTER TABLE public.technical_references ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.technical_reference_materials ENABLE ROW LEVEL SECURITY;
 
 -- RLS policies: authenticated users can CRUD
+DROP POLICY IF EXISTS "Authenticated users can view technical_references" ON public.technical_references;
 CREATE POLICY "Authenticated users can view technical_references"
   ON public.technical_references FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Authenticated users can insert technical_references" ON public.technical_references;
 CREATE POLICY "Authenticated users can insert technical_references"
   ON public.technical_references FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Authenticated users can update technical_references" ON public.technical_references;
 CREATE POLICY "Authenticated users can update technical_references"
   ON public.technical_references FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Authenticated users can delete technical_references" ON public.technical_references;
 CREATE POLICY "Authenticated users can delete technical_references"
   ON public.technical_references FOR DELETE TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Authenticated users can view technical_reference_materials" ON public.technical_reference_materials;
 CREATE POLICY "Authenticated users can view technical_reference_materials"
   ON public.technical_reference_materials FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Authenticated users can insert technical_reference_materials" ON public.technical_reference_materials;
 CREATE POLICY "Authenticated users can insert technical_reference_materials"
   ON public.technical_reference_materials FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Authenticated users can update technical_reference_materials" ON public.technical_reference_materials;
 CREATE POLICY "Authenticated users can update technical_reference_materials"
   ON public.technical_reference_materials FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Authenticated users can delete technical_reference_materials" ON public.technical_reference_materials;
 CREATE POLICY "Authenticated users can delete technical_reference_materials"
   ON public.technical_reference_materials FOR DELETE TO authenticated USING (true);
 

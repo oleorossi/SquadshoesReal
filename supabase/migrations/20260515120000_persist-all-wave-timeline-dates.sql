@@ -24,6 +24,7 @@ ALTER TABLE public.production_waves
   ADD COLUMN IF NOT EXISTS acabamento_start_date date;
 
 -- ── 2) Recria update_wave_timeline() ─────────────────────────────────────────
+DROP FUNCTION IF EXISTS public.update_wave_timeline(p_wave_id uuid) CASCADE;
 CREATE OR REPLACE FUNCTION public.update_wave_timeline(p_wave_id uuid)
 RETURNS void
 LANGUAGE plpgsql
@@ -63,6 +64,7 @@ END;
 $$;
 
 -- ── 3) Recria v_wave_detail expondo todas as datas ───────────────────────────
+DROP VIEW IF EXISTS public.v_wave_detail CASCADE;
 CREATE OR REPLACE VIEW public.v_wave_detail AS
 SELECT
   w.id                         AS wave_id,

@@ -1,4 +1,5 @@
 -- Criar view para custos de embalagem
+DROP VIEW IF EXISTS public.v_packaging_costs CASCADE;
 CREATE OR REPLACE VIEW public.v_packaging_costs AS
 WITH packaging_prices AS (
     SELECT 
@@ -25,6 +26,7 @@ LEFT JOIN packaging_prices pc ON
 GROUP BY ts.id;
 
 -- Atualizar a função calculate_order_cost
+DROP FUNCTION IF EXISTS public.calculate_order_cost(p_sale_order_id uuid, p_sale_order_item_id uuid, p_persist boolean) CASCADE;
 CREATE OR REPLACE FUNCTION public.calculate_order_cost(p_sale_order_id uuid, p_sale_order_item_id uuid DEFAULT NULL::uuid, p_persist boolean DEFAULT false)
  RETURNS jsonb
  LANGUAGE plpgsql

@@ -1,4 +1,5 @@
 -- Função para sincronizar o total do pedido de venda
+DROP FUNCTION IF EXISTS public.sync_sale_order_total() CASCADE;
 CREATE OR REPLACE FUNCTION public.sync_sale_order_total()
 RETURNS TRIGGER AS $$
 DECLARE
