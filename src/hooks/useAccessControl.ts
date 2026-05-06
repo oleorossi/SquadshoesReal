@@ -7,6 +7,9 @@ import { useAuth } from './useAuth';
  * Each route prefix is mapped to a module key used for access control.
  */
 const ROUTE_MODULE_MAP: Record<string, string> = {
+  '/conferencia-saida': 'expedicao',
+  '/estoque/historico': 'estoque',
+  '/references': 'produtos',
   '/dashboard': 'dashboard',
   '/pcp': 'producao',
   '/estoque': 'estoque',
