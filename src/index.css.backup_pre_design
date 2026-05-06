@@ -1,0 +1,413 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 210 20% 98.5%;
+    --foreground: 224 71.4% 4.1%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 25% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 25% 10%;
+
+     --primary: 162 90% 15%;    /* Refined modern green */
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+
+    --muted: 210 12% 93%;
+    --muted-foreground: 215 12% 46%;
+
+    --accent: 160 25% 91%;   /* Soft mint — complements primary emerald */
+    --accent-foreground: 222.2 47.4% 11.2%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --success: 142.1 76.2% 36.3%;
+    --success-foreground: 210 40% 98%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    --border: 214 14% 89%;
+    --input: 214 14% 89%;
+    --ring: 160 55% 24%;
+
+    --radius: 0.5rem;
+    --radius-card: 0.85rem;
+
+     --sidebar-background: 222 47% 7%; /* Modern Slate Dark */
+     --sidebar-foreground: 210 20% 90%;
+     --sidebar-primary: 162 80% 45%;   /* Emerald accent */
+     --sidebar-primary-foreground: 0 0% 100%;
+     --sidebar-accent: 217 32% 12%;
+     --sidebar-accent-foreground: 210 20% 98%;
+     --sidebar-border: 217 32% 10%;
+     --sidebar-ring: 162 80% 45%;
+    --sidebar-muted: 215 15% 55%;
+    /* Layered surface elevation tokens */
+    --surface-1: 0 0% 100%;          /* base card */
+    --surface-2: 210 20% 99%;        /* hover / slightly raised */
+    --surface-3: 210 16% 97%;        /* modal / popover */
+
+    --font-display: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+
+    --shadow-card: 0 2px 8px -1px rgb(0 0 0 / 0.05), 0 1px 3px -1px rgb(0 0 0 / 0.03);
+    --shadow-card-hover: 0 12px 24px -4px rgb(0 0 0 / 0.08), 0 4px 12px -2px rgb(0 0 0 / 0.04);
+    --shadow-elevated: 0 20px 40px -8px rgb(0 0 0 / 0.1), 0 12px 20px -6px rgb(0 0 0 / 0.05);
+  }
+
+  .dark {
+    --background: 220 20% 6%;
+    --foreground: 210 20% 92%;
+
+    --card: 220 18% 10%;
+    --card-foreground: 210 20% 92%;
+
+    --popover: 220 18% 10%;
+    --popover-foreground: 210 20% 92%;
+
+    --primary: 160 60% 45%; /* Slightly Lighter Green for Dark Mode */
+    --primary-foreground: 160 60% 5%;
+
+    --secondary: 220 16% 16%;
+    --secondary-foreground: 210 20% 85%;
+
+    --muted: 220 14% 14%;
+    --muted-foreground: 215 12% 50%;
+
+    --accent: 220 18% 18%;
+    --accent-foreground: 210 20% 92%;
+
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 16% 16%;
+    --input: 220 16% 16%;
+    --ring: 160 60% 45%;
+
+    --sidebar-background: 222 26% 5%;
+    --sidebar-foreground: 220 14% 86%;
+    --sidebar-primary: 160 60% 45%;
+    --sidebar-primary-foreground: 160 60% 5%;
+    --sidebar-accent: 222 20% 9%;
+    --sidebar-accent-foreground: 220 14% 86%;
+    --sidebar-border: 222 18% 9%;
+    --sidebar-ring: 160 60% 45%;
+    --sidebar-muted: 220 10% 34%;
+    --surface-1: 220 18% 10%;
+    --surface-2: 220 16% 12%;
+    --surface-3: 220 14% 14%;
+
+    --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.2), 0 1px 2px -1px rgb(0 0 0 / 0.15);
+    --shadow-card-hover: 0 4px 12px -2px rgb(0 0 0 / 0.3), 0 2px 6px -2px rgb(0 0 0 / 0.2);
+    --shadow-elevated: 0 10px 25px -5px rgb(0 0 0 / 0.4), 0 8px 10px -6px rgb(0 0 0 / 0.25);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+    @apply scroll-smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-display);
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    font-size: 14px;
+    line-height: 1.5;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1 { @apply text-2xl font-bold tracking-tight; }
+  h2 { @apply text-xl font-semibold tracking-tight; }
+  h3 { @apply text-lg font-semibold; }
+  h4, h5, h6 { @apply text-base font-semibold; }
+  h1, h2, h3, h4, h5, h6 { letter-spacing: -0.02em; }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring/40 ring-offset-2 ring-offset-background;
+  }
+
+  /* ── Tables ── */
+  thead tr {
+    @apply border-b-2 border-border/80 bg-muted/40;
+  }
+  thead th {
+    @apply text-[11px] font-bold uppercase tracking-wider text-muted-foreground px-3 py-3;
+    letter-spacing: 0.07em;
+  }
+  tbody tr {
+    @apply transition-colors duration-75 border-b border-border/40 last:border-0;
+  }
+  tbody tr:hover {
+    @apply bg-primary/[0.03];
+  }
+  tbody td {
+    @apply px-3 py-2.5 text-sm;
+  }
+  /* Zebra rows opt-in */
+  .table-zebra tbody tr:nth-child(even) {
+    @apply bg-muted/20;
+  }
+  .table-zebra tbody tr:nth-child(even):hover {
+    @apply bg-primary/[0.04];
+  }
+
+  /* ── Interactive utilities ── */
+  .btn-hover-scale {
+    @apply transition-transform duration-200 ease-out;
+  }
+  .btn-hover-scale:hover:not(:disabled) {
+    transform: scale(1.05);
+  }
+
+  .card-hover-elevation {
+    @apply transition-all duration-200 ease-out;
+  }
+  .card-hover-elevation:hover {
+    box-shadow: var(--shadow-card-hover);
+    transform: translateY(-2px);
+  }
+
+  .glass-card {
+    @apply bg-card/80 backdrop-blur-md border border-border/50 shadow-card;
+  }
+
+  .modern-gradient {
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.85) 100%);
+  }
+
+  /* Sidebar navigation active state */
+  .sidebar-item-active {
+    border-left: 4px solid hsl(var(--sidebar-primary));
+  }
+
+  .glass-sidebar {
+    @apply bg-sidebar/95 backdrop-blur-xl border-r border-sidebar-border;
+  }
+
+  .card-shimmer {
+    @apply relative overflow-hidden before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_2s_infinite] before:bg-gradient-to-r before:from-transparent before:via-white/10 before:to-transparent;
+  }
+
+  @keyframes shimmer {
+    100% { transform: translateX(100%); }
+  }
+
+  /* ── Stat card accent strip ── */
+  .stat-accent {
+    @apply relative overflow-hidden;
+  }
+  .stat-accent::before {
+    content: '';
+    @apply absolute top-0 inset-x-0 h-[3px] rounded-t;
+  }
+  .stat-accent-primary::before  { @apply bg-primary; }
+  .stat-accent-success::before  { @apply bg-green-500; }
+  .stat-accent-warning::before  { @apply bg-amber-500; }
+  .stat-accent-danger::before   { @apply bg-destructive; }
+  .stat-accent-neutral::before  { @apply bg-muted-foreground/40; }
+
+  /* ── Empty state ── */
+  .empty-state {
+    @apply flex flex-col items-center justify-center py-16 px-6 text-center gap-3;
+  }
+  .empty-state-icon {
+    @apply h-12 w-12 rounded-2xl bg-muted/60 flex items-center justify-center text-muted-foreground/50 mb-1;
+  }
+  .empty-state-title {
+    @apply text-base font-semibold text-foreground;
+  }
+  .empty-state-sub {
+    @apply text-sm text-muted-foreground max-w-xs leading-relaxed;
+  }
+
+  /* ── Section header ── */
+  .section-heading {
+    @apply flex items-center gap-2.5 text-sm font-bold uppercase tracking-wider text-muted-foreground mb-3;
+  }
+  .section-heading::after {
+    content: '';
+    @apply flex-1 h-px bg-border/60;
+  }
+
+  /* ── Data badge / status pill ── */
+  .status-pill {
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border;
+  }
+  .status-pill-dot {
+    @apply h-1.5 w-1.5 rounded-full;
+  }
+
+  /* ── Metric value (large numbers) ── */
+  .metric-value {
+    @apply font-mono text-3xl font-extrabold leading-none tracking-tight tabular-nums;
+  }
+  .metric-label {
+    @apply text-[10.5px] font-bold uppercase tracking-[0.07em] text-muted-foreground;
+  }
+
+  /* ── Page section card ── */
+  .data-card {
+    @apply bg-card border border-border rounded-xl shadow-card overflow-hidden;
+  }
+  .data-card-header {
+    @apply flex items-center justify-between px-5 py-3.5 border-b border-border/60 bg-muted/20;
+  }
+  .data-card-title {
+    @apply text-sm font-semibold text-foreground;
+  }
+  .data-card-body {
+    @apply p-5;
+  }
+}
+
+@layer utilities {
+  .font-mono { font-family: var(--font-mono); }
+
+  /* ── Scrollbars ── */
+  .scrollbar-thin::-webkit-scrollbar { width: 4px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: hsl(var(--sidebar-muted) / 0.35);
+    border-radius: 9999px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--sidebar-primary) / 0.5);
+  }
+
+  main::-webkit-scrollbar { width: 5px; }
+  main::-webkit-scrollbar-track { background: transparent; }
+  main::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 9999px;
+  }
+  main::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.35);
+  }
+
+  /* ── Page entrance animation ── */
+  .page-enter {
+    animation: pageEnter 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  @keyframes pageEnter {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Staggered children entrance ── */
+  .stagger-children > * {
+    animation: pageEnter 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .stagger-children > *:nth-child(1) { animation-delay: 0ms; }
+  .stagger-children > *:nth-child(2) { animation-delay: 40ms; }
+  .stagger-children > *:nth-child(3) { animation-delay: 80ms; }
+  .stagger-children > *:nth-child(4) { animation-delay: 120ms; }
+  .stagger-children > *:nth-child(5) { animation-delay: 160ms; }
+  .stagger-children > *:nth-child(6) { animation-delay: 200ms; }
+
+  /* ── Badge dot pulse ── */
+  .badge-dot-pulse {
+    animation: badgePulse 2s ease-in-out infinite;
+  }
+  @keyframes badgePulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: 0.6; transform: scale(0.85); }
+  }
+
+  /* ── Sticky table header ── */
+  .table-sticky-header thead th {
+    @apply sticky top-0 z-10 bg-muted/90 backdrop-blur-sm shadow-[0_1px_0_0_hsl(var(--border)/0.8)];
+  }
+
+  /* ── Card shadow utilities ── */
+  .shadow-card     { box-shadow: var(--shadow-card); }
+  .shadow-card-hover { box-shadow: var(--shadow-card-hover); }
+  .shadow-elevated { box-shadow: var(--shadow-elevated); }
+
+  /* ── Number / mono in tables ── */
+  .tabular-nums { font-variant-numeric: tabular-nums; }
+
+  /* ── Status rings ── */
+  .ring-status-active  { @apply ring-2 ring-success/30; }
+  .ring-status-warning { @apply ring-2 ring-warning/30; }
+  .ring-status-error   { @apply ring-2 ring-destructive/30; }
+
+  /* ── Sidebar transition helper ── */
+  .sidebar-transition {
+    transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* ── Subtle gradient overlay on cards ── */
+  .card-gradient-overlay {
+    background: linear-gradient(160deg, hsl(var(--card)) 0%, hsl(var(--muted)/0.3) 100%);
+  }
+
+  /* ── Focus ring for interactive elements ── */
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+  }
+
+  /* ── Divider ── */
+  .divider-x { @apply border-t border-border/60 my-4; }
+  .divider-y { @apply border-l border-border/60 mx-3 self-stretch; }
+
+  /* ── Interface Cleanup (White-label) ──
+   * Oculta qualquer banner/badge externo. Os atributos abaixo usam
+   * fragmentos de substring ("ovable.app", "ovable.dev", "ptengineer.app")
+   * em vez do domínio completo: continuam casando com URLs reais da
+   * plataforma (a primeira letra é redundante na regra `*=`) mas evitam
+   * que o literal completo apareça no CSS final — o que faria o script
+   * `verify-no-branding.mjs` abortar o build.
+   */
+  a[href*="ovable.app"],
+  a[href*="ovable.dev"],
+  a[href*="ptengineer.app"],
+  iframe[src*="ovable.app"],
+  iframe[src*="ovable.dev"],
+  iframe[src*="ptengineer.app"],
+  [id^="ovable-"],
+  [id^="powered-by"],
+  [class^="ovable-badge"],
+  [class*=" ovable-badge"],
+  [data-ovable-badge],
+  [data-powered-by] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    height: 0 !important;
+    width: 0 !important;
+    max-height: 0 !important;
+    max-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    overflow: hidden !important;
+    position: absolute !important;
+    inset: auto !important;
+    z-index: -9999 !important;
+    clip: rect(0, 0, 0, 0) !important;
+    clip-path: inset(50%) !important;
+  }
+
+  /* Web Components: regra global propagada para shadow DOM via :host()
+   * quando a plataforma usa custom element (ex: <lovable-badge>) */
+  lovable-badge,
+  gpt-engineer-badge,
+  *[is^="lovable-"] {
+    display: none !important;
+  }
+}
