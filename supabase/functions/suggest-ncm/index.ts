@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,6 +13,37 @@ serve(async (req) => {
   }
 
   try {
+    // Auth: exigir JWT de usuário autenticado E APROVADO. A função consome
+    // créditos pagos da Lovable AI Gateway — sem auth, qualquer requisição
+    // anônima dreina os créditos do projeto.
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Authorization header obrigatório." }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      throw new Error("SUPABASE env não configurada");
+    }
+    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: userData, error: userErr } = await supabaseClient.auth.getUser();
+    if (userErr || !userData?.user) {
+      return new Response(JSON.stringify({ error: "Token inválido ou expirado." }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    // Exige usuário aprovado (mesmo padrão das RPCs sensíveis do projeto).
+    const { data: approved, error: approvedErr } = await supabaseClient.rpc("is_approved_user");
+    if (approvedErr || approved !== true) {
+      return new Response(JSON.stringify({ error: "Usuário não aprovado." }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { productName, category, description } = await req.json();
 
     if (!productName && !category && !description) {
