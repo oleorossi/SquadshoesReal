@@ -995,7 +995,20 @@ export function useUpdateSaleOrderStatus() {
                     };
                   });
                   const { error: stgInsErr } = await supabase.from('order_stages').insert(rows);
-                  if (stgInsErr) throw new Error(`Falha ao criar etapas da OP: ${stgInsErr.message}`);
+                  if (stgInsErr) {
+                    // Falha ao criar etapas: cleanup + continue para não abortar
+                    // o loop e deixar OPs subsequentes sem processar.
+                    console.error('Erro ao criar etapas (Em Produção):', stgInsErr.message);
+                    await (supabase.rpc as any)('release_order_reservations', { p_order_id: createdOp.id });
+                    await (supabase.rpc as any)('restore_sole_grade_for_order', { p_order_id: createdOp.id });
+                    await (supabase.rpc as any)('restore_product_stocks_for_order', { p_order_id: createdOp.id });
+                    await supabase.from('orders').update({
+                      status: 'Cancelada',
+                      notes: `Cancelada — falha ao criar etapas: ${stgInsErr.message}`,
+                    }).eq('id', createdOp.id);
+                    toast.error(`OP ${createdOp.id.slice(0, 8)} cancelada — falha ao criar etapas: ${stgInsErr.message}`, { duration: 10000 });
+                    continue;
+                  }
                 }
               }
             }
@@ -1021,6 +1034,7 @@ export function useUpdateSaleOrderStatus() {
               sectorsMap.set(s.id, sectors);
             });
             const DEFAULT_STAGES = DEFAULT_OP_STAGES;
+            const recoveryStageErrors: string[] = [];
             for (const op of opsNeedingStages) {
               const sectorNames = sectorsMap.get(op.reference_id) || DEFAULT_STAGES.map(s => s.name);
               const rows = sectorNames.map((name: string, idx: number) => {
@@ -1032,7 +1046,16 @@ export function useUpdateSaleOrderStatus() {
                 };
               });
               const { error: stgInsErr } = await supabase.from('order_stages').insert(rows);
-                  if (stgInsErr) throw new Error(`Falha ao criar etapas da OP: ${stgInsErr.message}`);
+              if (stgInsErr) {
+                // Path de recovery: a OP já existia e o estoque já foi processado
+                // num momento anterior. Não restaurar — apenas registrar a falha
+                // e seguir para que outras OPs possam ter suas etapas criadas.
+                console.error(`Erro ao criar etapas (recovery OP ${op.id.slice(0, 8)}):`, stgInsErr.message);
+                recoveryStageErrors.push(`${op.id.slice(0, 8)}: ${stgInsErr.message}`);
+              }
+            }
+            if (recoveryStageErrors.length > 0) {
+              toast.error(`Falha ao criar etapas em ${recoveryStageErrors.length} OP(s): ${recoveryStageErrors.join('; ')}`, { duration: 10000 });
             }
           }
         }
@@ -1251,7 +1274,23 @@ export function useUpdateSaleOrderStatus() {
                 };
               });
               const { error: stgInsErr } = await supabase.from('order_stages').insert(rows);
-                  if (stgInsErr) throw new Error(`Falha ao criar etapas da OP: ${stgInsErr.message}`);
+              if (stgInsErr) {
+                // Falha ao criar etapas: a OP já teve estoque debitado.
+                // Em vez de fazer throw e abortar o loop (deixando OPs anteriores
+                // criadas + esta OP sem etapas), seguimos o mesmo padrão de
+                // débitos secundários acima (linhas 1205-1215): estorna estoque,
+                // cancela esta OP e continua processando os demais itens.
+                console.error('Erro ao criar etapas (Aprovado):', stgInsErr.message);
+                await (supabase.rpc as any)('release_order_reservations', { p_order_id: createdOp.id });
+                await (supabase.rpc as any)('restore_sole_grade_for_order', { p_order_id: createdOp.id });
+                await (supabase.rpc as any)('restore_product_stocks_for_order', { p_order_id: createdOp.id });
+                await supabase.from('orders').update({
+                  status: 'Cancelada',
+                  notes: `Cancelada — falha ao criar etapas: ${stgInsErr.message}`,
+                }).eq('id', createdOp.id);
+                toast.error(`OP ${createdOp.id.slice(0, 8)} cancelada — falha ao criar etapas: ${stgInsErr.message}`, { duration: 10000 });
+                continue;
+              }
             }
 
             // Batch-insert all MRP suggestions collected during the loop
@@ -1762,7 +1801,21 @@ export function useUpdateSaleOrder() {
               };
             });
             const { error: stgInsErr2 } = await supabase.from('order_stages').insert(stages);
-            if (stgInsErr2) throw new Error(`Falha ao criar etapas da OP: ${stgInsErr2.message}`);
+            if (stgInsErr2) {
+              // Falha ao criar etapas no fluxo de update do PV: a OP recém-criada
+              // já teve débitos processados acima. Restaura e cancela esta OP,
+              // continua com os demais itens.
+              console.error('Erro ao criar etapas (update PV):', stgInsErr2.message);
+              await (supabase.rpc as any)('release_order_reservations', { p_order_id: newOp.id });
+              await (supabase.rpc as any)('restore_sole_grade_for_order', { p_order_id: newOp.id });
+              await (supabase.rpc as any)('restore_product_stocks_for_order', { p_order_id: newOp.id });
+              await supabase.from('orders').update({
+                status: 'Cancelada',
+                notes: `Cancelada — falha ao criar etapas: ${stgInsErr2.message}`,
+              }).eq('id', newOp.id);
+              toast.error(`OP ${newOp.id.slice(0, 8)} cancelada — falha ao criar etapas: ${stgInsErr2.message}`, { duration: 10000 });
+              continue;
+            }
           }
         }
 
@@ -2275,7 +2328,20 @@ export function useResyncOPsFromPV() {
           };
         });
         const { error: stgInsErr } = await supabase.from('order_stages').insert(rows);
-                  if (stgInsErr) throw new Error(`Falha ao criar etapas da OP: ${stgInsErr.message}`);
+        if (stgInsErr) {
+          // Falha ao criar etapas no resync: cleanup e continua com os
+          // demais itens em vez de abortar todo o resync.
+          console.error('Erro ao criar etapas (resync):', stgInsErr.message);
+          await (supabase.rpc as any)('release_order_reservations', { p_order_id: newOp.id });
+          await (supabase.rpc as any)('restore_sole_grade_for_order', { p_order_id: newOp.id });
+          await (supabase.rpc as any)('restore_product_stocks_for_order', { p_order_id: newOp.id });
+          await supabase.from('orders').update({
+            status: 'Cancelada',
+            notes: `Cancelada — falha ao criar etapas (resync): ${stgInsErr.message}`,
+          }).eq('id', newOp.id);
+          toast.error(`OP ${newOp.id.slice(0, 8)} cancelada — falha ao criar etapas: ${stgInsErr.message}`, { duration: 10000 });
+          continue;
+        }
         created++;
       }
 
