@@ -161,12 +161,39 @@ export function useCreateOrder() {
       }));
       const { error: stagesErr } = await supabase.from('order_stages').insert(stageRows);
       if (stagesErr) {
-        // Stage insert failed — run full canonical cleanup so OP never lingers stageless
-        await (supabase.rpc as any)('release_order_reservations', { p_order_id: data.id }).catch(() => {});
-        await (supabase.rpc as any)('restore_sole_grade_for_order', { p_order_id: data.id }).catch(() => {});
-        await supabase.rpc('restore_product_stocks_for_order', { p_order_id: data.id } as any).catch(() => {});
-        await supabase.from('orders').delete().eq('id', data.id);
-        throw new Error(`Falha ao criar etapas de produção: ${stagesErr.message}`);
+        // Stage insert failed — run full canonical cleanup so OP never lingers stageless.
+        // CRITICAL: cannot swallow restore errors. If a restore fails AND we delete the
+        // order, stock is debited with no order to restore against — permanent inventory
+        // loss. Track failures and refuse to delete the order if any restore failed,
+        // so the operator can investigate manually.
+        const restoreFailures: string[] = [];
+
+        const { error: relErr } = await (supabase.rpc as any)('release_order_reservations', { p_order_id: data.id });
+        if (relErr && !/does not exist|not found/i.test(relErr.message)) {
+          restoreFailures.push(`release_order_reservations: ${relErr.message}`);
+        }
+
+        const { error: soleErr } = await (supabase.rpc as any)('restore_sole_grade_for_order', { p_order_id: data.id });
+        if (soleErr) restoreFailures.push(`restore_sole_grade_for_order: ${soleErr.message}`);
+
+        const { error: prodErr } = await supabase.rpc('restore_product_stocks_for_order', { p_order_id: data.id } as any);
+        if (prodErr) restoreFailures.push(`restore_product_stocks_for_order: ${prodErr.message}`);
+
+        if (restoreFailures.length === 0) {
+          await supabase.from('orders').delete().eq('id', data.id);
+          throw new Error(`Falha ao criar etapas de produção: ${stagesErr.message}`);
+        }
+
+        // Restore failed — leave OP in 'Cancelada' state with notes for manual recovery.
+        // Do NOT delete: the order_id is the only handle to retry restoration.
+        await supabase.from('orders').update({
+          status: 'Cancelada',
+          notes: `Falha ao criar etapas (${stagesErr.message}); estorno parcial: ${restoreFailures.join('; ')}. Investigação manual necessária.`,
+        }).eq('id', data.id);
+        throw new Error(
+          `Falha ao criar etapas e estorno parcial falhou — OP ${data.id} marcada como Cancelada para investigação. ` +
+          `Etapas: ${stagesErr.message}. Estorno: ${restoreFailures.join('; ')}.`
+        );
       }
 
       return data;
