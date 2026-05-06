@@ -330,7 +330,7 @@ export default function Silk() {
     }
 
     return Array.from(map.values()).filter(r => r.total > 0);
-  }, [solagemOrders, soleColorOverrides]);
+  }, [solagemOrders, soleColorOverrides, silkRegistrations, saleOrders, soleRefMappings, getSoleColorForOrder]);
 
   const activeSizes = SIZES.filter(s => soleData.some(r => (r.sizes[s] || 0) > 0));
   const grandTotal = soleData.reduce((s, r) => s + r.total, 0);
@@ -415,11 +415,11 @@ export default function Silk() {
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
-              <Footprints className="h-6 w-6 text-primary" />
-              Setor de Solagem
+              <span className="text-2xl">{SECTOR_EMOJI}</span>
+              Setor de Silk
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Grade de solados por cor e numeração
+              Demanda de silks por arte e cor de solado
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -470,7 +470,7 @@ export default function Silk() {
             {selectedOrders.size > 0 && (
               <Button size="sm" variant="outline" onClick={() => {
                 const ids = solagemOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
-                navigate(`/orders/grouped-summary?sector=solagem&ids=${ids}`);
+                navigate(`/orders/grouped-summary?sector=silk&ids=${ids}`);
               }}>
                 <Layers className="h-3.5 w-3.5 mr-1" /> Agrupar ({selectedOrders.size})
               </Button>
@@ -519,7 +519,7 @@ export default function Silk() {
                }
  
                const html = `
-                 <h1 style="font-size:18px;margin-bottom:4px;">🦶 Relatório do Setor de Solagem</h1>
+                 <h1 style="font-size:18px;margin-bottom:4px;">${SECTOR_EMOJI} Relatório do Setor de Silk</h1>
                  <p style="font-size:10px;color:#666;margin-bottom:12px;">Gerado em ${new Date().toLocaleString('pt-BR')}</p>
                  <div style="display:flex;gap:24px;margin-bottom:16px;">
                    <div style="text-align:center;padding:8px 16px;background:#f5f5f0;border:1px solid #ddd;border-radius:6px;"><p style="font-size:20px;font-weight:700;color:#333;">${solagemOrders.length}</p><p style="font-size:10px;color:#666;">OPs</p></div>
@@ -537,7 +537,7 @@ export default function Silk() {
                  <h2 style="font-size:13px;margin:16px 0 6px;border-bottom:1px solid #ccc;padding-bottom:3px;">Pedidos Englobados</h2>
                  <p style="font-size:11px;line-height:1.6;">${Array.from(clientOrderNumbers).join(' &nbsp;•&nbsp; ')}</p>
                  ` : ''}`;
-              printHtml('Relatório Solagem', html);
+              printHtml('Relatório Silk', html);
             }} disabled={soleData.length === 0}>
               <Printer className="h-3.5 w-3.5 mr-1" /> Relatório PDF
             </Button>
@@ -548,8 +548,8 @@ export default function Silk() {
             <Button size="sm" variant="outline" disabled={selectedOrders.size === 0} onClick={() => {
               const ordersToPrint = solagemOrders.filter(o => selectedOrders.has(o.id));
               printSectorWorkSheets({
-                sectorName: 'Solagem',
-                sectorEmoji: '🦶',
+                sectorName: 'Silk',
+                sectorEmoji: SECTOR_EMOJI,
                 orders: ordersToPrint as any,
                 references: references as any,
                 saleOrders: saleOrders as any,
