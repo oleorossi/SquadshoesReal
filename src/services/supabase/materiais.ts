@@ -50,16 +50,4 @@ export const materiaisService = {
     if (error) return 0;
     return data?.quantity || 0;
   },
-
-  async atualizarEstoque(materialId: string, novaQuantidade: number): Promise<boolean> {
-    const { error } = await supabase
-      .from('products')
-      .update({ quantity: novaQuantidade })
-      .eq('id', materialId);
-    if (error) {
-      console.error('Erro ao atualizar estoque:', error);
-      return false;
-    }
-    return true;
-  },
 };

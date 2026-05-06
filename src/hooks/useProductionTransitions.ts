@@ -1,5 +1,4 @@
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 
 /**
@@ -34,23 +33,22 @@ export function invalidateProductionCaches(queryClient: ReturnType<typeof useQue
 export function useProductionTransitions() {
   const queryClient = useQueryClient();
 
+  // Lança em caso de erro — callers usam Promise.allSettled e exibem
+  // um único toast agregado. Não emitir toast aqui evita N+1 toasts.
   const finalizeSectorTask = async (orderId: string, currentSector: string) => {
-    try {
-      const { data, error } = await supabase.rpc('finalize_production_sector', {
-        p_order_id: orderId,
-        p_current_sector: currentSector
-      });
+    const { data, error } = await supabase.rpc('finalize_production_sector', {
+      p_order_id: orderId,
+      p_current_sector: currentSector
+    });
 
-      if (error) throw error;
-
-      invalidateProductionCaches(queryClient);
-
-      return data;
-    } catch (err: any) {
-      console.error(`Erro na transição de setor para a OP ${orderId}:`, err);
-      toast.error(`Erro na transição de setor: ${err.message}`);
-      throw err;
+    if (error) {
+      console.error(`Erro na transição de setor para a OP ${orderId}:`, error);
+      throw error;
     }
+
+    invalidateProductionCaches(queryClient);
+
+    return data;
   };
 
   return { finalizeSectorTask, invalidateProductionCaches: () => invalidateProductionCaches(queryClient) };
