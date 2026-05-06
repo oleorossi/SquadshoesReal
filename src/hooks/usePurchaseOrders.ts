@@ -220,17 +220,3 @@ export function useCapacityDrivenLeadTimes() {
      },
    });
  }
- 
-export function usePurchaseOrders() {
-  return useQuery({
-    queryKey: ['purchase_orders'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('purchase_orders')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return (data || []) as unknown as PurchaseOrder[];
-    },
-  });
-}
