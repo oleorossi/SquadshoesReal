@@ -8,7 +8,7 @@
 #   1 — new violations found (blocks CI or pre-commit)
 #
 # EXEMPT FILES (intentional hardcoded colors — print layouts, labels):
-EXEMPT_PATTERN="EtiquetaProduto|PrintWork|OperatorWorkSheet|PalmilhaWorkSheet|SilkMontageWorkSheet|SolagemWorkSheet"
+EXEMPT_PATTERN="EtiquetaProduto|PrintWork|OperatorWorkSheet|PalmilhaWorkSheet|SilkMontageWorkSheet|SolagemWorkSheet|ExpedicaoWorkSheet|ManagementReport"
 
 # Patterns that indicate old visual system usage
 # Using word-boundary anchors (\b) with -E to avoid matching substrings,

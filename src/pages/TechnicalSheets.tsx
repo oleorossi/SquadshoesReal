@@ -1,20 +1,9 @@
- function VariantOverviewHeader({ sheet }: { sheet: any }) {
-   if (!sheet.reference_color_variants || sheet.reference_color_variants.length === 0) return null;
- 
-   return (
-     <div className="flex flex-wrap gap-2 mb-4 p-3 bg-pink-50/50 border border-pink-100 rounded-lg">
-       <div className="flex items-center gap-2 text-pink-700 font-bold text-xs uppercase mr-2">
-         <Palette className="h-4 w-4" />
-         Variantes de Cor ({sheet.reference_color_variants.length}):
-       </div>
-       {sheet.reference_color_variants.map((v: any) => (
-         <Badge key={v.id} variant="outline" className="bg-white border-pink-200 text-pink-600 text-[10px] py-0 px-2 h-6">
-           {v.color}
-           {v.sku && <span className="ml-1 opacity-50 font-mono">({v.sku})</span>}
-         </Badge>
-       ))}
-     </div>
-   );
+ // VariantOverviewHeader removido — variantes de cor não fazem mais parte da
+ // ficha técnica (cor é definida no PV). Variantes de material aparecem na
+ // tab "Variantes" da ficha. Componente substituído por inline <></> abaixo
+ // pra não quebrar callers.
+ function VariantOverviewHeader(_: { sheet: any }) {
+   return null;
  }
  
  import { ArrowRight, ChevronRight, Calculator, CheckCircle, HelpCircle } from 'lucide-react';
