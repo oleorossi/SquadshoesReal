@@ -36,7 +36,13 @@ ALTER DATABASE postgres SET timezone TO 'America/Sao_Paulo';
 -- exige usuário aprovado (impede usuários comuns de poluir o sistema com
 -- notificações falsas).
 
+-- DROP idempotente de TODAS as policies (a anterior `rls_notifications_all`
+-- e quaisquer das 4 novas que possam ter ficado de uma execução parcial).
 DROP POLICY IF EXISTS "rls_notifications_all" ON public.notifications;
+DROP POLICY IF EXISTS "notifications_select"  ON public.notifications;
+DROP POLICY IF EXISTS "notifications_insert"  ON public.notifications;
+DROP POLICY IF EXISTS "notifications_update"  ON public.notifications;
+DROP POLICY IF EXISTS "notifications_delete"  ON public.notifications;
 
 -- SELECT: aberto a authenticated (broadcasts + próprias)
 CREATE POLICY "notifications_select" ON public.notifications
