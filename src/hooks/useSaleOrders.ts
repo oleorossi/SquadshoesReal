@@ -9,13 +9,14 @@ import { isValidStatusTransition } from '@/lib/saleOrderStateMachine';
 const DEFAULT_OP_STAGES = [
   { name: 'Corte Palmilha', order: 1 },
   { name: 'Corte Forração', order: 2 },
-  { name: 'Mesa', order: 3 },
-  { name: 'Silk', order: 4 },
-  { name: 'Colagem', order: 5 },
-  { name: 'Montagem', order: 6 },
-  { name: 'Solagem', order: 7 },
-  { name: 'Acabamento', order: 8 },
-  { name: 'Expedição', order: 9 },
+  { name: 'Costura', order: 3 },
+  { name: 'Mesa', order: 4 },
+  { name: 'Silk', order: 5 },
+  { name: 'Colagem', order: 6 },
+  { name: 'Montagem', order: 7 },
+  { name: 'Solagem', order: 8 },
+  { name: 'Acabamento', order: 9 },
+  { name: 'Expedição', order: 10 },
 ];
 
 /**

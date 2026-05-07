@@ -33,14 +33,20 @@ interface ConstructionConfigPanelProps {
   onProductionSectorsChange?: (sectors: string[]) => void;
 }
 
-// ─── Canonical sector lists (post-rename, migration 20260506120000) ───────────
-// Silk sits between Mesa/Corte Forração and Colagem — added per toggle.
+// ─── Canonical sector lists ────────────────────────────────────────────────
+// • Cabedal (insole_ready_made=true)   → SEM Corte Forração, SEM Costura
+//   (palmilha vem pronta na cor — sem corte interno nem costura).
+// • Cabedal Forrado (com forração)     → COM Costura (sews palmilha+forração
+//   e cabedal).
+// • Tiras                              → COM Costura (só palmilha+forração;
+//   cabedal não existe).
+// Silk fica entre Aviamento/Mesa e Colagem quando ativado.
 const SECTORS_CABEDAL              = ['Corte Palmilha', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
 const SECTORS_CABEDAL_SILK         = ['Corte Palmilha', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
-const SECTORS_CABEDAL_FORRADO      = ['Corte Palmilha', 'Corte Forração', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
-const SECTORS_CABEDAL_FORRADO_SILK = ['Corte Palmilha', 'Corte Forração', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
-const SECTORS_TIRAS                = ['Corte Palmilha', 'Corte Forração', 'Aviamento', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
-const SECTORS_TIRAS_SILK           = ['Corte Palmilha', 'Corte Forração', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
+const SECTORS_CABEDAL_FORRADO      = ['Corte Palmilha', 'Corte Forração', 'Costura', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
+const SECTORS_CABEDAL_FORRADO_SILK = ['Corte Palmilha', 'Corte Forração', 'Costura', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
+const SECTORS_TIRAS                = ['Corte Palmilha', 'Corte Forração', 'Costura', 'Aviamento', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
+const SECTORS_TIRAS_SILK           = ['Corte Palmilha', 'Corte Forração', 'Costura', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
 
 function sectorsForModel(model: ProductionModel, hasSilk: boolean): string[] {
   if (model === 'cabedal')        return hasSilk ? SECTORS_CABEDAL_SILK         : SECTORS_CABEDAL;

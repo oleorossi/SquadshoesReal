@@ -1,13 +1,14 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Scissors, Footprints, Sparkles, Wrench, Factory, Paperclip, ClipboardList, Palette, Package, Flame, Cloud } from 'lucide-react';
+import { Scissors, Footprints, Sparkles, Wrench, Factory, Paperclip, ClipboardList, Palette, Package, Flame, Cloud, Pen } from 'lucide-react';
  const Orders = lazy(() => import('./Orders'));
 import { Loader2 } from 'lucide-react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 
 const Corte = lazy(() => import('./Corte'));
-const Forracao = lazy(() => import('./Costura')); // Costura is the internal name for Forração
+const Forracao = lazy(() => import('./Costura')); // legado: Costura.tsx é "Corte Forração"
+const Costura = lazy(() => import('./SetorCostura')); // novo setor: costura palmilha + cabedal
 const Aviamento = lazy(() => import('./Aviamento'));
 const Silk = lazy(() => import('./Silk'));
 const Colagem = lazy(() => import('./Colagem'));
@@ -22,7 +23,7 @@ const TabLoader = () => (
   </div>
 );
 
- const SECTOR_TABS = ['ordens', 'corte', 'forracao', 'aviamento', 'silk', 'colagem', 'montagem', 'solagem', 'acabamento', 'expedicao'] as const;
+ const SECTOR_TABS = ['ordens', 'corte', 'forracao', 'costura', 'aviamento', 'silk', 'colagem', 'montagem', 'solagem', 'acabamento', 'expedicao'] as const;
 
 export default function Setores() {
    const [activeTab, setActiveTab] = usePersistedState<string>('setores-active-tab', 'ordens');
@@ -40,7 +41,7 @@ export default function Setores() {
    return (
      <div className="space-y-4">
        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-10 max-w-7xl">
+          <TabsList className="grid w-full grid-cols-11 max-w-7xl">
            <TabsTrigger value="ordens" className="gap-1.5">
              <ClipboardList className="h-4 w-4" /> Todas OPs
            </TabsTrigger>
@@ -49,6 +50,9 @@ export default function Setores() {
            </TabsTrigger>
             <TabsTrigger value="forracao" className="gap-1.5">
               <Cloud className="h-4 w-4" /> Corte Forração
+            </TabsTrigger>
+            <TabsTrigger value="costura" className="gap-1.5">
+              <Pen className="h-4 w-4" /> Costura
             </TabsTrigger>
             <TabsTrigger value="aviamento" className="gap-1.5">
               <Paperclip className="h-4 w-4" /> Aviamento
@@ -88,6 +92,12 @@ export default function Setores() {
           <TabsContent value="forracao">
             <Suspense fallback={<TabLoader />}>
               <Forracao />
+            </Suspense>
+          </TabsContent>
+
+          <TabsContent value="costura">
+            <Suspense fallback={<TabLoader />}>
+              <Costura />
             </Suspense>
           </TabsContent>
 

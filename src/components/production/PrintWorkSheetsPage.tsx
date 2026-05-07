@@ -25,7 +25,7 @@ interface PrintWorkSheetsPageProps {
   onBack: () => void;
 }
 
-const SECTORS = ['Corte Palmilha', 'Corte Forração', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'] as const;
+const SECTORS = ['Corte Palmilha', 'Corte Forração', 'Costura', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'] as const;
 
 // ── Group orders by reference_id + color ────────────────────────────────────
 function groupOrdersByRefColor(orders: any[]): Array<{
@@ -211,6 +211,7 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
     const map: Record<string, string> = {
       'Corte Forração': 'cutting_capacity_per_day',
       'Corte Palmilha': 'sewing_capacity_per_day',
+      'Costura':        'costura_capacity_per_day',
       'Montagem':       'assembly_capacity_per_day',
       'Acabamento':     'finishing_capacity_per_day',
       'Aviamento':      'mesa_daily_capacity',  // DB column ainda chama mesa_daily_capacity

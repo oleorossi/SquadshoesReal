@@ -72,14 +72,15 @@ const OperatorWorkSheet = ({
   const isSolagem         = sector === 'Solagem';
   const isCortePalmilha   = sector === 'Corte Palmilha' || sector === 'Corte';
   const isCorteForração   = sector === 'Corte Forração' || sector === 'Forração';
+  const isCostura         = sector === 'Costura';
   const isAcabamento      = sector === 'Acabamento';
   const isSilk            = sector === 'Silk';
   const isColagem         = sector === 'Colagem';
   // "Mesa" e "Aviamento" representam o MESMO setor (DB enum=mesa, label novo=Aviamento)
   const isAviamento       = sector === 'Aviamento' || sector === 'Mesa';
   const isExpedicao       = sector === 'Expedição';
-  // Palmilha pronta na cor: show notice instead of work instructions for cut sectors
-  const isInsoleSkippedSector = insoleReadyMade && (isCortePalmilha || isCorteForração);
+  // Palmilha pronta na cor: show notice instead of work instructions for cut/sew sectors
+  const isInsoleSkippedSector = insoleReadyMade && (isCortePalmilha || isCorteForração || isCostura);
   const today = new Date().toLocaleDateString('pt-BR');
   // Effective daily capacity for this sector: prefer explicit sectorCapacityPerDay,
   // Aviamento (DB column ainda chama mesa_daily_capacity) usa mesaCapacity como fallback.
