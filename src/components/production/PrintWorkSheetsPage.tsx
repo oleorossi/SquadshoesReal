@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Printer, ArrowLeft, Layers } from 'lucide-react';
 import OperatorWorkSheet from '@/components/production/OperatorWorkSheet';
 import { PalmilhaWorkSheet, type PalmilhaGroup } from '@/components/production/PalmilhaWorkSheet';
-import { SilkMontageWorkSheet, type SoleSilkGroup, type SilkColorGroup } from '@/components/production/SilkMontageWorkSheet';
+import { SilkMontageWorkSheet, type SoleSilkGroup, type SilkColorGroup, type GroupedSector } from '@/components/production/SilkMontageWorkSheet';
 import { SolagemWorkSheet, type SoleColorBand } from '@/components/production/SolagemWorkSheet';
 
 const printStyles = `
@@ -314,9 +314,17 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orders, readyMadeLookup, palmilhaLookup, soleMappings]);
 
-  // ── Silk / Montagem: grouped by sole → color ─────────────────────────────────
+  // ── Setores que agrupam por SOLADO + COR ───────────────────────────────────
+  // Silk, Montagem, Corte Forração, Costura, Aviamento, Acabamento.
+  // (Corte Palmilha = só por solado; Solagem = por cor de solado;
+  //  Expedição = por cliente; Colagem ainda usa Ref+Cor.)
+  const SOLE_COLOR_GROUPED_SECTORS: ReadonlyArray<GroupedSector> = [
+    'Silk', 'Montagem', 'Corte Forração', 'Costura', 'Aviamento', 'Acabamento',
+  ];
+
+  // ── Silk / Montagem / Corte Forração / Costura / Aviamento / Acabamento ────
   const silkMontageGroups = useMemo<SoleSilkGroup[] | null>(() => {
-    if (selectedSector !== 'Silk' && selectedSector !== 'Montagem') return null;
+    if (!SOLE_COLOR_GROUPED_SECTORS.includes(selectedSector as GroupedSector)) return null;
     const soleMap = new Map<string, Map<string, SilkColorGroup>>();
 
     for (const order of orders) {
@@ -404,16 +412,16 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
     return { bands, allSizes, grandTotal };
   }, [orders, selectedSector, soleColorLookup]);
 
-  // ── Acabamento / Expedição: one group per store/client ───────────────────────
+  // ── Expedição: agrupa por loja/cliente (LOJA-A-LOJA, sem agrupamento de itens) ─
+  // Acabamento agora segue mesma lógica de Aviamento (sole+color), per user.
   const storeGroups = useMemo(() => {
-    if (selectedSector !== 'Acabamento' && selectedSector !== 'Expedição') return null;
+    if (selectedSector !== 'Expedição') return null;
     return groupOrdersByStore(orders, saleOrders);
   }, [orders, saleOrders, selectedSector]);
 
-  // ── Corte Forração / Mesa / Colagem: grouped by Ref + Cor ───────────────────
+  // ── Colagem: agrupa por Ref + Cor (não tem solado-específico) ──────────────
   const groupedWorksheets = useMemo(() => {
-    const excluded = new Set(['Corte Palmilha', 'Silk', 'Montagem', 'Solagem', 'Acabamento', 'Expedição']);
-    if (excluded.has(selectedSector)) return null;
+    if (selectedSector !== 'Colagem') return null;
     return groupOrdersByRefColor(orders);
   }, [orders, selectedSector]);
 
@@ -423,17 +431,17 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
       ? 1
       : selectedSector === 'Solagem'
         ? 1
-        : selectedSector === 'Silk' || selectedSector === 'Montagem'
+        : SOLE_COLOR_GROUPED_SECTORS.includes(selectedSector as GroupedSector)
           ? (silkMontageGroups?.length ?? 0)
-          : selectedSector === 'Acabamento' || selectedSector === 'Expedição'
+          : selectedSector === 'Expedição'
             ? (storeGroups?.reduce((s, g) => s + g.orders.length, 0) ?? orders.length)
             : (groupedWorksheets?.length ?? orders.length);
 
   const badgeLabel =
     selectedSector === 'Corte Palmilha' ? 'Consolidado por solado' :
     selectedSector === 'Solagem'        ? 'Consolidado por cor de solado' :
-    selectedSector === 'Silk' || selectedSector === 'Montagem' ? 'Agrupado por solado + cor' :
-    selectedSector === 'Acabamento' || selectedSector === 'Expedição' ? 'Separado por loja/cliente' :
+    SOLE_COLOR_GROUPED_SECTORS.includes(selectedSector as GroupedSector) ? 'Agrupado por solado + cor' :
+    selectedSector === 'Expedição' ? 'Separado por loja/cliente' :
     'Agrupado por Ref + Cor';
 
   const today = new Date().toLocaleDateString('pt-BR');
@@ -452,9 +460,9 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
             {orders.length} OP(s) →{' '}
             {selectedSector === 'Corte Palmilha' || selectedSector === 'Solagem' ? (
               <>1 ficha consolidada</>
-            ) : selectedSector === 'Silk' || selectedSector === 'Montagem' ? (
+            ) : SOLE_COLOR_GROUPED_SECTORS.includes(selectedSector as GroupedSector) ? (
               <>{sheetCount} ficha(s) por solado</>
-            ) : selectedSector === 'Acabamento' || selectedSector === 'Expedição' ? (
+            ) : selectedSector === 'Expedição' ? (
               <>{storeGroups?.length ?? 0} lojas · {sheetCount} fichas</>
             ) : (
               <>{sheetCount} fichas agrupadas ({orders.length} OPs)</>
@@ -491,12 +499,12 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
           />
         )}
 
-        {/* ── Silk / Montagem: one sheet per sole, per-color tables ── */}
-        {(selectedSector === 'Silk' || selectedSector === 'Montagem') && silkMontageGroups && silkMontageGroups.map((group, idx) => (
+        {/* ── Sole+Color sectors (Silk, Montagem, Corte Forração, Costura, Aviamento, Acabamento) ── */}
+        {silkMontageGroups && silkMontageGroups.map((group, idx) => (
           <div key={group.soleName} className={idx < silkMontageGroups.length - 1 ? 'page-break' : ''}>
             <SilkMontageWorkSheet
               group={group}
-              sector={selectedSector as 'Silk' | 'Montagem'}
+              sector={selectedSector as GroupedSector}
               date={today}
             />
           </div>
@@ -512,8 +520,8 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
           />
         )}
 
-        {/* ── Acabamento / Expedição: grouped by store, each OP its own page ── */}
-        {(selectedSector === 'Acabamento' || selectedSector === 'Expedição') && storeGroups && storeGroups.map((storeGroup, gi) => (
+        {/* ── Expedição: agrupado por loja, cada OP em sua página (LOJA-A-LOJA) ── */}
+        {selectedSector === 'Expedição' && storeGroups && storeGroups.map((storeGroup, gi) => (
           <div key={storeGroup.storeId}>
             <div className={`${gi > 0 ? 'store-divider' : ''} no-print mb-4 p-3 bg-emerald-50 border-2 border-emerald-400 rounded-lg flex items-center gap-3`}>
               <div className="w-2 h-10 bg-emerald-600 rounded-full" />
@@ -552,7 +560,7 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
           </div>
         ))}
 
-        {/* ── Corte Forração / Mesa / Colagem: grouped by Ref + Cor ── */}
+        {/* ── Colagem: agrupado por Ref + Cor (não tem solado-específico) ── */}
         {groupedWorksheets && groupedWorksheets.map((group, idx) => {
           const { representative } = group;
           const syntheticOrder = {

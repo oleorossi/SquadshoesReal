@@ -1,5 +1,5 @@
 import React from 'react';
-import { Paintbrush, Hammer, QrCode } from 'lucide-react';
+import { Paintbrush, Hammer, QrCode, Scissors, Pen, Paperclip, Sparkles, Cloud } from 'lucide-react';
 
 export interface SilkColorGroup {
   color: string;
@@ -16,15 +16,60 @@ export interface SoleSilkGroup {
   totalPairs: number;
 }
 
+export type GroupedSector =
+  | 'Silk'
+  | 'Montagem'
+  | 'Corte Forração'
+  | 'Costura'
+  | 'Aviamento'
+  | 'Acabamento';
+
 interface Props {
   group: SoleSilkGroup;
-  sector: 'Silk' | 'Montagem';
+  sector: GroupedSector;
   date?: string;
 }
 
+const SECTOR_THEME: Record<GroupedSector, {
+  border: string;
+  bg: string;
+  bgLight: string;
+  bgLighter: string;
+  border1: string;
+  textColor: string;
+  icon: typeof Paintbrush;
+  /** Mostra checkboxes Frente/Traseiro em cada cor (Aviamento, Acabamento) */
+  showFrenteTraseiro: boolean;
+  /** Mostra a imagem do silk no topo */
+  showSilkImage: boolean;
+}> = {
+  'Silk':           { border: 'border-pink-700',   bg: 'bg-pink-600',   bgLight: 'bg-pink-50',   bgLighter: 'bg-pink-100',   border1: 'border-pink-500',   textColor: 'text-pink-900',   icon: Paintbrush, showFrenteTraseiro: false, showSilkImage: true  },
+  'Montagem':       { border: 'border-blue-700',   bg: 'bg-blue-600',   bgLight: 'bg-blue-50',   bgLighter: 'bg-blue-100',   border1: 'border-blue-500',   textColor: 'text-blue-900',   icon: Hammer,     showFrenteTraseiro: false, showSilkImage: false },
+  'Corte Forração': { border: 'border-cyan-700',   bg: 'bg-cyan-600',   bgLight: 'bg-cyan-50',   bgLighter: 'bg-cyan-100',   border1: 'border-cyan-500',   textColor: 'text-cyan-900',   icon: Cloud,      showFrenteTraseiro: false, showSilkImage: false },
+  'Costura':        { border: 'border-violet-700', bg: 'bg-violet-600', bgLight: 'bg-violet-50', bgLighter: 'bg-violet-100', border1: 'border-violet-500', textColor: 'text-violet-900', icon: Pen,        showFrenteTraseiro: false, showSilkImage: false },
+  'Aviamento':      { border: 'border-amber-700',  bg: 'bg-amber-600',  bgLight: 'bg-amber-50',  bgLighter: 'bg-amber-100',  border1: 'border-amber-500',  textColor: 'text-amber-900',  icon: Paperclip,  showFrenteTraseiro: true,  showSilkImage: false },
+  'Acabamento':     { border: 'border-emerald-700',bg: 'bg-emerald-600',bgLight: 'bg-emerald-50',bgLighter: 'bg-emerald-100',border1: 'border-emerald-500',textColor: 'text-emerald-900',icon: Sparkles,   showFrenteTraseiro: true,  showSilkImage: false },
+};
+
+/**
+ * Ficha de operador genérica para setores que agrupam por SOLADO + COR.
+ *
+ * Suporta:
+ *   • Silk          — header rosa, exibe imagem da arte do silk
+ *   • Montagem      — header azul, sem extras
+ *   • Corte Forração— header ciano, sem extras
+ *   • Costura       — header violeta, sem extras
+ *   • Aviamento     — header âmbar, com checkboxes "Frente/Traseiro" por cor
+ *   • Acabamento    — header verde, com checkboxes "Frente/Traseiro" por cor
+ *
+ * Layout A4 minimalista — apenas info necessária pro operador executar:
+ * solado, total de pares, cor, números, total. Quem precisa de info de
+ * cliente/pedido usa o relatório gerencial (PR seguinte).
+ */
 export const SilkMontageWorkSheet = ({ group, sector, date }: Props) => {
-  const isSilk = sector === 'Silk';
-  const primarySilk = isSilk ? group.colorGroups.find(g => g.silk)?.silk : undefined;
+  const theme = SECTOR_THEME[sector];
+  const Icon = theme.icon;
+  const primarySilk = theme.showSilkImage ? group.colorGroups.find(g => g.silk)?.silk : undefined;
 
   return (
     <div
@@ -32,9 +77,9 @@ export const SilkMontageWorkSheet = ({ group, sector, date }: Props) => {
       style={{ boxSizing: 'border-box', fontFamily: "'Helvetica Neue', Arial, sans-serif" }}
     >
       {/* ── Header bar ── */}
-      <div className={`flex items-stretch gap-0 mb-3 rounded-lg overflow-hidden border-2 ${isSilk ? 'border-pink-700' : 'border-blue-700'}`}>
-        <div className={`${isSilk ? 'bg-pink-600' : 'bg-blue-600'} text-white flex items-center gap-2 px-4 py-2.5 shrink-0`}>
-          {isSilk ? <Paintbrush className="h-5 w-5" /> : <Hammer className="h-5 w-5" />}
+      <div className={`flex items-stretch gap-0 mb-3 rounded-lg overflow-hidden border-2 ${theme.border}`}>
+        <div className={`${theme.bg} text-white flex items-center gap-2 px-4 py-2.5 shrink-0`}>
+          <Icon className="h-5 w-5" />
           <span className="text-base font-black uppercase tracking-tight">Ficha de {sector}</span>
         </div>
         <div className="flex-1 flex items-center gap-6 px-4 bg-slate-50 flex-wrap">
@@ -59,29 +104,29 @@ export const SilkMontageWorkSheet = ({ group, sector, date }: Props) => {
         </div>
         <div className="flex flex-col items-center justify-center px-3 bg-white border-l border-slate-200">
           <QrCode className="h-10 w-10 text-slate-700" />
-          <span className="text-[7px] font-mono text-slate-400 mt-0.5">{sector.toUpperCase()}</span>
+          <span className="text-[7px] font-mono text-slate-400 mt-0.5">{sector.toUpperCase().slice(0, 8)}</span>
         </div>
       </div>
 
-      {/* ── Silk image (prominent, only for Silk sector) ── */}
-      {isSilk && primarySilk && (
-        <div className="mb-3 border-2 border-pink-400 rounded-lg p-3 bg-pink-50 flex items-center gap-4">
+      {/* ── Silk image (only for Silk sector) ── */}
+      {theme.showSilkImage && primarySilk && (
+        <div className={`mb-3 border-2 ${theme.border1} rounded-lg p-3 ${theme.bgLight} flex items-center gap-4`}>
           {primarySilk.silk_url && (
-            <div className="w-20 h-20 border-2 border-pink-300 bg-white rounded overflow-hidden shrink-0 flex items-center justify-center">
+            <div className={`w-20 h-20 border-2 border-pink-300 bg-white rounded overflow-hidden shrink-0 flex items-center justify-center`}>
               <img src={primarySilk.silk_url} alt="Silk" className="w-full h-full object-contain" />
             </div>
           )}
           <div>
             <p className="text-[8px] font-bold text-pink-600 uppercase tracking-wide">Silk / Estampa a Aplicar</p>
-            <p className="text-2xl font-black text-pink-900">{primarySilk.silk_name}</p>
+            <p className={`text-2xl font-black ${theme.textColor}`}>{primarySilk.silk_name}</p>
             <p className="text-[10px] text-pink-700 mt-1 font-semibold">
               Verificar posicionamento e pressão antes de iniciar o lote.
             </p>
           </div>
         </div>
       )}
-      {isSilk && !primarySilk && (
-        <div className="mb-2 border border-pink-200 rounded p-2 bg-pink-50">
+      {theme.showSilkImage && !primarySilk && (
+        <div className={`mb-2 border ${theme.border1} rounded p-2 ${theme.bgLight}`}>
           <p className="text-xs text-pink-600 italic">Nenhum silk registrado para este solado.</p>
         </div>
       )}
@@ -96,8 +141,8 @@ export const SilkMontageWorkSheet = ({ group, sector, date }: Props) => {
               return isNaN(na) || isNaN(nb) ? a.localeCompare(b) : na - nb;
             });
           return (
-            <div key={idx} className={`border-2 rounded overflow-hidden ${isSilk ? 'border-pink-500' : 'border-blue-500'}`}>
-              <div className={`${isSilk ? 'bg-pink-600' : 'bg-blue-600'} text-white px-3 py-1.5 flex items-center justify-between`}>
+            <div key={idx} className={`border-2 rounded overflow-hidden ${theme.border1}`}>
+              <div className={`${theme.bg} text-white px-3 py-1.5 flex items-center justify-between`}>
                 <div className="flex items-center gap-2">
                   {cg.colorHex && (
                     <div className="w-4 h-4 rounded-full border border-white/50 shrink-0" style={{ backgroundColor: cg.colorHex }} />
@@ -137,6 +182,34 @@ export const SilkMontageWorkSheet = ({ group, sector, date }: Props) => {
                       {cg.totalPairs}
                     </td>
                   </tr>
+
+                  {/* Linhas Frente/Traseiro pra equipe marcar (Aviamento, Acabamento) */}
+                  {theme.showFrenteTraseiro && (
+                    <>
+                      <tr className={theme.bgLight}>
+                        <td className={`border border-slate-300 py-1.5 text-[10px] font-bold ${theme.textColor}`}>Frente</td>
+                        {activeSizes.map(s => (
+                          <td key={s} className="border border-slate-300 py-1.5">
+                            <span className="inline-block w-6 h-6 border-2 border-slate-400 rounded" />
+                          </td>
+                        ))}
+                        <td className="border border-slate-300 py-1.5 bg-slate-50">
+                          <span className="inline-block w-6 h-6 border-2 border-slate-400 rounded" />
+                        </td>
+                      </tr>
+                      <tr className={theme.bgLighter}>
+                        <td className={`border border-slate-300 py-1.5 text-[10px] font-bold ${theme.textColor}`}>Traseira</td>
+                        {activeSizes.map(s => (
+                          <td key={s} className="border border-slate-300 py-1.5">
+                            <span className="inline-block w-6 h-6 border-2 border-slate-400 rounded" />
+                          </td>
+                        ))}
+                        <td className="border border-slate-300 py-1.5 bg-slate-50">
+                          <span className="inline-block w-6 h-6 border-2 border-slate-400 rounded" />
+                        </td>
+                      </tr>
+                    </>
+                  )}
                 </tbody>
               </table>
             </div>
