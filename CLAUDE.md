@@ -77,7 +77,10 @@ npm run check:tokens
 
 ## Pending DB Migrations (apply in Supabase Dashboard)
 
-SQL Editor: https://supabase.com/dashboard/project/qrdvwoijghmgugejponz/sql/new
+**Project ID atual:** `ssvxfoybzmjlypnipqzn` (migrado em mai/2026 do antigo `qrdvwoijghmgugejponz`, que ficou inacessível).
+
+SQL Editor: https://supabase.com/dashboard/project/ssvxfoybzmjlypnipqzn/sql/new
+Dashboard: https://supabase.com/dashboard/project/ssvxfoybzmjlypnipqzn
 
 Apply **in order** (oldest first). Migrations with GUIDs in the name are applied automatically by Lovable — only the ones listed below need manual application.
 
