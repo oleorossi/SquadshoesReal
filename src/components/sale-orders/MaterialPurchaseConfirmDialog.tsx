@@ -8,7 +8,7 @@ import { Calendar, Truck, AlertTriangle, ShoppingCart, Loader2, Save } from 'luc
 import { MaterialAvailabilityResult } from '@/lib/materialAvailability';
  import { useCreatePurchaseOrder } from '@/hooks/usePurchaseOrders';
  import { useCreateServiceOrder, useContractors } from '@/hooks/useContractors';
- import { useArtisanalRecipes } from '@/hooks/useArtisanalRecipes';
+ import { useArtisanalRecipes, calcArtisanalRequirement } from '@/hooks/useArtisanalRecipes';
 import { toast } from 'sonner';
 
 interface Props {
@@ -80,29 +80,42 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, onCo
          ocCount++;
        }
  
-       // Generate OS for artisanal
+       // Generate OS for artisanal — calcula material BASE necessário + sobra pra estoque
        for (const art of artisanalShortages) {
          const groupName = (art.product_name || '').split(':')[0].trim();
          const colorName = (art.product_name || '').split(':')[1]?.trim() || '';
          const recipe = recipes.find(r => r.artisanal_product_name.includes(groupName));
-         const contractorId = recipe?.default_contractor_id || contractors[0]?.id;
- 
+         if (!recipe) {
+           toast.warning(`Produto artesanal "${art.product_name}" sem receita cadastrada.`);
+           continue;
+         }
+         const contractorId = recipe.default_contractor_id || contractors[0]?.id;
          if (!contractorId) {
            toast.warning(`Produto "${art.product_name}" sem terceirizado definido para OS.`);
            continue;
          }
- 
+
+         // forOrder = shortage (o que falta pro pedido); forStock = repor min_stock
+         const forOrder = Math.max(0, art.required - art.available);
+         const calc = calcArtisanalRequirement(recipe, forOrder, art.available, art.min_stock);
+         const laborCostTotal = calc.totalToProduce * recipe.labor_cost_per_meter;
+
          await createSO.mutateAsync({
            contractor_id: contractorId,
-           description: `OS Automática - ${art.product_name}`,
-           quantity: art.suggested_qty,
-           unit_price: art.unit_price,
-           total_value: art.suggested_qty * art.unit_price,
+           description: `OS Automática — ${groupName}${colorName ? ' (' + colorName + ')' : ''}`,
+           quantity: Math.ceil(calc.totalToProduce),
+           unit_price: recipe.labor_cost_per_meter,
+           total_value: laborCostTotal,
            status: 'Pendente',
-           artisanal_recipe_id: recipe?.id,
+           artisanal_recipe_id: recipe.id,
            artisanal_output_name: groupName,
            artisanal_output_color: colorName,
-           artisanal_output_meters: art.suggested_qty,
+           artisanal_output_meters: calc.totalToProduce,
+           artisanal_for_order_meters: calc.forOrderMeters,
+           artisanal_for_stock_meters: calc.forStockMeters,
+           material_name: recipe.base_product_name,
+           material_color: colorName,
+           material_meters: calc.baseMetersSend,
          });
          osCount++;
        }

@@ -16,6 +16,8 @@ export interface MaterialShortage {
    /** Quantity that should be ordered or produced (max of shortage and MOQ). */
    suggested_qty: number;
    is_artisanal: boolean;
+  /** Minimum stock target — used to calculate artisanal forStock buffer. */
+  min_stock: number;
   /** References on the order that consume this material. */
   reference_labels: string[];
 }
@@ -101,7 +103,7 @@ export async function enrichMaterialShortages(rawShortages: RawShortage[]): Prom
 
   for (const product of rows) {
     const need = aggregated.get(product.id);
-    if (!need || product.is_artisanal) continue;
+    if (!need) continue;
 
     const supplier = product.supplier_id ? supplierMap.get(product.supplier_id) : null;
     const leadTime = Number(supplier?.lead_time_days) > 0
@@ -111,9 +113,15 @@ export async function enrichMaterialShortages(rawShortages: RawShortage[]): Prom
         : 10;
 
     const moq = Number(product.sole_moq ?? product.min_stock ?? 0);
+    const minStock = Number(product.min_stock ?? 0);
     const shortageQty = Math.max(0, need.required - need.available);
     if (shortageQty <= 0) continue;
-    const suggested = Math.max(shortageQty, moq);
+
+    // Artesanais: sugestão = shortage + buffer de estoque mínimo (forStock).
+    // Materiais comuns: max(shortage, MOQ).
+    const suggested = product.is_artisanal
+      ? shortageQty + Math.max(0, minStock - need.available)
+      : Math.max(shortageQty, moq);
 
     shortages.push({
       product_id: product.id,
@@ -125,11 +133,12 @@ export async function enrichMaterialShortages(rawShortages: RawShortage[]): Prom
       unit: product.unit || 'un',
       unit_price: Number(product.unit_price ?? 0),
       supplier_id: product.supplier_id ?? null,
-      supplier_name: supplier?.name || 'Fornecedor não definido',
+      supplier_name: supplier?.name || (product.is_artisanal ? 'Terceirizado (OS)' : 'Fornecedor não definido'),
       lead_time_days: leadTime,
       moq,
       suggested_qty: suggested,
-      is_artisanal: false,
+      is_artisanal: !!product.is_artisanal,
+      min_stock: minStock,
       reference_labels: [...need.references],
     });
     if (leadTime > maxLeadTime) maxLeadTime = leadTime;
