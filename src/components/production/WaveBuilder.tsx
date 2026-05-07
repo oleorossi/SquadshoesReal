@@ -353,7 +353,20 @@ export function WaveBuilder({
     if (!selected.size || creating) return;
     setCreating(true);
     try {
-      const ids = Array.from(selected);
+      // Ordena PVs por delivery_deadline ASC antes de criar a onda. A versão
+      // anterior usava Array.from(selected) preservando ordem de clique do
+      // usuário, o que fazia OPs com prazo mais distante serem processadas
+      // antes de OPs com prazo apertado dentro da mesma onda. PVs sem
+      // deadline ficam no final.
+      const candidateMap = new Map(saleOrders.map(o => [o.id, o.delivery_deadline]));
+      const ids = Array.from(selected).sort((a, b) => {
+        const da = candidateMap.get(a);
+        const db = candidateMap.get(b);
+        if (!da && !db) return 0;
+        if (!da) return 1;
+        if (!db) return -1;
+        return da.localeCompare(db);
+      });
       const waveId = await createWave.mutateAsync({ weekStart, saleOrderIds: ids });
       const result = await createWaveWithMaterialOrders({ weekStart, saleOrderIds: ids, waveId, generatePOs });
 
