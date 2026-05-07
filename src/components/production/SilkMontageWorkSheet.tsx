@@ -141,7 +141,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date }: Props) => {
               return isNaN(na) || isNaN(nb) ? a.localeCompare(b) : na - nb;
             });
           return (
-            <div key={idx} className={`border-2 rounded overflow-hidden ${theme.border1}`}>
+            <div key={idx} className={`keep-together border-2 rounded overflow-hidden ${theme.border1}`}>
               <div className={`${theme.bg} text-white px-3 py-1.5 flex items-center justify-between`}>
                 <div className="flex items-center gap-2">
                   {cg.colorHex && (

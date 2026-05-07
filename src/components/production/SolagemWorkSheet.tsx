@@ -45,7 +45,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal }: Props) =
             Nenhum dado de solagem para exibir.
           </div>
         ) : bands.map((band, idx) => (
-          <div key={idx} className="border-2 border-lime-600 rounded overflow-hidden">
+          <div key={idx} className="keep-together border-2 border-lime-600 rounded overflow-hidden">
             <div className="bg-lime-700 text-white px-3 py-1.5 flex items-center justify-between">
               <span className="font-black text-sm uppercase tracking-wide">
                 Solado: {band.soleColor}

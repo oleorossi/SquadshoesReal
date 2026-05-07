@@ -10,14 +10,50 @@ import { SolagemWorkSheet, type SoleColorBand } from '@/components/production/So
 import { ExpedicaoWorkSheet, type ExpedicaoCustomerGroup, type ExpedicaoOrder } from '@/components/production/ExpedicaoWorkSheet';
 
 const printStyles = `
-  @page { size: A4 portrait; margin: 0; }
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
   @media print {
+    /* Reset visibility — só mostra a print-area */
     body * { visibility: hidden; }
     .print-area, .print-area * { visibility: visible; }
-    .print-area { position: absolute; left: 0; top: 0; width: 100%; }
+    .print-area {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+    }
     .no-print { display: none !important; }
-    .page-break { page-break-after: always; break-after: page; }
-    .store-divider { page-break-before: always; break-before: page; }
+
+    /* Quebras de página */
+    .page-break {
+      page-break-after: always;
+      break-after: page;
+    }
+    .store-divider {
+      page-break-before: always;
+      break-before: page;
+    }
+
+    /* Evita quebra horrível dentro de tabelas, cards e linhas de tabela */
+    table { break-inside: auto; }
+    tr, .keep-together { break-inside: avoid; page-break-inside: avoid; }
+    thead { display: table-header-group; }
+    tfoot { display: table-footer-group; }
+
+    /* Cores fiéis na impressão (sem desbotamento) */
+    * {
+      -webkit-print-color-adjust: exact !important;
+      color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    /* Tipografia otimizada pra A4 */
+    body {
+      font-size: 10pt;
+      line-height: 1.3;
+    }
   }
 `;
 

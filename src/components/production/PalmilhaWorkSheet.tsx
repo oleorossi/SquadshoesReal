@@ -46,7 +46,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date }: Props) => {
       ) : (
         <div className="space-y-4">
           {groups.map((group, idx) => (
-            <div key={idx} className="border-2 border-slate-800 rounded overflow-hidden">
+            <div key={idx} className="keep-together border-2 border-slate-800 rounded overflow-hidden">
               {/* Group header */}
               <div className="bg-slate-800 text-white px-3 py-1.5 flex items-center justify-between">
                 <span className="font-black text-sm uppercase tracking-wide">

@@ -126,7 +126,7 @@ export const ExpedicaoWorkSheet = ({ group, date }: Props) => {
       </div>
 
       {/* ── Resumo de embalagem ── */}
-      <div className="mb-3 border-2 border-emerald-300 rounded-lg p-3 bg-emerald-50">
+      <div className="keep-together mb-3 border-2 border-emerald-300 rounded-lg p-3 bg-emerald-50">
         <div className="flex items-center justify-between gap-3 mb-2">
           <div className="flex items-center gap-2">
             <Package className="h-4 w-4 text-emerald-700" />
