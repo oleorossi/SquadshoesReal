@@ -7,6 +7,7 @@ import OperatorWorkSheet from '@/components/production/OperatorWorkSheet';
 import { PalmilhaWorkSheet, type PalmilhaGroup } from '@/components/production/PalmilhaWorkSheet';
 import { SilkMontageWorkSheet, type SoleSilkGroup, type SilkColorGroup, type GroupedSector } from '@/components/production/SilkMontageWorkSheet';
 import { SolagemWorkSheet, type SoleColorBand } from '@/components/production/SolagemWorkSheet';
+import { ExpedicaoWorkSheet, type ExpedicaoCustomerGroup, type ExpedicaoOrder } from '@/components/production/ExpedicaoWorkSheet';
 
 const printStyles = `
   @page { size: A4 portrait; margin: 0; }
@@ -62,33 +63,6 @@ function groupOrdersByRefColor(orders: any[]): Array<{
   return Array.from(map.values());
 }
 
-// ── Group orders by store/client (Acabamento & Expedição) ───────────────────
-function groupOrdersByStore(orders: any[], saleOrders: any[]): Array<{
-  storeId: string;
-  clientName: string;
-  orderNumber: string;
-  orders: any[];
-}> {
-  const map = new Map<string, { clientName: string; orderNumber: string; orders: any[] }>();
-
-  for (const order of orders) {
-    const soId = order.sale_order_id ?? '__avulso__';
-    if (!map.has(soId)) {
-      const so = saleOrders.find((s: any) => s.id === soId);
-      map.set(soId, {
-        clientName: so?.client_name ?? (soId === '__avulso__' ? 'Sem pedido' : 'Cliente'),
-        orderNumber: so?.order_number ?? '',
-        orders: [],
-      });
-    }
-    map.get(soId)!.orders.push(order);
-  }
-
-  return Array.from(map.entries())
-    .map(([storeId, v]) => ({ storeId, ...v }))
-    .sort((a, b) => a.clientName.localeCompare(b.clientName, 'pt-BR'));
-}
-
 const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
   const [selectedSector, setSelectedSector] = useState<typeof SECTORS[number]>('Corte Palmilha');
 
@@ -104,26 +78,60 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
   });
 
   const { data: saleOrders = [] } = useQuery({
-    queryKey: ['sale_orders_for_worksheets_v2'],
+    queryKey: ['sale_orders_for_worksheets_v3'],
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('sale_orders')
-        .select('id, client_id, economic_group_id, client_name, order_number');
+        .select('id, client_id, economic_group_id, client_name, client_cnpj, order_number');
       if (error) throw error;
       return data;
     },
   });
 
+  const { data: clientsInfo = [] } = useQuery({
+    queryKey: ['clients_for_expedicao'],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('clients')
+        .select('id, name, cnpj, city');
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
   const { data: soleMappings = [] } = useQuery({
-    queryKey: ['sole_ref_mappings', referenceIds],
+    queryKey: ['sole_ref_mappings_v2', referenceIds],
     enabled: referenceIds.length > 0,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('technical_sheet_sole_colors')
-        .select('sheet_id, product_color, sole_product_id, products:sole_product_id(name, color)')
+        .select('sheet_id, product_color, sole_product_id, products:sole_product_id(name, color, group_id)')
         .in('sheet_id', referenceIds);
       if (error) throw error;
       return data;
+    },
+  });
+
+  // Pacote de embalagem por grupo de solado (pra Expedição)
+  const soleGroupIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const m of soleMappings as any[]) {
+      const gid = (m as any)?.products?.group_id;
+      if (gid) ids.add(gid);
+    }
+    return Array.from(ids);
+  }, [soleMappings]);
+
+  const { data: soleGroupPackaging = [] } = useQuery({
+    queryKey: ['sole_group_packaging', soleGroupIds],
+    enabled: soleGroupIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('product_groups')
+        .select('id, pairs_per_box_individual')
+        .in('id', soleGroupIds);
+      if (error) throw error;
+      return data || [];
     },
   });
 
@@ -412,12 +420,68 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
     return { bands, allSizes, grandTotal };
   }, [orders, selectedSector, soleColorLookup]);
 
-  // ── Expedição: agrupa por loja/cliente (LOJA-A-LOJA, sem agrupamento de itens) ─
+  // ── Expedição: por cliente (LOJA-A-LOJA), com info de embalagem ──────────
   // Acabamento agora segue mesma lógica de Aviamento (sole+color), per user.
-  const storeGroups = useMemo(() => {
+  const expedicaoGroups = useMemo<ExpedicaoCustomerGroup[] | null>(() => {
     if (selectedSector !== 'Expedição') return null;
-    return groupOrdersByStore(orders, saleOrders);
-  }, [orders, saleOrders, selectedSector]);
+
+    const clientById = new Map<string, any>();
+    for (const c of clientsInfo as any[]) clientById.set((c as any).id, c);
+
+    const groupPackagingById = new Map<string, number | null>();
+    for (const g of soleGroupPackaging as any[]) {
+      groupPackagingById.set((g as any).id, (g as any).pairs_per_box_individual);
+    }
+
+    // Resolve sole info por order (nome + pairs_per_box)
+    const resolveSoleInfo = (order: any): { soleName: string | null; pairsPerBox: number | null } => {
+      const sheetId = order.reference_id;
+      const cabedelColorLower = (order.color || '').toLowerCase();
+      const mapping = (soleMappings as any[]).find(
+        m => m.sheet_id === sheetId && (m.product_color || '').toLowerCase() === cabedelColorLower,
+      );
+      const soleName = (mapping as any)?.products?.name ? getBaseName((mapping as any).products.name) : null;
+      const groupId = (mapping as any)?.products?.group_id;
+      const pairsPerBox = groupId ? (groupPackagingById.get(groupId) ?? null) : null;
+      return { soleName, pairsPerBox };
+    };
+
+    // Agrupa por client_id (fallback: sale_order_id pra avulsos)
+    const map = new Map<string, ExpedicaoCustomerGroup>();
+    for (const order of orders) {
+      const so = (saleOrders as any[]).find((s: any) => s.id === order.sale_order_id);
+      const clientId = so?.client_id || `__order_${order.sale_order_id ?? order.id}`;
+      const client = so?.client_id ? clientById.get(so.client_id) : null;
+
+      const { soleName, pairsPerBox } = resolveSoleInfo(order);
+
+      if (!map.has(clientId)) {
+        map.set(clientId, {
+          client_id: clientId,
+          client_name: client?.name || so?.client_name || 'Sem cliente',
+          client_cnpj: client?.cnpj || so?.client_cnpj || null,
+          client_city: client?.city || null,
+          sale_order_number: so?.order_number || null,
+          orders: [],
+        });
+      }
+      const cust = map.get(clientId)!;
+      cust.orders.push({
+        id: order.id,
+        op_number: order.op_number,
+        reference_id: order.reference_id,
+        reference_code: order.reference_code,
+        reference_name: order.reference_name,
+        color: order.color,
+        total_pairs: order.total_pairs ?? 0,
+        grid: order.grid,
+        sole_name: soleName,
+        pairs_per_box: pairsPerBox,
+      });
+    }
+
+    return Array.from(map.values()).sort((a, b) => a.client_name.localeCompare(b.client_name, 'pt-BR'));
+  }, [orders, saleOrders, clientsInfo, soleMappings, soleGroupPackaging, selectedSector]);
 
   // ── Colagem: agrupa por Ref + Cor (não tem solado-específico) ──────────────
   const groupedWorksheets = useMemo(() => {
@@ -434,7 +498,7 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
         : SOLE_COLOR_GROUPED_SECTORS.includes(selectedSector as GroupedSector)
           ? (silkMontageGroups?.length ?? 0)
           : selectedSector === 'Expedição'
-            ? (storeGroups?.reduce((s, g) => s + g.orders.length, 0) ?? orders.length)
+            ? (expedicaoGroups?.length ?? 0)
             : (groupedWorksheets?.length ?? orders.length);
 
   const badgeLabel =
@@ -463,7 +527,7 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
             ) : SOLE_COLOR_GROUPED_SECTORS.includes(selectedSector as GroupedSector) ? (
               <>{sheetCount} ficha(s) por solado</>
             ) : selectedSector === 'Expedição' ? (
-              <>{storeGroups?.length ?? 0} lojas · {sheetCount} fichas</>
+              <>{expedicaoGroups?.length ?? 0} loja(s) · {sheetCount} ficha(s)</>
             ) : (
               <>{sheetCount} fichas agrupadas ({orders.length} OPs)</>
             )}
@@ -520,43 +584,10 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
           />
         )}
 
-        {/* ── Expedição: agrupado por loja, cada OP em sua página (LOJA-A-LOJA) ── */}
-        {selectedSector === 'Expedição' && storeGroups && storeGroups.map((storeGroup, gi) => (
-          <div key={storeGroup.storeId}>
-            <div className={`${gi > 0 ? 'store-divider' : ''} no-print mb-4 p-3 bg-emerald-50 border-2 border-emerald-400 rounded-lg flex items-center gap-3`}>
-              <div className="w-2 h-10 bg-emerald-600 rounded-full" />
-              <div>
-                <p className="text-xs font-bold text-emerald-600 uppercase tracking-wide">Loja / Cliente</p>
-                <p className="text-lg font-black text-emerald-900">{storeGroup.clientName}</p>
-                {storeGroup.orderNumber && <p className="text-xs text-emerald-600 font-mono">Pedido {storeGroup.orderNumber}</p>}
-              </div>
-              <span className="ml-auto text-sm text-emerald-700 font-semibold">
-                {storeGroup.orders.length} OP(s) · {storeGroup.orders.reduce((s: number, o: any) => s + (o.total_pairs ?? 0), 0)} pares
-              </span>
-            </div>
-
-            {storeGroup.orders.map((order: any, oi: number) => {
-              const silk = getOrderSilk(order);
-              const { soleColor, insoleColor, insoleHasLining, insoleReadyMade, hasStraps, mesaCapacity } = getOrderColors(order);
-              const isLast = gi === storeGroups.length - 1 && oi === storeGroup.orders.length - 1;
-              return (
-                <div key={order.id} className={!isLast ? 'page-break' : ''}>
-                  <OperatorWorkSheet
-                    order={order}
-                    sector={selectedSector}
-                    silk={silk}
-                    soleColor={soleColor}
-                    insoleColor={insoleColor}
-                    insoleHasLining={insoleHasLining}
-                    insoleReadyMade={insoleReadyMade}
-                    hasStraps={hasStraps}
-                    mesaCapacity={mesaCapacity}
-                    sectorCapacityPerDay={getSheetSectorCapacity(order.reference_id, selectedSector)}
-                    clientInfo={{ name: storeGroup.clientName, orderNumber: storeGroup.orderNumber }}
-                  />
-                </div>
-              );
-            })}
+        {/* ── Expedição: 1 ficha por cliente/CNPJ, com info de embalagem ── */}
+        {selectedSector === 'Expedição' && expedicaoGroups && expedicaoGroups.map((group, idx) => (
+          <div key={group.client_id} className={idx < expedicaoGroups.length - 1 ? 'page-break' : ''}>
+            <ExpedicaoWorkSheet group={group} date={today} />
           </div>
         ))}
 
