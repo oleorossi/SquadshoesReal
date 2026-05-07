@@ -2023,9 +2023,14 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                         <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                           Consumo desta Opção ({unit}/par) — custo por cor/material
                         </Label>
-                        <span className="text-[10px] text-muted-foreground">
-                          Média: <strong>{avg.toFixed(4)}</strong>
-                        </span>
+                        {/* Quando o modelo tem TIRAS, o consumo é número-a-número
+                            (cada tira tem seu cm/par). A "média" é enganosa nesse
+                            caso — ocultamos pra evitar leitura errada. */}
+                        {!form.has_straps && (
+                          <span className="text-[10px] text-muted-foreground">
+                            Média: <strong>{avg.toFixed(4)}</strong>
+                          </span>
+                        )}
                       </div>
                       <div className="flex flex-wrap gap-1.5">
                         {cabedalSizes.map(size => {
@@ -2109,7 +2114,13 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                       </div>
                     </div>
 
-                    {(form.components_accessories || []).map((extra: any, rawIdx: number) => ({ extra, rawIdx })).filter(({ extra }) => extra.material !== undefined && !extra.id && !extra.mandatory).map(({ extra, rawIdx }, displayIdx) => {
+                    {/* Acessórios alternativos de cabedal removidos da UI conforme decisão
+                        do usuário: cada referência tem APENAS um material principal.
+                        Variações de material (Napa, Santorini, …) são gerenciadas em
+                        Variantes de Material (não como acessórios). Mantemos render
+                        condicional só pra fichas legacy que ainda têm dados gravados —
+                        em fichas novas o array fica vazio e nada renderiza. */}
+                    {false && (form.components_accessories || []).map((extra: any, rawIdx: number) => ({ extra, rawIdx })).filter(({ extra }) => extra.material !== undefined && !extra.id && !extra.mandatory).map(({ extra, rawIdx }, displayIdx) => {
                       const unit = getUnitForGroupName(extra.material || '', extra.material_unit);
                       return (
                         <div key={rawIdx} className="space-y-2 border-l-2 border-primary/30 pl-3">
@@ -2159,8 +2170,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                       );
                     })}
 
-                    {/* Materiais mandatórios — sempre consumidos, independente da cor */}
-                    {(form.components_accessories || []).map((extra: any, rawIdx: number) => ({ extra, rawIdx })).filter(({ extra }) => extra.mandatory === true).length > 0 && (
+                    {/* Materiais mandatórios também ocultos — pertencem a outro
+                        local (Materiais Padrão do Solado: cola, palmilha, linha). */}
+                    {false && (form.components_accessories || []).map((extra: any, rawIdx: number) => ({ extra, rawIdx })).filter(({ extra }) => extra.mandatory === true).length > 0 && (
                       <div className="mt-3 pt-3 border-t border-dashed border-emerald-300 dark:border-emerald-800">
                         <div className="flex items-center gap-2 mb-2">
                           <Check className="h-3.5 w-3.5 text-emerald-600" />
@@ -2218,20 +2230,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   </>
                 );
               })()}
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => {
-                  const arr = [...(form.components_accessories || []), { material: form.upper_material, consumption: 0, consumption_per_size: {} }];
-                  updateField('components_accessories', arr);
-                }}>
-                  <Plus className="h-3.5 w-3.5" /> Adicionar Opção de Cabedal
-                </Button>
-                <Button variant="outline" size="sm" className="gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30" onClick={() => {
-                  const arr = [...(form.components_accessories || []), { material: '', consumption: 0, mandatory: true, consumption_per_size: {} }];
-                  updateField('components_accessories', arr);
-                }}>
-                  <Plus className="h-3.5 w-3.5" /> Adicionar Outro Material
-                </Button>
-              </div>
+              {/* Botões removidos: cada ref tem APENAS material principal de cabedal.
+                  Variações de material (Napa, Santorini, …) → Tab "Variantes". */}
             </div>
 
             <Separator />
@@ -2261,36 +2261,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 </div>
                 <div className="space-y-3">
                   <GroupMaterialSelect label="Material Principal" value={form.lining_material} onChange={v => { updateField('lining_material', v); autoFillConsumption(v, 'lining_material'); }} />
-                  
-                  {((form as any).lining_accessories || []).map((extra: any, idx: number) => {
-                    const accessoryKey = extra.id || `lining-acc-${idx}-${extra.material}`;
-                    return (
-                    <div key={accessoryKey} className="grid grid-cols-[1fr_auto] gap-2 items-end border-l-2 border-purple-300 pl-3">
-                      <GroupMaterialSelect
-                        label={`Opção ${idx + 2}`}
-                        value={extra.material || ''}
-                        onChange={v => {
-                          const arr = [...((form as any).lining_accessories || [])];
-                          arr[idx] = { ...arr[idx], material: v };
-                          updateField('lining_accessories' as any, arr);
-                        }}
-                      />
-                      <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:text-destructive" onClick={() => {
-                        const arr = [...((form as any).lining_accessories || [])];
-                        arr.splice(idx, 1);
-                        updateField('lining_accessories' as any, arr);
-                      }}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    );
-                  })}
-                  <Button variant="outline" size="sm" className="w-full gap-1.5 text-[10px] h-7" onClick={() => {
-                    const arr = [...((form as any).lining_accessories || []), { material: '', consumption: 0 }];
-                    updateField('lining_accessories' as any, arr);
-                  }}>
-                    <Plus className="h-3 w-3" /> Outra Opção
-                  </Button>
+
+                  {/* Acessórios alternativos de forração removidos. Cada ref tem
+                      APENAS um material principal de forro. Botão "Outra Opção" e
+                      blocos extras escondidos (mantidos no banco pra fichas legacy). */}
                 </div>
               </div>
 

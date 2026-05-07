@@ -343,6 +343,42 @@ export default function SaleOrderFormPanel({
     staleTime: 30_000,
   });
 
+  // Auto-pull caixa do SOLADO: quando uma ficha técnica é selecionada nos itens,
+  // busca sole_group_id da ficha → pega box_type_id do product_groups daquele
+  // solado → sugere como packagingProductId quando ainda não há um setado.
+  // Conforme requisito: "ao selecionar o solado deve puxar as medidas da caixa
+  // correta automaticamente".
+  const { data: soleBoxes = [] } = useQuery({
+    queryKey: ['sole_boxes_for_refs', selectedSheetIds],
+    enabled: selectedSheetIds.length > 0,
+    queryFn: async () => {
+      const { data: sheets } = await supabase
+        .from('technical_sheets')
+        .select('id, sole_group_id')
+        .in('id', selectedSheetIds);
+      const soleGroupIds = [...new Set((sheets || []).map(s => (s as any).sole_group_id).filter(Boolean))];
+      if (soleGroupIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from('product_groups')
+        .select('id, box_type_id, box_type_master_id, box_type_colmeia_id, box_type_fitilho_id, name')
+        .in('id', soleGroupIds);
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 30_000,
+  });
+
+  useEffect(() => {
+    // Só auto-suggerir quando ainda não há embalagem escolhida
+    if (packagingProductId) return;
+    if (!onPackagingProductChange) return;
+    // Pega o primeiro solado com box_type_id definido
+    const firstBox = soleBoxes.find(s => (s as any).box_type_id);
+    if (firstBox && (firstBox as any).box_type_id) {
+      onPackagingProductChange((firstBox as any).box_type_id);
+    }
+  }, [soleBoxes, packagingProductId, onPackagingProductChange]);
+
   const _selectedPackaging = boxTypes.find(p => p.id === packagingProductId);
 
   const lastItemRef = useRef<HTMLDivElement>(null);

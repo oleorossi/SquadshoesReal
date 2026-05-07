@@ -343,10 +343,17 @@ export function SoleStandardItemsPanel({ soleProductId }: Props) {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2">
           <Layers className="h-4 w-4 text-primary" />
-          <h4 className="text-sm font-semibold">Itens padrão deste solado</h4>
-          <Badge variant="outline" className="text-[10px]">
-            {sizes.length} numerações • {sizes[0]}–{sizes[sizes.length - 1]}
-          </Badge>
+          <div>
+            <h4 className="text-sm font-semibold flex items-center gap-2">
+              Itens padrão deste solado
+              <Badge variant="outline" className="text-[10px]">
+                {sizes.length} numerações • {sizes[0]}–{sizes[sizes.length - 1]}
+              </Badge>
+            </h4>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              Define o consumo de <strong>Cola</strong>, <strong>Palmilha</strong>, <strong>Linha</strong>, EVA e outros materiais que vão junto com este solado em toda referência que o usar.
+            </p>
+          </div>
         </div>
          <div className="flex items-center gap-2 relative">
            <div className="relative">
