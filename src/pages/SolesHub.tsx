@@ -165,32 +165,26 @@ export default function SolesHub() {
               ) : (
                 <ScrollArea className="h-[600px]">
                   <div className="divide-y">
-                    {grouped.map(group => (
-                      <div key={group.base} className="py-1">
-                        {group.items.length === 1 ? (
+                    {/* UMA linha por base (não duplica por cor). Consumo é por
+                        REFERÊNCIA do solado, não por cor. Ao clicar, mostra um
+                        produto representativo (qualquer cor) e o handleSave em
+                        SoleTechnicalDetails replica pras outras cores do mesmo
+                        group_id automaticamente. */}
+                    {grouped.map(group => {
+                      // Pega o produto principal (sem cor, ou primeiro da lista)
+                      const main = group.items.find(p => !p.color || p.color.trim() === '') || group.items[0];
+                      const colorCount = group.items.filter(p => p.color && p.color.trim()).length;
+                      return (
+                        <div key={group.base} className="py-1">
                           <SoleListItem
-                            sole={group.items[0]}
-                            selected={selectedId === group.items[0].id}
-                            onSelect={() => setSelectedId(group.items[0].id)}
+                            sole={main}
+                            colorCount={colorCount}
+                            selected={selectedId === main.id || group.items.some(i => i.id === selectedId)}
+                            onSelect={() => setSelectedId(main.id)}
                           />
-                        ) : (
-                          <>
-                            <div className="px-3 py-1 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                              {group.base}
-                            </div>
-                            {group.items.map(item => (
-                              <SoleListItem
-                                key={item.id}
-                                sole={item}
-                                indent
-                                selected={selectedId === item.id}
-                                onSelect={() => setSelectedId(item.id)}
-                              />
-                            ))}
-                          </>
-                        )}
-                      </div>
-                    ))}
+                        </div>
+                      );
+                    })}
                   </div>
                 </ScrollArea>
               )}
@@ -259,30 +253,33 @@ export default function SolesHub() {
 }
 
 // ── Item da lista lateral ─────────────────────────────────────────────────
-function SoleListItem({ sole, selected, onSelect, indent }: {
+function SoleListItem({ sole, selected, onSelect, colorCount }: {
   sole: SoleProduct;
   selected: boolean;
   onSelect: () => void;
-  indent?: boolean;
+  colorCount?: number;
 }) {
   const total = gradeTotal(sole.stock_grade);
   const isLow = total < (sole.min_stock || 0);
   const isZero = total === 0;
+  // Nome base sem o (cor) entre parênteses
+  const nameBase = sole.name.replace(/\s*\([^)]*\)\s*$/, '').trim();
   return (
     <button
       onClick={onSelect}
       className={cn(
         'w-full text-left px-3 py-2 hover:bg-muted/50 transition-colors flex items-center justify-between gap-2',
-        indent && 'pl-6',
         selected && 'bg-primary/10 hover:bg-primary/15 border-l-2 border-l-primary'
       )}
     >
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium truncate">{sole.name}</p>
+        <p className="text-sm font-medium truncate">{nameBase}</p>
         <div className="flex items-center gap-1.5 mt-0.5">
-          {sole.color && (
-            <Badge variant="outline" className="text-[9px] h-4 px-1 leading-none">{sole.color}</Badge>
-          )}
+          {colorCount && colorCount > 0 ? (
+            <Badge variant="outline" className="text-[9px] h-4 px-1 leading-none">
+              {colorCount} {colorCount === 1 ? 'cor' : 'cores'}
+            </Badge>
+          ) : null}
           <span className={cn(
             'text-[10px] font-mono',
             isZero ? 'text-rose-600' : isLow ? 'text-amber-600' : 'text-muted-foreground'

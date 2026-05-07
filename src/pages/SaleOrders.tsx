@@ -1740,6 +1740,34 @@ export default function SaleOrders() {
               {selectedOrder && (
                 <div className="flex items-center gap-2">
                   {isAdmin && <Button variant="outline" size="sm" className="gap-2" onClick={() => { setDetailDialogOpen(false); navigate(`/sales/edit/${selectedOrder.id}`); }}><Pencil className="h-3.5 w-3.5" /> Editar</Button>}
+                  {/* Botão "Aprovar" individual — só aparece em Rascunho.
+                      Sem esse botão, o usuário só conseguia aprovar via "Gerar OPs"
+                      em massa (o que aprovava TODOS os Rascunhos de uma vez).
+                      Aqui flipa apenas o status (sem gerar OPs ainda). */}
+                  {isAdmin && selectedOrder.status === 'Rascunho' && (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="gap-2 bg-emerald-600 hover:bg-emerald-700"
+                      onClick={async () => {
+                        if (!confirm(`Aprovar o pedido ${selectedOrder.order_number}? Isso permite incluir em ondas de produção.`)) return;
+                        const { error } = await supabase
+                          .from('sale_orders')
+                          .update({ status: 'Aprovado' })
+                          .eq('id', selectedOrder.id)
+                          .eq('status', 'Rascunho');
+                        if (error) {
+                          toast.error(`Erro ao aprovar: ${error.message}`);
+                          return;
+                        }
+                        toast.success(`Pedido ${selectedOrder.order_number} aprovado.`);
+                        queryClient.invalidateQueries({ queryKey: ['sale_orders'] });
+                        setDetailDialogOpen(false);
+                      }}
+                    >
+                      <CheckCircle className="h-3.5 w-3.5" /> Aprovar
+                    </Button>
+                  )}
                   {isAdmin && (selectedOrder.status === 'Aprovado' || selectedOrder.status === 'Em Produção') && (
                     <Button variant="outline" size="sm" className="gap-2" disabled={resyncPVOPs.isPending} onClick={() => {
                       if (confirm('Isso irá excluir as OPs atuais e recriar com base nos itens atuais do pedido. Continuar?')) {

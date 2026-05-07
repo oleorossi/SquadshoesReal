@@ -17,13 +17,15 @@ export default function SolesConsumosTab({ sole }: Props) {
 
   return (
     <div className="space-y-3">
-      <Card className="border-dashed bg-muted/30">
+      <Card className="border-amber-300/60 bg-amber-50/30 dark:bg-amber-950/10">
         <CardContent className="py-3 px-4 flex items-start gap-2">
-          <Info className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-          <p className="text-xs text-muted-foreground">
-            Os 3 grupos de consumo deste solado: <strong>Forração / Palmilha</strong> (consumo por numeração),
-            <strong> Itens Padrão</strong> (cola, EVA, linha — fixo por par), e <strong>Silk</strong> (artes
-            por cor). Conjugadas (ex.: 33/34) entram como <em>uma única linha</em> automaticamente.
+          <Info className="h-4 w-4 text-amber-700 dark:text-amber-400 mt-0.5 shrink-0" />
+          <p className="text-xs text-amber-900 dark:text-amber-200">
+            <strong>Consumo é por REFERÊNCIA do solado, não por cor.</strong> O que você
+            cadastrar aqui (Forração/Palmilha, Itens Padrão) vale pra TODAS as cores deste
+            solado automaticamente — você edita uma vez. <strong>Silk</strong> é a única
+            exceção: artes serigráficas mudam por cor. Conjugadas (ex.: 33/34) entram como
+            uma única linha.
           </p>
         </CardContent>
       </Card>

@@ -443,6 +443,52 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
         .upsert(dataToUpsert, { onConflict: "sole_id,size" });
       if (specsError) throw specsError;
 
+      // ── Espelha consumo pra TODAS as cores do mesmo solado ──
+      // Conforme decisão do usuário: "Pasta de solados, para consumo e
+      // definições técnicas é indiferente a cor do solado, isso só faz
+      // diferença pra combinação de cabedal".
+      // Buscamos todos products com o mesmo group_id (variantes de cor do
+      // mesmo solado) e replicamos os specs pra cada um. Cor é só pra
+      // estoque/expedição — consumo técnico é por referência.
+      if (soleGroupId) {
+        const { data: siblings } = await supabase
+          .from("products")
+          .select("id")
+          .eq("group_id", soleGroupId)
+          .neq("id", soleId);
+
+        for (const sibling of (siblings || [])) {
+          const siblingData = sizes.map(size => ({
+            sole_id: sibling.id,
+            size,
+            lining_consumption_dm2: specs[size]?.lining_consumption_dm2 ?? null,
+            insole_consumption_dm2: specs[size]?.insole_consumption_dm2 ?? null,
+            fachete_lining_consumption_dm2: specs[size]?.fachete_lining_consumption_dm2 ?? null,
+            reference_sole_id: referenceInfo?.id || null,
+            reference_date: referenceInfo ? new Date().toISOString() : null
+          }));
+          await supabase
+            .from("sole_technical_specs")
+            .upsert(siblingData, { onConflict: "sole_id,size" });
+
+          // Limpa specs de tamanhos removidos da grade nos siblings também
+          const { data: existingSibling } = await supabase
+            .from("sole_technical_specs")
+            .select("size")
+            .eq("sole_id", sibling.id);
+          const toDeleteSibling = (existingSibling || [])
+            .map((r: any) => r.size)
+            .filter((s: number) => !sizes.includes(s));
+          if (toDeleteSibling.length > 0) {
+            await supabase
+              .from("sole_technical_specs")
+              .delete()
+              .eq("sole_id", sibling.id)
+              .in("size", toDeleteSibling);
+          }
+        }
+      }
+
       const { data: existing } = await supabase
         .from("sole_technical_specs")
         .select("size")
@@ -479,6 +525,22 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
           .from("sole_structures")
           .upsert(structuresToUpsert, { onConflict: "sole_id,component_type" });
         if (structError) throw structError;
+
+        // Espelha sole_structures pras outras cores do mesmo solado
+        // (mesma justificativa do espelhamento de sole_technical_specs).
+        if (soleGroupId) {
+          const { data: siblings2 } = await supabase
+            .from("products")
+            .select("id")
+            .eq("group_id", soleGroupId)
+            .neq("id", soleId);
+          for (const sibling of (siblings2 || [])) {
+            const siblingStructs = structuresToUpsert.map(s => ({ ...s, sole_id: sibling.id }));
+            await supabase
+              .from("sole_structures")
+              .upsert(siblingStructs, { onConflict: "sole_id,component_type" });
+          }
+        }
       }
 
       qc.invalidateQueries({ queryKey: ["sole_size_grade", soleId] });
