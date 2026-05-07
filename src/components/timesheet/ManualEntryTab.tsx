@@ -197,11 +197,15 @@ export default function ManualEntryTab() {
 
   return (
     <div className="space-y-4">
-      <Card>
+      <Card className="border-emerald-300/40 bg-emerald-50/30 dark:bg-emerald-950/10">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
+          <CardTitle className="text-base flex items-center gap-2 text-emerald-800 dark:text-emerald-300">
             <ClipboardEdit className="h-4 w-4" /> Lançamento Manual de Ponto
           </CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Use quando o funcionário esqueceu de bater, o relógio falhou, ou para corrigir batidas erradas.
+            Clique em qualquer célula da grade para adicionar / editar batidas. Marcações ficam destacadas em verde.
+          </p>
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-3 items-end">

@@ -1,19 +1,16 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
-  LayoutDashboard, Users, Clock, DollarSign, AlertTriangle, TrendingUp, Calendar,
+  LayoutDashboard, Users, AlarmClock, DollarSign, FileText, Loader2,
 } from 'lucide-react';
-import { Loader2 } from 'lucide-react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 
-const RHDashboard      = lazy(() => import('./RHDashboard'));
+const PainelRH         = lazy(() => import('@/components/hr/PainelRH'));
 const Employees        = lazy(() => import('./Employees'));
 const Timesheet        = lazy(() => import('./Timesheet'));
-const Payroll          = lazy(() => import('./Payroll'));
-const BankHours        = lazy(() => import('./BankHours'));
-const AbsenceReport    = lazy(() => import('./AbsenceReport'));
-const HeadcountReport  = lazy(() => import('./HeadcountReport'));
+const FolhaConsolidada = lazy(() => import('@/components/hr/FolhaConsolidada'));
+const RelatoriosRH     = lazy(() => import('@/components/hr/RelatoriosRH'));
 
 const TabLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -21,30 +18,53 @@ const TabLoader = () => (
   </div>
 );
 
-const TABS = ['painel', 'funcionarios', 'ponto', 'folha', 'banco-horas', 'absenteismo', 'headcount'] as const;
+const TABS = ['painel', 'funcionarios', 'ponto', 'folha', 'relatorios'] as const;
+type Tab = typeof TABS[number];
 
-const tabs = [
-  { value: 'painel',        label: 'Painel',        icon: LayoutDashboard },
-  { value: 'funcionarios',  label: 'Funcionários',  icon: Users },
-  { value: 'ponto',         label: 'Ponto',         icon: Calendar },
-  { value: 'folha',         label: 'Folha',         icon: DollarSign },
-  { value: 'banco-horas',   label: 'Banco de Horas', icon: Clock },
-  { value: 'absenteismo',   label: 'Absenteísmo',   icon: AlertTriangle },
-  { value: 'headcount',     label: 'Headcount',     icon: TrendingUp },
+const tabs: { value: Tab; label: string; icon: typeof LayoutDashboard }[] = [
+  { value: 'painel',       label: 'Painel',       icon: LayoutDashboard },
+  { value: 'funcionarios', label: 'Funcionários', icon: Users },
+  { value: 'ponto',        label: 'Ponto',        icon: AlarmClock },
+  { value: 'folha',        label: 'Folha',        icon: DollarSign },
+  { value: 'relatorios',   label: 'Relatórios',   icon: FileText },
 ];
 
-export default function RHHub() {
-  const [activeTab, setActiveTab] = usePersistedState<string>('rh-active-tab', 'painel');
-  const [searchParams] = useSearchParams();
+// Compatibilidade com URLs legadas que usavam tabs antigas
+const LEGACY_TAB_MAP: Record<string, Tab> = {
+  'banco-horas': 'folha',
+  'absenteismo': 'relatorios',
+  'headcount':   'relatorios',
+};
 
-  const fromUrl = searchParams.get('tab');
-  if (fromUrl && (TABS as readonly string[]).includes(fromUrl) && fromUrl !== activeTab) {
-    setActiveTab(fromUrl);
-  }
+export default function RHHub() {
+  const [activeTab, setActiveTab] = usePersistedState<Tab>('rh-active-tab', 'painel');
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Sincroniza ?tab=xxx com o estado persistido
+  useEffect(() => {
+    const fromUrl = searchParams.get('tab');
+    if (!fromUrl) return;
+    const mapped = (TABS as readonly string[]).includes(fromUrl)
+      ? (fromUrl as Tab)
+      : LEGACY_TAB_MAP[fromUrl];
+    if (mapped && mapped !== activeTab) {
+      setActiveTab(mapped);
+    }
+  }, [searchParams, activeTab, setActiveTab]);
+
+  const handleNavigateTab = (tab: string) => {
+    setActiveTab(tab as Tab);
+    // Atualiza URL sem reload pra manter atalhos copiáveis
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', tab);
+      return next;
+    }, { replace: true });
+  };
 
   return (
     <div className="space-y-4">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+      <Tabs value={activeTab} onValueChange={handleNavigateTab} className="w-full">
         <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 pb-2">
           <TabsList className="inline-flex w-max h-auto gap-1 bg-muted/50 p-1 rounded-lg">
             {tabs.map(tab => (
@@ -61,13 +81,11 @@ export default function RHHub() {
         </div>
 
         <Suspense fallback={<TabLoader />}>
-          <TabsContent value="painel"><RHDashboard /></TabsContent>
+          <TabsContent value="painel"><PainelRH onNavigateTab={handleNavigateTab} /></TabsContent>
           <TabsContent value="funcionarios"><Employees /></TabsContent>
           <TabsContent value="ponto"><Timesheet /></TabsContent>
-          <TabsContent value="folha"><Payroll /></TabsContent>
-          <TabsContent value="banco-horas"><BankHours /></TabsContent>
-          <TabsContent value="absenteismo"><AbsenceReport /></TabsContent>
-          <TabsContent value="headcount"><HeadcountReport /></TabsContent>
+          <TabsContent value="folha"><FolhaConsolidada /></TabsContent>
+          <TabsContent value="relatorios"><RelatoriosRH /></TabsContent>
         </Suspense>
       </Tabs>
     </div>

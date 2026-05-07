@@ -40,14 +40,13 @@ const Suppliers = lazy(() => import("./pages/Suppliers"));
 const Finance = lazy(() => import("./pages/Finance"));
 const Clients = lazy(() => import("./pages/Clients"));
 const Contractors = lazy(() => import("./pages/Contractors"));
-const Employees = lazy(() => import("./pages/Employees"));
-const Timesheet = lazy(() => import("./pages/Timesheet"));
+// Employees/Timesheet agora são abas dentro do hub /rh (RHHub).
+// Rotas legadas (/employees, /timesheet) redirecionam para /rh?tab=...
 const PurchaseOrders = lazy(() => import("./pages/PurchaseOrders"));
 const ComercialDashboard = lazy(() => import("./pages/ComercialDashboard"));
 const ProducaoDashboard = lazy(() => import("./pages/ProducaoDashboard"));
 // ProductionDashboardPage removido — funcionalidade unificada em /producao (ProducaoDashboard).
 const FinanceiroDashboard = lazy(() => import("./pages/FinanceiroDashboard"));
-const RHDashboard = lazy(() => import("./pages/RHDashboard"));
 const RHHub = lazy(() => import("./pages/RHHub"));
 // Labels page removed — unified into LabelSystem
 const Transport = lazy(() => import("./pages/Transport"));
@@ -592,16 +591,18 @@ const router = createBrowserRouter([
         element: <ArtisanalRecipes />,
       },
       {
+        // Rota legada: agora aba dentro do hub /rh (Funcionários)
         path: "employees",
-        element: <Employees />,
+        element: <Navigate to="/rh?tab=funcionarios" replace />,
       },
       {
+        // Rota legada: agora aba dentro do hub /rh (Ponto)
         path: "timesheet",
-        element: <Timesheet />,
+        element: <Navigate to="/rh?tab=ponto" replace />,
       },
       {
         path: "time-control",
-        element: <LegacyRouteRedirect to="/timesheet" />,
+        element: <Navigate to="/rh?tab=ponto" replace />,
       },
       {
         path: "purchase-orders",
@@ -641,9 +642,9 @@ const router = createBrowserRouter([
         element: <RHHub />,
       },
       {
-        // Atalho direto: Banco de Horas (tab dentro de /rh)
+        // Atalho direto: Banco de Horas (sub-aba dentro de Folha)
         path: "rh/bank-hours",
-        element: <Navigate to="/rh?tab=banco-horas" replace />,
+        element: <Navigate to="/rh?tab=folha" replace />,
       },
       {
         // Atalho direto: Folha de Pagamento (tab dentro de /rh)

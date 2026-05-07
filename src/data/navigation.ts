@@ -88,12 +88,10 @@ export const menuGroups = [
     label: "Pessoas",
     icon: Users,
     items: [
-      { name: "Equipe",           icon: Users,          path: "/employees" },
-      { name: "Ponto",            icon: Clock,          path: "/timesheet" },
-      { name: "Banco de Horas",   icon: Hourglass,      path: "/rh/bank-hours" },
-      { name: "Folha",            icon: BadgeDollarSign,path: "/rh/payroll" },
-      { name: "Terceirizados",    icon: UserCheck,      path: "/contractors" },
       { name: "Painel RH",        icon: LayoutDashboard,path: "/rh" },
+      { name: "Folha",            icon: BadgeDollarSign,path: "/rh?tab=folha" },
+      { name: "Relatórios RH",    icon: BarChart2,      path: "/rh?tab=relatorios" },
+      { name: "Terceirizados",    icon: UserCheck,      path: "/contractors" },
     ],
   },
 ];
