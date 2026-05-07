@@ -5,10 +5,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { format, addMonths, startOfMonth, endOfMonth } from "date-fns";
+import { format, addMonths, startOfMonth, endOfMonth, eachDayOfInterval } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { BarChart3, AlertTriangle, CheckCircle2, Info, Gauge, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useHolidays } from "@/hooks/useTimesheet";
 
 // Sector keys mapped to v_capacity_driven_lead_times columns
 const SECTORS = [
@@ -36,7 +37,19 @@ interface OrderDemand {
   shoe_category: string | null;
 }
 
-const WORK_DAYS_PER_MONTH = 22;
+// Conta dias úteis em um intervalo (segunda-sexta) descontando feriados.
+// Substitui o WORK_DAYS_PER_MONTH=22 fixo, que erra ~5% em meses com feriados
+// (fevereiro, abril, maio, novembro, dezembro). Holidays vem da tabela
+// `holidays` (seed federal 2024-2030, customizável via UI).
+function countBusinessDays(start: Date, end: Date, holidaySet: Set<string>): number {
+  const days = eachDayOfInterval({ start, end });
+  return days.filter(d => {
+    const dow = d.getDay(); // 0=Sun, 6=Sat
+    if (dow === 0 || dow === 6) return false;
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return !holidaySet.has(iso);
+  }).length;
+}
 
 function useRCCPData() {
   // Real capacity per shoe_category from the view
@@ -113,6 +126,11 @@ function getWeightedCapacity(
 
 export default function RCCPPlanning() {
   const { capacities, orders, isLoading } = useRCCPData();
+  const { data: holidays = [] } = useHolidays();
+  const holidaySet = useMemo(
+    () => new Set(holidays.map(h => h.holiday_date)),
+    [holidays],
+  );
   const [horizonMonths, setHorizonMonths] = useState(6);
   const [visibleSectors, setVisibleSectors] = useState<Set<string>>(new Set(SECTORS.map(s => s.key)));
 
@@ -129,15 +147,22 @@ export default function RCCPPlanning() {
   };
   const filteredSectors = SECTORS.filter(s => visibleSectors.has(s.key));
 
-  // Build month windows
+  // Build month windows com cálculo de dias úteis reais (descontando feriados)
   const months = useMemo(() => {
     const result = [];
     for (let i = 0; i < horizonMonths; i++) {
       const m = addMonths(startOfMonth(new Date()), i);
-      result.push({ start: m, end: endOfMonth(m), label: format(m, "MMM/yy", { locale: ptBR }) });
+      const start = m;
+      const end = endOfMonth(m);
+      result.push({
+        start,
+        end,
+        label: format(m, "MMM/yy", { locale: ptBR }),
+        businessDays: countBusinessDays(start, end, holidaySet),
+      });
     }
     return result;
-  }, [horizonMonths]);
+  }, [horizonMonths, holidaySet]);
 
   // Demand aggregated per month + per category (for weighted capacity)
   const monthlyData = useMemo(() => {
@@ -166,7 +191,7 @@ export default function RCCPPlanning() {
 
     for (const sector of SECTORS) {
       for (const m of monthlyData) {
-        const cap = getWeightedCapacity(capacities, m.demandByCat, sector.capacityCol) * WORK_DAYS_PER_MONTH;
+        const cap = getWeightedCapacity(capacities, m.demandByCat, sector.capacityCol) * m.businessDays;
         if (cap > 0 && (m.totalDemand / cap) > 1) {
           bottlenecks.push({ sector: sector.label, month: m.label, pct: (m.totalDemand / cap) * 100 });
         }
@@ -188,7 +213,7 @@ export default function RCCPPlanning() {
               <Gauge className="h-5 w-5" /> RCCP — Planejamento Rough-Cut de Capacidade
             </h2>
             <p className="text-sm text-muted-foreground">
-              Capacidade ponderada por tipo de calçado × demanda planejada. {WORK_DAYS_PER_MONTH} dias úteis/mês.
+              Capacidade ponderada por tipo de calçado × demanda planejada. Dias úteis variam por mês (descontando sáb/dom + feriados).
             </p>
           </div>
           <Select value={String(horizonMonths)} onValueChange={v => setHorizonMonths(Number(v))}>
@@ -286,7 +311,7 @@ export default function RCCPPlanning() {
               <div className={`grid gap-2`} style={{ gridTemplateColumns: `repeat(${Math.min(horizonMonths, 12)}, 1fr)` }}>
                 {monthlyData.map(m => {
                   const dailyCap = getWeightedCapacity(capacities, m.demandByCat, sector.capacityCol);
-                  const monthlyCap = dailyCap * WORK_DAYS_PER_MONTH;
+                  const monthlyCap = dailyCap * m.businessDays;
                   const utilization = monthlyCap > 0 ? (m.totalDemand / monthlyCap) * 100 : 0;
                   const isOver = utilization > 100;
                   const isHigh = utilization > 80;
