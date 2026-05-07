@@ -2,8 +2,8 @@
 -- Estende public.audit_unit_divergences():
 --
 --  • fachete_lining_consumption_dm2 < 1   → suspeita m² em campo dm²
---  • upper_consumption_dm2 < 1            → idem (estava só forro/palmilha)
 --  • upper/lining/insole_consumption_per_size (JSONB) com valor < 1
+--    (cobre cabedal — sole_technical_specs.upper_consumption_dm2 não existe)
 --  • Produtos categoria solado/sola com unit ≠ 'par' / 'pares'
 --
 -- Não substitui — APPEND-only à lista de checks. Mantém compatibilidade com
@@ -215,27 +215,9 @@ BEGIN
     'expected','dm² por par (tipicamente entre 1 e 5)',
     'count', v_count, 'examples', v_examples);
 
-  -- 12) sole_technical_specs.upper_consumption_dm2 < 1
-  SELECT COUNT(*) INTO v_count FROM sole_technical_specs
-  WHERE upper_consumption_dm2 IS NOT NULL AND upper_consumption_dm2 > 0 AND upper_consumption_dm2 < 1;
-  SELECT COALESCE(jsonb_agg(jsonb_build_object(
-    'id', sts.id,
-    'label', COALESCE(p.name, 'Solado ' || sts.sole_id::text) || ' tam ' || sts.size::text,
-    'value', sts.upper_consumption_dm2
-  )), '[]'::jsonb) INTO v_examples
-  FROM (
-    SELECT id, sole_id, size, upper_consumption_dm2 FROM sole_technical_specs
-    WHERE upper_consumption_dm2 IS NOT NULL AND upper_consumption_dm2 > 0 AND upper_consumption_dm2 < 1
-    LIMIT 5
-  ) sts LEFT JOIN products p ON p.id = sts.sole_id;
-  v_result := v_result || jsonb_build_object(
-    'key','sole_specs_upper_lt1',
-    'table','sole_technical_specs',
-    'field','upper_consumption_dm2',
-    'severity', CASE WHEN v_count > 0 THEN 'medium' ELSE 'ok' END,
-    'description','Consumo de cabedal por tamanho < 1 — suspeita m² em campo dm²/par',
-    'expected','dm² por par (tipicamente entre 1 e 30)',
-    'count', v_count, 'examples', v_examples);
+  -- (12 omitido — sole_technical_specs.upper_consumption_dm2 não existe;
+  --  cabedal por tamanho vive em technical_sheets.upper_consumption_per_size,
+  --  já coberto pelo check #13 abaixo.)
 
   -- 13) technical_sheets.*_consumption_per_size (JSONB) com valor < 1
   -- Detecta valores suspeitos dentro do JSONB per-size, que NÃO são pegos
@@ -324,5 +306,5 @@ GRANT EXECUTE ON FUNCTION public.audit_unit_divergences() TO authenticated;
 
 COMMENT ON FUNCTION public.audit_unit_divergences() IS
   'Audita divergências de unidade no banco. Estende a versão original com '
-  'checks de fachete_lining_consumption_dm2, upper_consumption_dm2, valores '
-  '< 1 dentro de *_consumption_per_size (JSONB), e solados com unit != par.';
+  'checks de fachete_lining_consumption_dm2, valores < 1 dentro de '
+  '*_consumption_per_size (JSONB), e solados com unit != par.';

@@ -150,16 +150,16 @@ BEGIN
 
     -- Fallback 1: sole_technical_specs (per-size) ─ aplicado quando
     -- sole_drives_consumption=true OU é fachetado (fachete só fica lá).
+    --
+    -- A tabela sole_technical_specs NÃO tem upper_consumption_dm2 (dropada em
+    -- 20260410181910). Cabedal sempre vem de technical_sheets.upper_consumption_per_size
+    -- ou da média escalar. Aqui buscamos só forro/palmilha/fachete.
     IF v_sole_product_id IS NOT NULL
        AND (COALESCE(v_sheet.sole_drives_consumption, false) OR v_is_fachetado)
     THEN
       SELECT * INTO v_spec FROM sole_technical_specs
        WHERE sole_id = v_sole_product_id AND size = v_size;
       IF FOUND THEN
-        IF v_upper  IS NULL AND COALESCE(v_spec.upper_consumption_dm2,  0) > 0 THEN
-          v_upper := v_spec.upper_consumption_dm2;
-          v_upper_source := 'sole_spec_per_size';
-        END IF;
         IF v_lining IS NULL AND COALESCE(v_spec.lining_consumption_dm2, 0) > 0 THEN
           v_lining := v_spec.lining_consumption_dm2;
           v_lining_source := 'sole_spec_per_size';
@@ -436,7 +436,11 @@ COMMENT ON FUNCTION public.calculate_order_consumption_by_grade(uuid, jsonb, tex
 
 -- =============================================================================
 -- Helper para a UI: lista os tamanhos do solado que NÃO estão preenchidos no
--- sole_technical_specs ou no technical_sheet (usado para validação no Salvar).
+-- sole_technical_specs (usado para validação no Salvar).
+--
+-- Nota: sole_technical_specs NÃO tem upper_consumption_dm2 (coluna dropada
+-- em 20260410181910). Cabedal vive em technical_sheets.upper_consumption_per_size
+-- — não checado aqui pois esta função é por solado, não por ficha.
 -- =============================================================================
 DROP FUNCTION IF EXISTS public.list_missing_sole_consumption_sizes(uuid);
 CREATE OR REPLACE FUNCTION public.list_missing_sole_consumption_sizes(p_sole_id uuid)
@@ -444,7 +448,6 @@ RETURNS TABLE (
   size integer,
   missing_lining boolean,
   missing_insole boolean,
-  missing_upper boolean,
   missing_fachete boolean,
   is_fachetado boolean
 )
@@ -453,7 +456,6 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
     sts.size,
     COALESCE(sts.lining_consumption_dm2, 0) <= 0 AS missing_lining,
     COALESCE(sts.insole_consumption_dm2, 0) <= 0 AS missing_insole,
-    COALESCE(sts.upper_consumption_dm2,  0) <= 0 AS missing_upper,
     p.is_fachetado AND COALESCE(sts.fachete_lining_consumption_dm2, 0) <= 0 AS missing_fachete,
     COALESCE(p.is_fachetado, false) AS is_fachetado
   FROM products p

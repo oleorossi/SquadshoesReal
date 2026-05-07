@@ -104,4 +104,4 @@ Apply **in order** (oldest first). Migrations with GUIDs in the name are applied
 
 ### Grupo 4 — Sessão atual (Gestão de Solados / consumo by-grade)
 - `20260518120000_fix-graded-consumption-fachete-and-fallback.sql` — **CRÍTICA**: (1) adiciona componente "Fachete" em `calculate_order_consumption_by_grade` (faltava — solados fachetados em PV com grade não consumiam o forro extra); (2) marca `source='fallback_average'` e adiciona `consumption_warning` quando algum tamanho cai na média escalar da ficha (UI alerta o usuário); (3) cria helper `list_missing_sole_consumption_sizes(uuid)` para validação no editor.
-- `20260518130000_extend-unit-audit-soles.sql` — Estende `audit_unit_divergences()` com checks de `fachete_lining_consumption_dm2 < 1`, `upper_consumption_dm2 < 1`, valores `< 1` dentro do JSONB `*_consumption_per_size`, e solados com `unit ≠ par`.
+- `20260518130000_extend-unit-audit-soles.sql` — Estende `audit_unit_divergences()` com checks de `fachete_lining_consumption_dm2 < 1`, valores `< 1` dentro do JSONB `*_consumption_per_size` (cobre cabedal/forro/palmilha por tamanho), e solados com `unit ≠ par`.
