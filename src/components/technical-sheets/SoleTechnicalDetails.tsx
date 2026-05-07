@@ -77,6 +77,84 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
     return m;
   }, [conjugations]);
 
+  /**
+   * Linhas EXIBIDAS na tabela de consumo (Passo 4). Agrupa numerações
+   * conjugadas em UMA linha (ex: 33/34 = 1 linha que edita os dois tamanhos
+   * simultaneamente). Tamanhos não conjugados ficam em linhas individuais.
+   *
+   * Ordenado pelo MENOR tamanho de cada grupo, pra manter ordem natural
+   * (33/34 antes de 35, 35 antes de 39/40, etc.).
+   */
+  type DisplayRow = { key: string; sizes: number[]; isConjugated: boolean };
+  const displayRows = useMemo<DisplayRow[]>(() => {
+    if (sizes.length === 0) return [];
+
+    const seen = new Set<number>();
+    const rows: DisplayRow[] = [];
+
+    for (const s of sizes) {
+      if (seen.has(s)) continue;
+      const conjKey = sizeToConjKey.get(s);
+      if (conjKey) {
+        const conj = conjugations.find(c => c.size_key === conjKey);
+        if (conj) {
+          // Agrupa todos os tamanhos da conjugação que estão na grade atual
+          const sizesInRow = conj.sizes.filter(x => sizes.includes(x)).sort((a, b) => a - b);
+          for (const x of sizesInRow) seen.add(x);
+          rows.push({ key: conjKey, sizes: sizesInRow, isConjugated: sizesInRow.length > 1 });
+          continue;
+        }
+      }
+      seen.add(s);
+      rows.push({ key: String(s), sizes: [s], isConjugated: false });
+    }
+
+    return rows.sort((a, b) => a.sizes[0] - b.sizes[0]);
+  }, [sizes, sizeToConjKey, conjugations]);
+
+  /**
+   * Lê o valor "representativo" de uma linha (primeiro size com valor
+   * preenchido, ou null se nenhum tem). Numa linha conjugada os valores
+   * dos N sizes deveriam ser iguais — se divergem, mostra o do primeiro.
+   */
+  const getRowValue = (row: DisplayRow, field: keyof SoleSpec): number | null => {
+    for (const s of row.sizes) {
+      const v = specs[s]?.[field];
+      if (v != null) return v as number;
+    }
+    return null;
+  };
+
+  /**
+   * Setter de valor pra uma linha — escreve em TODOS os sizes da linha
+   * (mantendo conjugação sincronizada).
+   */
+  const handleRowInputChange = (row: DisplayRow, field: keyof SoleSpec, value: string) => {
+    const numValue = value === "" ? null : parseFloat(value.replace(",", "."));
+    setSpecs(prev => {
+      const next = { ...prev };
+      for (const s of row.sizes) {
+        next[s] = {
+          ...(next[s] || { size: s, lining_consumption_dm2: null, insole_consumption_dm2: null, fachete_lining_consumption_dm2: null }),
+          [field]: numValue,
+        };
+      }
+      return next;
+    });
+  };
+
+  /**
+   * Remove uma linha inteira — se conjugada, remove todos os sizes.
+   */
+  const removeRow = (row: DisplayRow) => {
+    setSizes(prev => prev.filter(s => !row.sizes.includes(s)));
+    setSpecs(prev => {
+      const next = { ...prev };
+      for (const s of row.sizes) delete next[s];
+      return next;
+    });
+  };
+
   useEffect(() => {
     if (soleId) {
       fetchAll().then((hasData) => {
@@ -289,46 +367,9 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
     });
   };
 
-  const handleInputChange = (size: number, field: keyof SoleSpec, value: string) => {
-    const numValue = value === "" ? null : parseFloat(value.replace(",", "."));
-    setSpecs((prev) => ({
-      ...prev,
-      [size]: {
-        ...(prev[size] || { size, lining_consumption_dm2: null, insole_consumption_dm2: null, fachete_lining_consumption_dm2: null }),
-        [field]: numValue,
-      },
-    }));
-  };
-
-  /**
-   * Replica o valor preenchido para todos os tamanhos da MESMA conjugação.
-   * Útil porque o solado conjugado 33/34 tem 2 linhas no spec, e o usuário
-   * geralmente quer o mesmo dm² nas duas (mesmo molde).
-   */
-  const fillConjugatedFromSize = (sourceSize: number, field: keyof SoleSpec) => {
-    const conjKey = sizeToConjKey.get(sourceSize);
-    if (!conjKey) {
-      toast.info(`Tamanho ${sourceSize} não está em uma conjugação`);
-      return;
-    }
-    const value = specs[sourceSize]?.[field];
-    if (value === null || value === undefined) return;
-    const conj = conjugations.find(c => c.size_key === conjKey);
-    if (!conj) return;
-    setSpecs(prev => {
-      const next = { ...prev };
-      for (const s of conj.sizes) {
-        if (sizes.includes(s)) {
-          next[s] = {
-            ...(next[s] || { size: s, lining_consumption_dm2: null, insole_consumption_dm2: null, fachete_lining_consumption_dm2: null }),
-            [field]: value,
-          };
-        }
-      }
-      return next;
-    });
-    toast.success(`Valor replicado para ${conjKey}`);
-  };
+  // handleInputChange + fillConjugatedFromSize foram substituídos pelo
+  // novo modelo de displayRows (linhas conjugadas atômicas) — handleRowInputChange
+  // já escreve em todos os sizes da linha em uma chamada.
 
   const fillRemaining = (field: "lining_consumption_dm2" | "insole_consumption_dm2" | "fachete_lining_consumption_dm2") => {
     const firstValue = Object.values(specs).find((s) => s[field] !== null)?.[field];
@@ -758,89 +799,54 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sizes.map((size) => {
-                    const conjKey = sizeToConjKey.get(size);
-                    return (
-                      <TableRow key={size} className="hover:bg-muted/30">
-                        <TableCell className="text-center bg-muted/20 p-2">
-                          <div className="flex items-center justify-center gap-1">
-                            <span className="font-bold">{size}</span>
-                            {conjKey && (
-                              <Badge variant="secondary" className="text-[9px] gap-0.5 px-1 py-0 h-4 font-mono" title={`Conjugada em "${conjKey}"`}>
-                                <Link2 className="h-2.5 w-2.5" />
-                                {conjKey}
-                              </Badge>
-                            )}
-                          </div>
+                  {displayRows.map((row) => (
+                    <TableRow key={row.key} className="hover:bg-muted/30">
+                      <TableCell className="text-center bg-muted/20 p-2">
+                        <div className="flex items-center justify-center gap-1">
+                          {row.isConjugated ? (
+                            <Badge variant="secondary" className="text-xs gap-1 px-1.5 py-0.5 font-mono font-bold" title={`Conjugação: ${row.sizes.join(' + ')}`}>
+                              <Link2 className="h-3 w-3" />
+                              {row.key}
+                            </Badge>
+                          ) : (
+                            <span className="font-bold">{row.key}</span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="p-1.5">
+                        <Input
+                          type="text"
+                          inputMode="decimal"
+                          className="h-8 text-right font-mono"
+                          value={getRowValue(row, "lining_consumption_dm2")?.toString() ?? ""}
+                          onChange={(e) => handleRowInputChange(row, "lining_consumption_dm2", e.target.value)}
+                          placeholder="0.00"
+                        />
+                      </TableCell>
+                      <TableCell className="p-1.5">
+                        <Input
+                          type="text"
+                          inputMode="decimal"
+                          className="h-8 text-right font-mono"
+                          value={getRowValue(row, "insole_consumption_dm2")?.toString() ?? ""}
+                          onChange={(e) => handleRowInputChange(row, "insole_consumption_dm2", e.target.value)}
+                          placeholder="0.00"
+                        />
+                      </TableCell>
+                      {isFachetado && (
+                        <TableCell className="bg-amber-500/5 p-1.5">
+                          <Input
+                            type="text"
+                            inputMode="decimal"
+                            className="h-8 text-right font-mono border-amber-500/30 focus-visible:ring-amber-500/30"
+                            value={getRowValue(row, "fachete_lining_consumption_dm2")?.toString() ?? ""}
+                            onChange={(e) => handleRowInputChange(row, "fachete_lining_consumption_dm2", e.target.value)}
+                            placeholder="0.00"
+                          />
                         </TableCell>
-                        <TableCell className="p-1.5">
-                          <div className="flex items-center gap-1">
-                            <Input
-                              type="text"
-                              inputMode="decimal"
-                              className="h-8 text-right font-mono"
-                              value={specs[size]?.lining_consumption_dm2?.toString() ?? ""}
-                              onChange={(e) => handleInputChange(size, "lining_consumption_dm2", e.target.value)}
-                              placeholder="0.00"
-                            />
-                            {conjKey && (
-                              <Button
-                                variant="ghost" size="icon" className="h-6 w-6 shrink-0"
-                                title={`Copiar este valor para todos os tamanhos da conjugação ${conjKey}`}
-                                onClick={() => fillConjugatedFromSize(size, "lining_consumption_dm2")}
-                              >
-                                <Link2 className="h-3 w-3 text-primary" />
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="p-1.5">
-                          <div className="flex items-center gap-1">
-                            <Input
-                              type="text"
-                              inputMode="decimal"
-                              className="h-8 text-right font-mono"
-                              value={specs[size]?.insole_consumption_dm2?.toString() ?? ""}
-                              onChange={(e) => handleInputChange(size, "insole_consumption_dm2", e.target.value)}
-                              placeholder="0.00"
-                            />
-                            {conjKey && (
-                              <Button
-                                variant="ghost" size="icon" className="h-6 w-6 shrink-0"
-                                title={`Copiar para conjugação ${conjKey}`}
-                                onClick={() => fillConjugatedFromSize(size, "insole_consumption_dm2")}
-                              >
-                                <Link2 className="h-3 w-3 text-primary" />
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                        {isFachetado && (
-                          <TableCell className="bg-amber-500/5 p-1.5">
-                            <div className="flex items-center gap-1">
-                              <Input
-                                type="text"
-                                inputMode="decimal"
-                                className="h-8 text-right font-mono border-amber-500/30 focus-visible:ring-amber-500/30"
-                                value={specs[size]?.fachete_lining_consumption_dm2?.toString() ?? ""}
-                                onChange={(e) => handleInputChange(size, "fachete_lining_consumption_dm2", e.target.value)}
-                                placeholder="0.00"
-                              />
-                              {conjKey && (
-                                <Button
-                                  variant="ghost" size="icon" className="h-6 w-6 shrink-0"
-                                  title={`Copiar para conjugação ${conjKey}`}
-                                  onClick={() => fillConjugatedFromSize(size, "fachete_lining_consumption_dm2")}
-                                >
-                                  <Link2 className="h-3 w-3 text-primary" />
-                                </Button>
-                              )}
-                            </div>
-                          </TableCell>
-                        )}
-                      </TableRow>
-                    );
-                  })}
+                      )}
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </div>
