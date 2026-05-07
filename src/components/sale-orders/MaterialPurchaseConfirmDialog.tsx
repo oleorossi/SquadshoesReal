@@ -6,8 +6,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Calendar, Truck, AlertTriangle, ShoppingCart, Loader2, Save } from 'lucide-react';
 import { MaterialAvailabilityResult } from '@/lib/materialAvailability';
- import { useCreatePurchaseOrder } from '@/hooks/usePurchaseOrders';
- import { useCreateServiceOrder, useContractors } from '@/hooks/useContractors';
+ import { useUpsertOpenPurchaseOrder } from '@/hooks/usePurchaseOrders';
+ import { useUpsertOpenServiceOrder, useContractors } from '@/hooks/useContractors';
  import { useArtisanalRecipes, calcArtisanalRequirement } from '@/hooks/useArtisanalRecipes';
 import { toast } from 'sonner';
 
@@ -15,13 +15,15 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   result: MaterialAvailabilityResult | null;
+  /** ID do PV que está sendo criado/editado — vinculado nas OCs/OSs geradas. */
+  saleOrderId?: string | null;
   /** Called when user confirms with the action chosen. */
   onConfirm: (action: 'with_po' | 'without_po' | 'draft') => void;
 }
 
-export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, onConfirm }: Props) {
-   const createPO = useCreatePurchaseOrder();
-   const createSO = useCreateServiceOrder();
+export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, saleOrderId, onConfirm }: Props) {
+   const upsertPO = useUpsertOpenPurchaseOrder();
+   const upsertSO = useUpsertOpenServiceOrder();
    const { data: recipes = [] } = useArtisanalRecipes({ onlyActive: true });
    const { data: contractors = [] } = useContractors();
   const [generating, setGenerating] = useState(false);
@@ -63,18 +65,21 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, onCo
            toast.warning(`Material "${supplier.product_name}" sem fornecedor padrão — defina antes de gerar a OC.`);
            continue;
          }
-         await createPO.mutateAsync({
+         // Usa upsert: agrega numa OC ABERTA do mesmo fornecedor + vincula este PV
+         await upsertPO.mutateAsync({
            supplier_id: supplier.supplier_id,
            supplier_name: supplier.supplier_name,
-           notes: `OC gerada automaticamente para atender pedido.`,
+           sale_order_id: saleOrderId || null,
+           notes: `Itens adicionados automaticamente pelo PV.`,
            items: group.map(g => ({
              product_id: g.product_id,
              quantity: g.suggested_qty,
              unit_price: g.unit_price,
              unit: g.unit,
              current_stock: g.available,
-             min_stock: 0,
+             min_stock: g.min_stock,
              max_stock: 0,
+             color: null,
            })),
          });
          ocCount++;
@@ -98,24 +103,21 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, onCo
          // forOrder = shortage (o que falta pro pedido); forStock = repor min_stock
          const forOrder = Math.max(0, art.required - art.available);
          const calc = calcArtisanalRequirement(recipe, forOrder, art.available, art.min_stock);
-         const laborCostTotal = calc.totalToProduce * recipe.labor_cost_per_meter;
 
-         await createSO.mutateAsync({
+         // Upsert: agrega numa OS ABERTA pro mesmo contractor+recipe+color
+         await upsertSO.mutateAsync({
            contractor_id: contractorId,
-           description: `OS Automática — ${groupName}${colorName ? ' (' + colorName + ')' : ''}`,
-           quantity: Math.ceil(calc.totalToProduce),
-           unit_price: recipe.labor_cost_per_meter,
-           total_value: laborCostTotal,
-           status: 'Pendente',
            artisanal_recipe_id: recipe.id,
-           artisanal_output_name: groupName,
-           artisanal_output_color: colorName,
-           artisanal_output_meters: calc.totalToProduce,
-           artisanal_for_order_meters: calc.forOrderMeters,
-           artisanal_for_stock_meters: calc.forStockMeters,
-           material_name: recipe.base_product_name,
-           material_color: colorName,
-           material_meters: calc.baseMetersSend,
+           output_name: groupName,
+           output_color: colorName,
+           base_color: colorName,
+           for_order_meters: calc.forOrderMeters,
+           for_stock_meters: calc.forStockMeters,
+           total_meters: calc.totalToProduce,
+           base_product_name: recipe.base_product_name,
+           base_meters_send: calc.baseMetersSend,
+           sale_order_id: saleOrderId || null,
+           unit_price: recipe.labor_cost_per_meter,
          });
          osCount++;
        }

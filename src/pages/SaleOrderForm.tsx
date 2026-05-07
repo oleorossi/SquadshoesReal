@@ -556,6 +556,7 @@ export default function SaleOrderForm() {
         open={materialDialogOpen}
         onOpenChange={setMaterialDialogOpen}
         result={materialResult}
+        saleOrderId={isEdit ? id : null}
         onConfirm={handleMaterialConfirm}
       />
 

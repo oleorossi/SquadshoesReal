@@ -285,7 +285,20 @@ export default function PurchaseOrders() {
                             onCheckedChange={() => toggleSelect(o.id)}
                           />
                         </TableCell>
-                        <TableCell className="font-mono font-semibold text-sm">{o.order_number}</TableCell>
+                        <TableCell className="font-mono font-semibold text-sm">
+                          <div className="flex items-center gap-1.5">
+                            <span>{o.order_number}</span>
+                            {(o.linked_sale_order_ids?.length ?? 0) > 1 && (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] h-4 px-1.5 font-normal"
+                                title={`PVs vinculados: ${o.linked_sale_order_ids?.length}`}
+                              >
+                                {o.linked_sale_order_ids?.length} PVs
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell>{o.supplier_name}</TableCell>
                         <TableCell><Badge variant={st.variant}>{st.label}</Badge></TableCell>
                         <TableCell className="text-right font-medium">{fmt(o.total_value)}</TableCell>

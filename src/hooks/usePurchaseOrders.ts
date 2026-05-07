@@ -15,6 +15,8 @@ export type PurchaseOrder = {
   received_date: string | null;
   created_at: string;
   updated_at: string;
+  /** PVs que contribuíram com itens pra esta OC (agregada). */
+  linked_sale_order_ids?: string[] | null;
 };
 
 export type PurchaseOrderItem = {
@@ -183,6 +185,50 @@ function purchaseOrderIdempotencyKey(data: {
   return `${data.supplier_id || data.supplier_name}::${itemsKey}`;
 }
 
+/**
+ * Cria OU agrega numa OC ABERTA do mesmo fornecedor (status<>received/receiving/cancelled).
+ * Itens com mesmo product_id+color têm quantidades somadas; sale_order_id é
+ * appendado em linked_sale_order_ids[]. Use isso quando a criação for
+ * automática (a partir de PV com shortage) — evita criar 1 OC por PV.
+ *
+ * Pra criação manual livre (1 OC explícita por clique), use useCreatePurchaseOrder.
+ */
+export function useUpsertOpenPurchaseOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      supplier_id: string;
+      supplier_name: string;
+      sale_order_id: string | null;
+      notes?: string;
+      items: { product_id: string; quantity: number; unit_price: number; unit: string;
+        current_stock: number; min_stock: number; max_stock: number;
+        grade?: Record<string, number> | null; color?: string | null }[];
+    }) => {
+      if (!data.supplier_id) throw new Error('supplier_id é obrigatório pra agrupar OC.');
+      for (const it of data.items) {
+        if (!Number.isFinite(it.quantity) || it.quantity <= 0) throw new Error('Quantidade inválida em item da OC.');
+        if (!Number.isFinite(it.unit_price) || it.unit_price < 0) throw new Error('Preço unitário inválido em item da OC.');
+      }
+      const { data: poId, error } = await (supabase as any).rpc('upsert_open_purchase_order', {
+        p_supplier_id: data.supplier_id,
+        p_supplier_name: data.supplier_name,
+        p_sale_order_id: data.sale_order_id,
+        p_notes: data.notes || '',
+        p_items: data.items,
+      });
+      if (error) throw error;
+      return poId as string;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['purchase_orders'] });
+      qc.invalidateQueries({ queryKey: ['purchase_order_items'] });
+      toast.success('OC atualizada/criada — pedido vinculado.');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
 export function useCreatePurchaseOrder() {
   const qc = useQueryClient();
   return useMutation({
@@ -255,6 +301,24 @@ export function useCreatePurchaseOrder() {
   });
 }
 
+
+/** Resolve uuids → PV numbers ("PV-00001") em batch — usado em badges de OC/OS. */
+export function useSaleOrderNumbersByIds(ids: string[] | null | undefined) {
+  return useQuery({
+    queryKey: ['sale_order_numbers_by_ids', (ids || []).slice().sort().join(',')],
+    enabled: !!ids && ids.length > 0,
+    queryFn: async () => {
+      if (!ids || ids.length === 0) return [] as { id: string; order_number: string }[];
+      const { data, error } = await supabase
+        .from('sale_orders')
+        .select('id, order_number')
+        .in('id', ids);
+      if (error) throw error;
+      return (data || []) as { id: string; order_number: string }[];
+    },
+    staleTime: 60_000,
+  });
+}
 
 export function useCapacityDrivenLeadTimes() {
    return useQuery({

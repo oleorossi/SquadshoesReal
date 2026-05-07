@@ -142,6 +142,55 @@ export function useDeleteContractor() {
   });
 }
 
+/**
+ * Cria OU agrega numa OS ABERTA do mesmo contractor+recipe+output_color
+ * (status<>Concluído/Cancelado e stock_entry_done=false). Soma forOrder e
+ * appenda sale_order_id em linked_sale_order_ids. Use quando a criação for
+ * automática a partir de shortage de PV.
+ */
+export function useUpsertOpenServiceOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (p: {
+      contractor_id: string;
+      artisanal_recipe_id: string;
+      output_name: string;
+      output_color: string;
+      base_color?: string;
+      for_order_meters: number;
+      for_stock_meters: number;
+      total_meters: number;
+      base_product_name: string;
+      base_meters_send: number;
+      sale_order_id: string | null;
+      unit_price: number;
+    }) => {
+      if (!p.contractor_id || !p.artisanal_recipe_id) throw new Error('contractor + recipe obrigatórios.');
+      const { data: soId, error } = await (supabase as any).rpc('upsert_open_service_order', {
+        p_contractor_id: p.contractor_id,
+        p_artisanal_recipe_id: p.artisanal_recipe_id,
+        p_output_name: p.output_name,
+        p_output_color: p.output_color,
+        p_base_color: p.base_color || p.output_color,
+        p_for_order_meters: p.for_order_meters,
+        p_for_stock_meters: p.for_stock_meters,
+        p_total_meters: p.total_meters,
+        p_base_product_name: p.base_product_name,
+        p_base_meters_send: p.base_meters_send,
+        p_sale_order_id: p.sale_order_id,
+        p_unit_price: p.unit_price,
+      });
+      if (error) throw error;
+      return soId as string;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['service_orders'] });
+      toast.success('OS atualizada/criada — pedido vinculado.');
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+}
+
 export function useCreateServiceOrder() {
   const qc = useQueryClient();
   return useMutation({
