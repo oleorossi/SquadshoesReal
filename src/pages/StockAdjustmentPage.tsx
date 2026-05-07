@@ -21,7 +21,14 @@ interface Product {
   unit: string;
   min_stock: number;
   stock_grade: Record<string, any> | null;
+  group_id: string | null;
   active: boolean;
+}
+
+interface SoleConjugationRow {
+  sole_group_id: string;
+  size_key: string;
+  sizes: number[];
 }
 
 // ── Sole helpers ────────────────────────────────────────────────────────────
@@ -41,16 +48,50 @@ function resolveSizeRange(grade: Record<string, any> | null): { from: number; to
   return null;
 }
 
-function getSoleSizes(grade: Record<string, any> | null): number[] {
+/**
+ * Lista as CHAVES DE EXIBIÇÃO/ESTOQUE de um solado, considerando conjugações.
+ *
+ * Exemplo: solado com range 33–40 e conjugações 33/34 e 39/40 → retorna
+ * ["33/34", "35", "36", "37", "38", "39/40"]. Sem conjugações, retorna
+ * apenas inteiros como string ("33", "34", ...).
+ *
+ * Mesma lógica usada em SoladoGradeDialog — mantem consistência entre
+ * editor inline e o modal completo.
+ */
+function getSoleEffectiveKeys(
+  grade: Record<string, any> | null,
+  conjugations: Array<{ size_key: string; sizes: number[] }>,
+): string[] {
   const range = resolveSizeRange(grade);
-  if (!range) return [];
-  const out: number[] = [];
-  for (let s = range.from; s <= range.to; s++) out.push(s);
+  if (!range) {
+    // Sem range: exibe só os keys já presentes no estoque (incluindo conjugados)
+    if (!grade) return [];
+    return Object.keys(grade).filter(k => !k.startsWith('_'));
+  }
+
+  if (conjugations.length === 0) {
+    const out: string[] = [];
+    for (let s = range.from; s <= range.to; s++) out.push(String(s));
+    return out;
+  }
+
+  // Mapa size→size_key para evitar inserir duplicatas
+  const sizeToKey = new Map<number, string>();
+  for (const c of conjugations) for (const s of c.sizes) sizeToKey.set(s, c.size_key);
+
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (let s = range.from; s <= range.to; s++) {
+    const key = sizeToKey.get(s) || String(s);
+    if (!seen.has(key)) { seen.add(key); out.push(key); }
+  }
   return out;
 }
 
 function gradeTotal(grade: Record<string, number>): number {
-  return Object.values(grade).reduce((s, v) => s + (Number(v) || 0), 0);
+  return Object.entries(grade)
+    .filter(([k]) => !k.startsWith('_'))
+    .reduce((s, [, v]) => s + (Number(v) || 0), 0);
 }
 
 // ── Main page ───────────────────────────────────────────────────────────────
@@ -83,7 +124,7 @@ export default function StockAdjustmentPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("id, name, sku, category, color, quantity, unit, min_stock, stock_grade, active")
+        .select("id, name, sku, category, color, quantity, unit, min_stock, stock_grade, group_id, active")
         .order("category")
         .order("name")
         .order("color");
@@ -98,10 +139,40 @@ export default function StockAdjustmentPage() {
         unit: p.unit ?? "un",
         min_stock: Number(p.min_stock ?? 0),
         stock_grade: p.stock_grade ?? null,
+        group_id: p.group_id ?? null,
         active: p.active !== false,
       }));
     },
   });
+
+  // Conjugações de todos os solados em tela. Carrega uma vez (todas as regras)
+  // e indexa por sole_group_id — queries repetidas seriam wasteful.
+  const { data: allConjugations = [] } = useQuery<SoleConjugationRow[]>({
+    queryKey: ["sole-size-conjugations-all"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("sole_size_conjugations")
+        .select("sole_group_id, size_key, sizes");
+      if (error) throw error;
+      return (data || []) as SoleConjugationRow[];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const conjugationsByGroup = useMemo(() => {
+    const m = new Map<string, Array<{ size_key: string; sizes: number[] }>>();
+    for (const c of allConjugations) {
+      const arr = m.get(c.sole_group_id) ?? [];
+      arr.push({ size_key: c.size_key, sizes: c.sizes });
+      m.set(c.sole_group_id, arr);
+    }
+    return m;
+  }, [allConjugations]);
+
+  const getConjugationsFor = useCallback(
+    (groupId: string | null) => (groupId ? conjugationsByGroup.get(groupId) ?? [] : []),
+    [conjugationsByGroup],
+  );
 
   const categories = useMemo(() => {
     const cats = Array.from(new Set(products.map((p) => p.category).filter(Boolean))) as string[];
@@ -166,11 +237,12 @@ export default function StockAdjustmentPage() {
     }).map((p) => {
       const sd = soleDrafts[p.id] ?? {};
       const existing = (p.stock_grade as Record<string, any>) ?? {};
-      // Merge: existing grade + overrides from drafts
+      // Merge: existing grade + overrides from drafts. Usa as chaves efetivas
+      // (que respeitam conjugações), ao invés de inteiros.
       const newGrade: Record<string, number> = {};
-      const sizes = getSoleSizes(p.stock_grade);
-      sizes.forEach((s) => {
-        const key = String(s);
+      const conjs = getConjugationsFor(p.group_id);
+      const keys = getSoleEffectiveKeys(p.stock_grade, conjs);
+      keys.forEach((key) => {
         const raw = sd[key];
         const val = raw !== undefined ? parseFloat(raw.replace(",", ".")) : NaN;
         newGrade[key] = isNaN(val) ? Number(existing[key] ?? 0) : val;
@@ -181,7 +253,7 @@ export default function StockAdjustmentPage() {
       const newTotal = gradeTotal(newGrade);
       return { product: p, newGrade, newTotal, delta: newTotal - p.quantity };
     }),
-    [filtered, soleDrafts]
+    [filtered, soleDrafts, getConjugationsFor]
   );
 
   const totalPending = pendingRegular.length + pendingSoles.length;
@@ -218,12 +290,12 @@ export default function StockAdjustmentPage() {
   const handleSizeKeyDown = useCallback((
     e: React.KeyboardEvent<HTMLInputElement>,
     productId: string,
-    sizes: number[],
+    keys: string[],
     sizeIndex: number,
     rowIndex: number,
   ) => {
-    const nextSizeEl = sizeRefs.current[productId]?.[String(sizes[sizeIndex + 1])];
-    const prevSizeEl = sizeRefs.current[productId]?.[String(sizes[sizeIndex - 1])];
+    const nextSizeEl = sizeRefs.current[productId]?.[keys[sizeIndex + 1]];
+    const prevSizeEl = sizeRefs.current[productId]?.[keys[sizeIndex - 1]];
 
     if (e.key === "Tab" && !e.shiftKey) {
       e.preventDefault();
@@ -516,7 +588,9 @@ export default function StockAdjustmentPage() {
 
                   if (sole) {
                     // ── Sole row ─────────────────────────────────────────
-                    const sizes = getSoleSizes(product.stock_grade);
+                    const conjs = getConjugationsFor(product.group_id);
+                    const keys = getSoleEffectiveKeys(product.stock_grade, conjs);
+                    const range = resolveSizeRange(product.stock_grade);
                     const sd = soleDrafts[product.id] ?? {};
                     const existing = (product.stock_grade as Record<string, any>) ?? {};
 
@@ -525,8 +599,7 @@ export default function StockAdjustmentPage() {
                     let hasSoleDraft = false;
                     if (Object.keys(sd).length > 0) {
                       let t = 0;
-                      sizes.forEach((s) => {
-                        const key = String(s);
+                      keys.forEach((key) => {
                         const raw = sd[key];
                         const val = raw !== undefined ? parseFloat(raw.replace(",", ".")) : NaN;
                         t += isNaN(val) ? Number(existing[key] ?? 0) : val;
@@ -536,6 +609,7 @@ export default function StockAdjustmentPage() {
                     }
                     const delta = draftTotal - product.quantity;
                     const isLow = product.min_stock > 0 && product.quantity <= product.min_stock;
+                    const hasConjugations = conjs.length > 0;
 
                     return [
                       // Main sole row
@@ -594,18 +668,25 @@ export default function StockAdjustmentPage() {
                               "w-full h-[33px] px-3 flex items-center justify-between gap-1.5 text-[12px] font-mono",
                               "hover:bg-muted/40 transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary/60",
                               hasSoleDraft ? "text-foreground font-semibold" : "text-muted-foreground",
-                              sizes.length === 0 && "opacity-40 cursor-not-allowed"
+                              keys.length === 0 && "opacity-40 cursor-not-allowed"
                             )}
-                            disabled={sizes.length === 0}
-                            title={sizes.length === 0 ? "Nenhuma numeração cadastrada neste solado" : ""}
+                            disabled={keys.length === 0}
+                            title={keys.length === 0 ? "Nenhuma numeração cadastrada neste solado" : (hasConjugations ? "Solado com conjugações de numeração" : "")}
                           >
                             <span className="flex items-center gap-1">
                               {isExpanded
                                 ? <ChevronDown className="h-3 w-3 shrink-0" />
                                 : <ChevronRight className="h-3 w-3 shrink-0" />}
                               <span className="text-[10px] font-semibold uppercase tracking-wide opacity-60">
-                                {sizes.length > 0 ? `Grade ${sizes[0]}–${sizes[sizes.length - 1]}` : "Sem grade"}
+                                {keys.length > 0
+                                  ? (range ? `Grade ${range.from}–${range.to}` : `${keys.length} key(s)`)
+                                  : "Sem grade"}
                               </span>
+                              {hasConjugations && (
+                                <span className="text-[9px] font-bold text-primary bg-primary/10 px-1 rounded">
+                                  conj.
+                                </span>
+                              )}
                             </span>
                             {hasSoleDraft && (
                               <span className="tabular-nums">{draftTotal.toLocaleString("pt-BR")}</span>
@@ -622,7 +703,7 @@ export default function StockAdjustmentPage() {
                       </tr>,
 
                       // Expanded grade sub-row
-                      isExpanded && sizes.length > 0 && (
+                      isExpanded && keys.length > 0 && (
                         <tr key={`${product.id}-grade`}
                           className={cn(
                             "border-b border-border/40",
@@ -631,18 +712,21 @@ export default function StockAdjustmentPage() {
                         >
                           <td colSpan={10} className="px-4 py-3">
                             <div className="flex items-center gap-1 flex-wrap">
-                              {sizes.map((size, sizeIndex) => {
-                                const key = String(size);
+                              {keys.map((key, sizeIndex) => {
                                 const raw = sd[key];
                                 const origVal = Number(existing[key] ?? 0);
                                 const draftVal = raw !== undefined ? parseFloat(raw.replace(",", ".")) : NaN;
                                 const isDirtyCell = raw !== undefined && !isNaN(draftVal) && draftVal !== origVal;
+                                const isConjugated = key.includes('/');
 
                                 if (!sizeRefs.current[product.id]) sizeRefs.current[product.id] = {};
 
                                 return (
-                                  <div key={size} className="flex flex-col items-center gap-0.5">
-                                    <span className="text-[10px] font-semibold text-muted-foreground tabular-nums">{size}</span>
+                                  <div key={key} className="flex flex-col items-center gap-0.5">
+                                    <span className={cn(
+                                      "text-[10px] font-semibold tabular-nums",
+                                      isConjugated ? "text-primary" : "text-muted-foreground",
+                                    )}>{key}</span>
                                     <input
                                       ref={(el) => { sizeRefs.current[product.id][key] = el; }}
                                       type="text"
@@ -655,15 +739,16 @@ export default function StockAdjustmentPage() {
                                           [product.id]: { ...(prev[product.id] ?? {}), [key]: e.target.value },
                                         }))
                                       }
-                                      onKeyDown={(e) => handleSizeKeyDown(e, product.id, sizes, sizeIndex, rowIndex)}
+                                      onKeyDown={(e) => handleSizeKeyDown(e, product.id, keys, sizeIndex, rowIndex)}
                                       onFocus={(e) => e.target.select()}
                                       className={cn(
-                                        "w-12 h-8 text-center font-mono text-[12px] tabular-nums",
+                                        "h-8 text-center font-mono text-[12px] tabular-nums",
+                                        isConjugated ? "w-14 border-primary/40" : "w-12 border-border/60",
                                         "border rounded-sm outline-none",
                                         "placeholder:text-muted-foreground/30",
                                         isDirtyCell
                                           ? "border-amber-400 bg-amber-50 dark:bg-amber-950/40 font-semibold text-foreground"
-                                          : "border-border/60 bg-background focus:border-primary focus:ring-1 focus:ring-primary/50"
+                                          : "bg-background focus:border-primary focus:ring-1 focus:ring-primary/50"
                                       )}
                                     />
                                   </div>

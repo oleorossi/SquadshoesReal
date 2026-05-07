@@ -96,6 +96,12 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
       .in('sheet_id', sheetIds),
   ]);
 
+  // ── Conjugações: pra cada solado, group_id → mapa size→size_key.
+  // Necessário pra agregar `size_breakdown` na chave conjugada antes de
+  // sugerir compra (senão o relatório mostra "33: 5 / 34: 5" enquanto
+  // o estoque é uma chave única "33/34: 10").
+  const conjugationByGroupId = new Map<string, Map<number, string>>();
+
   const sheetMap = new Map((sheets || []).map((s: any) => [s.id, s]));
 
   // sole color mapping: "sheetId::cabedelColor" → sole_product_id
@@ -112,7 +118,7 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
     palmilhaMap.get(m.sheet_id)!.set((m.cabedal_color || '').toLowerCase().trim(), m.palmilha_color);
   }
 
-  // Group required pairs per sole_product_id
+  // Group required pairs per sole_product_id (PASS 1: collect raw integer sizes)
   const requiredSoles = new Map<
     string,
     { qty: number; references: Set<string>; sizeBreakdown: Record<string, number>; orderNumbers: Set<string> }
@@ -183,8 +189,44 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
   // ── Fetch sole products + suppliers ──
   const soleIds = [...requiredSoles.keys()];
   const { data: soleProducts } = soleIds.length > 0
-    ? await supabase.from('products').select('id, name, sku, color, quantity, reserved_stock, unit_price, supplier_id, supplier_lead_time_days, lead_time_days, sole_moq').in('id', soleIds)
+    ? await supabase.from('products').select('id, name, sku, color, group_id, quantity, reserved_stock, unit_price, supplier_id, supplier_lead_time_days, lead_time_days, sole_moq').in('id', soleIds)
     : { data: [] as any[] };
+
+  // ── Fetch sole conjugations for the groups that appear ──────
+  // Para cada solado com group_id, busca as regras de conjugação e remapeia
+  // o sizeBreakdown coletado em PASS 1 (chaves "33","34") para chaves
+  // conjugadas ("33/34"), espelhando o que `debit_sole_stock_by_grade` faz
+  // no banco. Sem isso, o relatório de compras divergiria do estoque real.
+  const soleGroupIds = [
+    ...new Set((soleProducts || []).map((p: any) => p.group_id).filter(Boolean)),
+  ] as string[];
+  if (soleGroupIds.length > 0) {
+    const { data: conjs } = await (supabase as any)
+      .from('sole_size_conjugations')
+      .select('sole_group_id, size_key, sizes')
+      .in('sole_group_id', soleGroupIds);
+    for (const c of (conjs || []) as Array<{ sole_group_id: string; size_key: string; sizes: number[] }>) {
+      let m = conjugationByGroupId.get(c.sole_group_id);
+      if (!m) { m = new Map(); conjugationByGroupId.set(c.sole_group_id, m); }
+      for (const s of c.sizes) m.set(s, c.size_key);
+    }
+    // Remapear sizeBreakdown nos shortages
+    for (const product of soleProducts || []) {
+      const groupId = (product as any).group_id;
+      if (!groupId) continue;
+      const conjMap = conjugationByGroupId.get(groupId);
+      if (!conjMap || conjMap.size === 0) continue;
+      const need = requiredSoles.get((product as any).id);
+      if (!need) continue;
+      const remapped: Record<string, number> = {};
+      for (const [sizeStr, qty] of Object.entries(need.sizeBreakdown)) {
+        const sizeNum = Number(sizeStr);
+        const key = (Number.isFinite(sizeNum) && conjMap.get(sizeNum)) || sizeStr;
+        remapped[key] = (remapped[key] || 0) + qty;
+      }
+      need.sizeBreakdown = remapped;
+    }
+  }
 
   // ── Fetch insole products by group name + color ──
   const insoleGroupNames = [...new Set([...requiredInsoles.values()].map(r => r.groupName))];
