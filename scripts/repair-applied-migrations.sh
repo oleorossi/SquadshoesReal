@@ -25,22 +25,16 @@ PROJECT_ID="${SUPABASE_PROJECT_ID:-ssvxfoybzmjlypnipqzn}"
 # Edite esta lista conforme o histórico real do banco.
 # Formato: timestamp da migration (YYYYMMDDHHMMSS, sem o resto do nome).
 ALREADY_APPLIED=(
-  # Grupo 1 — confirmar com auditoria do banco
-  # 20260419120147
-  # 20260419130000
-  # 20260419140000
-  # 20260420100000
-  # 20260420110000
-  # Grupo 2 — confirmadas anteriormente
-  # 20260421090000
-  # 20260421100000
-  # 20260421120000
-  # 20260424120000
-  # 20260424140000
-  # 20260424180000
-  # 20260425155923
-  # Adicione aqui timestamps das migrations já rodadas:
-  # (descomente conforme apropriado)
+  # ✅ Aplicadas via MCP em 2026-05-08 (auditoria + Frentes 1-2-4):
+  20260524120000  # audit-fix-conversion-and-parallelism
+  20260524130000  # refine-list-materials-missing-width
+  20260524140000  # strap-debit-preventive-hardening
+  20260524150000  # audit-round-2-fixes
+  20260525120000  # add-costura-to-default-lead-times
+  20260525130000  # timesheet-import-files-archive
+  20260525140000  # sheet-materials-variant-id
+  # Adicione aqui timestamps de outras migrations já rodadas manualmente
+  # via SQL Editor ou MCP que precisam ser marcadas como applied:
 )
 
 if [ ${#ALREADY_APPLIED[@]} -eq 0 ]; then
