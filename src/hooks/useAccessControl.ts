@@ -68,6 +68,12 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/reservas-estoque': 'estoque',
   '/custos-insumos': 'estoque',
   '/imagens-cores': 'produtos',
+  '/solados': 'produtos',
+  '/rh?tab=folha': 'rh',
+  '/rh?tab=relatorios': 'rh',
+  '/rh?tab=funcionarios': 'rh',
+  '/rh?tab=ponto': 'rh',
+  '/rh?tab=banco-horas': 'rh',
   // System pages — admin only
   '/settings': 'sistema',
   '/automations': 'sistema',
