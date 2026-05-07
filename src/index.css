@@ -5,15 +5,16 @@
 @tailwind utilities;
 
 /* ════════════════════════════════════════════════════════════
-   SQUAD SHOES · DESIGN SYSTEM (aplicado de claude.ai/design)
-   Azul-petróleo (#0E4F5C) + Coral (#FF6B5B) + Slate sidebar
+   SQUAD SHOES · FACTORY OS DESIGN SYSTEM
+   Verde escuro refinado (162 90% 15%) + Creme (#F5F5DC)
+   Sidebar dark com esmeralda (162 80% 45%)
    ════════════════════════════════════════════════════════════ */
 
 /* ─────────────────────────────────────────────────────────────────
    SQUAD SHOES · DESIGN TOKENS
    Sistema de gestão industrial — calçado feminino BR
-   Paleta: Azul-petróleo (#0E4F5C) + Coral (#FF6B5B) + slate sidebar
-   Densidade: Linear-style (13px base · radius 10px)
+   Paleta: Verde refinado escuro + Creme + sidebar dark esmeralda
+   Densidade: Linear-style (13px base · radius 13.6px / 0.85rem)
    Compatível: shadcn/ui · Tailwind · CSS vars HSL puras
    ───────────────────────────────────────────────────────────────── */
 
@@ -23,44 +24,44 @@
      ▼ COLORS — primitives (HSL · valores brutos)
      ═════════════════════════════════════════════════════════════ */
 
-  /* Primary — Azul-petróleo (escala completa 50→950) */
-  --primary-50:  192 50% 96%;
-  --primary-100: 192 50% 94%;
-  --primary-200: 192 55% 85%;
-  --primary-300: 192 60% 70%;
-  --primary-400: 192 70% 50%;
-  --primary-500: 192 75% 35%;
-  --primary-600: 192 75% 28%;
-  --primary-700: 192 75% 21%;   /* ⭑ #0E4F5C — base oficial */
-  --primary-800: 192 75% 17%;
-  --primary-900: 192 75% 14%;
-  --primary-950: 200 60% 9%;
+  /* Primary — Verde refinado escuro (escala completa 50→950) */
+  --primary-50:  160 50% 96%;
+  --primary-100: 160 50% 92%;
+  --primary-200: 160 55% 82%;
+  --primary-300: 160 60% 65%;
+  --primary-400: 161 70% 40%;
+  --primary-500: 162 80% 28%;
+  --primary-600: 162 85% 22%;
+  --primary-700: 162 90% 15%;   /* ⭑ verde refinado escuro — base oficial */
+  --primary-800: 162 90% 12%;
+  --primary-900: 162 90% 9%;
+  --primary-950: 162 85% 6%;
 
-  /* Accent — Coral (escala 50→950) */
-  --accent-50:  8 100% 97%;
-  --accent-100: 8 100% 95%;
-  --accent-200: 8 100% 88%;
-  --accent-300: 8 95% 80%;
-  --accent-400: 8 92% 75%;
-  --accent-500: 8 88% 67%;     /* ⭑ #FF6B5B — base oficial */
-  --accent-600: 8 88% 60%;
-  --accent-700: 8 80% 50%;
-  --accent-800: 8 70% 45%;
-  --accent-900: 8 65% 35%;
+  /* Accent — Creme (#F5F5DC · escala 50→950) */
+  --accent-50:  52 60% 98%;
+  --accent-100: 52 58% 95%;
+  --accent-200: 52 56% 90%;
+  --accent-300: 50 55% 86%;
+  --accent-400: 50 55% 83%;
+  --accent-500: 50 55% 80%;    /* ⭑ #F5F5DC — base oficial */
+  --accent-600: 48 50% 68%;
+  --accent-700: 45 45% 52%;
+  --accent-800: 42 45% 38%;
+  --accent-900: 38 50% 28%;
 
-  /* Neutros — escala fria (200° matiz) */
+  /* Neutros — escala fria-neutra (210° matiz, refinada) */
   --neutral-0:   0 0% 100%;
-  --neutral-50:  200 20% 98%;
-  --neutral-100: 200 16% 96%;
-  --neutral-200: 200 14% 93%;
-  --neutral-300: 200 14% 88%;
-  --neutral-400: 200 14% 78%;
-  --neutral-500: 200 12% 60%;
-  --neutral-600: 200 12% 45%;
-  --neutral-700: 200 18% 28%;
-  --neutral-800: 200 24% 16%;
-  --neutral-900: 200 30% 9%;
-  --neutral-950: 215 35% 5%;
+  --neutral-50:  210 20% 98.5%;
+  --neutral-100: 210 16% 96%;
+  --neutral-200: 210 14% 93%;
+  --neutral-300: 214 14% 89%;
+  --neutral-400: 215 12% 78%;
+  --neutral-500: 215 12% 60%;
+  --neutral-600: 215 12% 46%;
+  --neutral-700: 217 18% 28%;
+  --neutral-800: 222 24% 16%;
+  --neutral-900: 224 50% 7%;
+  --neutral-950: 224 60% 4%;
 
   /* ═══════════════════════════════════════════════════════════════
      ▼ COLORS — semantic (alias dos primitives)
@@ -87,7 +88,7 @@
   --accent-soft:            var(--accent-100);
   --accent-soft-foreground: var(--accent-800);
 
-  --secondary:              200 20% 96%;
+  --secondary:              210 18% 96%;
   --secondary-foreground:   var(--neutral-800);
 
   /* Muted (texto secundário, fundos sutis) */
@@ -100,7 +101,7 @@
   --border-strong:          var(--neutral-400);
   --input:                  var(--neutral-300);
   --input-focus:            var(--primary-700);
-  --ring:                   192 75% 28%;
+  --ring:                   162 55% 24%;
 
   /* Semantic feedback */
   --success:               158 64% 38%;
@@ -127,33 +128,33 @@
   --stage-cut-bg:    217 91% 95%;  --stage-cut-fg:    217 80% 38%;
   --stage-sew-bg:    269 50% 96%;  --stage-sew-fg:    269 60% 38%;
   --stage-assy-bg:   38 92% 95%;   --stage-assy-fg:   28 80% 30%;
-  --stage-fin-bg:    192 50% 94%;  --stage-fin-fg:    192 75% 21%;
-  --stage-pack-bg:   8 100% 95%;   --stage-pack-fg:   8 70% 45%;
+  --stage-fin-bg:    160 50% 92%;  --stage-fin-fg:    162 90% 15%;
+  --stage-pack-bg:   50 55% 92%;   --stage-pack-fg:   42 45% 38%;
 
   /* ═══════════════════════════════════════════════════════════════
-     ▼ SIDEBAR (sempre slate · uso permanente)
+     ▼ SIDEBAR (dark navy · destaque esmeralda · uso permanente)
      ═════════════════════════════════════════════════════════════ */
-  --sidebar-background:           215 35% 8%;
+  --sidebar-background:           222 47% 7%;
   --sidebar-foreground:           210 20% 90%;
-  --sidebar-muted:                215 15% 55%;
-  --sidebar-accent:               215 32% 13%;
+  --sidebar-muted:                217 15% 55%;
+  --sidebar-accent:               217 32% 12%;
   --sidebar-accent-foreground:    210 20% 98%;
-  --sidebar-border:               215 32% 11%;
-  --sidebar-primary:              var(--accent-500);
-  --sidebar-primary-foreground:   0 0% 100%;
-  --sidebar-ring:                 var(--accent-500);
-  --sidebar-gradient-from:        215 38% 7%;
-  --sidebar-gradient-to:          200 35% 11%;
+  --sidebar-border:               217 32% 10%;
+  --sidebar-primary:              162 80% 45%;        /* esmeralda */
+  --sidebar-primary-foreground:   162 60% 5%;
+  --sidebar-ring:                 162 80% 45%;
+  --sidebar-gradient-from:        222 47% 6%;
+  --sidebar-gradient-to:          218 42% 9%;
 
   /* ═══════════════════════════════════════════════════════════════
-     ▼ RADIUS · escala
+     ▼ RADIUS · escala (Factory OS — radius mais generoso)
      ═════════════════════════════════════════════════════════════ */
-  --radius:      0.625rem;   /* 10px · padrão de cards */
+  --radius:      0.85rem;    /* 13.6px · padrão de cards (Factory OS) */
   --radius-xs:   0.25rem;    /* 4px  · stage badges */
   --radius-sm:   0.375rem;   /* 6px  · chips pequenos */
-  --radius-md:   0.5rem;     /* 8px  · botões */
-  --radius-lg:   0.75rem;    /* 12px · cards de seção */
-  --radius-xl:   1rem;       /* 16px · modais */
+  --radius-md:   0.55rem;    /* 8.8px · botões */
+  --radius-lg:   0.85rem;    /* 13.6px · cards de seção */
+  --radius-xl:   1.15rem;    /* 18.4px · modais */
   --radius-full: 9999px;     /* pills */
 
   /* ═══════════════════════════════════════════════════════════════
@@ -161,9 +162,10 @@
      ═════════════════════════════════════════════════════════════ */
   --shadow-xs:        0 1px 2px 0 rgb(0 0 0 / 0.04);
   --shadow-sm:        0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.04);
-  --shadow-card:      var(--shadow-sm);
+  --shadow-card:      0 2px 8px -1px rgb(0 0 0 / 0.05), 0 1px 3px -1px rgb(0 0 0 / 0.03);
+  --shadow-card-hover: 0 12px 24px -4px rgb(0 0 0 / 0.08), 0 4px 12px -2px rgb(0 0 0 / 0.04);
   --shadow-md:        0 4px 8px -2px rgb(0 0 0 / 0.06), 0 2px 4px -2px rgb(0 0 0 / 0.04);
-  --shadow-hover:     0 8px 20px -4px rgb(0 0 0 / 0.08), 0 4px 8px -2px rgb(0 0 0 / 0.04);
+  --shadow-hover:     var(--shadow-card-hover);
   --shadow-lg:        0 16px 32px -8px rgb(0 0 0 / 0.12), 0 8px 16px -4px rgb(0 0 0 / 0.06);
   --shadow-elevated:  var(--shadow-lg);
   --shadow-xl:        0 24px 48px -12px rgb(0 0 0 / 0.18), 0 12px 24px -6px rgb(0 0 0 / 0.08);
@@ -176,7 +178,7 @@
   /* Focus rings */
   --ring-offset:      0 0 0 2px hsl(var(--background));
   --ring-focus:       0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--ring) / 0.5);
-  --ring-focus-accent: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--accent-500) / 0.5);
+  --ring-focus-accent: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--accent-700) / 0.5);
 
   /* ═══════════════════════════════════════════════════════════════
      ▼ TIPOGRAFIA
@@ -282,35 +284,48 @@
    ▼ DARK MODE
    ═════════════════════════════════════════════════════════════════ */
 .dark {
-  --background:           215 35% 5%;
-  --foreground:           200 14% 92%;
-  --card:                 215 30% 8%;
-  --card-foreground:      200 14% 92%;
-  --popover:              215 30% 8%;
-  --popover-foreground:   200 14% 92%;
+  --background:           220 20% 6%;
+  --foreground:           210 20% 92%;
+  --card:                 220 18% 10%;
+  --card-foreground:      210 20% 92%;
+  --popover:              220 18% 10%;
+  --popover-foreground:   210 20% 92%;
 
-  --primary:              192 70% 55%;
-  --primary-foreground:   200 60% 9%;
-  --primary-hover:        192 70% 62%;
-  --primary-soft:         192 60% 18%;
-  --primary-soft-foreground: 192 60% 80%;
+  --primary:              160 60% 45%;
+  --primary-foreground:   160 60% 5%;
+  --primary-hover:        160 60% 52%;
+  --primary-soft:         162 50% 18%;
+  --primary-soft-foreground: 160 50% 80%;
 
-  --accent:               8 88% 67%;
-  --accent-foreground:    0 0% 100%;
-  --accent-hover:         8 88% 73%;
-  --accent-soft:          8 60% 22%;
-  --accent-soft-foreground: 8 80% 80%;
+  --accent:               220 18% 18%;
+  --accent-foreground:    50 55% 88%;
+  --accent-hover:         220 18% 22%;
+  --accent-soft:          50 35% 18%;
+  --accent-soft-foreground: 50 55% 80%;
 
-  --secondary:            215 25% 14%;
-  --secondary-foreground: 200 14% 88%;
-  --muted:                215 20% 14%;
-  --muted-soft:            215 22% 11%;
-  --muted-foreground:     200 12% 55%;
+  --secondary:            220 16% 14%;
+  --secondary-foreground: 210 20% 88%;
+  --muted:                220 16% 14%;
+  --muted-soft:           220 18% 11%;
+  --muted-foreground:     215 12% 60%;
 
-  --border:               215 22% 18%;
-  --border-strong:        215 22% 28%;
-  --input:                215 22% 18%;
-  --ring:                 192 70% 55%;
+  --border:               220 16% 18%;
+  --border-strong:        220 16% 28%;
+  --input:                220 16% 18%;
+  --ring:                 160 60% 45%;
+
+  /* Sidebar (dark mode — ainda mais profundo) */
+  --sidebar-background:           222 26% 5%;
+  --sidebar-foreground:           210 20% 90%;
+  --sidebar-muted:                217 12% 50%;
+  --sidebar-accent:               220 24% 11%;
+  --sidebar-accent-foreground:    210 20% 95%;
+  --sidebar-border:               220 24% 9%;
+  --sidebar-primary:              160 60% 45%;
+  --sidebar-primary-foreground:   160 60% 5%;
+  --sidebar-ring:                 160 60% 45%;
+  --sidebar-gradient-from:        222 26% 4%;
+  --sidebar-gradient-to:          218 24% 7%;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
