@@ -67,9 +67,16 @@ export default function GroupedReportSummary() {
    const { data: saleOrders = [] } = useQuery({
      queryKey: ['sale_orders'],
      queryFn: async () => {
-       const { data, error } = await (supabase as any).from('sale_orders').select('id, client_id, economic_group_id, client_name, order_number');
+       // economic_group_id mora em `clients`, não em `sale_orders`. Embed via FK.
+       const { data, error } = await (supabase as any)
+         .from('sale_orders')
+         .select('id, client_id, client_name, order_number, clients(economic_group_id)');
        if (error) throw error;
-       return data;
+       // Achata economic_group_id no row pra manter compatibilidade com consumers.
+       return (data || []).map((r: any) => ({
+         ...r,
+         economic_group_id: r.clients?.economic_group_id ?? null,
+       }));
      }
    });
  
