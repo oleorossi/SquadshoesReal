@@ -3,7 +3,6 @@ import type { Plugin, ViteDevServer } from "vite";
 import type { IncomingMessage, ServerResponse } from "http";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
-import { componentTagger } from "lovable-tagger";
 
 // Single stable version for the entire server session.
 // Reused for both version.json and VITE_APP_VERSION — no drift possible.
@@ -42,7 +41,6 @@ const versionJsonPlugin = (): Plugin => ({
   plugins: [
     react(),
     versionJsonPlugin(),
-    mode === "development" && componentTagger(),
   ].filter(Boolean),
    define: {
      'import.meta.env.VITE_APP_VERSION': JSON.stringify(BUILD_VERSION),

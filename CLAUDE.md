@@ -2,9 +2,13 @@
 
 ## Deployment Architecture
 
-- **Deploy branch**: `main` — Lovable monitors and deploys automatically on push.
-- **Claude Code branch**: `claude/verify-pricing-formulas-H0qWZ` (or any `claude/*` branch).
-- **Lovable branch**: also `main` — Lovable commits directly to `main` via its web interface.
+- **Deploy:** Vercel (auto-deploy a cada push em `main`).
+- **Production URL:** https://squadshoes-real.vercel.app
+- **Branch de deploy:** `main`
+- **Branch de trabalho:** `claude/zen-knuth-4c26c5` (ou qualquer `claude/*`).
+- **Banco:** Supabase project `ssvxfoybzmjlypnipqzn` (us-west-2). Migrations aplicadas via MCP ou SQL Editor.
+
+> **Histórico:** o projeto saiu de uma fase usando Lovable como editor + deploy. Em mai/2026 migrou pra Vercel + Claude Code. O pacote `lovable-tagger` ainda fica em `devDependencies` por compatibilidade com lockfile (não é mais usado em build — removido do `vite.config.ts`). Pra desinstalar de vez: rode `bun remove lovable-tagger` localmente e commite o novo lockfile.
 
 ## Automatic Sync (bidirectional)
 
@@ -12,26 +16,24 @@ Both hooks use **rebase** instead of merge to keep a clean linear history and av
 
 | Hook | Script | When | What it does |
 |------|--------|------|--------------|
-| `SessionStart` | `~/.claude/session-start-sync.sh` | Start of session | Fetches `main`, **rebases** current branch on top (Claude's commits go on top of Lovable's latest). Falls back to merge `-X theirs` if rebase has conflicts. |
-| `Stop` | `~/.claude/stop-hook-git-check.sh` | End of turn | Rebases feature branch on latest `main`, force-pushes feature branch, then fast-forwards `main` to match. Falls back to merge if needed. |
+| `SessionStart` | `~/.claude/session-start-sync.sh` | Start of session | Fetches `main`, **rebases** current branch on top. Falls back to merge `-X theirs` if rebase has conflicts. |
+| `Stop` | `~/.claude/stop-hook-git-check.sh` | End of turn | Rebases feature branch on latest `main`, force-pushes feature branch, then fast-forwards `main` to match. |
 
 ## Conflict Resolution Strategy
 
 | Direction | Strategy | Rationale |
 |-----------|----------|-----------|
-| Lovable → Claude (session start) | `git rebase origin/main` | Lovable's commits land first, Claude's commits replay on top — linear history, no silent overwrite. |
-| Claude → main (session end) | rebase + `--ff-only` on main | Claude's rebased branch fast-forwards main cleanly. No conflict possible after successful rebase. |
-| Fallback (real conflict) | merge `-X ours` while on feature branch | "ours" = feature branch = Claude's work. Correct direction. |
-
-**WARNING:** Never use `git checkout main && git merge claude-branch -X ours` — at that point "ours" = main = Lovable's code, so Claude's work is silently discarded.
+| Remote → Claude (session start) | `git rebase origin/main` | Commits remotos primeiro, Claude por cima — linear, sem overwrite. |
+| Claude → main (session end) | rebase + `--ff-only` on main | Branch rebased fast-forwards main limpo. |
+| Fallback (real conflict) | merge `-X ours` while on feature branch | "ours" = feature branch = trabalho atual. |
 
 ## Developer Rules
 
 1. **Always commit before stopping** — the stop hook will block if uncommitted changes exist.
-2. **Never force-push main** — Lovable depends on a clean main history.
-3. **Migrations go in `supabase/migrations/`** — apply them via the Supabase dashboard SQL editor (network access from this environment blocks direct psql).
-4. **TypeScript must stay clean** — run `npx tsc --noEmit` before committing.
-5. **After any Lovable edit** — run `npm run check:tokens` to detect hardcoded colors that should be design tokens.
+2. **Never force-push main** — Vercel depende de um histórico limpo pra deploy correto.
+3. **Migrations go in `supabase/migrations/`** — aplicar via Supabase MCP (preferido) ou SQL Editor.
+4. **TypeScript must stay clean** — run `bunx tsc --noEmit` before committing.
+5. **Após edits visuais** — run `npm run check:tokens` to detect hardcoded colors that should be design tokens.
 
 ## Design Token System — DO NOT use hardcoded colors
 
@@ -41,7 +43,7 @@ unified visual system and makes dark mode impossible.
 
 ### Mapping: old → correct
 
-| ❌ Hardcoded (Lovable default) | ✅ Design token |
+| ❌ Hardcoded (Tailwind default) | ✅ Design token |
 |-------------------------------|-----------------|
 | `bg-white` | `bg-card` (surfaces) or `bg-background` (page) |
 | `bg-gray-50`, `bg-slate-50` | `bg-muted/30` or `bg-muted/50` |
@@ -69,11 +71,11 @@ npm run check:tokens
 1. **CSS scope contamination** — class definitions (`.glass-sidebar`, `@keyframes`) were
    nested inside `:root {}`. Everything after them lost CSS variable scope. Fixed in
    commit `d090211`. **Rule**: `:root {}` must contain ONLY `--variable: value` declarations.
-2. **Lovable generates hardcoded colors** — Lovable's AI doesn't know about custom tokens,
-   so it defaults to standard Tailwind classes. Always run `check:tokens` after Lovable edits.
-3. **Git hooks had wrong merge direction** — `git checkout main && git merge branch -X ours`
-   was keeping main's version (Lovable), not Claude's. Fixed: hooks now use rebase-based
-   strategy so Claude's work is never silently discarded.
+2. **AI assistants frequentemente geram cores hardcoded** — Lovable, ChatGPT, etc. não sabem
+   dos tokens custom desse projeto, então defaultam pra classes Tailwind padrão. Sempre rode
+   `check:tokens` após edits gerados por AI.
+3. **Git hooks tinham direção errada de merge** — `git checkout main && git merge branch -X ours`
+   mantinha a versão do main, não da branch de trabalho. Fixed: hooks usam rebase agora.
 
 ## Pending DB Migrations
 
@@ -113,7 +115,7 @@ As 7 migrations abaixo foram aplicadas diretamente em `ssvxfoybzmjlypnipqzn` via
 6. Quando estiver tranquilo, dispare `dry_run: false` ou faça push de uma migration nova — vai aplicar automaticamente.
 
 **Aplicação manual (fallback):**
-Apply **in order** (oldest first). Migrations with GUIDs in the name are applied automatically by Lovable — only the ones listed below need manual application.
+Apply **in order** (oldest first). Migrations com GUIDs no nome (legacy do tempo do Lovable) já estão aplicadas no banco — só as listadas abaixo precisam de aplicação manual via SQL Editor ou MCP.
 
 ### Grupo 1 — Correções anteriores (verificar se já aplicadas)
 - `20260419120147_fix-sole-double-debit-and-grade-restore.sql` — corrige duplo débito de solado em OPs com grade
