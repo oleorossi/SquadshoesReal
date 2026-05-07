@@ -118,12 +118,12 @@ COMMENT ON FUNCTION public.tg_strip_cut_sectors_when_ready_made() IS
   'production_sectors JSONB. Solado pronto-na-cor não tem etapas de corte.';
 
 
--- ─── 3. Backfill: aplica o trigger nas rows existentes ──────────────────────
--- Toca em insole_ready_made (sem mudar valor) pra disparar o trigger e
--- limpar production_sectors das rows que já tinham flag = true.
-UPDATE public.technical_sheets
-SET insole_ready_made = insole_ready_made
-WHERE insole_ready_made = true;
+-- ─── 3. Backfill ────────────────────────────────────────────────────────────
+-- ATENÇÃO: o backfill foi MOVIDO para a migration 20260520130000_
+-- fix-pronto-na-cor-backfill-fk-safe.sql porque o UPDATE no-op original
+-- (`SET insole_ready_made = insole_ready_made`) re-validava o FK
+-- shoe_category_id e abortava em rows com referência órfã (silk_shoe_category
+-- deletada). Aplicar a 20260520130000 logo após esta migration.
 
 
 -- ─── 4. Atualizar DEFAULT de production_sectors ────────────────────────────
