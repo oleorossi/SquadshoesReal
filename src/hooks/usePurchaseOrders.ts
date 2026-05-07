@@ -130,23 +130,37 @@ export function useDeletePurchaseOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      // Atomic conditional DELETE: only deletes when status is not 'received' or
-      // 'receiving', closing the race window between the old SELECT-then-DELETE
-      // pattern and a concurrent receive flow.
-      const { data: deleted, error } = await supabase
+      // Soft-cancel em vez de DELETE preserva audit trail (quem cancelou, quando,
+      // valor original, fornecedor). Hard delete perdia toda a história e deixava
+      // accounts_payable órfão. O guard contra status received/receiving permanece.
+      const { data: cancelled, error } = await supabase
         .from('purchase_orders')
-        .delete()
+        .update({
+          status: 'cancelled',
+          cancelled_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        } as any)
         .eq('id', id)
-        .not('status', 'in', '("received","receiving")')
+        .not('status', 'in', '("received","receiving","cancelled")')
         .select('id');
       if (error) throw error;
-      if (!deleted || deleted.length === 0) {
-        throw new Error('OC já recebida ou em recebimento não pode ser excluída. Cancele-a se necessário.');
+      if (!cancelled || cancelled.length === 0) {
+        throw new Error('OC já recebida, em recebimento ou já cancelada não pode ser cancelada novamente.');
       }
+
+      // Cancela também qualquer accounts_payable pendente vinculado a esta OC,
+      // para que a OC cancelada não fique inflando o aging financeiro. Entries
+      // já pagas (paid) são preservadas para audit trail.
+      await supabase
+        .from('accounts_payable')
+        .update({ status: 'cancelled', updated_at: new Date().toISOString() } as any)
+        .eq('purchase_order_id', id)
+        .in('status', ['pending', 'partial']);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['purchase_orders'] });
-      toast.success('Ordem de compra excluída!');
+      qc.invalidateQueries({ queryKey: ['accounts_payable'] });
+      toast.success('Ordem de compra cancelada!');
     },
     onError: (e: Error) => toast.error(e.message),
   });
