@@ -591,26 +591,32 @@ export default function Contractors() {
           } else {
             const prevBaseQty = getQty(baseMatch);
             if (prevBaseQty < baseForColor) {
-              toast.warning(
-                `Estoque insuficiente de "${recipe.base_product_name}" (${itemColor}): disponível ${prevBaseQty.toFixed(2)}, necessário ${baseForColor.toFixed(2)}m`,
+              // CRITICAL: estoque insuficiente NÃO pode permitir step 2 (output credit)
+              // sem ter debitado a MP. Bug anterior: só mostrava warning e continuava o
+              // loop, creditando saída artesanal sem nenhum débito de entrada → ganho
+              // de estoque do nada (corrompia o ledger).
+              toast.error(
+                `Estoque insuficiente de "${recipe.base_product_name}" (${itemColor}): disponível ${prevBaseQty.toFixed(2)}m, necessário ${baseForColor.toFixed(2)}m. Saída artesanal cancelada para esta cor — ajuste o estoque ou reduza a quantidade.`,
+                { duration: 8000 },
               );
-            } else {
-              const newBaseQty = prevBaseQty - baseForColor;
-              const baseResult = await adjustStockSafe({
-                productId: baseMatch.id,
-                expectedPrevious: prevBaseQty,
-                newQty: newBaseQty,
-                reason: `Consumo artesanal "${recipe.name}" (${itemColor}) — OS ${orderNumber}`,
-                orderId: orderId || null,
-              });
-              if (!baseResult.success) {
-                toast.error(`Erro ao debitar MP "${recipe.base_product_name}" (${itemColor}): ${baseResult.errorMessage || ''}`);
-                hadColorFailure = true;
-                continue;
-              }
-              stockOverrides.set(baseMatch.id, newBaseQty);
-              toast.info(`MP debitada: ${recipe.base_product_name} ${itemColor} -${baseForColor.toFixed(2)}m`);
+              hadColorFailure = true;
+              continue;
             }
+            const newBaseQty = prevBaseQty - baseForColor;
+            const baseResult = await adjustStockSafe({
+              productId: baseMatch.id,
+              expectedPrevious: prevBaseQty,
+              newQty: newBaseQty,
+              reason: `Consumo artesanal "${recipe.name}" (${itemColor}) — OS ${orderNumber}`,
+              orderId: orderId || null,
+            });
+            if (!baseResult.success) {
+              toast.error(`Erro ao debitar MP "${recipe.base_product_name}" (${itemColor}): ${baseResult.errorMessage || ''}`);
+              hadColorFailure = true;
+              continue;
+            }
+            stockOverrides.set(baseMatch.id, newBaseQty);
+            toast.info(`MP debitada: ${recipe.base_product_name} ${itemColor} -${baseForColor.toFixed(2)}m`);
           }
 
           // 2) Register artisanal output in this color (for_stock portion).
@@ -741,8 +747,11 @@ export default function Contractors() {
       if (result.success) {
         toast.info(`MP debitada: ${recipe.base_product_name} -${baseMetersTotal.toFixed(2)}m`);
       } else {
-        hadFailure = true;
-        toast.error(`Erro ao debitar MP: ${result.errorMessage || ''}`);
+        // CRITICAL: se o débito da MP falhou (concorrência, lock, etc),
+        // NÃO podemos creditar o output — caso contrário ganho de estoque
+        // do nada. Aborta a operação para evitar corrupção do ledger.
+        toast.error(`Erro ao debitar MP — entrada artesanal cancelada: ${result.errorMessage || ''}`);
+        return;
       }
     }
 
