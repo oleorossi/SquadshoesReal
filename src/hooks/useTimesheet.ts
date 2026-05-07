@@ -244,7 +244,12 @@ export function parseTimesheetXlsx(file: File): Promise<{ employees: ParsedEmplo
               punches: Array.from(new Set(punches)).sort(),
             }));
 
-          if (records.length > 0) {
+          // Emit funcionário mesmo SEM batidas no período. O relatório de
+          // ausentismo precisa saber que ele estava no quadro mas não
+          // bateu ponto nenhum dia — sem isso, ~64% dos colaboradores
+          // ausentes no mês ficam invisíveis no sistema. Só pula se NÃO
+          // tem identidade alguma (linha sem ID e sem nome).
+          if (externalId || name) {
             employees.push({ externalId, name, department, records });
           }
         }
@@ -823,37 +828,68 @@ export function useImportTimeRecords() {
       const [endYear, endMonth] = endDate.split('-').map(Number);
       const batchId = `${startDate}_${endDate}_${Date.now()}`;
 
+      // Resolve a (year, month) for a raw day number considering cross-month
+      // periods. Bug-fix: a versão anterior usava sequência de iteração para
+      // detectar a virada de mês, mas o parser ordena os records por day ASC,
+      // então day 1 (do segundo mês) sempre vinha antes de day 15 (do primeiro)
+      // → atribuído ao primeiro mês incorretamente. A regra correta é puramente
+      // baseada no calendário: dado o range startDate→endDate (que pode cruzar
+      // mês), o day pertence ao primeiro mês se day >= startDay, caso contrário
+      // ao último mês. Funciona para single-month e cross-month.
+      const resolveDate = (day: number): string => {
+        if (startYear === endYear && startMonth === endMonth) {
+          return `${startYear}-${String(startMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        }
+        // Cross-month: day in [startDay..31] → first month; day in [1..endDay] → last month
+        if (day >= startDay) {
+          return `${startYear}-${String(startMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        }
+        return `${endYear}-${String(endMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      };
+
+      // Helper: enumera todas as datas do período (yyyy-mm-dd) para
+      // produzir time_records vazios para colaboradores sem batidas.
+      const allDatesInPeriod = (): string[] => {
+        const dates: string[] = [];
+        const start = new Date(`${startDate}T00:00:00`);
+        const end = new Date(`${endDate}T00:00:00`);
+        const cur = new Date(start);
+        while (cur <= end) {
+          const y = cur.getFullYear();
+          const m = String(cur.getMonth() + 1).padStart(2, '0');
+          const d = String(cur.getDate()).padStart(2, '0');
+          dates.push(`${y}-${m}-${d}`);
+          cur.setDate(cur.getDate() + 1);
+        }
+        return dates;
+      };
+      const periodDates = allDatesInPeriod();
+
       const records: any[] = [];
       for (const emp of employees) {
-        // Process records in order; detect month transition when day numbers decrease
-        let inSecondMonth = false;
-        let prevDay = 0;
-        for (const rec of emp.records) {
-          let dateStr: string;
-
-          // If the parser already computed the full date, use it directly
-          if (rec.dateStr && /^\d{4}-\d{2}-\d{2}$/.test(rec.dateStr)) {
-            dateStr = rec.dateStr;
-          } else {
-            // Fallback: infer month from day number sequence (XLS files)
-            if (!inSecondMonth && rec.day < prevDay) {
-              inSecondMonth = true;
-            }
-            prevDay = rec.day;
-
-            let year: number, month: number;
-            if (startMonth === endMonth && startYear === endYear) {
-              year = startYear;
-              month = startMonth;
-            } else if (inSecondMonth) {
-              year = endYear;
-              month = endMonth;
-            } else {
-              year = startYear;
-              month = startMonth;
-            }
-            dateStr = `${year}-${String(month).padStart(2, '0')}-${String(rec.day).padStart(2, '0')}`;
+        if (emp.records.length === 0) {
+          // Funcionário no quadro do arquivo mas sem batidas: gera time_records
+          // com punches=[] para CADA dia do período. Isso permite que relatórios
+          // de absenteísmo enxerguem ele como ausente em vez de simplesmente não
+          // aparecer no banco. Calculations downstream tratam punches=[] como
+          // 'absent'/'weekend'/'holiday' baseado no dia da semana.
+          for (const dateStr of periodDates) {
+            records.push({
+              employee_name: emp.name || `(sem nome ID ${emp.externalId})`,
+              employee_external_id: emp.externalId,
+              department: emp.department,
+              record_date: dateStr,
+              punches: [],
+              import_batch: batchId,
+            });
           }
+          continue;
+        }
+
+        for (const rec of emp.records) {
+          const dateStr = (rec.dateStr && /^\d{4}-\d{2}-\d{2}$/.test(rec.dateStr))
+            ? rec.dateStr
+            : resolveDate(rec.day);
 
           records.push({
             employee_name: emp.name,
