@@ -115,6 +115,91 @@ const getStatusBgClass = (canonicalStatus: string) => {
   }
 };
 
+// ════════════════════════════════════════════════════════════════════════
+// Visual helpers — melhoria de layout das OPs
+// ════════════════════════════════════════════════════════════════════════
+
+/**
+ * Mapeia nome de cor (em português) para hex aproximado.
+ * Usado em dot/swatch ao lado do label de cor pra identificação visual rápida.
+ * Cores não conhecidas viram cinza neutro.
+ */
+const COLOR_HEX_MAP: Record<string, string> = {
+  'preto': '#1a1a1a', 'black': '#1a1a1a',
+  'branco': '#ffffff', 'white': '#ffffff', 'off white': '#f5f0e8',
+  'bege': '#d8c8a4', 'beige': '#d8c8a4',
+  'caramelo': '#b8773a', 'caramel': '#b8773a',
+  'whisky': '#a05d2c', 'new whisky': '#a05d2c',
+  'tan': '#c69a6e', 'new tan': '#c69a6e',
+  'cogumelo': '#9b8068',
+  'champagne': '#e8d5b0', 'champanhe': '#e8d5b0',
+  'rosado': '#e8b8b0', 'rosa': '#e8b8b0',
+  'rosa claro': '#fadbe2', 'baby pink': '#fadbe2',
+  'azul': '#3b6ea8', 'baby blue': '#a8c8e0',
+  'verde': '#3a7d4a',
+  'amarelo': '#e8c828', 'limoncello': '#f5e555',
+  'cinza': '#888888', 'grafite': '#4a4a4a',
+  'marrom': '#6b3a1f', 'malbec': '#5e1a26',
+  'carmim': '#9c1a30', 'carmin': '#9c1a30',
+  'cafe': '#3d2418', 'café': '#3d2418',
+  'porcelana': '#f0e6dc',
+  'grape': '#5e3a6e',
+  'eban': '#1a1410', 'ébano': '#1a1410',
+  'adocicado': '#c8a88f',
+  'prata': '#c0c0c0', 'silver': '#c0c0c0',
+  'ouro': '#e0b850', 'dourado': '#e0b850', 'gold': '#e0b850',
+  'cristal': '#f0f0f5',
+};
+
+const ColorSwatch = ({ color, size = 12 }: { color?: string | null; size?: number }) => {
+  if (!color || !color.trim()) return null;
+  const norm = color.toLowerCase().trim();
+  const hex = COLOR_HEX_MAP[norm] || COLOR_HEX_MAP[norm.replace(/[áàãâ]/g, 'a').replace(/[éê]/g, 'e').replace(/[íî]/g, 'i').replace(/[óôõ]/g, 'o').replace(/[úû]/g, 'u').replace(/ç/g, 'c')] || '#9aa3ae';
+  return (
+    <span
+      className="inline-block rounded-full ring-1 ring-border/60 shrink-0"
+      style={{ backgroundColor: hex, width: size, height: size }}
+      title={color}
+      aria-label={`Cor: ${color}`}
+    />
+  );
+};
+
+/**
+ * Mostra progresso de setores como mini-barra com dots coloridos.
+ * Cada dot = um setor; verde = concluído, amarelo = em andamento, cinza = pendente.
+ */
+const SectorProgressDots = ({
+  completed, inProgress = 0, total,
+}: { completed: number; inProgress?: number; total: number }) => {
+  if (total === 0) return null;
+  const pct = Math.round((completed / total) * 100);
+  return (
+    <span className="inline-flex items-center gap-1.5" title={`${completed} de ${total} setores concluídos (${pct}%)`}>
+      <span className="inline-flex gap-0.5">
+        {Array.from({ length: total }).map((_, i) => {
+          const isDone = i < completed;
+          const isActive = !isDone && i < completed + inProgress;
+          return (
+            <span
+              key={i}
+              className={cn(
+                'inline-block h-1.5 w-1.5 rounded-full transition-colors',
+                isDone && 'bg-emerald-500',
+                isActive && 'bg-amber-500 ring-1 ring-amber-500/30',
+                !isDone && !isActive && 'bg-muted-foreground/25',
+              )}
+            />
+          );
+        })}
+      </span>
+      <span className="text-[10px] font-mono text-muted-foreground tabular-nums">
+        {completed}/{total}
+      </span>
+    </span>
+  );
+};
+
 // Helper to get week options
 function getWeekOptions() {
   const options = [];
@@ -1332,9 +1417,14 @@ function getWeekOptions() {
                               onCheckedChange={() => toggleOrderSelection(order.id)}
                               onClick={(e) => e.stopPropagation()}
                             />
-                            <span className="font-mono text-sm font-semibold">{(order as any).order_number}</span>
-                            <span className="text-sm text-muted-foreground font-mono">{order.quantity} pares</span>
-                            {(order as any).color && <span className="text-xs text-muted-foreground">Cor: {(order as any).color}</span>}
+                            <span className="font-mono text-sm font-semibold tabular-nums">{(order as any).order_number}</span>
+                            <span className="text-sm text-muted-foreground font-mono tabular-nums">{order.quantity} pares</span>
+                            {(order as any).color && (
+                              <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                                <ColorSwatch color={(order as any).color} />
+                                {(order as any).color}
+                              </span>
+                            )}
                             {(() => { const so = saleOrderById.get((order as any).sale_order_id); return so ? <span className="text-xs text-muted-foreground">• {so.client_name} — Ped. {so.order_number}</span> : null; })()}
                             {deliveryDate && (
                               <span className="text-xs text-muted-foreground flex items-center gap-1">
@@ -1343,11 +1433,7 @@ function getWeekOptions() {
                               </span>
                             )}
                             <StatusPill status={canonicalStatusToKey(order.status)} />
-                            {hasStages && (
-                              <span className="text-xs text-muted-foreground">
-                                Setores: {completedStages}/{totalStages}
-                              </span>
-                            )}
+                            {hasStages && <SectorProgressDots completed={completedStages} total={totalStages} />}
                           </div>
                           <div className="flex items-center gap-1">
                             <Button variant="ghost" size="icon" className="h-7 w-7" title="Consumo" onClick={(e) => { e.stopPropagation(); setConsumptionOrderIds([order.id]); setConsumptionTitle(`OP ${(order as any).order_number || '—'}`); }}>
@@ -1413,10 +1499,15 @@ function getWeekOptions() {
                               <span className="shrink-0 cursor-pointer p-1 -m-1" onClick={(e) => { e.stopPropagation(); toggleOrderSelection(order.id); }}>
                                 {selectedOrderIds.has(order.id) ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4 text-muted-foreground" />}
                               </span>
-                              <span className="font-mono text-sm font-semibold">{(order as any).order_number || '—'}</span>
+                              <span className="font-mono text-sm font-semibold tabular-nums">{(order as any).order_number || '—'}</span>
                               <span className="font-medium">{(order as any).technical_sheets?.name ?? '—'}</span>
-                              <span className="text-sm text-muted-foreground font-mono">{order.quantity} pares</span>
-                              {(order as any).color && <span className="text-xs text-muted-foreground">Cor: {(order as any).color}</span>}
+                              <span className="text-sm text-muted-foreground font-mono tabular-nums">{order.quantity} pares</span>
+                              {(order as any).color && (
+                                <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                                  <ColorSwatch color={(order as any).color} />
+                                  {(order as any).color}
+                                </span>
+                              )}
                               {(() => { const so = saleOrderById.get((order as any).sale_order_id); return so ? <span className="text-xs text-muted-foreground">• {so.client_name} — Ped. {so.order_number}</span> : null; })()}
                               <StatusPill status={canonicalStatusToKey(order.status)} />
                               {(order as any).due_date && (() => {
@@ -1435,9 +1526,7 @@ function getWeekOptions() {
                                   </span>
                                 );
                               })()}
-                              {hasStages && (
-                                <span className="text-xs text-muted-foreground">Setores: {completedStages}/{totalStages}</span>
-                              )}
+                              {hasStages && <SectorProgressDots completed={completedStages} total={totalStages} />}
                             </div>
                             <div className="flex items-center gap-1">
                               <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title="Consumo" onClick={(e) => { e.stopPropagation(); setConsumptionOrderIds([order.id]); setConsumptionTitle(`OP ${(order as any).order_number || '—'}`); }}>
@@ -1508,20 +1597,23 @@ function getWeekOptions() {
                                 setDetailDialogOpen(true);
                               }}
                             >
-                              <div className="flex items-center gap-3 flex-wrap">
+                              <div className="flex items-center gap-3 flex-wrap min-w-0 flex-1">
                                 <Checkbox
                                   checked={selectedOrderIds.has(order.id)}
                                   onCheckedChange={() => toggleOrderSelection(order.id)}
                                   onClick={(e) => e.stopPropagation()}
                                 />
-                                <span className="font-mono text-sm font-semibold">{(order as any).order_number}</span>
-                                <span className="text-sm">{(order as any).technical_sheets?.name ?? '—'}</span>
-                                <span className="text-sm text-muted-foreground font-mono">{order.quantity} pares</span>
-                                {(order as any).color && <span className="text-xs text-muted-foreground">Cor: {(order as any).color}</span>}
-                                <StatusPill status={canonicalStatusToKey(order.status)} />
-                                {hasStages && (
-                                  <span className="text-xs text-muted-foreground">Setores: {completedStages}/{totalStages}</span>
+                                <span className="font-mono text-sm font-semibold tabular-nums">{(order as any).order_number}</span>
+                                <span className="text-sm font-medium">{(order as any).technical_sheets?.name ?? '—'}</span>
+                                <span className="text-sm text-muted-foreground font-mono tabular-nums">{order.quantity} pares</span>
+                                {(order as any).color && (
+                                  <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                                    <ColorSwatch color={(order as any).color} />
+                                    {(order as any).color}
+                                  </span>
                                 )}
+                                <StatusPill status={canonicalStatusToKey(order.status)} />
+                                {hasStages && <SectorProgressDots completed={completedStages} total={totalStages} />}
                               </div>
                               <div className="flex items-center gap-1">
                                 <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title="Consumo" onClick={(e) => { e.stopPropagation(); setConsumptionOrderIds([order.id]); setConsumptionTitle(`OP ${(order as any).order_number || '—'}`); }}>
