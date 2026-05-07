@@ -174,8 +174,9 @@ import { useComponentSheets } from '@/hooks/useComponentSheets';
 import ComponentSheets from '@/pages/ComponentSheets';
 
  import { OperationsTab } from '@/components/technical-sheets/OperationsTab';
- import { ColorVariantsTab } from '@/components/technical-sheets/ColorVariantsTab';
+ // ColorVariantsTab removido — cor é definida no PV, não na ficha técnica.
  import { MaterialVariantsTab } from '@/components/technical-sheets/MaterialVariantsTab';
+ import { useAllActiveReferenceMaterialVariants } from '@/hooks/useReferenceMaterialVariants';
 import { VersionsTab } from '@/components/technical-sheets/VersionsTab';
 import { TechnicalReferencePanel } from '@/components/technical-sheets/TechnicalReferencePanel';
 import { NonFiniteDevWatcher } from '@/components/technical-sheets/NonFiniteDevWatcher';
@@ -276,6 +277,9 @@ const emptyMaterialForm: SheetMaterialFormData = {
 export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {}) {
   const { data: sheets = [], isLoading } = useTechnicalSheets();
   const { data: stock = [] } = useReadyStock();
+  // Map sheet_id -> array de variantes de material ativas. Usado pra exibir
+  // badge na lista de fichas indicando que tem opções de material extra.
+  const { data: materialVariantsBySheet } = useAllActiveReferenceMaterialVariants();
   const addSheet = useAddSheet();
   const deleteSheet = useDeleteSheet();
   const updateSheet = useUpdateSheet();
@@ -638,9 +642,11 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                           </div>
                         </div>
                         {sheet.code && <span className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded text-muted-foreground shrink-0">{sheet.code}</span>}
-                        {sheet.reference_color_variants && sheet.reference_color_variants.length > 0 && (
-                          <Badge variant="secondary" className="px-2 py-0 h-5 text-[10px] bg-pink-100 text-pink-700 border-pink-200 gap-1 shrink-0">
-                            <Palette className="h-3 w-3" /> {sheet.reference_color_variants.length} Cores
+                        {/* Badge "tem variante de material" — sinaliza que essa ref pode ser
+                            cadastrada no PV em N versões de material principal (Napa, Santorini,…) */}
+                        {(materialVariantsBySheet?.get(sheet.id)?.length ?? 0) > 0 && (
+                          <Badge variant="secondary" className="px-2 py-0 h-5 text-[10px] bg-amber-100 text-amber-800 border-amber-300 gap-1 shrink-0" title={materialVariantsBySheet!.get(sheet.id)!.map(v => v.material_name).join(', ')}>
+                            <Package className="h-3 w-3" /> {materialVariantsBySheet!.get(sheet.id)!.length} Materiais
                           </Badge>
                         )}
                         {sheet.shoe_category && <Badge variant="outline" className="text-[10px] shrink-0">{sheet.shoe_category}</Badge>}
@@ -731,9 +737,9 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                         <div className="flex flex-col">
                           <span className="font-semibold text-sm flex items-center gap-1.5">
                             {sheet.name}
-                            {sheet.reference_color_variants && sheet.reference_color_variants.length > 0 && (
-                              <Badge variant="secondary" className="px-1.5 py-0 h-4 text-[9px] bg-pink-100 text-pink-700 border-pink-200">
-                                <Palette className="h-2.5 w-2.5 mr-0.5" /> {sheet.reference_color_variants.length} Cores
+                            {(materialVariantsBySheet?.get(sheet.id)?.length ?? 0) > 0 && (
+                              <Badge variant="secondary" className="px-1.5 py-0 h-4 text-[9px] bg-amber-100 text-amber-800 border-amber-300" title={materialVariantsBySheet!.get(sheet.id)!.map(v => v.material_name).join(', ')}>
+                                <Package className="h-2.5 w-2.5 mr-0.5" /> {materialVariantsBySheet!.get(sheet.id)!.length} Materiais
                               </Badge>
                             )}
                           </span>
@@ -2770,35 +2776,25 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
           <CostsTab sheetId={sheet.id} form={form} groups={groups || []} />
         </TabsContent>
 
-         {/* TAB: Variantes (Cores e Materiais) */}
+         {/* TAB: Variantes — apenas MATERIAL (cor é definida no PV)
+              Conforme requisito: a mesma referência pode ter até 5 opções de
+              material; cada material+ref tem SKU próprio; no PV aparece
+              UMA referência agrupando cores de TODOS os materiais cadastrados. */}
          <TabsContent value="variants" className="mt-4 space-y-6">
-           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-             <Card>
-               <CardHeader className="pb-3">
-                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                   <Palette className="h-4 w-4 text-primary" /> Variações de Cor
-                 </CardTitle>
-               </CardHeader>
-               <CardContent>
-                 <ColorVariantsTab 
-                   sheetId={sheet.id} 
-                   sheetCode={sheet.code} 
-                   sheetImageUrl={sheet.image_url} 
-                 />
-               </CardContent>
-             </Card>
- 
-             <Card>
-               <CardHeader className="pb-3">
-                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                   <Package className="h-4 w-4 text-primary" /> Variações de Material
-                 </CardTitle>
-               </CardHeader>
-               <CardContent>
-                 <MaterialVariantsTab sheetId={sheet.id} sheetCode={sheet.code} />
-               </CardContent>
-             </Card>
-           </div>
+           <Card>
+             <CardHeader className="pb-3">
+               <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                 <Package className="h-4 w-4 text-primary" /> Variações de Material
+               </CardTitle>
+               <p className="text-xs text-muted-foreground mt-1">
+                 Cadastre aqui até 5 opções de <strong>material principal</strong> (ex.: Napa, Santorini, Metálica).
+                 Cada uma tem SKU próprio. As <strong>cores</strong> são definidas no pedido de venda.
+               </p>
+             </CardHeader>
+             <CardContent>
+               <MaterialVariantsTab sheetId={sheet.id} sheetCode={sheet.code} />
+             </CardContent>
+           </Card>
          </TabsContent>
  
          {/* TAB: Fotos & Histórico */}

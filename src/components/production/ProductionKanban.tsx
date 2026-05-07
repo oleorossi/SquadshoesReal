@@ -96,22 +96,24 @@ interface KanbanOrder {
   bottleneck?: BottleneckInfo | null;
 }
 
-// Maps legacy DB sector names (pre-2026-05-06 rename) to canonical display keys.
-// Needed because production_orders.current_sector may still hold old names for
-// orders that started before the sector rename migration (Grupo 13).
+// Maps legacy DB sector names (pre-2026-05-06 rename + pre-PR-2 Costura) to
+// canonical display keys. production_orders.current_sector pode ter valores
+// antigos pra OPs criadas antes das migrações de rename.
 const KANBAN_SECTOR_LEGACY: Record<string, string> = {
   // canonical underscore DB enum values → display names
   'corte_palmilha':  'Corte Palmilha',
   'corte_forracao':  'Corte Forração',
+  'costura':         'Costura',
   // pre-rename aliases
-  'corte':       'Corte Palmilha',
-  'palmilha':    'Corte Palmilha',
-  'costura':     'Corte Forração',
-  'forração':    'Corte Forração',
-  'forracao':    'Corte Forração',
-  'aviamento':   'Mesa',
-  'expedição':   'Expedição',
-  'expedicao':   'Expedição',
+  'corte':           'Corte Palmilha',
+  'palmilha':        'Corte Palmilha',
+  'forração':        'Corte Forração',
+  'forracao':        'Corte Forração',
+  // mesa → aviamento (label novo, enum DB ainda usa 'mesa')
+  'mesa':            'Aviamento',
+  'aviamento':       'Aviamento',
+  'expedição':       'Expedição',
+  'expedicao':       'Expedição',
 };
 function normalizeKanbanSector(s: string): string {
   const lower = s.toLowerCase().trim();
@@ -124,7 +126,8 @@ const KANBAN_SECTORS = [
   { key: 'Pendente',       label: 'Pendente',       color: 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-400', icon: Clock      },
   { key: 'Corte Palmilha', label: 'Corte Palmilha', color: 'bg-blue-500/20 text-blue-700 dark:text-blue-400',       icon: Scissors   },
   { key: 'Corte Forração', label: 'Corte Forração', color: 'bg-purple-500/20 text-purple-700 dark:text-purple-400', icon: Layers     },
-  { key: 'Mesa',           label: 'Mesa',           color: 'bg-rose-500/20 text-rose-700 dark:text-rose-400',       icon: Hand       },
+  { key: 'Costura',        label: 'Costura',        color: 'bg-fuchsia-500/20 text-fuchsia-700 dark:text-fuchsia-400', icon: Layers   },
+  { key: 'Aviamento',      label: 'Aviamento',      color: 'bg-rose-500/20 text-rose-700 dark:text-rose-400',       icon: Hand       },
   { key: 'Silk',           label: 'Silk',           color: 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-400',       icon: Printer    },
   { key: 'Colagem',        label: 'Colagem',        color: 'bg-orange-500/20 text-orange-700 dark:text-orange-400', icon: Flame      },
   { key: 'Montagem',       label: 'Montagem',       color: 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400', icon: Hammer  },

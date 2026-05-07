@@ -68,7 +68,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   const setFichas = (v: number) => onUpdate(index, 'fichas', v);
 
   const [createStrapDialog, setCreateStrapDialog] = useState(false);
-  const [editColorsDialog, setEditColorsDialog] = useState(false);
+  // editColorsDialog removido — variante de cor não é mais editada no PV.
   const [pendingStrapGroupId, setPendingStrapGroupId] = useState('');
   const [pendingStrapGroupName, setPendingStrapGroupName] = useState('');
   const [pendingStrapColor, setPendingStrapColor] = useState('');
@@ -184,20 +184,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     return parseSizeRange(selectedRef?.sizes, selectedRef?.shoe_category).map(String);
   }, [soleSizeRange, soleConjugations, selectedRef?.sizes, selectedRef?.shoe_category]);
 
-  const { data: colorVariants = [] } = useQuery({
-    queryKey: ['color_variants', item.reference_id],
-    enabled: !!item.reference_id,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('reference_color_variants')
-        .select('*')
-        .eq('reference_id', item.reference_id!)
-        .eq('active', true)
-        .order('color');
-      if (error) throw error;
-      return data;
-    },
-  });
+  // colorVariants removido — variante de cor sai do escopo da ficha técnica.
+  // As cores disponíveis vêm exclusivamente das variantes de material
+  // (reference_material_variants.available_colors[]) ou do BOM via grupos.
 
   const { data: materialVariants = [] } = useReferenceMaterialVariants(item.reference_id || null);
   const activeMaterialVariants = materialVariants.filter(v => v.active);
@@ -358,17 +347,12 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       });
     }
 
-    // Always include color variants from the reference
-    colorVariants.forEach((variant: any) => {
-      if (variant.color?.trim()) colorSet.add(variant.color.trim());
-    });
-
     // Fallback: reference-level colors field
     if (colorSet.size === 0 && selectedRef?.colors) {
       selectedRef.colors.split(',').forEach(color => colorSet.add(color.trim()));
     }
     return uniqueSortedColors(Array.from(colorSet));
-  }, [item.material_variant_id, activeMaterialVariants, colorVariants, sheetSpecs, selectedRef?.colors, selectedRef?.has_straps, selectedRef?.strap_colors, refMaterials, productGroups, allProducts, groupSupplierMaterials, allGroupColors]);
+  }, [item.material_variant_id, activeMaterialVariants, sheetSpecs, selectedRef?.colors, selectedRef?.has_straps, selectedRef?.strap_colors, refMaterials, productGroups, allProducts, groupSupplierMaterials, allGroupColors]);
 
   useEffect(() => {
     const currentStraps = Array.isArray(item.strap_colors) ? (item.strap_colors as any[]) : [];
@@ -473,26 +457,16 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       {/* Item header bar */}
       <div className="flex items-center justify-between bg-muted/20 px-4 py-2 border-b">
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
-            onClick={() => selectedRef && setEditColorsDialog(true)}
-            title={selectedRef ? 'Clique para editar variantes de cor' : ''}
-          >
+          <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded border bg-muted overflow-hidden flex-shrink-0">
               {(() => {
-                // Priority: color variant image → ref images[] → ref image_url → any variant with image
-                const variantImg = item.color && colorVariants.length > 0
-                  ? colorVariants.find((v: any) => v.color?.toLowerCase() === item.color?.toLowerCase() && v.image_url)?.image_url
-                  : null;
+                // Priority: ref images[] → ref image_url
+                // (color variant images removidas — variante de cor não existe mais)
                 const refImages = (selectedRef as any)?.images;
                 const refFirstImage = Array.isArray(refImages) && refImages.length > 0
                   ? (typeof refImages[0] === 'string' ? refImages[0] : refImages[0]?.url)
                   : null;
-                const anyVariantImg = !variantImg && colorVariants.length > 0
-                  ? colorVariants.find((v: any) => v.image_url)?.image_url
-                  : null;
-                const imgSrc = variantImg || refFirstImage || selectedRef?.image_url || anyVariantImg;
+                const imgSrc = refFirstImage || selectedRef?.image_url;
                 return imgSrc ? (
                   <img src={imgSrc} alt={selectedRef?.name} className="h-full w-full object-cover" />
                 ) : (
@@ -509,8 +483,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               </div>
               <span className="text-xs font-medium text-foreground truncate max-w-[200px]">{selectedRef?.name || 'Selecione uma referência'}</span>
             </div>
-            {selectedRef && <Palette className="h-3.5 w-3.5 text-muted-foreground ml-1" />}
-          </button>
+          </div>
           {item.color && (
             <>
               <div className="h-8 w-px bg-border mx-1" />
@@ -860,18 +833,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         }}
       />
 
-      {selectedRef && (
-        <EditColorVariantsDialog
-          open={editColorsDialog}
-          onOpenChange={setEditColorsDialog}
-          referenceId={item.reference_id!}
-          referenceName={`${selectedRef.code} - ${selectedRef.name}`}
-          availableColors={availableColors}
-          onColorsChanged={() => {
-            qc.invalidateQueries({ queryKey: ['color_variants', item.reference_id] });
-          }}
-        />
-      )}
+      {/* EditColorVariantsDialog removido — variante de cor saiu do escopo. */}
     </div>
   );
 }
@@ -1039,172 +1001,5 @@ function ColorPickerDropdown({ value, colors, onChange, disabled, onAddNew }: { 
         </div>
       </PopoverContent>
     </Popover>
-  );
-}
-
-function EditColorVariantsDialog({
-  open,
-  onOpenChange,
-  referenceId,
-  referenceName,
-  availableColors,
-  onColorsChanged,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  referenceId: string;
-  referenceName: string;
-  availableColors: string[];
-  onColorsChanged: () => void;
-}) {
-  const [newColor, setNewColor] = useState('');
-  const [search, setSearch] = useState('');
-
-  const { data: variants = [], refetch } = useQuery({
-    queryKey: ['color_variants_edit', referenceId],
-    enabled: open && !!referenceId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('reference_color_variants')
-        .select('*')
-        .eq('reference_id', referenceId)
-        .order('color');
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  const addMut = useMutation({
-    mutationFn: async (color: string) => {
-      const { error } = await supabase
-        .from('reference_color_variants')
-        .insert({ reference_id: referenceId, color });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      refetch();
-      onColorsChanged();
-      toast.success('Cor adicionada');
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const deleteMut = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('reference_color_variants')
-        .delete()
-        .eq('id', id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      refetch();
-      onColorsChanged();
-      toast.success('Cor removida');
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const handleAdd = () => {
-    const c = newColor.trim();
-    if (!c) return;
-    if (variants.some((v: any) => v.color.toLowerCase() === c.toLowerCase())) {
-      toast.error('Cor já existe');
-      return;
-    }
-    addMut.mutate(c);
-    setNewColor('');
-  };
-
-  const existingSet = new Set(variants.map((v: any) => v.color.toLowerCase()));
-  const normalize = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  const suggestedColors = availableColors.filter(c => !existingSet.has(c.toLowerCase()));
-  const filteredSuggested = search
-    ? suggestedColors.filter(c => normalize(c).includes(normalize(search)))
-    : suggestedColors;
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Palette className="h-4 w-4" />
-            Variantes de Cor — {referenceName}
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-4">
-          {/* Current variants */}
-          <div>
-            <p className="text-xs font-bold text-muted-foreground uppercase mb-2">Cores cadastradas ({variants.length})</p>
-            {variants.length === 0 ? (
-              <p className="text-xs text-muted-foreground py-2">Nenhuma variante cadastrada.</p>
-            ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {variants.map((v: any) => (
-                  <Badge key={v.id} variant="secondary" className="gap-1 pr-1">
-                    {v.color}
-                    <button
-                      onClick={() => deleteMut.mutate(v.id)}
-                      className="ml-1 rounded-full hover:bg-destructive/20 p-0.5"
-                      title="Remover cor"
-                    >
-                      <X className="h-3 w-3 text-destructive" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Add manually */}
-          <div>
-            <p className="text-xs font-bold text-muted-foreground uppercase mb-2">Adicionar nova cor</p>
-            <div className="flex gap-2">
-              <Input
-                value={newColor}
-                onChange={e => setNewColor(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAdd(); } }}
-                placeholder="Nome da cor..."
-                className="h-8 text-xs"
-              />
-              <Button size="sm" className="h-8" onClick={handleAdd} disabled={!newColor.trim()}>
-                <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar
-              </Button>
-            </div>
-          </div>
-
-          {/* Suggested from BOM */}
-          {suggestedColors.length > 0 && (
-            <div>
-              <p className="text-xs font-bold text-muted-foreground uppercase mb-2">Cores disponíveis no BOM</p>
-              <div className="flex items-center gap-2 mb-2">
-                <Search className="h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  placeholder="Buscar..."
-                  className="h-7 text-xs"
-                />
-              </div>
-              <div className="max-h-[200px] overflow-y-auto flex flex-wrap gap-1.5">
-                {filteredSuggested.map(c => (
-                  <button
-                    key={c}
-                    onClick={() => addMut.mutate(c)}
-                    className="text-xs px-2 py-1 rounded-md border hover:bg-accent hover:border-primary/40 transition-colors"
-                  >
-                    <Plus className="h-3 w-3 inline mr-1" />{c}
-                  </button>
-                ))}
-                {filteredSuggested.length === 0 && (
-                  <p className="text-xs text-muted-foreground py-1">Nenhuma cor pendente.</p>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
   );
 }

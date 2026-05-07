@@ -49,11 +49,21 @@ interface Props {
   date?: string;
 }
 
+// Setores canônicos da produção (PR Costura / PR 3 paralelismo).
+// IMPORTANTE: o DB grava `Mesa` em order_stages.stage_name (legacy), mas a UI
+// sempre mostra "Aviamento". A normalização stage→Aviamento acontece no
+// `normalizeStageName()` abaixo.
 const STAGE_ORDER = [
   'Corte Palmilha', 'Corte Forração', 'Costura',
-  'Mesa', 'Aviamento', // ambos os labels (DB usa Mesa, UI mostra Aviamento)
+  'Aviamento',
   'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição',
 ];
+
+// Mapa stage_name (DB) → label exibido. Casos onde DB e UI divergem.
+function normalizeStageName(name: string): string {
+  if (name === 'Mesa') return 'Aviamento';
+  return name;
+}
 
 const STATUS_COLOR: Record<string, string> = {
   concluido: 'bg-emerald-100 text-emerald-800 border-emerald-300',
@@ -96,10 +106,11 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
   const margin = totalRevenue - totalCost;
   const marginPct = totalRevenue > 0 ? margin / totalRevenue : 0;
 
-  // Setores únicos presentes em qualquer OP do PV
+  // Setores únicos presentes em qualquer OP do PV.
+  // Normaliza nomes legacy (Mesa → Aviamento) pra evitar coluna duplicada.
   const sectorsPresent = new Set<string>();
   for (const o of orders) {
-    for (const s of (o.stages || [])) sectorsPresent.add(s.stage_name);
+    for (const s of (o.stages || [])) sectorsPresent.add(normalizeStageName(s.stage_name));
   }
   const sectorsOrdered = STAGE_ORDER.filter(s => sectorsPresent.has(s));
 
@@ -181,7 +192,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
               <th className="border border-slate-300 py-1 px-1 text-right text-[10px] font-bold" style={{ width: 44 }}>Pares</th>
               {sectorsOrdered.map(s => (
                 <th key={s} className="border border-slate-300 py-1 text-[8px] font-bold" style={{ width: 36 }}>
-                  {s.replace('Corte ', 'C.').replace('Aviamento','Aviam.').replace('Acabamento','Acab.').replace('Mesa','Aviam.').replace('Expedição','Exped.')}
+                  {s.replace('Corte ', 'C.').replace('Aviamento','Aviam.').replace('Acabamento','Acab.').replace('Expedição','Exped.')}
                 </th>
               ))}
             </tr>

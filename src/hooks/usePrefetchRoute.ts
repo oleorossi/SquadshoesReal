@@ -17,7 +17,8 @@ const routeImports: Record<string, () => Promise<any>> = {
   '/fichas-tecnicas': () => import('@/pages/TechnicalSheets'),
   '/consumo-base': () => import('@/pages/BaseConsumption'),
   '/artisanal-recipes': () => import('@/pages/ArtisanalRecipes'),
-  '/imagens-cores': () => import('@/pages/ColorImagesPage'),
+  // /imagens-cores removido — redireciona pra /fichas-tecnicas
+  '/imagens-cores': () => import('@/pages/TechnicalSheets'),
   '/suppliers': () => import('@/pages/Suppliers'),
   '/comercial': () => import('@/pages/ComercialDashboard'),
   '/sales': () => import('@/pages/SaleOrders'),

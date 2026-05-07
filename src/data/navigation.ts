@@ -48,7 +48,8 @@ export const menuGroups = [
       { name: "Solados",          icon: Footprints,   path: "/solados" },
       { name: "Consumo Base",     icon: BookOpen,     path: "/consumo-base" },
       { name: "Receitas",         icon: Sparkles,     path: "/artisanal-recipes" },
-      { name: "Cores & Imagens",  icon: Palette,      path: "/imagens-cores" },
+      // Cores & Imagens removido — duplicava a aba "Fotos & Histórico" da
+      // ficha técnica. Use /fichas-tecnicas → aba "Fotos & Histórico".
     ],
   },
   {

@@ -23,7 +23,8 @@ import Auth from "./pages/Auth";
 // Lazy-loaded pages
 const Index = lazy(() => import("./pages/Index"));
 const References = lazy(() => import("./pages/References"));
-const ColorImagesPage = lazy(() => import("./pages/ColorImagesPage"));
+// ColorImagesPage removido — duplicava a aba "Fotos & Histórico" da ficha técnica.
+// Rota /imagens-cores agora redireciona pra /fichas-tecnicas.
 const InputCostsPage = lazy(() => import("./pages/InputCostsPage"));
  const TechnicalSheets = lazy(() => import("./pages/TechnicalSheets"));
 const ProductDetail = lazy(() => import("./pages/ProductDetail"));
@@ -447,8 +448,9 @@ const router = createBrowserRouter([
         element: <References />,
       },
       {
+        // Legacy: /imagens-cores → /fichas-tecnicas (aba Fotos & Histórico)
         path: "imagens-cores",
-        element: <ColorImagesPage />,
+        element: <Navigate to="/fichas-tecnicas" replace />,
       },
        {
          path: "fichas-tecnicas",
