@@ -2,6 +2,33 @@ import { ConversaoUnidadeError } from './conversao';
 import { UnidadeMedida } from '@/types/unidades';
 import { resolveConversionFactors } from '@/lib/unitConversion';
 
+// Adiciona N dias úteis (seg-sex) à data. Helper sync para uso em planejamento
+// — feriados não são considerados aqui (a data autoritativa vem do SQL view
+// purchase_projection_timeline que usa add_business_days() respeitando feriados).
+// Esta função fornece estimativa visual rápida, não data fiscal.
+function addBusinessDays(start: Date, days: number): Date {
+  const result = new Date(start);
+  let added = 0;
+  const step = days >= 0 ? 1 : -1;
+  const target = Math.abs(days);
+  while (added < target) {
+    result.setDate(result.getDate() + step);
+    const dow = result.getDay(); // 0=Sun, 6=Sat
+    if (dow !== 0 && dow !== 6) added++;
+  }
+  return result;
+}
+
+// Formata uma Date como YYYY-MM-DD usando timezone LOCAL.
+// Evita o bug de toISOString() que converte para UTC e desloca a data
+// em -3h no fuso BRT (Sex 22:00 BRT vira Sab 01:00 UTC = "Sábado").
+function toLocalDateString(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 export interface DadosMaterialPlanejamento {
   materialId: string;
   sku: string;
@@ -60,8 +87,11 @@ export const planejamentoService = {
     const deficitEstoque = Math.max(0, quantidadeNecessariaConverted - estoqueConverted);
     const quantidadeAComprar = Math.ceil(deficitEstoque * 1.1);
     const custoTotal = quantidadeAComprar * dados.precoCustoUnitario;
-    const dataVencimento = new Date();
-    dataVencimento.setDate(dataVencimento.getDate() + dados.tempoReposicao);
+    // tempoReposicao é em dias úteis por convenção do projeto (alinhado com
+    // o SQL view purchase_projection_timeline que usa add_business_days()).
+    // A versão anterior usava setDate() simples = dias corridos, atrasando
+    // a estimativa em ~30% (sáb/dom contam como reposição).
+    const dataVencimento = addBusinessDays(new Date(), dados.tempoReposicao);
     const percentualDisponivel = (estoqueConverted > 0 && quantidadeNecessariaConverted > 0) ? (estoqueConverted / quantidadeNecessariaConverted) * 100 : 0;
     let categoria: 'ok' | 'baixo' | 'critico' = 'ok';
     if (percentualDisponivel < 30) categoria = 'critico';
@@ -83,7 +113,7 @@ export const planejamentoService = {
       precoCustoUnitario: dados.precoCustoUnitario,
       custoTotal: Math.round(custoTotal * 100) / 100,
       tempoReposicao: dados.tempoReposicao,
-      dataVencimento: dataVencimento.toISOString().split('T')[0],
+      dataVencimento: toLocalDateString(dataVencimento),
       categoria,
     };
   },
