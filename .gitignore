@@ -27,6 +27,12 @@ public/version.json
 # Supabase CLI temp files
 supabase/.temp/
 
+# Claude Code runtime files (locks, settings, scheduled tasks)
+.claude/scheduled_tasks.lock
+.claude/settings.local.json
+.claude/.DS_Store
+.claude/worktrees/
+
 # Environment files (added during unification)
 .env
 .env.local
