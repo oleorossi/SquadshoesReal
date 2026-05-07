@@ -84,8 +84,11 @@ SELECT
   tif.start_date AS period_start,
   tif.end_date   AS period_end,
   CASE
-    WHEN tif.start_date IS NOT NULL AND tif.end_date IS NOT NULL
-    THEN (tif.end_date - tif.start_date + 1)
+    WHEN tif.start_date IS NOT NULL
+     AND tif.end_date IS NOT NULL
+     AND NULLIF(tif.start_date::text, '') IS NOT NULL
+     AND NULLIF(tif.end_date::text, '')   IS NOT NULL
+    THEN (tif.end_date::date - tif.start_date::date + 1)
     ELSE NULL
   END AS period_days,
   tif.inserted_count,
