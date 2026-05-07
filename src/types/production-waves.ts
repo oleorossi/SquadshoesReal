@@ -1,31 +1,39 @@
+/**
+ * Valores do enum `production_stage_enum` no banco.
+ *
+ * Nota importante sobre Aviamento ↔ Mesa:
+ *   O DB usa o valor `mesa` para o setor que a UI chama de "Aviamento".
+ *   Não há valor `aviamento` no enum — "Aviamento" é APENAS um label de
+ *   exibição. Ao inserir/atualizar `production_wave_stages.stage`, sempre
+ *   use `'mesa'` (não `'aviamento'`).
+ */
 export type ProductionStage =
-  | 'corte_palmilha' | 'corte_forracao' | 'aviamento' | 'silk' | 'colagem'
+  | 'corte_palmilha' | 'corte_forracao' | 'mesa' | 'silk' | 'colagem'
   | 'montagem' | 'solagem' | 'acabamento' | 'expedicao'
   // Legacy values kept for backward compatibility with existing DB rows
-  | 'corte' | 'palmilha' | 'costura' | 'mesa' | 'solagem';
+  | 'corte' | 'palmilha' | 'costura';
 export type WaveStatus = 'draft' | 'planning' | 'running' | 'finished' | 'cancelled';
 export type StageStatus = 'pending' | 'in_progress' | 'completed' | 'blocked';
 
 export const STAGE_ORDER: ProductionStage[] = [
-  'corte_palmilha', 'corte_forracao', 'aviamento', 'silk', 'colagem',
+  'corte_palmilha', 'corte_forracao', 'mesa', 'silk', 'colagem',
   'montagem', 'solagem', 'acabamento', 'expedicao',
 ];
 
 export const STAGE_LABEL: Record<string, string> = {
-  corte_palmilha: 'Corte',
-  corte_forracao: 'Forração',
-  aviamento: 'Aviamento',
-  mesa: 'Silk',
+  corte_palmilha: 'Corte Palmilha',
+  corte_forracao: 'Corte Forração',
+  mesa: 'Aviamento',
   silk: 'Silk',
   colagem: 'Colagem',
   montagem: 'Montagem',
   solagem: 'Solagem',
   acabamento: 'Acabamento',
   expedicao: 'Expedição',
-  // Legacy labels
-  corte: 'Corte',
-  palmilha: 'Corte',
-  costura: 'Forração',
+  // Legacy labels (DB rows antigas)
+  corte: 'Corte Palmilha',
+  palmilha: 'Corte Palmilha',
+  costura: 'Corte Forração',
 };
 
 /**
@@ -33,10 +41,9 @@ export const STAGE_LABEL: Record<string, string> = {
  * Used as single source of truth across the frontend.
  */
 export const SECTOR_ENUM_TO_DISPLAY: Record<string, string> = {
-  corte_palmilha: 'Corte',
-  corte_forracao: 'Forração',
-  aviamento: 'Aviamento',
-  mesa: 'Silk',
+  corte_palmilha: 'Corte Palmilha',
+  corte_forracao: 'Corte Forração',
+  mesa: 'Aviamento',
   silk: 'Silk',
   colagem: 'Colagem',
   montagem: 'Montagem',
@@ -44,9 +51,9 @@ export const SECTOR_ENUM_TO_DISPLAY: Record<string, string> = {
   acabamento: 'Acabamento',
   expedicao: 'Expedição',
   // Legacy
-  corte: 'Corte',
-  palmilha: 'Corte',
-  costura: 'Forração',
+  corte: 'Corte Palmilha',
+  palmilha: 'Corte Palmilha',
+  costura: 'Corte Forração',
 };
 
 /**
@@ -57,7 +64,8 @@ export const DISPLAY_TO_SECTOR_ENUM: Record<string, ProductionStage> = {
   'corte palmilha': 'corte_palmilha',
   'corte forração': 'corte_forracao',
   'corte forracao': 'corte_forracao',
-  'aviamento': 'aviamento',
+  'aviamento': 'mesa',     // "Aviamento" é label; enum no DB é mesa
+  'mesa': 'mesa',
   'silk': 'silk',
   'colagem': 'colagem',
   'montagem': 'montagem',
@@ -69,7 +77,6 @@ export const DISPLAY_TO_SECTOR_ENUM: Record<string, ProductionStage> = {
   'corte': 'corte_palmilha',
   'costura': 'corte_forracao',
   'palmilha': 'corte_palmilha',
-  'mesa': 'silk',
   'forração': 'corte_forracao',
   'forracao': 'corte_forracao',
   'forro': 'corte_forracao',
@@ -94,6 +101,7 @@ export function normalizeStageEnum(stage: string): ProductionStage {
     corte: 'corte_palmilha',
     palmilha: 'corte_palmilha',
     costura: 'corte_forracao',
+    aviamento: 'mesa', // 'aviamento' é label de UI, enum no DB é mesa
   };
   return LEGACY_MAP[stage] ?? (stage as ProductionStage);
 }

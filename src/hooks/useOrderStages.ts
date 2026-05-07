@@ -3,7 +3,14 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useEffect } from 'react';
 
-// Default fallback stages when no BOM operations exist
+// Default fallback stages when no BOM operations exist.
+//
+// IMPORTANTE: estes `name`s são gravados em `order_stages.stage_name` como
+// TEXT. Mantemos "Mesa" aqui (não "Aviamento") porque:
+//   • código antigo do banco e queries comparam `stage_name === 'Mesa'`;
+//   • mudar criaria divergência com rows existentes.
+// O label visível pro usuário é renderizado via STAGE_LABEL/SECTOR_ENUM_TO_DISPLAY
+// (ver src/types/production-waves.ts) que mapeia "Mesa" → "Aviamento".
 export const PRODUCTION_STAGES = [
   { name: 'Corte Palmilha', order: 1 },
   { name: 'Corte Forração', order: 2 },

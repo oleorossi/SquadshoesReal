@@ -39,8 +39,8 @@ const SECTORS_CABEDAL              = ['Corte Palmilha', 'Colagem', 'Montagem', '
 const SECTORS_CABEDAL_SILK         = ['Corte Palmilha', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
 const SECTORS_CABEDAL_FORRADO      = ['Corte Palmilha', 'Corte Forração', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
 const SECTORS_CABEDAL_FORRADO_SILK = ['Corte Palmilha', 'Corte Forração', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
-const SECTORS_TIRAS                = ['Corte Palmilha', 'Corte Forração', 'Mesa', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
-const SECTORS_TIRAS_SILK           = ['Corte Palmilha', 'Corte Forração', 'Mesa', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
+const SECTORS_TIRAS                = ['Corte Palmilha', 'Corte Forração', 'Aviamento', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
+const SECTORS_TIRAS_SILK           = ['Corte Palmilha', 'Corte Forração', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
 
 function sectorsForModel(model: ProductionModel, hasSilk: boolean): string[] {
   if (model === 'cabedal')        return hasSilk ? SECTORS_CABEDAL_SILK         : SECTORS_CABEDAL;
@@ -65,14 +65,16 @@ function isCanonicalRouting(current: string[] | null | undefined): boolean {
     SECTORS_CABEDAL, SECTORS_CABEDAL_SILK,
     SECTORS_CABEDAL_FORRADO, SECTORS_CABEDAL_FORRADO_SILK,
     SECTORS_TIRAS, SECTORS_TIRAS_SILK,
-    // Legacy lists (pre-2026-05-06 rename) — treated as non-customised
+    // Legacy lists (pre-2026-05-06 rename + pre-2026-05-20 Mesa→Aviamento)
+    // — treated as non-customised
     ['Corte', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
     ['Corte', 'Costura', 'Forração', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
     ['Corte', 'Forração', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
     ['Corte', 'Forração', 'Aviamento', 'Mesa', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
-    // Old tiras with redundant Aviamento entry (should have been Mesa only)
+    // Tiras lists pré-rename (Mesa em vez de Aviamento)
+    ['Corte Palmilha', 'Corte Forração', 'Mesa', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
+    ['Corte Palmilha', 'Corte Forração', 'Mesa', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
     ['Corte Palmilha', 'Corte Forração', 'Aviamento', 'Mesa', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
-    // DB column default that may exist on sheets created before ConstructionConfigPanel existed
     ['Corte', 'Forração', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
   ];
   return canonicals.some(d => arraysEqual(current, d));
@@ -354,15 +356,15 @@ export function ConstructionConfigPanel({
           onClick={() => selectModel('tiras')}
           icon={<span className="text-sm">🪢</span>}
           title="Tiras / Sandália"
-          subtitle="Sem corte de cabedal. Palmilha e forração cortadas internamente. Tiras/aviamentos montados na Mesa. Sandália de tiras, rasteirinha, mule, tamanco."
+          subtitle="Sem corte de cabedal. Palmilha e forração cortadas internamente. Tiras/aviamentos montados no Aviamento. Sandália de tiras, rasteirinha, mule, tamanco."
           routing={routingLabel('tiras', hasSilk, requires_sewing)}
         >
           <div className="space-y-2">
             <div className="flex items-center gap-3 rounded-lg border border-dashed bg-muted/20 px-3 py-2.5">
               <div className="flex-1 min-w-0">
-                <div className="text-xs font-medium">Capacidade diária na Mesa</div>
+                <div className="text-xs font-medium">Capacidade diária no Aviamento</div>
                 <div className="text-[10px] text-muted-foreground mt-0.5">
-                  Pares processados na Mesa por dia (montagem de tiras/aviamentos).
+                  Pares processados no Aviamento por dia (montagem de tiras/aviamentos).
                 </div>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">

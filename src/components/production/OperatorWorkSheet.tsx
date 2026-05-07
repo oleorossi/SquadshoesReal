@@ -70,20 +70,22 @@ const OperatorWorkSheet = ({
 
   const isMontagem        = sector === 'Montagem';
   const isSolagem         = sector === 'Solagem';
-  const isCortePalmilha   = sector === 'Corte Palmilha';
-  const isCorteForração   = sector === 'Corte Forração';
+  const isCortePalmilha   = sector === 'Corte Palmilha' || sector === 'Corte';
+  const isCorteForração   = sector === 'Corte Forração' || sector === 'Forração';
   const isAcabamento      = sector === 'Acabamento';
   const isSilk            = sector === 'Silk';
   const isColagem         = sector === 'Colagem';
-  const isMesa            = sector === 'Mesa';
+  // "Mesa" e "Aviamento" representam o MESMO setor (DB enum=mesa, label novo=Aviamento)
+  const isAviamento       = sector === 'Aviamento' || sector === 'Mesa';
   const isExpedicao       = sector === 'Expedição';
   // Palmilha pronta na cor: show notice instead of work instructions for cut sectors
   const isInsoleSkippedSector = insoleReadyMade && (isCortePalmilha || isCorteForração);
   const today = new Date().toLocaleDateString('pt-BR');
-  // Effective daily capacity for this sector: prefer explicit sectorCapacityPerDay, Mesa uses mesaCapacity as fallback
+  // Effective daily capacity for this sector: prefer explicit sectorCapacityPerDay,
+  // Aviamento (DB column ainda chama mesa_daily_capacity) usa mesaCapacity como fallback.
   const effectiveCapacity = sectorCapacityPerDay > 0
     ? sectorCapacityPerDay
-    : (isMesa && mesaCapacity && mesaCapacity > 0 ? mesaCapacity : 0);
+    : (isAviamento && mesaCapacity && mesaCapacity > 0 ? mesaCapacity : 0);
   const estimatedDays = effectiveCapacity > 0 ? Math.ceil(totalPairs / effectiveCapacity) : 0;
 
   const resolvedInsoleColor = insoleReadyMade
@@ -395,7 +397,7 @@ const OperatorWorkSheet = ({
 
 
         {/* MESA: tiras assembly + artisanal upper work */}
-        {isMesa && (
+        {isAviamento && (
           <>
             <div className="border border-purple-200 rounded p-2.5 bg-purple-50 space-y-1">
               <p className="text-[9px] font-black uppercase tracking-wide text-purple-700 mb-1.5">

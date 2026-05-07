@@ -114,7 +114,7 @@ export default function Corte() {
 
       
       if (successCount > 0) {
-        toast.success(`Corte finalizado para ${successCount} OP(s)!`);
+        toast.success(`Corte Palmilha finalizado para ${successCount} OP(s)!`);
         setSelectedOrders(new Set());
         queryClient.invalidateQueries({ queryKey: ['order_stages'] });
         queryClient.invalidateQueries({ queryKey: ['orders'] });
@@ -859,7 +859,7 @@ if (totalPairsAll !== palmTotal) {
           <div>
             <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
               <Scissors className="h-6 w-6 text-primary" />
-              Setor de Corte
+              Setor de Corte Palmilha
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
               Demanda de corte por material, cor e numeração
@@ -1280,7 +1280,7 @@ if (totalPairsAll !== palmTotal) {
           <Card>
             <CardContent className="p-4 text-center">
               <p className="text-2xl font-bold text-primary">{cuttingOrders.length}</p>
-              <p className="text-xs text-muted-foreground">OPs p/ Corte</p>
+              <p className="text-xs text-muted-foreground">OPs p/ Corte Palmilha</p>
             </CardContent>
           </Card>
           <Card>

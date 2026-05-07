@@ -45,10 +45,10 @@ export default function Setores() {
              <ClipboardList className="h-4 w-4" /> Todas OPs
            </TabsTrigger>
            <TabsTrigger value="corte" className="gap-1.5">
-             <Scissors className="h-4 w-4" /> Corte
+             <Scissors className="h-4 w-4" /> Corte Palmilha
            </TabsTrigger>
             <TabsTrigger value="forracao" className="gap-1.5">
-              <Cloud className="h-4 w-4" /> Forração
+              <Cloud className="h-4 w-4" /> Corte Forração
             </TabsTrigger>
             <TabsTrigger value="aviamento" className="gap-1.5">
               <Paperclip className="h-4 w-4" /> Aviamento
@@ -84,12 +84,6 @@ export default function Setores() {
             <Corte />
           </Suspense>
         </TabsContent>
-
-          <TabsContent value="forracao">
-            <Suspense fallback={<TabLoader />}>
-              <Forracao />
-            </Suspense>
-          </TabsContent>
 
           <TabsContent value="forracao">
             <Suspense fallback={<TabLoader />}>
