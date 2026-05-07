@@ -18,6 +18,23 @@ export interface TimeImportLog {
   notes: string | null;
   imported_by: string | null;
   created_at: string;
+  // Adicionados em 20260525130000 — vínculo com Supabase Storage do arquivo bruto
+  file_path?: string | null;
+  file_size_bytes?: number | null;
+  mime_type?: string | null;
+}
+
+/**
+ * Gera URL temporária (signed) pra download do arquivo bruto de uma importação.
+ * Validade default 60s — suficiente pra acionar download imediato.
+ */
+export async function getImportFileUrl(filePath: string, expiresInSec = 60): Promise<string> {
+  const { data, error } = await supabase.storage
+    .from('timesheet-imports')
+    .createSignedUrl(filePath, expiresInSec);
+  if (error) throw error;
+  if (!data?.signedUrl) throw new Error('URL não pôde ser gerada');
+  return data.signedUrl;
 }
 
 export function useTimeImportLogs() {
@@ -40,6 +57,22 @@ export function useDeleteTimeImportLog() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
+      // Antes de deletar o log, tenta remover o arquivo bruto do bucket pra
+      // não deixar lixo. Falha silenciosa — log órfão é melhor do que log
+      // inacessível por falha de Storage.
+      const { data: log } = await supabase
+        .from('time_import_logs' as any)
+        .select('file_path')
+        .eq('id', id)
+        .maybeSingle();
+      const filePath = (log as any)?.file_path;
+      if (filePath) {
+        try {
+          await supabase.storage.from('timesheet-imports').remove([filePath]);
+        } catch (err) {
+          console.warn('[useDeleteTimeImportLog] falha ao remover arquivo do bucket:', err);
+        }
+      }
       const { error } = await supabase.from('time_import_logs' as any).delete().eq('id', id);
       if (error) throw error;
     },

@@ -4,10 +4,33 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Loader2, FileSpreadsheet, AlertTriangle, CheckCircle2, XCircle, Trash2, Eye, History, RefreshCw } from 'lucide-react';
-import { useTimeImportLogs, useDeleteTimeImportLog, TimeImportLog } from '@/hooks/useTimeImportLogs';
+import { Loader2, FileSpreadsheet, AlertTriangle, CheckCircle2, XCircle, Eye, History, RefreshCw, Download } from 'lucide-react';
+import { useTimeImportLogs, useDeleteTimeImportLog, getImportFileUrl, TimeImportLog } from '@/hooks/useTimeImportLogs';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { toast } from 'sonner';
+
+const fmtSize = (bytes?: number | null) => {
+  if (!bytes) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+};
+
+const downloadFile = async (filePath: string, fileName: string) => {
+  try {
+    const url = await getImportFileUrl(filePath, 60);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.target = '_blank';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } catch (err: any) {
+    toast.error(`Falha ao baixar arquivo: ${err.message}`);
+  }
+};
 
 const statusBadge = (s: TimeImportLog['status']) => {
   if (s === 'success') return <Badge className="bg-green-500/10 text-green-600 border-green-500/20 gap-1"><CheckCircle2 className="h-3 w-3" /> Sucesso</Badge>;
@@ -137,6 +160,17 @@ export default function ImportHistoryPanel() {
                     <TableCell>{statusBadge(l.status)}</TableCell>
                     <TableCell>
                       <div className="flex gap-1">
+                        {l.file_path && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-primary"
+                            onClick={() => downloadFile(l.file_path!, l.file_name)}
+                            title={`Baixar arquivo bruto (${fmtSize(l.file_size_bytes)})`}
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setSelected(l)} title="Ver detalhes">
                           <Eye className="h-3.5 w-3.5" />
                         </Button>

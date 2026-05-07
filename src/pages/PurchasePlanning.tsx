@@ -1,5 +1,7 @@
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ShoppingCart, BarChart3, Calculator, CalendarDays, AlertTriangle, CalendarClock, Workflow } from 'lucide-react';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { Card, CardContent } from '@/components/ui/card';
+import { HubTabsList } from '@/components/layout/HubTabs';
+import { ShoppingCart, BarChart3, Calculator, CalendarDays, AlertTriangle, CalendarClock, Workflow, Info } from 'lucide-react';
 import { lazy, Suspense } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
@@ -34,31 +36,31 @@ export default function PurchasePlanning() {
       </div>
 
       <Tabs value={activeTab} onValueChange={handleTabChange}>
-        <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
-          <TabsList className="inline-flex w-max h-auto flex-wrap gap-1">
-            <TabsTrigger value="planning" className="gap-1.5 text-xs">
-              <ShoppingCart className="h-3.5 w-3.5" /> Plano de Compras
-            </TabsTrigger>
-            <TabsTrigger value="weekly" className="gap-1.5 text-xs">
-              <CalendarDays className="h-3.5 w-3.5" /> Plano Semanal
-            </TabsTrigger>
-            <TabsTrigger value="timeline" className="gap-1.5 text-xs">
-              <CalendarClock className="h-3.5 w-3.5" /> Projeção de Suprimentos
-            </TabsTrigger>
-            <TabsTrigger value="schedule" className="gap-1.5 text-xs">
-              <Workflow className="h-3.5 w-3.5" /> Cronograma Reverso
-            </TabsTrigger>
-            <TabsTrigger value="saldo" className="gap-1.5 text-xs">
-              <Calculator className="h-3.5 w-3.5" /> Saldo Final
-            </TabsTrigger>
-            <TabsTrigger value="mrp" className="gap-1.5 text-xs">
-              <AlertTriangle className="h-3.5 w-3.5" /> MRP & Alertas
-            </TabsTrigger>
-            <TabsTrigger value="analytics" className="gap-1.5 text-xs">
-              <BarChart3 className="h-3.5 w-3.5" /> Analytics de Custos
-            </TabsTrigger>
-          </TabsList>
-        </div>
+        <HubTabsList tabs={[
+          { value: 'planning',  label: 'Plano de Compras',       icon: ShoppingCart },
+          { value: 'weekly',    label: 'Plano Semanal',          icon: CalendarDays },
+          { value: 'timeline',  label: 'Projeção de Suprimentos', icon: CalendarClock },
+          { value: 'schedule',  label: 'Cronograma Reverso',     icon: Workflow },
+          { value: 'saldo',     label: 'Saldo Final',            icon: Calculator },
+          { value: 'mrp',       label: 'MRP & Alertas',          icon: AlertTriangle },
+          { value: 'analytics', label: 'Analytics de Custos',    icon: BarChart3 },
+        ]} />
+
+        {/* Callout pra orientar o usuário sobre qual aba usar quando */}
+        <Card className="border-dashed bg-muted/20 mt-3 mb-1">
+          <CardContent className="py-2.5 px-4 flex items-start gap-2">
+            <Info className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              <strong>Plano de Compras</strong> = wizard guiado a partir dos PVs ativos ·
+              <strong> Plano Semanal</strong> = consolidado por semana ·
+              <strong> Projeção</strong> = data-limite por material ·
+              <strong> Cronograma Reverso</strong> = quando começar produção pra entregar no prazo ·
+              <strong> Saldo Final</strong> = posição depois de todas as OCs em aberto ·
+              <strong> MRP</strong> = sugestões automáticas + alertas ·
+              <strong> Analytics</strong> = histórico de variação de preço.
+            </p>
+          </CardContent>
+        </Card>
 
         <TabsContent value="planning">
           <Suspense fallback={<TabLoader />}>

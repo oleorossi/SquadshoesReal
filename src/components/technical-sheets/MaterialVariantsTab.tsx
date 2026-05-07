@@ -191,6 +191,16 @@ import { supabase } from '@/integrations/supabase/client';
  
    return (
      <div className="space-y-4">
+       <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
+         <p className="font-medium text-primary mb-1">Como funciona</p>
+         <p>
+           Cadastre aqui as variações de material principal desta referência (ex.: <strong>Napa</strong>,
+           <strong> Santorini</strong>, <strong>Metálica</strong>). No PV, aparece <strong>uma única
+           entrada</strong> da referência com dropdown pra selecionar a variante. Desde a migration
+           20260525140000, cada variante pode ter linhas de BOM próprias em <code>sheet_materials</code>
+           (use <code>material_variant_id</code>) — quando NULL, a linha vale pra todas as variantes.
+         </p>
+       </div>
        <div className="flex justify-between items-center">
          <div className="space-y-0.5">
            <h3 className="text-sm font-semibold flex items-center gap-2">

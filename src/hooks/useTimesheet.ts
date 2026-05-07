@@ -819,8 +819,16 @@ export function useAllImportsDateRange() {
 export function useImportTimeRecords() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (params: { employees: ParsedEmployee[]; startDate: string; endDate: string }) => {
-      const { employees, startDate, endDate } = params;
+    mutationFn: async (params: {
+      employees: ParsedEmployee[];
+      startDate: string;
+      endDate: string;
+      // Arquivo bruto opcional — quando presente, é arquivado no bucket
+      // Storage `timesheet-imports` e linkado em `time_import_logs.file_path`
+      // pra audit/download posterior. Adicionado em 20260525130000.
+      file?: File;
+    }) => {
+      const { employees, startDate, endDate, file } = params;
       if (!startDate || !endDate || !/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
         throw new Error('Datas inválidas detectadas no arquivo. Verifique o formato do arquivo de ponto.');
       }
@@ -1001,17 +1009,87 @@ export function useImportTimeRecords() {
         }
       }
 
-      return { batchId, inserted: insertedCount, skipped };
+      // ── Step 5: arquiva o arquivo bruto + grava log ───────────────────
+      // Faz upload pro bucket `timesheet-imports` e atualiza `time_import_logs`
+      // (criado pelo registro automático no caller, ou criado aqui como fallback).
+      // Falha no upload é reportada mas NÃO derruba a mutation — registros já
+      // foram inseridos com sucesso e o log permite consulta sem o arquivo bruto.
+      let archivedFilePath: string | null = null;
+      let archivedFileSize: number | null = null;
+      let archivedMime: string | null = null;
+      if (file) {
+        const safeName = file.name.replace(/[^\w\d.\-]/g, '_').slice(0, 200);
+        const filePath = `${batchId}/${safeName}`;
+        try {
+          const { error: upErr } = await supabase.storage
+            .from('timesheet-imports')
+            .upload(filePath, file, {
+              contentType: file.type || 'application/octet-stream',
+              upsert: true,
+            });
+          if (upErr) throw upErr;
+          archivedFilePath = filePath;
+          archivedFileSize = file.size;
+          archivedMime = file.type || null;
+        } catch (err: any) {
+          console.warn('[useImportTimeRecords] falha ao arquivar arquivo:', err);
+          toast.error(`Registros importados, mas arquivo bruto não pôde ser arquivado: ${err.message}`, { duration: 8000 });
+        }
+
+        // Cria/atualiza time_import_logs (idempotente por batch_id) — caso
+        // ImportHistoryPanel ou outro fluxo já tenha criado o log, fazemos
+        // upsert no file_path.
+        try {
+          const { data: existing } = await supabase
+            .from('time_import_logs' as any)
+            .select('id')
+            .eq('batch_id', batchId)
+            .maybeSingle();
+          if (existing) {
+            await supabase
+              .from('time_import_logs' as any)
+              .update({
+                file_path: archivedFilePath,
+                file_size_bytes: archivedFileSize,
+                mime_type: archivedMime,
+                inserted_count: insertedCount,
+                skipped_count: skipped,
+              } as any)
+              .eq('id', (existing as any).id);
+          } else {
+            await supabase.from('time_import_logs' as any).insert({
+              file_name: file.name,
+              file_path: archivedFilePath,
+              file_size_bytes: archivedFileSize,
+              mime_type: archivedMime,
+              batch_id: batchId,
+              start_date: startDate,
+              end_date: endDate,
+              inserted_count: insertedCount,
+              updated_count: 0,
+              skipped_count: skipped,
+              error_count: 0,
+              total_rows: insertedCount + skipped,
+              status: 'success' as const,
+            } as any);
+          }
+        } catch (err: any) {
+          console.warn('[useImportTimeRecords] falha ao gravar time_import_logs:', err);
+        }
+      }
+
+      return { batchId, inserted: insertedCount, skipped, archivedFilePath };
     },
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ['time_records'] });
       qc.invalidateQueries({ queryKey: ['time_records_batches'] });
+      qc.invalidateQueries({ queryKey: ['time_import_logs'] });
       if (result.skipped > 0) {
         toast.success(
-          `${result.inserted} registros importados. ${result.skipped} já existiam e foram ignorados.`
+          `${result.inserted} registros importados. ${result.skipped} já existiam e foram ignorados.${result.archivedFilePath ? ' Arquivo arquivado.' : ''}`
         );
       } else {
-        toast.success(`${result.inserted} registros importados!`);
+        toast.success(`${result.inserted} registros importados!${result.archivedFilePath ? ' Arquivo arquivado.' : ''}`);
       }
     },
     onError: (e: Error) => toast.error(e.message),

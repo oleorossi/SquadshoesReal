@@ -747,15 +747,49 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
       {sizes.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-muted text-foreground text-[11px] font-bold">4</span>
-              Consumo por numeração (dm²/par)
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Preencha o consumo de forração, palmilha e fachete para <strong>cada</strong> tamanho.
-              Tamanhos conjugados (🔗) geralmente têm o mesmo valor — use o botão <RefreshCw className="inline h-3 w-3" /> ao lado para replicar dentro da conjugação.
-              Tamanhos sem valor caem na <span className="text-amber-700 dark:text-amber-400 font-semibold">média escalar</span> da ficha (sub-dimensiona o pedido).
-            </CardDescription>
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-muted text-foreground text-[11px] font-bold">4</span>
+                  Consumo por numeração (dm²/par)
+                </CardTitle>
+                <CardDescription className="text-xs mt-1">
+                  Preencha o consumo de forração, palmilha e fachete por tamanho. Conjugadas (🔗) aparecem
+                  como uma única linha — o valor vale pra todos os tamanhos da conjugação.
+                  Tamanhos sem valor caem na <span className="text-amber-700 dark:text-amber-400 font-semibold">média escalar</span>.
+                </CardDescription>
+              </div>
+              {/* Modo simplificado: 1 input que replica pra TODOS — útil quando o consumo é
+                  igual em todas as numerações do solado. */}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Pega o primeiro valor não-vazio de cada coluna e replica
+                    const replicate = (field: keyof SoleSpec) => {
+                      const first = sizes.find(s => specs[s]?.[field] != null)?.toString();
+                      if (!first) return;
+                      const v = specs[Number(first)]?.[field];
+                      setSpecs(prev => {
+                        const next = { ...prev };
+                        for (const s of sizes) {
+                          next[s] = { ...next[s], size: s, [field]: v } as SoleSpec;
+                        }
+                        return next;
+                      });
+                    };
+                    replicate('lining_consumption_dm2');
+                    replicate('insole_consumption_dm2');
+                    if (isFachetado) replicate('fachete_lining_consumption_dm2');
+                    toast.success('Valor do primeiro tamanho replicado para todas as numerações.');
+                  }}
+                  className="text-xs px-3 py-1.5 rounded-md border border-primary/30 text-primary hover:bg-primary/10 transition-colors flex items-center gap-1.5"
+                  title="Pega o primeiro valor preenchido de cada coluna e replica em todas as numerações"
+                >
+                  <Copy className="h-3 w-3" /> Replicar 1º valor em todos
+                </button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             {isFachetado && (

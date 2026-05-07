@@ -10,8 +10,10 @@ import { computeSectorLeadTimeDays } from './leadTime';
  * e detecta sobrecarga vs. capacidade diária da ficha técnica.
  */
 
-export type SectorKey = 'corte_palmilha' | 'corte_forracao' | 'costura' | 'mesa' | 'silk' | 'colagem' | 'montagem' | 'solagem' | 'acabamento' | 'expedicao'
-  | 'corte' | 'costura'; // legacy aliases
+export type SectorKey =
+  | 'corte_palmilha' | 'corte_forracao' | 'costura' | 'mesa'
+  | 'silk' | 'colagem' | 'montagem' | 'solagem' | 'acabamento' | 'expedicao'
+  | 'corte'; // legacy alias only — 'costura' is now canonical (PR 2)
 
 export interface SectorOverloadItem {
   reference_id: string;
@@ -90,7 +92,7 @@ export async function checkSectorCapacity(
   const { data: sheets } = await supabase
     .from('technical_sheets')
     .select(
-      'id, name, code, shoe_category, production_sectors, cutting_capacity_per_day, sewing_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, mesa_daily_capacity, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, lead_time_corte_dias, lead_time_costura_dias, lead_time_montagem_dias, lead_time_acabamento_dias, requires_cutting, requires_sewing',
+      'id, name, code, shoe_category, production_sectors, cutting_capacity_per_day, sewing_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, mesa_daily_capacity, costura_capacity_per_day, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, lead_time_corte_dias, lead_time_costura_dias, lead_time_montagem_dias, lead_time_acabamento_dias, requires_cutting, requires_sewing',
     )
     .in('id', refIds);
 
@@ -105,7 +107,10 @@ export async function checkSectorCapacity(
   if (categories.length > 0) {
     const { data: defaults } = await supabase
       .from('default_lead_times')
-      .select('shoe_category, cutting_capacity_per_day, sewing_capacity_per_day, mesa_daily_capacity, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, lead_time_corte_dias, lead_time_costura_dias, lead_time_montagem_dias, lead_time_acabamento_dias')
+      // costura_capacity_per_day adicionado a default_lead_times em
+      // 20260525120000_add-costura-to-default-lead-times — segura mas selecionado
+      // condicionalmente via try-catch caso ambiente esteja em estado pré-migration.
+      .select('shoe_category, cutting_capacity_per_day, sewing_capacity_per_day, mesa_daily_capacity, costura_capacity_per_day, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, lead_time_corte_dias, lead_time_costura_dias, lead_time_montagem_dias, lead_time_acabamento_dias')
       .in('shoe_category', categories as string[]);
     (defaults || []).forEach((d: any) => categoryDefaultsMap.set(d.shoe_category, d));
   }
@@ -328,14 +333,14 @@ export async function checkSectorCapacity(
 export const SECTOR_LABELS: Record<SectorKey, string> = {
   corte_palmilha: 'Corte Palmilha',
   corte_forracao: 'Corte Forração',
-  mesa:           'Mesa',
+  costura:        'Costura',          // novo setor (PR 2)
+  mesa:           'Aviamento',         // enum interno é "mesa", label do usuário é Aviamento
   silk:           'Silk',
   colagem:        'Colagem',
   montagem:       'Montagem',
   solagem:        'Solagem',
   acabamento:     'Acabamento',
   expedicao:      'Expedição',
-  // legacy
+  // legacy alias — pré rename de 2026-05-06
   corte:          'Corte',
-  costura:        'Costura',
 };

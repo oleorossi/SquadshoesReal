@@ -45,7 +45,8 @@ export const menuGroups = [
     items: [
       { name: "Referências",      icon: BookOpen,     path: "/references" },
       { name: "Fichas Técnicas",  icon: Ruler,        path: "/fichas-tecnicas" },
-      { name: "Solados",          icon: Footprints,   path: "/consumo-base" },
+      { name: "Solados",          icon: Footprints,   path: "/solados" },
+      { name: "Consumo Base",     icon: BookOpen,     path: "/consumo-base" },
       { name: "Receitas",         icon: Sparkles,     path: "/artisanal-recipes" },
       { name: "Cores & Imagens",  icon: Palette,      path: "/imagens-cores" },
     ],

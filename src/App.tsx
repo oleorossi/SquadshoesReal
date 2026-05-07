@@ -76,6 +76,7 @@ const BaseConsumption = lazy(() => import("./pages/BaseConsumption"));
 const StockAlerts = lazy(() => import("./pages/StockAlerts"));
 const StockReservations = lazy(() => import("./pages/StockReservations"));
 const NfePage = lazy(() => import("./pages/NfePage"));
+const SolesHub = lazy(() => import("./pages/SolesHub"));
 
 
 // Lazy loading de componentes pesados (requested snippet)
@@ -468,6 +469,11 @@ const router = createBrowserRouter([
       {
         path: "reservas-estoque",
         element: <StockReservations />,
+      },
+      {
+        // Hub unificado de solados (Frente 3 — substitui telas dispersas)
+        path: "solados",
+        element: <SolesHub />,
       },
       {
         path: "technical-sheets",

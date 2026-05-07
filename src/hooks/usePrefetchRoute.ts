@@ -40,6 +40,7 @@ const routeImports: Record<string, () => Promise<any>> = {
   '/contractors': () => import('@/pages/Contractors'),
   '/pronta-entrega': () => import('@/pages/ProntaEntrega'),
   '/rh': () => import('@/pages/RHHub'),
+  '/solados': () => import('@/pages/SolesHub'),
   '/settings': () => import('@/pages/Settings'),
 };
 

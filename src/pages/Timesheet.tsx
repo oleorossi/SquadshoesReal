@@ -4,13 +4,15 @@ import DivergencesTab from '@/components/timesheet/DivergencesTab';
 import OverviewTab from '@/components/timesheet/OverviewTab';
 import ManualEntryTab from '@/components/timesheet/ManualEntryTab';
 import LateArrivalsTab from '@/components/timesheet/LateArrivalsTab';
+import ImportHistoryPanel from '@/components/timesheet/ImportHistoryPanel';
 import TimeValidationPanel from '@/components/timeControl/TimeValidationPanel';
 import ReportsPanel from '@/components/timeControl/ReportsPanel';
 import { useState, useRef, useMemo, useEffect } from 'react';
 import {
   Clock, Upload, Plus, Trash2, Loader2, Calendar, Settings2, AlertTriangle,
   FileSpreadsheet, ChevronDown, Sun, Moon, Coffee, CheckCircle2, XCircle, MinusCircle,
-  Printer, Users2, DollarSign, Link2, Unlink2, Shield, FileText, ClipboardEdit, AlarmClock
+  Printer, Users2, DollarSign, Link2, Unlink2, Shield, FileText, ClipboardEdit, AlarmClock,
+  History,
 } from 'lucide-react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
@@ -372,9 +374,15 @@ function HolidaysTab() {
 function TimesheetRecordsTab() {
   const { data: batches = [] } = useImportBatches();
   const { data: fullDateRange } = useAllImportsDateRange();
+  // Quando NÃO houver filtro de data setado, default = mês corrente.
+  // Auto-preenchimento elimina a necessidade de selecionar um batch específico
+  // pra começar a ver dados — usuário pode mudar pra qualquer período depois.
+  const today = new Date();
+  const monthStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
+  const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().slice(0, 10);
   const [selectedBatch, setSelectedBatch] = useState<string>('');
-  const [filterStartDate, setFilterStartDate] = useState<string>('');
-  const [filterEndDate, setFilterEndDate] = useState<string>('');
+  const [filterStartDate, setFilterStartDate] = useState<string>(monthStart);
+  const [filterEndDate, setFilterEndDate] = useState<string>(monthEnd);
   const resolvedFilters = useMemo(() => resolveTimeControlFilters({
     selectedBatch,
     filterStartDate,
@@ -396,7 +404,9 @@ function TimesheetRecordsTab() {
 
   const fileRef = useRef<HTMLInputElement>(null);
   const [parsing, setParsing] = useState(false);
-  const [preview, setPreview] = useState<{ employees: ParsedEmployee[]; startDate: string; endDate: string } | null>(null);
+  // Mantém o File original junto com o preview pra permitir arquivá-lo no
+  // bucket timesheet-imports após confirmação da importação (PR Frente 2).
+  const [preview, setPreview] = useState<{ employees: ParsedEmployee[]; startDate: string; endDate: string; rawFile?: File } | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<string>('');
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
   // Employee matching: parsed name → registered employee name
@@ -434,7 +444,8 @@ function TimesheetRecordsTab() {
     try {
       const isTxt = file.name.toLowerCase().endsWith('.txt');
       const result = isTxt ? await parseTimesheetTxt(file) : await parseTimesheetXlsx(file);
-      setPreview(result);
+      // Preserva o File original pra arquivamento no bucket após confirm.
+      setPreview({ ...result, rawFile: file });
       autoMatchEmployees(result.employees);
       const matched = result.employees.filter(emp => !!findBestEmployeeMatch(emp.name, emp.externalId)).length;
       toast.success(`${result.employees.length} funcionários encontrados, ${matched} vinculados automaticamente`);
@@ -471,6 +482,7 @@ function TimesheetRecordsTab() {
       employees: mappedEmployees,
       startDate: importStartDate,
       endDate: importEndDate,
+      file: preview.rawFile, // arquiva no bucket timesheet-imports
     }, {
       onSuccess: () => {
         // Set date filters to the imported period so records are visible across all batches
@@ -1477,6 +1489,7 @@ export default function Timesheet() {
             { value: 'late',        label: 'Atrasos',        icon: AlarmClock },
             { value: 'occurrences', label: 'Ocorrências',    icon: AlertTriangle },
             { value: 'reports',     label: 'Relatórios',     icon: FileText },
+            { value: 'history',     label: 'Histórico Imp.', icon: History },
             { value: 'schedule',    label: 'Horário Padrão', icon: Clock },
             { value: 'holidays',    label: 'Feriados',       icon: Calendar },
           ]} />
@@ -1493,6 +1506,7 @@ export default function Timesheet() {
             <TimeValidationPanel />
           </TabsContent>
           <TabsContent value="reports"><ReportsPanel /></TabsContent>
+          <TabsContent value="history"><ImportHistoryPanel /></TabsContent>
           <TabsContent value="schedule"><WorkScheduleTab /></TabsContent>
           <TabsContent value="holidays"><HolidaysTab /></TabsContent>
         </Tabs>
