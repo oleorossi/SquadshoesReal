@@ -99,8 +99,10 @@ SELECT
   tif.status,
   tif.imported_by,
   tif.created_at,
-  -- Quantos registros REAIS sobraram após eventuais delete_batch
-  (SELECT COUNT(*) FROM public.time_records tr WHERE tr.import_batch = tif.batch_id) AS active_record_count,
+  -- Quantos registros REAIS sobraram após eventuais delete_batch.
+  -- Cast ::text em ambos os lados pq import_batch é TEXT e batch_id é UUID.
+  (SELECT COUNT(*) FROM public.time_records tr
+   WHERE tr.import_batch::text = tif.batch_id::text) AS active_record_count,
   -- Sinaliza se o arquivo bruto está disponível no bucket
   (tif.file_path IS NOT NULL) AS has_archived_file
 FROM public.time_import_logs tif
