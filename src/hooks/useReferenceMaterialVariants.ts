@@ -1,6 +1,10 @@
  import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
  import { supabase } from '@/integrations/supabase/client';
  import { toast } from 'sonner';
+
+// Query keys (compartilhadas entre os hooks pra invalidar de forma consistente)
+const QUERY_KEY = (referenceId?: string) => ['reference_material_variants', referenceId] as const;
+const ALL_ACTIVE_KEY = ['reference_material_variants', 'all_active'] as const;
  
  export type ReferenceMaterialVariant = {
    id: string;
