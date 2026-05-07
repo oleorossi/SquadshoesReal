@@ -8,6 +8,7 @@ import { PalmilhaWorkSheet, type PalmilhaGroup } from '@/components/production/P
 import { SilkMontageWorkSheet, type SoleSilkGroup, type SilkColorGroup, type GroupedSector } from '@/components/production/SilkMontageWorkSheet';
 import { SolagemWorkSheet, type SoleColorBand } from '@/components/production/SolagemWorkSheet';
 import { ExpedicaoWorkSheet, type ExpedicaoCustomerGroup, type ExpedicaoOrder } from '@/components/production/ExpedicaoWorkSheet';
+import { ManagementReport, type ReportSaleOrder, type ReportOrder, type ReportStage } from '@/components/production/ManagementReport';
 
 const printStyles = `
   @page {
@@ -62,7 +63,7 @@ interface PrintWorkSheetsPageProps {
   onBack: () => void;
 }
 
-const SECTORS = ['Corte Palmilha', 'Corte Forração', 'Costura', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'] as const;
+const SECTORS = ['Corte Palmilha', 'Corte Forração', 'Costura', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição', 'Relatório Gerencial'] as const;
 
 // ── Group orders by reference_id + color ────────────────────────────────────
 function groupOrdersByRefColor(orders: any[]): Array<{
@@ -114,13 +115,44 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
   });
 
   const { data: saleOrders = [] } = useQuery({
-    queryKey: ['sale_orders_for_worksheets_v3'],
+    queryKey: ['sale_orders_for_worksheets_v4'],
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('sale_orders')
-        .select('id, client_id, economic_group_id, client_name, client_cnpj, order_number');
+        .select('id, client_id, economic_group_id, client_name, client_cnpj, order_number, client_order_number, delivery_deadline, status, total_value');
       if (error) throw error;
       return data;
+    },
+  });
+
+  // Costs e stages só carregados quando "Relatório Gerencial" está selecionado
+  const orderIds = useMemo(() => orders.map((o: any) => o.id).filter(Boolean), [orders]);
+
+  const { data: orderCosts = [] } = useQuery({
+    queryKey: ['order_costs_for_report', orderIds],
+    enabled: orderIds.length > 0,
+    queryFn: async () => {
+      const saleOrderIdsSet = new Set(orders.map((o: any) => o.sale_order_id).filter(Boolean));
+      if (saleOrderIdsSet.size === 0) return [];
+      const { data, error } = await (supabase as any)
+        .from('order_costs')
+        .select('id, sale_order_id, sale_order_item_id, reference_id, color, quantity, material_cost, labor_cost, overhead_cost, total_cost, revenue, margin, margin_pct')
+        .in('sale_order_id', Array.from(saleOrderIdsSet));
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const { data: orderStagesData = [] } = useQuery({
+    queryKey: ['order_stages_for_report', orderIds],
+    enabled: orderIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('order_stages')
+        .select('order_id, stage_name, status, started_at, completed_at')
+        .in('order_id', orderIds);
+      if (error) throw error;
+      return data || [];
     },
   });
 
@@ -525,6 +557,103 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
     return groupOrdersByRefColor(orders);
   }, [orders, selectedSector]);
 
+  // ── Relatório Gerencial: agrupa por sale_order_id, junta costs + stages ────
+  const reportGroups = useMemo<Array<{ saleOrder: ReportSaleOrder; reportOrders: ReportOrder[] }> | null>(() => {
+    if (selectedSector !== 'Relatório Gerencial') return null;
+
+    const clientById = new Map<string, any>();
+    for (const c of clientsInfo as any[]) clientById.set((c as any).id, c);
+
+    // Costs indexados por (sale_order_id, sale_order_item_id) — match item-a-item
+    // se possível. Como `orders` aqui são production orders (orders), pegamos
+    // por reference_id+color como fallback.
+    const costsBySaleAndRef = new Map<string, any>();
+    for (const c of orderCosts as any[]) {
+      const key = `${c.sale_order_id}::${c.reference_id || ''}::${(c.color || '').toLowerCase()}`;
+      costsBySaleAndRef.set(key, c);
+    }
+
+    const stagesByOrderId = new Map<string, ReportStage[]>();
+    for (const s of orderStagesData as any[]) {
+      const arr = stagesByOrderId.get(s.order_id) ?? [];
+      arr.push({
+        stage_name: s.stage_name,
+        status: s.status,
+        started_at: s.started_at,
+        completed_at: s.completed_at,
+      });
+      stagesByOrderId.set(s.order_id, arr);
+    }
+
+    // Resolve sole info por order
+    const groupPackagingById = new Map<string, number | null>();
+    for (const g of soleGroupPackaging as any[]) {
+      groupPackagingById.set((g as any).id, (g as any).pairs_per_box_individual);
+    }
+    const resolveSoleName = (order: any): string | null => {
+      const sheetId = order.reference_id;
+      const cabedelColorLower = (order.color || '').toLowerCase();
+      const mapping = (soleMappings as any[]).find(
+        m => m.sheet_id === sheetId && (m.product_color || '').toLowerCase() === cabedelColorLower,
+      );
+      const name = (mapping as any)?.products?.name;
+      return name ? getBaseName(name) : null;
+    };
+
+    // Agrupa orders por sale_order_id
+    const map = new Map<string, { saleOrder: ReportSaleOrder; reportOrders: ReportOrder[] }>();
+    for (const order of orders) {
+      const so = (saleOrders as any[]).find((s: any) => s.id === order.sale_order_id);
+      if (!so) continue; // pula avulsos
+      const client = clientById.get(so.client_id);
+
+      if (!map.has(so.id)) {
+        map.set(so.id, {
+          saleOrder: {
+            id: so.id,
+            order_number: so.order_number,
+            client_order_number: so.client_order_number,
+            client_name: client?.name || so.client_name || null,
+            client_cnpj: client?.cnpj || so.client_cnpj || null,
+            client_city: client?.city || null,
+            delivery_deadline: so.delivery_deadline,
+            status: so.status,
+            total_value: so.total_value,
+          },
+          reportOrders: [],
+        });
+      }
+      const g = map.get(so.id)!;
+      const costKey = `${so.id}::${order.reference_id || ''}::${(order.color || '').toLowerCase()}`;
+      const cost = costsBySaleAndRef.get(costKey);
+      g.reportOrders.push({
+        id: order.id,
+        op_number: order.op_number,
+        reference_code: order.reference_code,
+        reference_name: order.reference_name,
+        color: order.color,
+        sole_name: resolveSoleName(order),
+        total_pairs: order.total_pairs ?? 0,
+        status: order.status,
+        due_date: order.due_date,
+        stages: stagesByOrderId.get(order.id) || [],
+        cost: cost ? {
+          material_cost: Number(cost.material_cost) || 0,
+          labor_cost: Number(cost.labor_cost) || 0,
+          overhead_cost: Number(cost.overhead_cost) || 0,
+          total_cost: Number(cost.total_cost) || 0,
+          revenue: Number(cost.revenue) || 0,
+          margin: Number(cost.margin) || 0,
+          margin_pct: Number(cost.margin_pct) || 0,
+        } : null,
+      });
+    }
+
+    return Array.from(map.values()).sort((a, b) =>
+      (a.saleOrder.order_number || '').localeCompare(b.saleOrder.order_number || ''),
+    );
+  }, [orders, saleOrders, clientsInfo, soleMappings, soleGroupPackaging, orderCosts, orderStagesData, selectedSector]);
+
   // ── Sheet count for print button label ───────────────────────────────────────
   const sheetCount =
     selectedSector === 'Corte Palmilha'
@@ -535,13 +664,16 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
           ? (silkMontageGroups?.length ?? 0)
           : selectedSector === 'Expedição'
             ? (expedicaoGroups?.length ?? 0)
-            : (groupedWorksheets?.length ?? orders.length);
+            : selectedSector === 'Relatório Gerencial'
+              ? (reportGroups?.length ?? 0)
+              : (groupedWorksheets?.length ?? orders.length);
 
   const badgeLabel =
     selectedSector === 'Corte Palmilha' ? 'Consolidado por solado' :
     selectedSector === 'Solagem'        ? 'Consolidado por cor de solado' :
     SOLE_COLOR_GROUPED_SECTORS.includes(selectedSector as GroupedSector) ? 'Agrupado por solado + cor' :
     selectedSector === 'Expedição' ? 'Separado por loja/cliente' :
+    selectedSector === 'Relatório Gerencial' ? '1 ficha por PV (gestor)' :
     'Agrupado por Ref + Cor';
 
   const today = new Date().toLocaleDateString('pt-BR');
@@ -564,6 +696,8 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
               <>{sheetCount} ficha(s) por solado</>
             ) : selectedSector === 'Expedição' ? (
               <>{expedicaoGroups?.length ?? 0} loja(s) · {sheetCount} ficha(s)</>
+            ) : selectedSector === 'Relatório Gerencial' ? (
+              <>{sheetCount} relatório(s) gerencial(is)</>
             ) : (
               <>{sheetCount} fichas agrupadas ({orders.length} OPs)</>
             )}
@@ -624,6 +758,13 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
         {selectedSector === 'Expedição' && expedicaoGroups && expedicaoGroups.map((group, idx) => (
           <div key={group.client_id} className={idx < expedicaoGroups.length - 1 ? 'page-break' : ''}>
             <ExpedicaoWorkSheet group={group} date={today} />
+          </div>
+        ))}
+
+        {/* ── Relatório Gerencial: 1 relatório por PV ── */}
+        {selectedSector === 'Relatório Gerencial' && reportGroups && reportGroups.map((rg, idx) => (
+          <div key={rg.saleOrder.id} className={idx < reportGroups.length - 1 ? 'page-break' : ''}>
+            <ManagementReport saleOrder={rg.saleOrder} orders={rg.reportOrders} date={today} />
           </div>
         ))}
 
