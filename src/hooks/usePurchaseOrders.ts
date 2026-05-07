@@ -166,6 +166,23 @@ export function useDeletePurchaseOrder() {
   });
 }
 
+// Anti-double-click: token computado pelo conteúdo do payload. Se a mesma
+// OC for submetida 2× rapidamente (race entre cliques antes do isPending
+// virar true, ou retry de Promise), o segundo POST é deduplicado. TTL de
+// 30s — depois disso, considera-se que o usuário realmente quer 2 POs.
+const recentPurchaseOrders = new Map<string, number>();
+function purchaseOrderIdempotencyKey(data: {
+  supplier_name: string;
+  supplier_id?: string | null;
+  items: { product_id: string; quantity: number; unit_price: number }[];
+}): string {
+  const itemsKey = data.items
+    .map(i => `${i.product_id}:${i.quantity}:${i.unit_price}`)
+    .sort()
+    .join('|');
+  return `${data.supplier_id || data.supplier_name}::${itemsKey}`;
+}
+
 export function useCreatePurchaseOrder() {
   const qc = useQueryClient();
   return useMutation({
@@ -176,6 +193,23 @@ export function useCreatePurchaseOrder() {
       }
       const total = data.items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
       if (!Number.isFinite(total) || total > 1e12) throw new Error('Total da OC fora de limite.');
+
+      // ── Idempotência client-side ──
+      const idemKey = purchaseOrderIdempotencyKey(data);
+      const lastSubmittedAt = recentPurchaseOrders.get(idemKey);
+      const now = Date.now();
+      if (lastSubmittedAt && now - lastSubmittedAt < 30_000) {
+        throw new Error(
+          'Esta OC foi submetida há menos de 30s — provavelmente já existe. ' +
+          'Verifique a aba de OCs antes de criar de novo.'
+        );
+      }
+      recentPurchaseOrders.set(idemKey, now);
+      // Cleanup tokens velhos (>30s)
+      for (const [k, t] of recentPurchaseOrders.entries()) {
+        if (now - t > 30_000) recentPurchaseOrders.delete(k);
+      }
+
       const { data: po, error } = await supabase.from('purchase_orders').insert({
         supplier_name: data.supplier_name,
         supplier_id: data.supplier_id || null,
