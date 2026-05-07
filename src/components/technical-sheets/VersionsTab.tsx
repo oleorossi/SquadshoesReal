@@ -44,7 +44,7 @@ export function VersionsTab({ sheetId, form, updateField }: {
       snapshot: form,
       materialsSnapshot: materials,
       operationsSnapshot: operations,
-      createdBy: form.responsible_person || '',
+      createdBy: '',
     }, {
       onSuccess: () => {
         updateField('version_number', nextVersion);
@@ -65,10 +65,6 @@ export function VersionsTab({ sheetId, form, updateField }: {
           <div>
             <Label className="text-xs text-muted-foreground">Versão Atual</Label>
             <Input value={form.version_number} onChange={e => updateField('version_number', e.target.value)} className="mt-1 h-9 text-sm font-mono" placeholder="v1" />
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground">Responsável Técnico</Label>
-            <Input value={form.responsible_person} onChange={e => updateField('responsible_person', e.target.value)} className="mt-1 h-9 text-sm" placeholder="Nome do responsável" />
           </div>
         </div>
 
@@ -99,12 +95,6 @@ export function VersionsTab({ sheetId, form, updateField }: {
           </div>
         </div>
       )}
-
-      <Separator />
-
-      {/* Approvals */}
-      <h3 className="text-sm font-semibold">Aprovações</h3>
-      <ApprovalsEditor value={form.approvals} onChange={v => updateField('approvals', v)} />
 
       <Separator />
 
@@ -163,7 +153,7 @@ export function VersionsTab({ sheetId, form, updateField }: {
                         {v.status === 'pending_approval' && (
                           <>
                             <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] text-green-600"
-                              onClick={() => updateStatus.mutate({ id: v.id, status: 'approved', approvedBy: form.responsible_person })}>
+                              onClick={() => updateStatus.mutate({ id: v.id, status: 'approved', approvedBy: '' })}>
                               Aprovar
                             </Button>
                             <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] text-destructive"
@@ -181,12 +171,6 @@ export function VersionsTab({ sheetId, form, updateField }: {
           </Table>
         </div>
       )}
-
-      <Separator />
-
-      {/* Change Log */}
-      <h3 className="text-sm font-semibold">Registro de Alterações</h3>
-      <ChangeLogEditor value={form.change_log} onChange={v => updateField('change_log', v)} />
 
       {/* Version detail dialog */}
       <Dialog open={!!viewingVersion} onOpenChange={() => setViewingVersion(null)}>

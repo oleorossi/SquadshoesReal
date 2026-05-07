@@ -77,71 +77,29 @@ export type SheetFormData = {
   has_straps: boolean;
   strap_colors: any[];
   image_url: string;
-  // Color lookup fields
+  // Color lookup fields (still in DB; UI may not use all)
   cor_predominante_id: string | null;
   cor_palmilha_id: string | null;
   cor_tiras_id: string | null;
   cor_solado_id: string | null;
   box_type_id: string | null;
-  acabamento_tiras: string;
-  material_solado_tipo: string;
-  obs_harmonizacao: string;
   status_ficha: string;
-  qtd_prevista: number;
-  data_ultima_revisao: string;
-  responsavel_revisao: string;
   // Technical fields
-  last_name: string;
-  last_code: string;
-  last_notes: string;
-  last_exclusive: boolean;
   upper_material: string;
   upper_thickness: string;
-  upper_finish: string;
   lining_material: string;
-  lining_weight: string;
   insole_material: string;
-  insole_thickness: string;
   sole_type: string;
   sole_group_id: string | null;
   sole_material: string;
-  sole_code: string;
   sole_color: string;
   insole_color: string;
   insole_plate_product: string;
   sole_process: string;
   heel_height: string;
-  heel_type: string;
-  heel_base: string;
-  heel_material: string;
   fit_type: string;
-  measurements: Record<string, any>;
-  tolerances: Record<string, any>;
-  assembly_instructions: string;
   assembly_steps: any[];
-  cola_type: string;
-  cola_cure_time: string;
-  stitch_spec: string;
-  machine_settings: Record<string, any>;
-  packaging_box_dimensions: string;
-  packaging_tissue: string;
-  packaging_notes: string;
-  label_info: Record<string, any>;
-  palletization: Record<string, any>;
-  storage_instructions: string;
-  legal_composition: string;
-  country_origin: string;
-  care_instructions: string;
-  certifications: string;
-  quality_tests: any[];
-  acceptance_criteria: string;
-  sampling_plan: string;
   version_number: string;
-  responsible_person: string;
-  approvals: Record<string, any>;
-  change_log: any[];
-  commercial_description: string;
-  keywords: string;
   suggested_price: number;
   images: any[];
   color_images: any[];
@@ -176,33 +134,23 @@ export type SheetFormData = {
    insole_ready_made: boolean;
    /** Daily production capacity at the Mesa sector (pairs/day). Required for tiras model. */
    mesa_daily_capacity: number;
-   /** Minutes per pair to handle strap material after artisanal OS delivery (receiving, checking, separating). Only when has_straps = true. */
-   handling_time_minutes: number;
 };
 
 export const emptySheetForm: SheetFormData = {
   name: '', brand: '', model: '', description: '', shoe_category: '', sizes: '33-41', status: 'Ativo',
   code: '', gender: '',
-  collection: '', colors: '', cost_price: 0, sale_price: 0, barcode: '', has_straps: false, strap_colors: [], image_url: '', handling_time_minutes: 0,
+  collection: '', colors: '', cost_price: 0, sale_price: 0, barcode: '', has_straps: false, strap_colors: [], image_url: '',
   cor_predominante_id: null, cor_palmilha_id: null, cor_tiras_id: null, cor_solado_id: null, box_type_id: null,
-  acabamento_tiras: '', material_solado_tipo: '', obs_harmonizacao: '', status_ficha: 'rascunho',
-  qtd_prevista: 0, data_ultima_revisao: '', responsavel_revisao: '',
-  last_name: '', last_code: '', last_notes: '', last_exclusive: false,
-  upper_material: '', upper_thickness: '', upper_finish: '',
-  lining_material: '', lining_weight: '',
-  insole_material: '', insole_thickness: '',
-  sole_type: '', sole_material: '', sole_code: '', sole_color: '', sole_process: '', sole_group_id: null, insole_color: '', insole_plate_product: '',
-  heel_height: '', heel_type: '', heel_base: '', heel_material: '',
+  status_ficha: 'rascunho',
+  upper_material: '', upper_thickness: '',
+  lining_material: '',
+  insole_material: '',
+  sole_type: '', sole_material: '', sole_color: '', sole_process: '', sole_group_id: null, insole_color: '', insole_plate_product: '',
+  heel_height: '',
   fit_type: 'normal',
-  measurements: {}, tolerances: {},
-  assembly_instructions: '', assembly_steps: [],
-  cola_type: '', cola_cure_time: '', stitch_spec: '', machine_settings: {},
-  packaging_box_dimensions: '', packaging_tissue: '', packaging_notes: '',
-  label_info: {}, palletization: {}, storage_instructions: '',
-  legal_composition: '', country_origin: '', care_instructions: '', certifications: '',
-  quality_tests: [], acceptance_criteria: '', sampling_plan: '',
-  version_number: 'v1', responsible_person: '', approvals: {}, change_log: [],
-  commercial_description: '', keywords: '', suggested_price: 0,
+  assembly_steps: [],
+  version_number: 'v1',
+  suggested_price: 0,
   images: [], color_images: [], consumption_loss_pct: 8, safety_margin_pct: 5, components_accessories: [],
   upper_consumption: 0, lining_consumption: 0, lining_accessories: [], insole_consumption: 0, sole_consumption: 0,
   direct_components: [],

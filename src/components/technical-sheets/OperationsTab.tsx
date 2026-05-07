@@ -164,7 +164,8 @@ export function OperationsTab({
       const payload = {
         assembly_time_minutes: localAssemblyTime,
         process_difficulty: localDifficulty,
-        daily_capacity_pairs: calculatedDailyCapacity,
+        // daily_capacity_pairs removido: substituído pelas capacidades
+        // por setor (sewing_capacity_per_day, cutting_capacity_per_day, etc.)
         lead_time_corte_dias: ltCorte,
         lead_time_costura_dias: ltCostura,
         lead_time_silk_dias: ltSilk,

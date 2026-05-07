@@ -1732,7 +1732,6 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 </SelectContent>
               </Select>
             </div>
-             <FieldInput label="Responsável Revisão" value={form.responsavel_revisao} onChange={v => updateField('responsavel_revisao', v)} placeholder="Nome do responsável" />
              <div>
                <Label className="text-xs text-muted-foreground">Overhead Customizado (R$/par)</Label>
                 <div className="relative">
@@ -1759,14 +1758,6 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 </div>
                <p className="text-[10px] text-muted-foreground mt-1">Se vazio, usa o overhead global.</p>
              </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Data Última Revisão</Label>
-              <Input type="date" value={form.data_ultima_revisao || ''} onChange={e => updateField('data_ultima_revisao', e.target.value)} className="mt-1 h-9 text-sm" />
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Qty Prevista Produção</Label>
-              <NumberInput value={form.qtd_prevista} onChange={v => updateField('qtd_prevista', v)} className="mt-1 h-9 text-sm" placeholder="0" step="1" />
-            </div>
           </div>
           {form.status_ficha === 'publicada' && (
             <div className="rounded-lg border border-green-200 bg-green-50 dark:bg-green-950/30 dark:border-green-800 p-3 flex items-center gap-2">
@@ -2560,23 +2551,6 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 </p>
 
                 {/* Handling time — only for strap models */}
-                <div className="flex items-center gap-4 rounded-lg border border-dashed bg-muted/20 px-4 py-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-medium">Tempo de manuseio (min/par)</div>
-                    <div className="text-[11px] text-muted-foreground mt-0.5">
-                      Tempo para receber, conferir e separar o material artesanal das tiras antes de entrar na produção.
-                    </div>
-                  </div>
-                  <NumberInput
-                    value={form.handling_time_minutes ?? 0}
-                    onChange={v => updateField('handling_time_minutes', v)}
-                    className="w-20 h-8 text-sm text-center font-mono"
-                    placeholder="0"
-                    step="1"
-                    min={0}
-                  />
-                  <span className="text-xs text-muted-foreground whitespace-nowrap">min/par</span>
-                </div>
                 {(form.strap_colors || []).map((strap: any, idx: number) => {
                   const strapSizes = parseSizesFromRange(form.sizes, form.shoe_category);
                   const consumptionPerSize: Record<string, number> = strap.consumption_per_size || {};
@@ -2771,7 +2745,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             sheetId={sheet.id}
             assemblyTimeMinutes={Number(sheet.assembly_time_minutes || 0)}
             processDifficulty={sheet.process_difficulty || 'medio'}
-            dailyCapacityPairs={Number(sheet.daily_capacity_pairs || 0)}
+            dailyCapacityPairs={0 /* coluna removida — capacidades agora são por setor */}
             leadTimeCorteDias={Number((sheet as any).lead_time_corte_dias ?? 2)}
             leadTimeCosturaDias={Number((sheet as any).lead_time_costura_dias ?? 3)}
             leadTimeSilkDias={Number((sheet as any).lead_time_silk_dias ?? 1)}
