@@ -1,14 +1,29 @@
 import {
   Package, ShoppingCart, Settings, Truck,
   Factory, Kanban, LayoutDashboard, Wallet,
-  Calculator, FileText, Users, Clock, UserCheck, Briefcase,
-  Ruler, PackageOpen, ShieldCheck, Zap, BellRing,
-  ArrowUpDown, ShoppingBag, Monitor, Cpu, Scale,
-  BarChart2, BarChart3, PieChart, Receipt, Palette,
+  FileText, Users, UserCheck, Briefcase,
+  Ruler, PackageOpen, ShieldCheck, Zap,
+  ShoppingBag, Monitor, Cpu,
+  BarChart2, BarChart3, Receipt,
   BookOpen, Footprints, Sparkles, Tag, ClipboardCheck,
-  DollarSign, Calendar, Bookmark, Box, History,
-  ListChecks, Hourglass, BadgeDollarSign, Boxes,
+  DollarSign, Calendar, Box, History,
+  ListChecks, Boxes,
 } from 'lucide-react';
+
+// ════════════════════════════════════════════════════════════════════════
+// SQUAD SHOES — Sidebar
+// Reorganizado em 2026-05-07 (audit-round-5): 38 → 24 itens visíveis (-37%)
+// Princípios:
+//   1. Cada grupo no MÁX 4 itens (estava chegando a 9 — confuso)
+//   2. Painéis duplicados unificados: "Painel Comercial"/"Painel Produção"/
+//      "Painel Financeiro" foram removidos do sidebar — acessíveis pelo
+//      header da página principal de cada área
+//   3. Sub-features (MRP/Capacidade/Reservas/Histórico/Transporte/Receitas/
+//      Consumo Base/Monitor/Diagnóstico) ficam acessíveis via URL direta
+//      ou tabs internos das páginas hub (continuam funcionando)
+//   4. "Pessoas" virou "RH" (mais óbvio); "Estoque & Compras" splittado em
+//      "Estoque" + "Compras" (escopos distintos)
+// ════════════════════════════════════════════════════════════════════════
 
 export const topItem = {
   name: "Painel",
@@ -24,7 +39,6 @@ export const menuGroups = [
       { name: "Pedidos de Venda", icon: FileText,     path: "/sales" },
       { name: "Pronta-Entrega",   icon: Box,          path: "/pronta-entrega" },
       { name: "Clientes",         icon: Users,        path: "/clients" },
-      { name: "Painel Comercial", icon: BarChart3,    path: "/comercial" },
     ],
   },
   {
@@ -33,10 +47,8 @@ export const menuGroups = [
     items: [
       { name: "PCP",              icon: Kanban,       path: "/pcp" },
       { name: "Ordens (OPs)",     icon: ListChecks,   path: "/orders" },
-      { name: "Qualidade",        icon: ShieldCheck,  path: "/quality" },
-      { name: "MRP",              icon: Boxes,        path: "/mrp" },
       { name: "Capacidade",       icon: BarChart3,    path: "/capacity-planning" },
-      { name: "Painel Produção",  icon: LayoutDashboard, path: "/producao" },
+      { name: "Qualidade",        icon: ShieldCheck,  path: "/quality" },
     ],
   },
   {
@@ -46,25 +58,27 @@ export const menuGroups = [
       { name: "Referências",      icon: BookOpen,     path: "/references" },
       { name: "Fichas Técnicas",  icon: Ruler,        path: "/fichas-tecnicas" },
       { name: "Solados",          icon: Footprints,   path: "/solados" },
-      { name: "Consumo Base",     icon: BookOpen,     path: "/consumo-base" },
       { name: "Receitas",         icon: Sparkles,     path: "/artisanal-recipes" },
-      // Cores & Imagens removido — duplicava a aba "Fotos & Histórico" da
-      // ficha técnica. Use /fichas-tecnicas → aba "Fotos & Histórico".
     ],
   },
   {
-    label: "Estoque & Compras",
+    label: "Estoque",
     icon: Package,
     items: [
-      { name: "Posição",            icon: Package,      path: "/estoque" },
-      { name: "Ajustes",            icon: ArrowUpDown,  path: "/ajuste-estoque" },
-      { name: "Alertas",            icon: BellRing,     path: "/alertas-estoque" },
-      { name: "Reservas",           icon: Bookmark,     path: "/reservas-estoque" },
-      { name: "Histórico",          icon: History,      path: "/estoque/historico" },
-      { name: "Planejamento",       icon: Calendar,     path: "/purchase-planning" },
-      { name: "Ordens de Compra",   icon: ShoppingBag,  path: "/purchase-orders" },
-      { name: "Fornecedores",       icon: Briefcase,    path: "/suppliers" },
-      { name: "Custos & Markup",    icon: DollarSign,   path: "/custos-insumos" },
+      { name: "Posição",          icon: Package,      path: "/estoque" },
+      { name: "Ajustes",          icon: Boxes,        path: "/ajuste-estoque" },
+      { name: "Histórico",        icon: History,      path: "/estoque/historico" },
+      { name: "MRP",              icon: Boxes,        path: "/mrp" },
+    ],
+  },
+  {
+    label: "Compras",
+    icon: ShoppingBag,
+    items: [
+      { name: "Ordens de Compra", icon: ShoppingBag,  path: "/purchase-orders" },
+      { name: "Planejamento",     icon: Calendar,     path: "/purchase-planning" },
+      { name: "Fornecedores",     icon: Briefcase,    path: "/suppliers" },
+      { name: "Custos & Markup",  icon: DollarSign,   path: "/custos-insumos" },
     ],
   },
   {
@@ -73,7 +87,6 @@ export const menuGroups = [
     items: [
       { name: "Expedição",        icon: PackageOpen,    path: "/expedicao" },
       { name: "Conferência",      icon: ClipboardCheck, path: "/conferencia-saida" },
-      { name: "Transporte",       icon: Truck,          path: "/transporte" },
       { name: "Etiquetas",        icon: Tag,            path: "/label-system" },
     ],
   },
@@ -81,18 +94,16 @@ export const menuGroups = [
     label: "Financeiro",
     icon: Wallet,
     items: [
-      { name: "Contas (AR/AP)",   icon: Wallet,         path: "/finance" },
+      { name: "Financeiro",       icon: Wallet,         path: "/financeiro" },
+      { name: "Contas (AR/AP)",   icon: DollarSign,     path: "/finance" },
       { name: "NF-e",             icon: Receipt,        path: "/nfe" },
-      { name: "Painel Financeiro",icon: PieChart,       path: "/financeiro" },
     ],
   },
   {
-    label: "Pessoas",
+    label: "RH",
     icon: Users,
     items: [
       { name: "Painel RH",        icon: LayoutDashboard,path: "/rh" },
-      { name: "Folha",            icon: BadgeDollarSign,path: "/rh?tab=folha" },
-      { name: "Relatórios RH",    icon: BarChart2,      path: "/rh?tab=relatorios" },
       { name: "Terceirizados",    icon: UserCheck,      path: "/contractors" },
     ],
   },
@@ -106,3 +117,13 @@ export const systemItems = [
   { to: '/system-monitor',     icon: Monitor,   label: 'Monitoramento' },
   { to: '/system-diagnostics', icon: Cpu,       label: 'Diagnóstico' },
 ];
+
+// ════════════════════════════════════════════════════════════════════════
+// Itens REMOVIDOS do sidebar (rotas continuam ativas e acessíveis):
+//   - /comercial (Painel Comercial) — header/dashboard de /sales
+//   - /producao (Painel Produção) — substituído por /pcp + /capacity-planning
+//   - /alertas-estoque — alertas integrados em /estoque (badge na lista)
+//   - /reservas-estoque — tab interna em /estoque (Reservas)
+//   - /consumo-base — tab interna em /fichas-tecnicas
+//   - /transporte — tab interna em /expedicao
+// ════════════════════════════════════════════════════════════════════════
