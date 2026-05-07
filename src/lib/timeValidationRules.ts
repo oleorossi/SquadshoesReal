@@ -178,6 +178,117 @@ export const validationRules: ValidationRule[] = [
       return results;
     },
   },
+  {
+    id: 'short_lunch_break',
+    name: 'Intervalo de Almoço Curto',
+    description: 'Detecta intervalos de almoço inferiores a 1 hora em jornadas > 6h (CLT Art. 71)',
+    type: 'business_rule',
+    severity: 'high',
+    active: true,
+    check: (records) => {
+      const results: ValidationResult[] = [];
+      records.forEach((rec) => {
+        const punches = rec.punches as string[];
+        // 4+ punches = at least one break recorded. Em jornada padrão
+        // (entrada/saída-almoço/volta-almoço/saída), o intervalo é entre
+        // punches[1] e punches[2]. Para jornadas com múltiplos breaks,
+        // checa o MAIOR intervalo entre saídas/entradas consecutivas
+        // (assume que esse é o "almoço").
+        if (punches.length < 4) return;
+        const sorted = [...punches].map(p => p.replace(/\*$/, '')).sort();
+        const totalSpan = timeToMinutes(sorted[sorted.length - 1]) - timeToMinutes(sorted[0]);
+        if (totalSpan <= 360) return; // jornada ≤ 6h, intervalo não é mandatório
+
+        // Calcula o maior gap entre marcações consecutivas (= almoço)
+        let largestGap = 0;
+        let gapStart = '', gapEnd = '';
+        for (let i = 1; i < sorted.length; i++) {
+          const gap = timeToMinutes(sorted[i]) - timeToMinutes(sorted[i - 1]);
+          if (gap > largestGap) {
+            largestGap = gap;
+            gapStart = sorted[i - 1];
+            gapEnd = sorted[i];
+          }
+        }
+        if (largestGap > 0 && largestGap < 60) {
+          results.push({
+            rule_id: 'short_lunch_break',
+            record_id: rec.id,
+            employee_name: rec.employee_name,
+            record_date: rec.record_date,
+            passed: false,
+            message: `Intervalo de almoço de ${largestGap}min (${gapStart}→${gapEnd}) — CLT Art. 71 exige mínimo 1h para jornadas > 6h`,
+            severity: 'high',
+            suggested_fix: 'Validar com o colaborador. Se intervalo real foi inferior, registrar como hora extra ou justificar.',
+          });
+        }
+      });
+      return results;
+    },
+  },
+  {
+    id: 'weekend_work',
+    name: 'Trabalho em Fim de Semana',
+    description: 'Identifica batidas em sábado/domingo (potencial hora extra ou banco de horas)',
+    type: 'business_rule',
+    severity: 'low',
+    active: true,
+    check: (records) => {
+      const results: ValidationResult[] = [];
+      records.forEach((rec) => {
+        const punches = rec.punches as string[];
+        if (punches.length === 0) return;
+        // Parse date as LOCAL (not UTC) — record_date é YYYY-MM-DD
+        const [y, m, d] = rec.record_date.split('-').map(Number);
+        const date = new Date(y, m - 1, d);
+        const dayOfWeek = date.getDay(); // 0=Sun, 6=Sat
+        if (dayOfWeek === 0 || dayOfWeek === 6) {
+          const dayName = dayOfWeek === 0 ? 'domingo' : 'sábado';
+          results.push({
+            rule_id: 'weekend_work',
+            record_id: rec.id,
+            employee_name: rec.employee_name,
+            record_date: rec.record_date,
+            passed: false,
+            message: `Trabalho registrado em ${dayName} (${punches.length} batida(s)) — verificar se é hora extra autorizada ou compensação de banco de horas`,
+            severity: 'low',
+            suggested_fix: 'Confirmar autorização da gestão. Banco de horas: 50% adicional (CLT Art. 59-A) ou compensar em até 6 meses.',
+          });
+        }
+      });
+      return results;
+    },
+  },
+  {
+    id: 'absent_no_punches',
+    name: 'Ausência (sem batidas)',
+    description: 'Funcionário sem nenhuma batida em dia útil (potencial falta, atestado, férias)',
+    type: 'business_rule',
+    severity: 'medium',
+    active: true,
+    check: (records) => {
+      const results: ValidationResult[] = [];
+      records.forEach((rec) => {
+        const punches = rec.punches as string[];
+        if (punches.length > 0) return;
+        const [y, m, d] = rec.record_date.split('-').map(Number);
+        const date = new Date(y, m - 1, d);
+        const dayOfWeek = date.getDay();
+        if (dayOfWeek === 0 || dayOfWeek === 6) return; // weekend, expected
+        results.push({
+          rule_id: 'absent_no_punches',
+          record_id: rec.id,
+          employee_name: rec.employee_name,
+          record_date: rec.record_date,
+          passed: false,
+          message: 'Sem batidas em dia útil — possível falta, atestado, férias ou licença',
+          severity: 'medium',
+          suggested_fix: 'Validar com o RH: cadastrar atestado/férias/licença, justificar como falta abonada, ou registrar como falta para desconto',
+        });
+      });
+      return results;
+    },
+  },
 ];
 
 /** Run all active validation rules against a set of records */
