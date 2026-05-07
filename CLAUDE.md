@@ -75,13 +75,29 @@ npm run check:tokens
    was keeping main's version (Lovable), not Claude's. Fixed: hooks now use rebase-based
    strategy so Claude's work is never silently discarded.
 
-## Pending DB Migrations (apply in Supabase Dashboard)
+## Pending DB Migrations
 
 **Project ID atual:** `ssvxfoybzmjlypnipqzn` (migrado em mai/2026 do antigo `qrdvwoijghmgugejponz`, que ficou inacessível).
 
 SQL Editor: https://supabase.com/dashboard/project/ssvxfoybzmjlypnipqzn/sql/new
 Dashboard: https://supabase.com/dashboard/project/ssvxfoybzmjlypnipqzn
 
+### Auto-apply via GitHub Actions
+
+`.github/workflows/supabase-migrate.yml` aplica migrations automaticamente quando arquivos em `supabase/migrations/**` mudam em `main`. Também pode ser disparado manualmente via Actions tab > "Run workflow" (com `dry_run: true` recomendado na primeira vez).
+
+**Setup (uma vez só):**
+1. Criar Personal Access Token em https://supabase.com/dashboard/account/tokens (escopo: leitura+escrita)
+2. Pegar senha do banco em Database > Settings > Connect > "Reset database password" (não copiar a anterior — gerar nova)
+3. Ir em GitHub Settings > Secrets and variables > Actions > Secrets, e cadastrar:
+   - `SUPABASE_ACCESS_TOKEN` = o PAT do passo 1
+   - `SUPABASE_DB_PASSWORD` = a senha do passo 2
+   - `SUPABASE_PROJECT_ID` = `ssvxfoybzmjlypnipqzn`
+4. Disparar primeira run manualmente com `dry_run: true` pra ver quais migrations o sistema considera pendentes.
+5. Se houver backlog (migrations já aplicadas via SQL Editor mas não rastreadas), editar `scripts/repair-applied-migrations.sh` adicionando os timestamps em `ALREADY_APPLIED` e rodar localmente.
+6. Quando estiver tranquilo, dispare `dry_run: false` ou faça push de uma migration nova — vai aplicar automaticamente.
+
+**Aplicação manual (fallback):**
 Apply **in order** (oldest first). Migrations with GUIDs in the name are applied automatically by Lovable — only the ones listed below need manual application.
 
 ### Grupo 1 — Correções anteriores (verificar se já aplicadas)
