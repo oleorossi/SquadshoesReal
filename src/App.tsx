@@ -34,7 +34,7 @@ const SaleOrderForm = lazy(() => import("./pages/SaleOrderForm"));
 const SaleOrdersConsumption = lazy(() => import("./pages/SaleOrdersConsumption"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
  const StockHistoryPage = lazy(() => import("./pages/StockHistory"));
-const SalesReport = lazy(() => import("./pages/SalesReport"));
+// SalesReport removido — funcionalidade unificada em /comercial (ComercialDashboard).
 const Settings = lazy(() => import("./pages/Settings"));
 const Suppliers = lazy(() => import("./pages/Suppliers"));
 const Finance = lazy(() => import("./pages/Finance"));
@@ -45,7 +45,7 @@ const Timesheet = lazy(() => import("./pages/Timesheet"));
 const PurchaseOrders = lazy(() => import("./pages/PurchaseOrders"));
 const ComercialDashboard = lazy(() => import("./pages/ComercialDashboard"));
 const ProducaoDashboard = lazy(() => import("./pages/ProducaoDashboard"));
-const ProductionDashboardPage = lazy(() => import("./pages/ProductionDashboard"));
+// ProductionDashboardPage removido — funcionalidade unificada em /producao (ProducaoDashboard).
 const FinanceiroDashboard = lazy(() => import("./pages/FinanceiroDashboard"));
 const RHDashboard = lazy(() => import("./pages/RHDashboard"));
 const RHHub = lazy(() => import("./pages/RHHub"));
@@ -508,8 +508,10 @@ const router = createBrowserRouter([
         element: <Navigate to="/pcp" replace />,
       },
       {
+        // Rota legada: PCPDashboard agora vive como aba dentro de /pcp.
+        // Componente PCPDashboard.tsx é mantido (usado pelo PCPHub como tab).
         path: "pcp-dashboard",
-        element: <PCPDashboard />,
+        element: <Navigate to="/pcp?tab=dashboard" replace />,
       },
       {
         path: "picking",
@@ -557,8 +559,9 @@ const router = createBrowserRouter([
         ],
       },
       {
+        // Rota legada: relatório de vendas unificado em /comercial (ComercialDashboard).
         path: "sales-report",
-        element: <SalesReport />,
+        element: <Navigate to="/comercial" replace />,
       },
       {
         path: "suppliers",
@@ -625,8 +628,9 @@ const router = createBrowserRouter([
         element: <ProducaoDashboard />,
       },
       {
+        // Rota legada: dashboard unificado em /producao (ProducaoDashboard).
         path: "production-dashboard",
-        element: <ProductionDashboardPage />,
+        element: <Navigate to="/producao" replace />,
       },
       {
         path: "financeiro",
@@ -635,6 +639,16 @@ const router = createBrowserRouter([
       {
         path: "rh",
         element: <RHHub />,
+      },
+      {
+        // Atalho direto: Banco de Horas (tab dentro de /rh)
+        path: "rh/bank-hours",
+        element: <Navigate to="/rh?tab=banco-horas" replace />,
+      },
+      {
+        // Atalho direto: Folha de Pagamento (tab dentro de /rh)
+        path: "rh/payroll",
+        element: <Navigate to="/rh?tab=folha" replace />,
       },
       {
         path: "transporte",
@@ -666,8 +680,9 @@ const router = createBrowserRouter([
         element: <LegacyInventoryRedirect />,
       },
       {
+        // Rota legada: Production unificado em /producao (ProducaoDashboard).
         path: "production",
-        lazy: () => import("./pages/Production").then(m => ({ Component: m.default })),
+        element: <Navigate to="/producao" replace />,
       },
       {
         path: "quality",

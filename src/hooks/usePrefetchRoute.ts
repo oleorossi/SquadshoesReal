@@ -1,36 +1,43 @@
 import { useCallback, useRef } from 'react';
 
-// Map sidebar paths to their lazy import functions for prefetching
+// Map sidebar paths to their lazy import functions for prefetching.
+// Mantém alinhado com src/data/navigation.ts — itens órfãos foram removidos.
 const routeImports: Record<string, () => Promise<any>> = {
   '/dashboard': () => import('@/pages/Dashboard'),
   '/pcp': () => import('@/pages/PCPHub'),
-  '/setores': () => import('@/pages/Setores'),
   '/orders': () => import('@/pages/Orders'),
-  '/production': () => import('@/pages/Production'),
+  '/quality': () => import('@/pages/Quality'),
+  '/capacity-planning': () => import('@/pages/CapacityPlanning'),
+  '/producao': () => import('@/pages/ProducaoDashboard'),
   '/estoque': () => import('@/pages/Index'),
+  '/ajuste-estoque': () => import('@/pages/StockAdjustmentPage'),
+  '/alertas-estoque': () => import('@/pages/StockAlerts'),
+  '/reservas-estoque': () => import('@/pages/StockReservations'),
+  '/references': () => import('@/pages/References'),
   '/fichas-tecnicas': () => import('@/pages/TechnicalSheets'),
+  '/consumo-base': () => import('@/pages/BaseConsumption'),
+  '/artisanal-recipes': () => import('@/pages/ArtisanalRecipes'),
+  '/imagens-cores': () => import('@/pages/ColorImagesPage'),
   '/suppliers': () => import('@/pages/Suppliers'),
   '/comercial': () => import('@/pages/ComercialDashboard'),
   '/sales': () => import('@/pages/SaleOrders'),
   '/clients': () => import('@/pages/Clients'),
   '/expedicao': () => import('@/pages/ExpedicaoHub'),
+  '/conferencia-saida': () => import('@/pages/OrderPickingPage'),
   '/label-system': () => import('@/pages/LabelSystem'),
-  '/embalagens': () => import('@/pages/PackagingManagement'),
   '/transporte': () => import('@/pages/Transport'),
   '/purchase-orders': () => import('@/pages/PurchaseOrders'),
   '/purchase-planning': () => import('@/pages/PurchasePlanning'),
+  '/custos-insumos': () => import('@/pages/InputCostsPage'),
   '/finance': () => import('@/pages/Finance'),
-  '/pricing-calculator': () => import('@/pages/PricingCalculator'),
+  '/nfe': () => import('@/pages/NfePage'),
+  '/financeiro': () => import('@/pages/FinanceiroDashboard'),
   '/employees': () => import('@/pages/Employees'),
   '/timesheet': () => import('@/pages/Timesheet'),
   '/contractors': () => import('@/pages/Contractors'),
   '/pronta-entrega': () => import('@/pages/ProntaEntrega'),
-  '/financeiro': () => import('@/pages/FinanceiroDashboard'),
-  '/rh': () => import('@/pages/RHDashboard'),
-  '/producao': () => import('@/pages/ProducaoDashboard'),
-  '/sales-report': () => import('@/pages/SalesReport'),
+  '/rh': () => import('@/pages/RHHub'),
   '/settings': () => import('@/pages/Settings'),
-  '/design-system': () => import('@/pages/DesignSystem'),
 };
 
 const prefetched = new Set<string>();

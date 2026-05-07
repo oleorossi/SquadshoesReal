@@ -7,6 +7,7 @@ import {
   BarChart2, BarChart3, PieChart, Receipt, Palette,
   BookOpen, Footprints, Sparkles, Tag, ClipboardCheck,
   DollarSign, Calendar, Bookmark, Box, History,
+  ListChecks, Hourglass, BadgeDollarSign, Boxes,
 } from 'lucide-react';
 
 export const topItem = {
@@ -20,10 +21,10 @@ export const menuGroups = [
     label: "Comercial",
     icon: ShoppingCart,
     items: [
-      { name: "Pedidos",          icon: FileText,     path: "/sales" },
+      { name: "Pedidos de Venda", icon: FileText,     path: "/sales" },
+      { name: "Pronta-Entrega",   icon: Box,          path: "/pronta-entrega" },
       { name: "Clientes",         icon: Users,        path: "/clients" },
-      { name: "Pronta-entrega",   icon: Box,          path: "/pronta-entrega" },
-      { name: "Resumo",           icon: BarChart3,    path: "/comercial" },
+      { name: "Painel Comercial", icon: BarChart3,    path: "/comercial" },
     ],
   },
   {
@@ -31,9 +32,11 @@ export const menuGroups = [
     icon: Factory,
     items: [
       { name: "PCP",              icon: Kanban,       path: "/pcp" },
+      { name: "Ordens (OPs)",     icon: ListChecks,   path: "/orders" },
       { name: "Qualidade",        icon: ShieldCheck,  path: "/quality" },
+      { name: "MRP",              icon: Boxes,        path: "/mrp" },
       { name: "Capacidade",       icon: BarChart3,    path: "/capacity-planning" },
-      { name: "Painel",           icon: LayoutDashboard, path: "/producao" },
+      { name: "Painel Produção",  icon: LayoutDashboard, path: "/producao" },
     ],
   },
   {
@@ -42,60 +45,55 @@ export const menuGroups = [
     items: [
       { name: "Referências",      icon: BookOpen,     path: "/references" },
       { name: "Fichas Técnicas",  icon: Ruler,        path: "/fichas-tecnicas" },
-      { name: "Imagens",          icon: Palette,      path: "/imagens-cores" },
       { name: "Solados",          icon: Footprints,   path: "/consumo-base" },
       { name: "Receitas",         icon: Sparkles,     path: "/artisanal-recipes" },
+      { name: "Cores & Imagens",  icon: Palette,      path: "/imagens-cores" },
     ],
   },
   {
-    label: "Estoque",
+    label: "Estoque & Compras",
     icon: Package,
     items: [
-      { name: "Posição",          icon: Package,      path: "/estoque" },
-      { name: "Ajustes",          icon: ArrowUpDown,  path: "/ajuste-estoque" },
-      { name: "Alertas",          icon: BellRing,     path: "/alertas-estoque" },
-      { name: "Reservas",         icon: Bookmark,     path: "/reservas-estoque" },
-      { name: "Histórico",        icon: History,      path: "/estoque/historico" },
-    ],
-  },
-  {
-    label: "Compras",
-    icon: ShoppingBag,
-    items: [
-      { name: "Planejamento",     icon: Calendar,     path: "/purchase-planning" },
-      { name: "Ordens de Compra", icon: ShoppingBag,  path: "/purchase-orders" },
-      { name: "Fornecedores",     icon: Briefcase,    path: "/suppliers" },
-      { name: "Custos de Insumos",icon: DollarSign,   path: "/custos-insumos" },
-      { name: "Markup",           icon: Calculator,   path: "/pricing-calculator" },
+      { name: "Posição",            icon: Package,      path: "/estoque" },
+      { name: "Ajustes",            icon: ArrowUpDown,  path: "/ajuste-estoque" },
+      { name: "Alertas",            icon: BellRing,     path: "/alertas-estoque" },
+      { name: "Reservas",           icon: Bookmark,     path: "/reservas-estoque" },
+      { name: "Histórico",          icon: History,      path: "/estoque/historico" },
+      { name: "Planejamento",       icon: Calendar,     path: "/purchase-planning" },
+      { name: "Ordens de Compra",   icon: ShoppingBag,  path: "/purchase-orders" },
+      { name: "Fornecedores",       icon: Briefcase,    path: "/suppliers" },
+      { name: "Custos & Markup",    icon: DollarSign,   path: "/custos-insumos" },
     ],
   },
   {
     label: "Logística",
     icon: Truck,
     items: [
-      { name: "Expedição",        icon: PackageOpen,  path: "/expedicao" },
+      { name: "Expedição",        icon: PackageOpen,    path: "/expedicao" },
       { name: "Conferência",      icon: ClipboardCheck, path: "/conferencia-saida" },
-      { name: "Transporte",       icon: Truck,        path: "/transporte" },
-      { name: "Etiquetas",        icon: Tag,          path: "/label-system" },
+      { name: "Transporte",       icon: Truck,          path: "/transporte" },
+      { name: "Etiquetas",        icon: Tag,            path: "/label-system" },
     ],
   },
   {
     label: "Financeiro",
     icon: Wallet,
     items: [
-      { name: "Visão Geral",      icon: Wallet,       path: "/finance" },
-      { name: "NF-e",             icon: Receipt,      path: "/nfe" },
-      { name: "Painel",           icon: PieChart,     path: "/financeiro" },
+      { name: "Contas (AR/AP)",   icon: Wallet,         path: "/finance" },
+      { name: "NF-e",             icon: Receipt,        path: "/nfe" },
+      { name: "Painel Financeiro",icon: PieChart,       path: "/financeiro" },
     ],
   },
   {
     label: "Pessoas",
     icon: Users,
     items: [
-      { name: "Equipe",           icon: Users,        path: "/employees" },
-      { name: "Ponto",            icon: Clock,        path: "/timesheet" },
-      { name: "Terceirizados",    icon: UserCheck,    path: "/contractors" },
-      { name: "Painel RH",        icon: LayoutDashboard, path: "/rh" },
+      { name: "Equipe",           icon: Users,          path: "/employees" },
+      { name: "Ponto",            icon: Clock,          path: "/timesheet" },
+      { name: "Banco de Horas",   icon: Hourglass,      path: "/rh/bank-hours" },
+      { name: "Folha",            icon: BadgeDollarSign,path: "/rh/payroll" },
+      { name: "Terceirizados",    icon: UserCheck,      path: "/contractors" },
+      { name: "Painel RH",        icon: LayoutDashboard,path: "/rh" },
     ],
   },
 ];
@@ -107,5 +105,4 @@ export const systemItems = [
   { to: '/audit-logs',         icon: FileText,  label: 'Auditoria' },
   { to: '/system-monitor',     icon: Monitor,   label: 'Monitoramento' },
   { to: '/system-diagnostics', icon: Cpu,       label: 'Diagnóstico' },
-  { to: '/unit-audit',         icon: Scale,     label: 'Auditoria Units' },
 ];

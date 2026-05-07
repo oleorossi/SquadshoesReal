@@ -37,6 +37,8 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/employees': 'rh',
   '/timesheet': 'rh',
   '/time-control': 'rh',
+  '/rh/bank-hours': 'rh',
+  '/rh/payroll': 'rh',
   '/purchase-orders': 'financeiro',
   '/purchase-planning': 'financeiro',
   '/pricing-calculator': 'financeiro',

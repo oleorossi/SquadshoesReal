@@ -100,7 +100,7 @@ export function DashboardGrid({ stats, filterPeriod, productsCount, fmt }: Dashb
           variant="success"
           trend="up"
           trendLabel="mês atual"
-          onClick={() => navigate('/sales-report')}
+          onClick={() => navigate('/comercial')}
         />
         <KpiCard
           title="A Receber"
