@@ -29,14 +29,15 @@
  */
 
 export type SectorKey =
-  | 'corte_palmilha' | 'corte_forracao' | 'mesa' | 'silk'
+  | 'corte_palmilha' | 'corte_forracao' | 'costura' | 'mesa' | 'silk'
   | 'colagem' | 'montagem' | 'solagem' | 'acabamento' | 'expedicao'
-  // legacy — kept for backward compat with sectorCapacity.ts callers
-  | 'corte' | 'costura';
+  // legacy — pre-rename, kept for backward compat with sectorCapacity.ts callers
+  | 'corte';
 
 interface SheetCapacityRow {
   cutting_capacity_per_day?: number | null;
   sewing_capacity_per_day?: number | null;
+  costura_capacity_per_day?: number | null;
   assembly_capacity_per_day?: number | null;
   finishing_capacity_per_day?: number | null;
   mesa_daily_capacity?: number | null;
@@ -53,6 +54,7 @@ interface SheetCapacityRow {
 interface CategoryDefaultsRow {
   cutting_capacity_per_day?: number | null;
   sewing_capacity_per_day?: number | null;
+  costura_capacity_per_day?: number | null;
   mesa_daily_capacity?: number | null;
   silk_capacity_per_day?: number | null;
   gluing_capacity_per_day?: number | null;
@@ -70,9 +72,10 @@ const SECTOR_CONFIG: Record<SectorKey, {
   ltField: keyof SheetCapacityRow;
   hardFallbackDays: number;
 }> = {
-  // New sector names
+  // New sector names (PR 2 — Costura adicionado entre Corte Forração e Mesa)
   corte_palmilha: { capField: 'sewing_capacity_per_day',    ltField: 'lead_time_costura_dias',    hardFallbackDays: 1 },
   corte_forracao: { capField: 'cutting_capacity_per_day',   ltField: 'lead_time_corte_dias',      hardFallbackDays: 2 },
+  costura:        { capField: 'costura_capacity_per_day',   ltField: 'lead_time_costura_dias',    hardFallbackDays: 1 },
   mesa:           { capField: 'mesa_daily_capacity',        ltField: 'lead_time_corte_dias',      hardFallbackDays: 1 },
   silk:           { capField: 'silk_capacity_per_day',      ltField: 'lead_time_corte_dias',      hardFallbackDays: 1 },
   colagem:        { capField: 'gluing_capacity_per_day',    ltField: 'lead_time_corte_dias',      hardFallbackDays: 1 },
@@ -80,10 +83,8 @@ const SECTOR_CONFIG: Record<SectorKey, {
   solagem:        { capField: 'soling_capacity_per_day',    ltField: 'lead_time_montagem_dias',   hardFallbackDays: 1 },
   acabamento:     { capField: 'finishing_capacity_per_day', ltField: 'lead_time_acabamento_dias', hardFallbackDays: 1 },
   expedicao:      { capField: 'finishing_capacity_per_day', ltField: 'lead_time_acabamento_dias', hardFallbackDays: 0 },
-  // Legacy aliases — 'corte' was renamed to corte_palmilha; 'costura' to corte_forracao
-  // (see sector_display_to_enum in migration 20260506120000)
+  // Legacy alias — 'corte' was renamed to corte_palmilha
   corte:          { capField: 'sewing_capacity_per_day',    ltField: 'lead_time_costura_dias',    hardFallbackDays: 1 },
-  costura:        { capField: 'cutting_capacity_per_day',   ltField: 'lead_time_corte_dias',      hardFallbackDays: 2 },
 };
 
 function num(v: unknown): number {
@@ -145,7 +146,7 @@ export function computeAllSectorLeadTimes(
   sheet: SheetCapacityRow | null | undefined,
   categoryDefaults?: CategoryDefaultsRow | null,
 ): Record<SectorKey, number> {
-  const keys: SectorKey[] = ['corte_palmilha','corte_forracao','mesa','silk','colagem','montagem','solagem','acabamento','expedicao','corte','costura'];
+  const keys: SectorKey[] = ['corte_palmilha','corte_forracao','costura','mesa','silk','colagem','montagem','solagem','acabamento','expedicao','corte'];
   return Object.fromEntries(
     keys.map(k => [k, computeSectorLeadTimeDays(k, quantity, sheet, categoryDefaults)])
   ) as Record<SectorKey, number>;

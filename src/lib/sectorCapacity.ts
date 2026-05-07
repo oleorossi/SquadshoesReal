@@ -10,7 +10,7 @@ import { computeSectorLeadTimeDays } from './leadTime';
  * e detecta sobrecarga vs. capacidade diária da ficha técnica.
  */
 
-export type SectorKey = 'corte_palmilha' | 'corte_forracao' | 'mesa' | 'silk' | 'colagem' | 'montagem' | 'solagem' | 'acabamento' | 'expedicao'
+export type SectorKey = 'corte_palmilha' | 'corte_forracao' | 'costura' | 'mesa' | 'silk' | 'colagem' | 'montagem' | 'solagem' | 'acabamento' | 'expedicao'
   | 'corte' | 'costura'; // legacy aliases
 
 export interface SectorOverloadItem {
@@ -198,10 +198,17 @@ export async function checkSectorCapacity(
     const ltMont     = computeSectorLeadTimeDays('montagem',       qty, sheet, defaults);
     const ltColagem  = hasSector(sheet, 'Colagem') ? computeSectorLeadTimeDays('colagem', qty, sheet, defaults) : 0;
     const ltSilk     = hasSector(sheet, 'Silk')    ? computeSectorLeadTimeDays('silk',    qty, sheet, defaults) : 0;
-    const ltMesa     = hasSector(sheet, 'Mesa') ? computeSectorLeadTimeDays('mesa', qty, sheet, defaults) : 0;
+    const ltCostura  = hasSector(sheet, 'Costura') ? computeSectorLeadTimeDays('costura', qty, sheet, defaults) : 0;
+    const ltMesa     = hasSector(sheet, 'Mesa') || hasSector(sheet, 'Aviamento')
+                        ? computeSectorLeadTimeDays('mesa', qty, sheet, defaults) : 0;
     const ltForracao = hasSector(sheet, 'Corte Forração') ? computeSectorLeadTimeDays('corte_forracao', qty, sheet, defaults) : 0;
     const ltPalmilha = hasSector(sheet, 'Corte Palmilha') ? computeSectorLeadTimeDays('corte_palmilha', qty, sheet, defaults) : 0;
 
+    // ── Cascata espelha compute_wave_timeline (PR 3) ──
+    // Sequencial pós-prep: acabamento ← solagem ← montagem ← colagem ← silk ← costura
+    // Paralelos prep (PR 3): Corte Palmilha ‖ Corte Forração ‖ Mesa(Aviamento)
+    //   — todos terminam em costuraStart (ponto de convergência)
+    //   — cada um começa em SUA própria data (back-calculated)
     const acabEnd    = deadline;
     const acabStart  = addBusinessDays(acabEnd,    -ltAcab);
     const solaEnd    = acabStart;
@@ -212,23 +219,27 @@ export async function checkSectorCapacity(
     const colaStart  = addBusinessDays(colaEnd,    -ltColagem);
     const silkEnd    = colaStart;
     const silkStart  = addBusinessDays(silkEnd,    -ltSilk);
-    // Mesa runs sequentially after Corte Forração (it consumes its output)
-    const mesaEnd    = silkStart;
-    const mesaStart  = addBusinessDays(mesaEnd,    -ltMesa);
-    const forrEnd    = mesaStart;
-    const forrStart  = addBusinessDays(forrEnd,    -ltForracao);
-    const palmEnd    = forrStart;
+    // Costura é sequencial entre os 3 prep paralelos e Silk
+    const costuraEnd   = silkStart;
+    const costuraStart = addBusinessDays(costuraEnd, -ltCostura);
+    // Os 3 prep rodam em PARALELO — cada um termina em costuraStart com SEU lead
+    const palmEnd    = costuraStart;
     const palmStart  = addBusinessDays(palmEnd,    -ltPalmilha);
+    const forrEnd    = costuraStart;
+    const forrStart  = addBusinessDays(forrEnd,    -ltForracao);
+    const mesaEnd    = costuraStart;
+    const mesaStart  = addBusinessDays(mesaEnd,    -ltMesa);
 
     return {
-      corte_palmilha: { start: palmStart,  end: palmEnd,   cap: Number(sheet.sewing_capacity_per_day   || 0), required: hasSector(sheet, 'Corte Palmilha') && sheet.requires_sewing !== false },
-      corte_forracao: { start: forrStart,  end: forrEnd,   cap: Number(sheet.cutting_capacity_per_day  || 0), required: hasSector(sheet, 'Corte Forração') && sheet.requires_cutting !== false },
-      mesa:           { start: mesaStart,  end: mesaEnd,   cap: Number(sheet.mesa_daily_capacity       || 0), required: hasSector(sheet, 'Mesa') && Number(sheet.mesa_daily_capacity) > 0 },
-      silk:           { start: silkStart,  end: silkEnd,   cap: Number(sheet.silk_capacity_per_day     || 0), required: hasSector(sheet, 'Silk') && Number(sheet.silk_capacity_per_day) > 0 },
-      colagem:        { start: colaStart,  end: colaEnd,   cap: Number(sheet.gluing_capacity_per_day   || 0), required: hasSector(sheet, 'Colagem') && Number(sheet.gluing_capacity_per_day) > 0 },
-      montagem:       { start: montStart,  end: montEnd,   cap: Number(sheet.assembly_capacity_per_day || 0), required: true },
-      solagem:        { start: solaStart,  end: solaEnd,   cap: Number(sheet.soling_capacity_per_day   || 0), required: Number(sheet.soling_capacity_per_day) > 0 },
-      acabamento:     { start: acabStart,  end: acabEnd,   cap: Number(sheet.finishing_capacity_per_day|| 0), required: true },
+      corte_palmilha: { start: palmStart,    end: palmEnd,    cap: Number(sheet.sewing_capacity_per_day   || 0), required: hasSector(sheet, 'Corte Palmilha') && sheet.requires_sewing !== false },
+      corte_forracao: { start: forrStart,    end: forrEnd,    cap: Number(sheet.cutting_capacity_per_day  || 0), required: hasSector(sheet, 'Corte Forração') && sheet.requires_cutting !== false },
+      costura:        { start: costuraStart, end: costuraEnd, cap: Number(sheet.costura_capacity_per_day  || 0), required: hasSector(sheet, 'Costura') },
+      mesa:           { start: mesaStart,    end: mesaEnd,    cap: Number(sheet.mesa_daily_capacity       || 0), required: (hasSector(sheet, 'Mesa') || hasSector(sheet, 'Aviamento')) && Number(sheet.mesa_daily_capacity) > 0 },
+      silk:           { start: silkStart,    end: silkEnd,    cap: Number(sheet.silk_capacity_per_day     || 0), required: hasSector(sheet, 'Silk') && Number(sheet.silk_capacity_per_day) > 0 },
+      colagem:        { start: colaStart,    end: colaEnd,    cap: Number(sheet.gluing_capacity_per_day   || 0), required: hasSector(sheet, 'Colagem') && Number(sheet.gluing_capacity_per_day) > 0 },
+      montagem:       { start: montStart,    end: montEnd,    cap: Number(sheet.assembly_capacity_per_day || 0), required: true },
+      solagem:        { start: solaStart,    end: solaEnd,    cap: Number(sheet.soling_capacity_per_day   || 0), required: Number(sheet.soling_capacity_per_day) > 0 },
+      acabamento:     { start: acabStart,    end: acabEnd,    cap: Number(sheet.finishing_capacity_per_day|| 0), required: true },
     };
   }
 
