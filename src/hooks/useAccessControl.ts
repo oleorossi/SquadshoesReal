@@ -45,6 +45,8 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/weekly-purchasing-plan': 'financeiro',
   '/comercial': 'vendas',
   '/producao': 'producao',
+  '/producao/live': 'producao',
+  '/producao/timeline': 'producao',
   '/production-dashboard': 'producao',
   '/financeiro': 'financeiro',
   '/rh': 'rh',

@@ -46,6 +46,8 @@ const Contractors = lazy(() => import("./pages/Contractors"));
 const PurchaseOrders = lazy(() => import("./pages/PurchaseOrders"));
 const ComercialDashboard = lazy(() => import("./pages/ComercialDashboard"));
 const ProducaoDashboard = lazy(() => import("./pages/ProducaoDashboard"));
+const ProductionLive = lazy(() => import("./pages/ProductionLive"));
+const ProductionTimeline = lazy(() => import("./pages/ProductionTimeline"));
 // ProductionDashboardPage removido — funcionalidade unificada em /producao (ProducaoDashboard).
 const FinanceiroDashboard = lazy(() => import("./pages/FinanceiroDashboard"));
 const RHHub = lazy(() => import("./pages/RHHub"));
@@ -635,6 +637,14 @@ const router = createBrowserRouter([
       {
         path: "producao",
         element: <ProducaoDashboard />,
+      },
+      {
+        path: "producao/live",
+        element: <ProductionLive />,
+      },
+      {
+        path: "producao/timeline",
+        element: <ProductionTimeline />,
       },
       {
         // Rota legada: dashboard unificado em /producao (ProducaoDashboard).

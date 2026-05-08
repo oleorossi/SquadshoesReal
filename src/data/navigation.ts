@@ -7,7 +7,7 @@ import {
   BarChart2, BarChart3, Receipt,
   BookOpen, Footprints, Sparkles, Tag, ClipboardCheck,
   DollarSign, Calendar, Box, History,
-  ListChecks, Boxes,
+  ListChecks, Boxes, Activity, GanttChartSquare,
 } from 'lucide-react';
 
 // ════════════════════════════════════════════════════════════════════════
@@ -45,10 +45,12 @@ export const menuGroups = [
     label: "Produção",
     icon: Factory,
     items: [
-      { name: "PCP",              icon: Kanban,       path: "/pcp" },
-      { name: "Ordens (OPs)",     icon: ListChecks,   path: "/orders" },
-      { name: "Capacidade",       icon: BarChart3,    path: "/capacity-planning" },
-      { name: "Qualidade",        icon: ShieldCheck,  path: "/quality" },
+      { name: "PCP",              icon: Kanban,            path: "/pcp" },
+      { name: "Ordens (OPs)",     icon: ListChecks,        path: "/orders" },
+      { name: "Live",             icon: Activity,          path: "/producao/live" },
+      { name: "Timeline",         icon: GanttChartSquare,  path: "/producao/timeline" },
+      { name: "Capacidade",       icon: BarChart3,         path: "/capacity-planning" },
+      { name: "Qualidade",        icon: ShieldCheck,       path: "/quality" },
     ],
   },
   {

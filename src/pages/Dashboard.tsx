@@ -75,6 +75,19 @@ import { ConsumptionErrorAlert } from "@/components/dashboard/ConsumptionErrorAl
           onDismiss={clearConsumptionError}
         />
       )}
+      {/* Editorial header (Novidade) */}
+      <div className="flex items-baseline justify-between gap-4 pb-1">
+        <div>
+          <div className="eyebrow flex items-center gap-2">
+            <span className="live-dot" />
+            {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
+          </div>
+          <h1 className="display text-2xl mt-2 sm:text-3xl">Squad Shoes · Visão geral</h1>
+        </div>
+        <div className="text-xs text-muted-foreground font-mono tabular-nums hidden sm:block">
+          {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+        </div>
+      </div>
       {/* KPIs — Produção */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2.5 stagger-children">
          <KPICard 
