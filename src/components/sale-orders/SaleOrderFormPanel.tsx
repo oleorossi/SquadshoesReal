@@ -75,6 +75,11 @@ interface Props {
   packagingQuantity?: number;
   onPackagingQuantityChange?: (qty: number) => void;
   onSaveStateAndNavigate?: () => void;
+  /** Data mínima viável calculada (ISO yyyy-mm-dd). Quando delivery_deadline < esta data,
+   *  exibe alerta vermelho persistente ao lado do campo. */
+  minBillingISO?: string | null;
+  /** True enquanto recalcula a data mínima (mostra spinner em vez de alerta). */
+  computingMinBilling?: boolean;
 }
 
 const emptyItem: SaleOrderItemFormData = {
@@ -285,6 +290,7 @@ export default function SaleOrderFormPanel({
    isAdmin, selectedClientId, onClientSelect, onSubmit, onCancel, isPending, submitLabel,
    packagingProductId, onPackagingProductChange, packagingQuantity: _packagingQuantity, onPackagingQuantityChange,
    onSaveStateAndNavigate,
+   minBillingISO, computingMinBilling,
  }: Props) {
    const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
    const [duplicateList, setDuplicateList] = useState<string[]>([]);
@@ -593,8 +599,38 @@ export default function SaleOrderFormPanel({
                     type="date"
                     value={form.delivery_deadline}
                     onChange={e => setForm(f => ({ ...f, delivery_deadline: e.target.value }))}
-                    className="h-9"
+                    className={cn(
+                      "h-9",
+                      minBillingISO && form.delivery_deadline && form.delivery_deadline < minBillingISO &&
+                        "border-destructive ring-1 ring-destructive/40 focus-visible:ring-destructive"
+                    )}
                   />
+                  {/* Alerta de viabilidade — vermelho quando data anterior à mínima viável,
+                      spinner enquanto recalcula, verde discreto quando OK. */}
+                  {computingMinBilling ? (
+                    <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      <span>Calculando data mínima viável...</span>
+                    </div>
+                  ) : minBillingISO && form.delivery_deadline && form.delivery_deadline < minBillingISO ? (
+                    <div className="mt-1.5 flex items-start gap-1.5 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-[11px] text-destructive">
+                      <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                      <div className="flex-1 leading-tight">
+                        <span className="font-bold uppercase tracking-wide">Data inviável</span>
+                        <div className="font-medium">
+                          Mínima viável:{' '}
+                          <strong className="font-bold">
+                            {new Date(minBillingISO + 'T00:00:00').toLocaleDateString('pt-BR')}
+                          </strong>
+                          {' '}— considera estoque, lead time de compra (descontando POs em trânsito) e capacidade dos 9 setores.
+                        </div>
+                      </div>
+                    </div>
+                  ) : minBillingISO && form.delivery_deadline ? (
+                    <div className="mt-1.5 text-[11px] text-emerald-600 dark:text-emerald-500">
+                      ✓ Data viável (mínimo: {new Date(minBillingISO + 'T00:00:00').toLocaleDateString('pt-BR')})
+                    </div>
+                  ) : null}
                 </div>
               </div>
 

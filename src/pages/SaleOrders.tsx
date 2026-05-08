@@ -74,9 +74,32 @@ const formatDate = (d: string | null) =>
 const formatDateShort = (d: string) =>
   new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 
+// Lookup batch de min_billing_date pra todos os PVs ativos da view sale_order_min_billing.
+// Usado pra marcar em vermelho linhas com delivery_deadline < min_billing_date.
+function useMinBillingMap() {
+  return useQuery<Map<string, string>>({
+    queryKey: ['sale_order_min_billing_map'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('sale_order_min_billing' as any)
+        .select('sale_order_id, min_billing_date');
+      const out = new Map<string, string>();
+      if (error || !data) return out;
+      for (const row of data as any[]) {
+        if (row.sale_order_id && row.min_billing_date) {
+          out.set(row.sale_order_id, row.min_billing_date);
+        }
+      }
+      return out;
+    },
+    staleTime: 60_000,
+  });
+}
+
 export default function SaleOrders() {
   const { data: orders = [], isLoading, isError, error } = useSaleOrders();
   const { data: allSaleItems = [] } = useSaleOrderAllItems();
+  const { data: minBillingMap = new Map<string, string>() } = useMinBillingMap();
   const { data: references = [] } = useTechnicalSheets();
   const { data: clients = [] } = useClients();
   const { data: economicGroups = [] } = useEconomicGroups();
@@ -1561,13 +1584,27 @@ export default function SaleOrders() {
                 {filteredOrders.map(order => {
                   const isSelected = selectedIds.has(order.id);
                   const isOverdue = order.delivery_deadline && new Date(order.delivery_deadline) < new Date() && order.status !== 'Faturado' && order.status !== 'Cancelado';
+                  // Inviável = data de faturamento anterior à mínima necessária
+                  // (compute_min_billing_date: 8 setores + buffer + supplier).
+                  // Pegamos a min do mapa (view sale_order_min_billing) e
+                  // comparamos só se o PV ainda está ativo.
+                  const minBilling = minBillingMap.get(order.id);
+                  const isInfeasible = !!(
+                    !isOverdue &&
+                    minBilling &&
+                    order.delivery_deadline &&
+                    order.delivery_deadline < minBilling &&
+                    order.status !== 'Faturado' &&
+                    order.status !== 'Cancelado'
+                  );
                   return (
                     <TableRow
                       key={order.id}
                       className={cn(
                         "group transition-colors cursor-pointer",
                         isSelected ? "bg-primary/10 hover:bg-primary/15" : "hover:bg-muted/50",
-                        isOverdue && "border-l-4 border-l-destructive"
+                        (isOverdue || isInfeasible) && "border-l-4 border-l-destructive",
+                        isInfeasible && "bg-destructive/5 hover:bg-destructive/10"
                       )}
                       onClick={(e) => {
                         const target = e.target as HTMLElement;
@@ -1643,13 +1680,30 @@ export default function SaleOrders() {
                       <TableCell className="text-right text-xs font-mono font-semibold">
                         {(pairsBySaleOrder[order.id] || 0).toLocaleString('pt-BR')}
                       </TableCell>
-                      <TableCell className={`text-xs ${isOverdue ? 'text-destructive font-semibold' : 'text-muted-foreground'}`}>
+                      <TableCell
+                        className={cn(
+                          'text-xs',
+                          (isOverdue || isInfeasible) ? 'text-destructive font-semibold' : 'text-muted-foreground'
+                        )}
+                        title={
+                          isInfeasible && minBilling
+                            ? `DATA INVIÁVEL — mínima necessária: ${formatDate(minBilling)} (considera estoque, supplier lead time descontando POs em trânsito, e capacidade dos 9 setores).`
+                            : isOverdue
+                              ? 'Prazo de entrega já passou.'
+                              : undefined
+                        }
+                      >
                         <div className="flex flex-col">
                           <span>
                             {formatDate(order.delivery_deadline)}
-                            {isOverdue && <span className="ml-1 text-[10px]">⚠</span>}
+                            {(isOverdue || isInfeasible) && <span className="ml-1 text-[10px]">⚠</span>}
                           </span>
-                          {(order.delivery_month || order.delivery_week) && (
+                          {isInfeasible && minBilling && (
+                            <span className="text-[10px] font-mono text-destructive font-bold">
+                              MÍN: {formatDate(minBilling)}
+                            </span>
+                          )}
+                          {!isInfeasible && (order.delivery_month || order.delivery_week) && (
                             <span className="text-[10px] text-muted-foreground font-mono">
                               {[order.delivery_month, order.delivery_week].filter(Boolean).join(' ')}
                             </span>

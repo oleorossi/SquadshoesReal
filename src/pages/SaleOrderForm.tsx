@@ -21,7 +21,7 @@ import { MaterialPurchaseConfirmDialog } from '@/components/sale-orders/Material
 import { checkSectorCapacity, CapacityCheckResult } from '@/lib/sectorCapacity';
 import { SectorOverloadDialog } from '@/components/sale-orders/SectorOverloadDialog';
 import { createOutsourceOrdersForOverloads } from '@/lib/outsourceOrders';
-import { computeMinBillingForNewOrder, isBeforeMinDate, toISOWeek } from '@/lib/minBillingDate';
+import { computeMinBillingForNewOrder, fetchMinBillingDate, isBeforeMinDate, toISOWeek } from '@/lib/minBillingDate';
 import { MinBillingDateSuggestionDialog } from '@/components/sale-orders/MinBillingDateSuggestionDialog';
 
 const emptyForm: SaleOrderFormData = {
@@ -115,12 +115,53 @@ export default function SaleOrderForm() {
   const [minBillingDialogOpen, setMinBillingDialogOpen] = useState(false);
   const [minBillingSuggestion, setMinBillingSuggestion] = useState<{ minDateISO: string; minWeekISO: string } | null>(null);
   const [computingMinBilling, setComputingMinBilling] = useState(false);
+  // Live min billing date for the persistent red badge in the form panel.
+  // Edit mode → server compute_min_billing_date(id). New mode → frontend
+  // computeMinBillingForNewOrder over current items. Recomputed with debounce.
+  const [liveMinBillingISO, setLiveMinBillingISO] = useState<string | null>(null);
+  const [computingLive, setComputingLive] = useState(false);
 
   // Always-current form ref so setTimeout callbacks don't capture stale closures
   const formLatestRef = useRef(form);
   useEffect(() => { formLatestRef.current = form; }, [form]);
   // Prevents the min-billing dialog from re-opening on the second handleSubmit pass
   const skipMinBillingCheckRef = useRef(false);
+
+  // Recalculate live min_billing_date with debounce whenever items change
+  // (or on edit mode load). Drives the red badge in SaleOrderFormPanel.
+  useEffect(() => {
+    const validItems = items.filter(i => i.reference_id && i.quantity > 0);
+    if (validItems.length === 0) {
+      setLiveMinBillingISO(null);
+      return;
+    }
+    let cancelled = false;
+    const timeout = setTimeout(async () => {
+      setComputingLive(true);
+      try {
+        if (isEdit && id) {
+          const iso = await fetchMinBillingDate(id);
+          if (!cancelled) setLiveMinBillingISO(iso);
+        } else {
+          const capInputs = validItems.map((it) => {
+            const ref = canonicalReferences.find((r: any) => r.id === it.reference_id);
+            const refLabel = ref ? `${(ref as any).code || ''} - ${(ref as any).name || ''}`.trim() : it.reference_id.substring(0, 8);
+            return { reference_id: it.reference_id, reference_label: refLabel, quantity: it.quantity };
+          });
+          const suggestion = await computeMinBillingForNewOrder(capInputs);
+          if (!cancelled) setLiveMinBillingISO(suggestion?.minDateISO || null);
+        }
+      } catch {
+        if (!cancelled) setLiveMinBillingISO(null);
+      } finally {
+        if (!cancelled) setComputingLive(false);
+      }
+    }, 500);
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, [items, isEdit, id, canonicalReferences]);
 
   const handleSaveStateAndNavigate = () => {
     const draft = {
@@ -278,21 +319,32 @@ export default function SaleOrderForm() {
     if (!f.delivery_month) { toast.error('Selecione o mês de faturamento.'); return; }
     if (!f.delivery_week) { toast.error('Selecione a semana de faturamento.'); return; }
 
-    // 1) Em pedidos NOVOS, sugere a semana mínima de faturamento antes dos checks de estoque.
+    // 1) Sugere a semana mínima de faturamento antes dos checks de estoque.
     //    Se a data estiver vazia OU for anterior ao mínimo calculado, abre o diálogo.
     //    skipMinBillingCheckRef is set by handleMinBillingConfirm/handleMinBillingManual to
     //    prevent re-opening the dialog on the second pass (after the user already confirmed).
-    const doMinBillingCheck = !isEdit && validItems.length > 0 && !skipMinBillingCheckRef.current;
+    //    Roda em PV novo E em edit — em ambos os casos, mudar a data pra algo apertado
+    //    deve disparar o aviso (gap antigo: edit pulava a checagem).
+    const doMinBillingCheck = validItems.length > 0 && !skipMinBillingCheckRef.current;
     skipMinBillingCheckRef.current = false;
     if (doMinBillingCheck) {
       setComputingMinBilling(true);
       try {
-        const capInputs = validItems.map((it) => {
-          const ref = canonicalReferences.find((r: any) => r.id === it.reference_id);
-          const refLabel = ref ? `${(ref as any).code || ''} - ${(ref as any).name || ''}`.trim() : it.reference_id.substring(0, 8);
-          return { reference_id: it.reference_id, reference_label: refLabel, quantity: it.quantity };
-        });
-        const suggestion = await computeMinBillingForNewOrder(capInputs);
+        // Edit mode: server-side compute_min_billing_date(id) — alinhada com
+        // compute_wave_timeline (mesmos 8 setores + buffer + supplier).
+        // New mode: itera capacidade setorial via computeMinBillingForNewOrder.
+        let suggestion: { minDateISO: string; minWeekISO: string } | null = null;
+        if (isEdit && id) {
+          const iso = await fetchMinBillingDate(id);
+          if (iso) suggestion = { minDateISO: iso, minWeekISO: toISOWeek(iso) };
+        } else {
+          const capInputs = validItems.map((it) => {
+            const ref = canonicalReferences.find((r: any) => r.id === it.reference_id);
+            const refLabel = ref ? `${(ref as any).code || ''} - ${(ref as any).name || ''}`.trim() : it.reference_id.substring(0, 8);
+            return { reference_id: it.reference_id, reference_label: refLabel, quantity: it.quantity };
+          });
+          suggestion = await computeMinBillingForNewOrder(capInputs);
+        }
         setComputingMinBilling(false);
         if (suggestion) {
           const needsConfirm =
@@ -549,6 +601,8 @@ export default function SaleOrderForm() {
           packagingQuantity={packagingQuantity}
           onPackagingQuantityChange={setPackagingQuantity}
           onSaveStateAndNavigate={!isEdit ? handleSaveStateAndNavigate : undefined}
+          minBillingISO={liveMinBillingISO}
+          computingMinBilling={computingLive}
         />
       </div>
 
