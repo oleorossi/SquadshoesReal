@@ -735,6 +735,206 @@ function zplAscii(str: string): string {
 }
 
 /**
+ * Generate a PDF of thermal labels (one label per page, sized exactly to the label).
+ * Universal format — opens in any PDF viewer (Preview, Adobe, Chrome) and prints
+ * directly. No driver or special software needed, unlike ZPL.
+ *
+ * Returns a Blob ready to download. Caller is responsible for triggering download.
+ */
+export async function buildThermalLabelsPdf(
+  labels: {
+    refCode: string;
+    refName: string;
+    mainMaterial: string;
+    color: string;
+    size: string;
+    barcode: string;
+    shoeCategory?: string;
+    clientOrderNumber?: string;
+    qty?: number;
+    strapsLabel?: string;
+    imageUrl?: string;
+  }[],
+  dimensions = { width: 100, height: 30 },
+  senderCnpj?: string,
+): Promise<Blob> {
+  const [{ default: jsPDF }, { default: JsBarcode }] = await Promise.all([
+    import('jspdf'),
+    import('jsbarcode'),
+  ]);
+
+  const { width: W, height: H } = dimensions;
+  const doc = new jsPDF({ orientation: W >= H ? 'landscape' : 'portrait', unit: 'mm', format: [W, H], compress: true });
+
+  // Layout constants (mm) — proportional to 100×30 reference
+  const scale = H / 30;
+  const padX = 1.5;
+  const padY = 1.0;
+
+  // Header strip (black band with ref code at top)
+  const headerH = Math.max(H * 0.20, 4.5);
+  // Footer strip (CNPJ / Brasil)
+  const footerH = Math.max(H * 0.115, 3.0);
+
+  // Helper: render barcode (CODE128) to a data URL via offscreen canvas
+  const barcodeCache = new Map<string, string>();
+  const renderBarcode = (value: string): string | null => {
+    if (!value) return null;
+    if (barcodeCache.has(value)) return barcodeCache.get(value)!;
+    try {
+      const canvas = document.createElement('canvas');
+      JsBarcode(canvas, value, {
+        format: 'CODE128',
+        width: 2,
+        height: 80,
+        displayValue: false,
+        margin: 0,
+      });
+      const url = canvas.toDataURL('image/png');
+      barcodeCache.set(value, url);
+      return url;
+    } catch {
+      return null;
+    }
+  };
+
+  // Helper: truncate text to fit a max width at the current font size
+  const fitText = (text: string, maxWidthMm: number): string => {
+    if (!text) return '';
+    if (doc.getTextWidth(text) <= maxWidthMm) return text;
+    let s = text;
+    while (s.length > 1 && doc.getTextWidth(s + '…') > maxWidthMm) s = s.slice(0, -1);
+    return s + '…';
+  };
+
+  for (let i = 0; i < labels.length; i++) {
+    const l = labels[i];
+    if (i > 0) doc.addPage([W, H], W >= H ? 'landscape' : 'portrait');
+
+    // Outer border
+    doc.setLineWidth(0.3);
+    doc.setDrawColor(0);
+    doc.rect(0.2, 0.2, W - 0.4, H - 0.4);
+
+    // ─── Header (black band) ───
+    if (l.refCode) {
+      doc.setFillColor(0, 0, 0);
+      doc.rect(0, 0, W, headerH, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7 * scale);
+      const refCodeText = (l.refCode || '').toUpperCase();
+      const headerLeftX = padX;
+      const headerTextY = headerH / 2 + (7 * scale) * 0.35 / 2.83;
+      doc.text(fitText(refCodeText, W * 0.55), headerLeftX, headerTextY, { baseline: 'middle' });
+      const headerRight = l.shoeCategory ? l.shoeCategory.toUpperCase() : (l.qty ? `× ${l.qty} PAR` : '');
+      if (headerRight) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(5.5 * scale);
+        doc.text(fitText(headerRight, W * 0.4), W - padX, headerTextY, { baseline: 'middle', align: 'right' });
+      }
+      doc.setTextColor(0, 0, 0);
+    }
+
+    // ─── Body layout: size box | info | barcode ───
+    const bodyTop = (l.refCode ? headerH : 0) + padY;
+    const bodyBottom = H - footerH - padY * 0.5;
+    const bodyH = bodyBottom - bodyTop;
+
+    const sizeBoxW = Math.min(W * 0.16, 14);
+    const sizeBoxX = padX;
+    const sizeBoxY = bodyTop;
+
+    const barcodeW = Math.min(W * 0.32, 32);
+    const barcodeX = W - padX - barcodeW;
+
+    const infoX = sizeBoxX + sizeBoxW + 1.2;
+    const infoW = barcodeX - infoX - 1.2;
+
+    // Size box
+    if (l.size) {
+      doc.setFillColor(0, 0, 0);
+      doc.roundedRect(sizeBoxX, sizeBoxY, sizeBoxW, bodyH, 0.8, 0.8, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(2.5 * scale);
+      doc.text('Nº', sizeBoxX + sizeBoxW / 2, sizeBoxY + bodyH * 0.25, { align: 'center', baseline: 'middle' });
+      doc.setFont('helvetica', 'bold');
+      const sizeFontPt = Math.min(bodyH * 2.5, sizeBoxW * 1.6);
+      doc.setFontSize(sizeFontPt);
+      const sizeText = (l.size || '—').slice(0, 6);
+      doc.text(sizeText, sizeBoxX + sizeBoxW / 2, sizeBoxY + bodyH * 0.62, { align: 'center', baseline: 'middle' });
+      doc.setTextColor(0, 0, 0);
+    }
+
+    // Info column (ref name, color, material, pedido)
+    let infoY = bodyTop + 0.5;
+    const lineGap = bodyH / 5;
+
+    // Ref name (largest)
+    const nameFontPt = Math.max(7, 10 * scale);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(nameFontPt);
+    const refDisplay = (l.refName || l.refCode || '—').toUpperCase();
+    doc.text(fitText(refDisplay, infoW), infoX, infoY + lineGap * 0.6, { baseline: 'middle' });
+
+    // Color
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(Math.max(6, 6.5 * scale));
+    const colorText = '■ ' + (l.color || '—').toUpperCase() + (l.qty ? `   ×${l.qty}` : '');
+    doc.text(fitText(colorText, infoW), infoX, infoY + lineGap * 1.7, { baseline: 'middle' });
+
+    // Material
+    if (l.mainMaterial) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(Math.max(5, 5.5 * scale));
+      doc.setTextColor(85, 85, 85);
+      doc.text(fitText(l.mainMaterial.toUpperCase(), infoW), infoX, infoY + lineGap * 2.7, { baseline: 'middle' });
+      doc.setTextColor(0, 0, 0);
+    }
+
+    // Client order number
+    if (l.clientOrderNumber) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(Math.max(4.5, 5 * scale));
+      doc.setTextColor(110, 110, 110);
+      doc.text(fitText(`PED. ${l.clientOrderNumber}`, infoW), infoX, infoY + lineGap * 3.6, { baseline: 'middle' });
+      doc.setTextColor(0, 0, 0);
+    }
+
+    // Vertical separator before barcode
+    doc.setLineWidth(0.15);
+    doc.setDrawColor(0);
+    doc.line(barcodeX - 0.6, bodyTop + 0.5, barcodeX - 0.6, bodyBottom - 0.5);
+
+    // Barcode (right column)
+    if (l.barcode) {
+      const dataUrl = renderBarcode(l.barcode);
+      if (dataUrl) {
+        const bcH = Math.max(6, bodyH - 2);
+        const bcY = bodyTop + (bodyH - bcH) / 2;
+        doc.addImage(dataUrl, 'PNG', barcodeX, bcY, barcodeW, bcH, undefined, 'FAST');
+      }
+    }
+
+    // ─── Footer (CNPJ) ───
+    doc.setFillColor(245, 245, 245);
+    doc.rect(0, H - footerH, W, footerH, 'F');
+    doc.setLineWidth(0.2);
+    doc.line(0, H - footerH, W, H - footerH);
+    doc.setTextColor(0, 0, 0);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(Math.max(3.8, 4.2 * scale));
+    const footerText = senderCnpj
+      ? `FABRICADO NO BRASIL  ·  CNPJ ${senderCnpj}`
+      : 'FABRICADO NO BRASIL';
+    doc.text(fitText(footerText, W - padX * 2), W / 2, H - footerH / 2, { align: 'center', baseline: 'middle' });
+  }
+
+  return doc.output('blob');
+}
+
+/**
  * Generate ZPL2 code for Elgin thermal printers (203 DPI).
  * One ^XA...^XZ block per label — send directly to Elgin L42 Pro / VOX via:
  *   - Elgin Gerenciador de Impressora

@@ -36,7 +36,7 @@ import logoImg from '@/assets/logo-squad-shoes.jpg';
 import { supabase } from '@/integrations/supabase/client';
 import { resolveProductImage } from '@/lib/imageFallback';
 import { fetchMainMaterial } from '@/lib/labelUtils';
-import { buildBoxIdentificationHtml, buildThermalLabelsHtml, buildThermalLabelsZpl, buildHangtagHtml, type BoxIdentificationData, type ThermalLabelConfig, DEFAULT_THERMAL_CONFIG } from '@/lib/printLabels';
+import { buildBoxIdentificationHtml, buildThermalLabelsHtml, buildThermalLabelsPdf, buildHangtagHtml, type BoxIdentificationData, type ThermalLabelConfig, DEFAULT_THERMAL_CONFIG } from '@/lib/printLabels';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useOrders } from '@/hooks/useOrders';
@@ -625,38 +625,85 @@ export function LabelProductionTab() {
     } catch (err: any) { toast.error(err?.message || 'Erro ao gerar etiquetas'); } finally { setIsGenerating(false); }
   };
 
-  const handleDownloadZpl = async () => {
+  const handleDownloadPdf = async () => {
     const selectedGroups = filtered.filter(g => selected.has(g.groupKey));
     const thermalGroups = selectedGroups.filter(g => getAllowedLabelTypes(g.packagingMode).thermal);
     if (thermalGroups.length === 0) {
       toast.error('Nenhum pedido selecionado permite etiquetas individuais.');
       return;
     }
-    const labels: { refCode: string; refName: string; mainMaterial: string; color: string; size: string; barcode: string }[] = [];
-    for (const group of thermalGroups) {
-      const colorName = group.colors[0] || '';
-      const { gradeText, pairsInOneFicha, numFichas } = getOrderFichaMetrics(group.orders[0] || {});
-      for (let i = 0; i < numFichas; i++) {
-        labels.push({
-          refCode: group.refCode, refName: group.refName, mainMaterial: '',
-          color: colorName, size: gradeText || `${pairsInOneFicha} PRS`,
-          barcode: group.refCode || group.groupKey,
-        });
+    setIsGenerating(true);
+    try {
+      const uniqueRefIds = [...new Set(thermalGroups.map(g => g.referenceId))];
+      const [refDataMap, materialMap] = await Promise.all([
+        supabase.from('technical_sheets').select('id, code, shoe_category').in('id', uniqueRefIds)
+          .then(({ data }) => { const map = new Map<string, any>(); for (const r of data || []) map.set(r.id, r); return map; }),
+        Promise.all(uniqueRefIds.map(async id => [id, await fetchMainMaterial(id).catch(() => '')] as const)).then(entries => new Map(entries)),
+      ]);
+
+      const labels: { refCode: string; refName: string; mainMaterial: string; color: string; size: string; barcode: string; shoeCategory?: string; clientOrderNumber?: string; qty?: number; strapsLabel?: string; }[] = [];
+      for (const group of thermalGroups) {
+        const mainMaterial = materialMap.get(group.referenceId) || '';
+        const refData = refDataMap.get(group.referenceId);
+        const colorName = group.colors[0] || '';
+        if (thermalMode === 'quantity') {
+          for (const [size, qty] of Object.entries(group.aggregatedGrade)) {
+            for (let i = 0; i < Math.min(qty as number, 2000); i++) {
+              labels.push({
+                refCode: group.refCode, refName: group.refName, mainMaterial,
+                color: colorName, size, barcode: group.refCode || group.groupKey,
+                shoeCategory: refData?.shoe_category || '',
+                clientOrderNumber: group.clientOrderNumber || '',
+                strapsLabel: getEffectiveStrapsLabel(group),
+              });
+            }
+          }
+        } else {
+          for (const order of group.orders) {
+            const orderColor = order.color || colorName;
+            const { gradeText, pairsInOneFicha, numFichas } = getOrderFichaMetrics(order);
+            for (let i = 0; i < numFichas; i++) {
+              labels.push({
+                refCode: group.refCode, refName: group.refName, mainMaterial,
+                color: orderColor, size: gradeText || `${pairsInOneFicha} PRS`,
+                barcode: group.refCode || order.order_number || group.groupKey,
+                shoeCategory: refData?.shoe_category || '',
+                clientOrderNumber: group.clientOrderNumber || '',
+                qty: pairsInOneFicha,
+                strapsLabel: getEffectiveStrapsLabel(group),
+              });
+            }
+          }
+        }
       }
+      if (labels.length === 0) {
+        toast.error('Nada para gerar.');
+        return;
+      }
+      const blob = await buildThermalLabelsPdf(
+        labels,
+        { width: currentSize.width, height: currentSize.height },
+        '62.406.033/0001-93',
+      );
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `etiquetas-${currentSize.id}-${labels.length}un-${Date.now()}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+      const orderIds = thermalGroups.flatMap(g => g.orders.map((o: any) => o.id));
+      await supabase.from('print_jobs').insert({ batch_name: `PDF ${currentSize.label} - ${new Date().toLocaleString()}`, total_labels: labels.length, status: 'completed', order_ids: orderIds } as any);
+      queryClient.invalidateQueries({ queryKey: ['printed_order_ids'] });
+      queryClient.invalidateQueries({ queryKey: ['print_history'] });
+      toast.success(`PDF gerado: ${labels.length} etiquetas (${currentSize.label}). Abra e imprima.`);
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao gerar PDF');
+    } finally {
+      setIsGenerating(false);
     }
-    if (labels.length === 0) return;
-    const zpl = buildThermalLabelsZpl(labels, { width: currentSize.width, height: currentSize.height });
-    const blob = new Blob([new TextEncoder().encode(zpl)], { type: 'application/octet-stream' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `etiquetas-${currentSize.id}-${labels.length}un-${Date.now()}.zpl`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    void supabase.from('print_jobs').insert({ batch_name: `ZPL ${currentSize.label} - ${new Date().toLocaleString()}`, total_labels: labels.length, status: 'completed' } as any);
-    toast.success(`Arquivo ZPL gerado: ${labels.length} etiquetas para Elgin (${currentSize.label}).`);
   };
 
   const handlePrintBoxLabels = async () => {
@@ -946,8 +993,8 @@ export function LabelProductionTab() {
                           <SelectItem value="ficha">Por Ficha (nº)</SelectItem>
                         </SelectContent>
                       </Select>
-                      <Button onClick={handleDownloadZpl} variant="outline" size="sm" className="gap-1.5 h-9 border-emerald-500/40 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/30" title="Gerar arquivo .zpl para Elgin — impressão direta sem configurações de navegador">
-                        <Download className="h-3.5 w-3.5" />ZPL
+                      <Button onClick={handleDownloadPdf} variant="outline" size="sm" className="gap-1.5 h-9 border-emerald-500/40 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/30" title="Baixar PDF — abre em qualquer leitor (Preview, Adobe, navegador) e imprime direto">
+                        <Download className="h-3.5 w-3.5" />PDF
                       </Button>
                     </div>
                     <span className="text-[9px] text-muted-foreground truncate max-w-[200px]">
