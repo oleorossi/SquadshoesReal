@@ -170,6 +170,7 @@ import ComponentSheets from '@/pages/ComponentSheets';
 import { VersionsTab } from '@/components/technical-sheets/VersionsTab';
 import { TechnicalReferencePanel } from '@/components/technical-sheets/TechnicalReferencePanel';
 import { NonFiniteDevWatcher } from '@/components/technical-sheets/NonFiniteDevWatcher';
+import { SheetsAuditButton } from '@/components/technical-sheets/SheetsAuditPanel';
 import { CatalogModelsPanel } from '@/components/technical-sheets/CatalogModelsPanel';
 import { useBomOperations } from '@/hooks/useBomOperations';
 import { useSoleColorMappings, useUpsertSoleColorMapping } from '@/hooks/useSoleColorMappings';
@@ -430,6 +431,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
              <p className="text-sm text-muted-foreground">Materiais, consumos e custos</p>
           </div>
           <div className="flex items-center gap-2">
+            <SheetsAuditButton onJumpToSheet={(id) => setExpandedId(id)} />
             <Button
               variant="outline"
               onClick={handleBulkApplySoleSettings}
