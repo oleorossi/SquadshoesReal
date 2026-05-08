@@ -14,6 +14,7 @@ type AuditRow = {
   code: string;
   name: string;
   status: string | null;
+  sole_drives_consumption: boolean;
   missing_upper_material: boolean;
   missing_upper_consumption: boolean;
   missing_lining_material: boolean;
@@ -23,6 +24,7 @@ type AuditRow = {
   missing_sole_material: boolean;
   missing_sole_consumption: boolean;
   sole_fachetado_sem_fachete: boolean;
+  sole_driven_but_specs_missing: boolean;
   missing_sole_color_mapping: boolean;
   straps_without_colors: boolean;
   straps_without_group: boolean;
@@ -30,9 +32,28 @@ type AuditRow = {
   upper_per_size_partial_no_fallback: boolean;
 };
 
+type SoleAuditRow = {
+  sole_id: string;
+  sole_name: string;
+  sole_color: string | null;
+  sole_sku: string | null;
+  is_fachetado: boolean;
+  sheets_using: number;
+  sizes_with_specs_total: number;
+  sizes_with_lining: number;
+  sizes_with_insole: number;
+  sizes_with_fachete: number;
+  missing_lining_specs: boolean;
+  missing_insole_specs: boolean;
+  fachetado_missing_fachete_specs: boolean;
+  drives_consumption_but_no_specs: boolean;
+};
+
 type AuditSummary = {
   total_fichas: number;
   fichas_100_completas: number;
+  fichas_sole_driven: number;
+  sole_driven_sem_specs: number;
   sem_grupo_cabedal: number;
   sem_consumo_cabedal: number;
   sem_grupo_forro: number;
@@ -57,6 +78,7 @@ const GAP_LABELS: { key: keyof AuditRow; label: string; severity: 'critical' | '
   { key: 'missing_insole_consumption', label: 'Consumo da palmilha', severity: 'critical' },
   { key: 'missing_sole_material', label: 'Grupo do solado', severity: 'critical' },
   { key: 'missing_sole_consumption', label: 'Consumo do solado', severity: 'critical' },
+  { key: 'sole_driven_but_specs_missing', label: 'Solado dirige consumo mas não tem specs', severity: 'critical' },
   { key: 'missing_sole_color_mapping', label: 'Cores do solado', severity: 'warn' },
   { key: 'sole_fachetado_sem_fachete', label: 'Fachete (solado fachetado)', severity: 'warn' },
   { key: 'straps_without_colors', label: 'Tiras sem cores', severity: 'warn' },
@@ -95,6 +117,22 @@ function useSheetsAuditSummary() {
   });
 }
 
+function useSolesAudit() {
+  return useQuery({
+    queryKey: ['soles_audit'],
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('v_soles_audit' as any)
+        .select('*')
+        .order('drives_consumption_but_no_specs', { ascending: false })
+        .order('sole_name');
+      if (error) throw error;
+      return (data as any[]) as SoleAuditRow[];
+    },
+  });
+}
+
 function getGapsForRow(row: AuditRow) {
   return GAP_LABELS.filter(g => row[g.key]);
 }
@@ -108,8 +146,10 @@ export function SheetsAuditPanel({
 }) {
   const { data: rows = [], isLoading } = useSheetsAudit();
   const { data: summary } = useSheetsAuditSummary();
+  const { data: solesAudit = [], isLoading: solesLoading } = useSolesAudit();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'incomplete' | 'complete' | 'critical'>('incomplete');
+  const [tab, setTab] = useState<'sheets' | 'soles'>('sheets');
 
   const filtered = useMemo(() => {
     let r = rows;
@@ -135,6 +175,143 @@ export function SheetsAuditPanel({
           </DialogTitle>
         </DialogHeader>
 
+        <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
+          <TabsList>
+            <TabsTrigger value="sheets" className="text-xs">
+              Fichas Técnicas
+              {summary && (summary.total_fichas - summary.fichas_100_completas) > 0 && (
+                <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-500/40 text-[9px] h-4 px-1.5 ml-2">
+                  {summary.total_fichas - summary.fichas_100_completas}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="soles" className="text-xs">
+              Solados
+              {solesAudit.filter(s => s.missing_lining_specs || s.missing_insole_specs || s.fachetado_missing_fachete_specs).length > 0 && (
+                <Badge variant="outline" className="bg-red-500/10 text-red-700 border-red-500/40 text-[9px] h-4 px-1.5 ml-2">
+                  {solesAudit.filter(s => s.missing_lining_specs || s.missing_insole_specs || s.fachetado_missing_fachete_specs).length}
+                </Badge>
+              )}
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        {tab === 'soles' ? (
+          <div className="space-y-3 mt-2">
+            <p className="text-xs text-muted-foreground">
+              <strong>Solado é o driver primário do consumo</strong> — quando uma ficha tem
+              "Solado dirige consumo", os valores de forro/palmilha vêm das specs do solado.
+              Se aqui o solado não tiver specs, o cálculo cai em fallback (média da ficha) e
+              fica impreciso. Cadastre as specs por tamanho na página do produto-solado.
+            </p>
+            {solesLoading ? (
+              <p className="text-center py-12 text-muted-foreground">Carregando…</p>
+            ) : solesAudit.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground flex flex-col items-center gap-2">
+                <CheckCircle2 className="h-8 w-8 opacity-30" />
+                <p>Nenhum solado em uso por fichas técnicas.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {solesAudit.map(sole => {
+                  const isProblem = sole.missing_lining_specs || sole.missing_insole_specs || sole.fachetado_missing_fachete_specs;
+                  const isCritical = sole.drives_consumption_but_no_specs;
+                  return (
+                    <div
+                      key={sole.sole_id}
+                      className={cn(
+                        'rounded-lg border p-3',
+                        isCritical ? 'bg-red-500/5 border-red-500/30'
+                        : isProblem ? 'bg-amber-500/5 border-amber-500/30'
+                        : 'bg-emerald-500/5 border-emerald-500/30',
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-sm">{sole.sole_name}</span>
+                            {sole.sole_color && <Badge variant="outline" className="text-[9px] h-4">{sole.sole_color}</Badge>}
+                            {sole.is_fachetado && (
+                              <Badge variant="outline" className="bg-blue-500/10 text-blue-700 border-blue-500/40 text-[9px] h-4">
+                                fachetado
+                              </Badge>
+                            )}
+                            <span className="text-[10px] text-muted-foreground">
+                              {sole.sheets_using} ficha(s) usando
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-2 mt-2 text-[11px]">
+                            <Badge variant="outline" className={sole.missing_lining_specs ? 'bg-red-500/10 text-red-700 border-red-500/40' : 'bg-emerald-500/10 text-emerald-700 border-emerald-500/40'}>
+                              Forro: {sole.sizes_with_lining} tamanho{sole.sizes_with_lining !== 1 ? 's' : ''}
+                            </Badge>
+                            <Badge variant="outline" className={sole.missing_insole_specs ? 'bg-red-500/10 text-red-700 border-red-500/40' : 'bg-emerald-500/10 text-emerald-700 border-emerald-500/40'}>
+                              Palmilha: {sole.sizes_with_insole}
+                            </Badge>
+                            {sole.is_fachetado && (
+                              <Badge variant="outline" className={sole.fachetado_missing_fachete_specs ? 'bg-red-500/10 text-red-700 border-red-500/40' : 'bg-emerald-500/10 text-emerald-700 border-emerald-500/40'}>
+                                Fachete: {sole.sizes_with_fachete}
+                              </Badge>
+                            )}
+                            {sole.drives_consumption_but_no_specs && (
+                              <Badge variant="outline" className="bg-red-500/10 text-red-700 border-red-500/40 gap-1">
+                                <AlertTriangle className="h-2.5 w-2.5" />
+                                Driver de consumo SEM specs
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : (
+          <SheetsAuditTab
+            rows={rows}
+            isLoading={isLoading}
+            search={search}
+            setSearch={setSearch}
+            filter={filter}
+            setFilter={setFilter}
+            summary={summary}
+            onJumpToSheet={(id) => { onJumpToSheet(id); onOpenChange(false); }}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SheetsAuditTab({
+  rows, isLoading, search, setSearch, filter, setFilter, summary, onJumpToSheet,
+}: {
+  rows: AuditRow[];
+  isLoading: boolean;
+  search: string;
+  setSearch: (v: string) => void;
+  filter: 'all' | 'incomplete' | 'complete' | 'critical';
+  setFilter: (v: 'all' | 'incomplete' | 'complete' | 'critical') => void;
+  summary: AuditSummary | undefined;
+  onJumpToSheet: (id: string) => void;
+}) {
+  const filtered = useMemo(() => {
+    let r = rows;
+    if (filter === 'incomplete') r = r.filter(row => getGapsForRow(row).length > 0);
+    else if (filter === 'complete') r = r.filter(row => getGapsForRow(row).length === 0);
+    else if (filter === 'critical') r = r.filter(row =>
+      getGapsForRow(row).some(g => g.severity === 'critical')
+    );
+    if (search.trim()) {
+      const q = search.toLowerCase().trim();
+      r = r.filter(row => row.code?.toLowerCase().includes(q) || row.name?.toLowerCase().includes(q));
+    }
+    return r;
+  }, [rows, filter, search]);
+
+  return (
+    <>
         {/* KPIs do resumo */}
         {summary && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -240,7 +417,7 @@ export function SheetsAuditPanel({
                     : hasCritical ? 'bg-red-500/5 border-red-500/30'
                     : 'bg-amber-500/5 border-amber-500/30',
                   )}
-                  onClick={() => { onJumpToSheet(row.id); onOpenChange(false); }}
+                  onClick={() => onJumpToSheet(row.id)}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
@@ -249,6 +426,11 @@ export function SheetsAuditPanel({
                         <span className="text-xs text-muted-foreground truncate">{row.name}</span>
                         {row.status && (
                           <Badge variant="outline" className="text-[9px] h-4">{row.status}</Badge>
+                        )}
+                        {row.sole_drives_consumption && (
+                          <Badge variant="outline" className="bg-blue-500/10 text-blue-700 border-blue-500/40 text-[9px] h-4">
+                            sole-driven
+                          </Badge>
                         )}
                       </div>
                       {gaps.length > 0 ? (
@@ -282,8 +464,7 @@ export function SheetsAuditPanel({
             })}
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+    </>
   );
 }
 
