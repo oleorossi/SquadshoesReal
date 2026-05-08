@@ -18,7 +18,7 @@ export default function SaleOrdersConsumption() {
     <AppLayout>
       <div className="space-y-5 page-enter">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/sales')}>
+          <Button variant="ghost" size="icon" onClick={() => navigate('/sales')} aria-label="Voltar para Pedidos de Venda">
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>

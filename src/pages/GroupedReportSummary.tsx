@@ -413,7 +413,7 @@ ${styles}
             const soleTotal = cats.reduce((s, c) => s + c.totalPairs, 0);
             return (
               <section key={soleType} className="space-y-4">
-                <div className="flex flex-col gap-2 border-b-2 pb-3 md:flex-row md:items-end md:justify-between" style={{ borderColor: soleType === 'Solado Preto' ? '#333' : '#c9a84c' }}>
+                <div className={`flex flex-col gap-2 border-b-2 pb-3 md:flex-row md:items-end md:justify-between ${soleType === 'Solado Preto' ? 'border-foreground' : 'border-amber-500'}`}>
                   <div>
                     <h2 className="text-xl font-bold tracking-tight">{soleType === 'Solado Preto' ? '⬛' : '🟨'} {soleType}</h2>
                     <p className="text-sm text-muted-foreground">

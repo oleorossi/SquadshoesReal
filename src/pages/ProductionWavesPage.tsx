@@ -293,7 +293,7 @@ function WaveRow({
             {canCancel && (
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive">
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" aria-label={`Cancelar onda ${wave.code}`}>
                     <XCircle className="w-4 h-4" />
                   </Button>
                 </AlertDialogTrigger>
