@@ -48,9 +48,11 @@ CREATE INDEX IF NOT EXISTS idx_bank_hours_mov_ref
   WHERE reference_id IS NOT NULL;
 
 ALTER TABLE public.bank_hours_movements ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Authenticated can read bank_hours_movements" ON public.bank_hours_movements;
 CREATE POLICY "Authenticated can read bank_hours_movements"
   ON public.bank_hours_movements FOR SELECT TO authenticated
   USING (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "Approved can write bank_hours_movements" ON public.bank_hours_movements;
 CREATE POLICY "Approved can write bank_hours_movements"
   ON public.bank_hours_movements FOR ALL TO authenticated
   USING (auth.uid() IS NOT NULL)
@@ -85,9 +87,11 @@ CREATE INDEX IF NOT EXISTS idx_payroll_runs_status
   ON public.payroll_runs (status, period DESC);
 
 ALTER TABLE public.payroll_runs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Authenticated can read payroll_runs" ON public.payroll_runs;
 CREATE POLICY "Authenticated can read payroll_runs"
   ON public.payroll_runs FOR SELECT TO authenticated
   USING (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "Approved can write payroll_runs" ON public.payroll_runs;
 CREATE POLICY "Approved can write payroll_runs"
   ON public.payroll_runs FOR ALL TO authenticated
   USING (auth.uid() IS NOT NULL)
