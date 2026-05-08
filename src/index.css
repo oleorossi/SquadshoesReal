@@ -1,20 +1,20 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Anton&family=Inter+Tight:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /* ════════════════════════════════════════════════════════════
-   SQUAD SHOES · FACTORY OS DESIGN SYSTEM
-   Verde escuro refinado (162 90% 15%) + Creme (#F5F5DC)
-   Sidebar dark com esmeralda (162 80% 45%)
+   SQUAD SHOES · NOVIDADE EDITORIAL DESIGN SYSTEM (2026-05)
+   Paleta: Vermelho Squad (#E11D2E) + Preto + Branco
+   Display: Anton (condensed) · Body: Inter Tight · Mono: JetBrains Mono
    ════════════════════════════════════════════════════════════ */
 
 /* ─────────────────────────────────────────────────────────────────
-   SQUAD SHOES · DESIGN TOKENS
+   SQUAD SHOES · DESIGN TOKENS — Novidade redesign
    Sistema de gestão industrial — calçado feminino BR
-   Paleta: Verde refinado escuro + Creme + sidebar dark esmeralda
-   Densidade: Linear-style (13px base · radius 13.6px / 0.85rem)
+   Paleta: Vermelho Squad (354°) + Preto profundo + Cinzas neutros
+   Densidade: 13px base, editorial, tipografia condensed pra display
    Compatível: shadcn/ui · Tailwind · CSS vars HSL puras
    ───────────────────────────────────────────────────────────────── */
 
@@ -24,30 +24,30 @@
      ▼ COLORS — primitives (HSL · valores brutos)
      ═════════════════════════════════════════════════════════════ */
 
-  /* Primary — Verde refinado escuro (escala completa 50→950) */
-  --primary-50:  160 50% 96%;
-  --primary-100: 160 50% 92%;
-  --primary-200: 160 55% 82%;
-  --primary-300: 160 60% 65%;
-  --primary-400: 161 70% 40%;
-  --primary-500: 162 80% 28%;
-  --primary-600: 162 85% 22%;
-  --primary-700: 162 90% 15%;   /* ⭑ verde refinado escuro — base oficial */
-  --primary-800: 162 90% 12%;
-  --primary-900: 162 90% 9%;
-  --primary-950: 162 85% 6%;
+  /* Primary — Vermelho Squad (#E11D2E · escala completa 50→950) */
+  --primary-50:  354 100% 95%;   /* #FFE5E8 */
+  --primary-100: 354 100% 85%;   /* #FFB3BD */
+  --primary-200: 354 95% 75%;
+  --primary-300: 354 100% 65%;   /* #FF4D5E */
+  --primary-400: 354 85% 56%;
+  --primary-500: 354 78% 50%;    /* ⭑ #E11D2E — base oficial */
+  --primary-600: 354 86% 42%;    /* #C8102E */
+  --primary-700: 354 82% 33%;    /* #9B0F22 */
+  --primary-800: 354 80% 22%;
+  --primary-900: 354 80% 17%;    /* #4A0810 */
+  --primary-950: 354 85% 10%;
 
-  /* Accent — Creme (#F5F5DC · escala 50→950) */
-  --accent-50:  52 60% 98%;
-  --accent-100: 52 58% 95%;
-  --accent-200: 52 56% 90%;
-  --accent-300: 50 55% 86%;
-  --accent-400: 50 55% 83%;
-  --accent-500: 50 55% 80%;    /* ⭑ #F5F5DC — base oficial */
-  --accent-600: 48 50% 68%;
-  --accent-700: 45 45% 52%;
-  --accent-800: 42 45% 38%;
-  --accent-900: 38 50% 28%;
+  /* Accent — Preto absoluto / contraste editorial */
+  --accent-50:  0 0% 96%;
+  --accent-100: 0 0% 90%;
+  --accent-200: 0 0% 78%;
+  --accent-300: 0 0% 60%;
+  --accent-400: 0 0% 35%;
+  --accent-500: 0 0% 4%;          /* ⭑ #0A0A0A — preto editorial */
+  --accent-600: 0 0% 7%;
+  --accent-700: 0 0% 11%;
+  --accent-800: 0 0% 14%;
+  --accent-900: 0 0% 18%;
 
   /* Neutros — escala fria-neutra (210° matiz, refinada) */
   --neutral-0:   0 0% 100%;
@@ -88,7 +88,7 @@
   --accent-soft:            var(--accent-100);
   --accent-soft-foreground: var(--accent-800);
 
-  --secondary:              210 18% 96%;
+  --secondary:              0 0% 95%;
   --secondary-foreground:   var(--neutral-800);
 
   /* Muted (texto secundário, fundos sutis) */
@@ -100,8 +100,8 @@
   --border:                 var(--neutral-300);
   --border-strong:          var(--neutral-400);
   --input:                  var(--neutral-300);
-  --input-focus:            var(--primary-700);
-  --ring:                   162 55% 24%;
+  --input-focus:            var(--primary-500);
+  --ring:                   354 78% 50%;
 
   /* Semantic feedback */
   --success:               158 64% 38%;
@@ -124,27 +124,27 @@
   --info-soft:             217 91% 95%;
   --info-soft-foreground:  217 80% 38%;
 
-  /* Stage badges (etapas de fabricação) */
-  --stage-cut-bg:    217 91% 95%;  --stage-cut-fg:    217 80% 38%;
-  --stage-sew-bg:    269 50% 96%;  --stage-sew-fg:    269 60% 38%;
-  --stage-assy-bg:   38 92% 95%;   --stage-assy-fg:   28 80% 30%;
-  --stage-fin-bg:    160 50% 92%;  --stage-fin-fg:    162 90% 15%;
-  --stage-pack-bg:   50 55% 92%;   --stage-pack-fg:   42 45% 38%;
+  /* Stage badges (etapas de fabricação — Novidade editorial) */
+  --stage-cut-bg:    217 91% 95%;  --stage-cut-fg:    217 80% 60%;  /* azul Corte */
+  --stage-sew-bg:    269 50% 96%;  --stage-sew-fg:    269 70% 70%;  /* roxo Costura */
+  --stage-assy-bg:   38 92% 95%;   --stage-assy-fg:   38 90% 55%;   /* laranja Montagem */
+  --stage-fin-bg:    173 60% 92%;  --stage-fin-fg:    173 70% 50%;  /* teal Acabamento */
+  --stage-pack-bg:   354 80% 95%;  --stage-pack-fg:   354 78% 60%;  /* rosa Embalagem */
 
   /* ═══════════════════════════════════════════════════════════════
-     ▼ SIDEBAR (dark navy · destaque esmeralda · uso permanente)
+     ▼ SIDEBAR (preto editorial · destaque vermelho Squad · permanente)
      ═════════════════════════════════════════════════════════════ */
-  --sidebar-background:           222 47% 7%;
-  --sidebar-foreground:           210 20% 90%;
-  --sidebar-muted:                217 15% 55%;
-  --sidebar-accent:               217 32% 12%;
-  --sidebar-accent-foreground:    210 20% 98%;
-  --sidebar-border:               217 32% 10%;
-  --sidebar-primary:              162 80% 45%;        /* esmeralda */
-  --sidebar-primary-foreground:   162 60% 5%;
-  --sidebar-ring:                 162 80% 45%;
-  --sidebar-gradient-from:        222 47% 6%;
-  --sidebar-gradient-to:          218 42% 9%;
+  --sidebar-background:           0 0% 4%;             /* #0A0A0A */
+  --sidebar-foreground:           0 0% 90%;
+  --sidebar-muted:                0 0% 43%;
+  --sidebar-accent:               0 0% 11%;            /* #1C1C1C */
+  --sidebar-accent-foreground:    0 0% 100%;
+  --sidebar-border:               0 0% 14%;            /* #242424 */
+  --sidebar-primary:              354 78% 50%;         /* vermelho Squad */
+  --sidebar-primary-foreground:   0 0% 100%;
+  --sidebar-ring:                 354 78% 50%;
+  --sidebar-gradient-from:        0 0% 3%;
+  --sidebar-gradient-to:          0 0% 6%;
 
   /* ═══════════════════════════════════════════════════════════════
      ▼ RADIUS · escala (Factory OS — radius mais generoso)
@@ -181,11 +181,12 @@
   --ring-focus-accent: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--accent-700) / 0.5);
 
   /* ═══════════════════════════════════════════════════════════════
-     ▼ TIPOGRAFIA
+     ▼ TIPOGRAFIA — Novidade editorial
      ═════════════════════════════════════════════════════════════ */
-  --font-display:  'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
-  --font-sans:     var(--font-display);
-  --font-mono:     'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+  --font-display:    'Anton', 'Impact', sans-serif;                  /* condensed pra titles, KPIs */
+  --font-sans:       'Inter Tight', 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-body:       var(--font-sans);
+  --font-mono:       'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
 
   /* Type scale (px → rem · base 13px) */
   --text-2xs:  0.625rem;   /* 10px · micro-labels uppercase */
@@ -284,48 +285,49 @@
    ▼ DARK MODE
    ═════════════════════════════════════════════════════════════════ */
 .dark {
-  --background:           220 20% 6%;
-  --foreground:           210 20% 92%;
-  --card:                 220 18% 10%;
-  --card-foreground:      210 20% 92%;
-  --popover:              220 18% 10%;
-  --popover-foreground:   210 20% 92%;
+  /* Novidade editorial — preto profundo + vermelho Squad */
+  --background:           0 0% 4%;          /* #0A0A0A */
+  --foreground:           0 0% 90%;         /* #E6E6E6 */
+  --card:                 0 0% 7%;          /* #111111 */
+  --card-foreground:      0 0% 90%;
+  --popover:              0 0% 9%;          /* #161616 */
+  --popover-foreground:   0 0% 90%;
 
-  --primary:              160 60% 45%;
-  --primary-foreground:   160 60% 5%;
-  --primary-hover:        160 60% 52%;
-  --primary-soft:         162 50% 18%;
-  --primary-soft-foreground: 160 50% 80%;
+  --primary:              354 78% 50%;      /* vermelho #E11D2E */
+  --primary-foreground:   0 0% 100%;
+  --primary-hover:        354 86% 42%;
+  --primary-soft:         354 80% 18%;
+  --primary-soft-foreground: 354 90% 80%;
 
-  --accent:               220 18% 18%;
-  --accent-foreground:    50 55% 88%;
-  --accent-hover:         220 18% 22%;
-  --accent-soft:          50 35% 18%;
-  --accent-soft-foreground: 50 55% 80%;
+  --accent:               0 0% 14%;         /* #242424 */
+  --accent-foreground:    0 0% 100%;
+  --accent-hover:         0 0% 18%;
+  --accent-soft:          0 0% 11%;
+  --accent-soft-foreground: 0 0% 90%;
 
-  --secondary:            220 16% 14%;
-  --secondary-foreground: 210 20% 88%;
-  --muted:                220 16% 14%;
-  --muted-soft:           220 18% 11%;
-  --muted-foreground:     215 12% 60%;
+  --secondary:            0 0% 11%;
+  --secondary-foreground: 0 0% 90%;
+  --muted:                0 0% 11%;
+  --muted-soft:           0 0% 9%;
+  --muted-foreground:     0 0% 63%;
 
-  --border:               220 16% 18%;
-  --border-strong:        220 16% 28%;
-  --input:                220 16% 18%;
-  --ring:                 160 60% 45%;
+  --border:               0 0% 14%;         /* #242424 */
+  --border-strong:        0 0% 18%;         /* #2E2E2E */
+  --input:                0 0% 14%;
+  --ring:                 354 78% 50%;
 
-  /* Sidebar (dark mode — ainda mais profundo) */
-  --sidebar-background:           222 26% 5%;
-  --sidebar-foreground:           210 20% 90%;
-  --sidebar-muted:                217 12% 50%;
-  --sidebar-accent:               220 24% 11%;
-  --sidebar-accent-foreground:    210 20% 95%;
-  --sidebar-border:               220 24% 9%;
-  --sidebar-primary:              160 60% 45%;
-  --sidebar-primary-foreground:   160 60% 5%;
-  --sidebar-ring:                 160 60% 45%;
-  --sidebar-gradient-from:        222 26% 4%;
-  --sidebar-gradient-to:          218 24% 7%;
+  /* Sidebar (dark — mantém o mesmo do :root pq sempre é dark) */
+  --sidebar-background:           0 0% 0%;
+  --sidebar-foreground:           0 0% 90%;
+  --sidebar-muted:                0 0% 43%;
+  --sidebar-accent:               0 0% 11%;
+  --sidebar-accent-foreground:    0 0% 100%;
+  --sidebar-border:               0 0% 14%;
+  --sidebar-primary:              354 78% 50%;
+  --sidebar-primary-foreground:   0 0% 100%;
+  --sidebar-ring:                 354 78% 50%;
+  --sidebar-gradient-from:        0 0% 0%;
+  --sidebar-gradient-to:          0 0% 5%;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -391,6 +393,60 @@ h4 { font-size: var(--text-md);  font-weight: var(--weight-semibold); letter-spa
 .text-success     { color: hsl(var(--success)); }
 .text-warning     { color: hsl(var(--warning-soft-foreground)); }
 .text-danger      { color: hsl(var(--destructive)); }
+
+/* ─────────────────────────────────────────────────────────────────
+   ▼ NOVIDADE editorial primitives (Anton + Inter Tight)
+   Use .display em h1/KPIs grandes, .eyebrow em labels micro,
+   .bignum em números massivos, .stage em badges de setor,
+   .live-dot em indicadores em tempo real.
+   ───────────────────────────────────────────────────────────────── */
+.display { font-family: var(--font-display); font-weight: 400; letter-spacing: 0.01em; text-transform: uppercase; line-height: 0.92; }
+.eyebrow { font-family: var(--font-sans); font-size: 10px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: hsl(var(--muted-foreground)); }
+.bignum  { font-family: var(--font-display); font-size: 88px; line-height: 0.86; letter-spacing: -0.01em; }
+.serif-italic { font-family: var(--font-sans); font-style: italic; font-weight: 300; letter-spacing: 0; }
+
+/* Stage badge (mini badge editorial pra setor de produção) */
+.stage-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 18px; padding: 0 6px;
+  font-family: var(--font-mono); font-size: 9.5px; font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  border-radius: var(--radius-xs);
+  border: 1px solid currentColor;
+  background: transparent;
+}
+
+/* Live pulsing dot (vermelho) — pra realtime / live data */
+.live-dot {
+  position: relative; width: 8px; height: 8px; border-radius: 50%;
+  background: hsl(var(--primary));
+  display: inline-block;
+}
+.live-dot::after {
+  content: ''; position: absolute; inset: -4px; border-radius: 50%;
+  border: 1.5px solid hsl(var(--primary));
+  animation: live-ring 1.6s ease-out infinite;
+}
+@keyframes live-ring {
+  0%   { transform: scale(0.6); opacity: 1; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+/* Decorative red slash on top of cards — editorial accent */
+.slash-top { position: relative; }
+.slash-top::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, hsl(var(--primary)) 0%, transparent 60%);
+}
+
+/* Technical grid backdrop (faint) — pra área de produção */
+.tech-grid {
+  background-image:
+    linear-gradient(hsl(var(--border)) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(var(--border)) 1px, transparent 1px);
+  background-size: 40px 40px;
+  background-position: -1px -1px;
+}
 
 /* ═══════════════════════════════════════════════════════════════════
    ▼ SURFACES & ELEVATION
