@@ -50,6 +50,8 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/production-dashboard': 'producao',
   '/financeiro': 'financeiro',
   '/rh': 'rh',
+  '/rh/banco-de-horas': 'rh',
+  '/rh/bank-hours': 'rh',
   '/transporte': 'expedicao',
   '/embalagens': 'expedicao',
   '/optimized-production': 'producao',

@@ -7,7 +7,7 @@ import {
   BarChart2, BarChart3, Receipt,
   BookOpen, Footprints, Sparkles, Tag, ClipboardCheck,
   DollarSign, Calendar, Box, History,
-  ListChecks, Boxes, Activity, GanttChartSquare,
+  ListChecks, Boxes, Activity, GanttChartSquare, Clock,
 } from 'lucide-react';
 
 // ════════════════════════════════════════════════════════════════════════
@@ -106,6 +106,7 @@ export const menuGroups = [
     icon: Users,
     items: [
       { name: "Painel RH",        icon: LayoutDashboard,path: "/rh" },
+      { name: "Banco de Horas",   icon: Clock,          path: "/rh/banco-de-horas" },
       { name: "Terceirizados",    icon: UserCheck,      path: "/contractors" },
     ],
   },

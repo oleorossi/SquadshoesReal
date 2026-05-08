@@ -48,6 +48,7 @@ const ComercialDashboard = lazy(() => import("./pages/ComercialDashboard"));
 const ProducaoDashboard = lazy(() => import("./pages/ProducaoDashboard"));
 const ProductionLive = lazy(() => import("./pages/ProductionLive"));
 const ProductionTimeline = lazy(() => import("./pages/ProductionTimeline"));
+const BankHours = lazy(() => import("./pages/BankHours"));
 // ProductionDashboardPage removido — funcionalidade unificada em /producao (ProducaoDashboard).
 const FinanceiroDashboard = lazy(() => import("./pages/FinanceiroDashboard"));
 const RHHub = lazy(() => import("./pages/RHHub"));
@@ -660,9 +661,14 @@ const router = createBrowserRouter([
         element: <RHHub />,
       },
       {
-        // Atalho direto: Banco de Horas (sub-aba dentro de Folha)
+        // Banco de Horas — visão completa (KPIs + funcionário + setor + drill-down)
+        path: "rh/banco-de-horas",
+        element: <BankHours />,
+      },
+      {
+        // Alias legado
         path: "rh/bank-hours",
-        element: <Navigate to="/rh?tab=folha" replace />,
+        element: <Navigate to="/rh/banco-de-horas" replace />,
       },
       {
         // Atalho direto: Folha de Pagamento (tab dentro de /rh)
