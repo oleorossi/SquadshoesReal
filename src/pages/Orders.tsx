@@ -2,7 +2,8 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { useQuery } from '@tanstack/react-query';
-import { ClipboardList, Trash2, Loader2, AlertTriangle, CheckCircle2, Printer, Factory, Filter, Search, Calendar, Layers, X, ChevronDown, CheckCheck, Pencil, FileText, Square, CheckSquare, FileSpreadsheet, Check, ChevronsUpDown, Package, ImageIcon, Plus, ChevronUp, MoreHorizontal, Download } from 'lucide-react';
+import { ClipboardList, Trash2, Loader2, AlertTriangle, CheckCircle2, Printer, Factory, Filter, Search, Calendar, Layers, X, ChevronDown, CheckCheck, Pencil, FileText, Square, CheckSquare, FileSpreadsheet, Check, ChevronsUpDown, Package, ImageIcon, Plus, ChevronUp, MoreHorizontal, Download, LayoutGrid, List } from 'lucide-react';
+import OrdersKanbanBoard from '@/components/orders/OrdersKanbanBoard';
 import { autoCreateSolePO } from '@/lib/soleAutoPO';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -285,6 +286,7 @@ function getWeekOptions() {
   const [groupByRefColor, setGroupByRefColor] = usePersistedState('groupByRefColor', false);
   const [groupByEconomic, setGroupByEconomic] = usePersistedState('groupByEconomicGroup', false);
   const [filtersOpen, setFiltersOpen] = usePersistedState('orders-filters-open', true);
+  const [viewMode, setViewMode] = usePersistedState<'list' | 'kanban'>('orders-view-mode', 'list');
   const [approving, setApproving] = useState(false);
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
 
@@ -1061,6 +1063,30 @@ function getWeekOptions() {
             ))}
           </div>
 
+          {/* View mode toggle: Lista | Kanban */}
+          <div className="inline-flex rounded-md border bg-muted/30 p-0.5 shrink-0">
+            <Button
+              variant={viewMode === 'list' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setViewMode('list')}
+              className="gap-1 h-8 px-2.5"
+              title="Visualização em lista"
+            >
+              <List className="h-3.5 w-3.5" />
+              <span className="hidden md:inline text-xs">Lista</span>
+            </Button>
+            <Button
+              variant={viewMode === 'kanban' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setViewMode('kanban')}
+              className="gap-1 h-8 px-2.5"
+              title="Visualização kanban (fluxo de produção)"
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+              <span className="hidden md:inline text-xs">Kanban</span>
+            </Button>
+          </div>
+
           {/* Filtros avançados toggle */}
           <Button
             variant={hasActiveFilters && activeFilterCount > 0 ? 'default' : 'outline'}
@@ -1287,6 +1313,13 @@ function getWeekOptions() {
               <p>Nenhuma ordem de produção</p>
             </CardContent>
           </Card>
+        ) : viewMode === 'kanban' ? (
+          <OrdersKanbanBoard
+            orders={filteredOrders as any}
+            stagesByOrderId={stagesByOrderId as any}
+            saleOrderById={saleOrderById as any}
+            onSelectOrder={(o: any) => { setDetailOrders([o]); setDetailTitle(`OP ${o.order_number || '—'}`); setDetailDialogOpen(true); }}
+          />
         ) : groupByEconomic && economicGroupedOrders ? (
           /* Economic group view */
           <div className="space-y-4">
