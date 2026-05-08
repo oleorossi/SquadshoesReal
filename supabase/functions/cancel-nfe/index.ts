@@ -211,12 +211,16 @@ Deno.serve(async (req) => {
       }
 
       // Remove only unposted/unpaid revenue entries so DRE doesn't show ghost income.
-      // Entries already posted/reconciled are preserved for the accounting audit trail.
+      // 'confirmed' is the default status set by syncFinancialRecords on Faturado —
+      // preserve it for the SPED audit trail (matches useSaleOrders cancel-by-PV
+      // behavior at useSaleOrders.ts:99). The proper cancellation workflow already
+      // marks the AR as 'cancelled' separately; the financial_entry is the immutable
+      // accounting trace.
       const { error: feErr } = await adminClient.from("financial_entries")
         .delete()
         .eq("reference_id", nfe.sale_order_id)
         .eq("reference_type", "sale_order")
-        .not("status", "in", "(posted,reconciled,paid)");
+        .not("status", "in", "(posted,reconciled,paid,confirmed)");
       if (feErr) {
         console.warn(`cancel-nfe: failed to delete financial_entries for sale_order_id=${nfe.sale_order_id}: ${feErr.message}`);
         cleanupWarnings.push(`Lançamento financeiro não removido: ${feErr.message}`);
