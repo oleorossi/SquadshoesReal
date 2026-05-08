@@ -234,9 +234,12 @@ function getWeekOptions() {
   const { data: saleOrders = [] } = useQuery({
     queryKey: ['sale_orders_for_ops'],
     queryFn: async () => {
+      // economic_group_id NÃO existe em sale_orders — está em clients.
+      // O agrupamento por grupo econômico é resolvido via clientsForGroup
+      // (próxima query) cruzando por cnpj/razao_social.
       const { data, error } = await supabase
         .from('sale_orders')
-        .select('id, order_number, client_name, client_cnpj, client_order_number, status, representative, delivery_week, delivery_month, billing_week, total, nfe, remessa, economic_group_id, delivery_deadline');
+        .select('id, order_number, client_name, client_cnpj, client_order_number, status, representative, delivery_week, delivery_month, billing_week, total, nfe, remessa, delivery_deadline');
       if (error) throw error;
       return data;
     },

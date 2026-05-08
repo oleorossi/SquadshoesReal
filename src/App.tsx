@@ -22,7 +22,8 @@ import Auth from "./pages/Auth";
 
 // Lazy-loaded pages
 const Index = lazy(() => import("./pages/Index"));
-const References = lazy(() => import("./pages/References"));
+// References removido em 2026-05 — página estava zerada e o menu apontava
+// pra ela sem uso. /references agora redireciona pra /fichas-tecnicas.
 // ColorImagesPage removido — duplicava a aba "Fotos & Histórico" da ficha técnica.
 // Rota /imagens-cores agora redireciona pra /fichas-tecnicas.
 const InputCostsPage = lazy(() => import("./pages/InputCostsPage"));
@@ -447,8 +448,9 @@ const router = createBrowserRouter([
         element: <StockAdjustmentPage />,
       },
       {
+        // Legacy: /references → /fichas-tecnicas (página References foi removida)
         path: "references",
-        element: <References />,
+        element: <Navigate to="/fichas-tecnicas" replace />,
       },
       {
         // Legacy: /imagens-cores → /fichas-tecnicas (aba Fotos & Histórico)

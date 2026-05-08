@@ -138,7 +138,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   FileText, Plus, Trash2, Pencil, Loader2, Package, Copy, Search,
    Layers, Scissors, Droplets, Shield, Box, Footprints, Save, Wrench, Tag,
-    ImagePlus, AlertTriangle, History, Factory, Wand2, RefreshCw, Gauge, ArrowLeft, ClipboardCopy, Lock, Palette
+    ImagePlus, AlertTriangle, History, Factory, Wand2, RefreshCw, Gauge, ArrowLeft, ClipboardCopy, Lock, Palette,
+    DollarSign
 } from 'lucide-react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
@@ -1655,6 +1656,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
            <Separator orientation="vertical" className="h-5 mx-0.5" />
            <TabsTrigger value="variants" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
              <Palette className="h-3.5 w-3.5" /> Variantes
+           </TabsTrigger>
+           <Separator orientation="vertical" className="h-5 mx-0.5" />
+           <TabsTrigger value="costs" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
+             <DollarSign className="h-3.5 w-3.5" /> Preço de Custo
            </TabsTrigger>
         </TabsList>
 

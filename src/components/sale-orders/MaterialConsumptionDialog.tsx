@@ -88,10 +88,12 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
 
   useEffect(() => {
     if (!open || !saleOrderId) return;
-    loadConsumption();
+    let cancelled = false;
+    loadConsumption(() => cancelled);
+    return () => { cancelled = true; };
   }, [open, saleOrderId]);
 
-  const loadConsumption = async () => {
+  const loadConsumption = async (isCancelled: () => boolean = () => false) => {
     if (!saleOrderId) return;
     setLoading(true);
 
@@ -376,15 +378,18 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
            });
          }
 
-        // Solado: cor automática - preto/black/pb → Preto, demais → Caramelo
-        const soleColor = (() => {
-          const c = (orderColor || '').toLowerCase();
-          if (c.includes('preto') || c.includes('black') || c.includes('pb')) return 'Preto';
-          return 'Caramelo';
-        })();
+        // Solado: resolver cor real via technical_sheet_sole_colors (mapeamento
+        // por cor do cabedal → produto-solado específico). Antes era hardcoded
+        // "preto/caramelo" — qualquer cor diferente caía em Caramelo (errado).
+        // Fallback: sheet.sole_color se cadastrado; senão deixa "—".
+        const soleProductIdResolved = soleColorMap.get(`${item.reference_id}::${orderColor}`) || null;
+        const soleProduct = soleProductIdResolved
+          ? (allProducts || []).find(p => p.id === soleProductIdResolved)
+          : null;
+        const soleColor = soleProduct?.color || sheet?.sole_color || '—';
         addConsumptionRow(consumptionMap, {
           componentType: 'Solado',
-          groupName: sheet?.sole_material || '',
+          groupName: soleProduct?.name || sheet?.sole_material || '',
           materialName: 'Solado',
           productUnit: 'par',
           color: soleColor,
@@ -468,12 +473,14 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
         return a.color.localeCompare(b.color, 'pt-BR');
       });
 
+      if (isCancelled()) return;
       setRows(sortedRows);
     } catch (err) {
+      if (isCancelled()) return;
       console.error('Erro ao carregar consumo:', err);
       setRows([]);
     } finally {
-      setLoading(false);
+      if (!isCancelled()) setLoading(false);
     }
   };
 

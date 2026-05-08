@@ -29,6 +29,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { SmartDashboard } from '@/components/finance/SmartDashboard';
+import { NetMarginChart } from '@/components/finance/NetMarginChart';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 
@@ -189,6 +190,9 @@ export default function FinanceiroDashboard() {
 
         {/* Alertas Inteligentes (SmartDashboard) */}
         <SmartDashboard onNavigate={tab => navigate(`/finance?tab=${tab}`)} />
+
+        {/* KPI: Margem líquida por período (round 10) */}
+        <NetMarginChart />
 
         {/* Vencidos + Próximos Vencimentos */}
         {data && (

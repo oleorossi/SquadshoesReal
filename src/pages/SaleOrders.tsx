@@ -2,9 +2,10 @@ import { useState, useMemo } from 'react';
 import { getSignedUrl } from '@/lib/getSignedUrl';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { ShoppingCart, Plus, Loader2, Copy, Printer, Factory, Pencil, FileText, Filter, X, Search, Package, DollarSign, Clock, ChevronDown, BarChart3, ClipboardList, RefreshCw, Tag, LayoutDashboard, Zap, FileSpreadsheet, Receipt, XCircle, CheckCircle, Download } from 'lucide-react';
+import { ShoppingCart, Plus, Loader2, Copy, Printer, Factory, Pencil, FileText, Filter, X, Search, Package, DollarSign, Clock, ChevronDown, BarChart3, ClipboardList, RefreshCw, Tag, LayoutDashboard, Zap, FileSpreadsheet, Receipt, XCircle, CheckCircle, Download, TrendingUp } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import MaterialConsumptionDialog from '@/components/sale-orders/MaterialConsumptionDialog';
+import MarginDialog from '@/components/sale-orders/MarginDialog';
 import SummaryConsumptionPanel from '@/components/sale-orders/SummaryConsumptionPanel';
 import SaleOrdersOverviewDialog from '@/components/sale-orders/SaleOrdersOverviewDialog';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
@@ -180,6 +181,7 @@ export default function SaleOrders() {
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [consumptionDialogOpen, setConsumptionDialogOpen] = useState(false);
+  const [marginDialogOpen, setMarginDialogOpen] = useState(false);
   const [quickConsumptionId, setQuickConsumptionId] = useState<string | null>(null);
   const [quickConsumptionNumber, setQuickConsumptionNumber] = useState('');
 
@@ -1778,6 +1780,7 @@ export default function SaleOrders() {
                     </Button>
                   )}
                   <Button variant="outline" size="sm" className="gap-2" onClick={() => setConsumptionDialogOpen(true)}><ClipboardList className="h-3.5 w-3.5" /> Consumo de materiais</Button>
+                  <Button variant="outline" size="sm" className="gap-2" onClick={() => setMarginDialogOpen(true)}><TrendingUp className="h-3.5 w-3.5" /> Margem</Button>
                   <Button variant="outline" size="sm" className="gap-2" onClick={async () => { try { await printAllSectorsForSaleOrder(selectedOrder.id, selectedOrder.order_number); } catch (err: any) { toast.error(err.message); } }}><FileText className="h-3.5 w-3.5" /> OPs</Button>
                   <Button variant="outline" size="sm" className="gap-2" onClick={async () => { const { data: oi } = await supabase.from('sale_order_items').select('*, technical_sheets(name, code, image_url, images)').eq('sale_order_id', selectedOrder.id); const refIds = [...new Set((oi || []).map(i => i.reference_id))]; const { data: colorVariants } = await supabase.from('reference_color_variants').select('reference_id, color, image_url').in('reference_id', refIds); printHtml(`PV ${selectedOrder.order_number}`, await buildSaleOrderPrintHtml(selectedOrder, oi || [], colorVariants || [])); }}><FileText className="h-3.5 w-3.5" /> Gerar PDF</Button>
                   <Button variant="outline" size="sm" className="gap-2" onClick={async () => {
@@ -2175,6 +2178,14 @@ export default function SaleOrders() {
         onOpenChange={(v) => { if (!v) setQuickConsumptionId(null); }}
         saleOrderId={quickConsumptionId}
         orderNumber={quickConsumptionNumber}
+      />
+
+      <MarginDialog
+        open={marginDialogOpen}
+        onOpenChange={setMarginDialogOpen}
+        saleOrderId={selectedOrder?.id || null}
+        orderNumber={selectedOrder?.order_number || ''}
+        total={Number(selectedOrder?.total) || 0}
       />
     </>
   );

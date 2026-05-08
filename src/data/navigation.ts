@@ -5,7 +5,7 @@ import {
   Ruler, PackageOpen, ShieldCheck, Zap,
   ShoppingBag, Monitor, Cpu,
   BarChart2, BarChart3, Receipt,
-  BookOpen, Footprints, Sparkles, Tag, ClipboardCheck,
+  Footprints, Sparkles, Tag, ClipboardCheck,
   DollarSign, Calendar, Box, History,
   ListChecks, Boxes, Activity, GanttChartSquare, Clock,
 } from 'lucide-react';
@@ -57,7 +57,6 @@ export const menuGroups = [
     label: "Engenharia",
     icon: Ruler,
     items: [
-      { name: "Referências",      icon: BookOpen,     path: "/references" },
       { name: "Fichas Técnicas",  icon: Ruler,        path: "/fichas-tecnicas" },
       { name: "Solados",          icon: Footprints,   path: "/solados" },
       { name: "Receitas",         icon: Sparkles,     path: "/artisanal-recipes" },
