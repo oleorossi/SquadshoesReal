@@ -32,9 +32,11 @@ const severityIcon = {
 };
 
 export function SmartDashboard({ onNavigate }: { onNavigate?: (tab: string) => void }) {
-  const { data: kpis, isLoading: loadingKpis } = useFinanceKPIs();
-  const { data: alerts = [], isLoading: loadingAlerts } = useFinanceAlerts();
+  const { data: kpis, isLoading: loadingKpis, error: kpisError } = useFinanceKPIs();
+  const { data: alerts = [], isLoading: loadingAlerts, error: alertsError } = useFinanceAlerts();
   const { data: cashflow, isLoading: loadingCashflow } = useCashFlowProjection(30);
+  // Surfacing errors silenciados antes (useQuery sem onError swallowed) —
+  // se a query de alertas falhar, mostra aviso visível em vez de "Tudo em dia!".
 
   if (loadingKpis || !kpis) {
     return (
@@ -73,6 +75,19 @@ export function SmartDashboard({ onNavigate }: { onNavigate?: (tab: string) => v
              <div className="flex items-center justify-center py-4">
                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-2" />
                <span className="text-xs text-muted-foreground">Analisando dados financeiros...</span>
+             </div>
+           ) : alertsError ? (
+             <div className="flex items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-3">
+               <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+               <div className="flex-1 min-w-0">
+                 <p className="text-sm font-semibold text-destructive">Falha ao carregar alertas</p>
+                 <p className="text-xs text-destructive/80 mt-0.5">
+                   {(alertsError as Error)?.message || 'Erro desconhecido na consulta financeira.'}
+                 </p>
+                 <p className="text-[10px] text-muted-foreground mt-1">
+                   Verifique se as tabelas bank_accounts, accounts_payable, accounts_receivable estão acessíveis.
+                 </p>
+               </div>
              </div>
            ) : alerts.length === 0 ? (
              <div className="flex flex-col items-center justify-center py-6 text-center">
