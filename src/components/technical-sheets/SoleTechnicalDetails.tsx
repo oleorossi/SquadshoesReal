@@ -10,6 +10,7 @@ import { Footprints, Save, Loader2, RefreshCw, Layers, Shield, Plus, X, Copy, In
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { SoleConjugationPanel } from "@/components/inventory/SoleConjugationPanel";
+import { CopyFromAnySoleDialog } from "./CopyFromAnySoleDialog";
 import { useSoleConjugations } from "@/hooks/useSoleConjugations";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
@@ -59,6 +60,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
   const [isReferenceLoading, setIsReferenceLoading] = useState(false);
   const [referencePreview, setReferencePreview] = useState<any | null>(null);
   const [referenceInfo, setReferenceInfo] = useState<{ id: string; name: string; date: string } | null>(null);
+  const [copyAnyOpen, setCopyAnyOpen] = useState(false);
   const [soleGroupId, setSoleGroupId] = useState<string | null>(null);
   const [isFachetado, setIsFachetado] = useState<boolean>(false);
 
@@ -585,9 +587,20 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
             onClick={() => soleName && tryLoadReferenceSpecs(soleName)}
             disabled={saving || isReferenceLoading || !soleName}
             className="gap-2 shrink-0 border-blue-200 hover:border-blue-400 text-blue-700 bg-blue-50/50"
+            title="Tenta achar specs em outro solado com nome similar (mesma família)"
           >
             {isReferenceLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
-            Puxar Dados da Referência
+            Puxar de Família
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setCopyAnyOpen(true)}
+            disabled={saving}
+            className="gap-2 shrink-0 border-purple-200 hover:border-purple-400 text-purple-700 bg-purple-50/50"
+            title="Escolhe qualquer solado já cadastrado como base — você ajusta depois"
+          >
+            <Copy className="h-4 w-4" />
+            Copiar de Qualquer Solado
           </Button>
           <Button onClick={handleSave} disabled={saving} className="gap-2 shrink-0">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -1001,6 +1014,22 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Copiar de qualquer solado (round 19) */}
+      <CopyFromAnySoleDialog
+        open={copyAnyOpen}
+        onOpenChange={setCopyAnyOpen}
+        targetSoleId={soleId}
+        targetSoleName={soleName}
+        hasExistingSpecs={Object.keys(specs).length > 0}
+        onCopied={() => {
+          // Recarrega dados após cópia
+          fetchAll();
+          qc.invalidateQueries({ queryKey: ['soles_with_specs'] });
+          qc.invalidateQueries({ queryKey: ['v_soles_audit'] });
+          qc.invalidateQueries({ queryKey: ['sheets_audit'] });
+        }}
+      />
     </div>
   );
 }
