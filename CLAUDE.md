@@ -117,9 +117,9 @@ Dashboard: https://supabase.com/dashboard/project/ssvxfoybzmjlypnipqzn
 
 > **Nota:** Existe um segundo projeto Supabase chamado **"SquadShoes Correto"** (ID `vffuwxirbxvnekdgfogq`, sa-east-1, criado em mai/06) que está **completamente vazio** — sem tabelas. O nome é enganoso. O sistema rodando hoje continua em `ssvxfoybzmjlypnipqzn` (us-west-2). Decidir se vai migrar pra `vffuwxirbxvnekdgfogq` (e replicar tabelas) ou deletar — fora do escopo das migrations.
 
-### ✅ Aplicadas em 2026-05-08 via MCP (auditoria + Frentes 1-2-4)
+### ✅ Aplicadas em 2026-05-08 via MCP (auditoria + Frentes 1-2-4 + Data Faturamento como Motriz)
 
-As 7 migrations abaixo foram aplicadas diretamente em `ssvxfoybzmjlypnipqzn` via Supabase MCP:
+As 10 migrations abaixo foram aplicadas diretamente em `ssvxfoybzmjlypnipqzn` via Supabase MCP:
 - `20260524120000_audit-fix-conversion-and-parallelism.sql` ✅
 - `20260524130000_refine-list-materials-missing-width.sql` ✅
 - `20260524140000_strap-debit-preventive-hardening.sql` ✅
@@ -127,6 +127,9 @@ As 7 migrations abaixo foram aplicadas diretamente em `ssvxfoybzmjlypnipqzn` via
 - `20260525120000_add-costura-to-default-lead-times.sql` ✅
 - `20260525130000_timesheet-import-files-archive.sql` ✅
 - `20260525140000_sheet-materials-variant-id.sql` ✅
+- `20260610120000_min-billing-aligned-and-discount-pending-pos.sql` ✅ (PR1+PR2 — alinhamento min_billing + desconto POs trânsito; **bug introduzido**, corrigido pela 20260610140000 abaixo)
+- `20260610130000_recompute-wave-timeline-on-delivery-change.sql` ✅ (trigger recalcula wave timeline ao mudar delivery_deadline)
+- `20260610140000_restore-parallelism-and-costura-sector.sql` ✅ (corrige bug da 20260610120000: restaura paralelismo Corte P‖Corte F‖Mesa + setor Costura sequencial; preserva desconto de POs pending)
 
 **Atenção pro GitHub Action:** como essas foram aplicadas via MCP (não via `supabase db push`), elas NÃO estão registradas em `supabase_migrations.schema_migrations`. Se você ativar o GitHub Action e rodar `supabase db push --linked`, ele vai tentar re-aplicar. Como são idempotentes, não vai quebrar — mas o ideal é rodar `supabase migration repair --status applied <timestamp>` pra cada uma antes do primeiro push automático. Use `scripts/repair-applied-migrations.sh`.
 

@@ -447,6 +447,28 @@ export default function SaleOrders() {
 
   const handleBulkStatusChange = async (status: string) => {
     const ids = Array.from(selectedIds);
+    // Pré-check só se o status alvo é Aprovado/Em Produção (estados que
+    // disparam o pipeline produtivo). Cancelar/Rascunho não precisam de
+    // viabilidade — são ações de "desistir" ou "voltar atrás".
+    if (status === 'Aprovado' || status === 'Em Produção') {
+      const targets = filteredOrders.filter((o) => ids.includes(o.id));
+      const infeasibleOrders = targets.filter((o) => {
+        const min = minBillingMap.get(o.id);
+        return min && o.delivery_deadline && o.delivery_deadline < min;
+      });
+      if (infeasibleOrders.length > 0) {
+        const list = infeasibleOrders
+          .slice(0, 5)
+          .map((o) => `• ${o.order_number} (${formatDate(o.delivery_deadline)} → mín ${formatDate(minBillingMap.get(o.id) || null)})`)
+          .join('\n');
+        const more = infeasibleOrders.length > 5 ? `\n... e mais ${infeasibleOrders.length - 5}` : '';
+        const ok = window.confirm(
+          `${infeasibleOrders.length} pedido(s) com data INVIÁVEL — produção não cabe no prazo:\n\n${list}${more}\n\n` +
+          'Mover para "' + status + '" mesmo assim? (Recomendado: ajustar a data primeiro)'
+        );
+        if (!ok) return;
+      }
+    }
     const results = await Promise.allSettled(ids.map(id => updateStatus.mutateAsync({ id, status })));
     const failed = results.filter(r => r.status === 'rejected').length;
     setSelectedIds(new Set());
@@ -864,6 +886,29 @@ export default function SaleOrders() {
 
   const handleBulkGenerateOPs = async () => {
     if (pendingOrders.length === 0) { toast.info('Nenhum pedido pendente.'); return; }
+
+    // Pré-check de viabilidade: bloqueia approval em massa de PVs com
+    // delivery_deadline anterior à data mínima viável (capacidade dos
+    // 9 setores + buffer + supplier descontando POs pending). Pré-2026-06
+    // o sistema aprovava sem checar — geravam OPs que entravam em ondas
+    // com purchase_deadline já vencido.
+    const infeasibleOrders = pendingOrders.filter((o) => {
+      const min = minBillingMap.get(o.id);
+      return min && o.delivery_deadline && o.delivery_deadline < min;
+    });
+    if (infeasibleOrders.length > 0) {
+      const list = infeasibleOrders
+        .slice(0, 5)
+        .map((o) => `• ${o.order_number} (${formatDate(o.delivery_deadline)} → mín ${formatDate(minBillingMap.get(o.id) || null)})`)
+        .join('\n');
+      const more = infeasibleOrders.length > 5 ? `\n... e mais ${infeasibleOrders.length - 5}` : '';
+      const ok = window.confirm(
+        `${infeasibleOrders.length} pedido(s) com data INVIÁVEL — produção não cabe no prazo:\n\n${list}${more}\n\n` +
+        'Aprovar mesmo assim? (Recomendado: ajustar a data primeiro)'
+      );
+      if (!ok) return;
+    }
+
     setGeneratingOPs(true);
     let ordersProcessed = 0, opsCreated = 0;
     const errors: string[] = [];
