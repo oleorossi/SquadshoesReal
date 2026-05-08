@@ -7,7 +7,7 @@ import {
   BarChart2, BarChart3, Receipt,
   BookOpen, Footprints, Sparkles, Tag, ClipboardCheck,
   DollarSign, Calendar, Box, History,
-  ListChecks, Boxes,
+  ListChecks, Boxes, Calculator,
 } from 'lucide-react';
 
 // ════════════════════════════════════════════════════════════════════════
@@ -78,7 +78,7 @@ export const menuGroups = [
       { name: "Ordens de Compra", icon: ShoppingBag,  path: "/purchase-orders" },
       { name: "Planejamento",     icon: Calendar,     path: "/purchase-planning" },
       { name: "Fornecedores",     icon: Briefcase,    path: "/suppliers" },
-      { name: "Custos & Markup",  icon: DollarSign,   path: "/custos-insumos" },
+      { name: "Custos de Insumos",icon: DollarSign,   path: "/custos-insumos" },
     ],
   },
   {
@@ -96,6 +96,7 @@ export const menuGroups = [
     items: [
       { name: "Financeiro",       icon: Wallet,         path: "/financeiro" },
       { name: "Contas (AR/AP)",   icon: DollarSign,     path: "/finance" },
+      { name: "Markup",           icon: Calculator,     path: "/pricing-calculator" },
       { name: "NF-e",             icon: Receipt,        path: "/nfe" },
     ],
   },
