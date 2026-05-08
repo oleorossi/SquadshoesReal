@@ -6,6 +6,7 @@ import { ShoppingCart, Plus, Loader2, Copy, Printer, Factory, Pencil, FileText, 
 import { cn } from "@/lib/utils";
 import MaterialConsumptionDialog from '@/components/sale-orders/MaterialConsumptionDialog';
 import MarginDialog from '@/components/sale-orders/MarginDialog';
+import { PvOutdatedBadge } from '@/components/sale-orders/PvOutdatedBadge';
 import SummaryConsumptionPanel from '@/components/sale-orders/SummaryConsumptionPanel';
 import SaleOrdersOverviewDialog from '@/components/sale-orders/SaleOrdersOverviewDialog';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
@@ -1735,9 +1736,10 @@ export default function SaleOrders() {
         <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between w-full">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <span>Pedido {selectedOrder?.order_number || ''}</span>
                 {selectedOrder && <Badge variant="outline" className={STATUS_COLORS[selectedOrder.status] || ''}><span className={`h-1.5 w-1.5 rounded-full mr-1.5 ${STATUS_DOT[selectedOrder.status]}`} />{selectedOrder.status}</Badge>}
+                <PvOutdatedBadge saleOrderId={selectedOrder?.id || null} />
               </div>
               {selectedOrder && (
                 <div className="flex items-center gap-2">
