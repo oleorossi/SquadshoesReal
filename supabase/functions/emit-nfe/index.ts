@@ -372,15 +372,26 @@ Deno.serve(async (req) => {
           icms_modalidade_base_calculo: "0",
           pis_situacao_tributaria: fiscal.regime_tributario === "1" ? "49" : "01",
           cofins_situacao_tributaria: fiscal.regime_tributario === "1" ? "49" : "01",
-          // Non-Simples (CST 01) requires base, aliquota, valor — Simples (CST 49) omits them
-          ...(fiscal.regime_tributario !== "1" ? {
-            pis_base_calculo: (Number(item.quantity) * price).toFixed(2),
-            pis_aliquota: "1.65",
-            pis_valor: (Number(item.quantity) * price * 0.0165).toFixed(2),
-            cofins_base_calculo: (Number(item.quantity) * price).toFixed(2),
-            cofins_aliquota: "7.60",
-            cofins_valor: (Number(item.quantity) * price * 0.076).toFixed(2),
-          } : {}),
+          // Non-Simples (CST 01) requires base, aliquota, valor — Simples (CST 49) omits them.
+          // Alíquotas variam por regime PIS/COFINS:
+          //   Não-cumulativo (Lucro Real, default): PIS 1.65 / COFINS 7.60
+          //   Cumulativo (Lucro Presumido):         PIS 0.65 / COFINS 3.00
+          ...(fiscal.regime_tributario !== "1" ? (() => {
+            const isCumulativo = fiscal.pis_cofins_regime === "cumulativo";
+            const pisRate = isCumulativo ? 0.0065 : 0.0165;
+            const cofinsRate = isCumulativo ? 0.03 : 0.076;
+            const pisAliquotaStr = isCumulativo ? "0.65" : "1.65";
+            const cofinsAliquotaStr = isCumulativo ? "3.00" : "7.60";
+            const baseCalculo = Number(item.quantity) * price;
+            return {
+              pis_base_calculo: baseCalculo.toFixed(2),
+              pis_aliquota: pisAliquotaStr,
+              pis_valor: (baseCalculo * pisRate).toFixed(2),
+              cofins_base_calculo: baseCalculo.toFixed(2),
+              cofins_aliquota: cofinsAliquotaStr,
+              cofins_valor: (baseCalculo * cofinsRate).toFixed(2),
+            };
+          })() : {}),
         };
       }),
       // Explicit totals prevent SEFAZ Rejeição 531/536 when item-level rounding
