@@ -161,7 +161,7 @@ export default function OrderEdit() {
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/orders')}>
+          <Button variant="ghost" size="icon" onClick={() => navigate('/orders')} aria-label="Voltar para Ordens de Produção">
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>

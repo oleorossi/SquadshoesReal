@@ -17,6 +17,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Loader2, AlertTriangle, Activity } from 'lucide-react';
 import AppLayout from '@/components/layout/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { useOrders } from '@/hooks/useOrders';
 import { useAllOrderStages, OrderStage } from '@/hooks/useOrderStages';
 import { supabase } from '@/integrations/supabase/client';
@@ -202,10 +203,11 @@ export default function ProductionLive() {
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
             ) : activeOrders.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <Activity className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                <p className="text-sm">Nenhuma OP em produção no momento</p>
-              </div>
+              <EmptyState
+                icon={Activity}
+                title="Nenhuma OP em produção"
+                description="Quando uma ordem entrar em produção, ela aparece aqui em tempo real."
+              />
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {activeOrders.map(order => {

@@ -543,7 +543,7 @@ export default function ProductionCapacityCalendar() {
                 <BarChart3 className="h-3 w-3" /> Semanal
               </button>
             </div>
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => refetch()} disabled={isFetching}>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => refetch()} disabled={isFetching} aria-label="Atualizar dados">
               <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
             </Button>
           </div>
@@ -555,11 +555,11 @@ export default function ProductionCapacityCalendar() {
         {/* Navigation + legend */}
         <div className="flex flex-wrap gap-3 items-center justify-between">
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setOffset(o => o - 1)}>
+            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setOffset(o => o - 1)} aria-label="Período anterior">
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <span className="text-sm font-medium min-w-[200px] text-center">{periodLabel}</span>
-            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setOffset(o => o + 1)}>
+            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setOffset(o => o + 1)} aria-label="Próximo período">
               <ChevronRight className="h-4 w-4" />
             </Button>
             {offset !== 0 && (

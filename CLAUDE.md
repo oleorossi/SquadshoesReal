@@ -67,6 +67,37 @@ unified visual system and makes dark mode impossible.
 npm run check:tokens
 ```
 
+### Height conventions (Tailwind h-*)
+Padrão de altura por contexto pra manter consistência visual:
+
+| Classe | px | Uso |
+|--------|----|----|
+| `h-7`  | 28 | Toolbars dentro de tabelas, ações inline em listas densas |
+| `h-8`  | 32 | Tamanho `size="sm"` do shadcn — uso geral em filtros/sub-actions |
+| `h-9`  | 36 | Tamanho default — header de página, formulários principais |
+| `h-10` | 40 | CTAs primários, botões em modais |
+| `h-11` | 44 | Apenas hero CTAs (rara, não usar em UI normal) |
+
+Em cards de OP / linhas de tabela, prefira `h-7`. Em toolbars de página
+top-level, use `h-9`. Mistura entre h-7/h-8/h-9 numa MESMA toolbar é
+sintoma de inconsistência — alinhar pelo mais alto.
+
+### Z-index utilities (em vez de `z-[100]`)
+```css
+.z-dropdown   /* 100 */
+.z-sticky     /* 200 */
+.z-overlay    /* 300 */
+.z-modal      /* 400 */
+.z-popover    /* 500 */
+.z-toast      /* 600 */
+.z-tooltip    /* 700 */
+```
+
+### Empty states
+Use `<EmptyState />` de `@/components/ui/empty-state` em vez de criar
+variações ad-hoc. Provê ícone, título, descrição e ação opcional com
+visual consistente (ícone em círculo bg-muted, título semibold).
+
 ### Root causes of past dual-visual-system bug
 1. **CSS scope contamination** — class definitions (`.glass-sidebar`, `@keyframes`) were
    nested inside `:root {}`. Everything after them lost CSS variable scope. Fixed in

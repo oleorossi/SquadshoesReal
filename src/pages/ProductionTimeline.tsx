@@ -17,6 +17,7 @@ import { Loader2, ClipboardList } from 'lucide-react';
 import AppLayout from '@/components/layout/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { useOrders } from '@/hooks/useOrders';
 import { useAllOrderStages, OrderStage } from '@/hooks/useOrderStages';
 import { cn } from '@/lib/utils';
@@ -150,10 +151,12 @@ export default function ProductionTimeline() {
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
             ) : filtered.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <ClipboardList className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                <p className="text-sm">Nenhuma OP em produção pra esse período</p>
-              </div>
+              <EmptyState
+                icon={ClipboardList}
+                title="Nenhuma OP no período"
+                description="Tente ampliar o escopo (Hoje → Semana → Mês) ou aprovar pedidos pendentes."
+                size="sm"
+              />
             ) : (
               <>
                 {/* Header row */}

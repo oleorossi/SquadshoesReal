@@ -503,7 +503,7 @@ export default function SaleOrderForm() {
       <div className="w-full space-y-6 pb-20">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-background/80 backdrop-blur-md sticky top-0 z-10 py-4 -mx-4 px-4 sm:mx-0 sm:px-0">
           <div className="flex items-center gap-3">
-            <Button variant="outline" size="icon" onClick={() => navigate('/sales')} className="rounded-full h-10 w-10">
+            <Button variant="outline" size="icon" onClick={() => navigate('/sales')} className="rounded-full h-10 w-10" aria-label="Voltar para Pedidos de Venda">
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div>

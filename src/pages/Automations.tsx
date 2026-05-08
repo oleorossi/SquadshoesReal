@@ -463,13 +463,13 @@ export default function Automations() {
                             : <Play className="h-3 w-3" />}
                           {isRunning ? 'Executando…' : 'Executar'}
                         </Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setDetailWf(wf)}>
+                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setDetailWf(wf)} aria-label={`Ver detalhes do workflow ${wf.name}`}>
                           <Eye className="h-3.5 w-3.5" />
                         </Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(wf)}>
+                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(wf)} aria-label={`Editar workflow ${wf.name}`}>
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDuplicate(wf)}>
+                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDuplicate(wf)} aria-label={`Duplicar workflow ${wf.name}`}>
                           <Copy className="h-3.5 w-3.5" />
                         </Button>
                         <Button

@@ -113,7 +113,7 @@ function EmitDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
                 placeholder="PV-2026-00001"
                 onKeyDown={e => e.key === 'Enter' && search()}
               />
-              <Button variant="outline" size="icon" onClick={search} disabled={searching}>
+              <Button variant="outline" size="icon" onClick={search} disabled={searching} aria-label="Buscar NF-e">
                 {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
               </Button>
             </div>

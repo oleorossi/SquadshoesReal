@@ -4,6 +4,7 @@ import { usePersistedState } from '@/hooks/usePersistedState';
 import { useQuery } from '@tanstack/react-query';
 import { ClipboardList, Trash2, Loader2, AlertTriangle, CheckCircle2, Printer, Factory, Filter, Search, Calendar, Layers, X, ChevronDown, CheckCheck, Pencil, FileText, Square, CheckSquare, FileSpreadsheet, Check, ChevronsUpDown, Package, ImageIcon, Plus, ChevronUp, MoreHorizontal, Download, LayoutGrid, List } from 'lucide-react';
 import OrdersKanbanBoard from '@/components/orders/OrdersKanbanBoard';
+import { EmptyState } from '@/components/ui/empty-state';
 import { autoCreateSolePO } from '@/lib/soleAutoPO';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -1308,9 +1309,12 @@ function getWeekOptions() {
 
         {filteredOrders.length === 0 ? (
           <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-              <ClipboardList className="h-10 w-10 mb-3 opacity-50" />
-              <p>Nenhuma ordem de produção</p>
+            <CardContent className="p-0">
+              <EmptyState
+                icon={ClipboardList}
+                title="Nenhuma ordem de produção"
+                description="Crie OPs a partir de pedidos aprovados ou ajuste os filtros acima."
+              />
             </CardContent>
           </Card>
         ) : viewMode === 'kanban' ? (

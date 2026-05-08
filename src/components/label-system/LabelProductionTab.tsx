@@ -1108,7 +1108,7 @@ export function LabelProductionTab() {
       </Dialog>
 
       {isGenerating && (
-        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-modal bg-black/60 backdrop-blur-sm flex items-center justify-center animate-in fade-in duration-300">
           <div className="bg-background p-10 rounded-2xl shadow-2xl border border-primary/20 flex flex-col items-center gap-6 max-w-xs w-full">
             <Loader2 className="h-12 w-12 animate-spin text-primary" />
             <div className="text-center space-y-2">

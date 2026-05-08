@@ -401,7 +401,7 @@ export default function Costura() {
                                   >
                                     {stageStatus === 'concluido' ? '✅ Concluído' : stageStatus === 'em_andamento' ? '🔄 Em andamento' : '⏳ Pendente'}
                                   </Badge>
-                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handlePrintOrder(order)}>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handlePrintOrder(order)} aria-label={`Imprimir OP ${order.order_number}`}>
                                     <Printer className="h-3.5 w-3.5" />
                                   </Button>
                                 </div>

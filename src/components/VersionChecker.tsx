@@ -148,7 +148,7 @@
      <div
        role="alert"
        aria-live="assertive"
-       className="fixed top-0 inset-x-0 z-[100] shadow-lg"
+       className="fixed top-0 inset-x-0 z-toast shadow-lg"
      >
        {/* Main update bar */}
        <div className="flex items-center justify-center gap-3 bg-amber-500 text-amber-950 px-4 py-2.5 text-sm font-medium">
