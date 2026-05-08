@@ -255,22 +255,31 @@ export function useDREInventoryVariation(monthsBack: number = 6) {
         totalCurrentStockValue += val;
       });
 
-      // 2. Stock movements in the full period (with product_id for unit_price lookup)
+      // 2. Stock movements in the full period.
+      // unit_price_at_movement (round 9) preserva o preço histórico — usado quando
+      // disponível. Fallback pro productPriceMap atual em movimentos pré-trigger.
       const { data: movementsData, error: movErr } = await supabase
         .from('stock_movements')
-        .select('product_id, movement_type, quantity, created_at')
+        .select('product_id, movement_type, quantity, created_at, unit_price_at_movement')
         .gte('created_at', `${startDate}T00:00:00`)
         .lte('created_at', `${endDate}T23:59:59`);
       if (movErr) throw movErr;
 
-      // 3. Purchase orders received in the full period
-      const { data: posData, error: posErr } = await supabase
+      // 3. Purchase orders received in the full period.
+      // received_at (round 9) é o momento real do recebimento — não é movido por
+      // edições posteriores na PO. Fallback pra updated_at em POs pré-trigger.
+      // Filtro de período aplicado no client pra suportar o COALESCE.
+      const { data: posDataRaw, error: posErr } = await supabase
         .from('purchase_orders')
-        .select('total_value, updated_at, status')
-        .eq('status', 'received')
-        .gte('updated_at', `${startDate}T00:00:00`)
-        .lte('updated_at', `${endDate}T23:59:59`);
+        .select('total_value, received_at, updated_at, status')
+        .eq('status', 'received');
       if (posErr) throw posErr;
+      const periodStart = `${startDate}T00:00:00`;
+      const periodEnd = `${endDate}T23:59:59`;
+      const posData = (posDataRaw || []).filter((po: any) => {
+        const ts = po.received_at || po.updated_at;
+        return ts >= periodStart && ts <= periodEnd;
+      });
 
       // Build per-month buckets
       const periods: string[] = [];
@@ -285,10 +294,12 @@ export function useDREInventoryVariation(monthsBack: number = 6) {
         acc[p] = { inValue: 0, outValue: 0, compras: 0 };
       });
 
-      (movementsData || []).forEach((m) => {
+      (movementsData || []).forEach((m: any) => {
         const period = m.created_at.substring(0, 7);
         if (!acc[period]) return;
-        const unitPrice = productPriceMap[m.product_id] || 0;
+        // Preço histórico do movimento (round 9). Fallback pro preço atual do
+        // produto em movimentos antigos sem unit_price_at_movement.
+        const unitPrice = Number(m.unit_price_at_movement ?? productPriceMap[m.product_id] ?? 0);
         const value = Number(m.quantity || 0) * unitPrice;
         if (m.movement_type === 'in') {
           acc[period].inValue += value;
@@ -297,8 +308,9 @@ export function useDREInventoryVariation(monthsBack: number = 6) {
         }
       });
 
-      (posData || []).forEach((po) => {
-        const period = po.updated_at.substring(0, 7);
+      posData.forEach((po: any) => {
+        const ts = po.received_at || po.updated_at;
+        const period = ts.substring(0, 7);
         if (!acc[period]) return;
         acc[period].compras += Number(po.total_value || 0);
       });

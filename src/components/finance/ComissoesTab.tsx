@@ -65,10 +65,11 @@ export default function ComissoesTab() {
       repMap.set(rep.name, { rep, orders: [], totalSales: 0, totalCommissionBase: 0, totalCommission: 0 });
     });
 
-    // Match sale orders to representatives
+    // Match sale orders to representatives.
+    // Prefer representative_id (FK) — sobrevive a renames; fallback pro nome
+    // text em PVs legacy criados antes do campo FK ser populado.
     saleOrders.forEach((so: any) => {
-      const repName = so.representative;
-      if (!repName) return;
+      if (!so.representative_id && !so.representative) return;
       if (['Cancelado', 'Cancelada', 'Rascunho'].includes(so.status)) return;
 
       // Filter by month if set
@@ -80,8 +81,12 @@ export default function ComissoesTab() {
         }
       }
 
-      const rep = representatives.find(r =>
-        r.name.toLowerCase() === repName.toLowerCase()
+      const rep = (so.representative_id
+        ? representatives.find(r => r.id === so.representative_id)
+        : null
+      ) || (so.representative
+        ? representatives.find(r => r.name.toLowerCase() === so.representative.toLowerCase())
+        : null
       );
       if (!rep) return;
 
