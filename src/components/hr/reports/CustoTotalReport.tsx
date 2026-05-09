@@ -166,7 +166,7 @@ export default function CustoTotalReport() {
       <div className="space-y-5 page-enter">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+            <h1 className="display text-xl tracking-tight flex items-center gap-2">
               <DollarSign className="h-5 w-5 text-primary" />
               Custo Total por Funcionário
             </h1>
@@ -223,7 +223,7 @@ export default function CustoTotalReport() {
           <Card className="border-primary/40">
             <CardContent className="p-4">
               <p className="text-xs text-muted-foreground uppercase">Custo total mês</p>
-              <p className="text-xl font-bold font-mono text-primary">{fmt(totals.total)}</p>
+              <p className="display text-xl tabular-nums text-primary">{fmt(totals.total)}</p>
             </CardContent>
           </Card>
         </div>

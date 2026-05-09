@@ -37,7 +37,7 @@ export function MaterialNeedsReport({ needsData }: MaterialNeedsReportProps) {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <ShoppingCart className="h-5 w-5 text-primary" />
-            <h2 className="text-xl font-bold text-primary">Planejamento de Compras (MRP)</h2>
+            <h2 className="display text-xl text-primary">Planejamento de Compras (MRP)</h2>
           </div>
           <p className="text-sm text-muted-foreground">
             Necessidades baseadas no DNA dos Solados e Pedidos Ativos

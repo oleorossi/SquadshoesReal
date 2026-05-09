@@ -23,7 +23,7 @@ function IndicatorCard({ label, value, sub, color = 'primary' }: { label: string
   return (
     <div className={`rounded-xl border p-4 ${colorMap[color] || colorMap.primary}`}>
       <p className="text-[11px] font-semibold uppercase tracking-wider opacity-70 mb-1">{label}</p>
-      <p className="text-xl font-bold font-mono tracking-tight">{value}</p>
+      <p className="display text-xl tabular-nums">{value}</p>
       {sub && <p className="text-[11px] mt-0.5 opacity-60">{sub}</p>}
     </div>
   );

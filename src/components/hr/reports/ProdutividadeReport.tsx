@@ -222,11 +222,11 @@ export default function ProdutividadeReport() {
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Folha base alocada</p>
-          <p className="text-xl font-bold font-mono">{fmt(totals.totalSalary)}</p>
+          <p className="display text-xl tabular-nums">{fmt(totals.totalSalary)}</p>
         </CardContent></Card>
         <Card className="border-primary/40"><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Custo médio/par</p>
-          <p className="text-xl font-bold font-mono text-primary">{totals.pairs > 0 ? fmt(totals.costPerPair) : '—'}</p>
+          <p className="display text-xl tabular-nums text-primary">{totals.pairs > 0 ? fmt(totals.costPerPair) : '—'}</p>
           <p className="text-[10px] text-muted-foreground">Proxy via folha base</p>
         </CardContent></Card>
       </div>

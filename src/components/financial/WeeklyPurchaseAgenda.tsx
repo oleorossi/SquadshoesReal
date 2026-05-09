@@ -264,7 +264,7 @@ export default function WeeklyPurchaseAgenda() {
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Total estimado</p>
-          <p className="text-xl font-bold text-primary">{fmt(totalEstimado)}</p>
+          <p className="display text-xl tabular-nums text-primary">{fmt(totalEstimado)}</p>
         </CardContent></Card>
       </div>
 

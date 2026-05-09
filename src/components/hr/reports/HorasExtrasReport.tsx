@@ -113,7 +113,7 @@ export default function HorasExtrasReport() {
     <div className="space-y-5 page-enter">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="display text-xl tracking-tight flex items-center gap-2">
             <AlarmClock className="h-5 w-5 text-primary" />
             Relatório de Horas Extras
           </h1>
@@ -141,22 +141,22 @@ export default function HorasExtrasReport() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Card><CardContent className="p-4">
               <p className="text-xs text-muted-foreground uppercase">HE 50%</p>
-              <p className="text-xl font-bold font-mono">{fmtMin(totals.ot50Min)}</p>
+              <p className="display text-xl tabular-nums">{fmtMin(totals.ot50Min)}</p>
               <p className="text-[10px] text-muted-foreground">{Math.round(totals.ot50Min / 60)}h</p>
             </CardContent></Card>
             <Card><CardContent className="p-4">
               <p className="text-xs text-muted-foreground uppercase">HE 100%</p>
-              <p className="text-xl font-bold font-mono text-amber-600">{fmtMin(totals.ot100Min)}</p>
+              <p className="display text-xl tabular-nums text-amber-600">{fmtMin(totals.ot100Min)}</p>
               <p className="text-[10px] text-muted-foreground">Domingos/feriados</p>
             </CardContent></Card>
             <Card><CardContent className="p-4">
               <p className="text-xs text-muted-foreground uppercase">Adic. Noturno</p>
-              <p className="text-xl font-bold font-mono text-indigo-600">{fmtMin(totals.nightMin)}</p>
+              <p className="display text-xl tabular-nums text-indigo-600">{fmtMin(totals.nightMin)}</p>
               <p className="text-[10px] text-muted-foreground">22h–5h</p>
             </CardContent></Card>
             <Card className="border-primary/40"><CardContent className="p-4">
               <p className="text-xs text-muted-foreground uppercase">Custo total HE</p>
-              <p className="text-xl font-bold font-mono text-primary">{fmt(totals.totalValue)}</p>
+              <p className="display text-xl tabular-nums text-primary">{fmt(totals.totalValue)}</p>
               <p className="text-[10px] text-muted-foreground">{totals.countWithOT} funcionário{totals.countWithOT !== 1 ? 's' : ''} com HE</p>
             </CardContent></Card>
           </div>

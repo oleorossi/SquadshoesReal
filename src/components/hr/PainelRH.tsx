@@ -183,7 +183,7 @@ export default function PainelRH({ onNavigateTab }: Props) {
     <div className="space-y-5 page-enter">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Painel de Pessoas</h1>
+          <h1 className="display text-xl tracking-tight">Painel de Pessoas</h1>
           <p className="text-sm text-muted-foreground">
             Resumo do quadro, alertas que pedem ação e evolução do efetivo.
           </p>

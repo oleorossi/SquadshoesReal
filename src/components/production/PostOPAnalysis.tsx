@@ -259,7 +259,7 @@ export default function PostOPAnalysis() {
               <div className="flex items-center gap-2">
                 <div className="p-2 rounded-md bg-muted/50"><Clock className="h-4 w-4 text-violet-600" /></div>
                 <div>
-                  <p className="text-xl font-bold">{kpis.avgLeadTimeDays.toFixed(1)}d</p>
+                  <p className="display text-xl tabular-nums">{kpis.avgLeadTimeDays.toFixed(1)}d</p>
                   <p className="text-[10px] text-muted-foreground">Lead Time Médio</p>
                 </div>
               </div>
@@ -288,7 +288,7 @@ export default function PostOPAnalysis() {
               <div className="flex items-center gap-2">
                 <div className="p-2 rounded-md bg-muted/50"><Factory className="h-4 w-4 text-muted-foreground" /></div>
                 <div>
-                  <p className="text-xl font-bold">
+                  <p className="display text-xl tabular-nums">
                     {kpis.timeEfficiency > 0 ? `${kpis.timeEfficiency.toFixed(0)}%` : "—"}
                   </p>
                   <p className="text-[10px] text-muted-foreground">Eficiência Produtiva</p>

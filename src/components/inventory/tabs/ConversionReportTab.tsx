@@ -217,7 +217,7 @@ export function ConversionReportTab() {
         <Card>
           <CardContent className="p-3">
             <p className="text-xs text-muted-foreground">Total de materiais</p>
-            <p className="text-xl font-bold tabular-nums">{summary.total}</p>
+            <p className="display text-xl tabular-nums">{summary.total}</p>
           </CardContent>
         </Card>
         <Card>
@@ -225,7 +225,7 @@ export function ConversionReportTab() {
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               <CheckCircle2 className="h-3 w-3 text-success" /> OK
             </p>
-            <p className="text-xl font-bold text-success tabular-nums">{summary.ok}</p>
+            <p className="display text-xl tabular-nums text-success">{summary.ok}</p>
           </CardContent>
         </Card>
         <Card className={summary.soft > 0 ? 'border-amber-500/40' : ''}>
@@ -233,7 +233,7 @@ export function ConversionReportTab() {
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               <Info className="h-3 w-3 text-amber-500" /> Atenção
             </p>
-            <p className="text-xl font-bold text-amber-600 dark:text-amber-400 tabular-nums">{summary.soft}</p>
+            <p className="display text-xl tabular-nums text-amber-600 dark:text-amber-400">{summary.soft}</p>
           </CardContent>
         </Card>
         <Card className={summary.critical > 0 ? 'border-destructive/40 bg-destructive/5' : ''}>
@@ -241,7 +241,7 @@ export function ConversionReportTab() {
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               <AlertTriangle className="h-3 w-3 text-destructive" /> Críticos
             </p>
-            <p className="text-xl font-bold text-destructive tabular-nums">{summary.critical}</p>
+            <p className="display text-xl tabular-nums text-destructive">{summary.critical}</p>
           </CardContent>
         </Card>
       </div>

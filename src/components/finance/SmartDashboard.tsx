@@ -208,13 +208,13 @@ export function SmartDashboard({ onNavigate }: { onNavigate?: (tab: string) => v
                 </Badge>
               )}
             </div>
-            <p className="text-xl font-bold text-success mt-1">{fmt(kpis.monthRevenue)}</p>
+            <p className="display text-xl tabular-nums text-success mt-1">{fmt(kpis.monthRevenue)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-5 pb-4">
             <p className="text-xs text-muted-foreground">Despesas do Mês</p>
-            <p className="text-xl font-bold text-destructive mt-1">{fmt(kpis.monthExpenses)}</p>
+            <p className="display text-xl tabular-nums text-destructive mt-1">{fmt(kpis.monthExpenses)}</p>
           </CardContent>
         </Card>
         <Card>

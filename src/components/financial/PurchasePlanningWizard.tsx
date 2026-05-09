@@ -1024,7 +1024,7 @@ export default function PurchasePlanningWizard() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="bg-primary/5 border border-primary/20 rounded-lg p-6 text-center space-y-2">
-                <p className="text-3xl font-bold text-primary">
+                <p className="display text-3xl tabular-nums text-primary">
                   {fmt(selectedMaterials.filter(m => m.selected && m.stock_after < 0).reduce((s, m) => s + m.estimated_cost, 0))}
                 </p>
                 <p className="text-muted-foreground">

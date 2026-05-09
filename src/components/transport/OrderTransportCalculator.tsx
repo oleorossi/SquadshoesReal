@@ -524,7 +524,7 @@ function TransportResults({
               {/* Score geral */}
               <div className="p-4 rounded-lg bg-muted text-center">
                 <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Score Geral</p>
-                <p className="text-3xl font-bold text-primary">
+                <p className="display text-3xl tabular-nums text-primary">
                   {(
                     metrics.spaceUtilization * 0.3 +
                     metrics.costEfficiency * 0.25 +
