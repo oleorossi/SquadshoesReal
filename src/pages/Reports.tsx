@@ -356,7 +356,7 @@ export default function Reports() {
                     <XAxis dataKey="name" className="text-xs" tick={{ fontSize: 10 }} />
                     <YAxis className="text-xs" tick={{ fontSize: 10 }} />
                     <Tooltip content={<CustomTooltip />} />
-                    <Area type="monotone" dataKey="pedidos" stroke="#0EA5E9" fill="#0EA5E9" fillOpacity={0.15} name="Pedidos" />
+                    <Area type="monotone" dataKey="pedidos" stroke="hsl(var(--stage-cut-fg))" fill="hsl(var(--stage-cut-fg))" fillOpacity={0.15} name="Pedidos" />
                   </AreaChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -376,7 +376,7 @@ export default function Reports() {
                     <XAxis dataKey="name" className="text-xs" tick={{ fontSize: 10 }} />
                     <YAxis className="text-xs" tick={{ fontSize: 10 }} tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} />
                     <Tooltip content={<CustomTooltip formatter={(v: number) => formatCurrency(v)} />} />
-                    <Bar dataKey="faturamento" fill="#10B981" radius={[4, 4, 0, 0]} name="Faturamento" />
+                    <Bar dataKey="faturamento" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} name="Faturamento" />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -419,7 +419,7 @@ export default function Reports() {
                       <XAxis type="number" tick={{ fontSize: 10 }} />
                       <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={60} />
                       <Tooltip content={<CustomTooltip />} />
-                      <Bar dataKey="value" fill="#8B5CF6" radius={[0, 4, 4, 0]} name="Pedidos" />
+                      <Bar dataKey="value" fill="hsl(var(--stage-sew-fg))" radius={[0, 4, 4, 0]} name="Pedidos" />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
@@ -446,7 +446,7 @@ export default function Reports() {
                     <XAxis dataKey="name" tick={{ fontSize: 9 }} interval={0} angle={-15} textAnchor="end" height={50} />
                     <YAxis tick={{ fontSize: 10 }} />
                     <Tooltip content={<CustomTooltip />} />
-                    <Bar dataKey="qty" fill="#F59E0B" radius={[4, 4, 0, 0]} name="Quantidade" />
+                    <Bar dataKey="qty" fill="hsl(var(--warning))" radius={[4, 4, 0, 0]} name="Quantidade" />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>

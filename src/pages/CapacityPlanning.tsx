@@ -19,12 +19,14 @@ import { computeSectorLeadTimeDays } from '@/lib/leadTime';
 
 type SectorKey = 'corte_palmilha' | 'corte_forracao' | 'mesa' | 'silk' | 'colagem' | 'montagem' | 'solagem' | 'acabamento' | 'expedicao';
 
+// Cores dos setores puxam dos tokens (handoff Novidade — antes 9 hexas
+// hardcoded misturando paletas que não casavam com vermelho Squad).
 const SECTORS = [
   {
     key: 'corte_palmilha' as SectorKey,
     label: 'Corte Palmilha',
     icon: Scissors,
-    color: '#0EA5E9',
+    color: 'hsl(var(--stage-cut-fg))',
     capField: 'sewing_capacity_per_day',
     ltField: 'lead_time_costura_dias',
     defaultCap: 500,
@@ -34,7 +36,7 @@ const SECTORS = [
     key: 'corte_forracao' as SectorKey,
     label: 'Corte Forração',
     icon: Layers,
-    color: '#8B5CF6',
+    color: 'hsl(var(--stage-sew-fg))',
     capField: 'cutting_capacity_per_day',
     ltField: 'lead_time_corte_dias',
     defaultCap: 450,
@@ -44,7 +46,7 @@ const SECTORS = [
     key: 'mesa' as SectorKey,
     label: 'Mesa',
     icon: Hand,
-    color: '#EC4899',
+    color: 'hsl(var(--stage-pack-fg))',
     capField: 'mesa_daily_capacity',
     ltField: 'lead_time_corte_dias',
     defaultCap: 275,
@@ -54,7 +56,7 @@ const SECTORS = [
     key: 'silk' as SectorKey,
     label: 'Silk',
     icon: Printer,
-    color: '#06B6D4',
+    color: 'hsl(var(--stage-fin-fg))',
     capField: 'silk_capacity_per_day',
     ltField: 'lead_time_corte_dias',
     defaultCap: 400,
@@ -64,7 +66,7 @@ const SECTORS = [
     key: 'colagem' as SectorKey,
     label: 'Colagem',
     icon: Flame,
-    color: '#F97316',
+    color: 'hsl(var(--stage-assy-fg))',
     capField: 'gluing_capacity_per_day',
     ltField: 'lead_time_corte_dias',
     defaultCap: 500,
@@ -74,7 +76,7 @@ const SECTORS = [
     key: 'montagem' as SectorKey,
     label: 'Montagem',
     icon: Hammer,
-    color: '#10B981',
+    color: 'hsl(var(--success))',
     capField: 'assembly_capacity_per_day',
     ltField: 'lead_time_montagem_dias',
     defaultCap: 300,
@@ -84,7 +86,7 @@ const SECTORS = [
     key: 'solagem' as SectorKey,
     label: 'Solagem',
     icon: Footprints,
-    color: '#F59E0B',
+    color: 'hsl(var(--warning))',
     capField: 'soling_capacity_per_day',
     ltField: 'lead_time_montagem_dias',
     defaultCap: 425,
@@ -94,7 +96,7 @@ const SECTORS = [
     key: 'acabamento' as SectorKey,
     label: 'Acabamento',
     icon: Sparkles,
-    color: '#6366F1',
+    color: 'hsl(var(--info))',
     capField: 'finishing_capacity_per_day',
     ltField: 'lead_time_acabamento_dias',
     defaultCap: 500,
@@ -104,7 +106,7 @@ const SECTORS = [
     key: 'expedicao' as SectorKey,
     label: 'Expedição',
     icon: Package,
-    color: '#10B981',
+    color: 'hsl(var(--primary))',
     capField: 'finishing_capacity_per_day',
     ltField: 'lead_time_acabamento_dias',
     defaultCap: 1000,
@@ -633,10 +635,10 @@ export default function CapacityPlanning() {
                           <Bar dataKey="pares" name="Pares" fill={kpi.color} radius={[0, 4, 4, 0]} />
                           <ReferenceLine
                             x={kpi.avgCap}
-                            stroke="#EF4444"
+                            stroke="hsl(var(--destructive))"
                             strokeDasharray="4 2"
                             strokeWidth={1.5}
-                            label={{ value: `${kpi.avgCap}`, fontSize: 9, fill: '#EF4444', position: 'insideTopRight' }}
+                            label={{ value: `${kpi.avgCap}`, fontSize: 9, fill: 'hsl(var(--destructive))', position: 'insideTopRight' }}
                           />
                         </BarChart>
                       </ResponsiveContainer>
@@ -728,13 +730,13 @@ export default function CapacityPlanning() {
                         <Bar dataKey={sc.key} name="Demanda (pares/dia)" fill={sc.color} radius={[4, 4, 0, 0]} />
                         <ReferenceLine
                           y={kpiCap}
-                          stroke="#EF4444"
+                          stroke="hsl(var(--destructive))"
                           strokeDasharray="4 2"
                           strokeWidth={1.5}
                           label={{
                             value: `Cap. ${kpiCap}`,
                             fontSize: 9,
-                            fill: '#EF4444',
+                            fill: 'hsl(var(--destructive))',
                             position: 'insideTopRight',
                           }}
                         />

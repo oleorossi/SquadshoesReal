@@ -207,8 +207,8 @@ export default function SystemMonitor() {
                     <XAxis dataKey="name" tick={{ fontSize: 10 }} />
                     <YAxis tick={{ fontSize: 10 }} />
                     <Tooltip content={<CustomTooltip />} />
-                    <Area type="monotone" dataKey="requests" stroke="#0EA5E9" fill="#0EA5E9" fillOpacity={0.1} name="Requisições" />
-                    <Area type="monotone" dataKey="errors" stroke="#EF4444" fill="#EF4444" fillOpacity={0.15} name="Erros" />
+                    <Area type="monotone" dataKey="requests" stroke="hsl(var(--stage-cut-fg))" fill="hsl(var(--stage-cut-fg))" fillOpacity={0.1} name="Requisições" />
+                    <Area type="monotone" dataKey="errors" stroke="hsl(var(--destructive))" fill="hsl(var(--destructive))" fillOpacity={0.15} name="Erros" />
                   </AreaChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -227,7 +227,7 @@ export default function SystemMonitor() {
                     <XAxis dataKey="name" tick={{ fontSize: 10 }} />
                     <YAxis tick={{ fontSize: 10 }} />
                     <Tooltip content={<CustomTooltip />} />
-                    <Bar dataKey="latency" fill="#F59E0B" radius={[3, 3, 0, 0]} name="Latência" />
+                    <Bar dataKey="latency" fill="hsl(var(--warning))" radius={[3, 3, 0, 0]} name="Latência" />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -299,7 +299,7 @@ export default function SystemMonitor() {
                       <XAxis type="number" tick={{ fontSize: 10 }} />
                       <YAxis type="category" dataKey="name" tick={{ fontSize: 9 }} width={80} />
                       <Tooltip content={<CustomTooltip />} />
-                      <Bar dataKey="value" fill="#8B5CF6" radius={[0, 3, 3, 0]} name="Eventos" />
+                      <Bar dataKey="value" fill="hsl(var(--stage-sew-fg))" radius={[0, 3, 3, 0]} name="Eventos" />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (

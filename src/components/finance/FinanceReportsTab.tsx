@@ -377,7 +377,7 @@ function CategoriesTab() {
               <YAxis fontSize={10} tickFormatter={fmtShort} />
               <Tooltip content={<CustomTooltip />} />
               <Legend fontSize={10} />
-              <Bar dataKey="receita" name="Receita" fill="#10B981" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="receita" name="Receita" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} />
               <Bar dataKey="despesa" name="Despesa" fill="hsl(var(--destructive))" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -471,7 +471,7 @@ function RankingTab() {
                 <XAxis type="number" fontSize={10} tickFormatter={fmtShort} />
                 <YAxis type="category" dataKey="name" fontSize={10} width={70} />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="value" name="Total" fill="#10B981" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="value" name="Total" fill="hsl(var(--success))" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>

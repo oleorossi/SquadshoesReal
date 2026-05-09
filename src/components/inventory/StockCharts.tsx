@@ -83,7 +83,7 @@ export function StockCharts({ products }: StockChartsProps) {
               <XAxis type="number" hide />
               <YAxis type="category" dataKey="name" width={100} tick={{ fontSize: 11 }} />
               <ChartTooltip content={<ChartTooltipContent />} />
-              <Bar dataKey="valor" radius={[0, 4, 4, 0]} fill="hsl(35, 92%, 50%)" />
+              <Bar dataKey="valor" radius={[0, 4, 4, 0]} fill="hsl(var(--warning))" />
             </BarChart>
           </ChartContainer>
         </CardContent>
