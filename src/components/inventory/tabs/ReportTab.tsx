@@ -79,7 +79,7 @@ export function ReportTab() {
               {isLoading ? (
                 <div className="h-8 w-24 bg-muted animate-pulse rounded" />
               ) : (
-                <div className="text-2xl font-bold tracking-tight">
+                <div className="display text-2xl tabular-nums tracking-tight">
                   {card.value}
                 </div>
               )}

@@ -596,7 +596,7 @@ function SetupSummaryCards({ stats }: { stats: Record<SectorKey, SetupStats> }) 
           <Card key={key}>
             <CardContent className="p-3">
               <p className="text-xs text-muted-foreground">{label}</p>
-              <p className="text-xl font-bold leading-tight">
+              <p className="display text-xl tabular-nums leading-tight">
                 {score}%
                 <span className="text-xs font-normal text-muted-foreground ml-1">agrupamento</span>
               </p>

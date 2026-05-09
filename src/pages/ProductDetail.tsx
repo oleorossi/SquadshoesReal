@@ -312,7 +312,7 @@ export default function ProductDetail() {
             <ArrowLeft className="h-4 w-4 mr-1" /> Estoque
           </Button>
           <div className="flex-1 min-w-0">
-            <h1 className="text-xl font-bold flex items-center gap-2 truncate">
+            <h1 className="display text-xl tabular-nums flex items-center gap-2 truncate">
               <Package className="h-5 w-5 text-primary shrink-0" />
               {stripColorFromName(product.name, product.color)}
               {product.color && <Badge variant="secondary">{product.color}</Badge>}

@@ -280,13 +280,13 @@ export default function Montagem() {
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-primary">{montagemOrders.length}</p>
+            <p className="display text-2xl tabular-nums text-primary">{montagemOrders.length}</p>
             <p className="text-xs text-muted-foreground">OPs p/ Montagem</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-foreground">
+            <p className="display text-2xl tabular-nums text-foreground">
               {montagemOrders.reduce((s, o) => s + (o.quantity || 0), 0)}
             </p>
             <p className="text-xs text-muted-foreground">Total de Pares</p>
@@ -294,7 +294,7 @@ export default function Montagem() {
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-foreground">
+            <p className="display text-2xl tabular-nums text-foreground">
               {new Set(montagemOrders.map(o => {
                 const so = saleOrders.find((s: any) => s.id === o.sale_order_id);
                 return so?.client_name || '';

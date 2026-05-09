@@ -121,22 +121,22 @@ export default function HeadcountReport() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Funcionários hoje</p>
-          <p className="text-2xl font-bold">{last?.active ?? 0}</p>
+          <p className="display text-2xl tabular-nums">{last?.active ?? 0}</p>
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Saldo no período</p>
-          <p className={`text-2xl font-bold flex items-center gap-1 ${totalGrowth >= 0 ? 'text-emerald-600' : 'text-destructive'}`}>
+          <p className={`display text-2xl tabular-nums flex items-center gap-1 ${totalGrowth >= 0 ? 'text-emerald-600' : 'text-destructive'}`}>
             {totalGrowth >= 0 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
             {totalGrowth >= 0 ? '+' : ''}{totalGrowth}
           </p>
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Admissões</p>
-          <p className="text-2xl font-bold text-emerald-600">{totalAdmitted}</p>
+          <p className="display text-2xl tabular-nums text-emerald-600">{totalAdmitted}</p>
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Desligamentos</p>
-          <p className="text-2xl font-bold text-destructive">{totalDismissed}</p>
+          <p className="display text-2xl tabular-nums text-destructive">{totalDismissed}</p>
         </CardContent></Card>
       </div>
 

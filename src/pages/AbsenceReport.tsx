@@ -185,19 +185,19 @@ export default function AbsenceReport() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Dias ausentes</p>
-          <p className="text-2xl font-bold">{stats.totalAbsentDays}</p>
+          <p className="display text-2xl tabular-nums">{stats.totalAbsentDays}</p>
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Justificadas</p>
-          <p className="text-2xl font-bold text-emerald-600">{stats.justificadas}</p>
+          <p className="display text-2xl tabular-nums text-emerald-600">{stats.justificadas}</p>
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Injustificadas</p>
-          <p className="text-2xl font-bold text-destructive">{stats.injustificadas}</p>
+          <p className="display text-2xl tabular-nums text-destructive">{stats.injustificadas}</p>
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Taxa de absenteísmo</p>
-          <p className="text-2xl font-bold text-primary">{stats.taxa.toFixed(2)}%</p>
+          <p className="display text-2xl tabular-nums text-primary">{stats.taxa.toFixed(2)}%</p>
         </CardContent></Card>
       </div>
 

@@ -179,7 +179,7 @@ export default function CostAnalyticsPanel() {
               {marginPct >= 0 ? <TrendingUp className="h-4 w-4 text-green-500" /> : <TrendingDown className="h-4 w-4 text-destructive" />}
               <p className="text-xs text-muted-foreground">Margem Bruta</p>
             </div>
-            <p className={`text-xl font-bold ${marginPct >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+            <p className={`display text-xl tabular-nums ${marginPct >= 0 ? 'text-green-600' : 'text-destructive'}`}>
               {marginPct.toFixed(1)}%
             </p>
           </CardContent>

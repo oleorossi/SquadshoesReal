@@ -34,7 +34,7 @@ export function StatsCard({ title, value, icon: Icon, subtitle, variant = 'defau
       <div className="flex items-start justify-between">
         <div className="space-y-1">
           <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">{title}</p>
-          <p className="text-2xl font-bold font-mono tracking-tight">{value}</p>
+          <p className="display text-2xl tabular-nums font-mono tracking-tight">{value}</p>
           {subtitle && (
             <p className="text-xs text-muted-foreground">{subtitle}</p>
           )}

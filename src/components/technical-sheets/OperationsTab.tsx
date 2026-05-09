@@ -415,7 +415,7 @@ export function OperationsTab({
             <Calendar className="h-3.5 w-3.5" />
             <span className="text-[10px] uppercase tracking-wider font-semibold">Pares/Dia</span>
           </div>
-          <span className="text-xl font-bold font-mono text-primary">{calculatedDailyCapacity}</span>
+          <span className="display text-xl tabular-nums font-mono text-primary">{calculatedDailyCapacity}</span>
           <p className="text-[10px] text-muted-foreground mt-0.5">em {safeToFixed(DAILY_WORK_MINUTES / 60, 0)}h de trabalho</p>
         </div>
         <div className="rounded-lg border p-3 bg-muted/30">
@@ -423,7 +423,7 @@ export function OperationsTab({
             <TrendingUp className="h-3.5 w-3.5" />
             <span className="text-[10px] uppercase tracking-wider font-semibold">Pares/Semana</span>
           </div>
-          <span className="text-xl font-bold font-mono">{weeklyCapacity}</span>
+          <span className="display text-xl tabular-nums font-mono">{weeklyCapacity}</span>
           <p className="text-[10px] text-muted-foreground mt-0.5">5 dias úteis</p>
         </div>
         <div className="rounded-lg border p-3 bg-muted/30">
@@ -431,7 +431,7 @@ export function OperationsTab({
             <TrendingUp className="h-3.5 w-3.5" />
             <span className="text-[10px] uppercase tracking-wider font-semibold">Pares/Mês</span>
           </div>
-          <span className="text-xl font-bold font-mono">{monthlyCapacity}</span>
+          <span className="display text-xl tabular-nums font-mono">{monthlyCapacity}</span>
           <p className="text-[10px] text-muted-foreground mt-0.5">22 dias úteis</p>
         </div>
         <div className="rounded-lg border p-3 bg-muted/30">
@@ -439,7 +439,7 @@ export function OperationsTab({
             <Gauge className="h-3.5 w-3.5" />
             <span className="text-[10px] uppercase tracking-wider font-semibold">Demanda Aberta</span>
           </div>
-          <span className="text-xl font-bold font-mono">{demandTotal}</span>
+          <span className="display text-xl tabular-nums font-mono">{demandTotal}</span>
           {daysNeeded > 0 && (
             <p className="text-[10px] text-muted-foreground mt-0.5">
               ≈ {daysNeeded} dia{daysNeeded > 1 ? 's' : ''} para atender

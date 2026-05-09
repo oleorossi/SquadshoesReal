@@ -203,7 +203,7 @@ export default function ProducaoDashboard() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {Object.entries(data.statusCount).map(([status, count]) => (
                       <div key={status} className="rounded-lg border p-3 text-center">
-                        <p className="text-2xl font-bold">{count}</p>
+                        <p className="display text-2xl tabular-nums">{count}</p>
                         <p className="text-xs text-muted-foreground">{STATUS_LABELS[status] || status}</p>
                       </div>
                     ))}

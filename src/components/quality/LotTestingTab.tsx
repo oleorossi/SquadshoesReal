@@ -66,7 +66,7 @@ export default function LotTestingTab() {
             </div>
             <div>
               <p className="text-xs text-muted-foreground uppercase font-semibold">Aprovados</p>
-              <p className="text-2xl font-bold text-emerald-600">
+              <p className="display text-2xl tabular-nums text-emerald-600">
                 {inspections.filter((i: any) => i.status === 'approved' || i.status === 'pass').length}
               </p>
             </div>

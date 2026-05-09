@@ -499,26 +499,26 @@ export default function Acabamento() {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <Card className={hasSelection ? 'ring-2 ring-primary/30' : ''}>
                 <CardContent className="p-4 text-center">
-                  <p className="text-2xl font-bold text-primary">{statsOrders.length}</p>
+                  <p className="display text-2xl tabular-nums text-primary">{statsOrders.length}</p>
                   <p className="text-xs text-muted-foreground">{hasSelection ? 'OPs Selecionadas' : 'OPs p/ Acabamento'}</p>
                 </CardContent>
               </Card>
               <Card className={hasSelection ? 'ring-2 ring-primary/30' : ''}>
                 <CardContent className="p-4 text-center">
-                  <p className="text-2xl font-bold text-foreground">{totalPares}</p>
+                  <p className="display text-2xl tabular-nums text-foreground">{totalPares}</p>
                   <p className="text-xs text-muted-foreground">Total de Pares</p>
                 </CardContent>
               </Card>
               <Card className={hasSelection ? 'ring-2 ring-primary/30' : ''}>
                 <CardContent className="p-4 text-center">
-                  <p className="text-2xl font-bold text-foreground">{clientSet.size}</p>
+                  <p className="display text-2xl tabular-nums text-foreground">{clientSet.size}</p>
                   <p className="text-xs text-muted-foreground">Clientes</p>
                 </CardContent>
               </Card>
               {hasSelection && (
                 <Card className="ring-2 ring-primary/30">
                   <CardContent className="p-4 text-center">
-                    <p className="text-2xl font-bold text-muted-foreground">{acabamentoOrders.length - statsOrders.length}</p>
+                    <p className="display text-2xl tabular-nums text-muted-foreground">{acabamentoOrders.length - statsOrders.length}</p>
                     <p className="text-xs text-muted-foreground">Não selecionadas</p>
                   </CardContent>
                 </Card>

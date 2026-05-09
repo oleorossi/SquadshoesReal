@@ -34,7 +34,7 @@ function KpiCard({ icon: Icon, title, value, sub, variant = 'default' }: { icon:
         </div>
         <div className="min-w-0">
           <p className="text-xs text-muted-foreground">{title}</p>
-          <p className="text-xl font-bold tabular-nums">{value}</p>
+          <p className="display text-xl tabular-nums">{value}</p>
           {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
         </div>
       </div>

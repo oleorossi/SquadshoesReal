@@ -162,22 +162,22 @@ export default function TurnoverReport() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Admissões no período</p>
-          <p className="text-2xl font-bold text-emerald-600">+{totals.admitted}</p>
+          <p className="display text-2xl tabular-nums text-emerald-600">+{totals.admitted}</p>
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Dispensas no período</p>
-          <p className="text-2xl font-bold text-rose-600">-{totals.dismissed}</p>
+          <p className="display text-2xl tabular-nums text-rose-600">-{totals.dismissed}</p>
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Saldo</p>
-          <p className={`text-2xl font-bold flex items-center gap-1 ${totals.net >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+          <p className={`display text-2xl tabular-nums flex items-center gap-1 ${totals.net >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
             {totals.net >= 0 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
             {totals.net >= 0 ? '+' : ''}{totals.net}
           </p>
         </CardContent></Card>
         <Card className="border-primary/40"><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Tempo médio de casa</p>
-          <p className="text-2xl font-bold font-mono text-primary">
+          <p className="display text-2xl tabular-nums font-mono text-primary">
             {totals.avgTenure < 12 ? `${totals.avgTenure.toFixed(1)}m` : `${(totals.avgTenure / 12).toFixed(1)}a`}
           </p>
         </CardContent></Card>

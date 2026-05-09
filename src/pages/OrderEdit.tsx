@@ -220,11 +220,11 @@ export default function OrderEdit() {
                   <div className="flex-1 grid grid-cols-2 md:grid-cols-3 gap-4">
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground flex items-center gap-1"><ClipboardList className="h-3 w-3" /> Total de OPs</p>
-                      <p className="text-2xl font-bold font-mono">{displayOrders.length}</p>
+                      <p className="display text-2xl tabular-nums font-mono">{displayOrders.length}</p>
                     </div>
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground flex items-center gap-1"><Factory className="h-3 w-3" /> Total de Pares</p>
-                      <p className="text-2xl font-bold font-mono">{totalPairs}</p>
+                      <p className="display text-2xl tabular-nums font-mono">{totalPairs}</p>
                     </div>
                     {ref && (
                       <div className="space-y-1">

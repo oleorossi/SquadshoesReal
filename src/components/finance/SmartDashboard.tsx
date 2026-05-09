@@ -221,7 +221,7 @@ export function SmartDashboard({ onNavigate }: { onNavigate?: (tab: string) => v
           <CardContent className="pt-5 pb-4">
             <p className="text-xs text-muted-foreground">Resultado do Mês</p>
             <p className={cn(
-              'text-xl font-bold mt-1',
+              'display text-xl tabular-nums mt-1',
               kpis.monthResult >= 0 ? 'text-success' : 'text-destructive'
             )}>
               {fmt(kpis.monthResult)}

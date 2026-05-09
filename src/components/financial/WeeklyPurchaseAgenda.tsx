@@ -258,7 +258,7 @@ export default function WeeklyPurchaseAgenda() {
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Itens atrasados</p>
-          <p className={`text-2xl font-bold ${overdueCount > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+          <p className={`display text-2xl tabular-nums ${overdueCount > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
             {overdueCount}
           </p>
         </CardContent></Card>

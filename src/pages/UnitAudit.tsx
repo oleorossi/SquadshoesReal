@@ -102,7 +102,7 @@ export default function UnitAudit() {
                   <CardTitle className="text-xs text-muted-foreground font-medium">Verificações</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{data.checks.length}</div>
+                  <div className="display text-2xl tabular-nums">{data.checks.length}</div>
                 </CardContent>
               </Card>
               <Card>
@@ -110,7 +110,7 @@ export default function UnitAudit() {
                   <CardTitle className="text-xs text-muted-foreground font-medium">Com divergência</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-destructive">{failingChecks.length}</div>
+                  <div className="display text-2xl tabular-nums text-destructive">{failingChecks.length}</div>
                 </CardContent>
               </Card>
               <Card>
@@ -118,7 +118,7 @@ export default function UnitAudit() {
                   <CardTitle className="text-xs text-muted-foreground font-medium">Registros afetados</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{totalIssues}</div>
+                  <div className="display text-2xl tabular-nums">{totalIssues}</div>
                 </CardContent>
               </Card>
             </div>

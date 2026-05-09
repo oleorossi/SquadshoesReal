@@ -460,7 +460,7 @@ export default function CapacityPlanning() {
                   </Badge>
                 </div>
 
-                <div className="text-2xl font-bold font-mono">{kpi.queuePairs}</div>
+                <div className="display text-2xl tabular-nums font-mono">{kpi.queuePairs}</div>
                 <p className="text-[10px] text-muted-foreground">pares na fila</p>
 
                 {/* Progress bar */}

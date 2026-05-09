@@ -440,13 +440,13 @@ export default function PickingListPage() {
           <Card>
             <CardContent className="p-3">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">Total de Itens</p>
-              <p className="text-xl font-bold font-mono mt-0.5">{totalItems}</p>
+              <p className="display text-xl tabular-nums font-mono mt-0.5">{totalItems}</p>
             </CardContent>
           </Card>
           <Card className={cn(allDone ? 'border-green-500/40 bg-green-500/5' : '')}>
             <CardContent className="p-3">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">Separados</p>
-              <p className={cn('text-xl font-bold font-mono mt-0.5', pickedItems > 0 ? 'text-green-600' : '')}>
+              <p className={cn('display text-xl tabular-nums font-mono mt-0.5', pickedItems > 0 ? 'text-green-600' : '')}>
                 {pickedItems}
               </p>
             </CardContent>
@@ -454,7 +454,7 @@ export default function PickingListPage() {
           <Card>
             <CardContent className="p-3">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">Pendentes</p>
-              <p className={cn('text-xl font-bold font-mono mt-0.5', totalItems - pickedItems > 0 ? 'text-amber-600' : 'text-green-600')}>
+              <p className={cn('display text-xl tabular-nums font-mono mt-0.5', totalItems - pickedItems > 0 ? 'text-amber-600' : 'text-green-600')}>
                 {totalItems - pickedItems}
               </p>
             </CardContent>
@@ -465,7 +465,7 @@ export default function PickingListPage() {
                 <p className="text-xs text-muted-foreground uppercase tracking-wide">Progresso</p>
                 <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
               </div>
-              <p className="text-xl font-bold font-mono">{completionPct}%</p>
+              <p className="display text-xl tabular-nums font-mono">{completionPct}%</p>
               <Progress value={completionPct} className="h-1.5 mt-1" />
             </CardContent>
           </Card>

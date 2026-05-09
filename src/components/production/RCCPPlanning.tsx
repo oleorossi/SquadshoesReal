@@ -263,7 +263,7 @@ export default function RCCPPlanning() {
             <p className="text-xs text-muted-foreground">Categorias de Calçado</p>
           </CardContent></Card>
           <Card><CardContent className="pt-4 text-center">
-            <p className={`text-2xl font-bold ${globalSummary.bottleneckCount > 0 ? "text-red-600" : "text-green-600"}`}>
+            <p className={`display text-2xl tabular-nums ${globalSummary.bottleneckCount > 0 ? "text-red-600" : "text-green-600"}`}>
               {globalSummary.bottleneckCount}
             </p>
             <p className="text-xs text-muted-foreground">Gargalos Detectados</p>

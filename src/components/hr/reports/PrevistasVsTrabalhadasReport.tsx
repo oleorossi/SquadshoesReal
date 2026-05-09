@@ -170,11 +170,11 @@ export default function PrevistasVsTrabalhadasReport() {
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Total trabalhado</p>
-          <p className="text-2xl font-bold font-mono text-emerald-600">{fmtMin(totals.worked)}</p>
+          <p className="display text-2xl tabular-nums font-mono text-emerald-600">{fmtMin(totals.worked)}</p>
         </CardContent></Card>
         <Card className="border-primary/40"><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Cumprimento global</p>
-          <p className={`text-2xl font-bold flex items-center gap-1 ${cumprimento >= 100 ? 'text-emerald-600' : cumprimento < 90 ? 'text-rose-600' : 'text-amber-600'}`}>
+          <p className={`display text-2xl tabular-nums flex items-center gap-1 ${cumprimento >= 100 ? 'text-emerald-600' : cumprimento < 90 ? 'text-rose-600' : 'text-amber-600'}`}>
             {cumprimento >= 100 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
             {cumprimento.toFixed(1)}%
           </p>

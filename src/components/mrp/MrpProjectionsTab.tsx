@@ -170,7 +170,7 @@ export default function MrpProjectionsTab() {
               <AlertTriangle className="h-4 w-4 text-destructive" />
               <span className="text-sm text-muted-foreground">Críticos ({days}d)</span>
             </div>
-            <p className="text-2xl font-bold mt-1 text-destructive">{summary.critical}</p>
+            <p className="display text-2xl tabular-nums mt-1 text-destructive">{summary.critical}</p>
           </CardContent>
         </Card>
         <Card>

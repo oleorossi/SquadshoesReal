@@ -304,7 +304,7 @@ export default function NfePage() {
         ].map(s => (
           <Card key={s.label}>
             <CardContent className="pt-4 pb-3">
-              <p className={`text-2xl font-bold ${s.className}`}>{s.value}</p>
+              <p className={`display text-2xl tabular-nums ${s.className}`}>{s.value}</p>
               <p className="text-xs text-muted-foreground">{s.label}</p>
             </CardContent>
           </Card>

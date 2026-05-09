@@ -168,7 +168,7 @@ function ColorGradeEditor({
             Estoque anterior: {Number(product.quantity || 0).toLocaleString('pt-BR')} pares
           </p>
         </div>
-        <span className="text-2xl font-bold font-mono">{total}</span>
+        <span className="display text-2xl tabular-nums font-mono">{total}</span>
       </div>
     </div>
   );

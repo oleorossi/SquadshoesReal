@@ -568,14 +568,14 @@ export default function Silk() {
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <Card>
             <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-primary">{solagemOrders.length}</p>
+              <p className="display text-2xl tabular-nums text-primary">{solagemOrders.length}</p>
               <p className="text-xs text-muted-foreground">OPs p/ Solagem</p>
             </CardContent>
           </Card>
           {soleData.map(row => (
               <Card key={row.color}>
                 <CardContent className="p-4 text-center">
-                  <p className="text-2xl font-bold text-foreground">{row.total}</p>
+                  <p className="display text-2xl tabular-nums text-foreground">{row.total}</p>
                   <p className="text-xs text-muted-foreground">{row.color} (pares)</p>
                 </CardContent>
               </Card>

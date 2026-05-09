@@ -186,7 +186,6 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Check, ChevronsUpDown } from 'lucide-react';
 import { cn, getSoleModelName, parseSafeNumber, formatCurrency as globalFormatCurrency, safeToFixed } from '@/lib/utils';
 import { needsWidthForConversion, effectiveConversionFactor } from '@/lib/purchaseConversion';
-import { AlertTriangle } from 'lucide-react';
 import { getShoeSizeMappings } from '@/utils/shoeUtils';
 
 import { SHOE_CATEGORIES } from '@/lib/shoeCategories';

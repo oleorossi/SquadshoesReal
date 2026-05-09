@@ -65,7 +65,7 @@ export function MinBillingDateSuggestionDialog({
           <div className="text-xs uppercase tracking-wide text-muted-foreground font-bold">
             Semana mínima
           </div>
-          <div className="text-2xl font-bold text-primary mt-1">
+          <div className="display text-2xl tabular-nums text-primary mt-1">
             {minWeekISO ? minWeekISO.replace(/^(\d{4})-W(\d+)$/, 'Semana $2 / $1') : '—'}
           </div>
           <div className="text-sm text-muted-foreground mt-0.5">

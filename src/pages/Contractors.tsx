@@ -1905,7 +1905,7 @@ export default function Contractors() {
                 </div>
                 <div className="col-span-2 p-3 rounded-lg bg-primary/5 border border-primary/10">
                   <Label className="text-xs font-medium text-muted-foreground">Total</Label>
-                  <p className="text-xl font-bold font-mono text-primary mt-1">{formatCurrency(editingOrder.total_value || editingOrder.unit_price || 0)}</p>
+                  <p className="display text-xl tabular-nums font-mono text-primary mt-1">{formatCurrency(editingOrder.total_value || editingOrder.unit_price || 0)}</p>
                 </div>
                 <div className="col-span-2 space-y-1.5">
                   <Label className="text-xs font-medium text-muted-foreground">Status</Label>

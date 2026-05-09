@@ -90,7 +90,7 @@ export default function MrpPage() {
                 <AlertTriangle className="h-4 w-4 text-destructive" />
                 <span className="text-sm text-muted-foreground">Alertas Estoque</span>
               </div>
-              <p className="text-2xl font-bold mt-1">{stockAlerts.length}</p>
+              <p className="display text-2xl tabular-nums mt-1">{stockAlerts.length}</p>
             </CardContent>
           </Card>
           <Card>
@@ -99,7 +99,7 @@ export default function MrpPage() {
                 <Clock className="h-4 w-4 text-warning" />
                 <span className="text-sm text-muted-foreground">Sugestões Abertas</span>
               </div>
-              <p className="text-2xl font-bold mt-1">
+              <p className="display text-2xl tabular-nums mt-1">
                 {(suggestions as any[]).filter(s => s.status === 'open').length}
               </p>
             </CardContent>
@@ -110,7 +110,7 @@ export default function MrpPage() {
                 <Package className="h-4 w-4 text-primary" />
                 <span className="text-sm text-muted-foreground">OPs Ativas</span>
               </div>
-              <p className="text-2xl font-bold mt-1">
+              <p className="display text-2xl tabular-nums mt-1">
                 {orders.filter(o => o.status === 'Em Produção').length}
               </p>
             </CardContent>
@@ -121,7 +121,7 @@ export default function MrpPage() {
                 <ShoppingCart className="h-4 w-4 text-success" />
                 <span className="text-sm text-muted-foreground">Compras Sugeridas</span>
               </div>
-              <p className="text-2xl font-bold mt-1">
+              <p className="display text-2xl tabular-nums mt-1">
                 {(suggestions as any[]).filter(s => s.suggestion_type === 'purchase' && s.status === 'open').length}
               </p>
             </CardContent>

@@ -735,7 +735,7 @@ export default function PurchasePlanningWizard() {
                 </Card>
                 <Card className={deficitCount > 0 ? 'border-destructive/30 bg-destructive/5' : ''}>
                   <CardContent className="pt-4 pb-3 text-center">
-                    <p className={`text-2xl font-bold ${deficitCount > 0 ? 'text-destructive' : ''}`}>{deficitCount}</p>
+                    <p className={`display text-2xl tabular-nums ${deficitCount > 0 ? 'text-destructive' : ''}`}>{deficitCount}</p>
                     <p className="text-xs text-muted-foreground">Materiais em déficit</p>
                   </CardContent>
                 </Card>

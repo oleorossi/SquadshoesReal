@@ -284,7 +284,7 @@ const formatCurrency = (v: number) =>
                   <Package className="h-5 w-5 text-primary" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-foreground">{totalSheets}</p>
+                  <p className="display text-2xl tabular-nums text-foreground">{totalSheets}</p>
                   <p className="text-xs text-muted-foreground">Fichas Cadastradas</p>
                 </div>
               </CardContent>
@@ -295,7 +295,7 @@ const formatCurrency = (v: number) =>
                   <Layers className="h-5 w-5 text-accent-foreground" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-foreground">{totalGroups}</p>
+                  <p className="display text-2xl tabular-nums text-foreground">{totalGroups}</p>
                   <p className="text-xs text-muted-foreground">Grupos de Materiais</p>
                 </div>
               </CardContent>
@@ -306,7 +306,7 @@ const formatCurrency = (v: number) =>
                   <Percent className="h-5 w-5 text-destructive" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-foreground">{avgWaste}%</p>
+                  <p className="display text-2xl tabular-nums text-foreground">{avgWaste}%</p>
                   <p className="text-xs text-muted-foreground">Perda Média</p>
                 </div>
               </CardContent>

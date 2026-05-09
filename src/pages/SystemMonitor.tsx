@@ -152,7 +152,7 @@ export default function SystemMonitor() {
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Tempo Resposta</p>
-                    <p className="text-2xl font-bold font-mono mt-1">{perfMetrics.responseTime.toFixed(0)}ms</p>
+                    <p className="display text-2xl tabular-nums font-mono mt-1">{perfMetrics.responseTime.toFixed(0)}ms</p>
                   </div>
                   <div className="bg-success/10 rounded-xl p-2.5"><Zap className="h-5 w-5 text-success" /></div>
                 </div>
@@ -163,7 +163,7 @@ export default function SystemMonitor() {
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Uptime</p>
-                    <p className="text-2xl font-bold font-mono mt-1">{perfMetrics.uptime}%</p>
+                    <p className="display text-2xl tabular-nums font-mono mt-1">{perfMetrics.uptime}%</p>
                   </div>
                   <div className="bg-success/10 rounded-xl p-2.5"><Wifi className="h-5 w-5 text-success" /></div>
                 </div>
@@ -174,7 +174,7 @@ export default function SystemMonitor() {
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Taxa de Erro</p>
-                    <p className="text-2xl font-bold font-mono mt-1">{perfMetrics.errorRate.toFixed(2)}%</p>
+                    <p className="display text-2xl tabular-nums font-mono mt-1">{perfMetrics.errorRate.toFixed(2)}%</p>
                   </div>
                   <div className="bg-warning/10 rounded-xl p-2.5"><AlertTriangle className="h-5 w-5 text-warning" /></div>
                 </div>
@@ -185,7 +185,7 @@ export default function SystemMonitor() {
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Usuários Ativos</p>
-                    <p className="text-2xl font-bold font-mono mt-1">{perfMetrics.activeUsers}</p>
+                    <p className="display text-2xl tabular-nums font-mono mt-1">{perfMetrics.activeUsers}</p>
                   </div>
                   <div className="bg-primary/10 rounded-xl p-2.5"><Users className="h-5 w-5 text-primary" /></div>
                 </div>
@@ -241,19 +241,19 @@ export default function SystemMonitor() {
           <div className="grid grid-cols-3 gap-3">
             <Card>
               <CardContent className="p-4 text-center">
-                <p className="text-2xl font-bold font-mono">{auditStats.total}</p>
+                <p className="display text-2xl tabular-nums font-mono">{auditStats.total}</p>
                 <p className="text-xs text-muted-foreground">Eventos totais</p>
               </CardContent>
             </Card>
             <Card className="border-success/30 bg-success/5">
               <CardContent className="p-4 text-center">
-                <p className="text-2xl font-bold font-mono text-success">{auditStats.successful}</p>
+                <p className="display text-2xl tabular-nums font-mono text-success">{auditStats.successful}</p>
                 <p className="text-xs text-muted-foreground">Bem-sucedidos</p>
               </CardContent>
             </Card>
             <Card className={auditStats.failed > 0 ? 'border-destructive/30 bg-destructive/5' : ''}>
               <CardContent className="p-4 text-center">
-                <p className="text-2xl font-bold font-mono text-destructive">{auditStats.failed}</p>
+                <p className="display text-2xl tabular-nums font-mono text-destructive">{auditStats.failed}</p>
                 <p className="text-xs text-muted-foreground">Falhas</p>
               </CardContent>
             </Card>
@@ -394,21 +394,21 @@ export default function SystemMonitor() {
             <Card>
               <CardContent className="p-4">
                 <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Entradas</p>
-                <p className="text-2xl font-bold font-mono mt-1">{perfMetrics.cache.entries}</p>
+                <p className="display text-2xl tabular-nums font-mono mt-1">{perfMetrics.cache.entries}</p>
                 <p className="text-[11px] text-muted-foreground">de {perfMetrics.cache.maxEntries} máx</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
                 <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Cache Hits</p>
-                <p className="text-2xl font-bold font-mono mt-1">{perfMetrics.cache.totalHits}</p>
+                <p className="display text-2xl tabular-nums font-mono mt-1">{perfMetrics.cache.totalHits}</p>
                 <p className="text-[11px] text-muted-foreground">total acumulado</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
                 <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Inflight</p>
-                <p className="text-2xl font-bold font-mono mt-1">{perfMetrics.cache.inflight}</p>
+                <p className="display text-2xl tabular-nums font-mono mt-1">{perfMetrics.cache.inflight}</p>
                 <p className="text-[11px] text-muted-foreground">requisições ativas</p>
               </CardContent>
             </Card>

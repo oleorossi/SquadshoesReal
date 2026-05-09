@@ -264,7 +264,7 @@ export default function SaldoFinalTab() {
         <Card className={negativeCount > 0 ? 'border-destructive/30 bg-destructive/5' : ''}>
           <CardContent className="pt-4 pb-3 text-center">
             <TrendingDown className="h-5 w-5 mx-auto mb-1 text-destructive" />
-            <p className={`text-2xl font-bold ${negativeCount > 0 ? 'text-destructive' : ''}`}>{negativeCount}</p>
+            <p className={`display text-2xl tabular-nums ${negativeCount > 0 ? 'text-destructive' : ''}`}>{negativeCount}</p>
             <p className="text-xs text-muted-foreground">Saldo Negativo</p>
           </CardContent>
         </Card>

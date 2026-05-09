@@ -83,7 +83,7 @@ export function QuickPointer({ currentStage, employeeId }: QuickPointerProps) {
           if (e.key === 'Enter') handlePonto('finish');
         }}
         placeholder="Bipe o Código da OP..."
-        className="h-14 text-center text-xl font-bold"
+        className="h-14 text-center display text-xl tabular-nums"
         autoFocus
       />
 

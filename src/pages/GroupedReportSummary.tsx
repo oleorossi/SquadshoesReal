@@ -30,7 +30,7 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
     <Card className="print:shadow-none print:border-border">
       <CardContent className="p-4 text-center">
         <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
-        <p className="mt-2 text-2xl font-bold text-primary font-mono">{value}</p>
+        <p className="mt-2 display text-2xl tabular-nums text-primary font-mono">{value}</p>
       </CardContent>
     </Card>
   );
@@ -451,7 +451,7 @@ ${styles}
                         <div className="space-y-4">
                           <div className="space-y-2">
                             <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="text-xl font-bold">
+                              <h3 className="display text-xl tabular-nums">
                                 {item.refCode} — {item.refName}
                               </h3>
                                <Badge variant="outline">{item.color}</Badge>

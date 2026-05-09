@@ -260,22 +260,22 @@ export default function MaintenancePage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card><CardContent className="pt-4 text-center">
           <Settings2 className="h-5 w-5 mx-auto text-muted-foreground" />
-          <p className="text-2xl font-bold mt-1">{equipment.length}</p>
+          <p className="display text-2xl tabular-nums mt-1">{equipment.length}</p>
           <p className="text-xs text-muted-foreground">Equipamentos</p>
         </CardContent></Card>
         <Card><CardContent className="pt-4 text-center">
           <ClipboardList className="h-5 w-5 mx-auto text-muted-foreground" />
-          <p className="text-2xl font-bold mt-1">{plans.filter(p => p.is_active).length}</p>
+          <p className="display text-2xl tabular-nums mt-1">{plans.filter(p => p.is_active).length}</p>
           <p className="text-xs text-muted-foreground">Planos Ativos</p>
         </CardContent></Card>
         <Card><CardContent className="pt-4 text-center">
           <AlertTriangle className="h-5 w-5 mx-auto text-red-500" />
-          <p className="text-2xl font-bold mt-1 text-red-600">{overdueCount}</p>
+          <p className="display text-2xl tabular-nums mt-1 text-red-600">{overdueCount}</p>
           <p className="text-xs text-muted-foreground">Atrasados</p>
         </CardContent></Card>
         <Card><CardContent className="pt-4 text-center">
           <Clock className="h-5 w-5 mx-auto text-amber-500" />
-          <p className="text-2xl font-bold mt-1 text-amber-600">{upcomingCount}</p>
+          <p className="display text-2xl tabular-nums mt-1 text-amber-600">{upcomingCount}</p>
           <p className="text-xs text-muted-foreground">Próximos 7 dias</p>
         </CardContent></Card>
       </div>
