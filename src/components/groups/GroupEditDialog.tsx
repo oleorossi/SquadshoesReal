@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Pencil, Palette, Save, Package, Plus, Search, Footprints, Ruler, Loader2, Box as BoxIcon, Layers, FlaskConical } from 'lucide-react';
-import { ProductGroup, useUpdateGroup } from '@/hooks/useGroups';
+import { ProductGroup, useUpdateGroup, useGroups } from '@/hooks/useGroups';
+import { flattenGroupTree, canBeParent } from '@/lib/groupHierarchy';
 import { useProducts } from '@/hooks/useProducts';
 import GroupColorsManager from '@/components/groups/GroupColorsManager';
 import { supabase } from '@/integrations/supabase/client';
@@ -523,7 +524,14 @@ function SoleYieldEditor({ groupId }: { groupId: string }) {
 export default function GroupEditDialog({ open, onOpenChange, group }: GroupEditDialogProps) {
   const updateGroup = useUpdateGroup();
   const { data: allProducts = [] } = useProducts();
+  const { data: allGroups = [] } = useGroups();
   const products = allProducts.filter(p => p.group_id === group.id);
+
+  // Lista de grupos válidos pra ser pai (exclui o próprio + descendentes pra evitar ciclo)
+  const validParentOptions = useMemo(
+    () => flattenGroupTree(allGroups).filter(g => canBeParent(allGroups, g.id, group.id)),
+    [allGroups, group.id]
+  );
 
   // All groups can have sole-specific yield (not just Palmilha)
   const showYieldTab = true;
@@ -553,6 +561,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
   const [consumptionUnit, setConsumptionUnit] = useState<string>(group.consumption_unit || '__none__');
   const [silkUrl, setSilkUrl] = useState<string>((group as any).silk_url || '');
   const [unitWeightKg, setUnitWeightKg] = useState<number>((group as any).unit_weight_kg || 0);
+  const [parentGroupId, setParentGroupId] = useState<string>(group.parent_group_id || '');
   const [unitPrice, setUnitPrice] = useState<number>(0);
   const [location, setLocation] = useState<string>('');
   const [saving, setSaving] = useState(false);
@@ -686,6 +695,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
           consumption_unit: finalUnit,
           silk_url: silkUrl || null,
           unit_weight_kg: unitWeightKg,
+          parent_group_id: parentGroupId || null,
         } as any,
       });
 
@@ -939,6 +949,31 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                 <div>
                   <Label htmlFor="edit-group-name">Nome do grupo de material *</Label>
                   <Input id="edit-group-name" value={name} onChange={e => setName(e.target.value)} className="mt-1" placeholder="Ex: Solados, Santorine, Colas" />
+                </div>
+                <div>
+                  <Label htmlFor="edit-group-parent" className="flex items-center gap-1.5">
+                    <Layers className="h-3.5 w-3.5" /> Grupo Pai (hierarquia)
+                  </Label>
+                  <Select
+                    value={parentGroupId || '__root__'}
+                    onValueChange={(v) => setParentGroupId(v === '__root__' ? '' : v)}
+                  >
+                    <SelectTrigger id="edit-group-parent" className="mt-1">
+                      <SelectValue placeholder="Sem pai (grupo raiz)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__root__">Sem pai (grupo raiz)</SelectItem>
+                      {validParentOptions.map((g) => (
+                        <SelectItem key={g.id} value={g.id}>
+                          {`${'  '.repeat(g.depth)}${g.depth > 0 ? '└ ' : ''}${g.name}`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Use pra agrupar variações (ex.: "Componentes" → "Tira chata", "Tira Strass").
+                    Próprio grupo e descendentes ficam ocultos pra evitar ciclos.
+                  </p>
                 </div>
                 <div>
                   <Label htmlFor="edit-group-desc">Descrição</Label>

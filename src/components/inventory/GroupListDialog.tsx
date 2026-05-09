@@ -11,6 +11,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Search, Package, FolderOpen, Pencil, Trash2, Wand2, Loader2, GripVertical, Palette, FileBox } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { useGroups, useAddGroup, useUpdateGroup, useDeleteGroup, ProductGroup } from '@/hooks/useGroups';
+import { flattenGroupTree } from '@/lib/groupHierarchy';
 import { useProducts, useUpdateProduct } from '@/hooks/useProducts';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -180,7 +181,11 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
 
   const groupsWithProducts = useMemo(() => {
     const q = search.toLowerCase();
-    return groups
+    // flattenGroupTree devolve em pré-ordem (raízes → filhos), com `depth`
+    // que usamos pra indentar visualmente. Mantém a hierarquia parent→child
+    // no rendering em vez de ordem alfabética plana.
+    const flat = flattenGroupTree(groups);
+    return flat
       .map(g => {
         const items = products.filter(p => p.group_id === g.id);
         const matchGroup = g.name.toLowerCase().includes(q);
@@ -190,7 +195,7 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
         if (!matchGroup && matchItems.length === 0 && q) return null;
         return { ...g, items: q && !matchGroup ? matchItems : items };
       })
-      .filter(Boolean) as (typeof groups[0] & { items: typeof products })[];
+      .filter(Boolean) as (ProductGroup & { items: typeof products; depth: number; childCount: number })[];
   }, [groups, products, search]);
 
   const ungrouped = useMemo(() => {
@@ -246,7 +251,12 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
             ) : (
               <Accordion type="multiple" className="space-y-1">
                 {groupsWithProducts.map(g => (
-                  <AccordionItem key={g.id} value={g.id} className={`border rounded-lg px-1 transition-colors ${dragOverGroupId === g.id ? 'border-primary bg-primary/5 ring-2 ring-primary/20' : ''}`}>
+                  <AccordionItem
+                    key={g.id}
+                    value={g.id}
+                    style={{ marginLeft: (g.depth || 0) * 20 }}
+                    className={`border rounded-lg px-1 transition-colors ${dragOverGroupId === g.id ? 'border-primary bg-primary/5 ring-2 ring-primary/20' : ''} ${g.depth > 0 ? 'border-l-2 border-l-primary/30' : ''}`}
+                  >
                     <div
                       className="flex items-center"
                       onDragOver={(e) => handleDragOver(e, g.id)}
@@ -255,9 +265,17 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
                     >
                       <AccordionTrigger className="hover:no-underline py-3 flex-1">
                         <div className="flex items-center gap-3">
+                          {g.depth > 0 && (
+                            <span className="text-muted-foreground text-xs font-mono shrink-0" aria-hidden="true">└</span>
+                          )}
                           <FolderOpen className="h-4 w-4 text-primary shrink-0" />
                           <span className="font-semibold text-sm">{g.name}</span>
                           <Badge variant="secondary" className="text-xs font-mono">{g.items.length} itens</Badge>
+                          {g.childCount > 0 && (
+                            <Badge variant="outline" className="text-[10px] h-5 border-primary/40 text-primary bg-primary/5">
+                              {g.childCount} subgrupo{g.childCount > 1 ? 's' : ''}
+                            </Badge>
+                          )}
                           {(g as any).auto_component_sheet && (
                             <Badge variant="outline" className="text-[10px] gap-1 h-5 border-primary/40 text-primary bg-primary/5">
                               <FileBox className="h-3 w-3" /> BOM

@@ -41,7 +41,12 @@ export function useGroups() {
 export function useAddGroup() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (form: { name: string; description: string; auto_component_sheet?: boolean }) => {
+    mutationFn: async (form: {
+      name: string;
+      description: string;
+      auto_component_sheet?: boolean;
+      parent_group_id?: string | null;
+    }) => {
       const { data, error } = await supabase.from('product_groups').insert(form).select().single();
       if (error) throw error;
       return data;

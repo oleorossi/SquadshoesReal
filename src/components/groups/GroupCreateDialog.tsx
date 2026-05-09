@@ -8,10 +8,12 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Search, Loader2, Check, FileText } from "lucide-react";
+import { Search, Loader2, Check, FileText, Layers } from "lucide-react";
  import { useAddGroup, useGroups } from "@/hooks/useGroups";
 import { useAddGroupSupplier } from "@/hooks/useGroupSuppliers";
 import { useAddSupplier, useSuppliers, type Supplier } from "@/hooks/useSuppliers";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { flattenGroupTree } from "@/lib/groupHierarchy";
 import { cn } from "@/lib/utils";
 
 interface GroupCreateDialogProps {
@@ -24,6 +26,7 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
     name: "",
     description: "",
     auto_component_sheet: false,
+    parent_group_id: "" as string,
     supplierName: "",
     supplierCnpj: "",
     supplierContact: "",
@@ -76,6 +79,7 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
       name: "",
       description: "",
       auto_component_sheet: false,
+      parent_group_id: "",
       supplierName: "",
       supplierCnpj: "",
       supplierContact: "",
@@ -114,6 +118,7 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
         name: form.name,
         description: form.description,
         auto_component_sheet: form.auto_component_sheet,
+        parent_group_id: form.parent_group_id || null,
       });
 
       // If supplier info provided, create group supplier and main supplier
@@ -234,6 +239,30 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
                 rows={2}
                 placeholder="Descrição opcional"
               />
+            </div>
+            <div>
+              <Label htmlFor="group-parent" className="flex items-center gap-1.5">
+                <Layers className="h-3.5 w-3.5" /> Grupo Pai (hierarquia)
+              </Label>
+              <Select
+                value={form.parent_group_id || "__root__"}
+                onValueChange={(v) => setForm((f) => ({ ...f, parent_group_id: v === "__root__" ? "" : v }))}
+              >
+                <SelectTrigger id="group-parent" className="mt-1">
+                  <SelectValue placeholder="Sem pai (grupo raiz)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__root__">Sem pai (grupo raiz)</SelectItem>
+                  {flattenGroupTree(allGroups).map((g) => (
+                    <SelectItem key={g.id} value={g.id}>
+                      {`${"  ".repeat(g.depth)}${g.depth > 0 ? "└ " : ""}${g.name}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Use pra agrupar variações do mesmo material (ex: "Componentes" → "Tira chata", "Tira Strass").
+              </p>
             </div>
           </div>
 
