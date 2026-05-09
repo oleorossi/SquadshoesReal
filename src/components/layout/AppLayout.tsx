@@ -524,10 +524,10 @@ export default function AppLayout({ children, printMode = false }: { children: R
             {sidebarContent(true)}
           </aside>
 
-          {/* Desktop sidebar */}
+          {/* Desktop sidebar — dimensões do handoff: 232px expandida / 68px colapsada */}
           <aside className={cn(
             'hidden md:flex shrink-0 border-r border-sidebar-border flex-col sticky top-0 h-screen transition-all duration-200 ease-in-out overflow-hidden',
-            sidebarCollapsed ? 'w-16' : 'w-[248px]',
+            sidebarCollapsed ? 'w-[68px]' : 'w-[232px]',
             printMode && 'print:hidden'
           )}>
             {sidebarContent(false)}
