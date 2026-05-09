@@ -33,7 +33,7 @@ export default function Auth() {
   return (
     <div className="min-h-screen flex">
       {/* Left panel — branding (handoff Novidade: preto editorial + acento vermelho Squad) */}
-      <div className="hidden lg:flex lg:w-[45%] relative overflow-hidden items-center justify-center bg-sidebar-background">
+      <div className="hidden lg:flex lg:w-[45%] relative overflow-hidden items-center justify-center bg-sidebar">
         {/* slash decorativo no topo */}
         <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-primary to-transparent z-20" />
         {/* Decorative circles */}

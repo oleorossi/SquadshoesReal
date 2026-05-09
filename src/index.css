@@ -75,10 +75,12 @@
   --popover:           var(--neutral-0);
   --popover-foreground: var(--neutral-900);
 
-  /* Brand */
-  --primary:                var(--primary-700);
+  /* Brand — handoff Novidade: #E11D2E (primary-500) é o vermelho Squad oficial.
+     Antes apontava pra primary-700 (#9B0F22, "pressed"), o que deixava
+     botões/headers com tom muito escuro divergente do design system. */
+  --primary:                var(--primary-500);
   --primary-foreground:     var(--neutral-50);
-  --primary-hover:          var(--primary-800);
+  --primary-hover:          var(--primary-600);
   --primary-soft:           var(--primary-100);
   --primary-soft-foreground: var(--primary-700);
 
@@ -406,6 +408,10 @@ h4 { font-size: var(--text-md);  font-weight: var(--weight-semibold); letter-spa
 .eyebrow { font-family: var(--font-sans); font-size: 10px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: hsl(var(--muted-foreground)); }
 .bignum  { font-family: var(--font-display); font-size: 88px; line-height: 0.86; letter-spacing: -0.01em; }
 .serif-italic { font-family: var(--font-sans); font-style: italic; font-weight: 300; letter-spacing: 0; }
+/* Mono utility (handoff): JetBrains Mono com tabular-nums, ideal pra IDs,
+   códigos, KPIs numéricos editoriais. Evita confundir com .font-mono do
+   Tailwind (que pode mapear pra outra fonte). */
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
 
 /* Stage badge (mini badge editorial pra setor de produção) */
 .stage-badge {
