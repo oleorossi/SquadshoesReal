@@ -1089,17 +1089,24 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
               })()}
             </div>
 
-            <div>
-              <Label>Fornecedor</Label>
-              <Select value={form.supplier_id || 'none'} onValueChange={v => update('supplier_id', v === 'none' ? null : v)}>
-                <SelectTrigger className="mt-1"><SelectValue placeholder="Sem fornecedor" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Sem fornecedor</SelectItem>
-                  {suppliers.filter(s => s.active).map(s => (
-                    <SelectItem key={s.id} value={s.id}>{s.trade_name || s.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="col-span-2 grid grid-cols-2 gap-3 rounded-md border bg-muted/20 p-3">
+              <div>
+                <Label className="text-xs">Fornecedor</Label>
+                <Select value={form.supplier_id || 'none'} onValueChange={v => update('supplier_id', v === 'none' ? null : v)}>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="Sem fornecedor" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sem fornecedor</SelectItem>
+                    {suppliers.filter(s => s.active).map(s => (
+                      <SelectItem key={s.id} value={s.id}>{s.trade_name || s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Lead Time Fornecedor (dias)</Label>
+                <NumberInput value={form.supplier_lead_time_days ?? 10} onChange={v => update('supplier_lead_time_days', v)} min={0} step="1" className="mt-1" placeholder="7" />
+                <p className="text-[10px] text-muted-foreground mt-0.5">Prazo de entrega — usado pela MRP.</p>
+              </div>
             </div>
 
             {isEditing && (
@@ -1763,18 +1770,11 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
               );
             })()}
 
-            {/* Estoque de Segurança + Lead Time Fornecedor — essenciais */}
-            <div>
+            {/* Estoque de Segurança — essencial */}
+            <div className="col-span-2">
               <Label>Estoque de Segurança</Label>
               <NumberInput value={form.safety_stock ?? 0} onChange={v => update('safety_stock', v)} min={0} step="0.01" className="mt-1" placeholder="0" />
-              <p className="text-[10px] text-muted-foreground mt-0.5">Estoque mínimo reservado como segurança</p>
-            </div>
-            <div>
-              <Label>Lead Time Fornecedor (dias)</Label>
-              <NumberInput value={form.supplier_lead_time_days ?? 10} onChange={v => update('supplier_lead_time_days', v)} min={0} step="1" className="mt-1" placeholder="7" />
-              <p className="text-[10px] text-muted-foreground mt-0.5">
-                Prazo de entrega do fornecedor. Usado na projeção de compras (MRP).
-              </p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Estoque mínimo reservado como segurança.</p>
             </div>
 
             {/* Switch Químico ANTES dos campos condicionais (intuitivo) */}
