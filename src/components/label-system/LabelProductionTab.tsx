@@ -165,7 +165,7 @@ function getPackagingBadge(mode: string) {
   }
 }
 
-function ReferenceCard({ group, selected, onToggle }: { group: GroupedReference; selected: boolean; onToggle: () => void }) {
+function ReferenceCard({ group, selected, onToggle, hasOverride }: { group: GroupedReference; selected: boolean; onToggle: () => void; hasOverride?: boolean }) {
   const sizes = Object.entries(group.aggregatedGrade)
     .filter(([, v]) => (v as number) > 0)
     .sort(([a], [b]) => Number(a) - Number(b))
@@ -194,6 +194,12 @@ function ReferenceCard({ group, selected, onToggle }: { group: GroupedReference;
                 {group.refCode && group.refCode !== group.refName && (
                   <Badge variant="outline" className="font-mono text-[10px] h-4.5 px-1.5 opacity-70">
                     {group.refCode}
+                  </Badge>
+                )}
+                {hasOverride && (
+                  <Badge variant="outline" className="text-[9px] h-4.5 px-1.5 border-amber-500/50 text-amber-700 dark:text-amber-400 bg-amber-500/10 gap-0.5 shrink-0">
+                    <Pencil className="h-2.5 w-2.5" />
+                    Editado
                   </Badge>
                 )}
               </div>
@@ -424,9 +430,33 @@ export function LabelProductionTab() {
   const [editingStrapsGroup, setEditingStrapsGroup] = useState<string | null>(null);
   const [editingStrapsText, setEditingStrapsText] = useState('');
 
+  /**
+   * Overrides de Referência/Nome/Cor por groupKey — permite editar a etiqueta gerada
+   * antes de imprimir, e propagar a mudança em TODAS as etiquetas (térmica + caixa
+   * externa) do mesmo grupo. Útil pra clientes que pedem variação textual sem mudar
+   * o cadastro principal da ficha técnica.
+   */
+  type LabelOverride = { refCode?: string; refName?: string; color?: string };
+  const [labelOverrides, setLabelOverrides] = useState<Record<string, LabelOverride>>({});
+  const [editingLabelGroup, setEditingLabelGroup] = useState<string | null>(null);
+  const [editingLabelForm, setEditingLabelForm] = useState<LabelOverride>({});
+
   const getEffectiveStrapsLabel = (group: GroupedReference) => {
     if (strapsLabelOverrides[group.groupKey] !== undefined) return strapsLabelOverrides[group.groupKey];
     return group.strapsLabel || '';
+  };
+
+  const getEffectiveRefCode = (group: GroupedReference) => {
+    const o = labelOverrides[group.groupKey];
+    return (o?.refCode && o.refCode.trim() !== '') ? o.refCode : group.refCode;
+  };
+  const getEffectiveRefName = (group: GroupedReference) => {
+    const o = labelOverrides[group.groupKey];
+    return (o?.refName && o.refName.trim() !== '') ? o.refName : group.refName;
+  };
+  const getEffectiveColor = (group: GroupedReference, originalColor: string) => {
+    const o = labelOverrides[group.groupKey];
+    return (o?.color && o.color.trim() !== '') ? o.color : originalColor;
   };
 
   const currentSize = LABEL_SIZES.find(s => s.id === labelSize) || LABEL_SIZES[0];
@@ -533,13 +563,16 @@ export function LabelProductionTab() {
       for (const group of selectedGroups) {
         const mainMaterial = await fetchMainMaterial(group.referenceId).catch(() => '');
         const care = careData?.find(c => mainMaterial.toLowerCase().includes(c.name.toLowerCase())) || careData?.[0];
+        const effRefCode = getEffectiveRefCode(group);
+        const effRefName = getEffectiveRefName(group);
         for (const [size, qty] of Object.entries(group.aggregatedGrade)) {
           const safeQty = Math.min(Number(qty) || 0, 500);
           for (let i = 0; i < safeQty; i++) {
             labels.push({
-              refCode: group.refCode, refName: group.refName, color: group.colors[0] || '', size,
-              barcode: group.refCode ? `${group.refCode}${size.padStart(2, '0')}${currentSerial.toString().padStart(4, '0')}` : group.groupKey,
-              qrcode: group.refCode ? `https://squadshoes.com.br/product/${group.refCode}` : '',
+              refCode: effRefCode, refName: effRefName,
+              color: getEffectiveColor(group, group.colors[0] || ''), size,
+              barcode: effRefCode ? `${effRefCode}${size.padStart(2, '0')}${currentSerial.toString().padStart(4, '0')}` : group.groupKey,
+              qrcode: effRefCode ? `https://squadshoes.com.br/product/${effRefCode}` : '',
               composition: mainMaterial, careSymbols: care?.symbols || [],
               logoUrl, brandName: 'SQUAD SHOES',
             });
@@ -599,10 +632,12 @@ export function LabelProductionTab() {
         const refData = refDataMap.get(group.referenceId);
         const colorName = group.colors[0] || '';
         const productImageUrl = imageMap.get(`${group.referenceId}|${colorName}`) || logoUrl;
+        const effRefCode = getEffectiveRefCode(group);
+        const effRefName = getEffectiveRefName(group);
         if (thermalMode === 'quantity') {
           for (const [size, qty] of Object.entries(group.aggregatedGrade)) {
             for (let i = 0; i < Math.min(qty as number, 2000); i++) {
-              labels.push({ refCode: group.refCode, refName: group.refName, mainMaterial, color: colorName, size, barcode: group.refCode || group.groupKey, imageUrl: productImageUrl, shoeCategory: refData?.shoe_category || '', strapsLabel: getEffectiveStrapsLabel(group) });
+              labels.push({ refCode: effRefCode, refName: effRefName, mainMaterial, color: getEffectiveColor(group, colorName), size, barcode: effRefCode || group.groupKey, imageUrl: productImageUrl, shoeCategory: refData?.shoe_category || '', strapsLabel: getEffectiveStrapsLabel(group) });
             }
           }
         } else {
@@ -611,7 +646,7 @@ export function LabelProductionTab() {
             const orderImageUrl = imageMap.get(`${group.referenceId}|${orderColor}`) || productImageUrl;
             const { gradeText, pairsInOneFicha, numFichas } = getOrderFichaMetrics(order);
             for (let i = 0; i < numFichas; i++) {
-              labels.push({ refCode: group.refCode, refName: group.refName, mainMaterial, color: orderColor, size: gradeText || `${pairsInOneFicha} PRS`, barcode: group.refCode || order.order_number || group.groupKey, imageUrl: orderImageUrl, shoeCategory: refData?.shoe_category || '', strapsLabel: getEffectiveStrapsLabel(group) });
+              labels.push({ refCode: effRefCode, refName: effRefName, mainMaterial, color: getEffectiveColor(group, orderColor), size: gradeText || `${pairsInOneFicha} PRS`, barcode: effRefCode || order.order_number || group.groupKey, imageUrl: orderImageUrl, shoeCategory: refData?.shoe_category || '', strapsLabel: getEffectiveStrapsLabel(group) });
             }
           }
         }
@@ -646,12 +681,14 @@ export function LabelProductionTab() {
         const mainMaterial = materialMap.get(group.referenceId) || '';
         const refData = refDataMap.get(group.referenceId);
         const colorName = group.colors[0] || '';
+        const effRefCode = getEffectiveRefCode(group);
+        const effRefName = getEffectiveRefName(group);
         if (thermalMode === 'quantity') {
           for (const [size, qty] of Object.entries(group.aggregatedGrade)) {
             for (let i = 0; i < Math.min(qty as number, 2000); i++) {
               labels.push({
-                refCode: group.refCode, refName: group.refName, mainMaterial,
-                color: colorName, size, barcode: group.refCode || group.groupKey,
+                refCode: effRefCode, refName: effRefName, mainMaterial,
+                color: getEffectiveColor(group, colorName), size, barcode: effRefCode || group.groupKey,
                 shoeCategory: refData?.shoe_category || '',
                 clientOrderNumber: group.clientOrderNumber || '',
                 strapsLabel: getEffectiveStrapsLabel(group),
@@ -664,9 +701,9 @@ export function LabelProductionTab() {
             const { gradeText, pairsInOneFicha, numFichas } = getOrderFichaMetrics(order);
             for (let i = 0; i < numFichas; i++) {
               labels.push({
-                refCode: group.refCode, refName: group.refName, mainMaterial,
-                color: orderColor, size: gradeText || `${pairsInOneFicha} PRS`,
-                barcode: group.refCode || order.order_number || group.groupKey,
+                refCode: effRefCode, refName: effRefName, mainMaterial,
+                color: getEffectiveColor(group, orderColor), size: gradeText || `${pairsInOneFicha} PRS`,
+                barcode: effRefCode || order.order_number || group.groupKey,
                 shoeCategory: refData?.shoe_category || '',
                 clientOrderNumber: group.clientOrderNumber || '',
                 qty: pairsInOneFicha,
@@ -765,9 +802,14 @@ export function LabelProductionTab() {
           for (let f = 0; f < fichas; f++) {
             const gradePerFicha = f === fichas - 1 ? gradeRemainder : gradeBase;
             const currentBoxNumber = Math.ceil((f + 1) / (fichasPerBox || 1));
+            // Effective ref/color usam overrides quando definidos — propaga
+            // a edição manual da etiqueta TÉRMICA pra caixa externa também.
+            const effRefCode = getEffectiveRefCode(group) || refData?.code || '';
+            const effRefName = getEffectiveRefName(group);
+            const effColor = getEffectiveColor(group, order.color || '—');
             boxItems.push({
-              orderNumber: order.order_number || '', refCode: refData?.code || group.refCode || '', refName: group.refName || '',
-              color: order.color || '—', boxNumber: currentBoxNumber, totalBoxes: totalMasterBoxes,
+              orderNumber: order.order_number || '', refCode: effRefCode, refName: effRefName || '',
+              color: effColor, boxNumber: currentBoxNumber, totalBoxes: totalMasterBoxes,
               senderName: 'SQUAD SHOES IND. E COM. DE CALÇADOS LTDA', senderCnpj: '62.406.033/0001-93',
               recipientName: so?.client_name || '', recipientCnpj: so?.client_cnpj || '',
               clientOrderNumber: so?.client_order_number || '', shoeCategory: refData?.shoe_category || '',
@@ -1026,6 +1068,38 @@ export function LabelProductionTab() {
                     </span>
                   </div>
                 )}
+
+                {/* Editar manualmente Referência/Nome/Cor — propaga em térmica + caixa externa */}
+                <div className="flex flex-col gap-1">
+                  <Button
+                    variant="outline"
+                    className="gap-2 h-9 shadow-sm border-amber-500/40 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10"
+                    title="Alterar Referência/Nome/Cor manualmente — afeta TODAS as etiquetas (térmica + caixa) do(s) grupo(s) selecionado(s)"
+                    onClick={() => {
+                      const selectedGroups = filtered.filter(g => selected.has(g.groupKey));
+                      if (selectedGroups.length === 0) { toast.error('Selecione ao menos um item.'); return; }
+                      const firstGroup = selectedGroups[0];
+                      const cur = labelOverrides[firstGroup.groupKey] || {};
+                      setEditingLabelGroup(firstGroup.groupKey);
+                      setEditingLabelForm({
+                        refCode: cur.refCode ?? firstGroup.refCode,
+                        refName: cur.refName ?? firstGroup.refName,
+                        color: cur.color ?? (firstGroup.colors[0] || ''),
+                      });
+                    }}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    Editar Etiqueta
+                    {Object.keys(labelOverrides).length > 0 && (
+                      <Badge variant="secondary" className="ml-1 h-4 px-1.5 text-[9px] bg-amber-500/20 text-amber-700">
+                        {Object.keys(labelOverrides).length}
+                      </Badge>
+                    )}
+                  </Button>
+                  <span className="text-[9px] text-muted-foreground truncate max-w-[180px]">
+                    Aplica em térmica + caixa externa
+                  </span>
+                </div>
               </div>
               <div className="border-t border-primary/20 pt-3 flex items-center gap-6">
                 <div className="flex items-center gap-2">
@@ -1072,18 +1146,24 @@ export function LabelProductionTab() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                   {refs.map(g => (
-                    <ReferenceCard key={g.groupKey} group={g} selected={selected.has(g.groupKey)} onToggle={() => {
-                      if (printMode === 'per_op') {
-                        // In per-OP mode, only allow one selection at a time
-                        const next = new Set<string>();
-                        if (!selected.has(g.groupKey)) next.add(g.groupKey);
-                        setSelected(next);
-                      } else {
-                        const next = new Set(selected);
-                        if (next.has(g.groupKey)) next.delete(g.groupKey); else next.add(g.groupKey);
-                        setSelected(next);
-                      }
-                    }} />
+                    <ReferenceCard
+                      key={g.groupKey}
+                      group={g}
+                      selected={selected.has(g.groupKey)}
+                      hasOverride={!!labelOverrides[g.groupKey]}
+                      onToggle={() => {
+                        if (printMode === 'per_op') {
+                          // In per-OP mode, only allow one selection at a time
+                          const next = new Set<string>();
+                          if (!selected.has(g.groupKey)) next.add(g.groupKey);
+                          setSelected(next);
+                        } else {
+                          const next = new Set(selected);
+                          if (next.has(g.groupKey)) next.delete(g.groupKey); else next.add(g.groupKey);
+                          setSelected(next);
+                        }
+                      }}
+                    />
                   ))}
                 </div>
               </div>
@@ -1103,6 +1183,103 @@ export function LabelProductionTab() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Edit Label dialog — overrides de Referência/Nome/Cor */}
+      <Dialog open={!!editingLabelGroup} onOpenChange={(open) => { if (!open) setEditingLabelGroup(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-4 w-4 text-amber-500" />
+              Editar Etiqueta — Manual
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Substitui Referência, Nome e/ou Cor nas etiquetas geradas pelo sistema. A alteração é
+              propagada em <strong>todas as etiquetas</strong> (térmica individual + caixa externa)
+              do(s) grupo(s) selecionado(s). Não altera o cadastro original — só esta impressão.
+            </p>
+            <div className="space-y-2">
+              <Label className="text-xs">Referência (código impresso)</Label>
+              <Input
+                value={editingLabelForm.refCode ?? ''}
+                onChange={(e) => setEditingLabelForm(f => ({ ...f, refCode: e.target.value }))}
+                placeholder="Ex: REF-CLIENTE-X"
+                className="text-sm"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs">Nome / Modelo</Label>
+              <Input
+                value={editingLabelForm.refName ?? ''}
+                onChange={(e) => setEditingLabelForm(f => ({ ...f, refName: e.target.value }))}
+                placeholder="Ex: Mocassim Verona"
+                className="text-sm"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs">Cor</Label>
+              <Input
+                value={editingLabelForm.color ?? ''}
+                onChange={(e) => setEditingLabelForm(f => ({ ...f, color: e.target.value }))}
+                placeholder="Ex: Caramelo"
+                className="text-sm"
+              />
+            </div>
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-[11px] text-amber-700 dark:text-amber-400">
+              💡 Deixe um campo vazio pra usar o original. A edição vale só pra esta impressão.
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" size="sm" onClick={() => {
+              const selectedGroups = filtered.filter(g => selected.has(g.groupKey));
+              setLabelOverrides(prev => {
+                const next = { ...prev };
+                for (const g of selectedGroups) delete next[g.groupKey];
+                return next;
+              });
+              setEditingLabelGroup(null);
+              toast.info(`Override removido de ${selectedGroups.length} item(ns).`);
+            }}>
+              Restaurar Original
+            </Button>
+            <Button size="sm" onClick={() => {
+              if (!editingLabelGroup) return;
+              const selectedGroups = filtered.filter(g => selected.has(g.groupKey));
+              if (selectedGroups.length === 0) {
+                toast.error('Nenhum item selecionado.');
+                setEditingLabelGroup(null);
+                return;
+              }
+              setLabelOverrides(prev => {
+                const next = { ...prev };
+                for (const g of selectedGroups) {
+                  const o: LabelOverride = {};
+                  if (editingLabelForm.refCode && editingLabelForm.refCode.trim() !== '' && editingLabelForm.refCode !== g.refCode) {
+                    o.refCode = editingLabelForm.refCode.trim();
+                  }
+                  if (editingLabelForm.refName && editingLabelForm.refName.trim() !== '' && editingLabelForm.refName !== g.refName) {
+                    o.refName = editingLabelForm.refName.trim();
+                  }
+                  if (editingLabelForm.color && editingLabelForm.color.trim() !== '' && editingLabelForm.color !== (g.colors[0] || '')) {
+                    o.color = editingLabelForm.color.trim();
+                  }
+                  if (Object.keys(o).length > 0) {
+                    next[g.groupKey] = o;
+                  } else {
+                    delete next[g.groupKey];
+                  }
+                }
+                return next;
+              });
+              toast.success(`Etiqueta ajustada em ${selectedGroups.length} grupo(s) — térmica + caixa externa.`);
+              setEditingLabelGroup(null);
+            }}>
+              Aplicar a Todos Selecionados
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Strap label edit dialog */}
       <Dialog open={!!editingStrapsGroup} onOpenChange={(open) => { if (!open) setEditingStrapsGroup(null); }}>
