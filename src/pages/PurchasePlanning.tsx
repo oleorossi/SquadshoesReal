@@ -1,7 +1,7 @@
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { HubTabsList } from '@/components/layout/HubTabs';
-import { ShoppingCart, BarChart3, Calculator, CalendarDays, AlertTriangle, CalendarClock, Workflow, Info } from 'lucide-react';
+import { ShoppingCart, BarChart3, Calculator, CalendarDays, AlertTriangle, CalendarClock, Workflow, Info, TrendingUp } from 'lucide-react';
 import { lazy, Suspense } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
@@ -13,6 +13,7 @@ const WeeklyPurchasingContent = lazy(() => import('@/components/financial/Weekly
 const MrpUnifiedContent = lazy(() => import('@/components/financial/MrpUnifiedContent'));
 const PurchaseTimelineTab = lazy(() => import('@/components/financial/PurchaseTimeline').then(m => ({ default: m.PurchaseTimeline })));
 const ProductionScheduleTimeline = lazy(() => import('@/components/financial/ProductionScheduleTimeline'));
+const PurchaseProjectionContent = lazy(() => import('@/components/financial/PurchaseProjectionContent'));
 
 const TabLoader = () => (
   <div className="flex items-center justify-center py-12">
@@ -37,13 +38,14 @@ export default function PurchasePlanning() {
 
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <HubTabsList tabs={[
-          { value: 'planning',  label: 'Plano de Compras',       icon: ShoppingCart },
-          { value: 'weekly',    label: 'Plano Semanal',          icon: CalendarDays },
-          { value: 'timeline',  label: 'Projeção de Suprimentos', icon: CalendarClock },
-          { value: 'schedule',  label: 'Cronograma Reverso',     icon: Workflow },
-          { value: 'saldo',     label: 'Saldo Final',            icon: Calculator },
-          { value: 'mrp',       label: 'MRP & Alertas',          icon: AlertTriangle },
-          { value: 'analytics', label: 'Analytics de Custos',    icon: BarChart3 },
+          { value: 'planning',   label: 'Plano de Compras',        icon: ShoppingCart },
+          { value: 'projection', label: 'Projeção de Compras',     icon: TrendingUp },
+          { value: 'weekly',     label: 'Plano Semanal',           icon: CalendarDays },
+          { value: 'timeline',   label: 'Projeção de Suprimentos', icon: CalendarClock },
+          { value: 'schedule',   label: 'Cronograma Reverso',      icon: Workflow },
+          { value: 'saldo',      label: 'Saldo Final',             icon: Calculator },
+          { value: 'mrp',        label: 'MRP & Alertas',           icon: AlertTriangle },
+          { value: 'analytics',  label: 'Analytics de Custos',     icon: BarChart3 },
         ]} />
 
         {/* Callout pra orientar o usuário sobre qual aba usar quando */}
@@ -52,8 +54,9 @@ export default function PurchasePlanning() {
             <Info className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
             <p className="text-[11px] text-muted-foreground leading-relaxed">
               <strong>Plano de Compras</strong> = wizard guiado a partir dos PVs ativos ·
+              <strong> Projeção de Compras</strong> = histórico estatístico (curva ABC + giro + reorder sugerido) ·
               <strong> Plano Semanal</strong> = consolidado por semana ·
-              <strong> Projeção</strong> = data-limite por material ·
+              <strong> Projeção de Suprimentos</strong> = data-limite por material ·
               <strong> Cronograma Reverso</strong> = quando começar produção pra entregar no prazo ·
               <strong> Saldo Final</strong> = posição depois de todas as OCs em aberto ·
               <strong> MRP</strong> = sugestões automáticas + alertas ·
@@ -65,6 +68,12 @@ export default function PurchasePlanning() {
         <TabsContent value="planning">
           <Suspense fallback={<TabLoader />}>
             <PurchasePlanningWizard />
+          </Suspense>
+        </TabsContent>
+
+        <TabsContent value="projection">
+          <Suspense fallback={<TabLoader />}>
+            <PurchaseProjectionContent />
           </Suspense>
         </TabsContent>
 
