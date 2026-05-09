@@ -110,7 +110,7 @@ export default function ComercialDashboard() {
     
       <div className="space-y-5 page-enter">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Resumo Comercial</h1>
+          <h1 className="display text-xl tracking-tight">Resumo Comercial</h1>
           <p className="text-sm text-muted-foreground">Visão geral de vendas, clientes e representantes</p>
         </div>
 

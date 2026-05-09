@@ -238,7 +238,7 @@ export default function Clients() {
       <div className="space-y-5 page-enter">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold tracking-tight">Clientes</h1>
+            <h1 className="display text-xl tracking-tight">Clientes</h1>
             <p className="text-sm text-muted-foreground">Cadastro de lojistas e grupos econômicos</p>
           </div>
         </div>

@@ -121,7 +121,7 @@ export default function SystemMonitor() {
     <div className="space-y-5 page-enter">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="display text-xl tracking-tight flex items-center gap-2">
             <Activity className="h-6 w-6 text-primary" />Monitor do Sistema
           </h1>
           <p className="text-sm text-muted-foreground">Performance, segurança e auditoria em tempo real</p>

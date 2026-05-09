@@ -105,7 +105,7 @@ export default function SolesHub() {
         {/* Header */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+            <h1 className="display text-xl tracking-tight flex items-center gap-2">
               <Package className="h-6 w-6 text-primary" />
               Solados
             </h1>

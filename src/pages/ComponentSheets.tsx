@@ -233,7 +233,7 @@ const formatCurrency = (v: number) =>
                 <Layers className="h-6 w-6 text-primary" />
               </div>
               <div>
-                <h1 className="text-xl font-bold tracking-tight text-foreground">Fichas de Componentes</h1>
+                <h1 className="display text-xl tracking-tight text-foreground">Fichas de Componentes</h1>
                 <p className="text-sm text-muted-foreground">Consumo por par, dimensões e perdas de cada material</p>
               </div>
             </div>

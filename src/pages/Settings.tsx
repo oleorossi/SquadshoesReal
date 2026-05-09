@@ -422,7 +422,7 @@ export default function SettingsPage() {
     
       <div className="space-y-5 page-enter">
         <div>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="display text-xl tracking-tight flex items-center gap-2">
             <Settings className="h-6 w-6" /> Configurações
           </h1>
           <p className="text-sm text-muted-foreground">Gestão de usuários, permissões e configurações do sistema</p>

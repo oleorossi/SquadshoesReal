@@ -341,7 +341,7 @@ export default function OrdersSummary() {
 
         {/* Print header */}
         <div className="hidden print:block">
-          <h1 className="text-xl font-bold">Resumo de Produção</h1>
+          <h1 className="display text-xl">Resumo de Produção</h1>
           <p className="text-sm text-muted-foreground">Gerado em {new Date().toLocaleString('pt-BR')} • {totalOPs} OPs • {totalPairs} pares</p>
         </div>
 

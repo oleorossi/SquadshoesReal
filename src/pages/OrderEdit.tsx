@@ -165,7 +165,7 @@ export default function OrderEdit() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h2 className="text-xl font-bold tracking-tight">
+            <h2 className="display text-xl tracking-tight">
               {saleOrder ? `Pedido ${saleOrder.order_number}` : `OP ${(displayOrders[0] as any).order_number}`}
             </h2>
             <p className="text-sm text-muted-foreground">

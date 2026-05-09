@@ -330,7 +330,7 @@ export default function PickingListPage() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <ClipboardList className="h-6 w-6 text-primary" />
-          <h1 className="text-xl font-bold">Lista de Separação</h1>
+          <h1 className="display text-xl">Lista de Separação</h1>
           {reportTitle && (
             <Badge variant="secondary" className="text-xs max-w-xs truncate">{reportTitle}</Badge>
           )}

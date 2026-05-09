@@ -90,7 +90,7 @@ export default function ExpedicaoHub() {
           <Truck className="h-6 w-6 text-primary" />
         </div>
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Expedição</h1>
+          <h1 className="display text-xl tracking-tight">Expedição</h1>
           <p className="text-muted-foreground text-sm">
             Centro integrado — embalagens, transporte e entrega
           </p>

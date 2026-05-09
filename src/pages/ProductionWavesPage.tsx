@@ -377,7 +377,7 @@ export default function ProductionWavesPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="display text-xl tracking-tight flex items-center gap-2">
             <Package className="w-6 h-6 text-primary" />
             Ondas de Produção
           </h1>

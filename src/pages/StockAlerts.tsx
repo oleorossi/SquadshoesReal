@@ -54,7 +54,7 @@ export default function StockAlerts() {
       <div className="space-y-5 page-enter">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+            <h1 className="display text-xl tracking-tight flex items-center gap-2">
               <BellRing className="h-5 w-5 text-primary" />
               Alertas de Estoque
             </h1>

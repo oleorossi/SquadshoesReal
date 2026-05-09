@@ -102,7 +102,7 @@ export default function HeadcountReport() {
     <div className="space-y-5 page-enter">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="display text-xl tracking-tight flex items-center gap-2">
             <Users className="h-5 w-5 text-primary" />
             Headcount evolutivo
           </h1>

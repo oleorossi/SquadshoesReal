@@ -154,7 +154,7 @@ export default function PurchaseOrders() {
     <div className="w-full space-y-6 page-enter">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+            <h1 className="display text-xl tracking-tight flex items-center gap-2">
               <ShoppingCart className="h-6 w-6 text-primary" />
               Ordens de Compra
             </h1>

@@ -1067,7 +1067,7 @@ export default function Contractors() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold tracking-tight flex items-center gap-2"><Handshake className="h-6 w-6 text-primary" /> Terceirizados</h1>
+            <h1 className="display text-xl tracking-tight flex items-center gap-2"><Handshake className="h-6 w-6 text-primary" /> Terceirizados</h1>
             <p className="text-sm text-muted-foreground">Gestão de prestadores, ordens de serviço e recibos</p>
           </div>
         </div>

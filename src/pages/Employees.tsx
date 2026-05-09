@@ -115,7 +115,7 @@ export default function Employees() {
       <div className="space-y-5 page-enter">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold tracking-tight">Funcionários</h1>
+            <h1 className="display text-xl tracking-tight">Funcionários</h1>
             <p className="text-sm text-muted-foreground">Gestão de equipe e adiantamentos</p>
           </div>
           <div className="flex gap-2">

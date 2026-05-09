@@ -113,7 +113,7 @@ export default function PCPDashboard() {
       <div className="w-full space-y-6 page-enter">
         <div className="flex items-center gap-2">
           <BarChart3 className="h-6 w-6 text-primary" />
-          <h1 className="text-xl font-bold">Dashboard PCP</h1>
+          <h1 className="display text-xl">Dashboard PCP</h1>
           <Badge variant="secondary">{productionOrders.length} OPs em produção</Badge>
         </div>
 

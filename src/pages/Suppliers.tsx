@@ -385,7 +385,7 @@ export default function Suppliers() {
       <div className="space-y-5 page-enter">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-xl font-bold tracking-tight">Fornecedores</h1>
+            <h1 className="display text-xl tracking-tight">Fornecedores</h1>
             <p className="text-sm text-muted-foreground">Cadastro de fornecedores e importação de notas fiscais</p>
           </div>
           <div className="flex items-center gap-2">

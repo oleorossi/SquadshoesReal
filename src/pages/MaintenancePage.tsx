@@ -249,7 +249,7 @@ export default function MaintenancePage() {
     <div className="space-y-5 page-enter">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="display text-xl tracking-tight flex items-center gap-2">
             <Wrench className="h-6 w-6" /> Manutenção Preventiva
           </h1>
           <p className="text-sm text-muted-foreground">Controle de equipamentos e planos de manutenção</p>

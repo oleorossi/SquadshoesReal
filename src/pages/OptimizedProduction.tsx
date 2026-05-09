@@ -252,7 +252,7 @@ const OptimizedProductionSystem: React.FC = () => {
       
         <div className="space-y-6">
           <div className="flex justify-between items-center">
-            <h1 className="text-xl font-bold tracking-tight">Sistema de Produção Otimizado</h1>
+            <h1 className="display text-xl tracking-tight">Sistema de Produção Otimizado</h1>
             <div className="flex gap-2">
               <Button onClick={() => refetch()} variant="outline">Atualizar</Button>
             </div>

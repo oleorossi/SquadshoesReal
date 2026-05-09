@@ -298,7 +298,7 @@ export default function Automations() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="display text-xl tracking-tight flex items-center gap-2">
             <Zap className="h-6 w-6 text-primary" />Automações
           </h1>
           <p className="text-sm text-muted-foreground">Workflows inteligentes com gatilhos e ações configuráveis</p>

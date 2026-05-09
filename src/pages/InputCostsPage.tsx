@@ -223,7 +223,7 @@ export default function InputCostsPage() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h1 className="text-xl font-bold">Custos de Insumos</h1>
+            <h1 className="display text-xl">Custos de Insumos</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
               Valores de cada material — clique no custo atual para editar. Atualiza automaticamente com cada compra lançada.
             </p>

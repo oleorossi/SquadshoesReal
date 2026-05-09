@@ -69,7 +69,7 @@ export default function UnitAudit() {
       <div className="space-y-5 page-enter">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
-            <h1 className="text-xl font-bold tracking-tight">Auditoria de Unidades</h1>
+            <h1 className="display text-xl tracking-tight">Auditoria de Unidades</h1>
             <p className="text-sm text-muted-foreground">
               Detecta divergências de unidade de medida entre o frontend e o backend, com exemplos de registros afetados.
             </p>

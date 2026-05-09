@@ -1475,7 +1475,7 @@ export default function Timesheet() {
     <AppLayout>
       <div className="space-y-5 page-enter">
         <div>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="display text-xl tracking-tight flex items-center gap-2">
             <Clock className="h-6 w-6" /> Controle de Ponto
           </h1>
           <p className="text-sm text-muted-foreground">Importação de ponto, horários, feriados e cálculo de horas extras</p>

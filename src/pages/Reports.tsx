@@ -255,7 +255,7 @@ export default function Reports() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Analytics & Relatórios</h1>
+          <h1 className="display text-xl tracking-tight">Analytics & Relatórios</h1>
           <p className="text-sm text-muted-foreground">Métricas em tempo real e geração inteligente de relatórios</p>
         </div>
         <div className="flex items-center gap-2">
