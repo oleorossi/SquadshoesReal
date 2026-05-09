@@ -264,16 +264,33 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
                  const inProd = Number((product as any).in_production_quantity) || 0;
                  const totalQty = freeQty + inProd;
 
+                 // Aproximação em unidade de compra (ex: ≈ 5 placas) quando há conversão configurada
+                 const purchaseUnit = (product as any).purchase_unit;
+                 const convRate = Number((product as any).conversion_rate) || 1;
+                 const dimWidth = Number((product as any).dimensions_width) || 0;
+                 let approxInPurchase: { qty: number; unit: string } | null = null;
+                 if (purchaseUnit && purchaseUnit !== product.unit) {
+                   // Replica effectiveConversionFactor sem importar (table é hot path):
+                   // m → dm² via dimensions_width (em dm), senão usa conversion_rate
+                   let factor = convRate;
+                   if (purchaseUnit === 'm' && product.unit === 'dm²' && dimWidth > 0) factor = 10 * dimWidth;
+                   else if (purchaseUnit === 'm' && product.unit === 'm²' && dimWidth > 0) factor = dimWidth / 10;
+                   if (factor > 0 && factor !== 1) {
+                     approxInPurchase = { qty: totalQty / factor, unit: purchaseUnit };
+                   }
+                 }
+
                  return (
                    <div className="flex flex-col items-end gap-0.5" onClick={e => e.stopPropagation()}>
                      <div className="flex items-center gap-1">
-                       {isSolado ? (
-                         <span className="font-bold">{totalQty.toLocaleString('pt-BR')}</span>
-                       ) : (
-                         <span className="font-bold">{totalQty.toLocaleString('pt-BR')}</span>
-                       )}
+                       <span className="font-bold">{totalQty.toLocaleString('pt-BR')}</span>
                        <span className="text-[10px] text-muted-foreground">{product.unit}</span>
                      </div>
+                     {approxInPurchase && (
+                       <div className="text-[10px] text-muted-foreground whitespace-nowrap font-mono">
+                         ≈ {approxInPurchase.qty.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} {approxInPurchase.unit}
+                       </div>
+                     )}
                      {inProd > 0 && (
                        <div className="text-[10px] text-amber-600 font-medium whitespace-nowrap">
                          Em prod.: {inProd.toLocaleString('pt-BR')} {product.unit}

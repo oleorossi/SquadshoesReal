@@ -7,16 +7,21 @@
  import { useSuppliers } from '@/hooks/useSuppliers';
  import { useProducts } from '@/hooks/useProducts';
  import { useCreatePurchaseOrder } from '@/hooks/usePurchaseOrders';
- import { Plus, Trash2, Search, Loader2 } from 'lucide-react';
+ import { Plus, Trash2, Search, Loader2, ArrowRightLeft } from 'lucide-react';
  import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
  import { toast } from 'sonner';
- 
+ import { effectiveConversionFactor, describeConversion } from '@/lib/purchaseConversion';
+
  type OrderItem = {
    product_id: string;
    product_name: string;
    quantity: number;
    unit_price: number;
    unit: string;
+   purchase_unit: string;
+   conversion_rate: number;
+   dimensions_width: number | null;
+   stock_unit: string;
    current_stock: number;
    min_stock: number;
    max_stock: number;
@@ -41,12 +46,30 @@
        return;
      }
  
+     const purchaseUnit = (product as any).purchase_unit || product.unit || 'un';
+     const stockUnit = product.unit || 'un';
+     const convRate = Number((product as any).conversion_rate) || 1;
+     const dimWidth = Number((product as any).dimensions_width) || 0;
+     // Custo unitário em produtos é R$ por unidade de estoque. Convertendo pra
+     // R$/purchase_unit pra mostrar o preço da NF (= unit_price * factor).
+     const factor = effectiveConversionFactor({
+       unit: stockUnit,
+       purchase_unit: purchaseUnit,
+       conversion_rate: convRate,
+       dimensions_width: dimWidth,
+     });
+     const purchasePrice = (product.unit_price || 0) * factor;
+
      setItems(prev => [...prev, {
        product_id: product.id,
        product_name: product.name,
        quantity: 1,
-       unit_price: product.unit_price || 0,
-       unit: product.unit || 'un',
+       unit_price: purchasePrice,  // armazenado em R$/purchase_unit (o que vai na OC/NF)
+       unit: purchaseUnit,          // unidade da OC = unidade de compra
+       purchase_unit: purchaseUnit,
+       conversion_rate: convRate,
+       dimensions_width: dimWidth,
+       stock_unit: stockUnit,
        current_stock: product.quantity || 0,
        min_stock: product.min_stock || 0,
        max_stock: product.max_stock || 0,
@@ -154,7 +177,7 @@
                <TableHeader>
                  <TableRow>
                    <TableHead>Produto</TableHead>
-                   <TableHead className="w-24">Qtd</TableHead>
+                   <TableHead className="w-32">Qtd na NF</TableHead>
                    <TableHead className="w-32">Preço Unit.</TableHead>
                    <TableHead className="w-32 text-right">Subtotal</TableHead>
                    <TableHead className="w-10"></TableHead>
@@ -168,43 +191,92 @@
                      </TableCell>
                    </TableRow>
                  ) : (
-                   items.map((item, index) => (
-                     <TableRow key={index}>
-                       <TableCell className="font-medium">{item.product_name}</TableCell>
-                       <TableCell>
-                         <Input 
-                           type="number" 
-                           value={item.quantity} 
-                           onChange={e => handleUpdateItem(index, 'quantity', Number(e.target.value))} 
-                           min={0.01}
-                           step={0.01}
-                           className="h-8"
-                         />
-                       </TableCell>
-                       <TableCell>
-                         <Input 
-                           type="number" 
-                           value={item.unit_price} 
-                           onChange={e => handleUpdateItem(index, 'unit_price', Number(e.target.value))} 
-                           min={0}
-                           step={0.01}
-                           className="h-8"
-                         />
-                       </TableCell>
-                       <TableCell className="text-right font-mono">
-                         {(item.quantity * item.unit_price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                       </TableCell>
-                       <TableCell>
-                         <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleRemoveItem(index)}>
-                           <Trash2 className="h-4 w-4" />
-                         </Button>
-                       </TableCell>
-                     </TableRow>
-                   ))
+                   items.map((item, index) => {
+                     const factor = effectiveConversionFactor({
+                       unit: item.stock_unit,
+                       purchase_unit: item.purchase_unit,
+                       conversion_rate: item.conversion_rate,
+                       dimensions_width: item.dimensions_width,
+                     });
+                     const hasConversion = factor !== 1;
+                     const inStockUnit = item.quantity * factor;
+                     return (
+                       <TableRow key={index}>
+                         <TableCell className="font-medium">
+                           <div>{item.product_name}</div>
+                           {hasConversion && (
+                             <div className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                               <ArrowRightLeft className="h-2.5 w-2.5" />
+                               {describeConversion({
+                                 unit: item.stock_unit,
+                                 purchase_unit: item.purchase_unit,
+                                 conversion_rate: item.conversion_rate,
+                                 dimensions_width: item.dimensions_width,
+                               })}
+                             </div>
+                           )}
+                         </TableCell>
+                         <TableCell>
+                           <div className="flex items-center gap-1.5">
+                             <Input
+                               type="number"
+                               value={item.quantity}
+                               onChange={e => handleUpdateItem(index, 'quantity', Number(e.target.value))}
+                               min={0.01}
+                               step={0.01}
+                               className="h-8 w-20"
+                             />
+                             <span className="text-[11px] text-muted-foreground font-mono shrink-0">
+                               {item.purchase_unit}
+                             </span>
+                           </div>
+                           {hasConversion && (
+                             <div className="text-[10px] text-primary mt-0.5 font-mono">
+                               = {inStockUnit.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} {item.stock_unit}
+                             </div>
+                           )}
+                         </TableCell>
+                         <TableCell>
+                           <div className="flex items-center gap-1.5">
+                             <Input
+                               type="number"
+                               value={item.unit_price}
+                               onChange={e => handleUpdateItem(index, 'unit_price', Number(e.target.value))}
+                               min={0}
+                               step={0.01}
+                               className="h-8 w-24"
+                             />
+                             <span className="text-[10px] text-muted-foreground shrink-0">
+                               R$/{item.purchase_unit}
+                             </span>
+                           </div>
+                         </TableCell>
+                         <TableCell className="text-right font-mono">
+                           {(item.quantity * item.unit_price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                         </TableCell>
+                         <TableCell>
+                           <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleRemoveItem(index)}>
+                             <Trash2 className="h-4 w-4" />
+                           </Button>
+                         </TableCell>
+                       </TableRow>
+                     );
+                   })
                  )}
                </TableBody>
              </Table>
            </div>
+
+           {items.some(i => i.unit !== i.stock_unit) && (
+             <div className="text-[11px] text-muted-foreground flex items-start gap-1.5 px-2">
+               <ArrowRightLeft className="h-3 w-3 mt-0.5 shrink-0" />
+               <span>
+                 Itens com conversão configurada são salvos na OC em <strong>unidade de compra</strong>
+                 (o que aparece na NF). Quando a OC for recebida, o sistema converte automaticamente
+                 pra unidade de estoque/consumo (dm², g etc.).
+               </span>
+             </div>
+           )}
  
            <div className="flex justify-end pr-4 py-2">
              <div className="text-right">

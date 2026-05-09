@@ -1,6 +1,7 @@
 import CreatePurchaseOrderDialog from "@/components/purchase/CreatePurchaseOrderDialog";
 import { Plus } from 'lucide-react';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
+import { effectiveConversionFactor } from '@/lib/purchaseConversion';
 import { useState, useMemo, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { usePersistedState } from '@/hooks/usePersistedState';
@@ -518,15 +519,23 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
       await createAPEntries(paymentDays);
 
       // 2. Receive stock (atomic via SELECT FOR UPDATE)
+      // Conversão usa effectiveConversionFactor: prioriza dimensions_width pra m→dm²,
+      // depois conversion_rate. Garante que Napa/tecidos com largura cadastrada
+      // virem dm² corretamente.
       const todayStr = new Date().toISOString().slice(0, 10);
       for (const item of items) {
         const { data: prod } = await supabase
           .from('products')
-          .select('quantity, conversion_rate, unit, supplier_id')
+          .select('quantity, conversion_rate, unit, purchase_unit, dimensions_width, supplier_id')
           .eq('id', item.product_id)
           .single();
-        const convRate = Number((prod as any)?.conversion_rate) || 1;
-        const receivedQty = item.quantity * convRate;
+        const factor = effectiveConversionFactor({
+          unit: (prod as any)?.unit || 'un',
+          purchase_unit: (prod as any)?.purchase_unit,
+          conversion_rate: (prod as any)?.conversion_rate,
+          dimensions_width: (prod as any)?.dimensions_width,
+        });
+        const receivedQty = item.quantity * factor;
         const prev = Number(prod?.quantity ?? 0);
         const newQty = prev + receivedQty;
         const result = await adjustStockSafe({
@@ -584,18 +593,24 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
       claimed = true;
 
       const today = new Date().toISOString().slice(0, 10);
-      // Give stock to each item (atomic via SELECT FOR UPDATE)
-      // item.quantity is in purchase_order_unit (e.g. metro).
-      // product.quantity is stored in the product's stock unit (e.g. dm²).
-      // Apply conversion_rate so both sides are in the same unit before adding.
+      // Give stock to each item (atomic via SELECT FOR UPDATE).
+      // item.quantity is in purchase_unit (e.g. placa, m linear).
+      // product.quantity is stored in stock unit (e.g. dm²).
+      // effectiveConversionFactor cobre tanto conversion_rate fixo (1 placa = 144 dm²)
+      // quanto largura para linear→área (1 m × dimensions_width dm = dm²).
       for (const item of items) {
         const { data: prod } = await supabase
           .from('products')
-          .select('quantity, conversion_rate, unit, supplier_id')
+          .select('quantity, conversion_rate, unit, purchase_unit, dimensions_width, supplier_id')
           .eq('id', item.product_id)
           .single();
-        const convRate = Number((prod as any)?.conversion_rate) || 1;
-        const receivedInStockUnit = item.quantity * convRate;
+        const factor = effectiveConversionFactor({
+          unit: (prod as any)?.unit || 'un',
+          purchase_unit: (prod as any)?.purchase_unit,
+          conversion_rate: (prod as any)?.conversion_rate,
+          dimensions_width: (prod as any)?.dimensions_width,
+        });
+        const receivedInStockUnit = item.quantity * factor;
         const prev = Number(prod?.quantity ?? 0);
         const newQty = prev + receivedInStockUnit;
         const result = await adjustStockSafe({
