@@ -8,6 +8,7 @@ import {
   Footprints, Sparkles, Tag, ClipboardCheck,
   DollarSign, Calendar, Box, History,
   ListChecks, Boxes, Activity, GanttChartSquare, Clock,
+  Calculator,
 } from 'lucide-react';
 
 // ════════════════════════════════════════════════════════════════════════
@@ -97,6 +98,7 @@ export const menuGroups = [
     icon: Wallet,
     items: [
       { name: "Financeiro",       icon: Wallet,         path: "/financeiro" },
+      { name: "Markup",           icon: Calculator,     path: "/pricing-calculator" },
       { name: "NF-e",             icon: Receipt,        path: "/nfe" },
     ],
   },
