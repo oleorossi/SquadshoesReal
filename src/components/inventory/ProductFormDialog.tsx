@@ -12,7 +12,7 @@ import { CurrencyInput } from '@/components/ui/currency-input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Product, ProductFormData, UNITS, UNIT_LABELS, LOCATIONS } from '@/types/inventory';
-import { CONVERSION_TEMPLATES, suggestConversionRate, effectiveConversionFactor, describeConversion, needsWidthForConversion } from '@/lib/purchaseConversion';
+import { CONVERSION_TEMPLATES, suggestConversionRate, effectiveConversionFactor, describeConversion, needsWidthForConversion, purchasePriceToUnitPrice } from '@/lib/purchaseConversion';
 import { deriveCategoryFromGroup } from '@/lib/categoryFromGroup';
 import { useGroups } from '@/hooks/useGroups';
 import { useSuppliers } from '@/hooks/useSuppliers';
@@ -697,17 +697,56 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       if (key === 'unit') {
         // production_unit always mirrors the stock unit
         next.production_unit = value as string;
+        // Preserva preço em R$/purchase_unit antes de mudar a conversão.
+        // Sem isso, ao trocar unit (ex: 'm' → 'dm²') o unit_price ficava
+        // desalinhado: estava em R$/m e virava "R$/dm²" sem conversão.
+        const oldFactor = effectiveConversionFactor({
+          unit: prev.unit,
+          purchase_unit: prev.purchase_unit,
+          conversion_rate: prev.conversion_rate,
+          dimensions_width: prev.dimensions_width,
+        });
+        const oldPackPrice = (prev.unit_price ?? 0) * oldFactor;
+
         // Auto-suggest conversion_rate (cobre área, massa, volume, comprimento)
         const pu = prev.purchase_unit || prev.purchase_order_unit || 'un';
         const su = value as string;
         const suggested = suggestConversionRate(pu, su);
         if (suggested !== null) next.conversion_rate = suggested;
+
+        // Recalcula unit_price para manter o R$/purchase_unit constante
+        if (oldPackPrice > 0) {
+          next.unit_price = purchasePriceToUnitPrice(oldPackPrice, {
+            unit: next.unit,
+            purchase_unit: next.purchase_unit,
+            conversion_rate: next.conversion_rate,
+            dimensions_width: next.dimensions_width,
+          });
+        }
       }
 
       if (key === 'purchase_unit') {
+        // Preserva preço em R$/purchase_unit antes de trocar a unidade de compra
+        const oldFactor = effectiveConversionFactor({
+          unit: prev.unit,
+          purchase_unit: prev.purchase_unit,
+          conversion_rate: prev.conversion_rate,
+          dimensions_width: prev.dimensions_width,
+        });
+        const oldPackPrice = (prev.unit_price ?? 0) * oldFactor;
+
         next.purchase_order_unit = value as string;
         const suggested = suggestConversionRate(value as string, next.unit);
         if (suggested !== null) next.conversion_rate = suggested;
+
+        if (oldPackPrice > 0) {
+          next.unit_price = purchasePriceToUnitPrice(oldPackPrice, {
+            unit: next.unit,
+            purchase_unit: next.purchase_unit,
+            conversion_rate: next.conversion_rate,
+            dimensions_width: next.dimensions_width,
+          });
+        }
       }
 
       return next;
