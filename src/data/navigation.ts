@@ -66,7 +66,7 @@ export const menuGroups = [
     label: "Estoque",
     icon: Package,
     items: [
-      { name: "Posição",          icon: Package,      path: "/estoque" },
+      { name: "Estoque",          icon: Package,      path: "/estoque" },
       { name: "Ajustes",          icon: Boxes,        path: "/ajuste-estoque" },
       { name: "Histórico",        icon: History,      path: "/estoque/historico" },
       { name: "MRP",              icon: Boxes,        path: "/mrp" },
