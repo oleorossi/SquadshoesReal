@@ -1758,39 +1758,32 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                         </div>
                       )}
                     </div>
-                    <div>
-                      <Label className="text-xs text-muted-foreground">Cálculo de Consumo</Label>
-                      <Select value={normalizeCalculationMethod(form.calculation_method)} onValueChange={v => update('calculation_method', v as any)}>
-                        <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="weight">Por Peso (kg)</SelectItem>
-                          <SelectItem value="meter">Por Metro (m/dm²)</SelectItem>
-                          <SelectItem value="unit">Por Unidade (un/par/pc)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
                   </div>
                 </div>
               );
             })()}
+
+            {/* Estoque de Segurança + Lead Time Fornecedor — essenciais */}
             <div>
               <Label>Estoque de Segurança</Label>
               <NumberInput value={form.safety_stock ?? 0} onChange={v => update('safety_stock', v)} min={0} step="0.01" className="mt-1" placeholder="0" />
               <p className="text-[10px] text-muted-foreground mt-0.5">Estoque mínimo reservado como segurança</p>
             </div>
             <div>
-              <Label>Lead Time Interno (dias)</Label>
-              <NumberInput value={form.lead_time_days ?? 7} onChange={v => update('lead_time_days', v)} min={0} step="1" className="mt-1" placeholder="7" />
-              <p className="text-[10px] text-muted-foreground mt-0.5">Prazo interno de processamento</p>
-            </div>
-            <div>
               <Label>Lead Time Fornecedor (dias)</Label>
-              <NumberInput value={form.supplier_lead_time_days ?? 10} onChange={v => update('supplier_lead_time_days', v)} min={0} step="1" className="mt-1" placeholder="10" />
+              <NumberInput value={form.supplier_lead_time_days ?? 10} onChange={v => update('supplier_lead_time_days', v)} min={0} step="1" className="mt-1" placeholder="7" />
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                Prazo do fornecedor (em dias). Usado na projeção de compras.
-                Quando o fornecedor tem lead time cadastrado, ele tem prioridade
-                e este valor é ignorado.
+                Prazo de entrega do fornecedor. Usado na projeção de compras (MRP).
               </p>
+            </div>
+
+            {/* Switch Químico ANTES dos campos condicionais (intuitivo) */}
+            <div className="col-span-2 flex items-center gap-3 pt-2 pb-1 border-t">
+              <Switch id="is_chemical" checked={form.is_chemical ?? false} onCheckedChange={v => update('is_chemical', v)} />
+              <Label htmlFor="is_chemical" className="cursor-pointer">Produto Químico / Validade Controlada</Label>
+              <span className="text-[10px] text-muted-foreground ml-auto">
+                Cola, verniz, tinta — habilita rastreio de lote e validade.
+              </span>
             </div>
 
             {form.is_chemical && (
@@ -1806,10 +1799,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                 </div>
               </>
             )}
-            <div className="flex items-center gap-3 pt-2">
-              <Switch id="is_chemical" checked={form.is_chemical ?? false} onCheckedChange={v => update('is_chemical', v)} />
-              <Label htmlFor="is_chemical">Produto Químico / Validade Controlada</Label>
-            </div>
 
             <div>
               <Label>Localização Física</Label>
@@ -1820,10 +1809,41 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label htmlFor="image_url">URL da Imagem</Label>
-              <Input id="image_url" value={form.image_url} onChange={e => update('image_url', e.target.value)} className="mt-1" placeholder="https://..." />
-            </div>
+
+            {/* Avançado — campos raramente editados */}
+            <details className="col-span-2 group rounded-md border border-dashed bg-muted/20 p-3">
+              <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2">
+                <span className="inline-block transition-transform group-open:rotate-90">▶</span>
+                Avançado
+                <span className="text-[10px] font-normal text-muted-foreground/70 normal-case">
+                  Cálculo de consumo · lead time interno · URL imagem
+                </span>
+              </summary>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3 pt-3 border-t border-dashed">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Cálculo de Consumo</Label>
+                  <Select value={normalizeCalculationMethod(form.calculation_method)} onValueChange={v => update('calculation_method', v as any)}>
+                    <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="weight">Por Peso (kg)</SelectItem>
+                      <SelectItem value="meter">Por Metro (m/dm²)</SelectItem>
+                      <SelectItem value="unit">Por Unidade (un/par/pc)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Default vem do grupo</p>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Lead Time Interno (dias)</Label>
+                  <NumberInput value={form.lead_time_days ?? 7} onChange={v => update('lead_time_days', v)} min={0} step="1" className="mt-1" placeholder="7" />
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Prazo interno de processamento</p>
+                </div>
+                <div className="sm:col-span-2">
+                  <Label htmlFor="image_url" className="text-xs text-muted-foreground">URL da Imagem</Label>
+                  <Input id="image_url" value={form.image_url} onChange={e => update('image_url', e.target.value)} className="mt-1" placeholder="https://..." />
+                </div>
+              </div>
+            </details>
+
             <div className="flex items-center gap-3 pt-4">
               <Switch id="active" checked={form.active} onCheckedChange={v => update('active', v)} />
               <Label htmlFor="active">Material Ativo</Label>

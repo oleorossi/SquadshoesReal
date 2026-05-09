@@ -528,6 +528,21 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
   // All groups can have sole-specific yield (not just Palmilha)
   const showYieldTab = true;
 
+  /**
+   * Detecta se o grupo é de Solado pra mostrar campos específicos
+   * (Silk padrão, Tipos de Caixa). Heurística: produtos da categoria
+   * Solado/Sola, ou nome do grupo contém "solado".
+   */
+  const isSoleGroup = useMemo(() => {
+    const nameMatch = (group.name || '').toLowerCase().includes('solado') ||
+                      (group.name || '').toLowerCase().includes('sola');
+    const productMatch = products.some(p => {
+      const c = (p.category || '').toLowerCase();
+      return c === 'solado' || c === 'sola' || c.startsWith('solado');
+    });
+    return nameMatch || productMatch;
+  }, [group.name, products]);
+
   const [name, setName] = useState(group.name);
   const [description, setDescription] = useState(group.description || '');
   const [isBomColorSource, setIsBomColorSource] = useState(group.is_bom_color_source);
@@ -946,7 +961,8 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                 </div>
                 <GroupColorsManager groupId={group.id} groupName={group.name} />
 
-                {/* Silk padrão (usada para grupos do tipo Solado) */}
+                {/* Silk padrão — só aparece em grupos de Solado */}
+                {isSoleGroup && (
                 <Card className="border-dashed">
                   <CardHeader className="pb-2 pt-3 px-4">
                     <CardTitle className="text-sm flex items-center gap-2">
@@ -984,8 +1000,10 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                     )}
                   </CardContent>
                 </Card>
+                )}
 
-                {/* Box Types */}
+                {/* Tipos de Caixa — só aparecem em grupos de Solado */}
+                {isSoleGroup && (
                 <Card className="border-dashed">
                   <CardHeader className="pb-2 pt-3 px-4">
                     <CardTitle className="text-sm flex items-center gap-2">
@@ -1037,6 +1055,15 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                     </div>
                   </CardContent>
                 </Card>
+                )}
+
+                {/* Aviso quando NÃO é solado: lembra que esses campos vão aparecer pra solados */}
+                {!isSoleGroup && (
+                  <div className="text-[11px] text-muted-foreground italic px-2 py-1.5 rounded bg-muted/30 border-l-2 border-muted-foreground/30">
+                    💡 <strong>Silk padrão</strong> e <strong>Tipos de Caixa</strong> só aparecem em grupos cujos itens
+                    são da categoria Solado — não fazem sentido pra outros materiais.
+                  </div>
+                )}
               </div>
 
               <Card className="border-2 border-primary/10">
