@@ -4,17 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Search, Loader2, Check, FileText, Layers } from "lucide-react";
- import { useAddGroup, useGroups } from "@/hooks/useGroups";
-import { useAddGroupSupplier } from "@/hooks/useGroupSuppliers";
-import { useAddSupplier, useSuppliers, type Supplier } from "@/hooks/useSuppliers";
+import { Layers, Truck } from "lucide-react";
+import { useAddGroup, useGroups } from "@/hooks/useGroups";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { flattenGroupTree } from "@/lib/groupHierarchy";
-import { cn } from "@/lib/utils";
 
 interface GroupCreateDialogProps {
   open: boolean;
@@ -27,21 +21,11 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
     description: "",
     auto_component_sheet: false,
     parent_group_id: "" as string,
-    supplierName: "",
-    supplierCnpj: "",
-    supplierContact: "",
-    supplierPhone: "",
-    supplierEmail: "",
-    supplierAddress: "",
-    paymentTerms: "",
-    leadTimeDays: 0,
   });
 
-   const [searchOpen, setSearchOpen] = useState(false);
    const [duplicateMatch, setDuplicateMatch] = useState<any>(null);
    const [duplicateConfirmed, setDuplicateConfirmed] = useState(false);
    const { data: allGroups = [] } = useGroups();
-   const { data: suppliers = [], isLoading: loadingSuppliers } = useSuppliers();
    const checkDuplicateName = (name: string) => {
      if (!name.trim()) { setDuplicateMatch(null); return; }
      const normalizedName = name.trim().toLowerCase();
@@ -71,8 +55,6 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
  
 
   const addGroup = useAddGroup();
-  const addGroupSupplier = useAddGroupSupplier();
-  const addSupplier = useAddSupplier();
 
   const reset = () =>
     setForm({
@@ -80,90 +62,28 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
       description: "",
       auto_component_sheet: false,
       parent_group_id: "",
-      supplierName: "",
-      supplierCnpj: "",
-      supplierContact: "",
-      supplierPhone: "",
-      supplierEmail: "",
-      supplierAddress: "",
-      paymentTerms: "",
-      leadTimeDays: 0,
     });
 
-  const handleSelectSupplier = (supplier: Supplier) => {
-    setForm((f) => ({
-      ...f,
-      supplierName: supplier.name || supplier.trade_name || "",
-      supplierCnpj: supplier.cnpj || "",
-      supplierContact: supplier.contact_name || "",
-      supplierPhone: supplier.phone || "",
-      supplierEmail: supplier.email || "",
-      supplierAddress: [supplier.address, supplier.city, supplier.state].filter(Boolean).join(", "),
-      paymentTerms: supplier.payment_terms || "",
-      leadTimeDays: supplier.lead_time_days || 0,
-    }));
-    setSearchOpen(false);
-  };
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
 
-   const handleSubmit = async (e: React.FormEvent) => {
-     e.preventDefault();
- 
-     if (duplicateMatch && !duplicateConfirmed) {
-       return;
-     }
- 
-     try {
-      // Create the group
-      const group = await addGroup.mutateAsync({
+    if (duplicateMatch && !duplicateConfirmed) {
+      return;
+    }
+
+    try {
+      await addGroup.mutateAsync({
         name: form.name,
         description: form.description,
         auto_component_sheet: form.auto_component_sheet,
         parent_group_id: form.parent_group_id || null,
       });
-
-      // If supplier info provided, create group supplier and main supplier
-      if (form.supplierName.trim()) {
-        await addGroupSupplier.mutateAsync({
-          group_id: group.id,
-          supplier_name: form.supplierName,
-          supplier_cnpj: form.supplierCnpj,
-          supplier_contact: form.supplierContact,
-          supplier_phone: form.supplierPhone,
-          supplier_email: form.supplierEmail,
-          supplier_address: form.supplierAddress,
-          payment_terms: form.paymentTerms,
-          lead_time_days: form.leadTimeDays || 0,
-        });
-
-        // Check if supplier already exists by CNPJ
-        const existingByCnpj =
-          form.supplierCnpj &&
-          suppliers.some((s) => s.cnpj?.replace(/\D/g, "") === form.supplierCnpj.replace(/\D/g, ""));
-
-        // Also register in main suppliers table for NF matching (if not exists)
-        if (!existingByCnpj) {
-          await addSupplier.mutateAsync({
-            name: form.supplierName,
-            cnpj: form.supplierCnpj,
-            contact_name: form.supplierContact,
-            phone: form.supplierPhone,
-            email: form.supplierEmail,
-            address: form.supplierAddress,
-            payment_terms: form.paymentTerms,
-            lead_time_days: form.leadTimeDays || 0,
-          });
-        }
-      }
-
       reset();
       onOpenChange(false);
     } catch {
       // errors handled by mutations
     }
   };
-
-  // Get active suppliers (prioritize those with invoices/NF)
-  const activeSuppliers = suppliers.filter((s) => s.active);
 
   return (
     <Dialog
@@ -173,7 +93,7 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
         onOpenChange(v);
       }}
     >
-      <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Novo Grupo de Material</DialogTitle>
         </DialogHeader>
@@ -277,136 +197,15 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
             </Label>
           </div>
 
-          <Separator />
-
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="text-sm font-semibold">Fornecedor (opcional)</h4>
-              <Popover open={searchOpen} onOpenChange={setSearchOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="gap-2"
-                    title="Buscar fornecedor de NF importada"
-                  >
-                    {loadingSuppliers ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                    Buscar de NF
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-80 p-0" align="end">
-                  <Command>
-                    <CommandInput placeholder="Buscar por nome ou CNPJ..." />
-                    <CommandList>
-                      <CommandEmpty>Nenhum fornecedor encontrado</CommandEmpty>
-                      <CommandGroup heading="Fornecedores cadastrados via NF">
-                        {activeSuppliers.map((supplier) => (
-                          <CommandItem
-                            key={supplier.id}
-                            value={`${supplier.name} ${supplier.cnpj}`}
-                            onSelect={() => handleSelectSupplier(supplier)}
-                            className="flex flex-col items-start gap-0.5"
-                          >
-                            <div className="flex items-center gap-2 w-full">
-                              <Check
-                                className={cn(
-                                  "h-4 w-4 shrink-0",
-                                  form.supplierCnpj === supplier.cnpj ? "opacity-100" : "opacity-0",
-                                )}
-                              />
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-1.5">
-                                  <FileText className="h-3 w-3 text-muted-foreground" />
-                                  <p className="font-medium truncate">{supplier.name}</p>
-                                </div>
-                                {supplier.cnpj && <p className="text-xs text-muted-foreground">{supplier.cnpj}</p>}
-                              </div>
-                            </div>
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2">
-                <Label>Razão Social / Nome</Label>
-                <Input
-                  value={form.supplierName}
-                  onChange={(e) => setForm((f) => ({ ...f, supplierName: e.target.value }))}
-                  className="mt-1"
-                  placeholder="Nome do fornecedor"
-                />
-              </div>
-              <div>
-                <Label>CNPJ</Label>
-                <Input
-                  value={form.supplierCnpj}
-                  onChange={(e) => setForm((f) => ({ ...f, supplierCnpj: e.target.value }))}
-                  className="mt-1"
-                  placeholder="00.000.000/0000-00"
-                />
-              </div>
-              <div>
-                <Label>Contato</Label>
-                <Input
-                  value={form.supplierContact}
-                  onChange={(e) => setForm((f) => ({ ...f, supplierContact: e.target.value }))}
-                  className="mt-1"
-                  placeholder="Nome do contato"
-                />
-              </div>
-              <div>
-                <Label>Telefone</Label>
-                <Input
-                  value={form.supplierPhone}
-                  onChange={(e) => setForm((f) => ({ ...f, supplierPhone: e.target.value }))}
-                  className="mt-1"
-                  placeholder="(00) 00000-0000"
-                />
-              </div>
-              <div>
-                <Label>E-mail</Label>
-                <Input
-                  value={form.supplierEmail}
-                  onChange={(e) => setForm((f) => ({ ...f, supplierEmail: e.target.value }))}
-                  className="mt-1"
-                  placeholder="email@fornecedor.com"
-                />
-              </div>
-              <div className="col-span-2">
-                <Label>Endereço</Label>
-                <Input
-                  value={form.supplierAddress}
-                  onChange={(e) => setForm((f) => ({ ...f, supplierAddress: e.target.value }))}
-                  className="mt-1"
-                  placeholder="Endereço completo"
-                />
-              </div>
-              <div>
-                <Label>Condição de Pagamento</Label>
-                <Input
-                  value={form.paymentTerms}
-                  onChange={(e) => setForm((f) => ({ ...f, paymentTerms: e.target.value }))}
-                  className="mt-1"
-                  placeholder="Ex: 30/60/90"
-                />
-              </div>
-              <div>
-                <Label>Data de Faturamento (dias)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={form.leadTimeDays || ""}
-                  onChange={(e) => setForm((f) => ({ ...f, leadTimeDays: +e.target.value }))}
-                  className="mt-1"
-                  placeholder="0"
-                />
-              </div>
+          <div className="rounded-md border border-dashed bg-muted/20 p-3 flex items-start gap-2 text-xs text-muted-foreground">
+            <Truck className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+            <div>
+              <p className="font-medium text-foreground">Fornecedores</p>
+              <p>
+                Cadastre depois na página <strong>Grupos</strong> (botão "+ Fornecedor"
+                em cada grupo). Cada grupo aceita múltiplos fornecedores com preço, prazo e
+                condição de pagamento próprios.
+              </p>
             </div>
           </div>
 
@@ -414,7 +213,7 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={addGroup.isPending || addGroupSupplier.isPending}>Criar Grupo</Button>
+            <Button type="submit" disabled={addGroup.isPending}>Criar Grupo</Button>
           </DialogFooter>
         </form>
       </DialogContent>
