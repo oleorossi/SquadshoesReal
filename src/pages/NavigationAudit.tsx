@@ -59,7 +59,7 @@ export default function NavigationAuditPage() {
               </Link>
             </Button>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight">Auditoria de Navegação</h1>
+          <h1 className="display text-3xl tracking-tight">Auditoria de Navegação</h1>
           <p className="text-muted-foreground">
             Verificação de consistência entre itens do menu lateral e regras de permissões.
           </p>

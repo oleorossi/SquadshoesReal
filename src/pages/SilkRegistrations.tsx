@@ -5,7 +5,7 @@ export default function SilkRegistrations() {
   return (
     <div className="space-y-6 page-enter">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+        <h1 className="display text-2xl tracking-tight flex items-center gap-2">
           <Layers className="h-6 w-6 text-primary" />
           Cadastro de Silk por Solado
         </h1>

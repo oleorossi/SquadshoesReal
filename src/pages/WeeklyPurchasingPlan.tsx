@@ -127,8 +127,8 @@ export default function WeeklyPurchasingPlan() {
           <CardContent className="p-4 flex items-center gap-3">
             <Package className="h-8 w-8 text-primary" />
             <div>
-              <p className="text-sm text-muted-foreground">Materiais com Necessidade</p>
-              <p className="text-2xl font-bold">{totals.materials}</p>
+              <p className="eyebrow">Materiais com Necessidade</p>
+              <p className="display text-2xl tabular-nums mt-0.5">{totals.materials}</p>
             </div>
           </CardContent>
         </Card>
@@ -136,8 +136,8 @@ export default function WeeklyPurchasingPlan() {
           <CardContent className="p-4 flex items-center gap-3">
             <TrendingUp className="h-8 w-8 text-primary" />
             <div>
-              <p className="text-sm text-muted-foreground">Custo Estimado Total</p>
-              <p className="text-2xl font-bold">{formatCurrency(totals.cost)}</p>
+              <p className="eyebrow">Custo Estimado Total</p>
+              <p className="display text-2xl tabular-nums mt-0.5">{formatCurrency(totals.cost)}</p>
             </div>
           </CardContent>
         </Card>
@@ -145,8 +145,8 @@ export default function WeeklyPurchasingPlan() {
           <CardContent className="p-4 flex items-center gap-3">
             <AlertTriangle className="h-8 w-8 text-destructive" />
             <div>
-              <p className="text-sm text-muted-foreground">Estoque Zerado</p>
-              <p className="text-2xl font-bold">{totals.criticalCount}</p>
+              <p className="eyebrow">Estoque Zerado</p>
+              <p className="display text-2xl tabular-nums mt-0.5">{totals.criticalCount}</p>
             </div>
           </CardContent>
         </Card>
@@ -154,8 +154,8 @@ export default function WeeklyPurchasingPlan() {
           <CardContent className="p-4 flex items-center gap-3">
             <ShoppingCart className="h-8 w-8 text-primary" />
             <div>
-              <p className="text-sm text-muted-foreground">Semanas Planejadas</p>
-              <p className="text-2xl font-bold">{result?.sortedWeeks.length || 0}</p>
+              <p className="eyebrow">Semanas Planejadas</p>
+              <p className="display text-2xl tabular-nums mt-0.5">{result?.sortedWeeks.length || 0}</p>
             </div>
           </CardContent>
         </Card>

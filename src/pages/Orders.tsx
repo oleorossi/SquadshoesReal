@@ -1018,7 +1018,7 @@ function getWeekOptions() {
        <div className="w-full space-y-4 page-enter">
          {!hideHeader && (
            <div>
-             <h2 className="text-2xl font-bold tracking-tight">Ordens de Produção</h2>
+             <h2 className="display text-2xl tracking-tight">Ordens de Produção</h2>
              <p className="text-sm text-muted-foreground">Gestão de OPs com controle por setor de produção</p>
            </div>
          )}

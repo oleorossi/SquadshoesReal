@@ -329,7 +329,7 @@ export default function OrdersSummary() {
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div>
-              <h2 className="text-xl font-bold tracking-tight">Resumo de Produção</h2>
+              <h2 className="display text-xl tracking-tight">Resumo de Produção</h2>
               <p className="text-sm text-muted-foreground">{totalOPs} OPs • {totalPairs} pares no filtro atual</p>
             </div>
           </div>
@@ -349,32 +349,32 @@ export default function OrdersSummary() {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 print:grid-cols-5">
           <Card>
             <CardContent className="p-4 text-center">
-              <p className="text-sm text-muted-foreground">Total de OPs</p>
-              <p className="text-2xl font-bold text-primary">{totalOPs}</p>
+              <p className="eyebrow">Total de OPs</p>
+              <p className="display text-3xl tabular-nums text-primary mt-1">{totalOPs}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <p className="text-sm text-muted-foreground">Total de Pares</p>
-              <p className="text-2xl font-bold text-primary">{totalPairs.toLocaleString('pt-BR')}</p>
+              <p className="eyebrow">Total de Pares</p>
+              <p className="display text-3xl tabular-nums text-primary mt-1">{totalPairs.toLocaleString('pt-BR')}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <p className="text-sm text-muted-foreground">Referências</p>
-              <p className="text-2xl font-bold text-primary">{refColorGroups.length}</p>
+              <p className="eyebrow">Referências</p>
+              <p className="display text-3xl tabular-nums text-primary mt-1">{refColorGroups.length}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <p className="text-sm text-muted-foreground">Lojas</p>
-              <p className="text-2xl font-bold text-primary">{storesSummary.length}</p>
+              <p className="eyebrow">Lojas</p>
+              <p className="display text-3xl tabular-nums text-primary mt-1">{storesSummary.length}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <p className="text-sm text-muted-foreground">Valor Total</p>
-              <p className="text-2xl font-bold text-primary">R$ {totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+              <p className="eyebrow">Valor Total</p>
+              <p className="display text-3xl tabular-nums text-primary mt-1">R$ {totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
             </CardContent>
           </Card>
         </div>

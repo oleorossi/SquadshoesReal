@@ -134,19 +134,19 @@ export default function Employees() {
             <CardContent className="p-4">
               <div className="flex items-center gap-2 text-muted-foreground mb-1">
                 <Users2 className="h-4 w-4" />
-                <span className="text-xs font-medium uppercase tracking-wide">Total</span>
+                <span className="eyebrow">Total</span>
               </div>
-              <div className="text-2xl font-bold">{employees.length}</div>
+              <div className="display text-2xl tabular-nums">{employees.length}</div>
               <div className="text-xs text-muted-foreground">funcionários</div>
             </CardContent>
           </Card>
           <Card className="border-0 bg-muted/40">
             <CardContent className="p-4">
-              <div className="flex items-center gap-2 text-emerald-600 mb-1">
+              <div className="flex items-center gap-2 text-success mb-1">
                 <UserCheck className="h-4 w-4" />
-                <span className="text-xs font-medium uppercase tracking-wide">Ativos</span>
+                <span className="eyebrow">Ativos</span>
               </div>
-              <div className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">{activeEmployees.length}</div>
+              <div className="display text-2xl tabular-nums text-success">{activeEmployees.length}</div>
               <div className="text-xs text-muted-foreground">{employees.length - activeEmployees.length} inativos</div>
             </CardContent>
           </Card>
@@ -154,19 +154,19 @@ export default function Employees() {
             <CardContent className="p-4">
               <div className="flex items-center gap-2 text-muted-foreground mb-1">
                 <DollarSign className="h-4 w-4" />
-                <span className="text-xs font-medium uppercase tracking-wide">Folha Mensal</span>
+                <span className="eyebrow">Folha Mensal</span>
               </div>
-              <div className="text-lg font-bold font-mono">{fmt(totalMonthlyPayroll)}</div>
+              <div className="display text-lg tabular-nums">{fmt(totalMonthlyPayroll)}</div>
               <div className="text-xs text-muted-foreground">ativos</div>
             </CardContent>
           </Card>
           <Card className="border-0 bg-muted/40">
             <CardContent className="p-4">
-              <div className="flex items-center gap-2 text-amber-600 mb-1">
+              <div className="flex items-center gap-2 text-warning mb-1">
                 <DollarSign className="h-4 w-4" />
-                <span className="text-xs font-medium uppercase tracking-wide">Adiantamentos</span>
+                <span className="eyebrow">Adiantamentos</span>
               </div>
-              <div className="text-lg font-bold font-mono text-amber-700 dark:text-amber-400">{fmt(totalAdvances)}</div>
+              <div className="display text-lg tabular-nums text-warning">{fmt(totalAdvances)}</div>
               <div className="text-xs text-muted-foreground">{advances.length} registros</div>
             </CardContent>
           </Card>

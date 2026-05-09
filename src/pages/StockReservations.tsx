@@ -220,7 +220,7 @@ export default function StockReservations() {
     <div className="container mx-auto p-4 md:p-6 space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Reservas e Em Produção</h1>
+          <h1 className="display text-2xl md:text-3xl tracking-tight">Reservas e Em Produção</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Visão consolidada de estoque por produto: reservado, já em produção e realmente disponível.
           </p>
@@ -277,41 +277,41 @@ export default function StockReservations() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Card>
           <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase">Produtos</CardTitle>
+            <CardTitle className="eyebrow">Produtos</CardTitle>
             <Package className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{fmt(totals.products)}</div>
+            <div className="display text-2xl tabular-nums">{fmt(totals.products)}</div>
             <p className="text-xs text-muted-foreground mt-1">Total na visão</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase">Reservado</CardTitle>
-            <Lock className="h-4 w-4 text-amber-600" />
+            <CardTitle className="eyebrow">Reservado</CardTitle>
+            <Lock className="h-4 w-4 text-warning" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-amber-600">{fmt(totals.reserved)}</div>
+            <div className="display text-2xl tabular-nums text-warning">{fmt(totals.reserved)}</div>
             <p className="text-xs text-muted-foreground mt-1">Reservas ativas</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase">Em Produção</CardTitle>
-            <Factory className="h-4 w-4 text-blue-600" />
+            <CardTitle className="eyebrow">Em Produção</CardTitle>
+            <Factory className="h-4 w-4 text-info" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{fmt(totals.inProd)}</div>
+            <div className="display text-2xl tabular-nums text-info">{fmt(totals.inProd)}</div>
             <p className="text-xs text-muted-foreground mt-1">Debitado em OPs ativas</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase">Disponível</CardTitle>
-            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+            <CardTitle className="eyebrow">Disponível</CardTitle>
+            <CheckCircle2 className="h-4 w-4 text-success" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-emerald-600">{fmt(totals.available)}</div>
+            <div className="display text-2xl tabular-nums text-success">{fmt(totals.available)}</div>
             <p className="text-xs text-muted-foreground mt-1">Livre após reservas</p>
           </CardContent>
         </Card>

@@ -286,7 +286,7 @@ export default function NfePage() {
     <div className="space-y-6 page-enter">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Nota Fiscal Eletrônica</h1>
+          <h1 className="display text-2xl text-foreground">Nota Fiscal Eletrônica</h1>
           <p className="text-muted-foreground text-sm mt-0.5">Emissão e gestão de NF-e via Focus NFe</p>
         </div>
         <Button onClick={() => setEmitOpen(true)} className="gap-2">

@@ -59,7 +59,7 @@ export default function Groups() {
       <div className="space-y-5 page-enter">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold tracking-tight">Grupos de Produtos</h2>
+            <h2 className="display text-xl tracking-tight">Grupos de Produtos</h2>
             <p className="text-sm text-muted-foreground">Organize produtos em grupos com fornecedores, materiais e informações técnicas</p>
           </div>
           <Button onClick={openAdd} className="gap-2">

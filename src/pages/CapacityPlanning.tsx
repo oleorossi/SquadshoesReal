@@ -435,7 +435,7 @@ export default function CapacityPlanning() {
   return (
     <div className="space-y-5 page-enter">
       <div>
-        <h2 className="text-xl font-bold tracking-tight">Capacidade por Setor</h2>
+        <h2 className="display text-xl tracking-tight">Capacidade por Setor</h2>
         <p className="text-sm text-muted-foreground">
           Carga real calculada a partir das fichas técnicas × OPs ativas — pares/dia por setor
         </p>

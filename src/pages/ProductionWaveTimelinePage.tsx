@@ -188,7 +188,7 @@ export default function ProductionWaveTimelinePage() {
           <Button asChild variant="ghost" size="sm" className="-ml-2 mb-2">
             <Link to="/pcp/ondas"><ArrowLeft className="w-4 h-4 mr-1" /> Ondas de Produção</Link>
           </Button>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
+          <h1 className="display text-2xl flex items-center gap-2">
             <Layers className="w-6 h-6" /> Linha do Tempo — {detail.code}
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
