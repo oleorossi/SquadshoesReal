@@ -121,10 +121,10 @@ export function PackagingDecision({ order }: PackagingDecisionProps) {
 
   const fmtBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   const modeLabel: Record<string, string> = {
-    individual_amarrado: 'Amarrado',
-    individual_master:   'Caixa Master',
-    individual_fitilho:  'Fitilho',
-    colmeia:             'Colméia',
+    individual_master:   'Tradicional (Individual + Master)',
+    colmeia:             'Caixa Colméia',
+    individual_fitilho:  'Amarrado (Individual + Fitilho)',
+    individual_amarrado: 'Apenas Individual (legado)',
   };
 
   return (

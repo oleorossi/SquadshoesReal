@@ -1,6 +1,6 @@
 import { useEffect, useState, lazy, Suspense } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Package, LayoutGrid, Bell, History, Ribbon } from 'lucide-react';
+import { Package, LayoutGrid, Bell, History, Ribbon, ArrowRightLeft } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useIsAdmin } from '@/hooks/useUserManagement';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import { MaterialsTab } from '@/components/inventory/tabs/MaterialsTab';
 import { ReportTab } from '@/components/inventory/tabs/ReportTab';
 import { NotificationsTab } from '@/components/inventory/tabs/NotificationsTab';
+import { ConversionReportTab } from '@/components/inventory/tabs/ConversionReportTab';
 import AuditLogTab from '@/components/inventory/tabs/AuditLogTab';
  import StrapStockLogTab from '@/components/inventory/tabs/StrapStockLogTab';
  import StockHistory from './StockHistory';
@@ -26,7 +27,7 @@ const MATERIAL_CATEGORIES = [
 ];
 
 // Tabs principais
-const MAIN_TABS = ['materials', 'overview', 'alerts'] as const;
+const MAIN_TABS = ['materials', 'overview', 'alerts', 'conversion'] as const;
 type MainTab = typeof MAIN_TABS[number];
 
 // Admin-only tabs — removidas da barra principal
@@ -116,6 +117,13 @@ export default function Index() {
             Alertas
           </TabsTrigger>
            <TabsTrigger
+             value="conversion"
+             className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md"
+           >
+             <ArrowRightLeft className="h-3.5 w-3.5" />
+             Conversões
+           </TabsTrigger>
+           <TabsTrigger
              value="history"
              className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md"
            >
@@ -199,6 +207,11 @@ export default function Index() {
           {/* ── Alertas ── */}
           <TabsContent value="alerts">
             <NotificationsTab />
+          </TabsContent>
+
+          {/* ── Relatório de Conversão ── */}
+          <TabsContent value="conversion">
+            <ConversionReportTab />
           </TabsContent>
 
            {/* ── Histórico ── */}
