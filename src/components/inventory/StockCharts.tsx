@@ -4,15 +4,17 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/
 import { BarChart, Bar, XAxis, YAxis, PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { Product } from '@/types/inventory';
 
+// Paleta dos gráficos puxa dos tokens (handoff Novidade) — antes tinha
+// 8 hexas hardcoded misturando cores que não casavam com vermelho Squad.
 const COLORS = [
-  'hsl(35, 92%, 50%)',
-  'hsl(210, 18%, 40%)',
-  'hsl(142, 71%, 40%)',
-  'hsl(0, 72%, 51%)',
-  'hsl(200, 60%, 50%)',
-  'hsl(280, 60%, 50%)',
-  'hsl(50, 80%, 50%)',
-  'hsl(170, 60%, 40%)',
+  'hsl(var(--warning))',
+  'hsl(var(--muted-foreground))',
+  'hsl(var(--success))',
+  'hsl(var(--destructive))',
+  'hsl(var(--stage-cut-fg))',
+  'hsl(var(--stage-sew-fg))',
+  'hsl(var(--stage-assy-fg))',
+  'hsl(var(--stage-fin-fg))',
 ];
 
 interface StockChartsProps {
@@ -44,9 +46,9 @@ export function StockCharts({ products }: StockChartsProps) {
       else normal++;
     });
     return [
-      { name: 'Crítico', value: critico, fill: 'hsl(0, 72%, 51%)' },
-      { name: 'Baixo', value: baixo, fill: 'hsl(38, 92%, 50%)' },
-      { name: 'Normal', value: normal, fill: 'hsl(142, 71%, 40%)' },
+      { name: 'Crítico', value: critico, fill: 'hsl(var(--destructive))' },
+      { name: 'Baixo', value: baixo, fill: 'hsl(var(--warning))' },
+      { name: 'Normal', value: normal, fill: 'hsl(var(--success))' },
     ].filter(d => d.value > 0);
   }, [products]);
 

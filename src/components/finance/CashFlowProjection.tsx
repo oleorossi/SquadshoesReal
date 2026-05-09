@@ -134,7 +134,7 @@ export function CashFlowProjection() {
                   />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
                   <ReferenceLine yAxisId="right" y={0} stroke="hsl(var(--destructive))" strokeDasharray="3 3" />
-                  <Bar yAxisId="left" dataKey="inflow" fill="hsl(142, 76%, 36%)" name="Entradas" radius={[2, 2, 0, 0]} />
+                  <Bar yAxisId="left" dataKey="inflow" fill="hsl(var(--success))" name="Entradas" radius={[2, 2, 0, 0]} />
                   <Bar yAxisId="left" dataKey="outflow" fill="hsl(var(--destructive))" name="Saídas" radius={[2, 2, 0, 0]} />
                   <Line
                     yAxisId="right"

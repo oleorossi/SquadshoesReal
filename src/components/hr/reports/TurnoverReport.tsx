@@ -197,8 +197,8 @@ export default function TurnoverReport() {
                 <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} label={{ value: '%', angle: 90, position: 'insideRight', fontSize: 11 }} />
                 <Tooltip />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar yAxisId="left" dataKey="admitted" name="Admitidos" fill="#10b981" />
-                <Bar yAxisId="left" dataKey="dismissed" name="Dispensados" fill="#ef4444" />
+                <Bar yAxisId="left" dataKey="admitted" name="Admitidos" fill="hsl(var(--success))" />
+                <Bar yAxisId="left" dataKey="dismissed" name="Dispensados" fill="hsl(var(--destructive))" />
                 <Line yAxisId="right" type="monotone" dataKey="turnoverPct" name="Turnover %" stroke="hsl(var(--primary))" strokeWidth={2.5} />
               </ComposedChart>
             </ResponsiveContainer>

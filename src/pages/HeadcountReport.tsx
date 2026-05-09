@@ -171,8 +171,8 @@ export default function HeadcountReport() {
                   <YAxis tick={{ fontSize: 11 }} />
                   <Tooltip />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <Bar dataKey="admitted" name="Admitidos" fill="#10b981" />
-                  <Bar dataKey="dismissed" name="Dispensados" fill="#ef4444" />
+                  <Bar dataKey="admitted" name="Admitidos" fill="hsl(var(--success))" />
+                  <Bar dataKey="dismissed" name="Dispensados" fill="hsl(var(--destructive))" />
                 </BarChart>
               </ResponsiveContainer>
             </div>

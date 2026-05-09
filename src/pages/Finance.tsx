@@ -86,7 +86,7 @@ function getEffectiveStatus(status: string, dueDate: string | null | undefined) 
   return status;
 }
 
-const CHART_COLORS = ['hsl(var(--primary))', 'hsl(var(--destructive))', 'hsl(142, 76%, 36%)', 'hsl(38, 92%, 50%)', 'hsl(262, 83%, 58%)', 'hsl(199, 89%, 48%)'];
+const CHART_COLORS = ['hsl(var(--primary))', 'hsl(var(--destructive))', 'hsl(var(--success))', 'hsl(var(--warning))', 'hsl(var(--stage-sew-fg))', 'hsl(var(--stage-cut-fg))'];
 
 // FinanceDashboard removed — substituído por SmartDashboard (módulo de inteligência financeira).
 
@@ -461,7 +461,7 @@ function CashFlowTab() {
               <YAxis fontSize={11} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
               <Tooltip formatter={(v: number) => fmt(v)} />
               <Legend />
-              <Line type="monotone" dataKey="receitas" stroke="hsl(142, 76%, 36%)" name="Receitas" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="receitas" stroke="hsl(var(--success))" name="Receitas" strokeWidth={2} dot={false} />
               <Line type="monotone" dataKey="despesas" stroke="hsl(var(--destructive))" name="Despesas" strokeWidth={2} dot={false} />
               <Line type="monotone" dataKey="saldo" stroke="hsl(var(--primary))" name="Saldo Acumulado" strokeWidth={2} dot={false} />
             </LineChart>

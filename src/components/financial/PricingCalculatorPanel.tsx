@@ -29,14 +29,16 @@ function IndicatorCard({ label, value, sub, color = 'primary' }: { label: string
   );
 }
 
+// Paleta puxada dos tokens (handoff Novidade). Antes tinha um verde primário
+// hardcoded que desencaixava do resto do sistema (vermelho Squad).
 const COLORS = [
-  'hsl(160, 55%, 24%)',   // primary - custo
-  'hsl(0, 72%, 51%)',     // destructive - impostos
-  'hsl(38, 92%, 50%)',    // warning - factoring
-  'hsl(200, 60%, 45%)',   // blue - comissão
-  'hsl(280, 50%, 50%)',   // purple - frete
-  'hsl(152, 60%, 36%)',   // success - lucro
-  'hsl(30, 70%, 50%)',    // orange - overhead
+  'hsl(var(--primary))',          // custo (acento Squad)
+  'hsl(var(--destructive))',      // impostos
+  'hsl(var(--warning))',          // factoring
+  'hsl(var(--stage-cut-fg))',     // comissão (azul corte)
+  'hsl(var(--stage-sew-fg))',     // frete (roxo costura)
+  'hsl(var(--success))',          // lucro
+  'hsl(var(--stage-assy-fg))',    // overhead (laranja montagem)
 ];
 
 const STORAGE_KEY = 'pricing-calculator-state';
@@ -668,7 +670,7 @@ export default function PricingCalculatorPanel() {
                             <RechartsTooltip formatter={(v: number) => `R$ ${fmt(v)}`} />
                             <Bar dataKey="valor" radius={[4, 4, 0, 0]}>
                               {reverseBarData.map((entry, i) => (
-                                <Cell key={i} fill={entry.valor >= 0 ? 'hsl(152, 60%, 36%)' : 'hsl(0, 72%, 51%)'} />
+                                <Cell key={i} fill={entry.valor >= 0 ? 'hsl(var(--success))' : 'hsl(var(--destructive))'} />
                               ))}
                             </Bar>
                           </BarChart>

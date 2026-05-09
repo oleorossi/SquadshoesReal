@@ -174,9 +174,9 @@ export function DREAuto() {
                 }}
               />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="receita" fill="hsl(142, 76%, 36%)" name="Receita" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="receita" fill="hsl(var(--success))" name="Receita" radius={[3, 3, 0, 0]} />
               <Bar dataKey="cmv" fill="hsl(var(--destructive))" name="CMV" radius={[3, 3, 0, 0]} />
-              <Bar dataKey="despOperacionais" fill="hsl(38, 92%, 50%)" name="Desp. Operacionais" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="despOperacionais" fill="hsl(var(--warning))" name="Desp. Operacionais" radius={[3, 3, 0, 0]} />
               <Bar dataKey="ebitda" fill="hsl(var(--primary))" name="EBITDA" radius={[3, 3, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>

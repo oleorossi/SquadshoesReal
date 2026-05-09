@@ -16,17 +16,17 @@ type PeriodFilter = 'week' | 'month' | 'all';
 
 const CHART_COLORS = [
   'hsl(var(--primary))',
-  'hsl(142 76% 36%)',
-  'hsl(38 92% 50%)',
-  'hsl(262 83% 58%)',
-  'hsl(199 89% 48%)',
+  'hsl(var(--success))',
+  'hsl(var(--warning))',
+  'hsl(var(--stage-sew-fg))',
+  'hsl(var(--stage-cut-fg))',
   'hsl(var(--destructive))',
-  'hsl(330 80% 60%)',
-  'hsl(170 70% 40%)',
-  'hsl(25 95% 53%)',
-  'hsl(210 40% 50%)',
-  'hsl(0 0% 45%)',
-  'hsl(280 60% 50%)',
+  'hsl(var(--stage-pack-fg))',
+  'hsl(var(--stage-fin-fg))',
+  'hsl(var(--stage-assy-fg))',
+  'hsl(var(--info))',
+  'hsl(var(--muted-foreground))',
+  'hsl(var(--accent-foreground))',
 ];
 
 type ConsumptionRow = {
