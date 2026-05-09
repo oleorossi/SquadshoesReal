@@ -49,32 +49,32 @@ const variantConfig: Record<string, {
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       className={cn(
-        'bg-card p-4 rounded-xl border border-border flex flex-col gap-3',
+        'bg-card p-4 rounded-xl border border-border flex flex-col gap-3 slash-top',
         'transition-all duration-300 cursor-pointer select-none relative overflow-hidden group',
         hov ? 'shadow-card-hover -translate-y-1' : 'shadow-card'
       )}
     >
-      <div className={cn(
-        "absolute top-0 left-0 w-full h-1 transition-colors",
-        activeVariant === 'success' ? "bg-success" : 
-        activeVariant === 'warning' ? "bg-warning" : 
-        activeVariant === 'destructive' ? "bg-destructive" : "bg-primary"
-      )} />
+      {activeVariant !== 'default' && (
+        <div className={cn(
+          "absolute top-0 left-0 w-full h-1 transition-colors",
+          activeVariant === 'success' ? "bg-success" :
+          activeVariant === 'warning' ? "bg-warning" :
+          activeVariant === 'destructive' ? "bg-destructive" : "bg-primary"
+        )} />
+      )}
       {/* Label + Icon */}
       <div className="flex items-center justify-between">
-         <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80 truncate pr-2">
-            {displayTitle}
-         </span>
+         <span className="eyebrow truncate pr-2">{displayTitle}</span>
         <div className={cn(
-          'w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-transform duration-300 group-hover:scale-110', 
+          'w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-transform duration-300 group-hover:scale-110',
           cfg.iconBg, cfg.iconColor
         )}>
           <Icon className="w-4 h-4" />
         </div>
       </div>
 
-      {/* Value */}
-      <div className={cn('text-[28px] font-extrabold font-mono leading-none tracking-tight tabular-nums', cfg.valueColor)}>
+      {/* Value — Anton (display) com tabular-nums, escala editorial */}
+      <div className={cn('display text-[34px] tabular-nums', cfg.valueColor)}>
         {value}
       </div>
 

@@ -1,15 +1,16 @@
-import { Scissors, Layers, LayoutGrid, Paintbrush, Wind, Hammer, Footprints, Package, Truck } from "lucide-react";
+import { LayoutGrid, Paintbrush, Wind, Footprints } from "lucide-react";
+import { Corte, Montagem, Acabamento, Expedicao } from "@/components/icons/SectorIcons";
 
 const STEPS = [
-  { id: 'Corte Palmilha', label: 'C. Palmilha',  icon: Scissors,    color: 'text-orange-500' },
-  { id: 'Corte Forração', label: 'C. Forração',  icon: Layers,      color: 'text-teal-500' },
+  { id: 'Corte Palmilha', label: 'C. Palmilha',  icon: Corte,       color: 'text-orange-500' },
+  { id: 'Corte Forração', label: 'C. Forração',  icon: Corte,       color: 'text-teal-500' },
   { id: 'Mesa',           label: 'Mesa',          icon: LayoutGrid,  color: 'text-purple-500' },
   { id: 'Silk',           label: 'Silk',          icon: Paintbrush,  color: 'text-pink-500' },
   { id: 'Colagem',        label: 'Colagem',       icon: Wind,        color: 'text-amber-500' },
-  { id: 'Montagem',       label: 'Montagem',      icon: Hammer,      color: 'text-blue-500' },
+  { id: 'Montagem',       label: 'Montagem',      icon: Montagem,    color: 'text-blue-500' },
   { id: 'Solagem',        label: 'Solagem',       icon: Footprints,  color: 'text-lime-500' },
-  { id: 'Acabamento',     label: 'Acabamento',    icon: Package,     color: 'text-emerald-500' },
-  { id: 'Expedição',      label: 'Expedição',     icon: Truck,       color: 'text-indigo-500' },
+  { id: 'Acabamento',     label: 'Acabamento',    icon: Acabamento,  color: 'text-emerald-500' },
+  { id: 'Expedição',      label: 'Expedição',     icon: Expedicao,   color: 'text-indigo-500' },
 ];
 
 // Map legacy (pre-rename) step ids to their canonical equivalents

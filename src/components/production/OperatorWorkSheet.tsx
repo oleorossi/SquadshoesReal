@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { QrCode, Scissors, Hammer, Footprints, Package, Layers, Wind, Paintbrush, LayoutGrid, Truck } from 'lucide-react';
+import { QrCode, Footprints, Wind, Paintbrush, LayoutGrid } from 'lucide-react';
+import { Corte, Montagem, Acabamento, Expedicao } from '@/components/icons/SectorIcons';
 import { getProductImage } from '@/utils/productUtils';
 import { ProductionOrder } from '@/types/inventory';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
@@ -25,15 +26,15 @@ interface Props {
 }
 
 const SECTOR_META: Record<string, { icon: React.ReactNode; color: string; bg: string; border: string }> = {
-  'Corte Palmilha': { icon: <Scissors className="h-5 w-5" />,   color: 'text-orange-800',  bg: 'bg-orange-600',   border: 'border-orange-700' },
-  'Corte Forração': { icon: <Layers className="h-5 w-5" />,     color: 'text-teal-800',    bg: 'bg-teal-600',     border: 'border-teal-700' },
+  'Corte Palmilha': { icon: <Corte className="h-5 w-5" />,      color: 'text-orange-800',  bg: 'bg-orange-600',   border: 'border-orange-700' },
+  'Corte Forração': { icon: <Corte className="h-5 w-5" />,      color: 'text-teal-800',    bg: 'bg-teal-600',     border: 'border-teal-700' },
   Mesa:             { icon: <LayoutGrid className="h-5 w-5" />, color: 'text-purple-800',  bg: 'bg-purple-600',   border: 'border-purple-700' },
   Silk:             { icon: <Paintbrush className="h-5 w-5" />, color: 'text-pink-800',    bg: 'bg-pink-600',     border: 'border-pink-700' },
   Colagem:          { icon: <Wind className="h-5 w-5" />,        color: 'text-amber-800',   bg: 'bg-amber-600',    border: 'border-amber-700' },
-  Montagem:         { icon: <Hammer className="h-5 w-5" />,     color: 'text-blue-800',    bg: 'bg-blue-600',     border: 'border-blue-700' },
+  Montagem:         { icon: <Montagem className="h-5 w-5" />,   color: 'text-blue-800',    bg: 'bg-blue-600',     border: 'border-blue-700' },
   Solagem:          { icon: <Footprints className="h-5 w-5" />, color: 'text-lime-800',    bg: 'bg-lime-600',     border: 'border-lime-700' },
-  Acabamento:       { icon: <Package className="h-5 w-5" />,    color: 'text-emerald-800', bg: 'bg-emerald-600',  border: 'border-emerald-700' },
-  Expedição:        { icon: <Truck className="h-5 w-5" />,      color: 'text-indigo-800',  bg: 'bg-indigo-600',   border: 'border-indigo-700' },
+  Acabamento:       { icon: <Acabamento className="h-5 w-5" />, color: 'text-emerald-800', bg: 'bg-emerald-600',  border: 'border-emerald-700' },
+  Expedição:        { icon: <Expedicao className="h-5 w-5" />,  color: 'text-indigo-800',  bg: 'bg-indigo-600',   border: 'border-indigo-700' },
 };
 
 const OperatorWorkSheet = ({

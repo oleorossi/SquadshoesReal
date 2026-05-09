@@ -1,5 +1,6 @@
 import React from 'react';
-import { Paintbrush, Hammer, QrCode, Scissors, Pen, Paperclip, Sparkles, Cloud } from 'lucide-react';
+import { Paintbrush, QrCode, Paperclip } from 'lucide-react';
+import { Corte, Costura, Montagem, Acabamento } from '@/components/icons/SectorIcons';
 
 export interface SilkColorGroup {
   color: string;
@@ -44,11 +45,11 @@ const SECTOR_THEME: Record<GroupedSector, {
   showSilkImage: boolean;
 }> = {
   'Silk':           { border: 'border-pink-700',   bg: 'bg-pink-600',   bgLight: 'bg-pink-50',   bgLighter: 'bg-pink-100',   border1: 'border-pink-500',   textColor: 'text-pink-900',   icon: Paintbrush, showFrenteTraseiro: false, showSilkImage: true  },
-  'Montagem':       { border: 'border-blue-700',   bg: 'bg-blue-600',   bgLight: 'bg-blue-50',   bgLighter: 'bg-blue-100',   border1: 'border-blue-500',   textColor: 'text-blue-900',   icon: Hammer,     showFrenteTraseiro: false, showSilkImage: false },
-  'Corte Forração': { border: 'border-cyan-700',   bg: 'bg-cyan-600',   bgLight: 'bg-cyan-50',   bgLighter: 'bg-cyan-100',   border1: 'border-cyan-500',   textColor: 'text-cyan-900',   icon: Cloud,      showFrenteTraseiro: false, showSilkImage: false },
-  'Costura':        { border: 'border-violet-700', bg: 'bg-violet-600', bgLight: 'bg-violet-50', bgLighter: 'bg-violet-100', border1: 'border-violet-500', textColor: 'text-violet-900', icon: Pen,        showFrenteTraseiro: false, showSilkImage: false },
+  'Montagem':       { border: 'border-blue-700',   bg: 'bg-blue-600',   bgLight: 'bg-blue-50',   bgLighter: 'bg-blue-100',   border1: 'border-blue-500',   textColor: 'text-blue-900',   icon: Montagem,   showFrenteTraseiro: false, showSilkImage: false },
+  'Corte Forração': { border: 'border-cyan-700',   bg: 'bg-cyan-600',   bgLight: 'bg-cyan-50',   bgLighter: 'bg-cyan-100',   border1: 'border-cyan-500',   textColor: 'text-cyan-900',   icon: Corte,      showFrenteTraseiro: false, showSilkImage: false },
+  'Costura':        { border: 'border-violet-700', bg: 'bg-violet-600', bgLight: 'bg-violet-50', bgLighter: 'bg-violet-100', border1: 'border-violet-500', textColor: 'text-violet-900', icon: Costura,    showFrenteTraseiro: false, showSilkImage: false },
   'Aviamento':      { border: 'border-amber-700',  bg: 'bg-amber-600',  bgLight: 'bg-amber-50',  bgLighter: 'bg-amber-100',  border1: 'border-amber-500',  textColor: 'text-amber-900',  icon: Paperclip,  showFrenteTraseiro: true,  showSilkImage: false },
-  'Acabamento':     { border: 'border-emerald-700',bg: 'bg-emerald-600',bgLight: 'bg-emerald-50',bgLighter: 'bg-emerald-100',border1: 'border-emerald-500',textColor: 'text-emerald-900',icon: Sparkles,   showFrenteTraseiro: true,  showSilkImage: false },
+  'Acabamento':     { border: 'border-emerald-700',bg: 'bg-emerald-600',bgLight: 'bg-emerald-50',bgLighter: 'bg-emerald-100',border1: 'border-emerald-500',textColor: 'text-emerald-900',icon: Acabamento, showFrenteTraseiro: true,  showSilkImage: false },
 };
 
 /**
