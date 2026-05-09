@@ -720,6 +720,16 @@ const router = createBrowserRouter([
         lazy: () => import("./pages/Reports").then(m => ({ Component: m.default })),
       },
       {
+        // Hub de Relatórios A4 (Novidade) — index com 6 cards
+        path: "relatorios",
+        lazy: () => import("./pages/RelatoriosHub").then(m => ({ Component: m.default })),
+      },
+      {
+        // Editor de cost_policies (defaults fiscais + overhead + embalagem)
+        path: "cost-policies",
+        lazy: () => import("./pages/CostPolicies").then(m => ({ Component: m.default })),
+      },
+      {
         // Novidade A4 — relatório diário de produção (template do redesign)
         path: "relatorios/diario-producao",
         lazy: () => import("./pages/RelDiarioA4").then(m => ({ Component: m.default })),

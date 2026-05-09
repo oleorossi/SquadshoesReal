@@ -99,6 +99,7 @@ export const menuGroups = [
     items: [
       { name: "Financeiro",       icon: Wallet,         path: "/financeiro" },
       { name: "Markup",           icon: Calculator,     path: "/pricing-calculator" },
+      { name: "Políticas de Custo", icon: Settings,     path: "/cost-policies" },
       { name: "NF-e",             icon: Receipt,        path: "/nfe" },
     ],
   },
@@ -116,7 +117,7 @@ export const menuGroups = [
 export const systemItems = [
   { to: '/settings',           icon: Settings,  label: 'Configurações' },
   { to: '/automations',        icon: Zap,       label: 'Automações' },
-  { to: '/reports',            icon: BarChart2, label: 'Relatórios' },
+  { to: '/relatorios',         icon: BarChart2, label: 'Relatórios' },
   { to: '/audit-logs',         icon: FileText,  label: 'Auditoria' },
   { to: '/system-monitor',     icon: Monitor,   label: 'Monitoramento' },
   { to: '/system-diagnostics', icon: Cpu,       label: 'Diagnóstico' },

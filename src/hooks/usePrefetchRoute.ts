@@ -13,6 +13,8 @@ const routeImports: Record<string, () => Promise<any>> = {
   '/relatorios/diario-producao': () => import('@/pages/RelDiarioA4'),
   '/relatorios/op': () => import('@/pages/RelOpA4'),
   '/relatorios/oee': () => import('@/pages/RelOeeA4'),
+  '/relatorios': () => import('@/pages/RelatoriosHub'),
+  '/cost-policies': () => import('@/pages/CostPolicies'),
   '/relatorios/qualidade': () => import('@/pages/RelQualidadeA4'),
   '/relatorios/refugo': () => import('@/pages/RelRefugoA4'),
   '/relatorios/semanal': () => import('@/pages/RelSemanalA4'),
