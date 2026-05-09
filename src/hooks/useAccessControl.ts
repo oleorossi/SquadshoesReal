@@ -52,6 +52,8 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/relatorios/op': 'reports',
   '/relatorios/oee': 'reports',
   '/relatorios/qualidade': 'reports',
+  '/relatorios/refugo': 'reports',
+  '/relatorios/semanal': 'reports',
   '/production-dashboard': 'producao',
   '/financeiro': 'financeiro',
   '/rh': 'rh',

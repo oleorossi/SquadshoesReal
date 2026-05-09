@@ -17,14 +17,17 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Calculator, FileText, AlertTriangle, RefreshCw, UserCheck, Box, Percent } from 'lucide-react';
+import { Calculator, FileText, AlertTriangle, RefreshCw, UserCheck, Box, Percent, Save, History, Trash2 } from 'lucide-react';
 import { useCostPolicies } from '@/hooks/useCostPolicies';
 import { useLaborCosts } from '@/hooks/useFinanceAdvanced';
 import { useTechnicalSheets, useSheetMaterials } from '@/hooks/useTechnicalSheets';
 import { useComponentSheets } from '@/hooks/useComponentSheets';
 import { useFactoringConfigs } from '@/components/finance/FactoringTab';
+import { usePricingSimulations, useCreatePricingSimulation, useDeletePricingSimulation } from '@/hooks/usePricingSimulations';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { format, parseISO } from 'date-fns';
 
 const STORAGE_KEY = 'pricing-by-sheet-state';
 
@@ -57,13 +60,21 @@ function loadSaved(): SavedState {
   } catch { return {}; }
 }
 
-export default function PricingByTechnicalSheetPanel() {
+type Props = {
+  /** Quando vem de deep-link (PV ou outra tela), seleciona a ficha automaticamente. */
+  initialSheetId?: string;
+};
+
+export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props = {}) {
   const saved = useMemo(() => loadSaved(), []);
   const { data: costPolicy } = useCostPolicies();
   const { data: sheets = [], isLoading: loadingSheets } = useTechnicalSheets();
   const { data: componentSheets = [] } = useComponentSheets();
   const { data: laborCosts = [] } = useLaborCosts();
   const { data: factoringConfigs = [] } = useFactoringConfigs();
+  const { data: simulations = [] } = usePricingSimulations(null);
+  const createSim = useCreatePricingSimulation();
+  const deleteSim = useDeletePricingSimulation();
 
   // Overhead derivado de cost_policies (mesma fórmula do panel manual)
   const policyOverhead = useMemo(() => {
@@ -94,7 +105,13 @@ export default function PricingByTechnicalSheetPanel() {
     [laborBreakdown]
   );
 
-  const [sheetId, setSheetId] = useState<string>(saved.sheetId ?? '');
+  const [sheetId, setSheetId] = useState<string>(initialSheetId || saved.sheetId || '');
+
+  // Se o deep-link mudar (ex: navegação interna sem unmount), troca a ficha
+  useEffect(() => {
+    if (initialSheetId && initialSheetId !== sheetId) setSheetId(initialSheetId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSheetId]);
   const [factoringConfigId, setFactoringConfigId] = useState(saved.factoringConfigId ?? '');
   const [taxPct, setTaxPct] = useState(saved.taxPct ?? '');
   const [factoringRatePct, setFactoringRatePct] = useState(saved.factoringRatePct ?? '');
@@ -191,6 +208,19 @@ export default function PricingByTechnicalSheetPanel() {
   // Frete % auto-sugestão — cost_policies.freight_allocation_pct é uma referência
   // mas o usuário insere R$/par manualmente porque o cálculo aqui é em valor absoluto.
   const policyFreightAllocPct = Number(costPolicy?.freight_allocation_pct) || 0;
+
+  // Defaults fiscais/comissão (cost_policies.default_*_pct, mig 20260530160000)
+  const policyDefaultTaxPct = Number(costPolicy?.default_tax_pct) || 0;
+  const policyDefaultCommissionPct = Number(costPolicy?.default_commission_pct) || 0;
+
+  // Auto-fill na primeira carga: se o usuário ainda não digitou nada, usar defaults.
+  // Não sobrescreve campo já preenchido (preserva edições anteriores).
+  useEffect(() => {
+    if (!costPolicy) return;
+    if (!taxPct && policyDefaultTaxPct > 0) setTaxPct(String(policyDefaultTaxPct));
+    if (!commissionPct && policyDefaultCommissionPct > 0) setCommissionPct(String(policyDefaultCommissionPct));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [costPolicy?.id]);
 
   // Suporta "60" ou "30/60/90" → média
   const parseDays = (input: string): number => {
@@ -450,18 +480,26 @@ export default function PricingByTechnicalSheetPanel() {
               <div>
                 <Label className="text-[11px] text-muted-foreground">Impostos (%)</Label>
                 <Input
-                  type="number" step="0.01" placeholder="Ex: 7.65"
+                  type="number" step="0.01"
+                  placeholder={policyDefaultTaxPct > 0 ? `Política: ${fmt(policyDefaultTaxPct)}` : 'Ex: 7.65'}
                   value={taxPct} onChange={e => setTaxPct(e.target.value)}
                   className="mt-1"
                 />
+                {policyDefaultTaxPct > 0 && !taxPct && (
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Default da política: <strong>{fmt(policyDefaultTaxPct)}%</strong></p>
+                )}
               </div>
               <div>
                 <Label className="text-[11px] text-muted-foreground">Comissão (%)</Label>
                 <Input
-                  type="number" step="0.01" placeholder="Ex: 5"
+                  type="number" step="0.01"
+                  placeholder={policyDefaultCommissionPct > 0 ? `Política: ${fmt(policyDefaultCommissionPct)}` : 'Ex: 5'}
                   value={commissionPct} onChange={e => setCommissionPct(e.target.value)}
                   className="mt-1"
                 />
+                {policyDefaultCommissionPct > 0 && !commissionPct && (
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Default da política: <strong>{fmt(policyDefaultCommissionPct)}%</strong></p>
+                )}
               </div>
               <div>
                 <Label className="text-[11px] text-muted-foreground">Frete (R$/par)</Label>
@@ -546,8 +584,41 @@ export default function PricingByTechnicalSheetPanel() {
       {/* Resultado */}
       {sheetId && totalMaterialCost > 0 && results.isValid && (
         <Card className="border-primary/30 bg-primary/5 slash-top">
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-3 flex flex-row items-center justify-between gap-2">
             <CardTitle className="text-sm">Resultado</CardTitle>
+            <Button
+              size="sm"
+              variant="default"
+              className="gap-1.5 h-7 text-xs"
+              disabled={createSim.isPending}
+              onClick={() => {
+                const sheetMeta = sheets.find((s: any) => s.id === sheetId) as any;
+                createSim.mutate({
+                  sheet_id: sheetId,
+                  sheet_code: sheetMeta?.code ?? null,
+                  sheet_name: sheetMeta?.name ?? null,
+                  material_cost: results.numCost,
+                  labor_cost: results.numLabor,
+                  overhead_cost: results.numOverhead,
+                  packaging_cost: results.numPackaging,
+                  freight_cost: results.numFreight,
+                  total_cost: results.totalCost,
+                  tax_pct: parseFloat(taxPct) || 0,
+                  factoring_rate_pct: parseFloat(factoringRatePct) || 0,
+                  factoring_days: parseDays(days),
+                  factoring_total_pct: results.factoringTotalPct,
+                  commission_pct: parseFloat(commissionPct) || 0,
+                  profit_margin_pct: parseFloat(profitMarginPct) || 0,
+                  suggested_price: results.suggestedPrice,
+                  cash_price: results.cashPrice,
+                  real_profit: results.realProfit,
+                  notes: null,
+                });
+              }}
+            >
+              <Save className="h-3.5 w-3.5" />
+              {createSim.isPending ? 'Salvando...' : 'Salvar simulação'}
+            </Button>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -615,6 +686,68 @@ export default function PricingByTechnicalSheetPanel() {
                 A soma de impostos + margem + factoring + comissão chegou ou ultrapassou 100% — não é
                 possível calcular um preço viável. Reduza algum dos parâmetros.
               </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Histórico de simulações */}
+      {simulations.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <History className="h-4 w-4 text-primary" />
+              Histórico de simulações
+              <Badge variant="secondary" className="ml-auto text-[10px]">
+                {simulations.length} {simulations.length === 1 ? 'registro' : 'registros'}
+              </Badge>
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Últimas simulações salvas (50 mais recentes). Use pra comparar margens entre épocas/clientes.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-muted/50 border-b">
+                    <th className="text-left py-2 px-3 font-semibold uppercase tracking-wider text-[10px] text-muted-foreground">Quando</th>
+                    <th className="text-left py-2 px-3 font-semibold uppercase tracking-wider text-[10px] text-muted-foreground">Ficha</th>
+                    <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-[10px] text-muted-foreground">Custo</th>
+                    <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-[10px] text-muted-foreground">Margem</th>
+                    <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-[10px] text-muted-foreground">Preço</th>
+                    <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-[10px] text-muted-foreground">Lucro</th>
+                    <th className="w-10"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {simulations.map(s => (
+                    <tr key={s.id} className="hover:bg-muted/30">
+                      <td className="py-1.5 px-3 font-mono tabular-nums text-muted-foreground">
+                        {format(parseISO(s.created_at), 'dd/MM HH:mm')}
+                      </td>
+                      <td className="py-1.5 px-3 font-medium">
+                        {s.sheet_code ? `${s.sheet_code} — ${s.sheet_name}` : (s.sheet_name || '—')}
+                      </td>
+                      <td className="py-1.5 px-3 text-right font-mono tabular-nums">{fmtBRL(s.total_cost)}</td>
+                      <td className="py-1.5 px-3 text-right font-mono tabular-nums">{fmt(s.profit_margin_pct)}%</td>
+                      <td className="py-1.5 px-3 text-right font-mono tabular-nums font-bold text-primary">{fmtBRL(s.suggested_price)}</td>
+                      <td className="py-1.5 px-3 text-right font-mono tabular-nums text-success">{fmtBRL(s.real_profit)}</td>
+                      <td className="py-1.5 px-3 text-right">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => deleteSim.mutate(s.id)}
+                          title="Excluir simulação"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </CardContent>
         </Card>

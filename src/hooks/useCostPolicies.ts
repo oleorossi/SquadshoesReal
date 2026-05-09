@@ -10,6 +10,8 @@ export type CostPolicy = {
   monthly_production_target: number;
   freight_allocation_pct: number;
   packaging_cost_per_pair: number;
+  default_tax_pct: number;
+  default_commission_pct: number;
   active: boolean;
   notes: string;
 };
@@ -33,7 +35,7 @@ export function useUpdateCostPolicy() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<CostPolicy> }) => {
-      const numFields: (keyof CostPolicy)[] = ['overhead_rate_per_pair', 'freight_allocation_pct', 'packaging_cost_per_pair', 'overhead_monthly_total'];
+      const numFields: (keyof CostPolicy)[] = ['overhead_rate_per_pair', 'freight_allocation_pct', 'packaging_cost_per_pair', 'overhead_monthly_total', 'default_tax_pct', 'default_commission_pct'];
       for (const f of numFields) {
         const v = data[f];
         if (v !== undefined && (!Number.isFinite(v as number) || (v as number) < 0)) throw new Error(`Campo ${f} deve ser um número não-negativo.`);

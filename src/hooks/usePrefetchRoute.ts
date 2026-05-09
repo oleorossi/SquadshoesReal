@@ -14,6 +14,8 @@ const routeImports: Record<string, () => Promise<any>> = {
   '/relatorios/op': () => import('@/pages/RelOpA4'),
   '/relatorios/oee': () => import('@/pages/RelOeeA4'),
   '/relatorios/qualidade': () => import('@/pages/RelQualidadeA4'),
+  '/relatorios/refugo': () => import('@/pages/RelRefugoA4'),
+  '/relatorios/semanal': () => import('@/pages/RelSemanalA4'),
   '/estoque': () => import('@/pages/Index'),
   '/ajuste-estoque': () => import('@/pages/StockAdjustmentPage'),
   '/alertas-estoque': () => import('@/pages/StockAlerts'),

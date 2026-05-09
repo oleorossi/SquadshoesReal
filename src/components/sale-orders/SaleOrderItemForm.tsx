@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Trash2, Lock, ChevronsUpDown, Check, Package, ExternalLink, Search, Command, Palette, Plus, X, MessageSquare } from 'lucide-react';
+import { Trash2, Lock, ChevronsUpDown, Check, Package, ExternalLink, Search, Command, Palette, Plus, X, MessageSquare, Calculator } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { SaleOrderItemFormData } from '@/hooks/useSaleOrders';
@@ -528,6 +528,21 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             <p className="text-[9px] text-muted-foreground uppercase font-bold leading-none">Subtotal</p>
             <p className="font-mono font-bold text-sm text-primary leading-tight">{formatCurrency(itemTotal)}</p>
           </div>
+          {item.reference_id && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-primary"
+              title="Simular markup desta ficha (abre em nova aba)"
+              onClick={() => {
+                const url = `/pricing-calculator?tab=by-sheet&sheet=${item.reference_id}`;
+                window.open(url, '_blank', 'noopener');
+              }}
+            >
+              <Calculator className="h-4 w-4" />
+            </Button>
+          )}
           {canRemove && (
             <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => onRemove(index)}>
               <Trash2 className="h-4 w-4" />

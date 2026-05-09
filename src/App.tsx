@@ -737,6 +737,14 @@ const router = createBrowserRouter([
         lazy: () => import("./pages/RelQualidadeA4").then(m => ({ Component: m.default })),
       },
       {
+        path: "relatorios/refugo",
+        lazy: () => import("./pages/RelRefugoA4").then(m => ({ Component: m.default })),
+      },
+      {
+        path: "relatorios/semanal",
+        lazy: () => import("./pages/RelSemanalA4").then(m => ({ Component: m.default })),
+      },
+      {
         // Novidade — quadro tipo kanban CORTE→COSTURA→MONTAGEM→ACABAMENTO→EMBALAGEM
         path: "producao/fluxo",
         lazy: () => import("./pages/ProductionFlow").then(m => ({ Component: m.default })),
