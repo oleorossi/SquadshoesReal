@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { checkSectorCapacity, CapacityCheckInput } from '@/lib/sectorCapacity';
+import { nextDOW } from '@/lib/isoWeek';
 
 /**
  * Retorna a data mínima de faturamento (ISO yyyy-mm-dd) para um pedido de venda,
@@ -105,14 +106,29 @@ export async function computeMinBillingForNewOrder(
     try {
       const result = await checkSectorCapacity(items, candidate);
       if (!result.hasOverload) {
-        return { minDateISO: candidate, minWeekISO: toISOWeek(candidate) };
+        const snapped = snapToNextPickup(candidate);
+        return { minDateISO: snapped, minWeekISO: toISOWeek(snapped) };
       }
     } catch {
-      return { minDateISO: candidate, minWeekISO: toISOWeek(candidate) };
+      const snapped = snapToNextPickup(candidate);
+      return { minDateISO: snapped, minWeekISO: toISOWeek(snapped) };
     }
     // Avança em saltos de 2 dias úteis para reduzir o número de queries
     candidate = addBusinessDaysISO(candidate, 2);
   }
 
-  return { minDateISO: candidate, minWeekISO: toISOWeek(candidate) };
+  const snapped = snapToNextPickup(candidate);
+  return { minDateISO: snapped, minWeekISO: toISOWeek(snapped) };
+}
+
+/**
+ * Arredonda uma data ISO pra próxima janela de pickup viável (Terça=2 ou Sexta=5).
+ * Retorna a primeira janela >= dataBase. Espelha a lógica de
+ * compute_min_billing_date no DB pra garantir paridade entre PVs salvos
+ * (que usam SQL) e PVs em criação (que usam esta função client-side).
+ */
+function snapToNextPickup(iso: string): string {
+  const tue = nextDOW(iso, 2);
+  const fri = nextDOW(iso, 5);
+  return tue < fri ? tue : fri;
 }
