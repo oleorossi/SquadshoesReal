@@ -179,7 +179,7 @@ export default function MrpProjectionsTab() {
               <TrendingDown className="h-4 w-4 text-warning" />
               <span className="text-sm text-muted-foreground">Alerta ({days}d)</span>
             </div>
-            <p className="text-2xl font-bold mt-1">{summary.warning}</p>
+            <p className="display text-2xl tabular-nums mt-1">{summary.warning}</p>
           </CardContent>
         </Card>
         <Card>
@@ -188,7 +188,7 @@ export default function MrpProjectionsTab() {
               <TrendingUp className="h-4 w-4 text-success" />
               <span className="text-sm text-muted-foreground">OK ({days}d)</span>
             </div>
-            <p className="text-2xl font-bold mt-1">{summary.ok}</p>
+            <p className="display text-2xl tabular-nums mt-1">{summary.ok}</p>
           </CardContent>
         </Card>
         <Card>
@@ -197,7 +197,7 @@ export default function MrpProjectionsTab() {
               <Package className="h-4 w-4 text-primary" />
               <span className="text-sm text-muted-foreground">Itens Projetados</span>
             </div>
-            <p className="text-2xl font-bold mt-1">{projections.length}</p>
+            <p className="display text-2xl tabular-nums mt-1">{projections.length}</p>
           </CardContent>
         </Card>
       </div>

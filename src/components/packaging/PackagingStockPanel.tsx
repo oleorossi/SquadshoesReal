@@ -381,25 +381,25 @@ export default function PackagingStockPanel() {
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
         <Card>
           <CardContent className="pt-4 pb-3 text-center">
-            <p className="text-2xl font-bold">{boxTypes.length}</p>
+            <p className="display text-2xl tabular-nums">{boxTypes.length}</p>
             <p className="text-xs text-muted-foreground">Tipos cadastrados</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4 pb-3 text-center">
-            <p className="text-2xl font-bold">{totalUnits}</p>
+            <p className="display text-2xl tabular-nums">{totalUnits}</p>
             <p className="text-xs text-muted-foreground">Unidades em estoque</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4 pb-3 text-center">
-            <p className="text-2xl font-bold text-destructive">{lowStock}</p>
+            <p className="display text-2xl tabular-nums text-destructive">{lowStock}</p>
             <p className="text-xs text-muted-foreground">Estoque baixo</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4 pb-3 text-center">
-            <p className="text-2xl font-bold font-mono">{fmtBRL(totalValue)}</p>
+            <p className="display text-2xl tabular-nums">{fmtBRL(totalValue)}</p>
             <p className="text-xs text-muted-foreground">Valor total em estoque</p>
           </CardContent>
         </Card>

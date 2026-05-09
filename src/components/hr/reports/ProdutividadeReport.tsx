@@ -183,7 +183,7 @@ export default function ProdutividadeReport() {
     <div className="space-y-5 page-enter">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="display text-xl tracking-tight flex items-center gap-2">
             <Activity className="h-5 w-5 text-primary" />
             Produtividade por Setor
           </h1>
@@ -214,11 +214,11 @@ export default function ProdutividadeReport() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Pares finalizados</p>
-          <p className="text-2xl font-bold font-mono">{totals.pairs.toLocaleString('pt-BR')}</p>
+          <p className="display text-2xl tabular-nums">{totals.pairs.toLocaleString('pt-BR')}</p>
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Funcionários alocados</p>
-          <p className="text-2xl font-bold">{totals.totalEmps}</p>
+          <p className="display text-2xl tabular-nums">{totals.totalEmps}</p>
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Folha base alocada</p>

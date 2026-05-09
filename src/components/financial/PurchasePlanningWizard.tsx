@@ -717,19 +717,19 @@ export default function PurchasePlanningWizard() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <Card className="border-primary/30 bg-primary/5">
                   <CardContent className="pt-4 pb-3 text-center">
-                    <p className="text-2xl font-bold text-primary">{totalOrdersAll}</p>
+                    <p className="display text-2xl tabular-nums text-primary">{totalOrdersAll}</p>
                     <p className="text-xs text-muted-foreground">OPs em aberto</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="pt-4 pb-3 text-center">
-                    <p className="text-2xl font-bold">{totalPairsAll.toLocaleString()}</p>
+                    <p className="display text-2xl tabular-nums">{totalPairsAll.toLocaleString()}</p>
                     <p className="text-xs text-muted-foreground">Pares totais</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="pt-4 pb-3 text-center">
-                    <p className="text-2xl font-bold">{availableWeeks.length}</p>
+                    <p className="display text-2xl tabular-nums">{availableWeeks.length}</p>
                     <p className="text-xs text-muted-foreground">Semanas</p>
                   </CardContent>
                 </Card>
@@ -836,11 +836,11 @@ export default function PurchasePlanningWizard() {
               <div className="flex items-center justify-between bg-muted/50 rounded-lg p-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Itens selecionados</p>
-                  <p className="text-2xl font-bold">{selectedMaterials.filter(m => m.selected).length} / {selectedMaterials.length}</p>
+                  <p className="display text-2xl tabular-nums">{selectedMaterials.filter(m => m.selected).length} / {selectedMaterials.length}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-sm text-muted-foreground">Investimento estimado</p>
-                  <p className="text-2xl font-bold text-primary">
+                  <p className="display text-2xl tabular-nums text-primary">
                     {fmt(selectedMaterials.filter(m => m.selected).reduce((s, m) => s + m.estimated_cost, 0))}
                   </p>
                 </div>
@@ -979,21 +979,21 @@ export default function PurchasePlanningWizard() {
                 <Card>
                   <CardContent className="pt-4 text-center">
                     <DollarSign className="h-8 w-8 mx-auto text-primary mb-2" />
-                    <p className="text-2xl font-bold">{fmt(selectedMaterials.filter(m => m.selected && m.stock_after < 0).reduce((s, m) => s + m.estimated_cost, 0))}</p>
+                    <p className="display text-2xl tabular-nums">{fmt(selectedMaterials.filter(m => m.selected && m.stock_after < 0).reduce((s, m) => s + m.estimated_cost, 0))}</p>
                     <p className="text-xs text-muted-foreground">Investimento Total</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="pt-4 text-center">
                     <Package className="h-8 w-8 mx-auto text-primary mb-2" />
-                    <p className="text-2xl font-bold">{selectedMaterials.filter(m => m.selected && m.stock_after < 0).length}</p>
+                    <p className="display text-2xl tabular-nums">{selectedMaterials.filter(m => m.selected && m.stock_after < 0).length}</p>
                     <p className="text-xs text-muted-foreground">Itens no Plano</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="pt-4 text-center">
                     <Calendar className="h-8 w-8 mx-auto text-primary mb-2" />
-                    <p className="text-2xl font-bold">{format(addDays(new Date(), 7), 'dd/MM')}</p>
+                    <p className="display text-2xl tabular-nums">{format(addDays(new Date(), 7), 'dd/MM')}</p>
                     <p className="text-xs text-muted-foreground">Data Sugerida de Envio</p>
                   </CardContent>
                 </Card>

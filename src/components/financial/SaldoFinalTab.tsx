@@ -257,7 +257,7 @@ export default function SaldoFinalTab() {
         <Card>
           <CardContent className="pt-4 pb-3 text-center">
             <Package className="h-5 w-5 mx-auto mb-1 text-primary" />
-            <p className="text-2xl font-bold">{filtered.length}</p>
+            <p className="display text-2xl tabular-nums">{filtered.length}</p>
             <p className="text-xs text-muted-foreground">Materiais Analisados</p>
           </CardContent>
         </Card>
@@ -271,7 +271,7 @@ export default function SaldoFinalTab() {
         <Card>
           <CardContent className="pt-4 pb-3 text-center">
             <AlertTriangle className="h-5 w-5 mx-auto mb-1 text-warning" />
-            <p className="text-2xl font-bold">{visibleWeeks.length}/{allWeekLabels.length}</p>
+            <p className="display text-2xl tabular-nums">{visibleWeeks.length}/{allWeekLabels.length}</p>
             <p className="text-xs text-muted-foreground">Semanas Visíveis</p>
           </CardContent>
         </Card>

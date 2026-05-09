@@ -162,11 +162,11 @@ export default function PrevistasVsTrabalhadasReport() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Funcionários no período</p>
-          <p className="text-2xl font-bold">{totals.empCount}</p>
+          <p className="display text-2xl tabular-nums">{totals.empCount}</p>
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Total previsto</p>
-          <p className="text-2xl font-bold font-mono">{fmtMin(totals.expected)}</p>
+          <p className="display text-2xl tabular-nums">{fmtMin(totals.expected)}</p>
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Total trabalhado</p>

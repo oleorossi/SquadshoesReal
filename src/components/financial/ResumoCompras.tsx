@@ -15,7 +15,7 @@ export const ResumoCompras: React.FC<ResumoComprasProps> = ({ resumo }) => {
           <TrendingUp className="h-8 w-8 text-primary shrink-0" />
           <div>
             <p className="text-sm text-muted-foreground">Custo Total</p>
-            <p className="text-2xl font-bold text-foreground">R$ {resumo.custoTotal.toFixed(2)}</p>
+            <p className="display text-2xl tabular-nums text-foreground">R$ {resumo.custoTotal.toFixed(2)}</p>
           </div>
         </CardContent>
       </Card>
@@ -24,7 +24,7 @@ export const ResumoCompras: React.FC<ResumoComprasProps> = ({ resumo }) => {
           <AlertTriangle className={`h-8 w-8 shrink-0 ${resumo.quantidadeItens.critico > 0 ? 'text-destructive' : 'text-muted-foreground'}`} />
           <div>
             <p className="text-sm text-muted-foreground">Críticos</p>
-            <p className="text-2xl font-bold text-foreground">{resumo.quantidadeItens.critico}</p>
+            <p className="display text-2xl tabular-nums text-foreground">{resumo.quantidadeItens.critico}</p>
             <p className="text-xs text-muted-foreground">R$ {resumo.custoPorCategoria.critico.toFixed(2)}</p>
           </div>
         </CardContent>

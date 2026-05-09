@@ -624,7 +624,7 @@ function KpiBox({ label, value, tone }: { label: string; value: number | string;
         {tone === 'late' && <AlertTriangle className="h-3 w-3 text-destructive" />}
         {label}
       </div>
-      <div className="text-2xl font-bold">{value}</div>
+      <div className="display text-2xl tabular-nums">{value}</div>
     </div>
   );
 }

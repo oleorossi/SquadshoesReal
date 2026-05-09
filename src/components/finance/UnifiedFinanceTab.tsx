@@ -65,7 +65,7 @@ export default function UnifiedFinanceTab({
         <Card className="bg-destructive/5 border-destructive/20">
           <CardContent className="pt-4">
             <p className="text-xs font-semibold text-destructive uppercase">Total a Pagar</p>
-            <p className="text-2xl font-bold text-destructive">{fmt(totals.payable)}</p>
+            <p className="display text-2xl tabular-nums text-destructive">{fmt(totals.payable)}</p>
           </CardContent>
         </Card>
         <Card className="bg-emerald-50 border-emerald-200">

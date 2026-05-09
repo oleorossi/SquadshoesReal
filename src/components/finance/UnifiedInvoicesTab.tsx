@@ -37,7 +37,7 @@ export default function UnifiedInvoicesTab() {
         <Card className="bg-primary/5 border-primary/20">
           <CardContent className="pt-4">
             <p className="text-xs font-semibold text-primary uppercase">Total no Mês (Entrada)</p>
-            <p className="text-2xl font-bold">R$ 45.230,00</p>
+            <p className="display text-2xl tabular-nums">R$ 45.230,00</p>
             <p className="text-[10px] text-muted-foreground">12 notas processadas</p>
           </CardContent>
         </Card>

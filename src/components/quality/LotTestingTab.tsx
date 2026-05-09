@@ -55,7 +55,7 @@ export default function LotTestingTab() {
             </div>
             <div>
               <p className="text-xs text-muted-foreground uppercase font-semibold">Total Realizado</p>
-              <p className="text-2xl font-bold">{inspections.length}</p>
+              <p className="display text-2xl tabular-nums">{inspections.length}</p>
             </div>
           </CardContent>
         </Card>
@@ -79,7 +79,7 @@ export default function LotTestingTab() {
             </div>
             <div>
               <p className="text-xs text-muted-foreground uppercase font-semibold">Reprovados</p>
-              <p className="text-2xl font-bold text-destructive">
+              <p className="display text-2xl tabular-nums text-destructive">
                 {inspections.filter((i: any) => i.status === 'rejected' || i.status === 'fail').length}
               </p>
             </div>
