@@ -426,11 +426,12 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
     <>
       <div className="space-y-5 page-enter">
         <NonFiniteDevWatcher />
-        {/* Header */}
+        {/* Header — Novidade editorial */}
         <div className="flex items-center justify-between">
           <div>
-             <h1 className="text-xl font-bold tracking-tight">Fichas Técnicas</h1>
-             <p className="text-sm text-muted-foreground">Materiais, consumos e custos</p>
+             <div className="eyebrow">Engenharia · BOM</div>
+             <h1 className="display text-2xl mt-1.5 sm:text-3xl">Fichas Técnicas</h1>
+             <p className="text-sm text-muted-foreground mt-1">Materiais, consumos e custos</p>
           </div>
           <div className="flex items-center gap-2">
             <SheetsAuditButton onJumpToSheet={(id) => setExpandedId(id)} />

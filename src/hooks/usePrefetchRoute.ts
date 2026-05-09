@@ -9,6 +9,8 @@ const routeImports: Record<string, () => Promise<any>> = {
   '/quality': () => import('@/pages/Quality'),
   '/capacity-planning': () => import('@/pages/CapacityPlanning'),
   '/producao': () => import('@/pages/ProducaoDashboard'),
+  '/producao/fluxo': () => import('@/pages/ProductionFlow'),
+  '/relatorios/diario-producao': () => import('@/pages/RelDiarioA4'),
   '/estoque': () => import('@/pages/Index'),
   '/ajuste-estoque': () => import('@/pages/StockAdjustmentPage'),
   '/alertas-estoque': () => import('@/pages/StockAlerts'),

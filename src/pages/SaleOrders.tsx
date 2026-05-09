@@ -1137,11 +1137,15 @@ export default function SaleOrders() {
   return (
     <>
       <div className="w-full space-y-6 page-enter">
-        {/* Header */}
+        {/* Header — Novidade editorial */}
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
           <div>
-            <h1 className="text-xl font-bold tracking-tight">Pedidos de Venda</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">Gestão comercial e geração de ordens de produção</p>
+            <div className="eyebrow flex items-center gap-2">
+              <span className="live-dot" />
+              Comercial · Pipeline
+            </div>
+            <h1 className="display text-2xl mt-2 sm:text-3xl">Pedidos de Venda</h1>
+            <p className="text-sm text-muted-foreground mt-1">Gestão comercial e geração de ordens de produção</p>
           </div>
           <div className="flex items-center gap-2">
             <Button onClick={() => navigate('/sales/new')} className="gap-2">
@@ -1316,51 +1320,51 @@ export default function SaleOrders() {
           </button>
         </div>
 
-        {/* KPI Cards */}
+        {/* KPI Cards — Novidade editorial */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Card className="border-border/50">
+          <Card className="border-border/50 slash-top">
             <CardContent className="p-4 flex items-center gap-3">
               <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                 <ShoppingCart className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground font-medium">Total Pedidos</p>
-                <p className="text-xl font-bold">{kpis.count}</p>
+                <p className="eyebrow">Total Pedidos</p>
+                <p className="display text-2xl tabular-nums mt-1">{kpis.count}</p>
                 <p className="text-[10px] text-muted-foreground">{totalPares.toLocaleString('pt-BR')} pares</p>
               </div>
             </CardContent>
           </Card>
-          <Card className="border-border/50">
+          <Card className="border-border/50 slash-top">
             <CardContent className="p-4 flex items-center gap-3">
               <div className="h-10 w-10 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0">
                 <Clock className="h-5 w-5 text-amber-600" />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground font-medium">Pendentes</p>
-                <p className="text-xl font-bold">{kpis.pending}</p>
+                <p className="eyebrow">Pendentes</p>
+                <p className="display text-2xl tabular-nums mt-1">{kpis.pending}</p>
               </div>
             </CardContent>
           </Card>
-          <Card className="border-border/50">
+          <Card className="border-border/50 slash-top">
             <CardContent className="p-4 flex items-center gap-3">
               <div className="h-10 w-10 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
                 <Package className="h-5 w-5 text-emerald-600" />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground font-medium">Aprovados</p>
-                <p className="text-xl font-bold">{kpis.approved}</p>
+                <p className="eyebrow">Aprovados</p>
+                <p className="display text-2xl tabular-nums mt-1">{kpis.approved}</p>
                 <p className="text-[10px] text-muted-foreground">{kpis.inProduction} em produção</p>
               </div>
             </CardContent>
           </Card>
-          <Card className="border-border/50">
+          <Card className="border-border/50 slash-top">
             <CardContent className="p-4 flex items-center gap-3">
               <div className="h-10 w-10 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
                 <DollarSign className="h-5 w-5 text-violet-600" />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground font-medium">Valor Total</p>
-                <p className="text-lg font-bold font-mono">{formatCurrency(kpis.total)}</p>
+                <p className="eyebrow">Valor Total</p>
+                <p className="display text-xl tabular-nums mt-1">{formatCurrency(kpis.total)}</p>
               </div>
             </CardContent>
           </Card>

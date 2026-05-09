@@ -720,6 +720,16 @@ const router = createBrowserRouter([
         lazy: () => import("./pages/Reports").then(m => ({ Component: m.default })),
       },
       {
+        // Novidade A4 — relatório diário de produção (template do redesign)
+        path: "relatorios/diario-producao",
+        lazy: () => import("./pages/RelDiarioA4").then(m => ({ Component: m.default })),
+      },
+      {
+        // Novidade — quadro tipo kanban CORTE→COSTURA→MONTAGEM→ACABAMENTO→EMBALAGEM
+        path: "producao/fluxo",
+        lazy: () => import("./pages/ProductionFlow").then(m => ({ Component: m.default })),
+      },
+      {
         path: "automations",
         lazy: () => import("./pages/Automations").then(m => ({ Component: m.default })),
       },

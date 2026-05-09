@@ -47,6 +47,8 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/producao': 'producao',
   '/producao/live': 'producao',
   '/producao/timeline': 'producao',
+  '/producao/fluxo': 'producao',
+  '/relatorios/diario-producao': 'reports',
   '/production-dashboard': 'producao',
   '/financeiro': 'financeiro',
   '/rh': 'rh',

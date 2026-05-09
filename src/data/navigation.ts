@@ -47,6 +47,7 @@ export const menuGroups = [
     items: [
       { name: "PCP",              icon: Kanban,            path: "/pcp" },
       { name: "Ordens (OPs)",     icon: ListChecks,        path: "/orders" },
+      { name: "Fluxo",            icon: Kanban,            path: "/producao/fluxo" },
       { name: "Live",             icon: Activity,          path: "/producao/live" },
       { name: "Timeline",         icon: GanttChartSquare,  path: "/producao/timeline" },
       { name: "Capacidade",       icon: BarChart3,         path: "/capacity-planning" },
