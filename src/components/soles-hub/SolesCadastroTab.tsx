@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Save, Pencil, Settings2, Layers, Palette } from 'lucide-react';
+import { Save, Pencil, Settings2, Layers, Palette, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { SoleSizeConjugationsEditor } from '@/components/inventory/SoleSizeConjugationsEditor';
 import type { SoleProduct } from './types';
@@ -29,48 +29,121 @@ export default function SolesCadastroTab({ sole }: Props) {
   // Conjugações deste solado (ou do grupo, se group_id)
   const groupId = sole.group_id;
 
+  /**
+   * Decisão de modelagem (Squad Shoes, mai/2026):
+   * Cor de solado é variante de ESTOQUE/EXPEDIÇÃO, não de tecnologia.
+   * Tudo que é técnico (nome, range de numeração, conjugação, consumo,
+   * itens padrão) é COMPARTILHADO entre cores do mesmo solado.
+   * Por isso ao salvar, replicamos pras siblings (mesmo group_id).
+   *
+   * O que NÃO replica:
+   *   - cor (óbvio)
+   *   - sku   (cada variante tem SKU próprio, ex: SOL01-PRT vs SOL01-CAR)
+   *   - quantity / stock_grade qty (estoque por cor)
+   *
+   * O que REPLICA:
+   *   - name (mesmo modelo de solado)
+   *   - stock_grade _size_from / _size_to (range de numeração)
+   */
+  const replicateToSiblings = async (patch: { name?: string; gradeRange?: { from: number; to: number } }) => {
+    if (!groupId) return { count: 0 }; // sem group_id = sem siblings
+    const { data: siblings } = await supabase
+      .from('products')
+      .select('id, stock_grade')
+      .eq('group_id', groupId)
+      .neq('id', sole.id);
+
+    let count = 0;
+    for (const sib of (siblings || [])) {
+      const updates: any = {};
+      if (patch.name !== undefined) updates.name = patch.name;
+      if (patch.gradeRange) {
+        const grade = { ...(sib.stock_grade as any || {}), _size_from: patch.gradeRange.from, _size_to: patch.gradeRange.to };
+        updates.stock_grade = grade;
+      }
+      if (Object.keys(updates).length === 0) continue;
+      const { error } = await supabase.from('products').update(updates).eq('id', sib.id);
+      if (!error) count++;
+    }
+    return { count };
+  };
+
   const update = useMutation({
-    mutationFn: async (patch: Partial<SoleProduct>) => {
-      const { error } = await supabase.from('products').update(patch as any).eq('id', sole.id);
+    mutationFn: async (patch: { name: string; sku: string | null; color: string | null; gradeRange?: { from: number; to: number } }) => {
+      // 1. Atualiza o produto selecionado (todos os campos)
+      const updates: any = {
+        name: patch.name,
+        sku: patch.sku,
+        color: patch.color,
+      };
+      if (patch.gradeRange) {
+        const grade = { ...(sole.stock_grade as any || {}), _size_from: patch.gradeRange.from, _size_to: patch.gradeRange.to };
+        updates.stock_grade = grade;
+      }
+      const { error } = await supabase.from('products').update(updates).eq('id', sole.id);
       if (error) throw error;
+
+      // 2. Replica name + gradeRange pras siblings (cor diferente, mesmo modelo)
+      const nameChanged = patch.name !== sole.name;
+      const rangeChanged = !!patch.gradeRange;
+      let siblingCount = 0;
+      if (nameChanged || rangeChanged) {
+        const result = await replicateToSiblings({
+          name: nameChanged ? patch.name : undefined,
+          gradeRange: patch.gradeRange,
+        });
+        siblingCount = result.count;
+      }
+      return { siblingCount };
     },
-    onSuccess: () => {
+    onSuccess: ({ siblingCount }) => {
       qc.invalidateQueries({ queryKey: ['soles_hub_products'] });
       qc.invalidateQueries({ queryKey: ['products'] });
-      toast.success('Cadastro atualizado!');
+      if (siblingCount > 0) {
+        toast.success(`Cadastro atualizado · propagado para ${siblingCount} ${siblingCount === 1 ? 'cor' : 'cores'} adicionais.`);
+      } else {
+        toast.success('Cadastro atualizado!');
+      }
       setEditing(false);
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const updateGrade = useMutation({
-    mutationFn: async ({ from, to }: { from: number; to: number }) => {
-      const grade = { ...(sole.stock_grade as any || {}), _size_from: from, _size_to: to };
-      const { error } = await supabase.from('products').update({ stock_grade: grade } as any).eq('id', sole.id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['soles_hub_products'] });
-      qc.invalidateQueries({ queryKey: ['products'] });
-      toast.success('Range de numeração atualizado!');
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
   const handleSave = () => {
+    const currentFrom = (sole.stock_grade as any)?._size_from ?? 33;
+    const currentTo = (sole.stock_grade as any)?._size_to ?? 40;
+    const rangeChanged = form.size_from !== currentFrom || form.size_to !== currentTo;
+
     update.mutate({
       name: form.name,
       sku: form.sku || null,
       color: form.color || null,
+      gradeRange: rangeChanged ? { from: Number(form.size_from), to: Number(form.size_to) } : undefined,
     });
-    if (form.size_from !== ((sole.stock_grade as any)?._size_from ?? 33) ||
-        form.size_to !== ((sole.stock_grade as any)?._size_to ?? 40)) {
-      updateGrade.mutate({ from: Number(form.size_from), to: Number(form.size_to) });
-    }
   };
 
   return (
     <div className="space-y-4">
+      {/* Aviso: o que é compartilhado vs. por cor */}
+      {groupId && (
+        <Card className="border-amber-300/60 bg-amber-50/30 dark:bg-amber-950/10">
+          <CardContent className="py-3 px-4 flex items-start gap-2">
+            <Info className="h-4 w-4 text-amber-700 dark:text-amber-400 mt-0.5 shrink-0" />
+            <div className="text-xs text-amber-900 dark:text-amber-200 space-y-1">
+              <p>
+                <strong>O que é compartilhado entre cores:</strong> nome, range de numeração,
+                conjugações (33/34, 39/40), consumo de Forração/Palmilha e Itens Padrão.
+                Editar aqui propaga automaticamente.
+              </p>
+              <p>
+                <strong>O que fica por cor:</strong> SKU, estoque por numeração e a conjugação
+                cabedal × solado (silk também — artes mudam por cor).
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Cadastro básico */}
       <Card>
         <CardHeader className="pb-3 flex flex-row items-center justify-between">
@@ -98,7 +171,10 @@ export default function SolesCadastroTab({ sole }: Props) {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label className="text-xs">Nome do solado</Label>
+              <Label className="text-xs flex items-center gap-1.5">
+                Nome do solado
+                {groupId && <span className="text-[9px] text-primary uppercase tracking-wider font-bold">· compartilhado</span>}
+              </Label>
               <Input
                 value={form.name}
                 onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
@@ -106,7 +182,10 @@ export default function SolesCadastroTab({ sole }: Props) {
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">SKU</Label>
+              <Label className="text-xs flex items-center gap-1.5">
+                SKU
+                <span className="text-[9px] text-muted-foreground uppercase tracking-wider font-bold">· por cor</span>
+              </Label>
               <Input
                 value={form.sku}
                 onChange={e => setForm(f => ({ ...f, sku: e.target.value }))}
@@ -117,6 +196,7 @@ export default function SolesCadastroTab({ sole }: Props) {
             <div className="space-y-1.5">
               <Label className="text-xs flex items-center gap-1.5">
                 <Palette className="h-3 w-3" /> Cor
+                <span className="text-[9px] text-muted-foreground uppercase tracking-wider font-bold">· por variante</span>
               </Label>
               <Input
                 value={form.color}
@@ -128,6 +208,7 @@ export default function SolesCadastroTab({ sole }: Props) {
             <div className="space-y-1.5">
               <Label className="text-xs flex items-center gap-1.5">
                 <Layers className="h-3 w-3" /> Range de numeração
+                {groupId && <span className="text-[9px] text-primary uppercase tracking-wider font-bold">· compartilhado</span>}
               </Label>
               <div className="flex gap-2 items-center">
                 <Input

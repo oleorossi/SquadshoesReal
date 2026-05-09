@@ -165,26 +165,39 @@ export default function SolesHub() {
               ) : (
                 <ScrollArea className="h-[600px]">
                   <div className="divide-y">
-                    {/* UMA linha por base (não duplica por cor). Consumo é por
-                        REFERÊNCIA do solado, não por cor. Ao clicar, mostra um
-                        produto representativo (qualquer cor) e o handleSave em
-                        SoleTechnicalDetails replica pras outras cores do mesmo
-                        group_id automaticamente. */}
-                    {grouped.map(group => {
-                      // Pega o produto principal (sem cor, ou primeiro da lista)
-                      const main = group.items.find(p => !p.color || p.color.trim() === '') || group.items[0];
-                      const colorCount = group.items.filter(p => p.color && p.color.trim()).length;
-                      return (
-                        <div key={group.base} className="py-1">
-                          <SoleListItem
-                            sole={main}
-                            colorCount={colorCount}
-                            selected={selectedId === main.id || group.items.some(i => i.id === selectedId)}
-                            onSelect={() => setSelectedId(main.id)}
-                          />
+                    {/* Lista expandida — 1 linha POR COR (não agrupa).
+                        Decisão (mai/2026): cor é variante de estoque/expedição,
+                        mas o usuário precisa enxergar cada uma como item separado
+                        pra ver e ajustar estoque. Toda info técnica (consumo,
+                        conjugação de numeração, range, nome) já replica entre
+                        cores ao salvar — então o "duplicar visual" não duplica
+                        o cadastro técnico de fato. Cabeçalho do grupo agrupa
+                        visualmente as cores do mesmo modelo. */}
+                    {grouped.map(group => (
+                      <div key={group.base}>
+                        {/* Header do grupo (modelo) */}
+                        <div className="px-3 py-1.5 bg-muted/30 border-b border-border/60 flex items-center justify-between">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+                            {group.base}
+                          </span>
+                          <Badge variant="secondary" className="text-[9px] h-4 px-1 leading-none">
+                            {group.items.length} {group.items.length === 1 ? 'cor' : 'cores'}
+                          </Badge>
                         </div>
-                      );
-                    })}
+                        {/* Lista de cores do grupo */}
+                        {group.items
+                          .slice()
+                          .sort((a, b) => (a.color || '').localeCompare(b.color || '', 'pt-BR'))
+                          .map(item => (
+                            <SoleListItem
+                              key={item.id}
+                              sole={item}
+                              selected={selectedId === item.id}
+                              onSelect={() => setSelectedId(item.id)}
+                            />
+                          ))}
+                      </div>
+                    ))}
                   </div>
                 </ScrollArea>
               )}
@@ -252,34 +265,35 @@ export default function SolesHub() {
   );
 }
 
-// ── Item da lista lateral ─────────────────────────────────────────────────
-function SoleListItem({ sole, selected, onSelect, colorCount }: {
+// ── Item da lista lateral (1 linha = 1 cor) ───────────────────────────────
+function SoleListItem({ sole, selected, onSelect }: {
   sole: SoleProduct;
   selected: boolean;
   onSelect: () => void;
-  colorCount?: number;
 }) {
   const total = gradeTotal(sole.stock_grade);
   const isLow = total < (sole.min_stock || 0);
   const isZero = total === 0;
-  // Nome base sem o (cor) entre parênteses
-  const nameBase = sole.name.replace(/\s*\([^)]*\)\s*$/, '').trim();
+  const colorLabel = sole.color?.trim() || '— sem cor';
   return (
     <button
       onClick={onSelect}
       className={cn(
-        'w-full text-left px-3 py-2 hover:bg-muted/50 transition-colors flex items-center justify-between gap-2',
+        'w-full text-left pl-5 pr-3 py-2 hover:bg-muted/50 transition-colors flex items-center justify-between gap-2',
         selected && 'bg-primary/10 hover:bg-primary/15 border-l-2 border-l-primary'
       )}
     >
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium truncate">{nameBase}</p>
-        <div className="flex items-center gap-1.5 mt-0.5">
-          {colorCount && colorCount > 0 ? (
-            <Badge variant="outline" className="text-[9px] h-4 px-1 leading-none">
-              {colorCount} {colorCount === 1 ? 'cor' : 'cores'}
-            </Badge>
-          ) : null}
+        <div className="flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-foreground/40 shrink-0" aria-hidden="true" />
+          <p className="text-sm font-medium truncate">{colorLabel}</p>
+        </div>
+        <div className="flex items-center gap-1.5 mt-0.5 ml-3.5">
+          {sole.sku && (
+            <span className="font-mono text-[9px] text-muted-foreground/70 truncate max-w-[80px]">
+              {sole.sku}
+            </span>
+          )}
           <span className={cn(
             'text-[10px] font-mono',
             isZero ? 'text-rose-600' : isLow ? 'text-amber-600' : 'text-muted-foreground'
