@@ -32,7 +32,7 @@ const routeImports: Record<string, () => Promise<any>> = {
   '/custos-insumos': () => import('@/pages/InputCostsPage'),
   '/finance': () => import('@/pages/Finance'),
   '/nfe': () => import('@/pages/NfePage'),
-  '/financeiro': () => import('@/pages/FinanceiroDashboard'),
+  '/financeiro': () => import('@/pages/Finance'),
   // Atalhos legados — Employees e Timesheet agora vivem como abas dentro do hub /rh.
   // Os paths abaixo fazem prefetch do hub para que os redirects /employees → /rh
   // e /timesheet → /rh sejam instantâneos.

@@ -96,7 +96,6 @@ export const menuGroups = [
     icon: Wallet,
     items: [
       { name: "Financeiro",       icon: Wallet,         path: "/financeiro" },
-      { name: "Contas (AR/AP)",   icon: DollarSign,     path: "/finance" },
       { name: "NF-e",             icon: Receipt,        path: "/nfe" },
     ],
   },

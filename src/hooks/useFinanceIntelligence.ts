@@ -194,12 +194,14 @@ export function useDREAuto(monthsBack: number = 6) {
       });
 
       // Despesas por categoria
+      // Auditoria mai/2026: 'frete' agora compõe CMV (frete sobre compras é
+      // custo do produto). Antes ia pra "desp. operacional" e inflava o EBITDA.
       (payRes.data || []).forEach((p) => {
         const m = p.due_date.substring(0, 7);
         if (!months[m]) return;
         const v = Number(p.amount);
         const cat = p.category;
-        if (cat === 'material' || cat === 'mao_de_obra') {
+        if (cat === 'material' || cat === 'mao_de_obra' || cat === 'frete') {
           months[m].cmv += v;
         } else if (cat === 'imposto') {
           months[m].impostos += v;

@@ -51,7 +51,7 @@ const ProductionLive = lazy(() => import("./pages/ProductionLive"));
 const ProductionTimeline = lazy(() => import("./pages/ProductionTimeline"));
 const BankHours = lazy(() => import("./pages/BankHours"));
 // ProductionDashboardPage removido — funcionalidade unificada em /producao (ProducaoDashboard).
-const FinanceiroDashboard = lazy(() => import("./pages/FinanceiroDashboard"));
+// FinanceiroDashboard removido — /financeiro agora renderiza o Finance.tsx unificado (mai/2026).
 const RHHub = lazy(() => import("./pages/RHHub"));
 // Labels page removed — unified into LabelSystem
 const Transport = lazy(() => import("./pages/Transport"));
@@ -585,7 +585,7 @@ const router = createBrowserRouter([
       },
       {
         path: "finance",
-        element: <Finance />,
+        element: <Navigate to="/financeiro" replace />,
       },
       {
         path: "custos-insumos",
@@ -656,7 +656,7 @@ const router = createBrowserRouter([
       },
       {
         path: "financeiro",
-        element: <FinanceiroDashboard />,
+        element: <Finance />,
       },
       {
         path: "rh",

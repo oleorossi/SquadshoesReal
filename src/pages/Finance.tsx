@@ -1,5 +1,5 @@
-import AppLayout from "@/components/layout/AppLayout";
 import { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { usePersistedState } from '@/hooks/usePersistedState';
@@ -53,6 +53,7 @@ import FactoringTab from '@/components/finance/FactoringTab';
 import FinanceAttachments from '@/components/finance/FinanceAttachments';
 import { FinanceReportsTab } from '@/components/finance/FinanceReportsTab';
 import { SmartDashboard } from '@/components/finance/SmartDashboard';
+import { NetMarginChart } from '@/components/finance/NetMarginChart';
 
 const fmt = (v: number | null | undefined) => {
   const n = Number(v);
@@ -788,6 +789,47 @@ export default function Finance() {
   const [editingPayable, setEditingPayable] = useState<AccountPayable | null>(null);
   const [editingReceivable, setEditingReceivable] = useState<AccountReceivable | null>(null);
   const [financeTab, setFinanceTab] = usePersistedState('financeTab', 'dashboard');
+  const [accountsSubTab, setAccountsSubTab] = useState<'payable' | 'receivable'>('payable');
+  const [searchParams] = useSearchParams();
+
+  // Migra valor legado em localStorage ('operational' → 'comissoes-factoring').
+  // Sem isso, usuários com a tab antiga em cache veem a página em branco até clicarem.
+  useEffect(() => {
+    const VALID_TABS = ['dashboard', 'accounts', 'invoices', 'comissoes-factoring', 'reports'];
+    if (!VALID_TABS.includes(financeTab)) {
+      setFinanceTab(financeTab === 'operational' ? 'comissoes-factoring' : 'dashboard');
+    }
+  }, [financeTab, setFinanceTab]);
+
+  // Deep-link via ?tab=… — usado por SmartDashboard e atalhos externos.
+  const requestedTab = searchParams.get('tab');
+  useEffect(() => {
+    if (!requestedTab) return;
+    const map: Record<string, { tab: string; sub?: 'payable' | 'receivable' }> = {
+      dashboard: { tab: 'dashboard' },
+      visao:     { tab: 'dashboard' },
+      accounts:  { tab: 'accounts' },
+      contas:    { tab: 'accounts' },
+      payable:   { tab: 'accounts', sub: 'payable' },
+      receivable:{ tab: 'accounts', sub: 'receivable' },
+      invoices:  { tab: 'invoices' },
+      notas:     { tab: 'invoices' },
+      operational:{ tab: 'comissoes-factoring' },
+      'comissoes-factoring': { tab: 'comissoes-factoring' },
+      comissoes: { tab: 'comissoes-factoring' },
+      factoring: { tab: 'comissoes-factoring' },
+      reports:   { tab: 'reports' },
+      relatorios:{ tab: 'reports' },
+      dre:       { tab: 'reports' },
+      cashflow:  { tab: 'reports' },
+      aging:     { tab: 'reports' },
+    };
+    const target = map[requestedTab];
+    if (target) {
+      setFinanceTab(target.tab);
+      if (target.sub) setAccountsSubTab(target.sub);
+    }
+  }, [requestedTab, setFinanceTab]);
   const [selectedReceivables, setSelectedReceivables] = useState<Set<string>>(new Set());
   const [payableSearch, setPayableSearch] = useState('');
   const [payableStatusFilter, setPayableStatusFilter] = useState<string[]>([]);
@@ -972,19 +1014,27 @@ export default function Finance() {
         ) : (
           <Tabs defaultValue="dashboard" value={financeTab} onValueChange={setFinanceTab}>
             <HubTabsList tabs={[
-              { value: 'dashboard',  label: 'Visão Geral',   icon: BarChart3 },
-              { value: 'accounts',   label: 'Contas',        icon: DollarSign },
-              { value: 'invoices',   label: 'Notas Fiscais', icon: FileText },
-              { value: 'operational',label: 'Operacional',   icon: UserCheck },
-              { value: 'reports',    label: 'Relatórios',    icon: BarChart3 },
+              { value: 'dashboard',            label: 'Visão Geral',         icon: BarChart3 },
+              { value: 'accounts',             label: 'Contas',              icon: DollarSign },
+              { value: 'invoices',             label: 'Notas Fiscais',       icon: FileText },
+              { value: 'comissoes-factoring',  label: 'Comissões & Factoring', icon: UserCheck },
+              { value: 'reports',              label: 'Relatórios',          icon: BarChart3 },
             ]} />
 
             <TabsContent value="dashboard">
               <SmartDashboard onNavigate={tab => {
-                // cashflow e dre agora ficam dentro de Relatórios
-                if (tab === 'cashflow' || tab === 'dre') setFinanceTab('reports');
+                // cashflow e dre ficam dentro de Relatórios
+                if (tab === 'cashflow' || tab === 'dre' || tab === 'aging') setFinanceTab('reports');
+                // payable/receivable abrem Contas e selecionam o sub-tab correspondente
+                else if (tab === 'payable' || tab === 'receivable') {
+                  setAccountsSubTab(tab);
+                  setFinanceTab('accounts');
+                }
                 else setFinanceTab(tab);
               }} />
+              <div className="mt-5">
+                <NetMarginChart />
+              </div>
             </TabsContent>
 
             <TabsContent value="accounts">
@@ -1218,6 +1268,8 @@ export default function Finance() {
                     totals={{ payable: pendingPayable, receivable: pendingReceivable, balance: pendingReceivable - pendingPayable }}
                     payableContent={payableContent}
                     receivableContent={receivableContent}
+                    initialSubTab={accountsSubTab}
+                    onSubTabChange={setAccountsSubTab}
                   />
                 );
               })()}
@@ -1225,7 +1277,7 @@ export default function Finance() {
 
             <TabsContent value="invoices"><UnifiedInvoicesTab /></TabsContent>
 
-            <TabsContent value="operational">
+            <TabsContent value="comissoes-factoring">
               <Tabs defaultValue="comissoes">
                 <TabsList className="h-8 gap-1 mb-4">
                   <TabsTrigger value="comissoes" className="gap-1 text-xs h-7">

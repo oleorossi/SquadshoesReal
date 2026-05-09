@@ -90,10 +90,14 @@ export function SmartDashboard({ onNavigate }: { onNavigate?: (tab: string) => v
                </div>
              </div>
            ) : alerts.length === 0 ? (
-             <div className="flex flex-col items-center justify-center py-6 text-center">
-               <CheckCircle className="h-8 w-8 text-success opacity-20 mb-2" />
-               <p className="text-sm font-medium text-muted-foreground">Tudo em dia!</p>
-               <p className="text-xs text-muted-foreground opacity-70">Nenhum alerta crítico ou recomendação no momento.</p>
+             <div className="flex items-center gap-3 rounded-lg border border-success/30 bg-success/5 p-4">
+               <CheckCircle className="h-5 w-5 text-success shrink-0" />
+               <div className="min-w-0 flex-1">
+                 <p className="text-sm font-semibold text-success">Tudo em dia</p>
+                 <p className="text-xs text-muted-foreground mt-0.5">
+                   Saldo positivo, nenhuma conta vencida e sem projeção de saldo negativo nos próximos 30 dias.
+                 </p>
+               </div>
              </div>
            ) : (
              alerts.slice(0, 5).map((alert) => (

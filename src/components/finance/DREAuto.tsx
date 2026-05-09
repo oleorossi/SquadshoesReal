@@ -148,7 +148,7 @@ export function DREAuto() {
             <strong>CMV Calculado</strong> usa a fórmula contábil correta: Estoque Inicial + Compras recebidas no período
             − Estoque Final. Os estoques são estimados com base nos movimentos de estoque e no preço unitário atual de cada produto.
             <strong> CMV Despesas</strong> é calculado pela soma de lançamentos de contas a pagar categorizados como
-            material ou mão de obra.
+            material, mão de obra ou frete.
           </p>
         </CardContent>
       </Card>
