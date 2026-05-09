@@ -17,11 +17,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Calculator, FileText, AlertTriangle, RefreshCw, UserCheck } from 'lucide-react';
+import { Calculator, FileText, AlertTriangle, RefreshCw, UserCheck, Box, Percent } from 'lucide-react';
 import { useCostPolicies } from '@/hooks/useCostPolicies';
 import { useLaborCosts } from '@/hooks/useFinanceAdvanced';
 import { useTechnicalSheets, useSheetMaterials } from '@/hooks/useTechnicalSheets';
 import { useComponentSheets } from '@/hooks/useComponentSheets';
+import { useFactoringConfigs } from '@/components/finance/FactoringTab';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 
@@ -37,6 +38,7 @@ function fmtBRL(v: number) {
 
 type SavedState = {
   sheetId?: string;
+  factoringConfigId?: string;
   taxPct?: string;
   factoringRatePct?: string;
   days?: string;
@@ -45,6 +47,7 @@ type SavedState = {
   freightValue?: string;
   overheadManual?: string;
   laborManual?: string;
+  packagingManual?: string;
 };
 
 function loadSaved(): SavedState {
@@ -60,6 +63,7 @@ export default function PricingByTechnicalSheetPanel() {
   const { data: sheets = [], isLoading: loadingSheets } = useTechnicalSheets();
   const { data: componentSheets = [] } = useComponentSheets();
   const { data: laborCosts = [] } = useLaborCosts();
+  const { data: factoringConfigs = [] } = useFactoringConfigs();
 
   // Overhead derivado de cost_policies (mesma fórmula do panel manual)
   const policyOverhead = useMemo(() => {
@@ -91,6 +95,7 @@ export default function PricingByTechnicalSheetPanel() {
   );
 
   const [sheetId, setSheetId] = useState<string>(saved.sheetId ?? '');
+  const [factoringConfigId, setFactoringConfigId] = useState(saved.factoringConfigId ?? '');
   const [taxPct, setTaxPct] = useState(saved.taxPct ?? '');
   const [factoringRatePct, setFactoringRatePct] = useState(saved.factoringRatePct ?? '');
   const [days, setDays] = useState(saved.days ?? '');
@@ -99,15 +104,25 @@ export default function PricingByTechnicalSheetPanel() {
   const [freightValue, setFreightValue] = useState(saved.freightValue ?? '');
   const [overheadManual, setOverheadManual] = useState(saved.overheadManual ?? '');
   const [laborManual, setLaborManual] = useState(saved.laborManual ?? '');
+  const [packagingManual, setPackagingManual] = useState(saved.packagingManual ?? '');
 
   // Persiste a cada mudança
   useEffect(() => {
     const state: SavedState = {
-      sheetId, taxPct, factoringRatePct, days, profitMarginPct,
-      commissionPct, freightValue, overheadManual, laborManual,
+      sheetId, factoringConfigId, taxPct, factoringRatePct, days, profitMarginPct,
+      commissionPct, freightValue, overheadManual, laborManual, packagingManual,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }, [sheetId, taxPct, factoringRatePct, days, profitMarginPct, commissionPct, freightValue, overheadManual, laborManual]);
+  }, [sheetId, factoringConfigId, taxPct, factoringRatePct, days, profitMarginPct, commissionPct, freightValue, overheadManual, laborManual, packagingManual]);
+
+  // Auto-preenche factoring quando o usuário escolhe uma config
+  useEffect(() => {
+    if (!factoringConfigId) return;
+    const cfg = factoringConfigs.find(c => c.id === factoringConfigId);
+    if (!cfg) return;
+    setFactoringRatePct(String(Number(cfg.monthly_interest_rate) || ''));
+    setDays(String(cfg.receiving_days || ''));
+  }, [factoringConfigId, factoringConfigs]);
 
   const { data: materials = [], isLoading: loadingMaterials } = useSheetMaterials(sheetId || null);
 
@@ -166,6 +181,17 @@ export default function PricingByTechnicalSheetPanel() {
     return !isNaN(v) && v >= 0 && laborManual.trim() !== '' ? v : policyLaborCost;
   };
 
+  // Custo de embalagem por par — direto de cost_policies.packaging_cost_per_pair
+  const policyPackaging = Number(costPolicy?.packaging_cost_per_pair) || 0;
+  const getPackaging = () => {
+    const v = parseFloat(packagingManual);
+    return !isNaN(v) && v >= 0 && packagingManual.trim() !== '' ? v : policyPackaging;
+  };
+
+  // Frete % auto-sugestão — cost_policies.freight_allocation_pct é uma referência
+  // mas o usuário insere R$/par manualmente porque o cálculo aqui é em valor absoluto.
+  const policyFreightAllocPct = Number(costPolicy?.freight_allocation_pct) || 0;
+
   // Suporta "60" ou "30/60/90" → média
   const parseDays = (input: string): number => {
     const trimmed = input.trim();
@@ -185,8 +211,9 @@ export default function PricingByTechnicalSheetPanel() {
     const numFreight = parseFloat(freightValue) || 0;
     const numOverhead = getOverhead();
     const numLabor = getLabor();
+    const numPackaging = getPackaging();
 
-    const totalCost = numCost + numLabor + numOverhead + numFreight;
+    const totalCost = numCost + numLabor + numOverhead + numPackaging + numFreight;
     const factoringTotalPct = (numFactoring / 30) * numDays;
     const totalMarkupPct = numTax + numProfit + factoringTotalPct + numCommission;
     const markupDivisor = 1 - (totalMarkupPct / 100);
@@ -204,12 +231,12 @@ export default function PricingByTechnicalSheetPanel() {
     const cashPrice = (isValid && markupVistaDivisor > 0) ? (totalCost / markupVistaDivisor) : 0;
 
     return {
-      numCost, numLabor, numOverhead, numFreight, totalCost,
+      numCost, numLabor, numOverhead, numPackaging, numFreight, totalCost,
       factoringTotalPct, totalMarkupPct, markupDivisor,
       isValid, suggestedPrice, cashPrice,
       realProfit, taxValue, factoringValue, commissionValue,
     };
-  }, [totalMaterialCost, taxPct, factoringRatePct, days, profitMarginPct, commissionPct, freightValue, overheadManual, laborManual, policyOverhead, policyLaborCost]);
+  }, [totalMaterialCost, taxPct, factoringRatePct, days, profitMarginPct, commissionPct, freightValue, overheadManual, laborManual, packagingManual, policyOverhead, policyLaborCost, policyPackaging]);
 
   return (
     <div className="space-y-5">
@@ -387,6 +414,30 @@ export default function PricingByTechnicalSheetPanel() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
+            {/* Factoring config — auto-preenche taxa + dias */}
+            {factoringConfigs.length > 0 && (
+              <div className="rounded-md border bg-primary/5 border-primary/20 p-2.5 space-y-1.5">
+                <Label className="text-[10px] uppercase tracking-wider font-bold text-primary flex items-center gap-1">
+                  <Percent className="h-3 w-3" /> Factoring cadastrado
+                </Label>
+                <Select value={factoringConfigId} onValueChange={setFactoringConfigId}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Selecionar factoring (auto-preenche taxa e prazo)..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {factoringConfigs.map(c => (
+                      <SelectItem key={c.id} value={c.id} className="text-xs">
+                        {c.name} — {fmt(Number(c.monthly_interest_rate))}%/mês · {c.receiving_days}d
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-muted-foreground">
+                  Selecionar uma config preenche automaticamente a taxa e o prazo abaixo. Você pode editar manualmente depois.
+                </p>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div>
                 <Label className="text-[11px] text-muted-foreground">Margem desejada (%)</Label>
@@ -419,10 +470,15 @@ export default function PricingByTechnicalSheetPanel() {
                   value={freightValue} onChange={e => setFreightValue(e.target.value)}
                   className="mt-1"
                 />
+                {policyFreightAllocPct > 0 && (
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    Ref. política: <strong>{fmt(policyFreightAllocPct)}%</strong> alocação
+                  </p>
+                )}
               </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <div>
                 <Label className="text-[11px] text-muted-foreground">Factoring/mês (%)</Label>
                 <Input
@@ -468,6 +524,20 @@ export default function PricingByTechnicalSheetPanel() {
                   Vazio usa <strong>{fmtBRL(policyOverhead)}</strong> (cost_policies)
                 </p>
               </div>
+              <div>
+                <Label className="text-[11px] text-muted-foreground flex items-center gap-1">
+                  <Box className="h-3 w-3" /> Embalagem/par <span className="font-mono">(R$)</span>
+                </Label>
+                <Input
+                  type="number" step="0.01"
+                  placeholder={`Política: ${fmt(policyPackaging)}`}
+                  value={packagingManual} onChange={e => setPackagingManual(e.target.value)}
+                  className="mt-1"
+                />
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  Vazio usa <strong>{fmtBRL(policyPackaging)}</strong> (cost_policies.packaging)
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -488,6 +558,7 @@ export default function PricingByTechnicalSheetPanel() {
                   MP {fmtBRL(results.numCost)}
                   {results.numLabor > 0 && ` + MO ${fmtBRL(results.numLabor)}`}
                   + OH {fmtBRL(results.numOverhead)}
+                  {results.numPackaging > 0 && ` + Emb ${fmtBRL(results.numPackaging)}`}
                   {results.numFreight > 0 && ` + Frete ${fmtBRL(results.numFreight)}`}
                 </p>
               </div>
@@ -521,6 +592,7 @@ export default function PricingByTechnicalSheetPanel() {
                 <div className="flex justify-between"><span className="text-muted-foreground">Custo MP:</span><span className="tabular-nums">{fmtBRL(results.numCost)}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Mão de obra:</span><span className="tabular-nums">{fmtBRL(results.numLabor)}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Overhead:</span><span className="tabular-nums">{fmtBRL(results.numOverhead)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Embalagem:</span><span className="tabular-nums">{fmtBRL(results.numPackaging)}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Frete:</span><span className="tabular-nums">{fmtBRL(results.numFreight)}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Impostos:</span><span className="tabular-nums">{fmtBRL(results.taxValue)}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Antecipação:</span><span className="tabular-nums">{fmtBRL(results.factoringValue)} ({fmt(results.factoringTotalPct)}%)</span></div>
