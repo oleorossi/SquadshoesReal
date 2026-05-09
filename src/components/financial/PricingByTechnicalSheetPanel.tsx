@@ -17,8 +17,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Calculator, FileText, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Calculator, FileText, AlertTriangle, RefreshCw, UserCheck } from 'lucide-react';
 import { useCostPolicies } from '@/hooks/useCostPolicies';
+import { useLaborCosts } from '@/hooks/useFinanceAdvanced';
 import { useTechnicalSheets, useSheetMaterials } from '@/hooks/useTechnicalSheets';
 import { useComponentSheets } from '@/hooks/useComponentSheets';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -43,6 +44,7 @@ type SavedState = {
   commissionPct?: string;
   freightValue?: string;
   overheadManual?: string;
+  laborManual?: string;
 };
 
 function loadSaved(): SavedState {
@@ -57,6 +59,7 @@ export default function PricingByTechnicalSheetPanel() {
   const { data: costPolicy } = useCostPolicies();
   const { data: sheets = [], isLoading: loadingSheets } = useTechnicalSheets();
   const { data: componentSheets = [] } = useComponentSheets();
+  const { data: laborCosts = [] } = useLaborCosts();
 
   // Overhead derivado de cost_policies (mesma fórmula do panel manual)
   const policyOverhead = useMemo(() => {
@@ -64,6 +67,28 @@ export default function PricingByTechnicalSheetPanel() {
     const target = costPolicy.monthly_production_target || 1;
     return (costPolicy.overhead_monthly_total || 0) / target;
   }, [costPolicy]);
+
+  // Mão de obra: Σ (hour_cost × time_per_unit_minutes / 60) das operações ATIVAS
+  // Convenção: pricing por par usa o conjunto completo de operações (todas as
+  // etapas que um par passa). Operadores podem cadastrar uma operação por
+  // setor (Corte, Costura, Montagem, Acabamento etc.) em /finance.
+  const laborBreakdown = useMemo(
+    () =>
+      (laborCosts || [])
+        .filter((l: any) => l.active)
+        .map((l: any) => ({
+          id: l.id as string,
+          operation: (l.operation_name as string) || '—',
+          hourCost: Number(l.hour_cost) || 0,
+          minutesPerUnit: Number(l.time_per_unit_minutes) || 0,
+          costPerUnit: ((Number(l.hour_cost) || 0) * (Number(l.time_per_unit_minutes) || 0)) / 60,
+        })),
+    [laborCosts]
+  );
+  const policyLaborCost = useMemo(
+    () => laborBreakdown.reduce((sum, l) => sum + l.costPerUnit, 0),
+    [laborBreakdown]
+  );
 
   const [sheetId, setSheetId] = useState<string>(saved.sheetId ?? '');
   const [taxPct, setTaxPct] = useState(saved.taxPct ?? '');
@@ -73,15 +98,16 @@ export default function PricingByTechnicalSheetPanel() {
   const [commissionPct, setCommissionPct] = useState(saved.commissionPct ?? '');
   const [freightValue, setFreightValue] = useState(saved.freightValue ?? '');
   const [overheadManual, setOverheadManual] = useState(saved.overheadManual ?? '');
+  const [laborManual, setLaborManual] = useState(saved.laborManual ?? '');
 
   // Persiste a cada mudança
   useEffect(() => {
     const state: SavedState = {
       sheetId, taxPct, factoringRatePct, days, profitMarginPct,
-      commissionPct, freightValue, overheadManual,
+      commissionPct, freightValue, overheadManual, laborManual,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }, [sheetId, taxPct, factoringRatePct, days, profitMarginPct, commissionPct, freightValue, overheadManual]);
+  }, [sheetId, taxPct, factoringRatePct, days, profitMarginPct, commissionPct, freightValue, overheadManual, laborManual]);
 
   const { data: materials = [], isLoading: loadingMaterials } = useSheetMaterials(sheetId || null);
 
@@ -135,6 +161,11 @@ export default function PricingByTechnicalSheetPanel() {
     return !isNaN(v) && v >= 0 && overheadManual.trim() !== '' ? v : policyOverhead;
   };
 
+  const getLabor = () => {
+    const v = parseFloat(laborManual);
+    return !isNaN(v) && v >= 0 && laborManual.trim() !== '' ? v : policyLaborCost;
+  };
+
   // Suporta "60" ou "30/60/90" → média
   const parseDays = (input: string): number => {
     const trimmed = input.trim();
@@ -153,8 +184,9 @@ export default function PricingByTechnicalSheetPanel() {
     const numCommission = parseFloat(commissionPct) || 0;
     const numFreight = parseFloat(freightValue) || 0;
     const numOverhead = getOverhead();
+    const numLabor = getLabor();
 
-    const totalCost = numCost + numOverhead + numFreight;
+    const totalCost = numCost + numLabor + numOverhead + numFreight;
     const factoringTotalPct = (numFactoring / 30) * numDays;
     const totalMarkupPct = numTax + numProfit + factoringTotalPct + numCommission;
     const markupDivisor = 1 - (totalMarkupPct / 100);
@@ -172,12 +204,12 @@ export default function PricingByTechnicalSheetPanel() {
     const cashPrice = (isValid && markupVistaDivisor > 0) ? (totalCost / markupVistaDivisor) : 0;
 
     return {
-      numCost, numOverhead, numFreight, totalCost,
+      numCost, numLabor, numOverhead, numFreight, totalCost,
       factoringTotalPct, totalMarkupPct, markupDivisor,
       isValid, suggestedPrice, cashPrice,
       realProfit, taxValue, factoringValue, commissionValue,
     };
-  }, [totalMaterialCost, taxPct, factoringRatePct, days, profitMarginPct, commissionPct, freightValue, overheadManual, policyOverhead]);
+  }, [totalMaterialCost, taxPct, factoringRatePct, days, profitMarginPct, commissionPct, freightValue, overheadManual, laborManual, policyOverhead, policyLaborCost]);
 
   return (
     <div className="space-y-5">
@@ -285,6 +317,66 @@ export default function PricingByTechnicalSheetPanel() {
         </Card>
       )}
 
+      {/* Mão de obra — breakdown das operações ativas */}
+      {sheetId && totalMaterialCost > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <UserCheck className="h-4 w-4 text-primary" />
+              Mão de obra por par
+              <Badge variant="secondary" className="ml-auto text-[10px]">
+                {laborBreakdown.length} {laborBreakdown.length === 1 ? 'operação' : 'operações'}
+              </Badge>
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Soma das operações ativas em <code>labor_costs</code>: hora × tempo/par ÷ 60.
+              Cadastre as operações em <strong>Financeiro · Operacional · Comissões & MO</strong>.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {laborBreakdown.length === 0 ? (
+              <div className="rounded-lg border border-warning/40 bg-warning/5 p-3 flex items-start gap-2 text-xs">
+                <AlertTriangle className="h-4 w-4 text-warning shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold">Nenhuma operação cadastrada</p>
+                  <p className="text-muted-foreground mt-0.5">
+                    O custo de mão de obra ficará zero. Use o campo manual abaixo
+                    pra simular um valor, ou cadastre operações reais no módulo financeiro.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-lg border">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-muted/50 border-b">
+                      <th className="text-left py-2 px-3 font-semibold uppercase tracking-wider text-[10px] text-muted-foreground">Operação</th>
+                      <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-[10px] text-muted-foreground">R$/hora</th>
+                      <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-[10px] text-muted-foreground">min/par</th>
+                      <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-[10px] text-muted-foreground">Custo/par</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {laborBreakdown.map(l => (
+                      <tr key={l.id}>
+                        <td className="py-1.5 px-3 font-medium">{l.operation}</td>
+                        <td className="py-1.5 px-3 text-right font-mono tabular-nums">{fmtBRL(l.hourCost)}</td>
+                        <td className="py-1.5 px-3 text-right font-mono tabular-nums">{l.minutesPerUnit}</td>
+                        <td className="py-1.5 px-3 text-right font-mono tabular-nums font-bold">{fmtBRL(l.costPerUnit)}</td>
+                      </tr>
+                    ))}
+                    <tr className="bg-muted/30 font-bold">
+                      <td className="py-2 px-3 uppercase tracking-wider text-[11px]" colSpan={3}>Total mão de obra por par</td>
+                      <td className="py-2 px-3 text-right font-mono text-base text-primary">{fmtBRL(policyLaborCost)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Inputs do simulador (manuais — só impostos/margem/etc) */}
       {sheetId && totalMaterialCost > 0 && (
         <Card>
@@ -330,7 +422,7 @@ export default function PricingByTechnicalSheetPanel() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div>
                 <Label className="text-[11px] text-muted-foreground">Factoring/mês (%)</Label>
                 <Input
@@ -347,6 +439,20 @@ export default function PricingByTechnicalSheetPanel() {
                   className="mt-1"
                 />
                 <p className="text-[10px] text-muted-foreground mt-0.5">Use barras pra média (30/60/90)</p>
+              </div>
+              <div>
+                <Label className="text-[11px] text-muted-foreground">
+                  Mão de obra/par <span className="font-mono">(R$)</span>
+                </Label>
+                <Input
+                  type="number" step="0.01"
+                  placeholder={`Cadastrado: ${fmt(policyLaborCost)}`}
+                  value={laborManual} onChange={e => setLaborManual(e.target.value)}
+                  className="mt-1"
+                />
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  Vazio usa <strong>{fmtBRL(policyLaborCost)}</strong> (operações ativas)
+                </p>
               </div>
               <div>
                 <Label className="text-[11px] text-muted-foreground">
@@ -379,7 +485,9 @@ export default function PricingByTechnicalSheetPanel() {
                 <p className="eyebrow">Custo total</p>
                 <p className="display text-2xl tabular-nums mt-1">{fmtBRL(results.totalCost)}</p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
-                  MP {fmtBRL(results.numCost)} + OH {fmtBRL(results.numOverhead)}
+                  MP {fmtBRL(results.numCost)}
+                  {results.numLabor > 0 && ` + MO ${fmtBRL(results.numLabor)}`}
+                  + OH {fmtBRL(results.numOverhead)}
                   {results.numFreight > 0 && ` + Frete ${fmtBRL(results.numFreight)}`}
                 </p>
               </div>
@@ -411,6 +519,7 @@ export default function PricingByTechnicalSheetPanel() {
               </p>
               <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1 font-mono">
                 <div className="flex justify-between"><span className="text-muted-foreground">Custo MP:</span><span className="tabular-nums">{fmtBRL(results.numCost)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Mão de obra:</span><span className="tabular-nums">{fmtBRL(results.numLabor)}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Overhead:</span><span className="tabular-nums">{fmtBRL(results.numOverhead)}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Frete:</span><span className="tabular-nums">{fmtBRL(results.numFreight)}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Impostos:</span><span className="tabular-nums">{fmtBRL(results.taxValue)}</span></div>
