@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   listWaves, getWaveDetail, createWave, startWave, advanceWaveStage,
   getFinishingPackages, updatePackageStatus, updateMesaCapacity, getWaveSaleOrders,
-  syncWaveFromKanban,
+  syncWaveFromKanban, cancelWave, listWaveOrders, getWavePickupSummary,
 } from '@/services/productionWavesService';
 import { STAGE_LABEL } from '@/types/production-waves';
 import { toast as sonnerToast } from 'sonner';
@@ -164,6 +164,15 @@ export function useWaveOrders(waveId: string | null) {
   return useQuery({
     queryKey: ['wave-orders', waveId],
     queryFn: () => listWaveOrders(waveId!),
+    enabled: Boolean(waveId),
+    staleTime: 30_000,
+  });
+}
+
+export function useWavePickupSummary(waveId: string | null) {
+  return useQuery({
+    queryKey: ['wave-pickup-summary', waveId],
+    queryFn: () => getWavePickupSummary(waveId!),
     enabled: Boolean(waveId),
     staleTime: 30_000,
   });

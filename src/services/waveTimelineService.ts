@@ -6,12 +6,16 @@ export interface WaveTimeline {
   earliest_deadline: string;             // YYYY-MM-DD
   corte_palmilha_start_date: string;
   corte_forracao_start_date: string;
+  costura_start_date?: string;
   mesa_start_date?: string;
   silk_start_date: string;
   colagem_start_date: string;
   solagem_start_date: string;
   montagem_start_date: string;
   acabamento_start_date: string;
+  acabamento_end_date?: string;
+  pickup_tuesday_date?: string;
+  pickup_friday_date?: string;
   material_ready_date: string;
   purchase_deadline: string;
 }

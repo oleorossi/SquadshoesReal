@@ -13,8 +13,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import {
   CalendarDays, Package, AlertTriangle, Users, ChevronDown, ChevronRight,
   CheckCircle, XCircle, Clock, ShoppingBag, ArrowRight, Scissors, Loader2, Wrench, Search,
-  Hand, Printer, Flame, Hammer, Footprints, Sparkles,
+  Hand, Printer, Flame, Hammer, Footprints, Sparkles, Truck,
 } from 'lucide-react';
+import { snapToMonday } from '@/lib/isoWeek';
 import { useCreateWave } from '@/hooks/useProductionWaves';
 import {
   listPendingSaleOrdersForWeek,
@@ -70,6 +71,8 @@ function TimelinePanel({ tl }: { tl: WaveTimeline }) {
     { label: 'Montagem',       date: tl.montagem_start_date,         icon: Hammer,      className: 'text-emerald-600 bg-emerald-500/10 border-emerald-500/20' },
     tl.solagem_start_date   ? { label: 'Solagem',   date: tl.solagem_start_date,   icon: Footprints,className: 'text-amber-600 bg-amber-500/10 border-amber-500/20' }  : null,
     { label: 'Acabamento',     date: tl.acabamento_start_date,       icon: Sparkles,    className: 'text-indigo-600 bg-indigo-500/10 border-indigo-500/20' },
+    tl.pickup_tuesday_date  ? { label: 'Pickup Ter',  date: tl.pickup_tuesday_date,  icon: Truck,      className: 'text-blue-600 bg-blue-500/10 border-blue-500/20' }    : null,
+    tl.pickup_friday_date   ? { label: 'Pickup Sex',  date: tl.pickup_friday_date,   icon: Truck,      className: 'text-emerald-600 bg-emerald-500/10 border-emerald-500/20' } : null,
     { label: 'Entrega',        date: tl.earliest_deadline,           icon: CalendarDays,className: 'text-green-600 bg-green-500/10 border-green-500/20' },
   ].filter(Boolean) as { label: string; date: string; icon: React.ElementType; className: string }[];
 
@@ -358,7 +361,7 @@ export function WaveBuilder({
       // usuário, o que fazia OPs com prazo mais distante serem processadas
       // antes de OPs com prazo apertado dentro da mesma onda. PVs sem
       // deadline ficam no final.
-      const candidateMap = new Map(saleOrders.map(o => [o.id, o.delivery_deadline]));
+      const candidateMap = new Map(pendingOrders.map(o => [o.id, o.delivery_deadline]));
       const ids = Array.from(selected).sort((a, b) => {
         const da = candidateMap.get(a);
         const db = candidateMap.get(b);
@@ -411,8 +414,13 @@ export function WaveBuilder({
           <div className="space-y-3 flex-1 overflow-hidden flex flex-col">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs">Semana começando em</Label>
-                <Input type="date" value={weekStart} onChange={e => setWeekStart(e.target.value)} className="mt-1 h-9" />
+                <Label className="text-xs">Semana começando em (segunda-feira)</Label>
+                <Input
+                  type="date"
+                  value={weekStart}
+                  onChange={e => setWeekStart(snapToMonday(e.target.value))}
+                  className="mt-1 h-9"
+                />
               </div>
               <div className="flex items-end justify-between gap-2">
                 <Button type="button" variant="outline" size="sm" disabled={loading || !selectableCount} onClick={selectAll}>

@@ -4,7 +4,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Hash, ArrowRight, FastForward, Calendar, GripVertical, CheckSquare, Pin, AlertTriangle, Filter, FileDown, FileText, EyeOff, Clock, Scissors, Layers, Gem, Printer, Flame, Hammer, Footprints, Hand, Sparkles } from "lucide-react";
+import { Loader2, Hash, ArrowRight, FastForward, Calendar, GripVertical, CheckSquare, Pin, AlertTriangle, Filter, FileDown, FileText, EyeOff, Clock, Scissors, Layers, Gem, Printer, Flame, Hammer, Footprints, Hand, Sparkles, Truck } from "lucide-react";
+import { useQuery } from '@tanstack/react-query';
 import type { BottleneckInfo } from "@/lib/sectorBottleneck";
 import { OrderDetailsModal } from "./OrderDetailsModal";
 import { BottleneckDetailsDialog } from "./BottleneckDetailsDialog";
@@ -164,6 +165,28 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
   const [draggedOrder, setDraggedOrder] = useState<KanbanOrder | null>(null);
   const [dragOverSector, setDragOverSector] = useState<string | null>(null);
   const [skipDecision, setSkipDecision] = useState<SkipDecision | null>(null);
+
+  // ── Pickup window por OP (via v_order_pickup_window) ────────────────────────
+  // Carrega a janela de pickup das OPs visíveis para mostrar badge Ter/Sex.
+  const orderIdList = useMemo(() => orders.map(o => o.id), [orders]);
+  const { data: pickupRows = [] } = useQuery({
+    queryKey: ['kanban-pickup-windows', orderIdList.length, orderIdList.slice(0, 5).join(',')],
+    queryFn: async () => {
+      if (!orderIdList.length) return [] as Array<{ order_id: string; pickup_window: 'tuesday'|'friday'|null; pickup_date: string|null }>;
+      const { data } = await supabase
+        .from('v_order_pickup_window' as any)
+        .select('order_id, pickup_window, pickup_date')
+        .in('order_id', orderIdList);
+      return (data ?? []) as any[];
+    },
+    enabled: orderIdList.length > 0,
+    staleTime: 60_000,
+  });
+  const pickupByOrder = useMemo(() => {
+    const m = new Map<string, { window: 'tuesday'|'friday'|null; date: string|null }>();
+    for (const r of pickupRows) m.set(r.order_id, { window: r.pickup_window ?? null, date: r.pickup_date ?? null });
+    return m;
+  }, [pickupRows]);
   // Bulk-finalize support for the last sector (Acabamento)
   const [acabamentoSelected, setAcabamentoSelected] = useState<Set<string>>(new Set());
   const [bulkFinalizing, setBulkFinalizing] = useState(false);
@@ -927,6 +950,24 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
                               <p className="font-mono text-[9px] font-bold text-primary bg-primary/10 px-1 py-0.5 rounded leading-none flex items-center gap-0.5">
                                 <Hash className="h-2 w-2" />#{order.order_number}
                               </p>
+                              {(() => {
+                                const pk = pickupByOrder.get(order.id);
+                                if (!pk?.window) return null;
+                                const isTue = pk.window === 'tuesday';
+                                return (
+                                  <span
+                                    className={`text-[8px] px-1 py-0 h-3.5 border rounded gap-0.5 inline-flex items-center font-mono ${
+                                      isTue
+                                        ? 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/40'
+                                        : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/40'
+                                    }`}
+                                    title={`Pickup ${isTue ? 'Terça' : 'Sexta'} ${pk.date ? '· ' + pk.date.split('-').reverse().slice(0,2).join('/') : ''}`}
+                                  >
+                                    <Truck className="h-2 w-2 mr-0.5" />
+                                    {isTue ? 'TER' : 'SEX'}
+                                  </span>
+                                );
+                              })()}
                               {order.is_ahead_of_schedule && (
                                 <Badge className="bg-amber-500/20 text-amber-700 dark:text-amber-400 text-[8px] px-1 py-0 h-3.5 border-0">
                                   <FastForward className="h-2 w-2 mr-0.5" />ADIANTADO

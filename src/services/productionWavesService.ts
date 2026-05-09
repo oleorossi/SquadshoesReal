@@ -1,7 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import type {
   ProductionWave, WaveDetail, SectorBoardRow, FinishingPackage,
-  ProductionStage,
+  ProductionStage, WavePickupSummary,
 } from '@/types/production-waves';
 
 export async function listWaves(): Promise<ProductionWave[]> {
@@ -289,6 +289,29 @@ export async function syncWaveFromKanban(waveId: string): Promise<string | null>
   return (data as string) ?? null;
 }
 
+export async function cancelWave(waveId: string, reason?: string): Promise<void> {
+  const { error } = await supabase.rpc('cancel_wave' as any, {
+    p_wave_id: waveId,
+    p_reason: reason ?? null,
+  });
+  if (error) throw error;
+}
+
+export async function getWavePickupSummary(waveId: string): Promise<WavePickupSummary[]> {
+  const { data, error } = await supabase.rpc('get_wave_pickup_summary' as any, {
+    p_wave_id: waveId,
+  });
+  if (error) throw error;
+  return ((data as any[]) ?? []).map((r) => ({
+    pickup_window: r.pickup_window,
+    pickup_date: r.pickup_date ?? null,
+    total_items: Number(r.total_items ?? 0),
+    total_pairs: Number(r.total_pairs ?? 0),
+    block_count: Number(r.block_count ?? 0),
+    sale_order_count: Number(r.sale_order_count ?? 0),
+  })) as WavePickupSummary[];
+}
+
 export async function getWaveSaleOrders(waveId: string): Promise<WaveSaleOrder[]> {
   const { data: waveItems, error: wiError } = await supabase
     .from('production_wave_items' as any)
@@ -327,3 +350,5 @@ export async function getWaveSaleOrders(waveId: string): Promise<WaveSaleOrder[]
     status: so.status ?? null,
   }));
 }
+
+export const listWaveOrders = getWaveSaleOrders;

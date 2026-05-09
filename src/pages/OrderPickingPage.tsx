@@ -7,16 +7,17 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   PackageCheck, Search, ChevronDown, ChevronRight,
-  Truck, AlertTriangle, Clock, XCircle, CheckCircle2,
+  Truck, AlertTriangle, Clock, XCircle, CheckCircle2, CalendarDays,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { READY_TO_SHIP_STATUSES } from '@/lib/logistics/routeManagement';
+import { getISOWeekFromString, fmtDayMonthBR } from '@/lib/isoWeek';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,7 +37,13 @@ interface ReadyOrder {
   packaging_mode: string | null;
   items: OrderItem[];
   total_pairs: number;
+  /** Janela de pickup da onda em que o PV está. null = sem onda atribuída. */
+  pickup_window: 'tuesday' | 'friday' | null;
+  pickup_date: string | null;
+  wave_code: string | null;
 }
+
+type PickupTabKey = string; // ex: "W2026-19::tuesday" ou "no-wave"
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -79,7 +86,7 @@ export default function OrderPickingPage() {
         .order('delivery_deadline', { ascending: true, nullsFirst: false });
       if (error) throw error;
 
-      return (data ?? []).map((so: any) => {
+      const baseOrders = (data ?? []).map((so: any) => {
         const items: OrderItem[] = (so.sale_order_items ?? []).map((i: any) => ({
           id: i.id,
           reference_name: i.technical_sheets?.name ?? null,
@@ -96,7 +103,53 @@ export default function OrderPickingPage() {
           packaging_mode: so.packaging_mode,
           items,
           total_pairs,
+          pickup_window: null as ReadyOrder['pickup_window'],
+          pickup_date: null as string | null,
+          wave_code: null as string | null,
         };
+      });
+
+      const ids = baseOrders.map((o) => o.id);
+      if (!ids.length) return baseOrders;
+
+      // Carrega janela de pickup por PV via wave_items + waves.
+      // Um PV pode ter múltiplos items na mesma wave (cores/refs); pegamos o
+      // pickup_window do PRIMEIRO item por block_sequence (representa o item mais
+      // urgente do PV — se TER, tudo do PV sai TER; se FRI, sai FRI).
+      const { data: waveLink } = await supabase
+        .from('production_wave_item_sources' as any)
+        .select(`
+          sale_order_id,
+          production_wave_items!inner(
+            wave_id, pickup_window, block_sequence,
+            production_waves!inner(code, status, pickup_tuesday_date, pickup_friday_date)
+          )
+        `)
+        .in('sale_order_id', ids)
+        .in('production_wave_items.production_waves.status', ['draft','planning','running']);
+
+      const linkMap = new Map<string, { window: 'tuesday'|'friday'|null; date: string|null; code: string|null; seq: number }>();
+      for (const row of (waveLink ?? []) as any[]) {
+        if (!row.sale_order_id) continue;
+        const wi = row.production_wave_items;
+        const pw = wi?.production_waves;
+        if (!wi || !pw) continue;
+        const win = wi.pickup_window as 'tuesday'|'friday'|null;
+        const seq = Number(wi.block_sequence ?? 9_999_999);
+        const date = win === 'tuesday' ? pw.pickup_tuesday_date
+                   : win === 'friday'  ? pw.pickup_friday_date
+                   : null;
+        const existing = linkMap.get(row.sale_order_id);
+        if (!existing || seq < existing.seq) {
+          linkMap.set(row.sale_order_id, { window: win, date, code: pw.code ?? null, seq });
+        }
+      }
+
+      return baseOrders.map((o) => {
+        const link = linkMap.get(o.id);
+        return link
+          ? { ...o, pickup_window: link.window, pickup_date: link.date, wave_code: link.code }
+          : o;
       });
     },
     staleTime: 60_000,
@@ -130,7 +183,7 @@ export default function OrderPickingPage() {
   });
 
   // ── Filtered list ───────────────────────────────────────────────────────────
-  const filtered = useMemo(() => {
+  const searchFiltered = useMemo(() => {
     if (!search.trim()) return orders;
     const q = search.toLowerCase();
     return orders.filter(o =>
@@ -138,6 +191,62 @@ export default function OrderPickingPage() {
       (o.client_name ?? '').toLowerCase().includes(q),
     );
   }, [orders, search]);
+
+  // ── Agrupamento por janela de pickup (semana ISO + Ter/Sex) ────────────────
+  type PickupGroup = {
+    key: PickupTabKey;
+    label: string;
+    weekCode: string;
+    pickupWindow: 'tuesday' | 'friday' | null;
+    pickupDate: string | null;
+    orders: ReadyOrder[];
+  };
+
+  const pickupGroups = useMemo((): PickupGroup[] => {
+    const map = new Map<PickupTabKey, PickupGroup>();
+    for (const o of searchFiltered) {
+      let key: PickupTabKey;
+      let label: string;
+      let weekCode = '—';
+      if (o.pickup_window && o.wave_code) {
+        weekCode = o.wave_code;
+        key = `${o.wave_code}::${o.pickup_window}`;
+        label = `${o.wave_code} · ${o.pickup_window === 'tuesday' ? 'Terça' : 'Sexta'}`;
+      } else {
+        // Sem onda: agrupa por semana ISO do delivery_deadline (fallback).
+        const iso = getISOWeekFromString(o.delivery_deadline);
+        weekCode = iso?.code ?? 'sem-prazo';
+        key = `no-wave::${weekCode}`;
+        label = `Sem onda · ${weekCode}`;
+      }
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          label,
+          weekCode,
+          pickupWindow: o.pickup_window,
+          pickupDate: o.pickup_date,
+          orders: [],
+        });
+      }
+      map.get(key)!.orders.push(o);
+    }
+    // Ordena: tuesday antes de friday dentro da mesma semana, semanas em ordem ASC.
+    return Array.from(map.values()).sort((a, b) => {
+      if (a.weekCode !== b.weekCode) return a.weekCode.localeCompare(b.weekCode);
+      const order: Record<string, number> = { tuesday: 0, friday: 1 };
+      const ax = a.pickupWindow ? order[a.pickupWindow] : 99;
+      const bx = b.pickupWindow ? order[b.pickupWindow] : 99;
+      return ax - bx;
+    });
+  }, [searchFiltered]);
+
+  const [activeTab, setActiveTab] = useState<string>('all');
+  const filtered = useMemo(() => {
+    if (activeTab === 'all') return searchFiltered;
+    const grp = pickupGroups.find((g) => g.key === activeTab);
+    return grp?.orders ?? [];
+  }, [activeTab, pickupGroups, searchFiltered]);
 
   const toggleSelect = (id: string) =>
     setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
@@ -198,6 +307,39 @@ export default function OrderPickingPage() {
           </Badge>
         )}
       </div>
+
+      {/* Tabs por janela de pickup (semana ISO + Ter/Sex) */}
+      {pickupGroups.length > 0 && (
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="h-auto flex-wrap">
+            <TabsTrigger value="all" className="gap-1.5 text-xs h-8">
+              <CalendarDays className="h-3.5 w-3.5" />
+              Todas ({searchFiltered.length})
+            </TabsTrigger>
+            {pickupGroups.map((g) => {
+              const isTue = g.pickupWindow === 'tuesday';
+              const isFri = g.pickupWindow === 'friday';
+              const dateLabel = g.pickupDate ? format(new Date(g.pickupDate + 'T00:00:00'), 'dd/MM', { locale: ptBR }) : null;
+              return (
+                <TabsTrigger
+                  key={g.key}
+                  value={g.key}
+                  className={cn(
+                    'gap-1.5 text-xs h-8',
+                    isTue && 'data-[state=active]:bg-blue-500/10 data-[state=active]:text-blue-700',
+                    isFri && 'data-[state=active]:bg-emerald-500/10 data-[state=active]:text-emerald-700',
+                  )}
+                >
+                  <Truck className="h-3.5 w-3.5" />
+                  {g.label}
+                  {dateLabel && <span className="font-mono text-[10px] opacity-80">{dateLabel}</span>}
+                  <span className="opacity-60">({g.orders.length})</span>
+                </TabsTrigger>
+              );
+            })}
+          </TabsList>
+        </Tabs>
+      )}
 
       {/* Search */}
       <div className="relative max-w-sm">

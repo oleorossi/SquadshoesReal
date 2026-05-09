@@ -113,6 +113,18 @@ export function normalizeStageEnum(stage: string): ProductionStage {
   return LEGACY_MAP[stage] ?? (stage as ProductionStage);
 }
 
+export type PickupWindow = 'tuesday' | 'friday';
+
+export const PICKUP_WINDOW_LABEL: Record<PickupWindow, string> = {
+  tuesday: 'Pickup Terça',
+  friday:  'Pickup Sexta',
+};
+
+export const PICKUP_WINDOW_SHORT: Record<PickupWindow, string> = {
+  tuesday: 'Ter',
+  friday:  'Sex',
+};
+
 export type ProductionWave = {
   id: string;
   code: string;
@@ -125,6 +137,20 @@ export type ProductionWave = {
   started_at: string | null;
   finished_at: string | null;
   created_at: string;
+  earliest_deadline: string | null;
+  purchase_deadline: string | null;
+  material_ready_date: string | null;
+  pickup_tuesday_date: string | null;
+  pickup_friday_date: string | null;
+};
+
+export type WavePickupSummary = {
+  pickup_window: PickupWindow;
+  pickup_date: string | null;
+  total_items: number;
+  total_pairs: number;
+  block_count: number;
+  sale_order_count: number;
 };
 
 export type WaveStage = {
@@ -144,6 +170,9 @@ export type WaveItem = {
   color: string;
   total_quantity: number;
   grade: Record<string, number>;
+  block_key?: string | null;
+  block_sequence?: number | null;
+  pickup_window?: PickupWindow | null;
 };
 
 export type WaveDetail = {
