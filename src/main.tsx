@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import { GlobalErrorBoundary } from "./components/GlobalErrorBoundary";
  import "./index.css";
+ import "./styles-paper.css";
 import { installWhiteLabelGuard } from "./lib/whiteLabelGuard";
 
 // White-label runtime guard: remove badges/branding injetados via script

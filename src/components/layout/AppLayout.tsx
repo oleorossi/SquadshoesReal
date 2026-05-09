@@ -151,7 +151,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
   const navItemClass = (isActive: boolean) => cn(
     "group flex items-center justify-between px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-150 relative",
     isActive
-      ? "bg-sidebar-primary/15 text-sidebar-primary font-semibold border-l-[3px] border-sidebar-primary"
+      ? "bg-sidebar-primary/15 text-sidebar-primary font-semibold border-l-2 border-sidebar-primary"
       : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
   );
 
