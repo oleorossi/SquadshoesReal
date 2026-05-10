@@ -588,7 +588,14 @@ export default function SaleOrderForm() {
                 <h2 className="text-xl font-bold tracking-tight">
                   {isEdit ? 'Editar Pedido' : 'Novo Pedido'}
                 </h2>
-                {isEdit && <Badge variant="secondary" className="font-mono">{id?.substring(0, 8)}</Badge>}
+                {/* Audit visual #16: mostra order_number (PV-2026-XXXXX) em vez
+                    de UUID truncado no header. UUID é interno e irrelevante
+                    pra usuário. Cai no UUID truncado só se ainda não carregou. */}
+                {isEdit && (form?.order_number || id) && (
+                  <Badge variant="secondary" className="font-mono">
+                    {form?.order_number || id?.substring(0, 8)}
+                  </Badge>
+                )}
               </div>
               <p className="text-sm text-muted-foreground">
                 {isEdit ? 'Atualize os dados e itens do pedido comercial' : 'Preencha os dados para criar um novo pedido comercial'}

@@ -165,6 +165,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       }
     }
 
+    let baseSizes: string[];
     if (sf != null && st != null && sf <= st) {
       if (soleConjugations.length > 0) {
         const result: string[] = [];
@@ -177,12 +178,77 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             result.push(String(s));
           }
         }
-        return result;
+        baseSizes = result;
+      } else {
+        baseSizes = Array.from({ length: st - sf + 1 }, (_, i) => String(sf! + i));
       }
-      return Array.from({ length: st - sf + 1 }, (_, i) => String(sf! + i));
+    } else {
+      baseSizes = parseSizeRange(selectedRef?.sizes, selectedRef?.shoe_category).map(String);
     }
-    return parseSizeRange(selectedRef?.sizes, selectedRef?.shoe_category).map(String);
-  }, [soleSizeRange, soleConjugations, selectedRef?.sizes, selectedRef?.shoe_category]);
+
+    // Audit visual #15 (CRÍTICO): preservar tamanhos do grade original que
+    // estão FORA do range atual do solado. Antes esses pares ficavam invisíveis
+    // no editor — ao salvar com matriz "vazia", o usuário sobrescrevia e perdia
+    // a distribuição original. Agora mesclamos: range atual primeiro, depois
+    // tamanhos órfãos (do grade salvo) ordenados numericamente.
+    const gradeKeys = Object.keys(grade || {}).filter(
+      k => Number(grade[k]) > 0 && !baseSizes.includes(k),
+    );
+    if (gradeKeys.length === 0) return baseSizes;
+
+    // Tamanhos órfãos: ordena pelo número inicial (suporta "33/34")
+    const orphanSorted = gradeKeys.sort((a, b) => {
+      const na = Number(a.split('/')[0]) || 0;
+      const nb = Number(b.split('/')[0]) || 0;
+      return na - nb;
+    });
+
+    // Merge inteligente: insere os órfãos na ordem numérica correta entre baseSizes
+    const merged: string[] = [];
+    const allKeys = [...baseSizes, ...orphanSorted];
+    const seen = new Set<string>();
+    for (const k of allKeys.sort((a, b) => {
+      const na = Number(a.split('/')[0]) || 0;
+      const nb = Number(b.split('/')[0]) || 0;
+      return na - nb;
+    })) {
+      if (!seen.has(k)) { merged.push(k); seen.add(k); }
+    }
+    return merged;
+  }, [soleSizeRange, soleConjugations, selectedRef?.sizes, selectedRef?.shoe_category, grade]);
+
+  // Set de keys que vêm do grade salvo mas NÃO fazem parte do range atual do
+  // solado. Usado pra marcar visualmente esses inputs (ícone de aviso) e
+  // sinalizar que o solado teve seu range alterado depois do PV ser criado.
+  const orphanSizes = useMemo(() => {
+    const baseRangeKeys = (() => {
+      let sf = soleSizeRange?.sizeFrom;
+      let st = soleSizeRange?.sizeTo;
+      if ((sf == null || st == null) && soleConjugations.length > 0) {
+        const allSizes = soleConjugations.flatMap(c => c.sizes);
+        if (allSizes.length > 0) {
+          sf = sf ?? Math.min(...allSizes);
+          st = st ?? Math.max(...allSizes);
+        }
+      }
+      if (sf == null || st == null) return null;
+      const set = new Set<string>();
+      if (soleConjugations.length > 0) {
+        for (let s = sf; s <= st; s++) {
+          const conj = soleConjugations.find(c => c.sizes.includes(s));
+          if (conj) set.add(conj.size_key);
+          else set.add(String(s));
+        }
+      } else {
+        for (let s = sf; s <= st; s++) set.add(String(s));
+      }
+      return set;
+    })();
+    if (!baseRangeKeys) return new Set<string>();
+    return new Set(
+      Object.keys(grade || {}).filter(k => Number(grade[k]) > 0 && !baseRangeKeys.has(k)),
+    );
+  }, [soleSizeRange, soleConjugations, grade]);
 
   // colorVariants removido — variante de cor sai do escopo da ficha técnica.
   // As cores disponíveis vêm exclusivamente das variantes de material
@@ -697,9 +763,25 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               {SIZES.map(size => {
                 const val = grade[size] || 0;
                 const isConjugated = size.includes('/');
+                // Audit visual #15: tamanho órfão = está no grade mas fora do
+                // range atual do solado. Marcado em âmbar pra usuário ver
+                // claramente que é dado preservado (não vai sumir ao salvar).
+                const isOrphan = orphanSizes.has(size);
                 return (
                   <div key={size} className="text-center" style={{ width: isConjugated ? '4.2rem' : (isInfantil ? '3rem' : '3.4rem') }}>
-                    <label className={cn("text-[10px] font-bold block mb-1", isConjugated ? 'text-primary' : 'text-muted-foreground')}>{size}</label>
+                    <label
+                      className={cn(
+                        "text-[10px] font-bold block mb-1",
+                        isOrphan
+                          ? 'text-amber-600 dark:text-amber-400'
+                          : isConjugated ? 'text-primary' : 'text-muted-foreground',
+                      )}
+                      title={isOrphan
+                        ? `Tamanho ${size} fora do range atual do solado, mas preservado do PV original`
+                        : undefined}
+                    >
+                      {isOrphan && '⚠ '}{size}
+                    </label>
                     <input
                       type="number"
                       min={0}
@@ -726,7 +808,8 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                       className={cn(
                         "w-full h-8 text-xs font-mono text-center rounded border transition-all",
                         val > 0 ? 'border-primary/50 bg-primary/5 font-bold ring-1 ring-primary/10' : 'border-input hover:bg-muted/30',
-                        isConjugated && 'border-primary/30'
+                        isConjugated && 'border-primary/30',
+                        isOrphan && 'border-amber-400 bg-amber-50 dark:bg-amber-950/30 ring-1 ring-amber-300/40',
                       )}
                       placeholder="–"
                     />
