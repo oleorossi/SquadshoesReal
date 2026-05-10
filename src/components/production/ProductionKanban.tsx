@@ -195,6 +195,41 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
     for (const r of pickupRows) m.set(r.order_id, { window: r.pickup_window ?? null, date: r.pickup_date ?? null });
     return m;
   }, [pickupRows]);
+
+  // K2 (audit): a partir do PR3 (paralelismo Corte P‖Corte F‖Aviamento), uma OP
+  // pode estar em múltiplos setores ao mesmo tempo. Carrega todos os stages em
+  // andamento das OPs visíveis e indexa por order_id → setores ativos.
+  // Mesma paginação 200 do pickup pra evitar URI too long em listas grandes.
+  const { data: activeStageRows = [] } = useQuery({
+    queryKey: ['kanban-active-stages', orderIdList.length, orderIdList.slice(0, 5).join(',')],
+    queryFn: async () => {
+      if (!orderIdList.length) return [] as Array<{ order_id: string; stage_name: string }>;
+      const CHUNK = 200;
+      const all: Array<{ order_id: string; stage_name: string }> = [];
+      for (let i = 0; i < orderIdList.length; i += CHUNK) {
+        const slice = orderIdList.slice(i, i + CHUNK);
+        const { data } = await supabase
+          .from('order_stages' as any)
+          .select('order_id, stage_name')
+          .in('order_id', slice)
+          .eq('status', 'em_andamento');
+        if (data) all.push(...(data as any));
+      }
+      return all;
+    },
+    enabled: orderIdList.length > 0,
+    staleTime: 30_000,
+  });
+  const activeStagesByOrder = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    for (const r of activeStageRows) {
+      const norm = normalizeKanbanSector(r.stage_name);
+      const set = m.get(r.order_id) ?? new Set<string>();
+      set.add(norm);
+      m.set(r.order_id, set);
+    }
+    return m;
+  }, [activeStageRows]);
   // Bulk-finalize support for the last sector (Acabamento)
   const [acabamentoSelected, setAcabamentoSelected] = useState<Set<string>>(new Set());
   const [bulkFinalizing, setBulkFinalizing] = useState(false);
@@ -607,8 +642,16 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
 
   const getOrdersForSector = (sectorKey: string) => {
     return orders.filter(o => {
-      const step = normalizeKanbanSector(o.current_sector || o.production_step || 'Pendente');
-      if (step !== sectorKey) return false;
+      // K2 (audit): se a OP tem stages 'em_andamento' em múltiplos setores
+      // (paralelismo Corte P‖Corte F‖Aviamento), aparece em todos eles. Caso
+      // contrário, cai no fluxo legado por current_sector.
+      const activeSectors = activeStagesByOrder.get(o.id);
+      if (activeSectors && activeSectors.size > 0) {
+        if (!activeSectors.has(sectorKey)) return false;
+      } else {
+        const step = normalizeKanbanSector(o.current_sector || o.production_step || 'Pendente');
+        if (step !== sectorKey) return false;
+      }
       if (!matchesSearch(o)) return false;
       // Aplica filtro de gargalo
       const b = o.bottleneck;
@@ -654,19 +697,25 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
     }
   });
 
-  // Contagem por setor: filtrados (após busca + bottleneck) e total bruto
+  // K2 (audit): contagem agora considera multi-sector — uma OP em paralelo conta
+  // em cada setor onde tem stage ativa, refletindo a soma visual do kanban.
   const sectorCounts = useMemo(() => {
     const init: Record<string, { filtered: number; total: number }> = {};
     for (const s of KANBAN_SECTORS) init[s.key] = { filtered: 0, total: 0 };
     const filteredIds = new Set(filteredOrders.map((o) => o.id));
     for (const o of orders) {
-      const step = normalizeKanbanSector(o.current_sector || o.production_step || 'Pendente');
-      if (!init[step]) continue;
-      init[step].total += 1;
-      if (filteredIds.has(o.id)) init[step].filtered += 1;
+      const activeSectors = activeStagesByOrder.get(o.id);
+      const sectorsForThisOrder: string[] = activeSectors && activeSectors.size > 0
+        ? Array.from(activeSectors)
+        : [normalizeKanbanSector(o.current_sector || o.production_step || 'Pendente')];
+      for (const sec of sectorsForThisOrder) {
+        if (!init[sec]) continue;
+        init[sec].total += 1;
+        if (filteredIds.has(o.id)) init[sec].filtered += 1;
+      }
     }
     return init;
-  }, [orders, filteredOrders]);
+  }, [orders, filteredOrders, activeStagesByOrder]);
 
   const hasActiveFilter = search.trim().length > 0 || bottleneckFilter !== 'all';
 
@@ -1014,6 +1063,22 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
                                   <FastForward className="h-2 w-2 mr-0.5" />ADIANTADO
                                 </Badge>
                               )}
+                              {(() => {
+                                /* K2 (audit): badge "PARALELO" sinaliza que essa OP
+                                   está rodando em ≥2 setores ao mesmo tempo.
+                                   Antes o usuário via duplicação no kanban e ficava
+                                   confuso pensando ser bug — agora é explícito. */
+                                const active = activeStagesByOrder.get(order.id);
+                                if (!active || active.size < 2) return null;
+                                return (
+                                  <Badge
+                                    className="bg-violet-500/15 text-violet-700 dark:text-violet-400 text-[8px] px-1 py-0 h-3.5 border-0"
+                                    title={`Em ${active.size} setores em paralelo: ${Array.from(active).join(' · ')}`}
+                                  >
+                                    PARALELO×{active.size}
+                                  </Badge>
+                                );
+                              })()}
                               {order.manual_billing_override && (
                                 <Badge
                                   className="bg-amber-500/20 text-amber-800 dark:text-amber-300 text-[8px] px-1 py-0 h-3.5 border border-amber-500/40 gap-0.5"

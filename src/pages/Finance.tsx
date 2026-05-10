@@ -51,6 +51,7 @@ import UnifiedInvoicesTab from '@/components/finance/UnifiedInvoicesTab';
 import UnifiedFinanceTab from '@/components/finance/UnifiedFinanceTab';
 import ComissoesTab from '@/components/finance/ComissoesTab';
 import FactoringTab from '@/components/finance/FactoringTab';
+import BankReconciliationTab from '@/components/finance/BankReconciliationTab';
 import FinanceAttachments from '@/components/finance/FinanceAttachments';
 import { FinanceReportsTab } from '@/components/finance/FinanceReportsTab';
 import { SmartDashboard } from '@/components/finance/SmartDashboard';
@@ -562,12 +563,24 @@ function DRETab() {
     const totalAll = Object.values(catTotals).reduce((s, v) => s + v, 0);
     const outrosCustos = Math.max(totalAll - totalCategorized, 0);
 
+    // Despesas financeiras de juros factoring vivem em financial_entries com
+    // reference_type='sale_order_factoring' (criadas em syncFinancialRecords). Não
+    // entram em accounts_payable (não são contas a pagar a fornecedor — é dedução
+    // direta do valor recebido). Por isso somamos do entries aqui — sem double-count
+    // pq AP filtra por type=despesa e reference_type não casa.
+    const jurosFactoring = (entries as any[])
+      .filter(e => e.type === 'despesa'
+        && e.entry_date?.startsWith(period)
+        && e.reference_type === 'sale_order_factoring')
+      .reduce((s, e) => s + Number(e.amount || 0), 0);
+
     const cpv = custosMateriais + custosMaoObra + custosOverhead;
     const lucroBruto = receitaBruta - cpv;
     const despesasOp = custosServicos + outrosCustos;
-    const lucroOp = lucroBruto - despesasOp;
+    const ebitda = lucroBruto - despesasOp;
+    const lucroLiquido = ebitda - jurosFactoring;
 
-    return { receitaBruta, cpv, custosMateriais, custosMaoObra, custosOverhead, lucroBruto, despesasOp, custosServicos, outrosCustos, lucroOp };
+    return { receitaBruta, cpv, custosMateriais, custosMaoObra, custosOverhead, lucroBruto, despesasOp, custosServicos, outrosCustos, ebitda, jurosFactoring, lucroLiquido };
   }, [entries, payables, receivables, period]);
 
   const lines = [
@@ -578,7 +591,9 @@ function DRETab() {
     { label: '    Custos Indiretos (Overhead)', value: -dre.custosOverhead, indent: true, sub: true },
     { label: 'Lucro Bruto', value: dre.lucroBruto, bold: true, highlight: true },
     { label: '(-) Despesas Operacionais', value: -dre.despesasOp, indent: true },
-    { label: 'Lucro Operacional (EBITDA)', value: dre.lucroOp, bold: true, highlight: true },
+    { label: 'Lucro Operacional (EBITDA)', value: dre.ebitda, bold: true, highlight: true },
+    { label: '(-) Despesas Financeiras (Juros Factoring)', value: -dre.jurosFactoring, indent: true },
+    { label: 'Lucro Líquido', value: dre.lucroLiquido, bold: true, highlight: true },
   ];
 
   return (
@@ -1421,9 +1436,14 @@ export default function Finance() {
                   <TabsTrigger value="factoring" className="gap-1 text-xs h-7">
                     <Percent className="h-3.5 w-3.5" /> Factoring
                   </TabsTrigger>
+                  {/* F3 (audit): aba nova de conciliação bancária. */}
+                  <TabsTrigger value="conciliacao" className="gap-1 text-xs h-7">
+                    <Landmark className="h-3.5 w-3.5" /> Conciliação
+                  </TabsTrigger>
                 </TabsList>
                 <TabsContent value="comissoes"><ComissoesTab /></TabsContent>
                 <TabsContent value="factoring"><FactoringTab /></TabsContent>
+                <TabsContent value="conciliacao"><BankReconciliationTab /></TabsContent>
               </Tabs>
             </TabsContent>
 

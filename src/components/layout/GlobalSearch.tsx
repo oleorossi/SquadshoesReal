@@ -21,6 +21,23 @@ function detectQueryType(query: string): QueryType {
   return 'general';
 }
 
+/**
+ * Sanitiza input pra `.or(...)` do PostgREST. A vírgula é separator de clauses,
+ * parênteses delimitam grupos, asterisco/percent é wildcard, contrabarra escapa.
+ * Quando o usuário digita qualquer um desses (ex.: "TM, 12" ou "OP-2026"), o filtro
+ * fica malformado e a query retorna 0 resultados sem erro visível — o que é
+ * exatamente o sintoma reportado: "digito várias coisas e não acho nada".
+ *
+ * Solução: remove os chars problemáticos antes de mandar pro Supabase.
+ * Hífens, espaços e outros chars normais ficam intactos.
+ */
+function sanitizeForPostgrestOr(s: string): string {
+  return s
+    .replace(/[,()]/g, ' ')   // vírgula e parens viram espaço
+    .replace(/[\\%_]/g, '')   // wildcards e escape
+    .trim();
+}
+
 const TYPE_LABELS: Record<QueryType, string> = {
   cnpj: 'CNPJ',
   barcode: 'Código de Barras',
@@ -49,8 +66,12 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
 
   const detectedType = useMemo(() => detectQueryType(query), [query]);
   const q = query.toLowerCase().trim();
-  const searchTerm = debouncedQuery.trim();
-  const searchEnabled = open && searchTerm.length >= 2;
+  const searchTerm = sanitizeForPostgrestOr(debouncedQuery);
+  const hasMinChars = searchTerm.length >= 2;
+  const searchEnabled = open && hasMinChars;
+  // CNPJ digitado com máscara: "12.345.678/0001-90". Remove chars não-numéricos
+  // pra também buscar sem máscara, já que clients.cnpj pode estar de qualquer jeito.
+  const cnpjDigits = detectedType === 'cnpj' ? searchTerm.replace(/\D/g, '') : '';
 
   const [ordersQuery, clientsQuery, productsQuery, saleOrdersQuery] = useQueries({
     queries: [
@@ -59,10 +80,13 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
         enabled: searchEnabled,
         staleTime: 60 * 1000,
         queryFn: async () => {
+          // status removido do .or() — historicamente trazia ruído (busca "ok" achava
+          // OPs em qualquer estado contendo "ok"). Order_number já é o identificador
+          // primário e o que o usuário realmente quer encontrar.
           const { data, error } = await supabase
             .from('orders')
             .select('id, order_number, status')
-            .or(`order_number.ilike.%${searchTerm}%,status.ilike.%${searchTerm}%`)
+            .ilike('order_number', `%${searchTerm}%`)
             .order('created_at', { ascending: false })
             .limit(5);
 
@@ -71,14 +95,24 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
         },
       },
       {
-        queryKey: ['global-search-clients', searchTerm],
+        queryKey: ['global-search-clients', searchTerm, cnpjDigits],
         enabled: searchEnabled,
         staleTime: 60 * 1000,
         queryFn: async () => {
+          const orParts = [
+            `razao_social.ilike.%${searchTerm}%`,
+            `cnpj.ilike.%${searchTerm}%`,
+            `nome_fantasia.ilike.%${searchTerm}%`,
+            `client_number.ilike.%${searchTerm}%`,
+          ];
+          // Match também por CNPJ sem máscara — tabela pode ter qualquer formato.
+          if (cnpjDigits.length >= 4) {
+            orParts.push(`cnpj.ilike.%${cnpjDigits}%`);
+          }
           const { data, error } = await supabase
             .from('clients')
             .select('id, razao_social, cnpj, nome_fantasia, client_number')
-            .or(`razao_social.ilike.%${searchTerm}%,cnpj.ilike.%${searchTerm}%,nome_fantasia.ilike.%${searchTerm}%,client_number.ilike.%${searchTerm}%`)
+            .or(orParts.join(','))
             .order('razao_social')
             .limit(5);
 
@@ -103,14 +137,22 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
         },
       },
       {
-        queryKey: ['global-search-sale-orders', searchTerm],
+        queryKey: ['global-search-sale-orders', searchTerm, cnpjDigits],
         enabled: searchEnabled,
         staleTime: 60 * 1000,
         queryFn: async () => {
+          const orParts = [
+            `order_number.ilike.%${searchTerm}%`,
+            `client_name.ilike.%${searchTerm}%`,
+            `client_cnpj.ilike.%${searchTerm}%`,
+          ];
+          if (cnpjDigits.length >= 4) {
+            orParts.push(`client_cnpj.ilike.%${cnpjDigits}%`);
+          }
           const { data, error } = await supabase
             .from('sale_orders')
             .select('id, order_number, client_name, client_cnpj, status')
-            .or(`order_number.ilike.%${searchTerm}%,client_name.ilike.%${searchTerm}%,client_cnpj.ilike.%${searchTerm}%`)
+            .or(orParts.join(','))
             .order('created_at', { ascending: false })
             .limit(5);
 
@@ -126,13 +168,18 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
   const products = productsQuery.data ?? [];
   const saleOrders = saleOrdersQuery.data ?? [];
 
-  const filteredOrders = useMemo(() => (q ? orders : []), [q, orders]);
-  const filteredClients = useMemo(() => (q ? clients : []), [q, clients]);
-  const filteredProducts = useMemo(() => (q ? products : []), [q, products]);
-  const filteredSaleOrders = useMemo(() => (q ? saleOrders : []), [q, saleOrders]);
+  // Antes: filteredXxx usava `q` (immediate) mas dados vêm de `searchTerm` (debounced),
+  // criando flash de "Nenhum resultado" entre digitação e fim da query. Agora usa
+  // searchEnabled como único gate — se não habilitou, lista vazia; se habilitou,
+  // mostra o que tem (incluindo enquanto loading).
+  const filteredOrders = useMemo(() => (searchEnabled ? orders : []), [searchEnabled, orders]);
+  const filteredClients = useMemo(() => (searchEnabled ? clients : []), [searchEnabled, clients]);
+  const filteredProducts = useMemo(() => (searchEnabled ? products : []), [searchEnabled, products]);
+  const filteredSaleOrders = useMemo(() => (searchEnabled ? saleOrders : []), [searchEnabled, saleOrders]);
 
+  // Páginas (atalhos) — busca em string local, ainda usa `q` imediato (UX rápida).
   const filteredNavItems = useMemo(() => {
-    if (!q) return [];
+    if (!q || q.length < 1) return [];
     return menuGroups.flatMap(group =>
       group.items
         .filter(item =>
@@ -224,12 +271,28 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                 </div>
               )}
 
-              {q && isLoading && totalResults === 0 && (
+              {/* Hint quando o usuário digitou algo mas ainda não atingiu o mínimo
+                  pra disparar busca remota. Antes não tinha feedback e o usuário
+                  ficava digitando achando que estava quebrado. */}
+              {q && !hasMinChars && filteredNavItems.length === 0 && (
+                <div className="py-6 text-center text-sm text-muted-foreground">
+                  Digite pelo menos 2 caracteres pra buscar pedidos, clientes e materiais.
+                </div>
+              )}
+
+              {q && hasMinChars && isLoading && totalResults === 0 && (
                 <div className="py-6 text-center text-sm text-muted-foreground">Buscando...</div>
               )}
 
-              {q && !isLoading && totalResults === 0 && (
-                <CommandEmpty>Nenhum resultado para "{query}"</CommandEmpty>
+              {q && hasMinChars && !isLoading && totalResults === 0 && (
+                <CommandEmpty>
+                  <div className="py-2">
+                    <p>Nenhum resultado para "{query}"</p>
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      Tente buscar por nº do pedido (OP-…), nome do cliente, CNPJ ou nome do produto.
+                    </p>
+                  </div>
+                </CommandEmpty>
               )}
 
               {filteredNavItems.length > 0 && (
@@ -252,7 +315,6 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                       <ClipboardList className="mr-2 h-3.5 w-3.5 text-primary" />
                       <div className="flex-1 min-w-0">
                         <span className="font-mono text-xs font-semibold">{op.order_number}</span>
-                        <span className="text-muted-foreground text-xs ml-2">{(op as any).technical_sheets?.name || ''}</span>
                       </div>
                       <Badge variant="outline" className="text-[10px] shrink-0">{op.status}</Badge>
                     </CommandItem>

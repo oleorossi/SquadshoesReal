@@ -65,7 +65,14 @@ export default function ManualEntryTab() {
 
   const [selectedBatch, setSelectedBatch] = useState<string>('__latest__');
   const [filterEmployee, setFilterEmployee] = useState<string>('__all__');
+  const [viewMode, setViewMode] = useState<'week' | 'month'>('week');
   const [weekStart, setWeekStart] = useState<Date>(() => getMonday(new Date()));
+  const [monthRef, setMonthRef] = useState<Date>(() => {
+    const d = new Date();
+    d.setDate(1);
+    d.setHours(12, 0, 0, 0);
+    return d;
+  });
   const [cellDialog, setCellDialog] = useState<CellDialogState | null>(null);
   const [newPunch, setNewPunch] = useState('');
   const [saving, setSaving] = useState(false);
@@ -76,8 +83,24 @@ export default function ManualEntryTab() {
   const weekDates = useMemo(() => Array.from({ length: 6 }, (_, i) => toDateStr(addDays(weekStart, i))), [weekStart]);
   const weekEnd = weekDates[5];
 
-  const startDate = batchRange ? batchRange.startDate : weekDates[0];
-  const endDate = batchRange ? batchRange.endDate : weekEnd;
+  // R2 (audit): visão mensal — 1 coluna por dia do mês (até 31). Permite preencher
+  // todos os funcionários × todos os dias num único grid sem paginar por semana.
+  const monthDates = useMemo(() => {
+    const y = monthRef.getFullYear();
+    const m = monthRef.getMonth();
+    const lastDay = new Date(y, m + 1, 0).getDate();
+    return Array.from({ length: lastDay }, (_, i) => {
+      const d = new Date(y, m, i + 1);
+      return toDateStr(d);
+    });
+  }, [monthRef]);
+
+  const startDate = viewMode === 'month'
+    ? monthDates[0]
+    : batchRange ? batchRange.startDate : weekDates[0];
+  const endDate = viewMode === 'month'
+    ? monthDates[monthDates.length - 1]
+    : batchRange ? batchRange.endDate : weekEnd;
 
   const { data: records = [], isLoading } = useTimeRecords(
     activeBatchId || undefined,
@@ -114,6 +137,22 @@ export default function ManualEntryTab() {
   const prevWeek = () => setWeekStart(d => addDays(d, -7));
   const nextWeek = () => setWeekStart(d => addDays(d, 7));
   const goToCurrentWeek = () => setWeekStart(getMonday(new Date()));
+  const prevMonth = () => setMonthRef(d => {
+    const n = new Date(d);
+    n.setMonth(n.getMonth() - 1);
+    return n;
+  });
+  const nextMonth = () => setMonthRef(d => {
+    const n = new Date(d);
+    n.setMonth(n.getMonth() + 1);
+    return n;
+  });
+  const goToCurrentMonth = () => {
+    const d = new Date();
+    d.setDate(1);
+    d.setHours(12, 0, 0, 0);
+    setMonthRef(d);
+  };
 
   const openCell = useCallback((employeeName: string, dateStr: string) => {
     const existing = recordMap.get(`${employeeName}|${dateStr}`) || null;
@@ -194,6 +233,7 @@ export default function ManualEntryTab() {
   };
 
   const weekLabel = `${formatDateBR(weekDates[0])} – ${formatDateBR(weekDates[5])}`;
+  const monthLabel = monthRef.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 
   return (
     <div className="space-y-4">
@@ -233,21 +273,60 @@ export default function ManualEntryTab() {
                 </SelectContent>
               </Select>
             </div>
+            {/* R2 (audit): toggle Semana/Mês — usa mesmo grid + dialog. */}
+            <div className="flex items-center border rounded-md overflow-hidden h-9 ml-auto">
+              <button
+                type="button"
+                onClick={() => setViewMode('week')}
+                className={`px-3 text-xs font-medium ${
+                  viewMode === 'week' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted/40'
+                }`}
+              >
+                Semana
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('month')}
+                className={`px-3 text-xs font-medium ${
+                  viewMode === 'month' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted/40'
+                }`}
+              >
+                Mês (31 dias)
+              </button>
+            </div>
             <div className="flex items-center gap-1 pb-0.5">
-              <Button variant="outline" size="sm" onClick={prevWeek} className="h-9 w-9 p-0">
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <div className="text-sm font-medium min-w-[130px] text-center">{weekLabel}</div>
-              <Button variant="outline" size="sm" onClick={nextWeek} className="h-9 w-9 p-0">
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="sm" onClick={goToCurrentWeek} className="h-9 text-xs text-muted-foreground">
-                Hoje
-              </Button>
+              {viewMode === 'week' ? (
+                <>
+                  <Button variant="outline" size="sm" onClick={prevWeek} className="h-9 w-9 p-0">
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <div className="text-sm font-medium min-w-[130px] text-center">{weekLabel}</div>
+                  <Button variant="outline" size="sm" onClick={nextWeek} className="h-9 w-9 p-0">
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={goToCurrentWeek} className="h-9 text-xs text-muted-foreground">
+                    Hoje
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button variant="outline" size="sm" onClick={prevMonth} className="h-9 w-9 p-0">
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <div className="text-sm font-medium min-w-[160px] text-center capitalize">{monthLabel}</div>
+                  <Button variant="outline" size="sm" onClick={nextMonth} className="h-9 w-9 p-0">
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={goToCurrentMonth} className="h-9 text-xs text-muted-foreground">
+                    Mês atual
+                  </Button>
+                </>
+              )}
             </div>
           </div>
           <p className="text-xs text-muted-foreground mt-3">
             Clique em uma célula para registrar ou editar os horários do funcionário naquele dia. Batidas manuais ficam marcadas em verde.
+            {viewMode === 'month' && ' Em modo mensal as colunas são compactadas — passe o mouse pra ver o dia da semana.'}
           </p>
         </CardContent>
       </Card>
@@ -265,79 +344,166 @@ export default function ManualEntryTab() {
         <Card>
           <CardContent className="p-0">
             <div className="overflow-auto">
-              <table className="w-full text-sm border-collapse">
-                <thead>
-                  <tr className="bg-muted/30 border-b">
-                    <th className="text-left py-2 px-3 font-medium text-xs text-muted-foreground w-40 sticky left-0 bg-muted/30 z-10">
-                      Funcionário
-                    </th>
-                    {weekDates.map(dateStr => {
-                      const d = new Date(dateStr + 'T12:00:00');
-                      const dow = d.getDay();
-                      const isToday = dateStr === toDateStr(new Date());
-                      return (
-                        <th key={dateStr} className={`py-2 px-2 text-center font-medium text-xs min-w-[110px] ${isToday ? 'bg-primary/10' : ''}`}>
-                          <div className={`font-semibold ${isToday ? 'text-primary' : dow === 0 || dow === 6 ? 'text-muted-foreground' : ''}`}>
-                            {DAYS_PT[dow]}
-                          </div>
-                          <div className="font-mono text-[10px] text-muted-foreground">{formatDateBR(dateStr)}</div>
-                        </th>
-                      );
-                    })}
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayedEmployees.map((empName, rowIdx) => (
-                    <tr key={empName} className={`border-b hover:bg-muted/20 ${rowIdx % 2 === 0 ? '' : 'bg-muted/10'}`}>
-                      <td className={`py-2 px-3 font-medium text-xs sticky left-0 z-10 ${rowIdx % 2 === 0 ? 'bg-card' : 'bg-muted/10'}`}>
-                        <span className="truncate block max-w-[140px]">{empName}</span>
-                      </td>
+              {viewMode === 'week' ? (
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="bg-muted/30 border-b">
+                      <th className="text-left py-2 px-3 font-medium text-xs text-muted-foreground w-40 sticky left-0 bg-muted/30 z-10">
+                        Funcionário
+                      </th>
                       {weekDates.map(dateStr => {
-                        const rec = recordMap.get(`${empName}|${dateStr}`);
-                        const punches = (rec?.punches as string[] | undefined) || [];
                         const d = new Date(dateStr + 'T12:00:00');
                         const dow = d.getDay();
-                        const isWeekend = dow === 0 || dow === 6;
                         const isToday = dateStr === toDateStr(new Date());
-                        const hasManual = punches.some(isManualPunch);
-                        const cleanPunches = punches.map(cleanPunch).sort();
-
                         return (
-                          <td
-                            key={dateStr}
-                            className={`py-1 px-2 text-center cursor-pointer transition-colors align-top
-                              ${isToday ? 'bg-primary/5' : ''}
-                              ${isWeekend && !rec ? 'bg-muted/5 opacity-60' : ''}
-                              hover:bg-primary/10
-                            `}
-                            onClick={() => openCell(empName, dateStr)}
-                          >
-                            {cleanPunches.length === 0 ? (
-                              <div className="text-muted-foreground/40 text-[10px] py-1">—</div>
-                            ) : (
-                              <div className="space-y-0.5">
-                                {cleanPunches.map((p, i) => (
-                                  <div
-                                    key={i}
-                                    className={`font-mono text-[10px] rounded px-1 inline-block mx-0.5 ${
-                                      isManualPunch(punches[i] || '') || hasManual
-                                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
-                                        : 'bg-muted/60 text-foreground'
-                                    }`}
-                                  >
-                                    {p}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </td>
+                          <th key={dateStr} className={`py-2 px-2 text-center font-medium text-xs min-w-[110px] ${isToday ? 'bg-primary/10' : ''}`}>
+                            <div className={`font-semibold ${isToday ? 'text-primary' : dow === 0 || dow === 6 ? 'text-muted-foreground' : ''}`}>
+                              {DAYS_PT[dow]}
+                            </div>
+                            <div className="font-mono text-[10px] text-muted-foreground">{formatDateBR(dateStr)}</div>
+                          </th>
                         );
                       })}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {displayedEmployees.map((empName, rowIdx) => (
+                      <tr key={empName} className={`border-b hover:bg-muted/20 ${rowIdx % 2 === 0 ? '' : 'bg-muted/10'}`}>
+                        <td className={`py-2 px-3 font-medium text-xs sticky left-0 z-10 ${rowIdx % 2 === 0 ? 'bg-card' : 'bg-muted/10'}`}>
+                          <span className="truncate block max-w-[140px]">{empName}</span>
+                        </td>
+                        {weekDates.map(dateStr => {
+                          const rec = recordMap.get(`${empName}|${dateStr}`);
+                          const punches = (rec?.punches as string[] | undefined) || [];
+                          const d = new Date(dateStr + 'T12:00:00');
+                          const dow = d.getDay();
+                          const isWeekend = dow === 0 || dow === 6;
+                          const isToday = dateStr === toDateStr(new Date());
+                          const hasManual = punches.some(isManualPunch);
+                          const cleanPunches = punches.map(cleanPunch).sort();
+
+                          return (
+                            <td
+                              key={dateStr}
+                              className={`py-1 px-2 text-center cursor-pointer transition-colors align-top
+                                ${isToday ? 'bg-primary/5' : ''}
+                                ${isWeekend && !rec ? 'bg-muted/5 opacity-60' : ''}
+                                hover:bg-primary/10
+                              `}
+                              onClick={() => openCell(empName, dateStr)}
+                            >
+                              {cleanPunches.length === 0 ? (
+                                <div className="text-muted-foreground/40 text-[10px] py-1">—</div>
+                              ) : (
+                                <div className="space-y-0.5">
+                                  {cleanPunches.map((p, i) => (
+                                    <div
+                                      key={i}
+                                      className={`font-mono text-[10px] rounded px-1 inline-block mx-0.5 ${
+                                        isManualPunch(punches[i] || '') || hasManual
+                                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                                          : 'bg-muted/60 text-foreground'
+                                      }`}
+                                    >
+                                      {p}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                /* R2 (audit): visão mensal de até 31 colunas. Cada célula virou
+                   um indicador compacto: vazio = sem registro, ponto azul = batidas
+                   automáticas, ponto verde = manual, ponto âmbar = ímpar. Click
+                   abre o mesmo dialog pra editar todas as batidas do dia. */
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-muted/30 border-b">
+                      <th className="text-left py-2 px-2 font-medium text-[10px] text-muted-foreground w-32 sticky left-0 bg-muted/30 z-10">
+                        Funcionário
+                      </th>
+                      {monthDates.map(dateStr => {
+                        const d = new Date(dateStr + 'T12:00:00');
+                        const dow = d.getDay();
+                        const dayNum = d.getDate();
+                        const isToday = dateStr === toDateStr(new Date());
+                        return (
+                          <th
+                            key={dateStr}
+                            title={`${DAYS_FULL[dow]} ${formatDateBR(dateStr)}`}
+                            className={`py-1 px-0 text-center font-medium text-[10px] w-7 ${
+                              isToday ? 'bg-primary/15 text-primary' : dow === 0 || dow === 6 ? 'bg-muted/40 text-muted-foreground' : ''
+                            }`}
+                          >
+                            <div className="font-semibold tabular-nums">{dayNum}</div>
+                            <div className="text-[8px] uppercase opacity-60">{DAYS_PT[dow][0]}</div>
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayedEmployees.map((empName, rowIdx) => (
+                      <tr key={empName} className={`border-b hover:bg-muted/20 ${rowIdx % 2 === 0 ? '' : 'bg-muted/10'}`}>
+                        <td className={`py-1.5 px-2 font-medium text-[11px] sticky left-0 z-10 ${rowIdx % 2 === 0 ? 'bg-card' : 'bg-muted/10'}`}>
+                          <span className="truncate block max-w-[120px]">{empName}</span>
+                        </td>
+                        {monthDates.map(dateStr => {
+                          const rec = recordMap.get(`${empName}|${dateStr}`);
+                          const punches = (rec?.punches as string[] | undefined) || [];
+                          const d = new Date(dateStr + 'T12:00:00');
+                          const dow = d.getDay();
+                          const isWeekend = dow === 0 || dow === 6;
+                          const isToday = dateStr === toDateStr(new Date());
+                          const hasManual = punches.some(isManualPunch);
+                          const isOdd = punches.length > 0 && punches.length % 2 !== 0;
+                          const dotColor = isOdd
+                            ? 'bg-amber-500'
+                            : hasManual
+                              ? 'bg-emerald-500'
+                              : punches.length > 0
+                                ? 'bg-blue-500'
+                                : '';
+                          return (
+                            <td
+                              key={dateStr}
+                              title={`${empName} · ${formatDateBR(dateStr)}\n${punches.map(cleanPunch).join(' · ') || 'sem registro'}`}
+                              className={`p-0 text-center cursor-pointer transition-colors w-7 ${
+                                isToday ? 'bg-primary/5' : isWeekend ? 'bg-muted/10' : ''
+                              } hover:bg-primary/15`}
+                              onClick={() => openCell(empName, dateStr)}
+                            >
+                              <div className="h-7 flex items-center justify-center">
+                                {dotColor ? (
+                                  <span className={`w-2 h-2 rounded-full ${dotColor}`} />
+                                ) : (
+                                  <span className="text-muted-foreground/30 text-[9px]">·</span>
+                                )}
+                              </div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
+            {viewMode === 'month' && (
+              <div className="flex items-center gap-3 px-3 py-2 border-t bg-muted/20 text-[10px] text-muted-foreground flex-wrap">
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500" /> automático</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /> manual</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500" /> ímpar (incompleto)</span>
+                <span className="flex items-center gap-1">· vazio</span>
+                <span className="ml-auto">Clique numa célula pra editar batidas do dia</span>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

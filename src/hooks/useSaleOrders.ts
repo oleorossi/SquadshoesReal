@@ -98,24 +98,44 @@ async function syncFinancialRecords(saleOrderId: string) {
       .eq('reference_type', 'sale_order')
       .not('status', 'in', '(posted,paid,reconciled,confirmed)');
     must('Remover financial_entries de PV cancelado', delErr);
+
+    // Despesas de juros factoring podem ser sempre removidas no cancel — não vão
+    // pro SPED e dependem 1:1 do PV ativo. Se PV reativar depois, syncFinancialRecords
+    // recria a entry corretamente.
+    const { error: delFactoringErr } = await supabase
+      .from('financial_entries')
+      .delete()
+      .eq('reference_id', saleOrderId)
+      .eq('reference_type', 'sale_order_factoring');
+    must('Remover juros factoring de PV cancelado', delFactoringErr);
     return;
   }
 
   if (so.status === 'Faturado') {
-    let dueDate = so.delivery_deadline || new Date().toISOString().split('T')[0];
+    const todayISO = new Date().toISOString().split('T')[0];
+    let dueDate = so.delivery_deadline || todayISO;
 
     // If factoring is enabled, calculate discounted amount and due date
     let factoringDiscountedTotal = total;
+    let factoringConfigForEntry: { name?: string | null; receiving_days?: number; monthly_interest_rate?: number } | null = null;
     if (so.is_factoring && so.factoring_config_id) {
       const { data: factoringConfig } = await supabase
         .from('factoring_config')
-        .select('receiving_days, monthly_interest_rate')
+        .select('name, receiving_days, monthly_interest_rate')
         .eq('id', so.factoring_config_id)
         .single();
       if (factoringConfig) {
-        const factoringDate = new Date();
-        factoringDate.setDate(factoringDate.getDate() + factoringConfig.receiving_days);
-        dueDate = factoringDate.toISOString().split('T')[0];
+        factoringConfigForEntry = factoringConfig as any;
+        // Antes: dueDate = today + receiving_days. Bug: se a fatura é emitida ANTES
+        // da entrega, o dinheiro entrava antes do produto sair (impossível). Factoring
+        // só desconta o título contra a NF emitida — então a base correta é
+        // max(today, delivery_deadline). A entrega "puxa" pra frente quando a OP
+        // ainda não saiu; today protege quando a entrega já passou (ex.: regularização).
+        const baseDate = so.delivery_deadline && so.delivery_deadline > todayISO
+          ? new Date(so.delivery_deadline)
+          : new Date();
+        baseDate.setDate(baseDate.getDate() + factoringConfig.receiving_days);
+        dueDate = baseDate.toISOString().split('T')[0];
 
         const { pv } = calculateFactoringDiscount({
           total,
@@ -178,7 +198,9 @@ async function syncFinancialRecords(saleOrderId: string) {
       must('Inserir conta a receber (Faturado)', error);
     }
 
-    // Create financial entry for revenue tracking
+    // Create financial entry for revenue tracking. Receita BRUTA (total) — desconto
+    // factoring vai como despesa financeira separada abaixo. Convenção contábil:
+    // DRE precisa ver receita bruta + (-) despesas financeiras pra calcular margem.
     const { data: existingEntry, error: feErr } = await supabase
       .from('financial_entries')
       .select('id')
@@ -204,6 +226,46 @@ async function syncFinancialRecords(saleOrderId: string) {
         .eq('reference_id', saleOrderId)
         .eq('reference_type', 'sale_order');
       must('Atualizar financial_entry de faturamento', error);
+    }
+
+    // Despesa financeira do desconto factoring — registrada como entry separada
+    // pra DRE conseguir somar em "Despesas financeiras". Antes ficava só no
+    // description do AR (não-queryável, não-agregável). Usa reference_type
+    // 'sale_order_factoring' pra distinguir e permitir reset/recriação.
+    const { data: existingFactoringEntry } = await supabase
+      .from('financial_entries')
+      .select('id')
+      .eq('reference_id', saleOrderId)
+      .eq('reference_type', 'sale_order_factoring');
+
+    if (factoringDiscount > 0 && factoringConfigForEntry) {
+      const factoringDesc = `Juros factoring (${factoringConfigForEntry.name || 'config'}, ${factoringConfigForEntry.monthly_interest_rate}% a.m.) - ${so.client_name || ''} - ${so.order_number || ''}`;
+      if (!existingFactoringEntry || existingFactoringEntry.length === 0) {
+        const { error } = await supabase.from('financial_entries').insert({
+          description: factoringDesc,
+          amount: factoringDiscount,
+          type: 'despesa',
+          entry_date: new Date().toISOString().split('T')[0],
+          reference_id: saleOrderId,
+          reference_type: 'sale_order_factoring',
+          status: 'confirmed',
+        });
+        must('Inserir financial_entry de juros factoring', error);
+      } else {
+        const { error } = await supabase.from('financial_entries')
+          .update({ amount: factoringDiscount, description: factoringDesc })
+          .eq('reference_id', saleOrderId)
+          .eq('reference_type', 'sale_order_factoring');
+        must('Atualizar financial_entry de juros factoring', error);
+      }
+    } else if (existingFactoringEntry && existingFactoringEntry.length > 0) {
+      // Factoring foi desligado pós-faturamento ou desconto zerado: remove entry
+      // legacy pra não inflar despesas financeiras na DRE.
+      const idsToDelete = existingFactoringEntry.map((e: any) => e.id);
+      const { error } = await supabase.from('financial_entries')
+        .delete()
+        .in('id', idsToDelete);
+      must('Remover financial_entry legacy de juros factoring', error);
     }
     return;
   }

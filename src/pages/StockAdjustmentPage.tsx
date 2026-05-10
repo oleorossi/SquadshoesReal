@@ -96,6 +96,20 @@ function gradeTotal(grade: Record<string, number>): number {
 
 // ── Main page ───────────────────────────────────────────────────────────────
 
+// E3 (audit): presets de motivo padronizados. Antes era texto livre — análises
+// posteriores ficavam difíceis (cada operador escrevia "ajuste do invent." de
+// um jeito). Categoria estruturada vai pro stock_movements.reason já formatada
+// e ainda permite texto adicional.
+const REASON_PRESETS: Array<{ key: string; label: string; needsDetail?: boolean }> = [
+  { key: 'inventario',   label: 'Inventário (contagem física)', needsDetail: false },
+  { key: 'avaria',       label: 'Avaria / perda',                needsDetail: true },
+  { key: 'devolucao',    label: 'Devolução de cliente',          needsDetail: true },
+  { key: 'erro_lcto',    label: 'Correção de lançamento',        needsDetail: true },
+  { key: 'amostra',      label: 'Saída de amostra / mostruário', needsDetail: true },
+  { key: 'transferencia', label: 'Transferência de filial/setor', needsDetail: true },
+  { key: 'outro',        label: 'Outro motivo',                   needsDetail: true },
+];
+
 // E6 (audit): filtros persistem em localStorage. Antes: F5/troca de aba zerava
 // filtros aplicados — usuário tinha que reaplicar toda vez que voltava.
 const STOCK_FILTERS_KEY = "stock-adjustment-filters-v1";
@@ -131,8 +145,30 @@ export default function StockAdjustmentPage() {
       );
     } catch {}
   }, [categoryFilter, statusFilter, unitFilter, typeFilter]);
-  const [reason, setReason] = useState("");
+  const [reasonPreset, setReasonPreset] = useState<string>('inventario');
+  const [reasonDetail, setReasonDetail] = useState("");
+  // Combina preset + detalhe. Se preset não exige detalhe e usuário não informou,
+  // usa só o preset. Caso contrário concatena pra audit trail.
+  const reason = useMemo(() => {
+    const preset = REASON_PRESETS.find(p => p.key === reasonPreset);
+    if (!preset) return reasonDetail.trim();
+    const presetLabel = preset.label;
+    const detail = reasonDetail.trim();
+    if (preset.needsDetail) {
+      return detail ? `${presetLabel} — ${detail}` : '';
+    }
+    return detail ? `${presetLabel} — ${detail}` : presetLabel;
+  }, [reasonPreset, reasonDetail]);
   const [saving, setSaving] = useState(false);
+
+  // E1 (audit): snapshot dos valores atuais quando o usuário começa a editar.
+  // Se outro usuário (ou o próprio em outra aba) salvar mudança no DB, a query
+  // refetch automaticamente; comparamos snapshot vs atual e alertamos antes
+  // que o usuário sobrescreva sem perceber.
+  // staleSnapshot: produto.id → quantity vista quando o draft foi iniciado.
+  const [staleSnapshot, setStaleSnapshot] = useState<Map<string, number>>(new Map());
+  // Set de productIds com conflito detectado (DB mudou enquanto editado).
+  const [conflictedIds, setConflictedIds] = useState<Set<string>>(new Set());
    const [historyProductId, setHistoryProductId] = useState<string | null>(null);
    const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
@@ -196,6 +232,80 @@ export default function StockAdjustmentPage() {
     }
     return m;
   }, [allConjugations]);
+
+  // Index produtos por id pra lookup rápido em comparações de snapshot/concurrency.
+  const productsById = useMemo(() => {
+    const m = new Map<string, Product>();
+    for (const p of products) m.set(p.id, p);
+    return m;
+  }, [products]);
+
+  // E1 (audit): refetch periódico (15s) só pra detectar concorrência. Não invalida
+  // queries — só compara silenciosamente. Quando há draft ativo e o DB mudou,
+  // adiciona ao set de conflictedIds pra UI alertar.
+  useEffect(() => {
+    if (Object.keys(drafts).length === 0 && Object.keys(soleDrafts).length === 0) return;
+    const interval = setInterval(async () => {
+      const editingIds = Array.from(new Set([...Object.keys(drafts), ...Object.keys(soleDrafts)]));
+      if (editingIds.length === 0) return;
+      const { data, error } = await supabase
+        .from('products')
+        .select('id, quantity, stock_grade')
+        .in('id', editingIds);
+      if (error || !data) return;
+      const newConflicts = new Set<string>();
+      for (const fresh of data as any[]) {
+        const snap = staleSnapshot.get(fresh.id);
+        if (snap !== undefined && Number(fresh.quantity) !== snap) {
+          newConflicts.add(fresh.id);
+        }
+      }
+      setConflictedIds((prev) => {
+        const merged = new Set(prev);
+        newConflicts.forEach(id => merged.add(id));
+        return merged;
+      });
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [drafts, soleDrafts, staleSnapshot]);
+
+  // Captura snapshot quando draft abre pela primeira vez para um produto.
+  useEffect(() => {
+    setStaleSnapshot((prev) => {
+      const next = new Map(prev);
+      let changed = false;
+      for (const id of Object.keys(drafts)) {
+        if (!next.has(id)) {
+          const p = productsById.get(id);
+          if (p) { next.set(id, p.quantity); changed = true; }
+        }
+      }
+      for (const id of Object.keys(soleDrafts)) {
+        if (!next.has(id)) {
+          const p = productsById.get(id);
+          if (p) { next.set(id, p.quantity); changed = true; }
+        }
+      }
+      // Limpa snapshots de produtos sem mais draft
+      const activeIds = new Set([...Object.keys(drafts), ...Object.keys(soleDrafts)]);
+      for (const id of Array.from(next.keys())) {
+        if (!activeIds.has(id)) { next.delete(id); changed = true; }
+      }
+      return changed ? next : prev;
+    });
+    // Limpa conflitos pra produtos sem draft (resolve o conflito implicitamente
+    // ao descartar o draft).
+    setConflictedIds((prev) => {
+      const activeIds = new Set([...Object.keys(drafts), ...Object.keys(soleDrafts)]);
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (activeIds.has(id)) next.add(id);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [drafts, soleDrafts, productsById]);
 
   const getConjugationsFor = useCallback(
     (groupId: string | null) => (groupId ? conjugationsByGroup.get(groupId) ?? [] : []),
@@ -366,8 +476,24 @@ export default function StockAdjustmentPage() {
       toast.info("Nenhuma alteração para salvar.");
       return;
     }
+    const preset = REASON_PRESETS.find(p => p.key === reasonPreset);
+    if (preset?.needsDetail && !reasonDetail.trim()) {
+      toast.error(`Informe o detalhe pra "${preset.label}" antes de salvar.`);
+      return;
+    }
     if (!reason.trim()) {
       toast.error("Informe o motivo do ajuste antes de salvar.");
+      return;
+    }
+    if (conflictedIds.size > 0) {
+      // E1 (audit): bloqueio explícito quando há concorrência detectada — usuário
+      // tem que decidir descartar drafts ou recarregar. Antes seguia direto e
+      // CONCURRENCY_ERROR vinha do RPC, mas com mensagem confusa.
+      toast.error(
+        `${conflictedIds.size} produto(s) foram alterados em outra sessão enquanto você editava. ` +
+        `Recarregue a página (F5) ou descarte seus drafts antes de salvar pra evitar sobrescrever.`,
+        { duration: 8000 },
+      );
       return;
     }
     setSaving(true);
@@ -452,7 +578,9 @@ export default function StockAdjustmentPage() {
        setDrafts({});
        setSoleDrafts({});
        setExpanded(new Set());
-       setReason("");
+       setReasonDetail("");
+       setStaleSnapshot(new Map());
+       setConflictedIds(new Set());
        qc.invalidateQueries({ queryKey: ["products"] });
        qc.invalidateQueries({ queryKey: ["stock-adjustment-products"] });
      } catch (err: any) {
@@ -537,31 +665,61 @@ export default function StockAdjustmentPage() {
 
         <div className="flex-1" />
 
-        {/* E10 (audit): tooltip informa que a operação fica registrada no histórico
-            com identidade do operador. Antes: usuário não sabia se mudanças tinham
-            audit trail (existe em stock_movements via trigger, mas era invisível). */}
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Input
-                placeholder="Motivo do ajuste (obrigatório)…"
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                className={cn(
-                  "h-8 text-sm w-72",
-                  !reason.trim() && totalPending > 0 && "border-destructive focus-visible:ring-destructive"
-                )}
-              />
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="max-w-xs">
-              <p className="text-xs">
-                Cada ajuste fica registrado no histórico do produto com seu usuário,
-                data/hora e motivo. Use o botão <span className="font-semibold">Hist.</span> da
-                linha pra revisar movimentações anteriores.
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        {/* E3 (audit): preset de motivo padronizado + detalhe opcional. Antes
+            era texto livre — relatórios não conseguiam categorizar e cada
+            operador inventava sua nomenclatura. */}
+        <Select value={reasonPreset} onValueChange={setReasonPreset}>
+          <SelectTrigger className="h-8 w-44 text-sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {REASON_PRESETS.map(p => (
+              <SelectItem key={p.key} value={p.key}>{p.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {(() => {
+          const preset = REASON_PRESETS.find(p => p.key === reasonPreset);
+          const needsDetail = preset?.needsDetail ?? false;
+          const placeholder = needsDetail
+            ? `Detalhe ${preset?.label.toLowerCase() ?? ''} (obrigatório)…`
+            : 'Detalhe (opcional)…';
+          return (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Input
+                    placeholder={placeholder}
+                    value={reasonDetail}
+                    onChange={(e) => setReasonDetail(e.target.value)}
+                    className={cn(
+                      "h-8 text-sm w-64",
+                      needsDetail && !reasonDetail.trim() && totalPending > 0 &&
+                        "border-destructive focus-visible:ring-destructive"
+                    )}
+                  />
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs">
+                  <p className="text-xs">
+                    O motivo selecionado é registrado em <span className="font-mono">stock_movements.reason</span>
+                    {' '}junto com seu usuário e data/hora. Detalhes ajudam auditoria posterior.
+                    Veja o histórico completo no botão <span className="font-semibold">Hist.</span> da linha.
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          );
+        })()}
+        {conflictedIds.size > 0 && (
+          /* E1 (audit): badge global de conflito. Detail-level alert é mostrado
+             na linha individual também. */
+          <span
+            className="text-xs font-semibold text-destructive bg-destructive/10 border border-destructive/30 rounded px-2 py-1 shrink-0 cursor-help"
+            title={`${conflictedIds.size} produto(s) que você está editando foram alterados em outra sessão. Recarregue antes de salvar pra evitar perder dados.`}
+          >
+            ⚠ {conflictedIds.size} conflito{conflictedIds.size > 1 ? 's' : ''}
+          </span>
+        )}
 
         {totalPending > 0 && (
           <span className="text-xs font-semibold text-amber-700 bg-amber-100 dark:bg-amber-900/40 dark:text-amber-300 rounded px-2 py-1 shrink-0">
@@ -569,15 +727,20 @@ export default function StockAdjustmentPage() {
           </span>
         )}
 
-        {/* E2: bloqueia Salvar quando motivo vazio. Antes: toast.error após click,
-            ainda permitia request fail e confundia user. Agora: feedback visual
-            no campo + botão indisponível com tooltip explicativo. */}
+        {/* E2: bloqueia Salvar quando motivo vazio. E1 (audit): bloqueia também
+            quando há produtos com conflito de versão. */}
         <Button
           size="sm"
           onClick={handleSave}
-          disabled={saving || totalPending === 0 || !reason.trim()}
+          disabled={saving || totalPending === 0 || !reason.trim() || conflictedIds.size > 0}
           className="h-8 gap-1.5 shrink-0"
-          title={!reason.trim() && totalPending > 0 ? 'Preencha o motivo do ajuste antes de salvar' : undefined}
+          title={
+            conflictedIds.size > 0
+              ? 'Há produtos alterados em outra sessão. Recarregue a página antes de salvar.'
+              : !reason.trim() && totalPending > 0
+                ? 'Preencha o motivo do ajuste antes de salvar'
+                : undefined
+          }
         >
           {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
           Salvar
@@ -585,7 +748,7 @@ export default function StockAdjustmentPage() {
 
         {totalPending > 0 && (
           <Button size="sm" variant="ghost" className="h-8 text-xs text-muted-foreground shrink-0"
-            onClick={() => { setDrafts({}); setSoleDrafts({}); }}>
+            onClick={() => { setDrafts({}); setSoleDrafts({}); setConflictedIds(new Set()); setStaleSnapshot(new Map()); }}>
             <X className="h-3 w-3 mr-1" /> Limpar
           </Button>
         )}
@@ -688,7 +851,9 @@ export default function StockAdjustmentPage() {
                       <tr key={product.id}
                         className={cn(
                           "border-b border-border/30 transition-colors",
-                          hasSoleDraft ? "bg-amber-50/70 dark:bg-amber-950/25" : isEven ? "bg-background" : "bg-muted/20",
+                          conflictedIds.has(product.id)
+                            ? "bg-destructive/10 border-l-4 border-l-destructive"
+                            : hasSoleDraft ? "bg-amber-50/70 dark:bg-amber-950/25" : isEven ? "bg-background" : "bg-muted/20",
                           isExpanded && "border-b-0"
                         )}
                       >
@@ -713,6 +878,14 @@ export default function StockAdjustmentPage() {
                         <td className="px-3 py-1.5 border-r border-border/30">
                           <div className="flex items-center gap-1.5 min-w-0">
                             {isLow && <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />}
+                            {conflictedIds.has(product.id) && (
+                              <span
+                                className="text-[9px] font-bold uppercase tracking-wide bg-destructive/15 text-destructive border border-destructive/40 rounded px-1 py-0.5 shrink-0"
+                                title="Outra sessão alterou este produto enquanto você editava. Recarregue antes de salvar."
+                              >
+                                conflito
+                              </span>
+                            )}
                             {!product.active && <span className="text-[9px] font-semibold uppercase tracking-wide bg-muted text-muted-foreground rounded px-1 py-0.5 shrink-0">inativo</span>}
                             <span className="truncate font-medium text-foreground text-[13px]">{product.name}</span>
                           </div>
@@ -891,7 +1064,9 @@ export default function StockAdjustmentPage() {
                     <tr key={product.id}
                       className={cn(
                         "border-b border-border/30 last:border-0 transition-colors",
-                        isDirty ? "bg-amber-50/70 dark:bg-amber-950/25" : isEven ? "bg-background" : "bg-muted/20"
+                        conflictedIds.has(product.id)
+                          ? "bg-destructive/10 border-l-4 border-l-destructive"
+                          : isDirty ? "bg-amber-50/70 dark:bg-amber-950/25" : isEven ? "bg-background" : "bg-muted/20"
                       )}
                     >
                        <td className="text-[11px] text-muted-foreground/50 text-center select-none border-r border-border/30 py-0">{rowIndex + 1}</td>
