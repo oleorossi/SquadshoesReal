@@ -254,6 +254,9 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
   const location = useLocation();
    const { loading, isError, canAccessRoute } = useAccessControl();
 
+   const path = location.pathname;
+   const canAccess = path === '/' ? true : canAccessRoute(path);
+
   // Failsafe DEFENSIVO: se ficar carregando muito tempo (15s) mostramos o
   // skeleton com aviso suave em vez de "Sessão Instável", que assustava
   // usuários em qualquer flutuação de rede.
@@ -263,6 +266,17 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
     const t = setTimeout(() => setShowSlowHint(true), 8000);
     return () => clearTimeout(t);
   }, [loading]);
+
+  // Audit visual #10: grace period antes de mostrar "Acesso Restrito".
+  // Bug: navegação direta pra rota nova podia retornar canAccess=false
+  // brevemente durante refetch dos roles, gerando flash da página de erro.
+  // 500ms de tolerância elimina o flash sem afetar negações reais.
+  const [showDeniedConfirmed, setShowDeniedConfirmed] = useState(false);
+  useEffect(() => {
+    if (canAccess) { setShowDeniedConfirmed(false); return; }
+    const t = setTimeout(() => setShowDeniedConfirmed(true), 500);
+    return () => clearTimeout(t);
+  }, [canAccess, path]);
 
   if (loading) {
     if (!showSlowHint) return <PageSkeleton />;
@@ -303,23 +317,6 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
-
-   const path = location.pathname;
-  // Always allow home path to resolve to Navigate which then goes to /dashboard
-  // This prevents infinite loops or stuck states on the root path
-  const canAccess = path === '/' ? true : canAccessRoute(path);
-
-  // Audit visual #10: grace period antes de mostrar "Acesso Restrito".
-  // Bug original: navegação direta pra rota nova podia retornar canAccess=false
-  // brevemente durante refetch dos roles (cache vazio momentâneo), provocando
-  // flash da página de erro. 500ms de tolerância elimina o flash sem afetar
-  // negações reais de permissão (essas persistem além desse intervalo).
-  const [showDeniedConfirmed, setShowDeniedConfirmed] = useState(false);
-  useEffect(() => {
-    if (canAccess) { setShowDeniedConfirmed(false); return; }
-    const t = setTimeout(() => setShowDeniedConfirmed(true), 500);
-    return () => clearTimeout(t);
-  }, [canAccess, path]);
 
   if (!canAccess && !showDeniedConfirmed) {
     return <PageSkeleton />;
