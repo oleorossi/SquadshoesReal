@@ -47,17 +47,53 @@ import { ConsumptionErrorAlert } from "@/components/dashboard/ConsumptionErrorAl
  
    // Faturamento = soma de sale_orders.total. A tabela 'orders' (OPs) não tem coluna
    // 'total' — só custos de produção. Receita vive em sale_orders.
+   // A Receber/A Pagar/Saldo: somamos valor pendente em accounts_receivable e accounts_payable
+   // para que o painel reflita o que o módulo Financeiro mostra.
     const { data: financialStats, isLoading: isFinLoading } = useQuery({
      queryKey: ['dashboard-financial-stats'],
       staleTime: 2 * 60 * 1000,
      queryFn: async () => {
-       const { data: salesData } = await supabase
-         .from('sale_orders')
-         .select('total');
+       const todayIso = new Date().toISOString().slice(0, 10);
+       const [
+         { data: salesData },
+         { data: receivableRows },
+         { data: payableRows },
+       ] = await Promise.all([
+         supabase.from('sale_orders').select('total'),
+         supabase.from('accounts_receivable').select('amount, amount_paid, due_date, status'),
+         supabase.from('accounts_payable').select('amount, amount_paid, due_date, status'),
+       ]);
 
-       const total = salesData?.reduce((acc, curr) => acc + (Number(curr.total) || 0), 0) || 0;
+       const PAID_STATUSES = new Set(['paid', 'pago', 'cancelled', 'cancelado', 'estornado']);
 
-       return { revenue: total };
+       const revenue = salesData?.reduce((acc, curr) => acc + (Number(curr.total) || 0), 0) || 0;
+
+       let receivable = 0;
+       let receivableOverdue = 0;
+       (receivableRows || []).forEach((r: any) => {
+         if (PAID_STATUSES.has(r.status)) return;
+         const remaining = Math.max(0, Number(r.amount || 0) - Number(r.amount_paid || 0));
+         receivable += remaining;
+         if (r.due_date && r.due_date < todayIso) receivableOverdue += 1;
+       });
+
+       let payable = 0;
+       let payableOverdue = 0;
+       (payableRows || []).forEach((p: any) => {
+         if (PAID_STATUSES.has(p.status)) return;
+         const remaining = Math.max(0, Number(p.amount || 0) - Number(p.amount_paid || 0));
+         payable += remaining;
+         if (p.due_date && p.due_date < todayIso) payableOverdue += 1;
+       });
+
+       return {
+         revenue,
+         receivable,
+         receivableOverdue,
+         payable,
+         payableOverdue,
+         netBalance: receivable - payable,
+       };
      }
    });
  
@@ -141,16 +177,34 @@ import { ConsumptionErrorAlert } from "@/components/dashboard/ConsumptionErrorAl
       {/* KPIs — Financeiro */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 stagger-children">
          <div onClick={() => navigate('/finance')} className="cursor-pointer">
-           <FinCard label="Faturamento" value={formatCurrency(financialStats?.revenue ?? 0)} sub="Total ordens" subColor="up" trendIcon={TrendingUp} />
+           <FinCard label="Faturamento" value={formatCurrency(financialStats?.revenue ?? 0)} sub="Total PVs" subColor="up" trendIcon={TrendingUp} />
          </div>
          <div onClick={() => navigate('/finance')} className="cursor-pointer">
-           <FinCard label="A Receber" value="R$ 65.690" sub="3 vencidos" subColor="warning" trendIcon={TrendingUp} />
+           <FinCard
+             label="A Receber"
+             value={formatCurrency(financialStats?.receivable ?? 0)}
+             sub={`${financialStats?.receivableOverdue ?? 0} vencidos`}
+             subColor={(financialStats?.receivableOverdue ?? 0) > 0 ? 'warning' : 'up'}
+             trendIcon={TrendingUp}
+           />
          </div>
          <div onClick={() => navigate('/finance')} className="cursor-pointer">
-           <FinCard label="A Pagar" value="R$ 17.841" sub="8 vencidos" subColor="down" trendIcon={TrendingDown} />
+           <FinCard
+             label="A Pagar"
+             value={formatCurrency(financialStats?.payable ?? 0)}
+             sub={`${financialStats?.payableOverdue ?? 0} vencidos`}
+             subColor={(financialStats?.payableOverdue ?? 0) > 0 ? 'down' : 'muted'}
+             trendIcon={TrendingDown}
+           />
          </div>
          <div onClick={() => navigate('/finance')} className="cursor-pointer">
-           <FinCard label="Saldo Líquido" value="R$ 47.849" sub="estimado" subColor="muted" highlight />
+           <FinCard
+             label="Saldo Líquido"
+             value={formatCurrency(financialStats?.netBalance ?? 0)}
+             sub="A Receber − A Pagar"
+             subColor="muted"
+             highlight
+           />
          </div>
       </div>
 
