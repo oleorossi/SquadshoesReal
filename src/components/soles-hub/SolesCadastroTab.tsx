@@ -92,7 +92,12 @@ export default function SolesCadastroTab({ sole }: Props) {
                 size_to: (sole.stock_grade as any)?._size_to ?? 40,
                 notes: '',
               }); }}>Cancelar</Button>
-              <Button size="sm" onClick={handleSave} disabled={update.isPending} className="gap-1.5">
+              <Button
+                size="sm"
+                onClick={handleSave}
+                disabled={update.isPending || Number(form.size_from) > Number(form.size_to)}
+                className="gap-1.5"
+              >
                 <Save className="h-3 w-3" /> Salvar
               </Button>
             </div>
@@ -132,27 +137,39 @@ export default function SolesCadastroTab({ sole }: Props) {
               <Label className="text-xs flex items-center gap-1.5">
                 <Layers className="h-3 w-3" /> Range de numeração
               </Label>
-              <div className="flex gap-2 items-center">
-                <Input
-                  type="number"
-                  min={20}
-                  max={50}
-                  value={form.size_from}
-                  onChange={e => setForm(f => ({ ...f, size_from: Number(e.target.value) }))}
-                  disabled={!editing}
-                  className="w-20"
-                />
-                <span className="text-muted-foreground">até</span>
-                <Input
-                  type="number"
-                  min={20}
-                  max={50}
-                  value={form.size_to}
-                  onChange={e => setForm(f => ({ ...f, size_to: Number(e.target.value) }))}
-                  disabled={!editing}
-                  className="w-20"
-                />
-              </div>
+              {(() => {
+                const rangeInvalid = Number(form.size_from) > Number(form.size_to);
+                return (
+                  <>
+                    <div className="flex gap-2 items-center">
+                      <Input
+                        type="number"
+                        min={20}
+                        max={50}
+                        value={form.size_from}
+                        onChange={e => setForm(f => ({ ...f, size_from: Number(e.target.value) }))}
+                        disabled={!editing}
+                        className={`w-20 ${rangeInvalid ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                      />
+                      <span className="text-muted-foreground">até</span>
+                      <Input
+                        type="number"
+                        min={20}
+                        max={50}
+                        value={form.size_to}
+                        onChange={e => setForm(f => ({ ...f, size_to: Number(e.target.value) }))}
+                        disabled={!editing}
+                        className={`w-20 ${rangeInvalid ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                      />
+                    </div>
+                    {rangeInvalid && (
+                      <p className="text-[10px] text-destructive">
+                        O número inicial não pode ser maior que o final ({form.size_from} &gt; {form.size_to}).
+                      </p>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </div>
         </CardContent>

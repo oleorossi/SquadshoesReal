@@ -303,8 +303,13 @@ export default function SaleOrderForm() {
             return;
           }
         }
-      } catch {
+      } catch (err: any) {
         setComputingMinBilling(false);
+        // Falha silenciosa antes invalidava o fluxo sem aviso ao usuário.
+        // Toast garante que problema de capacidade/rede vire visível.
+        toast.error('Não foi possível calcular a semana mínima', {
+          description: err?.message ?? 'Você pode prosseguir, mas o sistema não verificou a disponibilidade da capacidade dos setores.',
+        });
       }
     }
 

@@ -289,6 +289,10 @@ export default function SaleOrderFormPanel({
    const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
    const [duplicateList, setDuplicateList] = useState<string[]>([]);
    const [confirmedDuplicate, setConfirmedDuplicate] = useState(false);
+   // Marca true quando o user tentou submeter pela primeira vez. A partir
+   // daí, campos obrigatórios vazios mostram border-destructive até serem
+   // preenchidos. Antes disso, render limpo (sem ruído visual de erro).
+   const [submitAttempted, setSubmitAttempted] = useState(false);
    const formRef = useRef<HTMLFormElement>(null);
   const selectedRep = representatives.find(r => r.id === form.representative);
   const selectedClient = clients.find(c => c.id === selectedClientId);
@@ -472,6 +476,7 @@ export default function SaleOrderFormPanel({
 
    const handlePreSubmit = (e: React.FormEvent) => {
      e.preventDefault();
+     setSubmitAttempted(true);
 
      // If user already confirmed duplicates, skip the duplicate check and submit directly.
      if (confirmedDuplicate) {
@@ -563,7 +568,12 @@ export default function SaleOrderFormPanel({
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="md:col-span-2">
                   <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">Razão Social / Nome Fantasia *</Label>
-                  <Input value={form.client_name} onChange={e => setForm(f => ({ ...f, client_name: e.target.value }))} required className="h-9" />
+                  <Input
+                    value={form.client_name}
+                    onChange={e => setForm(f => ({ ...f, client_name: e.target.value }))}
+                    required
+                    className={`h-9 ${submitAttempted && !form.client_name ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                  />
                 </div>
                 <div>
                   <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">CNPJ / CPF</Label>
@@ -602,7 +612,7 @@ export default function SaleOrderFormPanel({
                 <div>
                   <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">Mês de Faturamento <span className="text-destructive">*</span></Label>
                   <Select value={form.delivery_month} onValueChange={v => setForm(f => ({ ...f, delivery_month: v, delivery_week: '' }))}>
-                    <SelectTrigger className="h-9"><SelectValue placeholder="Selecione o mês..." /></SelectTrigger>
+                    <SelectTrigger className={`h-9 ${submitAttempted && !form.delivery_month ? 'border-destructive focus:ring-destructive' : ''}`}><SelectValue placeholder="Selecione o mês..." /></SelectTrigger>
                     <SelectContent>
                       {(() => {
                         const months: { value: string; label: string }[] = [];
@@ -621,7 +631,7 @@ export default function SaleOrderFormPanel({
                 <div>
                   <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">Semana de Faturamento <span className="text-destructive">*</span></Label>
                   <Select value={form.delivery_week} onValueChange={v => setForm(f => ({ ...f, delivery_week: v }))}>
-                    <SelectTrigger className="h-9"><SelectValue placeholder="Selecione a semana..." /></SelectTrigger>
+                    <SelectTrigger className={`h-9 ${submitAttempted && !form.delivery_week ? 'border-destructive focus:ring-destructive' : ''}`}><SelectValue placeholder="Selecione a semana..." /></SelectTrigger>
                     <SelectContent>
                       {(() => {
                         if (!form.delivery_month) return [<SelectItem key="none" value="none" disabled>Selecione o mês primeiro</SelectItem>];
@@ -693,7 +703,9 @@ export default function SaleOrderFormPanel({
                     {totalPairs} pares
                   </Badge>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                {/* grid-cols-1 em mobile evita truncamento dos labels longos.
+                    Em sm (≥640px) volta pra 2 colunas. */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <Label className="text-[10px] uppercase font-bold text-muted-foreground">Taxa por Par (R$)</Label>
                     <Input

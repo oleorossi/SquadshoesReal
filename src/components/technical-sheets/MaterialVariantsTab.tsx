@@ -73,10 +73,17 @@ import { supabase } from '@/integrations/supabase/client';
       return;
     }
     setSuggestingNcm(true);
+    // Timeout de 8s — função suggest-ncm chama LLM externa que pode hang.
+    // Sem timeout, o spinner girava indefinidamente até o user fechar a aba.
+    const TIMEOUT_MS = 8_000;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('Timeout (8s) — sugestão de NCM demorou demais')), TIMEOUT_MS);
+    });
     try {
-      const { data, error } = await supabase.functions.invoke('suggest-ncm', {
+      const invokePromise = supabase.functions.invoke('suggest-ncm', {
         body: { productName: name, description: desc },
       });
+      const { data, error } = await Promise.race([invokePromise, timeoutPromise]) as Awaited<typeof invokePromise>;
       if (error) throw error;
       if (data?.error) {
         toast.error(data.error);
@@ -92,7 +99,15 @@ import { supabase } from '@/integrations/supabase/client';
       }
     } catch (err: any) {
       console.error('Erro ao sugerir NCM:', err);
-      toast.error('Falha ao sugerir NCM. Tente novamente.');
+      const isTimeout = String(err?.message || '').toLowerCase().includes('timeout');
+      toast.error(
+        isTimeout ? 'Tempo esgotado pra sugerir NCM' : 'Falha ao sugerir NCM',
+        {
+          description: isTimeout
+            ? 'O serviço de IA não respondeu em 8s. Você pode preencher manualmente ou tentar de novo.'
+            : err?.message ?? 'Tente novamente em alguns segundos.',
+        }
+      );
     } finally {
       setSuggestingNcm(false);
     }

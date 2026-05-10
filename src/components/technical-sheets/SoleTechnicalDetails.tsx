@@ -909,11 +909,21 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                 </TableHeader>
                 <TableBody>
                   {displayRows.map((row) => (
-                    <TableRow key={row.key} className="hover:bg-muted/30">
-                      <TableCell className="text-center bg-muted/20 p-2">
+                    <TableRow
+                      key={row.key}
+                      className={
+                        row.isConjugated
+                          ? 'bg-blue-500/5 hover:bg-blue-500/10 border-l-2 border-l-blue-500/40'
+                          : 'hover:bg-muted/30'
+                      }
+                    >
+                      <TableCell className={`text-center p-2 ${row.isConjugated ? 'bg-blue-500/10' : 'bg-muted/20'}`}>
                         <div className="flex items-center justify-center gap-1">
                           {row.isConjugated ? (
-                            <Badge variant="secondary" className="text-xs gap-1 px-1.5 py-0.5 font-mono font-bold" title={`Conjugação: ${row.sizes.join(' + ')}`}>
+                            <Badge
+                              className="text-xs gap-1 px-1.5 py-0.5 font-mono font-bold bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/40"
+                              title={`Conjugação: ${row.sizes.join(' + ')} — alterar 1 valor sincroniza ${row.sizes.length} tamanhos`}
+                            >
                               <Link2 className="h-3 w-3" />
                               {row.key}
                             </Badge>
