@@ -5,6 +5,7 @@ import OverviewTab from '@/components/timesheet/OverviewTab';
 import ManualEntryTab from '@/components/timesheet/ManualEntryTab';
 import LateArrivalsTab from '@/components/timesheet/LateArrivalsTab';
 import ImportHistoryPanel from '@/components/timesheet/ImportHistoryPanel';
+import PendingTimeRecordsPanel from '@/components/timesheet/PendingTimeRecordsPanel';
 import TimeValidationPanel from '@/components/timeControl/TimeValidationPanel';
 import ReportsPanel from '@/components/timeControl/ReportsPanel';
 import { useState, useRef, useMemo, useEffect } from 'react';
@@ -1485,6 +1486,7 @@ export default function Timesheet() {
           <HubTabsList tabs={[
             { value: 'records',     label: 'Ponto',          icon: FileSpreadsheet },
             { value: 'overview',    label: 'Visão Geral',    icon: Users2 },
+            { value: 'pending',     label: 'Pendências',     icon: AlertTriangle },
             { value: 'manual',      label: 'Lançamento',     icon: ClipboardEdit },
             { value: 'late',        label: 'Atrasos',        icon: AlarmClock },
             { value: 'occurrences', label: 'Ocorrências',    icon: AlertTriangle },
@@ -1496,6 +1498,7 @@ export default function Timesheet() {
 
           <TabsContent value="records"><TimesheetRecordsTab /></TabsContent>
           <TabsContent value="overview"><OverviewTab /></TabsContent>
+          <TabsContent value="pending"><PendingTimeRecordsPanel /></TabsContent>
           <TabsContent value="manual"><ManualEntryTab /></TabsContent>
           <TabsContent value="late"><LateArrivalsTab /></TabsContent>
           <TabsContent value="occurrences" className="space-y-6">
