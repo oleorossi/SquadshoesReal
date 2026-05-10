@@ -769,12 +769,17 @@ export function MasterVariantDialog({
             </TabsContent>
 
             {/* ─── ABA: Dados do Grupo ─── */}
+            {/* Audit visual #36: ScrollArea com flex-1 + max-h-[60vh] estava
+                cortando inputs (Estoque Mínimo/Máximo/Segurança) quando o
+                Dialog não tinha altura suficiente pra resolver o flex.
+                Trocado por overflow-y-auto direto no wrapper, ancorado em
+                max-h calculado pelo viewport menos o header e footer fixos. */}
             <TabsContent value="group" className="mt-4 flex flex-col min-h-0">
               {!groupForm ? (
                 <div className="text-sm text-muted-foreground p-6 text-center">Carregando…</div>
               ) : (
-                <div className="flex flex-col h-full space-y-4">
-                  <ScrollArea className="flex-1 max-h-[60vh] pr-4">
+                <div className="flex flex-col space-y-4">
+                  <div className="overflow-y-auto pr-4 max-h-[calc(92vh-220px)]">
                     <div className="space-y-6 pb-4">
                       <div className="rounded-md border-l-4 border-l-primary bg-primary/5 p-3 text-xs text-muted-foreground">
                         Os campos abaixo são <strong>compartilhados por todas as variantes</strong>. Salvar aqui aplica
@@ -979,7 +984,7 @@ export function MasterVariantDialog({
                         <Switch checked={groupForm.active} onCheckedChange={v => updateGroup('active', v)} />
                       </section>
                     </div>
-                  </ScrollArea>
+                  </div>
 
                   <div className="flex justify-end gap-2 pt-4 border-t bg-background">
                     <Button variant="ghost" onClick={() => setActiveTab('variants')} disabled={savingGroup}>Cancelar</Button>

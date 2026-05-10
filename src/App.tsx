@@ -308,10 +308,26 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
   // Always allow home path to resolve to Navigate which then goes to /dashboard
   // This prevents infinite loops or stuck states on the root path
   const canAccess = path === '/' ? true : canAccessRoute(path);
- 
+
+  // Audit visual #10: grace period antes de mostrar "Acesso Restrito".
+  // Bug original: navegação direta pra rota nova podia retornar canAccess=false
+  // brevemente durante refetch dos roles (cache vazio momentâneo), provocando
+  // flash da página de erro. 500ms de tolerância elimina o flash sem afetar
+  // negações reais de permissão (essas persistem além desse intervalo).
+  const [showDeniedConfirmed, setShowDeniedConfirmed] = useState(false);
+  useEffect(() => {
+    if (canAccess) { setShowDeniedConfirmed(false); return; }
+    const t = setTimeout(() => setShowDeniedConfirmed(true), 500);
+    return () => clearTimeout(t);
+  }, [canAccess, path]);
+
+  if (!canAccess && !showDeniedConfirmed) {
+    return <PageSkeleton />;
+  }
+
    if (!canAccess) {
      console.log("[RouteGuard] Access denied for:", path);
- 
+
     // Se o erro for na dashboard, mostramos uma mensagem específica e evitamos o loop de redirecionamento
     const isAtRoot = path === '/' || path === '/dashboard';
 
