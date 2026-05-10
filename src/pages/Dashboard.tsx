@@ -60,19 +60,22 @@ import { ConsumptionErrorAlert } from "@/components/dashboard/ConsumptionErrorAl
          { data: payableRows },
        ] = await Promise.all([
          supabase.from('sale_orders').select('total'),
-         supabase.from('accounts_receivable').select('amount, amount_paid, due_date, status'),
+         supabase.from('accounts_receivable').select('amount, amount_received, due_date, status'),
          supabase.from('accounts_payable').select('amount, amount_paid, due_date, status'),
        ]);
 
-       const PAID_STATUSES = new Set(['paid', 'pago', 'cancelled', 'cancelado', 'estornado']);
+       // Status de quitação difere entre as tabelas: 'received' em accounts_receivable,
+       // 'paid' em accounts_payable. 'cancelled' aplica em ambas.
+       const RECEIVED_STATUSES = new Set(['received', 'recebido', 'cancelled', 'cancelado']);
+       const PAID_STATUSES = new Set(['paid', 'pago', 'cancelled', 'cancelado']);
 
        const revenue = salesData?.reduce((acc, curr) => acc + (Number(curr.total) || 0), 0) || 0;
 
        let receivable = 0;
        let receivableOverdue = 0;
        (receivableRows || []).forEach((r: any) => {
-         if (PAID_STATUSES.has(r.status)) return;
-         const remaining = Math.max(0, Number(r.amount || 0) - Number(r.amount_paid || 0));
+         if (RECEIVED_STATUSES.has(r.status)) return;
+         const remaining = Math.max(0, Number(r.amount || 0) - Number(r.amount_received || 0));
          receivable += remaining;
          if (r.due_date && r.due_date < todayIso) receivableOverdue += 1;
        });
