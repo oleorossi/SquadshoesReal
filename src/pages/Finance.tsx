@@ -86,6 +86,24 @@ function getEffectiveStatus(status: string, dueDate: string | null | undefined) 
 }
 
 /**
+ * F11 (audit): retorna nº de dias até vencimento (negativo se vencido).
+ * Usado pra colorir linhas com vencimento próximo (5-10d) em âmbar,
+ * complementando o destrutivo já aplicado em overdue.
+ */
+function daysUntilDue(dueDate: string | null | undefined): number | null {
+  if (!dueDate) return null;
+  const due = parseISO(dueDate);
+  const today = todayMidnight();
+  return Math.floor((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function isDueSoon(dueDate: string | null | undefined, status: string): boolean {
+  if (status === 'paid' || status === 'received' || status === 'cancelled') return false;
+  const days = daysUntilDue(dueDate);
+  return days !== null && days >= 0 && days <= 5;
+}
+
+/**
  * Cálculo SUGERIDO de juros + multa pra contas atrasadas.
  * Convenção brasileira padrão pra B2B (contratos não financeiros):
  *   - Multa fixa de 2% sobre o valor original (cobrada uma vez)
@@ -1079,9 +1097,11 @@ export default function Finance() {
                           </SelectContent>
                         </Select>
                       </div>
-                      <div className="overflow-x-auto">
+                      <div className="overflow-x-auto max-h-[70vh]">
                       <Table>
-                        <TableHeader><TableRow>
+                        {/* F10: sticky header — usuário não perde contexto da
+                            coluna ao rolar tabelas longas */}
+                        <TableHeader className="sticky top-0 z-10 bg-background"><TableRow>
                           <SortableTableHead sortKey="description" currentSortKey={payableSort.sortKey} currentDirection={payableSort.sortDirection} onSort={payableSort.handleSort}>Descrição</SortableTableHead>
                           <TableHead className="hidden md:table-cell">Fornecedor</TableHead>
                           <TableHead className="hidden lg:table-cell">Categ.</TableHead>
@@ -1113,11 +1133,19 @@ export default function Finance() {
                                 <TableCell className="font-medium max-w-[180px] truncate">{p.description}</TableCell>
                                 <TableCell className="text-sm text-muted-foreground hidden md:table-cell">{p.suppliers?.name || '—'}</TableCell>
                                 <TableCell className="text-xs capitalize hidden lg:table-cell">{p.category}</TableCell>
-                                <TableCell className={eff === 'overdue' ? 'text-destructive font-medium' : ''}>
+                                <TableCell className={
+                                  eff === 'overdue' ? 'text-destructive font-medium'
+                                  : isDueSoon(p.due_date, p.status) ? 'text-amber-600 dark:text-amber-400 font-medium'
+                                  : ''
+                                }>
                                   {format(parseISO(p.due_date), 'dd/MM/yy')}
-                                  {accruals.daysOverdue > 0 && (
+                                  {accruals.daysOverdue > 0 ? (
                                     <div className="text-[10px] text-destructive/80 font-normal">
                                       {accruals.daysOverdue}d atraso
+                                    </div>
+                                  ) : isDueSoon(p.due_date, p.status) && (
+                                    <div className="text-[10px] text-amber-600 dark:text-amber-400 font-normal">
+                                      vence em {daysUntilDue(p.due_date)}d
                                     </div>
                                   )}
                                 </TableCell>

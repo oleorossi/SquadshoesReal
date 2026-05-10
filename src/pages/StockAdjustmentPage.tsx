@@ -586,7 +586,26 @@ export default function StockAdjustmentPage() {
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="text-center py-16 text-muted-foreground text-sm">
-                    Nenhum produto encontrado.
+                    {/* E8 (audit): empty state distingue "nenhum produto cadastrado"
+                        de "filtros zeraram resultado". Hint pra reset rápido se for filtro. */}
+                    {(search || categoryFilter !== 'all' || statusFilter !== 'all') ? (
+                      <>
+                        <p>Nenhum produto bate com os filtros atuais.</p>
+                        <button
+                          type="button"
+                          className="mt-2 text-xs text-primary hover:underline"
+                          onClick={() => {
+                            setSearch('');
+                            setCategoryFilter('all');
+                            setStatusFilter('all');
+                          }}
+                        >
+                          Limpar todos os filtros
+                        </button>
+                      </>
+                    ) : (
+                      'Nenhum produto cadastrado.'
+                    )}
                   </td>
                 </tr>
               ) : (

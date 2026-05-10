@@ -880,7 +880,7 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
                 onDrop={(e) => { e.preventDefault(); handleDrop(sector.key); }}
                 className={`flex-1 min-w-[200px] max-w-[260px] rounded-xl border shadow-sm flex flex-col transition-all ${
                   isDragOver
-                    ? 'bg-primary/10 border-primary border-2 shadow-lg scale-[1.02]'
+                    ? 'bg-primary/10 border-primary border-2 shadow-lg scale-[1.02] ring-2 ring-primary/40 ring-offset-2'
                     : 'bg-muted/30 border-border/50'
                 }`}
               >
@@ -942,7 +942,9 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
                     {sectorOrders.length === 0 ? (
                       <div className="py-8 text-center">
                         <p className="text-[10px] text-muted-foreground/50">
-                          {isDragOver ? '↓ Soltar aqui ↓' : 'Nenhuma OP'}
+                          {isDragOver
+                            ? <span className="text-primary font-bold animate-pulse">↓ Soltar aqui ↓</span>
+                            : 'Nenhuma OP'}
                         </p>
                       </div>
                     ) : (

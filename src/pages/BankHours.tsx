@@ -96,8 +96,13 @@ const TYPE_LABELS: Record<string, string> = {
   timesheet_auto: 'Auto (batidas)',
 };
 
+/**
+ * Formata minutos em "+5h 30min" ou "−2h 15min".
+ * R10 (audit): substitui sinais ASCII por símbolos Unicode mais legíveis e
+ * adiciona indicador direcional só quando o sinal é informativo (não em zero).
+ */
 function formatHours(minutes: number): string {
-  const sign = minutes < 0 ? '-' : minutes > 0 ? '+' : '';
+  const sign = minutes < 0 ? '−' : minutes > 0 ? '+' : '';
   const abs = Math.abs(minutes);
   const h = Math.floor(abs / 60);
   const m = abs % 60;
