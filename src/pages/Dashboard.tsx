@@ -45,21 +45,19 @@ import { ConsumptionErrorAlert } from "@/components/dashboard/ConsumptionErrorAl
      }
    });
  
-   // Query for financial KPIs
+   // Faturamento = soma de sale_orders.total. A tabela 'orders' (OPs) não tem coluna
+   // 'total' — só custos de produção. Receita vive em sale_orders.
     const { data: financialStats, isLoading: isFinLoading } = useQuery({
      queryKey: ['dashboard-financial-stats'],
-      staleTime: 2 * 60 * 1000, // 2 minutes
+      staleTime: 2 * 60 * 1000,
      queryFn: async () => {
-       // Usando 'total' em vez de 'total_amount' conforme schema da tabela 'orders'
-       const { data: orders } = await supabase
-         .from('orders')
+       const { data: salesData } = await supabase
+         .from('sale_orders')
          .select('total');
-       
-       const total = orders?.reduce((acc, curr) => acc + (Number((curr as any).total) || 0), 0) || 0;
-       
-       return {
-         revenue: total
-       };
+
+       const total = salesData?.reduce((acc, curr) => acc + (Number(curr.total) || 0), 0) || 0;
+
+       return { revenue: total };
      }
    });
  
