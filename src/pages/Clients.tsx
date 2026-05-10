@@ -46,7 +46,13 @@ export default function Clients() {
   const updateGroup = useUpdateEconomicGroup();
   const deleteGroup = useDeleteEconomicGroup();
 
-  const [search, setSearch] = usePersistedState('search', '');
+  // Audit B4 (round 28): aceita ?q= na URL pra search global navegar contextualmente
+  // (ex: /clients?q=12345678 destaca o cliente clicado no buscador top-bar).
+  const initialSearch = (() => {
+    if (typeof window === 'undefined') return '';
+    return new URLSearchParams(window.location.search).get('q') || '';
+  })();
+  const [search, setSearch] = usePersistedState('search', initialSearch);
   const [clientDialog, setClientDialog] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [form, setForm] = useState<ClientFormData>(emptyClient);

@@ -69,9 +69,13 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
   const searchTerm = sanitizeForPostgrestOr(debouncedQuery);
   const hasMinChars = searchTerm.length >= 2;
   const searchEnabled = open && hasMinChars;
-  // CNPJ digitado com máscara: "12.345.678/0001-90". Remove chars não-numéricos
-  // pra também buscar sem máscara, já que clients.cnpj pode estar de qualquer jeito.
-  const cnpjDigits = detectedType === 'cnpj' ? searchTerm.replace(/\D/g, '') : '';
+  // Audit B3 (round 28): extrai dígitos sempre que houver ≥4 dígitos consecutivos
+  // na busca, não só quando o detectQueryType reconhecer formato CNPJ completo.
+  // Antes: usuário digitava "00012345" (CNPJ truncado) e nada batia, porque
+  // cnpj.ilike.%00012345% não casa com "00.012.345/..." armazenado com pontos.
+  // Agora aplica .replace(/\D/g) e busca tanto "00012345" quanto "00012345" digits-only.
+  const allDigits = searchTerm.replace(/\D/g, '');
+  const cnpjDigits = allDigits.length >= 4 ? allDigits : '';
 
   const [ordersQuery, clientsQuery, productsQuery, saleOrdersQuery] = useQueries({
     queries: [
@@ -198,6 +202,9 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
 
   const isLoading = searchEnabled && (ordersQuery.isFetching || clientsQuery.isFetching || productsQuery.isFetching || saleOrdersQuery.isFetching);
   const totalResults = filteredNavItems.length + filteredOrders.length + filteredClients.length + filteredProducts.length + filteredSaleOrders.length;
+  // Audit B5 (round 28): coleta primeiro erro pra exibir. Antes erros caíam
+  // silenciosos e usuário via "Buscando..." indefinidamente ou "Nenhum resultado".
+  const queryError = ordersQuery.error || clientsQuery.error || productsQuery.error || saleOrdersQuery.error;
 
   return (
     <>
@@ -284,7 +291,21 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                 <div className="py-6 text-center text-sm text-muted-foreground">Buscando...</div>
               )}
 
-              {q && hasMinChars && !isLoading && totalResults === 0 && (
+              {/* Audit B5 (round 28): exibe erro de query quando ocorrer. Antes
+                  caía silencioso e parecia "Nenhum resultado". */}
+              {q && hasMinChars && !isLoading && queryError && (
+                <div className="py-6 text-center text-sm">
+                  <p className="text-destructive font-medium">Erro ao buscar</p>
+                  <p className="text-[11px] text-muted-foreground mt-1 max-w-md mx-auto">
+                    {String((queryError as any)?.message ?? queryError).slice(0, 200)}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground mt-2">
+                    Verifique sua conexão e tente de novo. Se persistir, contate o suporte.
+                  </p>
+                </div>
+              )}
+
+              {q && hasMinChars && !isLoading && !queryError && totalResults === 0 && (
                 <CommandEmpty>
                   <div className="py-2">
                     <p>Nenhum resultado para "{query}"</p>
@@ -345,7 +366,13 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                   <CommandSeparator />
                   <CommandGroup heading="Clientes">
                     {filteredClients.map(c => (
-                      <CommandItem key={c.id} onSelect={() => goTo('/clients')}>
+                      /* Audit B4 (round 28): navega passando o termo de busca
+                         pela URL pra que a página de Clientes já filtre.
+                         Antes caía em /clients sem destaque do cliente. */
+                      <CommandItem
+                        key={c.id}
+                        onSelect={() => goTo(`/clients?q=${encodeURIComponent(c.razao_social || c.cnpj || '')}`)}
+                      >
                         <Users className="mr-2 h-3.5 w-3.5 text-warning" />
                         <div className="flex-1 min-w-0">
                           <span className="text-xs font-semibold truncate">{c.razao_social}</span>
@@ -362,7 +389,12 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                   <CommandSeparator />
                   <CommandGroup heading="Materiais / Estoque">
                     {filteredProducts.map(p => (
-                      <CommandItem key={p.id} onSelect={() => goTo('/estoque')}>
+                      /* Audit B4 (round 28): mesma lógica — termo de busca vai
+                         pela URL pra a página filtrar. SKU prevalece (mais específico). */
+                      <CommandItem
+                        key={p.id}
+                        onSelect={() => goTo(`/estoque?q=${encodeURIComponent(p.sku || p.name || '')}`)}
+                      >
                         <Package className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
                         <div className="flex-1 min-w-0">
                           <span className="text-xs font-semibold truncate">{p.name}</span>

@@ -198,6 +198,10 @@ function FactoringField({ form, setForm, totalValue }: {
       discountPct: result.discountPct,
       discount: result.discount,
       net: result.pv,
+      // Audit B2 (round 28): expõe a fonte do cálculo. 'delivery+payment' = exato
+      // (data entrega real + condição). 'fallback' = aproximado (faltou data).
+      // 'none' = sem desconto. UI usa pra avisar quando desconto pode divergir.
+      source: result.source,
     };
   })();
 
@@ -260,8 +264,40 @@ function FactoringField({ form, setForm, totalValue }: {
 
           {/* Simulação de desconto */}
           {simulation ? (
-            <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 space-y-2">
-              <p className="text-[10px] font-bold uppercase text-amber-700 tracking-wide">Simulação de Desconto</p>
+            <div className={`rounded-md border p-3 space-y-2 ${
+              simulation.source === 'fallback'
+                ? 'border-orange-500/40 bg-orange-500/5'
+                : 'border-amber-500/30 bg-amber-500/5'
+            }`}>
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-bold uppercase text-amber-700 dark:text-amber-300 tracking-wide">
+                  Simulação de Desconto
+                </p>
+                {/* Audit B2 (round 28): badge indica se cálculo é exato ou estimativa.
+                    Antes a UI mostrava só o valor sem dizer a precisão da base. */}
+                {simulation.source === 'delivery+payment' ? (
+                  <span
+                    className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30"
+                    title="Cálculo exato: usa a data real de entrega + condição de pagamento"
+                  >
+                    EXATO
+                  </span>
+                ) : (
+                  <span
+                    className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-orange-500/15 text-orange-700 dark:text-orange-300 border border-orange-500/40"
+                    title="Cálculo aproximado: faltam dados (semana de entrega ou condição). Usa fallback receiving_days da factoring."
+                  >
+                    ESTIMADO
+                  </span>
+                )}
+              </div>
+              {simulation.source === 'fallback' && (
+                <p className="text-[10px] text-orange-700 dark:text-orange-300">
+                  ⚠ Preencha <span className="font-semibold">mês + semana de faturamento</span> e a
+                  <span className="font-semibold"> condição de pagamento</span> pra simulação ficar exata.
+                  O valor real pode divergir.
+                </p>
+              )}
               <div className="text-xs space-y-1">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Parcelas:</span>
