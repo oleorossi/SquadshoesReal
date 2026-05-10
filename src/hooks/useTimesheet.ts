@@ -600,6 +600,9 @@ export function calculateDaySummary(
   }
 
   // Calculate worked time from punch pairs (strip manual marker *)
+  // ESPELHA O SQL CANONICAL public.calculate_day_summary (migration
+  // 20260613120000_timesheet-option-c-canonical.sql). Qualquer mudança
+  // aqui DEVE ser refletida na função SQL e vice-versa.
   let workedMinutes = 0;
   const rawSorted = [...punches].map(p => p.replace(/\*$/, '')).sort((a, b) => timeToMinutes(a) - timeToMinutes(b));
   // Deduplicate punches within 5 minutes of each other
@@ -607,13 +610,36 @@ export function calculateDaySummary(
     if (i === 0) return true;
     return Math.abs(timeToMinutes(p) - timeToMinutes(rawSorted[i - 1])) >= 5;
   });
+
+  // ── Pendências (espelha SQL canonical) ──────────────────────────────
+  // Dias com batidas ímpares (1, 3, 5, 7…) ou apenas 1 batida não geram
+  // saldo — vão pra aba "Pendências de Ponto" pra serem completados.
+  // Antes: o JS somava os pares disponíveis e descartava a última batida,
+  // gerando saldo negativo falso (vide auditoria — Elton com -128h falsos).
+  const isIncomplete = sorted.length === 1 || (sorted.length > 1 && sorted.length % 2 !== 0);
+  if (isIncomplete) {
+    return {
+      dayOfWeek,
+      workedMinutes: 0,
+      workedFormatted: '00:00',
+      expectedMinutes,
+      overtimeMinutes: 0,
+      overtimeFormatted: '00:00',
+      isHoliday,
+      isAbsent: false,
+      status: 'incomplete',
+    };
+  }
+
+  // Pares completos: soma cada par com correção de turno noturno (saída < entrada → +24h)
   for (let i = 0; i < sorted.length - 1; i += 2) {
-    workedMinutes += timeToMinutes(sorted[i + 1]) - timeToMinutes(sorted[i]);
+    let pairMin = timeToMinutes(sorted[i + 1]) - timeToMinutes(sorted[i]);
+    if (pairMin < 0) pairMin += 24 * 60; // overnight fix
+    workedMinutes += pairMin;
   }
 
   // When there are exactly 2 punches spanning the full day (entry before lunch, exit after lunch),
   // automatically deduct the lunch break. Without this, the system would count lunch as worked time.
-  // Only if the employee doesn't return in the afternoon (13:30-17:00) it counts as not worked.
   if (sorted.length === 2 && !isSaturday && !isSunday && !isHoliday) {
     const entryMin = timeToMinutes(sorted[0]);
     const exitMin = timeToMinutes(sorted[1]);
@@ -626,9 +652,6 @@ export function calculateDaySummary(
     }
   }
 
-  // If odd punches, mark as incomplete
-  const isIncomplete = sorted.length % 2 !== 0;
-
   const tolerance = schedule.tolerance_minutes || 10;
   // Per-day overtime is NOT calculated here.
   // Overtime is a WEEKLY concept (CLT 44h): only after the employee
@@ -637,8 +660,7 @@ export function calculateDaySummary(
   const overtimeMinutes = 0;
 
   let status: DaySummary['status'] = 'normal';
-  if (isIncomplete) status = 'incomplete';
-  else if (isHoliday && workedMinutes > 0) status = 'holiday';
+  if (isHoliday && workedMinutes > 0) status = 'holiday';
   else if (workedMinutes > expectedMinutes + tolerance) status = 'overtime';
   else if (workedMinutes < expectedMinutes - tolerance && expectedMinutes > 0) status = 'absent';
 
