@@ -3,7 +3,7 @@ import { useState } from 'react';
 import {
   Settings, UserCheck, UserX, Shield, Loader2, ChevronDown, ChevronUp,
   Users, Eye, Pencil, Lock, Unlock, Search, Mail, Calendar, ShieldCheck,
-  ShieldAlert, Crown, Briefcase, Factory, Warehouse, Store, BookOpen, FileText,
+  ShieldAlert, Crown, Briefcase, Factory, Warehouse, Store, BookOpen,
   Trash2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -30,7 +30,6 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import RepresentativesPanel from '@/components/settings/RepresentativesPanel';
 import EditProfileDialog from '@/components/settings/EditProfileDialog';
-import FiscalConfigPanel from '@/components/settings/FiscalConfigPanel';
 import CreateUserDialog from '@/components/settings/CreateUserDialog';
 import FinanceConfigPanel from '@/components/settings/FinanceConfigPanel';
 import { DollarSign } from 'lucide-react';
@@ -489,10 +488,6 @@ export default function SettingsPage() {
               <Briefcase className="h-3.5 w-3.5" />
               Representantes
             </TabsTrigger>
-            <TabsTrigger value="fiscal" className="gap-1.5">
-              <FileText className="h-3.5 w-3.5" />
-              Fiscal / NF-e
-            </TabsTrigger>
             <TabsTrigger value="finance-config" className="gap-1.5">
               <DollarSign className="h-3.5 w-3.5" />
               Financeiro
@@ -550,10 +545,6 @@ export default function SettingsPage() {
                 <RepresentativesPanel />
               </CardContent>
             </Card>
-          </TabsContent>
-
-          <TabsContent value="fiscal" className="mt-4">
-            <FiscalConfigPanel />
           </TabsContent>
 
           <TabsContent value="finance-config" className="mt-4">

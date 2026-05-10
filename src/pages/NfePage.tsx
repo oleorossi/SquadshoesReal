@@ -9,11 +9,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, FileText, RefreshCw, XCircle, Download, Search, Building2, Plus, CheckCircle, AlertCircle, Clock } from 'lucide-react';
+import { Loader2, FileText, RefreshCw, XCircle, Download, Search, Building2, Plus, CheckCircle, AlertCircle, Clock, Calculator, Activity } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import CompaniesPanel from '@/components/nfe/CompaniesPanel';
+import TaxConfigPanel from '@/components/nfe/TaxConfigPanel';
+import NfeDiagnosticPanel from '@/components/nfe/NfeDiagnosticPanel';
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
@@ -287,7 +289,9 @@ export default function NfePage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Nota Fiscal Eletrônica</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">Emissão e gestão de NF-e via Focus NFe</p>
+          <p className="text-muted-foreground text-sm mt-0.5">
+            Centro fiscal — emissão, empresas, tributação e diagnóstico em um só lugar
+          </p>
         </div>
         <Button onClick={() => setEmitOpen(true)} className="gap-2">
           <Plus className="h-4 w-4" /> Emitir NF-e
@@ -318,6 +322,12 @@ export default function NfePage() {
           </TabsTrigger>
           <TabsTrigger value="empresas" className="gap-2">
             <Building2 className="h-4 w-4" /> Empresas / CNPJs
+          </TabsTrigger>
+          <TabsTrigger value="tributacao" className="gap-2">
+            <Calculator className="h-4 w-4" /> Tributação
+          </TabsTrigger>
+          <TabsTrigger value="diagnostico" className="gap-2">
+            <Activity className="h-4 w-4" /> Diagnóstico
           </TabsTrigger>
         </TabsList>
 
@@ -387,6 +397,14 @@ export default function NfePage() {
 
         <TabsContent value="empresas" className="mt-4">
           <CompaniesPanel />
+        </TabsContent>
+
+        <TabsContent value="tributacao" className="mt-4">
+          <TaxConfigPanel />
+        </TabsContent>
+
+        <TabsContent value="diagnostico" className="mt-4">
+          <NfeDiagnosticPanel />
         </TabsContent>
       </Tabs>
 
