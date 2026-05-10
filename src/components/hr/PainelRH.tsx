@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -285,24 +285,7 @@ export default function PainelRH({ onNavigateTab }: Props) {
                 </Button>
               </div>
             )}
-            {bhAlertas.length > 0 && (
-              <div className="rounded-md bg-card border px-3 py-2">
-                <div className="flex items-center justify-between text-sm mb-1">
-                  <span><strong>{bhAlertas.length}</strong> funcionário{bhAlertas.length > 1 ? 's com saldo extremo' : ' com saldo extremo'} de banco de horas (&gt;40h)</span>
-                  <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs" onClick={() => onNavigateTab('folha')}>
-                    Ver <ArrowRight className="h-3 w-3" />
-                  </Button>
-                </div>
-                <div className="flex flex-wrap gap-1.5 mt-1">
-                  {bhAlertas.slice(0, 6).map(b => (
-                    <Badge key={b.employee_id} variant="outline" className={`text-xs font-mono ${b.balance_min > 0 ? 'border-emerald-300 text-emerald-700' : 'border-rose-300 text-rose-700'}`}>
-                      {b.employee_name.split(' ')[0]} {fmtMin(b.balance_min)}
-                    </Badge>
-                  ))}
-                  {bhAlertas.length > 6 && <span className="text-[10px] text-muted-foreground self-center">+{bhAlertas.length - 6}</span>}
-                </div>
-              </div>
-            )}
+            {bhAlertas.length > 0 && <BankHoursAlertList bhAlertas={bhAlertas} onNavigateTab={onNavigateTab} />}
           </CardContent>
         </Card>
       )}
@@ -443,6 +426,51 @@ export default function PainelRH({ onNavigateTab }: Props) {
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R7 (audit): Alertas BH não devem truncar em "+N" — quando há muitos
+// funcionários com saldo extremo, esconder em fold collapse com "Ver todos".
+// ─────────────────────────────────────────────────────────────────────────────
+function BankHoursAlertList({
+  bhAlertas,
+  onNavigateTab,
+}: {
+  bhAlertas: Array<{ employee_id: string; employee_name: string; balance_min: number }>;
+  onNavigateTab: (tab: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const VISIBLE = 6;
+  const showing = expanded ? bhAlertas : bhAlertas.slice(0, VISIBLE);
+  const hasMore = bhAlertas.length > VISIBLE;
+  return (
+    <div className="rounded-md bg-card border px-3 py-2">
+      <div className="flex items-center justify-between text-sm mb-1">
+        <span>
+          <strong>{bhAlertas.length}</strong> funcionário{bhAlertas.length > 1 ? 's com saldo extremo' : ' com saldo extremo'} de banco de horas (&gt;40h)
+        </span>
+        <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs" onClick={() => onNavigateTab('folha')}>
+          Ver <ArrowRight className="h-3 w-3" />
+        </Button>
+      </div>
+      <div className="flex flex-wrap gap-1.5 mt-1">
+        {showing.map(b => (
+          <Badge key={b.employee_id} variant="outline" className={`text-xs font-mono ${b.balance_min > 0 ? 'border-emerald-300 text-emerald-700' : 'border-rose-300 text-rose-700'}`}>
+            {b.employee_name.split(' ')[0]} {fmtMin(b.balance_min)}
+          </Badge>
+        ))}
+        {hasMore && (
+          <button
+            type="button"
+            onClick={() => setExpanded(v => !v)}
+            className="text-[10px] text-primary hover:underline self-center"
+          >
+            {expanded ? '− recolher' : `+${bhAlertas.length - VISIBLE} mostrar todos`}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

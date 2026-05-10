@@ -168,16 +168,24 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
 
   // ── Pickup window por OP (via v_order_pickup_window) ────────────────────────
   // Carrega a janela de pickup das OPs visíveis para mostrar badge Ter/Sex.
+  // K7 (audit): em listas >500 OPs, .in() com tudo trava a consulta.
+  // Paginamos em chunks de 200 e juntamos os resultados.
   const orderIdList = useMemo(() => orders.map(o => o.id), [orders]);
   const { data: pickupRows = [] } = useQuery({
     queryKey: ['kanban-pickup-windows', orderIdList.length, orderIdList.slice(0, 5).join(',')],
     queryFn: async () => {
       if (!orderIdList.length) return [] as Array<{ order_id: string; pickup_window: 'tuesday'|'friday'|null; pickup_date: string|null }>;
-      const { data } = await supabase
-        .from('v_order_pickup_window' as any)
-        .select('order_id, pickup_window, pickup_date')
-        .in('order_id', orderIdList);
-      return (data ?? []) as any[];
+      const CHUNK = 200;
+      const all: any[] = [];
+      for (let i = 0; i < orderIdList.length; i += CHUNK) {
+        const slice = orderIdList.slice(i, i + CHUNK);
+        const { data } = await supabase
+          .from('v_order_pickup_window' as any)
+          .select('order_id, pickup_window, pickup_date')
+          .in('order_id', slice);
+        if (data) all.push(...data);
+      }
+      return all;
     },
     enabled: orderIdList.length > 0,
     staleTime: 60_000,

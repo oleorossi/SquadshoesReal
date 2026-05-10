@@ -1094,7 +1094,14 @@ export default function Finance() {
                         </TableRow></TableHeader>
                         <TableBody>
                           {sortedP.length === 0 ? (
-                            <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">Nenhuma conta a pagar</TableCell></TableRow>
+                            <TableRow>
+                              <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                                <p className="mb-2">Nenhuma conta a pagar</p>
+                                <Button size="sm" variant="outline" onClick={() => { setEditingPayable(null); setPayableDialog(true); }}>
+                                  <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar primeira conta
+                                </Button>
+                              </TableCell>
+                            </TableRow>
                           ) : sortedP.map(p => {
                             const eff = getEffectiveStatus(p.status, p.due_date);
                             const cfg = statusConfig[eff] || statusConfig.pending;
