@@ -394,14 +394,16 @@ export function OperationsTab({
         <NumberInput value={ltBuffer} onChange={setLtBuffer} className="h-9 text-sm font-mono w-24" min={0} step="1" />
       </div>
 
-      {/* ── Capacity Cards ── */}
+      {/* ── Capacity Cards: Pares/Dia em destaque (origem do cálculo)
+            + Semana/Mês como derivados visualmente conectados.
+            Demanda Aberta separada com cor ambar pra criar contraste. */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="rounded-lg border p-3 bg-muted/30">
-          <div className="flex items-center gap-2 text-muted-foreground mb-1">
+        <div className="rounded-lg border-2 border-primary/40 p-3 bg-primary/5">
+          <div className="flex items-center gap-2 text-primary mb-1">
             <Calendar className="h-3.5 w-3.5" />
-            <span className="text-[10px] uppercase tracking-wider font-semibold">Pares/Dia</span>
+            <span className="text-[10px] uppercase tracking-wider font-bold">Pares/Dia</span>
           </div>
-          <span className="text-xl font-bold font-mono text-primary">{calculatedDailyCapacity}</span>
+          <span className="text-2xl font-bold font-mono text-primary">{calculatedDailyCapacity}</span>
           <p className="text-[10px] text-muted-foreground mt-0.5">em {safeToFixed(DAILY_WORK_MINUTES / 60, 0)}h de trabalho</p>
         </div>
         <div className="rounded-lg border p-3 bg-muted/30">
@@ -409,26 +411,32 @@ export function OperationsTab({
             <TrendingUp className="h-3.5 w-3.5" />
             <span className="text-[10px] uppercase tracking-wider font-semibold">Pares/Semana</span>
           </div>
-          <span className="text-xl font-bold font-mono">{weeklyCapacity}</span>
-          <p className="text-[10px] text-muted-foreground mt-0.5">5 dias úteis</p>
+          <span className="text-2xl font-bold font-mono">{weeklyCapacity}</span>
+          <p className="text-[10px] text-muted-foreground mt-0.5">
+            <span className="font-mono">{calculatedDailyCapacity} × 5</span> dias úteis
+          </p>
         </div>
         <div className="rounded-lg border p-3 bg-muted/30">
           <div className="flex items-center gap-2 text-muted-foreground mb-1">
             <TrendingUp className="h-3.5 w-3.5" />
             <span className="text-[10px] uppercase tracking-wider font-semibold">Pares/Mês</span>
           </div>
-          <span className="text-xl font-bold font-mono">{monthlyCapacity}</span>
-          <p className="text-[10px] text-muted-foreground mt-0.5">22 dias úteis</p>
+          <span className="text-2xl font-bold font-mono">{monthlyCapacity}</span>
+          <p className="text-[10px] text-muted-foreground mt-0.5">
+            <span className="font-mono">{calculatedDailyCapacity} × 22</span> dias úteis
+          </p>
         </div>
-        <div className="rounded-lg border p-3 bg-muted/30">
-          <div className="flex items-center gap-2 text-muted-foreground mb-1">
+        <div className={`rounded-lg border p-3 ${demandTotal > weeklyCapacity ? 'border-amber-500/40 bg-amber-500/5' : 'bg-muted/30'}`}>
+          <div className={`flex items-center gap-2 mb-1 ${demandTotal > weeklyCapacity ? 'text-amber-600' : 'text-muted-foreground'}`}>
             <Gauge className="h-3.5 w-3.5" />
             <span className="text-[10px] uppercase tracking-wider font-semibold">Demanda Aberta</span>
           </div>
-          <span className="text-xl font-bold font-mono">{demandTotal}</span>
+          <span className={`text-2xl font-bold font-mono ${demandTotal > weeklyCapacity ? 'text-amber-700 dark:text-amber-400' : ''}`}>
+            {demandTotal}
+          </span>
           {daysNeeded > 0 && (
             <p className="text-[10px] text-muted-foreground mt-0.5">
-              ≈ {daysNeeded} dia{daysNeeded > 1 ? 's' : ''} para atender
+              ≈ <strong className="text-foreground">{daysNeeded} dia{daysNeeded > 1 ? 's' : ''}</strong> para atender
             </p>
           )}
         </div>

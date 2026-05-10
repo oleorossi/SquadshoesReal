@@ -1199,6 +1199,25 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
   });
   const [dirty, setDirty] = useState(false);
 
+  // Set de campos recentemente importados/auto-preenchidos. Cada entrada
+  // some sozinha após 2s. Usado pra aplicar flash verde nas linhas/inputs
+  // que receberam valor de "Puxar do Solado" ou autoFillFromSoleSpecs.
+  const [flashFields, setFlashFields] = useState<Set<string>>(new Set());
+  const flashField = (key: string) => {
+    setFlashFields(prev => {
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
+    setTimeout(() => {
+      setFlashFields(prev => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }, 2_000);
+  };
+
     const updateField = (key: keyof SheetFormData, value: any) => {
       setForm(f => ({ ...f, [key]: value }));
       setDirty(true);
@@ -1380,10 +1399,12 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         if (liningVals.length > 0) {
           updateField('lining_consumption', Number((liningVals.reduce((a, b) => a + b, 0) / liningVals.length).toFixed(4)));
           updateField('lining_consumption_per_size', liningMap);
+          flashField('lining_consumption_per_size');
         }
         if (insoleVals.length > 0) {
           updateField('insole_consumption', Number((insoleVals.reduce((a, b) => a + b, 0) / insoleVals.length).toFixed(4)));
           updateField('insole_consumption_per_size', insoleMap);
+          flashField('insole_consumption_per_size');
         }
         toast.success("Consumos técnicos do solado aplicados com sucesso!");
         return;
@@ -1438,11 +1459,13 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         if (liningGroup && productGroupId === liningGroup.id && !liningApplied) {
           updateField('lining_consumption', Number(avg.toFixed(4)));
           updateField('lining_consumption_per_size', sizeMap);
+          flashField('lining_consumption_per_size');
           liningApplied = true;
         }
         if (insoleGroup && productGroupId === insoleGroup.id && !insoleApplied) {
           updateField('insole_consumption', Number(avg.toFixed(4)));
           updateField('insole_consumption_per_size', sizeMap);
+          flashField('insole_consumption_per_size');
           insoleApplied = true;
         }
       }
@@ -2432,10 +2455,19 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                       // (não só das visíveis), pra refletir a média real da ficha.
                       const filledVals = sizes.map((s: number) => Number(perSize[String(s)] || 0)).filter((v: number) => v > 0);
                       const avg = filledVals.length > 0 ? filledVals.reduce((a: number, b: number) => a + b, 0) / filledVals.length : 0;
+                      const isFlashing = flashFields.has(row.field);
                       return (
-                        <tr key={row.field} className="border-t border-border/40">
+                        <tr
+                          key={row.field}
+                          className={`border-t border-border/40 transition-colors duration-700 ${isFlashing ? 'bg-green-500/10' : ''}`}
+                        >
                           <td className="text-[11px] font-medium py-1.5 pr-3">
                             {row.label}
+                            {isFlashing && (
+                              <span className="ml-1 text-[9px] font-bold text-green-600 dark:text-green-400 animate-pulse">
+                                ✓ importado
+                              </span>
+                            )}
                             <span className="ml-1 text-[9px] font-normal text-muted-foreground">({resolveGroupUnit(row.groupName)})</span>
                           </td>
                           {visibleSizes.map(size => {

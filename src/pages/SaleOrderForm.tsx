@@ -1,8 +1,11 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2, FileSearch, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from '@/components/ui/dialog';
 import SaleOrderFormPanel from '@/components/sale-orders/SaleOrderFormPanel';
 import { useCreateSaleOrder, useUpdateSaleOrder, SaleOrderFormData, SaleOrderItemFormData } from '@/hooks/useSaleOrders';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
@@ -82,22 +85,78 @@ export default function SaleOrderForm() {
   const [packagingQuantity, setPackagingQuantity] = useState<number>(0);
   const [loading, setLoading] = useState(isEdit || referencesLoading);
 
-  // Restore draft from sessionStorage if returning from stock page
+  // Pending draft detection: cargas anteriores salvaram um rascunho em
+  // sessionStorage (saída pra /estoque) ou localStorage (auto-save).
+  // Restauração agora é OPT-IN: user vê toast com botão e decide.
+  const [pendingDraft, setPendingDraft] = useState<null | {
+    form: SaleOrderFormData;
+    items: SaleOrderItemFormData[];
+    selectedClientId: string;
+    packagingProductId: string;
+    packagingQuantity: number;
+    savedAt?: number;
+    source: 'session' | 'local';
+  }>(null);
+
   useEffect(() => {
     if (isEdit) return;
-    const draft = sessionStorage.getItem(SALE_ORDER_DRAFT_KEY);
-    if (draft) {
-      try {
-        const parsed = JSON.parse(draft);
-        if (parsed.form) setForm(parsed.form);
-        if (parsed.items?.length) setItems(parsed.items);
-        if (parsed.selectedClientId) setSelectedClientId(parsed.selectedClientId);
-        if (parsed.packagingProductId) setPackagingProductId(parsed.packagingProductId);
-        if (parsed.packagingQuantity) setPackagingQuantity(parsed.packagingQuantity);
-      } catch {}
-      sessionStorage.removeItem(SALE_ORDER_DRAFT_KEY);
-    }
+    const sessionRaw = sessionStorage.getItem(SALE_ORDER_DRAFT_KEY);
+    const localRaw = localStorage.getItem(SALE_ORDER_DRAFT_KEY);
+    const raw = sessionRaw ?? localRaw;
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed?.form || parsed?.items?.length) {
+        setPendingDraft({
+          form: parsed.form ?? emptyForm,
+          items: parsed.items?.length ? parsed.items : [{ ...emptyItem }],
+          selectedClientId: parsed.selectedClientId ?? '',
+          packagingProductId: parsed.packagingProductId ?? '',
+          packagingQuantity: parsed.packagingQuantity ?? 0,
+          savedAt: parsed.savedAt,
+          source: sessionRaw ? 'session' : 'local',
+        });
+      }
+    } catch { /* ignore corrupted draft */ }
   }, []);
+
+  // Auto-save em localStorage a cada 5s enquanto user mexe no form
+  // (sessionStorage continua sendo usado pelo fluxo de saída pra /estoque).
+  useEffect(() => {
+    if (isEdit || pendingDraft) return; // não autossalva enquanto pendingDraft está aberto
+    const hasContent =
+      (form.client_name?.trim() || '').length > 0 ||
+      items.some((it) => it.reference_id || (it.quantity ?? 0) > 0);
+    if (!hasContent) return;
+    const handle = setTimeout(() => {
+      try {
+        localStorage.setItem(
+          SALE_ORDER_DRAFT_KEY,
+          JSON.stringify({ form, items, selectedClientId, packagingProductId, packagingQuantity, savedAt: Date.now() }),
+        );
+      } catch { /* ignore quota errors */ }
+    }, 5_000);
+    return () => clearTimeout(handle);
+  }, [form, items, selectedClientId, packagingProductId, packagingQuantity, isEdit, pendingDraft]);
+
+  const restoreDraft = () => {
+    if (!pendingDraft) return;
+    setForm(pendingDraft.form);
+    setItems(pendingDraft.items);
+    setSelectedClientId(pendingDraft.selectedClientId);
+    setPackagingProductId(pendingDraft.packagingProductId);
+    setPackagingQuantity(pendingDraft.packagingQuantity);
+    sessionStorage.removeItem(SALE_ORDER_DRAFT_KEY);
+    localStorage.removeItem(SALE_ORDER_DRAFT_KEY);
+    setPendingDraft(null);
+    toast.success('Rascunho restaurado');
+  };
+
+  const discardDraft = () => {
+    sessionStorage.removeItem(SALE_ORDER_DRAFT_KEY);
+    localStorage.removeItem(SALE_ORDER_DRAFT_KEY);
+    setPendingDraft(null);
+  };
 
   useEffect(() => {
     if (!referencesLoading && !isEdit) {
@@ -129,6 +188,7 @@ export default function SaleOrderForm() {
       selectedClientId,
       packagingProductId,
       packagingQuantity,
+      savedAt: Date.now(),
     };
     sessionStorage.setItem(SALE_ORDER_DRAFT_KEY, JSON.stringify(draft));
     navigate('/estoque?returnTo=sale-order');
@@ -556,6 +616,48 @@ export default function SaleOrderForm() {
           onSaveStateAndNavigate={!isEdit ? handleSaveStateAndNavigate : undefined}
         />
       </div>
+
+      {/* Dialog de rascunho — opt-in pra restaurar / descartar */}
+      <Dialog
+        open={!!pendingDraft}
+        onOpenChange={(o) => { if (!o) discardDraft(); }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileSearch className="h-5 w-5 text-primary" />
+              Rascunho encontrado
+            </DialogTitle>
+            <DialogDescription>
+              {pendingDraft?.savedAt
+                ? `Salvo em ${new Date(pendingDraft.savedAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}`
+                : 'Rascunho de pedido encontrado.'}
+              {' — '}
+              {pendingDraft?.source === 'session'
+                ? 'Você saiu pra outra tela e voltou.'
+                : 'Você fechou a aba antes de salvar.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs space-y-1">
+            <div><span className="text-muted-foreground">Cliente:</span> <strong>{pendingDraft?.form?.client_name || '—'}</strong></div>
+            <div><span className="text-muted-foreground">Itens:</span> <strong>{pendingDraft?.items?.length ?? 0}</strong></div>
+            {pendingDraft?.form?.delivery_deadline && (
+              <div><span className="text-muted-foreground">Prazo:</span> <strong>{pendingDraft.form.delivery_deadline}</strong></div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" onClick={discardDraft}>
+              Descartar
+            </Button>
+            <Button onClick={restoreDraft} className="gap-1.5">
+              <RotateCcw className="h-3.5 w-3.5" />
+              Restaurar rascunho
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <MaterialPurchaseConfirmDialog
         open={materialDialogOpen}

@@ -36,12 +36,36 @@ interface SoleSpec {
   fachete_lining_consumption_dm2: number | null;
 }
 
-const SIZE_PRESETS = [
-  { label: "Adulto 34–40", sizes: [34, 35, 36, 37, 38, 39, 40] },
-  { label: "Adulto 33–42", sizes: [33, 34, 35, 36, 37, 38, 39, 40, 41, 42] },
-  { label: "Infantil 25–34", sizes: [25, 26, 27, 28, 29, 30, 31, 32, 33, 34] },
-  { label: "Baby 15–24", sizes: [15, 16, 17, 18, 19, 20, 21, 22, 23, 24] },
+// Presets de numeração — agora cobrem todas as faixas comuns na fábrica.
+// `categories` indica em quais shoe_category esse preset é recomendado.
+// Quando o solado tem shoe_category atrelada, presets recomendados aparecem
+// primeiro na ordem com badge visual.
+const SIZE_PRESETS: Array<{ label: string; sizes: number[]; categories: string[] }> = [
+  { label: 'Adulto 34–40',         sizes: [34, 35, 36, 37, 38, 39, 40],                            categories: ['Adulto', 'Feminino'] },
+  { label: 'Adulto 33–42',         sizes: [33, 34, 35, 36, 37, 38, 39, 40, 41, 42],                categories: ['Adulto', 'Feminino', 'Unissex'] },
+  { label: 'Adulto Grande 38–46',  sizes: [38, 39, 40, 41, 42, 43, 44, 45, 46],                    categories: ['Adulto', 'Masculino'] },
+  { label: 'Masculino 38–44',      sizes: [38, 39, 40, 41, 42, 43, 44],                            categories: ['Masculino'] },
+  { label: 'Infantil 25–34',       sizes: [25, 26, 27, 28, 29, 30, 31, 32, 33, 34],                categories: ['Infantil'] },
+  { label: 'Infantil Pequeno 22–28', sizes: [22, 23, 24, 25, 26, 27, 28],                          categories: ['Infantil'] },
+  { label: 'Baby 15–24',           sizes: [15, 16, 17, 18, 19, 20, 21, 22, 23, 24],                categories: ['Baby', 'Bebê'] },
 ];
+
+function getSortedPresets(shoeCategory?: string | null): Array<{ label: string; sizes: number[]; recommended: boolean }> {
+  const cat = (shoeCategory || '').trim();
+  if (!cat) {
+    return SIZE_PRESETS.map(p => ({ label: p.label, sizes: p.sizes, recommended: false }));
+  }
+  const recommended: typeof SIZE_PRESETS = [];
+  const others: typeof SIZE_PRESETS = [];
+  for (const p of SIZE_PRESETS) {
+    if (p.categories.some(c => c.toLowerCase() === cat.toLowerCase())) recommended.push(p);
+    else others.push(p);
+  }
+  return [
+    ...recommended.map(p => ({ label: p.label, sizes: p.sizes, recommended: true })),
+    ...others.map(p      => ({ label: p.label, sizes: p.sizes, recommended: false })),
+  ];
+}
 
 export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnicalDetailsProps) {
   const qc = useQueryClient();
@@ -63,6 +87,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
   const [copyAnyOpen, setCopyAnyOpen] = useState(false);
   const [soleGroupId, setSoleGroupId] = useState<string | null>(null);
   const [isFachetado, setIsFachetado] = useState<boolean>(false);
+  const [shoeCategory, setShoeCategory] = useState<string | null>(null);
 
   // Conjugações vinculadas ao GRUPO do solado
   const { data: conjugations = [] } = useSoleConjugations(soleGroupId);
@@ -167,13 +192,22 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
       fetchMetadata();
       supabase
         .from('products')
-        .select('group_id, is_fachetado')
+        .select('group_id, is_fachetado, name')
         .eq('id', soleId)
         .single()
         .then(({ data }) => {
           const d = data as any;
           if (d?.group_id) setSoleGroupId(d.group_id);
           setIsFachetado((data as any)?.is_fachetado ?? false);
+          // Inferência heurística de categoria pelo nome do solado, já que
+          // products não tem coluna shoe_category. Bate com convenção do
+          // catálogo da Squad Shoes ("Solado Infantil", "Saltinho", etc).
+          const name = (d?.name || '').toLowerCase();
+          if (name.includes('baby') || name.includes('beb')) setShoeCategory('Baby');
+          else if (name.includes('infantil') || name.includes('kids')) setShoeCategory('Infantil');
+          else if (name.includes('masc')) setShoeCategory('Masculino');
+          else if (name.includes('fem')) setShoeCategory('Feminino');
+          else setShoeCategory('Adulto');
         });
     }
   }, [soleId]);
@@ -651,9 +685,19 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-2">
-            {SIZE_PRESETS.map((p) => (
-              <Button key={p.label} size="sm" variant="outline" className="h-7 text-xs" onClick={() => applyPreset(p.sizes)}>
+            {getSortedPresets(shoeCategory).map((p) => (
+              <Button
+                key={p.label}
+                size="sm"
+                variant="outline"
+                className={`h-7 text-xs gap-1.5 ${p.recommended ? 'border-primary/40 bg-primary/5 text-primary' : ''}`}
+                onClick={() => applyPreset(p.sizes)}
+                title={p.recommended ? `Recomendado pra ${shoeCategory ?? 'esta categoria'}` : undefined}
+              >
                 {p.label}
+                {p.recommended && (
+                  <span className="text-[9px] uppercase tracking-wider opacity-70">★</span>
+                )}
               </Button>
             ))}
           </div>
