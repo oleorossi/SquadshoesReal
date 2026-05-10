@@ -166,21 +166,48 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
       },
       {
         // Audit visual: usuário tipa "I110" (referência/modelo) e não acha nada.
-        // Nomes/SKUs de modelo vivem em product_references e technical_sheets,
-        // não em products (que tem só insumos).
+        // Nomes de modelo vivem em technical_sheets.name (product_references
+        // costuma ficar vazia neste DB). Buscamos as duas fontes e unimos.
         queryKey: ['global-search-references', searchTerm],
         enabled: searchEnabled,
         staleTime: 60 * 1000,
         queryFn: async () => {
-          const { data, error } = await supabase
-            .from('product_references')
-            .select('id, name, shoe_category')
-            .or(`name.ilike.%${searchTerm}%`)
-            .order('updated_at', { ascending: false })
-            .limit(5);
+          const [refRes, sheetRes] = await Promise.all([
+            supabase
+              .from('product_references')
+              .select('id, name, shoe_category')
+              .ilike('name', `%${searchTerm}%`)
+              .order('updated_at', { ascending: false })
+              .limit(5),
+            supabase
+              .from('technical_sheets')
+              .select('id, name, category')
+              .ilike('name', `%${searchTerm}%`)
+              .order('updated_at', { ascending: false })
+              .limit(5),
+          ]);
 
-          if (error) throw error;
-          return data ?? [];
+          const fromRefs = (refRes.data ?? []).map(r => ({
+            id: r.id,
+            name: r.name,
+            category: r.shoe_category,
+            source: 'product_references' as const,
+          }));
+          const fromSheets = (sheetRes.data ?? []).map(r => ({
+            id: r.id,
+            name: r.name,
+            category: r.category,
+            source: 'technical_sheets' as const,
+          }));
+
+          // Dedupe por name (technical_sheet ganha — é mais usado pra fluxo)
+          const seen = new Set<string>();
+          const merged = [...fromSheets, ...fromRefs].filter(r => {
+            if (!r.name || seen.has(r.name)) return false;
+            seen.add(r.name);
+            return true;
+          });
+          return merged.slice(0, 5);
         },
       },
     ],
