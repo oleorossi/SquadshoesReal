@@ -1,3 +1,4 @@
+// e2e-pipeline-test: cicd-smoke-1778376147
 // Helpers de semana ISO 8601 compartilhados entre listagens semanais
 // (ondas, pickups, lista de separação).
 
