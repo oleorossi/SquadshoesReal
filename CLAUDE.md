@@ -17,7 +17,27 @@ Both hooks use **rebase** instead of merge to keep a clean linear history and av
 | Hook | Script | When | What it does |
 |------|--------|------|--------------|
 | `SessionStart` | `~/.claude/session-start-sync.sh` | Start of session | Fetches `main`, **rebases** current branch on top. Falls back to merge `-X theirs` if rebase has conflicts. |
-| `Stop` | `~/.claude/stop-hook-git-check.sh` | End of turn | Rebases feature branch on latest `main`, force-pushes feature branch, then fast-forwards `main` to match. |
+| `Stop` | `~/.claude/stop-hook-git-check.sh` | End of turn | Faz commit + push da feature branch. Se a branch está ahead de main sem divergência, fast-forwarda main via push refspec (worktree-safe). Se diverge, faz merge local com `-X theirs`. |
+
+## Pipeline completo de auto-deploy (toda mudança vai pra produção)
+
+```
+SUA MUDANÇA NO CÓDIGO
+     ↓
+git commit + push (manual ou via stop hook)
+     ↓
+GitHub feature branch atualizada
+     ↓ (stop hook auto-merge)
+GitHub main atualizada
+     ↓ (Vercel GitHub integration)
+Vercel build → site live em ~1-2min
+     ↓ (se mexeu em supabase/migrations/**)
+GitHub Action `supabase-migrate.yml`
+     ↓
+supabase db push → DB live
+```
+
+**Status / configuração**: rode `bash scripts/setup-cicd.sh` pra ver o status atual, URLs e os passos pendentes (especialmente os 3 secrets do Supabase que precisam ser cadastrados manualmente).
 
 ## Conflict Resolution Strategy
 
