@@ -77,7 +77,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
   const allDigits = searchTerm.replace(/\D/g, '');
   const cnpjDigits = allDigits.length >= 4 ? allDigits : '';
 
-  const [ordersQuery, clientsQuery, productsQuery, saleOrdersQuery] = useQueries({
+  const [ordersQuery, clientsQuery, productsQuery, saleOrdersQuery, referencesQuery] = useQueries({
     queries: [
       {
         queryKey: ['global-search-orders', searchTerm],
@@ -164,6 +164,25 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
           return data ?? [];
         },
       },
+      {
+        // Audit visual: usuário tipa "I110" (referência/modelo) e não acha nada.
+        // Nomes/SKUs de modelo vivem em product_references e technical_sheets,
+        // não em products (que tem só insumos).
+        queryKey: ['global-search-references', searchTerm],
+        enabled: searchEnabled,
+        staleTime: 60 * 1000,
+        queryFn: async () => {
+          const { data, error } = await supabase
+            .from('product_references')
+            .select('id, name, shoe_category')
+            .or(`name.ilike.%${searchTerm}%`)
+            .order('updated_at', { ascending: false })
+            .limit(5);
+
+          if (error) throw error;
+          return data ?? [];
+        },
+      },
     ],
   });
 
@@ -171,6 +190,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
   const clients = clientsQuery.data ?? [];
   const products = productsQuery.data ?? [];
   const saleOrders = saleOrdersQuery.data ?? [];
+  const references = referencesQuery.data ?? [];
 
   // Antes: filteredXxx usava `q` (immediate) mas dados vêm de `searchTerm` (debounced),
   // criando flash de "Nenhum resultado" entre digitação e fim da query. Agora usa
@@ -180,6 +200,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
   const filteredClients = useMemo(() => (searchEnabled ? clients : []), [searchEnabled, clients]);
   const filteredProducts = useMemo(() => (searchEnabled ? products : []), [searchEnabled, products]);
   const filteredSaleOrders = useMemo(() => (searchEnabled ? saleOrders : []), [searchEnabled, saleOrders]);
+  const filteredReferences = useMemo(() => (searchEnabled ? references : []), [searchEnabled, references]);
 
   // Páginas (atalhos) — busca em string local, ainda usa `q` imediato (UX rápida).
   const filteredNavItems = useMemo(() => {
@@ -200,11 +221,11 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
     navigate(path);
   }, [navigate]);
 
-  const isLoading = searchEnabled && (ordersQuery.isFetching || clientsQuery.isFetching || productsQuery.isFetching || saleOrdersQuery.isFetching);
-  const totalResults = filteredNavItems.length + filteredOrders.length + filteredClients.length + filteredProducts.length + filteredSaleOrders.length;
+  const isLoading = searchEnabled && (ordersQuery.isFetching || clientsQuery.isFetching || productsQuery.isFetching || saleOrdersQuery.isFetching || referencesQuery.isFetching);
+  const totalResults = filteredNavItems.length + filteredOrders.length + filteredClients.length + filteredProducts.length + filteredSaleOrders.length + filteredReferences.length;
   // Audit B5 (round 28): coleta primeiro erro pra exibir. Antes erros caíam
   // silenciosos e usuário via "Buscando..." indefinidamente ou "Nenhum resultado".
-  const queryError = ordersQuery.error || clientsQuery.error || productsQuery.error || saleOrdersQuery.error;
+  const queryError = ordersQuery.error || clientsQuery.error || productsQuery.error || saleOrdersQuery.error || referencesQuery.error;
 
   return (
     <>
@@ -239,7 +260,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
             <div className="flex items-center border-b px-3">
               <Search className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
               <CommandInput
-                placeholder="Buscar pedidos, clientes, materiais, NF-e..."
+                placeholder="Buscar pedidos, clientes, modelos, materiais..."
                 value={query}
                 onValueChange={setQuery}
                 className="border-0 focus:ring-0"
@@ -402,6 +423,26 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                           {p.sku && <span className="text-muted-foreground text-xs ml-2 font-mono">{p.sku}</span>}
                         </div>
                         <span className="text-[10px] font-mono text-muted-foreground shrink-0">{Number(p.quantity).toLocaleString('pt-BR')} {p.unit}</span>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </>
+              )}
+
+              {filteredReferences.length > 0 && (
+                <>
+                  <CommandSeparator />
+                  <CommandGroup heading="Modelos / Referências">
+                    {filteredReferences.map((r: any) => (
+                      <CommandItem
+                        key={r.id}
+                        onSelect={() => goTo(`/fichas-tecnicas?q=${encodeURIComponent(r.name)}`)}
+                      >
+                        <Package className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-xs font-semibold truncate">{r.name}</span>
+                          {r.shoe_category && <span className="text-muted-foreground text-xs ml-2">({r.shoe_category})</span>}
+                        </div>
                       </CommandItem>
                     ))}
                   </CommandGroup>
