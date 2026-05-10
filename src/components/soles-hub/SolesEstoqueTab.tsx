@@ -35,7 +35,7 @@ export default function SolesEstoqueTab({ sole }: Props) {
   });
 
   const grade = (sole.stock_grade ?? {}) as Record<string, number>;
-  const sizeKeys = Object.keys(grade)
+  const realKeys = Object.keys(grade)
     .filter(k => !k.startsWith('_'))
     .sort((a, b) => {
       // Conjugadas (ex.: "33/34") ordenadas pelo menor número
@@ -43,6 +43,16 @@ export default function SolesEstoqueTab({ sole }: Props) {
       const bx = Number(b.split('/')[0]);
       return ax - bx;
     });
+
+  // Quando o range está cadastrado mas o estoque inicial nunca foi lançado,
+  // geramos as keys vazias do range (default 33-40) pra mostrar a tabela com
+  // zeros em vez de empty state. Sinaliza estoque "ainda não inicializado".
+  const sizeFrom = (grade as any)._size_from ?? 33;
+  const sizeTo = (grade as any)._size_to ?? 40;
+  const isUninitialized = realKeys.length === 0;
+  const sizeKeys = isUninitialized
+    ? Array.from({ length: sizeTo - sizeFrom + 1 }, (_, i) => String(sizeFrom + i))
+    : realKeys;
 
   const total = gradeTotal(sole.stock_grade);
   const minTotal = sole.min_stock || 0;
@@ -80,6 +90,12 @@ export default function SolesEstoqueTab({ sole }: Props) {
           </Button>
         </CardHeader>
         <CardContent>
+          {isUninitialized && (
+            <div className="mb-3 px-3 py-2 rounded-md bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-900/40 text-xs text-amber-800 dark:text-amber-200">
+              Range cadastrado ({sizeFrom}–{sizeTo}), mas o estoque inicial não foi lançado.
+              Use <strong>Editar estoque</strong> pra adicionar quantidades por numeração.
+            </div>
+          )}
           {sizeKeys.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Boxes className="h-8 w-8 mx-auto mb-2 opacity-30" />
