@@ -2401,6 +2401,92 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
              ] as MaterialRow[]).filter(r => r.show);
  
              if (rows.length === 0) return null;
+
+            // Split sizes em faixas Infantil (<33) / Adulto (>=33). Quando ambas
+            // existem, exibe Tabs pra reduzir scroll horizontal em mobile.
+            // Conjugados aqui são raros (sizes vem como number[]), então não
+            // entram nesta divisão — ficam representados pelo número base.
+            const infantilSizes = sizes.filter((s: number) => s < 33);
+            const adultoSizes   = sizes.filter((s: number) => s >= 33);
+            const hasInfantil   = infantilSizes.length > 0;
+            const hasAdulto     = adultoSizes.length > 0;
+            const splitNeeded   = hasInfantil && hasAdulto;
+
+            const renderTable = (visibleSizes: number[]) => (
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="text-left text-[10px] font-semibold text-muted-foreground py-1.5 pr-3 min-w-[80px]">Material</th>
+                      {visibleSizes.map(s => (
+                        <th key={s} className="text-center text-[10px] font-mono text-muted-foreground py-1.5 px-0.5 w-[62px]">{s}</th>
+                      ))}
+                      <th className="text-right text-[10px] font-semibold text-muted-foreground py-1.5 pl-3 min-w-[72px]">Média</th>
+                      <th className="min-w-[90px]"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map(row => {
+                      const perSize: Record<string, number> = form[row.field] || {};
+                      // Média calcula em CIMA DE TODAS as numerações preenchidas
+                      // (não só das visíveis), pra refletir a média real da ficha.
+                      const filledVals = sizes.map((s: number) => Number(perSize[String(s)] || 0)).filter((v: number) => v > 0);
+                      const avg = filledVals.length > 0 ? filledVals.reduce((a: number, b: number) => a + b, 0) / filledVals.length : 0;
+                      return (
+                        <tr key={row.field} className="border-t border-border/40">
+                          <td className="text-[11px] font-medium py-1.5 pr-3">
+                            {row.label}
+                            <span className="ml-1 text-[9px] font-normal text-muted-foreground">({resolveGroupUnit(row.groupName)})</span>
+                          </td>
+                          {visibleSizes.map(size => {
+                            const sizeKey = String(size);
+                            return (
+                              <td key={size} className="px-0.5 py-1">
+                                <NumberInput
+                                  value={perSize[sizeKey] || 0}
+                                  onChange={v => {
+                                    const next = { ...perSize, [sizeKey]: v };
+                                    updateField(row.field, next);
+                                    const vals = Object.values(next).filter((x: any) => Number(x) > 0).map(Number);
+                                    if (vals.length > 0) updateField(row.scalarField, Number((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(4)));
+                                  }}
+                                  className="w-[62px] h-7 text-[10px] text-center"
+                                  placeholder="0"
+                                  step="0.0001"
+                                />
+                              </td>
+                            );
+                          })}
+                          <td className="text-right text-[10px] font-mono text-muted-foreground pl-3">
+                            {avg > 0 ? avg.toFixed(4) : '—'}
+                          </td>
+                          <td className="pl-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-[10px] whitespace-nowrap"
+                              onClick={() => {
+                                const firstFilled = sizes.map((s: number) => perSize[String(s)] || 0).find((v: number) => v > 0);
+                                if (!firstFilled || firstFilled <= 0) { toast.info("Preencha o primeiro número antes de replicar."); return; }
+                                const next: Record<string, number> = {};
+                                // Replica em TODAS as numerações da ficha, não só nas visíveis
+                                sizes.forEach((s: number) => { next[String(s)] = firstFilled; });
+                                updateField(row.field, next);
+                                updateField(row.scalarField, firstFilled);
+                              }}
+                            >
+                              Replicar 1º
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            );
+
             return (
               <div className="rounded-lg border bg-card p-4 space-y-3">
                 <div className="flex items-center justify-between">
@@ -2424,75 +2510,22 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                     </Button>
                   )}
                 </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse">
-                    <thead>
-                      <tr>
-                        <th className="text-left text-[10px] font-semibold text-muted-foreground py-1.5 pr-3 min-w-[80px]">Material</th>
-                        {sizes.map(s => (
-                          <th key={s} className="text-center text-[10px] font-mono text-muted-foreground py-1.5 px-0.5 w-[62px]">{s}</th>
-                        ))}
-                        <th className="text-right text-[10px] font-semibold text-muted-foreground py-1.5 pl-3 min-w-[72px]">Média</th>
-                        <th className="min-w-[90px]"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map(row => {
-                        const perSize: Record<string, number> = form[row.field] || {};
-                        const filledVals = sizes.map(s => Number(perSize[String(s)] || 0)).filter(v => v > 0);
-                        const avg = filledVals.length > 0 ? filledVals.reduce((a, b) => a + b, 0) / filledVals.length : 0;
-                        return (
-                          <tr key={row.field} className="border-t border-border/40">
-                            <td className="text-[11px] font-medium py-1.5 pr-3">
-                              {row.label}
-                              <span className="ml-1 text-[9px] font-normal text-muted-foreground">({resolveGroupUnit(row.groupName)})</span>
-                            </td>
-                            {sizes.map(size => {
-                              const sizeKey = String(size);
-                              return (
-                                <td key={size} className="px-0.5 py-1">
-                                  <NumberInput
-                                    value={perSize[sizeKey] || 0}
-                                    onChange={v => {
-                                      const next = { ...perSize, [sizeKey]: v };
-                                      updateField(row.field, next);
-                                      const vals = Object.values(next).filter((x: any) => Number(x) > 0).map(Number);
-                                      if (vals.length > 0) updateField(row.scalarField, Number((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(4)));
-                                    }}
-                                    className="w-[62px] h-7 text-[10px] text-center"
-                                    placeholder="0"
-                                    step="0.0001"
-                                  />
-                                </td>
-                              );
-                            })}
-                            <td className="text-right text-[10px] font-mono text-muted-foreground pl-3">
-                              {avg > 0 ? avg.toFixed(4) : '—'}
-                            </td>
-                            <td className="pl-1">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 text-[10px] whitespace-nowrap"
-                                onClick={() => {
-                                  const firstFilled = sizes.map(s => perSize[String(s)] || 0).find(v => v > 0);
-                                  if (!firstFilled || firstFilled <= 0) { toast.info("Preencha o primeiro número antes de replicar."); return; }
-                                  const next: Record<string, number> = {};
-                                  sizes.forEach(s => { next[String(s)] = firstFilled; });
-                                  updateField(row.field, next);
-                                  updateField(row.scalarField, firstFilled);
-                                }}
-                              >
-                                Replicar 1º
-                              </Button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                {splitNeeded ? (
+                  <Tabs defaultValue={adultoSizes.length >= infantilSizes.length ? 'adulto' : 'infantil'}>
+                    <TabsList className="h-8">
+                      <TabsTrigger value="infantil" className="text-xs h-7">
+                        Infantil ({infantilSizes.length})
+                      </TabsTrigger>
+                      <TabsTrigger value="adulto" className="text-xs h-7">
+                        Adulto ({adultoSizes.length})
+                      </TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="infantil" className="mt-2">{renderTable(infantilSizes)}</TabsContent>
+                    <TabsContent value="adulto" className="mt-2">{renderTable(adultoSizes)}</TabsContent>
+                  </Tabs>
+                ) : (
+                  renderTable(sizes)
+                )}
               </div>
             );
           })()}

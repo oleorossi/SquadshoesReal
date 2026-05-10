@@ -1,11 +1,14 @@
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Save, Pencil, Settings2, Layers, Palette } from 'lucide-react';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import { Save, Pencil, Settings2, Layers, Palette, Link2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { SoleSizeConjugationsEditor } from '@/components/inventory/SoleSizeConjugationsEditor';
 import type { SoleProduct } from './types';
@@ -155,6 +158,8 @@ export default function SolesCadastroTab({ sole }: Props) {
         </CardContent>
       </Card>
 
+      {/* GroupBindingFallback é declarado abaixo */}
+
       {/* Conjugações */}
       <Card>
         <CardHeader className="pb-3">
@@ -175,14 +180,170 @@ export default function SolesCadastroTab({ sole }: Props) {
               sizeTo={Number(form.size_to) || 40}
             />
           ) : (
-            <div className="text-center py-8 text-sm text-muted-foreground">
-              <Layers className="h-8 w-8 mx-auto mb-2 opacity-30" />
-              <p>Solado sem grupo associado.</p>
-              <p className="text-xs mt-1">Conjugações são definidas no nível do grupo de produtos. Vincule este solado a um grupo no cadastro principal.</p>
-            </div>
+            <GroupBindingFallback soleId={sole.id} />
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Empty state amigável quando o solado não tem `group_id`. Permite vincular a
+// um grupo existente OU criar um novo grupo direto da tela, sem mandar o
+// usuário pra outra rota.
+// ─────────────────────────────────────────────────────────────────────────────
+function GroupBindingFallback({ soleId }: { soleId: string }) {
+  const qc = useQueryClient();
+  const [mode, setMode] = useState<'idle' | 'pick' | 'create'>('idle');
+  const [pickedGroupId, setPickedGroupId] = useState('');
+  const [newGroupName, setNewGroupName] = useState('');
+
+  const { data: groups = [], isLoading } = useQuery({
+    queryKey: ['product_groups_for_sole_binding'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('product_groups')
+        .select('id, name, description')
+        .order('name');
+      if (error) throw error;
+      return (data ?? []) as Array<{ id: string; name: string; description: string | null }>;
+    },
+    staleTime: 60_000,
+  });
+
+  const bind = useMutation({
+    mutationFn: async (groupId: string) => {
+      const { error } = await supabase
+        .from('products')
+        .update({ group_id: groupId } as any)
+        .eq('id', soleId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['soles_hub_products'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+      toast.success('Solado vinculado ao grupo');
+      setMode('idle');
+      setPickedGroupId('');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const createAndBind = useMutation({
+    mutationFn: async (name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) throw new Error('Nome do grupo é obrigatório');
+      const { data: created, error: cErr } = await supabase
+        .from('product_groups')
+        .insert({ name: trimmed } as any)
+        .select('id')
+        .single();
+      if (cErr) throw cErr;
+      const { error: uErr } = await supabase
+        .from('products')
+        .update({ group_id: (created as any).id } as any)
+        .eq('id', soleId);
+      if (uErr) throw uErr;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['soles_hub_products'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['product_groups_for_sole_binding'] });
+      toast.success('Grupo criado e solado vinculado');
+      setMode('idle');
+      setNewGroupName('');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  if (mode === 'idle') {
+    return (
+      <div className="text-center py-6">
+        <Layers className="h-8 w-8 mx-auto mb-2 opacity-30" />
+        <p className="text-sm font-medium">Solado sem grupo associado</p>
+        <p className="text-xs text-muted-foreground mt-1 mb-4 max-w-md mx-auto">
+          Conjugações de numeração (ex.: 33/34) são definidas no nível do grupo. Vincule este solado a um
+          grupo pra configurar conjugações e compartilhar specs entre solados similares.
+        </p>
+        <div className="flex items-center justify-center gap-2 flex-wrap">
+          <Button size="sm" variant="default" className="gap-1.5" onClick={() => setMode('pick')}>
+            <Link2 className="h-3.5 w-3.5" />
+            Vincular a grupo existente
+          </Button>
+          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setMode('create')}>
+            <Plus className="h-3.5 w-3.5" />
+            Criar novo grupo
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (mode === 'pick') {
+    return (
+      <div className="space-y-3 py-2 max-w-md mx-auto">
+        <Label className="text-xs">Grupo existente</Label>
+        <Select value={pickedGroupId} onValueChange={setPickedGroupId} disabled={isLoading}>
+          <SelectTrigger className="h-9">
+            <SelectValue placeholder={isLoading ? 'Carregando…' : 'Selecione um grupo'} />
+          </SelectTrigger>
+          <SelectContent>
+            {groups.length === 0 && !isLoading && (
+              <SelectItem value="__empty" disabled>Nenhum grupo cadastrado</SelectItem>
+            )}
+            {groups.map((g) => (
+              <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className="flex justify-end gap-2">
+          <Button size="sm" variant="ghost" onClick={() => { setMode('idle'); setPickedGroupId(''); }}>
+            Cancelar
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => bind.mutate(pickedGroupId)}
+            disabled={!pickedGroupId || bind.isPending}
+            className="gap-1.5"
+          >
+            <Link2 className="h-3.5 w-3.5" />
+            Vincular
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // mode === 'create'
+  return (
+    <div className="space-y-3 py-2 max-w-md mx-auto">
+      <Label className="text-xs">Nome do novo grupo</Label>
+      <Input
+        autoFocus
+        value={newGroupName}
+        onChange={(e) => setNewGroupName(e.target.value)}
+        placeholder="Ex.: Solado Saltinho Bloco"
+        className="h-9"
+      />
+      <p className="text-[10px] text-muted-foreground">
+        O grupo agrupa este solado com outras variantes de cor (ex.: Saltinho Preto, Saltinho Caramelo).
+        Conjugações configuradas aqui valem pra todas as variantes.
+      </p>
+      <div className="flex justify-end gap-2">
+        <Button size="sm" variant="ghost" onClick={() => { setMode('idle'); setNewGroupName(''); }}>
+          Cancelar
+        </Button>
+        <Button
+          size="sm"
+          onClick={() => createAndBind.mutate(newGroupName)}
+          disabled={!newGroupName.trim() || createAndBind.isPending}
+          className="gap-1.5"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Criar e vincular
+        </Button>
+      </div>
     </div>
   );
 }

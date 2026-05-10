@@ -311,101 +311,87 @@ export function OperationsTab({
         </div>
       </div>
 
-      {/* ── Capacidade Diária por Setor ── */}
-      <div className="rounded-lg border-2 border-amber-500/30 bg-amber-50/50 dark:bg-amber-950/10 p-4 space-y-3">
+      {/* ── Setores: capacidade + lead time juntos por card ── */}
+      <div className="space-y-3">
         <div className="flex items-center gap-2">
           <Factory className="h-4 w-4 text-amber-600" />
-          <h3 className="text-sm font-semibold">Capacidade Diária por Setor (pares/dia)</h3>
+          <h3 className="text-sm font-semibold">Setores produtivos</h3>
         </div>
-        <p className="text-[11px] text-muted-foreground">
-          Define quantos pares cada setor produz por dia desta referência. O sistema usa esses valores para calcular automaticamente quando cada Ordem de Produção precisa entrar em cada setor (recuo a partir da entrega ao cliente). Se 0, o sistema usa o lead time fixo abaixo.
-          <br />
-          <span className="text-[10px] italic">Para Montagem, se deixar 0 o sistema usa a sugestão calculada por Tempo × Dificuldade ({suggestedAssemblyCapacity} pares/dia).</span>
+        <p className="text-[11px] text-muted-foreground -mt-2">
+          Cada setor tem <strong>capacidade</strong> (pares/dia) e <strong>lead time fallback</strong> (dias —
+          usado se capacidade = 0). O sistema escolhe automaticamente: capacidade quando preenchida, fallback
+          quando 0.
         </p>
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
-          <div>
-            <Label className="text-xs">Corte</Label>
-            <NumberInput value={capCorte} onChange={setCapCorte} className="h-9 text-sm font-mono" min={0} step="1" />
-          </div>
-          <div>
-            <Label className="text-xs">Forração</Label>
-            <NumberInput value={capCostura} onChange={setCapCostura} className="h-9 text-sm font-mono" min={0} step="1" />
-          </div>
-          <div>
-            <Label className="text-xs">Silk</Label>
-            <NumberInput value={capSilk} onChange={setCapSilk} className="h-9 text-sm font-mono" min={0} step="1" />
-          </div>
-          <div>
-            <Label className="text-xs">Colagem</Label>
-            <NumberInput value={capColagem} onChange={setCapColagem} className="h-9 text-sm font-mono" min={0} step="1" />
-          </div>
-          <div>
-            <Label className="text-xs flex items-center gap-1">
-              Montagem
-              {suggestedAssemblyCapacity > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setCapMontagem(suggestedAssemblyCapacity)}
-                  className="text-[9px] text-primary hover:underline"
-                  title={`Aplicar sugestão: ${suggestedAssemblyCapacity} pares/dia`}
-                >
-                  (usar {suggestedAssemblyCapacity})
-                </button>
-              )}
-            </Label>
-            <NumberInput value={capMontagem} onChange={setCapMontagem} className="h-9 text-sm font-mono" min={0} step="1" />
-          </div>
-          <div>
-            <Label className="text-xs">Acabamento</Label>
-            <NumberInput value={capAcabamento} onChange={setCapAcabamento} className="h-9 text-sm font-mono" min={0} step="1" />
-          </div>
-           <div>
-             <Label className="text-xs">Expedição</Label>
-             <NumberInput value={capExpedicao} onChange={setCapExpedicao} className="h-9 text-sm font-mono" min={0} step="1" />
-           </div>
-         </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          {([
+            { key: 'corte',     label: 'Corte',      cap: capCorte,      setCap: setCapCorte,      lt: ltCorte,      setLt: setLtCorte },
+            { key: 'forracao',  label: 'Forração',   cap: capCostura,    setCap: setCapCostura,    lt: ltCostura,    setLt: setLtCostura },
+            { key: 'silk',      label: 'Silk',       cap: capSilk,       setCap: setCapSilk,       lt: ltSilk,       setLt: setLtSilk },
+            { key: 'colagem',   label: 'Colagem',    cap: capColagem,    setCap: setCapColagem,    lt: ltColagem,    setLt: setLtColagem },
+            {
+              key: 'montagem', label: 'Montagem',
+              cap: capMontagem, setCap: setCapMontagem,
+              lt: ltMontagem,   setLt: setLtMontagem,
+              hint: suggestedAssemblyCapacity > 0
+                ? `Sugestão por tempo×dificuldade: ${suggestedAssemblyCapacity} pares/dia`
+                : undefined,
+              applySuggestion: suggestedAssemblyCapacity > 0
+                ? () => setCapMontagem(suggestedAssemblyCapacity)
+                : undefined,
+            },
+            { key: 'acabamento', label: 'Acabamento', cap: capAcabamento, setCap: setCapAcabamento, lt: ltAcabamento, setLt: setLtAcabamento },
+            { key: 'expedicao',  label: 'Expedição',  cap: capExpedicao,  setCap: setCapExpedicao,  lt: ltExpedicao,  setLt: setLtExpedicao },
+          ] as const).map((s) => {
+            const usingCapacity = (s.cap ?? 0) > 0;
+            return (
+              <div
+                key={s.key}
+                className="rounded-lg border bg-card p-3 space-y-2"
+              >
+                <div className="flex items-center justify-between">
+                  <Badge className={`text-[10px] ${STAGE_COLORS[s.label] || 'bg-muted text-muted-foreground'}`}>
+                    {s.label}
+                  </Badge>
+                  <span className="text-[9px] uppercase tracking-wide text-muted-foreground">
+                    {usingCapacity ? '✓ capacidade' : 'lead time'}
+                  </span>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-[10px] text-muted-foreground">Capacidade (pares/dia)</Label>
+                    {'applySuggestion' in s && s.applySuggestion && suggestedAssemblyCapacity > 0 && (
+                      <button
+                        type="button"
+                        onClick={s.applySuggestion}
+                        className="text-[9px] text-primary hover:underline"
+                        title={'hint' in s && s.hint ? s.hint : undefined}
+                      >
+                        usar {suggestedAssemblyCapacity}
+                      </button>
+                    )}
+                  </div>
+                  <NumberInput value={s.cap} onChange={s.setCap} className="h-8 text-sm font-mono mt-0.5" min={0} step="1" />
+                </div>
+                <div>
+                  <Label className="text-[10px] text-muted-foreground">Lead time fallback (dias)</Label>
+                  <NumberInput value={s.lt} onChange={s.setLt} className="h-8 text-sm font-mono mt-0.5" min={0} step="1" />
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
-      {/* ── Lead Times Fixos (fallback) ── */}
-      <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
-        <div className="flex items-center gap-2">
-          <Calendar className="h-4 w-4 text-muted-foreground" />
-          <h3 className="text-sm font-semibold">Lead Times Fixos (dias) — usado quando capacidade = 0</h3>
+      {/* ── Buffer global (não é setor) ── */}
+      <div className="rounded-lg border bg-muted/20 p-3 flex items-center gap-3">
+        <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+        <div className="flex-1">
+          <Label className="text-xs font-medium">Buffer de material (dias)</Label>
+          <p className="text-[10px] text-muted-foreground">
+            Margem entre data de chegada do material e início da produção. Aplicado globalmente, não por setor.
+          </p>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
-          <div>
-            <Label className="text-xs">Corte</Label>
-            <NumberInput value={ltCorte} onChange={setLtCorte} className="h-9 text-sm font-mono" min={0} step="1" />
-          </div>
-          <div>
-            <Label className="text-xs">Forração</Label>
-            <NumberInput value={ltCostura} onChange={setLtCostura} className="h-9 text-sm font-mono" min={0} step="1" />
-          </div>
-          <div className="md:col-span-1">
-            <Label className="text-xs">Silk</Label>
-            <NumberInput value={ltSilk} onChange={setLtSilk} className="h-9 text-sm font-mono" min={0} step="1" />
-          </div>
-          <div className="md:col-span-1">
-            <Label className="text-xs">Colagem</Label>
-            <NumberInput value={ltColagem} onChange={setLtColagem} className="h-9 text-sm font-mono" min={0} step="1" />
-          </div>
-          <div className="md:col-span-1">
-            <Label className="text-xs">Montagem</Label>
-            <NumberInput value={ltMontagem} onChange={setLtMontagem} className="h-9 text-sm font-mono" min={0} step="1" />
-          </div>
-          <div className="md:col-span-1">
-            <Label className="text-xs">Acabamento</Label>
-            <NumberInput value={ltAcabamento} onChange={setLtAcabamento} className="h-9 text-sm font-mono" min={0} step="1" />
-          </div>
-          <div className="md:col-span-1">
-            <Label className="text-xs">Expedição</Label>
-            <NumberInput value={ltExpedicao} onChange={setLtExpedicao} className="h-9 text-sm font-mono" min={0} step="1" />
-          </div>
-          <div className="md:col-span-1">
-            <Label className="text-xs">Buffer</Label>
-            <NumberInput value={ltBuffer} onChange={setLtBuffer} className="h-9 text-sm font-mono" min={0} step="1" />
-          </div>
-         </div>
+        <NumberInput value={ltBuffer} onChange={setLtBuffer} className="h-9 text-sm font-mono w-24" min={0} step="1" />
       </div>
 
       {/* ── Capacity Cards ── */}
