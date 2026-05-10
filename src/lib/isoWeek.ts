@@ -1,6 +1,6 @@
-// e2e-pipeline-test: cicd-smoke-1778376147
 // Helpers de semana ISO 8601 compartilhados entre listagens semanais
 // (ondas, pickups, lista de separação).
+export const __PIPELINE_SENTINEL = 'cicd-smoke-1778376147';
 
 function pad(n: number): string {
   return n < 10 ? `0${n}` : String(n);
