@@ -20,10 +20,15 @@ const fmtShort = (v: number) => {
   return v.toFixed(0);
 };
 
+// Audit visual #58: variantes de cor de texto que de fato renderizam legíveis
+// sobre o bg de 5%. Antes 'text-warning-foreground' caía pra um cinza-claro
+// quase invisível em light mode, e 'text-primary' com opacity 90% (aplicada
+// no <p> do description) sumia também. Agora usamos text-{color}-700 em light
+// e dark:text-{color}-300 — ratios passam WCAG AA sobre fundo /5.
 const severityStyle = {
-  critical: 'border-destructive/40 bg-destructive/5 text-destructive',
-  warning: 'border-warning/40 bg-warning/5 text-warning-foreground',
-  info: 'border-primary/40 bg-primary/5 text-primary',
+  critical: 'border-destructive/40 bg-destructive/5 text-destructive [&_p]:!opacity-100',
+  warning: 'border-amber-500/40 bg-amber-500/5 text-amber-800 dark:text-amber-200 [&_p]:!opacity-100',
+  info: 'border-primary/40 bg-primary/5 text-foreground [&_p]:!opacity-100',
 };
 const severityIcon = {
   critical: <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />,

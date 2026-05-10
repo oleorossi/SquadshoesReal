@@ -1175,10 +1175,17 @@ export default function Finance() {
                         </div>
                         <Input type="date" value={payableDateFrom} onChange={e => setPayableDateFrom(e.target.value)} className="w-36 h-9 text-xs" title="Vencimento de" />
                         <Input type="date" value={payableDateTo} onChange={e => setPayableDateTo(e.target.value)} className="w-36 h-9 text-xs" title="Vencimento até" />
-                        <Select value={payableStatusFilter[0] || ''} onValueChange={v => setPayableStatusFilter(v ? [v] : [])}>
+                        {/* Audit visual #57: Radix Select.Item rejeita value=""
+                            (string vazia é reservado pra clear). Usar sentinel "all"
+                            e mapear pra array vazio no handler. Antes a aba inteira
+                            de Contas crashava com ErrorBoundary ao montar. */}
+                        <Select
+                          value={payableStatusFilter[0] || 'all'}
+                          onValueChange={v => setPayableStatusFilter(v === 'all' ? [] : [v])}
+                        >
                           <SelectTrigger className="w-36 h-9 text-xs"><SelectValue placeholder="Status" /></SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="">Todos</SelectItem>
+                            <SelectItem value="all">Todos</SelectItem>
                             <SelectItem value="pending">À Vencer</SelectItem>
                             <SelectItem value="overdue">Vencido</SelectItem>
                             <SelectItem value="paid">Pago</SelectItem>
