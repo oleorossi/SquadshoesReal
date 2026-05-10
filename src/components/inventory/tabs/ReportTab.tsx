@@ -130,7 +130,15 @@ export function ReportTab() {
                  </div>
                ))
              ) : (
-               <p className="text-xs text-center text-muted-foreground py-4">Nenhum produto encontrado</p>
+               /* Audit visual #35: empty state mais descritivo + CTA. Antes só
+                  exibia "Nenhum produto encontrado" sem contexto. */
+               <div className="py-6 text-center space-y-2">
+                 <Package className="h-8 w-8 mx-auto text-muted-foreground/30" />
+                 <p className="text-xs text-muted-foreground">Nenhum produto cadastrado ainda.</p>
+                 <Button variant="outline" size="sm" onClick={() => navigate('/produtos')} className="h-7 text-xs">
+                   Cadastrar primeiro produto
+                 </Button>
+               </div>
              )}
            </CardContent>
          </Card>
