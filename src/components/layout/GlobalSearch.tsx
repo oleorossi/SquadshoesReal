@@ -46,14 +46,22 @@ const TYPE_LABELS: Record<QueryType, string> = {
   general: 'Busca Geral',
 };
 
+// Singleton guard: AppLayout renderiza o GlobalSearch em 3 lugares (sidebar
+// expanded/collapsed/mobile). Sem isso, cada instância escuta o cmd+K e o
+// usuário via 3 dialogs sobrepostos.
+let activeShortcutOwner: symbol | null = null;
+
 export function GlobalSearch({ compact }: { compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const navigate = useNavigate();
   const [debouncedQuery] = useDebounce(query.trim(), 250);
 
-  // Keyboard shortcut: Ctrl+K / Cmd+K
+  // Keyboard shortcut: Ctrl+K / Cmd+K — só a 1ª instância montada registra.
   useEffect(() => {
+    const id = Symbol('global-search');
+    if (activeShortcutOwner) return;
+    activeShortcutOwner = id;
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
@@ -61,7 +69,10 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
       }
     };
     document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
+    return () => {
+      document.removeEventListener('keydown', handler);
+      if (activeShortcutOwner === id) activeShortcutOwner = null;
+    };
   }, []);
 
   const detectedType = useMemo(() => detectQueryType(query), [query]);
