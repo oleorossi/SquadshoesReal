@@ -565,6 +565,28 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
       .map(s => s.key)
       .filter(k => k !== 'Pendente');
 
+    // Guard contra "pular tudo" — quando é mais de 4 setores ou indo direto
+    // de Pendente pra Expedição (saltando produção inteira), bloqueia.
+    // Operador precisa explicitar avanço setor-a-setor pra evitar fraude
+    // ou erro de drag-n-drop em mobile.
+    const MAX_SKIP = 4;
+    if (skipped.length > MAX_SKIP) {
+      toast.error(
+        `Não é possível pular ${skipped.length} setores de uma vez. Avance até no máximo ${MAX_SKIP + 1} setores adiante (atual → +${MAX_SKIP + 1}).`,
+        { duration: 6000 }
+      );
+      setDraggedOrder(null);
+      return;
+    }
+    if (fromSector === 'Pendente' && toSectorKey === 'Expedição') {
+      toast.error(
+        'Pendente → Expedição não é permitido. OPs precisam passar por pelo menos um setor produtivo.',
+        { duration: 6000 }
+      );
+      setDraggedOrder(null);
+      return;
+    }
+
     // Se não há nada a pular, é um avanço normal — mas ainda pedimos confirmação
     setSkipDecision({
       orderId: draggedOrder.id,
@@ -903,8 +925,11 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
                   )}
                 </div>
 
-                {/* Cards */}
-                <ScrollArea className="flex-1 max-h-[calc(100vh-280px)]">
+                {/* Cards — height adaptativa: viewport menos header da página em
+                    desktop; em mobile (<sm) usa min-h pra coluna não colapsar
+                    e overflow-y-auto pra rolar dentro do contêiner pai.
+                    SCROLLAREA NUNCA pode esconder OPs — usar 65vh max em mobile. */}
+                <ScrollArea className="flex-1 max-h-[65vh] sm:max-h-[calc(100vh-280px)]">
                   <div className="p-2 space-y-2">
                     {sectorOrders.length === 0 ? (
                       <div className="py-8 text-center">

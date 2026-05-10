@@ -85,6 +85,27 @@ function getEffectiveStatus(status: string, dueDate: string | null | undefined) 
   return status;
 }
 
+/**
+ * Cálculo SUGERIDO de juros + multa pra contas atrasadas.
+ * Convenção brasileira padrão pra B2B (contratos não financeiros):
+ *   - Multa fixa de 2% sobre o valor original (cobrada uma vez)
+ *   - Juros de mora 1% ao mês (pro-rata por dia: 1/30 ao dia)
+ * Total = principal × (1 + 0.02 + 0.01 × (diasAtraso / 30))
+ *
+ * Apenas SUGESTÃO visual — não persiste em DB. Usuário ajusta manualmente
+ * na hora de marcar pago. Pode virar feature configurável em v2.
+ */
+function calculateOverdueAccruals(amount: number, dueDate: string | null | undefined): { fine: number; interest: number; total: number; daysOverdue: number } {
+  if (!dueDate) return { fine: 0, interest: 0, total: 0, daysOverdue: 0 };
+  const due = parseISO(dueDate);
+  const today = todayMidnight();
+  if (!isBefore(due, today)) return { fine: 0, interest: 0, total: 0, daysOverdue: 0 };
+  const daysOverdue = Math.floor((today.getTime() - due.getTime()) / (1000 * 60 * 60 * 24));
+  const fine = amount * 0.02;
+  const interest = amount * 0.01 * (daysOverdue / 30);
+  return { fine, interest, total: fine + interest, daysOverdue };
+}
+
 const CHART_COLORS = ['hsl(var(--primary))', 'hsl(var(--destructive))', 'hsl(142, 76%, 36%)', 'hsl(38, 92%, 50%)', 'hsl(262, 83%, 58%)', 'hsl(199, 89%, 48%)'];
 
 // FinanceDashboard removed — substituído por SmartDashboard (módulo de inteligência financeira).
@@ -1058,15 +1079,16 @@ export default function Finance() {
                           </SelectContent>
                         </Select>
                       </div>
+                      <div className="overflow-x-auto">
                       <Table>
                         <TableHeader><TableRow>
                           <SortableTableHead sortKey="description" currentSortKey={payableSort.sortKey} currentDirection={payableSort.sortDirection} onSort={payableSort.handleSort}>Descrição</SortableTableHead>
-                          <TableHead>Fornecedor</TableHead>
-                          <TableHead>Categ.</TableHead>
+                          <TableHead className="hidden md:table-cell">Fornecedor</TableHead>
+                          <TableHead className="hidden lg:table-cell">Categ.</TableHead>
                           <SortableTableHead sortKey="due_date" currentSortKey={payableSort.sortKey} currentDirection={payableSort.sortDirection} onSort={payableSort.handleSort}>Vencimento</SortableTableHead>
                           <SortableTableHead sortKey="amount" currentSortKey={payableSort.sortKey} currentDirection={payableSort.sortDirection} onSort={payableSort.handleSort} className="text-right">Valor</SortableTableHead>
-                          <TableHead className="text-right">Saldo</TableHead>
-                          <TableHead>Parc.</TableHead>
+                          <TableHead className="text-right hidden sm:table-cell">Saldo</TableHead>
+                          <TableHead className="hidden lg:table-cell">Parc.</TableHead>
                           <SortableTableHead sortKey="status" currentSortKey={payableSort.sortKey} currentDirection={payableSort.sortDirection} onSort={payableSort.handleSort}>Status</SortableTableHead>
                           <TableHead className="text-right">Ações</TableHead>
                         </TableRow></TableHeader>
@@ -1077,18 +1099,33 @@ export default function Finance() {
                             const eff = getEffectiveStatus(p.status, p.due_date);
                             const cfg = statusConfig[eff] || statusConfig.pending;
                             const remaining = Math.max(0, p.amount - p.amount_paid);
+                            const accruals = calculateOverdueAccruals(p.amount, p.due_date);
                             return (
                               <TableRow key={p.id} className="cursor-pointer hover:bg-muted/50 transition-colors"
                                 onClick={e => { if ((e.target as HTMLElement).closest('button, [role="checkbox"]')) return; setEditingPayable(p); setPayableDialog(true); }}>
                                 <TableCell className="font-medium max-w-[180px] truncate">{p.description}</TableCell>
-                                <TableCell className="text-sm text-muted-foreground">{p.suppliers?.name || '—'}</TableCell>
-                                <TableCell className="text-xs capitalize">{p.category}</TableCell>
-                                <TableCell className={eff === 'overdue' ? 'text-destructive font-medium' : ''}>{format(parseISO(p.due_date), 'dd/MM/yy')}</TableCell>
-                                <TableCell className="text-right font-mono text-sm">{fmt(p.amount)}</TableCell>
-                                <TableCell className={`text-right font-mono font-bold text-sm ${remaining > 0 ? (eff === 'overdue' ? 'text-destructive' : '') : 'text-muted-foreground'}`}>
+                                <TableCell className="text-sm text-muted-foreground hidden md:table-cell">{p.suppliers?.name || '—'}</TableCell>
+                                <TableCell className="text-xs capitalize hidden lg:table-cell">{p.category}</TableCell>
+                                <TableCell className={eff === 'overdue' ? 'text-destructive font-medium' : ''}>
+                                  {format(parseISO(p.due_date), 'dd/MM/yy')}
+                                  {accruals.daysOverdue > 0 && (
+                                    <div className="text-[10px] text-destructive/80 font-normal">
+                                      {accruals.daysOverdue}d atraso
+                                    </div>
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-right font-mono text-sm">
+                                  {fmt(p.amount)}
+                                  {accruals.total > 0 && (
+                                    <div className="text-[10px] text-amber-600 dark:text-amber-400 font-normal" title={`Multa 2%: ${fmt(accruals.fine)} · Juros 1%/mês pro-rata: ${fmt(accruals.interest)}`}>
+                                      + {fmt(accruals.total)} juros/multa
+                                    </div>
+                                  )}
+                                </TableCell>
+                                <TableCell className={`text-right font-mono font-bold text-sm hidden sm:table-cell ${remaining > 0 ? (eff === 'overdue' ? 'text-destructive' : '') : 'text-muted-foreground'}`}>
                                   {remaining > 0 ? fmt(remaining) : '—'}
                                 </TableCell>
-                                <TableCell className="text-xs">{p.installment_number}/{p.total_installments}</TableCell>
+                                <TableCell className="text-xs hidden lg:table-cell">{p.installment_number}/{p.total_installments}</TableCell>
                                 <TableCell><Badge variant={cfg.variant}>{cfg.label}</Badge></TableCell>
                                 <TableCell className="text-right">
                                   <div className="flex gap-1 justify-end">
@@ -1114,6 +1151,7 @@ export default function Finance() {
                           })}
                         </TableBody>
                       </Table>
+                      </div>
                     </CardContent>
                   </Card>
                 );

@@ -515,7 +515,7 @@ export default function StockAdjustmentPage() {
           onChange={(e) => setReason(e.target.value)}
           className={cn(
             "h-8 text-sm w-72",
-            !reason && totalPending > 0 && "border-amber-400 ring-1 ring-amber-300"
+            !reason.trim() && totalPending > 0 && "border-destructive focus-visible:ring-destructive"
           )}
         />
 
@@ -525,7 +525,16 @@ export default function StockAdjustmentPage() {
           </span>
         )}
 
-        <Button size="sm" onClick={handleSave} disabled={saving || totalPending === 0} className="h-8 gap-1.5 shrink-0">
+        {/* E2: bloqueia Salvar quando motivo vazio. Antes: toast.error após click,
+            ainda permitia request fail e confundia user. Agora: feedback visual
+            no campo + botão indisponível com tooltip explicativo. */}
+        <Button
+          size="sm"
+          onClick={handleSave}
+          disabled={saving || totalPending === 0 || !reason.trim()}
+          className="h-8 gap-1.5 shrink-0"
+          title={!reason.trim() && totalPending > 0 ? 'Preencha o motivo do ajuste antes de salvar' : undefined}
+        >
           {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
           Salvar
         </Button>

@@ -491,26 +491,29 @@ export default function BankHours() {
                 ) : (
                   <div className="divide-y border-t">
                     {(sectorsQ.data || []).map(s => (
-                      <div key={s.department || '__none__'} className="px-4 py-3 grid grid-cols-12 gap-3 items-center">
-                        <div className="col-span-4 min-w-0">
+                      // R1: grid-cols-12 quebra em mobile (<640px). Em sm+ mantém
+                      // 12-col tabela; em mobile vira stack vertical com bordas
+                      // sutis pra distinguir setor.
+                      <div key={s.department || '__none__'} className="px-4 py-3 grid grid-cols-2 sm:grid-cols-12 gap-2 sm:gap-3 items-start sm:items-center">
+                        <div className="col-span-2 sm:col-span-4 min-w-0">
                           <div className="font-medium text-sm">{s.department || 'Sem setor'}</div>
                           <div className="text-[11px] text-muted-foreground">
                             {s.employee_count} func.{s.movement_count > 0 && ` · ${s.movement_count} lançamentos`}
                           </div>
                         </div>
-                        <div className="col-span-2 text-right">
+                        <div className="col-span-1 sm:col-span-2 text-left sm:text-right">
                           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Crédito</div>
                           <div className="font-mono text-sm text-emerald-600 dark:text-emerald-400 tabular-nums">
                             {formatHours(s.total_credit_min)}
                           </div>
                         </div>
-                        <div className="col-span-2 text-right">
+                        <div className="col-span-1 sm:col-span-2 text-left sm:text-right">
                           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Débito</div>
                           <div className="font-mono text-sm text-primary tabular-nums">
                             {formatHours(s.total_debit_min)}
                           </div>
                         </div>
-                        <div className="col-span-4 text-right">
+                        <div className="col-span-2 sm:col-span-4 text-left sm:text-right">
                           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Saldo</div>
                           <div className={cn('font-mono text-base font-bold tabular-nums', balanceClass(s.total_balance_min))}>
                             {formatHours(s.total_balance_min)}
