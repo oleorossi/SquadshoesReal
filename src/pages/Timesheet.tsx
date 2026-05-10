@@ -767,22 +767,30 @@ function TimesheetRecordsTab() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="text-sm">
-                <span className="text-muted-foreground">Funcionários:</span>{' '}
-                <span className="font-medium">{preview.employees.length}</span>
-                {' · '}
-                <span className="text-muted-foreground">Vinculados:</span>{' '}
-                <span className="font-medium text-green-600">{matchedCount}</span>
+              {/* R11 (audit): badges substituem texto inline pra dar peso visual
+                  igual aos status de importações concluídas (ImportHistoryPanel).
+                  Verde = OK, âmbar = pede ação, neutro = informativo. */}
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <Badge variant="outline" className="gap-1.5 font-normal">
+                  <span className="text-muted-foreground">Funcionários</span>
+                  <span className="font-semibold tabular-nums">{preview.employees.length}</span>
+                </Badge>
+                <Badge className="gap-1.5 bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20 font-normal">
+                  <CheckCircle2 className="h-3 w-3" />
+                  <span>Vinculados</span>
+                  <span className="font-semibold tabular-nums">{matchedCount}</span>
+                </Badge>
                 {unmatchedEmps.length > 0 && (
-                  <>
-                    {' · '}
-                    <span className="text-muted-foreground">Não vinculados:</span>{' '}
-                    <span className="font-medium text-amber-600">{unmatchedEmps.length}</span>
-                  </>
+                  <Badge className="gap-1.5 bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20 font-normal">
+                    <AlertTriangle className="h-3 w-3" />
+                    <span>Não vinculados</span>
+                    <span className="font-semibold tabular-nums">{unmatchedEmps.length}</span>
+                  </Badge>
                 )}
-                {' · '}
-                <span className="text-muted-foreground">Registros:</span>{' '}
-                <span className="font-medium">{totalRecords}</span>
+                <Badge variant="outline" className="gap-1.5 font-normal">
+                  <span className="text-muted-foreground">Registros</span>
+                  <span className="font-semibold tabular-nums">{totalRecords.toLocaleString('pt-BR')}</span>
+                </Badge>
               </div>
 
               {unmatchedEmps.length > 0 && (

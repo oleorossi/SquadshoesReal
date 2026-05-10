@@ -26,6 +26,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { Progress } from '@/components/ui/progress';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   useAccountsPayable, useAccountsReceivable,
   useCreateAccountPayable, useCreateAccountReceivable,
@@ -492,10 +493,24 @@ function CashFlowTab() {
       <Card>
         <CardHeader><CardTitle className="text-sm">Fluxo de Caixa - {period}</CardTitle></CardHeader>
         <CardContent className="h-[350px]">
+          {/* F12 (audit): empty state quando o período não tem nenhuma movimentação.
+              Antes: chart vazio mostrava grid + linhas zeradas, deixando dúvida se
+              era erro de carregamento ou ausência real de dados. */}
+          {cashFlowData.every(d => d.receitas === 0 && d.despesas === 0) ? (
+            <div className="h-full flex flex-col items-center justify-center text-center">
+              <DollarSign className="h-10 w-10 text-muted-foreground/40 mb-2" />
+              <p className="text-sm font-medium text-foreground">Nenhuma movimentação em {period}</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Cadastre lançamentos, contas a pagar ou receber pra ver o fluxo aqui.
+              </p>
+            </div>
+          ) : (
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={cashFlowData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="day" fontSize={11} />
+              {/* F13 (audit): mantém eixo Y compacto (10k, 50k…), mas tooltip
+                  do gráfico já formata valor pleno via formatter={fmt}. */}
               <YAxis fontSize={11} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
               <Tooltip formatter={(v: number) => fmt(v)} />
               <Legend />
@@ -504,6 +519,7 @@ function CashFlowTab() {
               <Line type="monotone" dataKey="saldo" stroke="hsl(var(--primary))" name="Saldo Acumulado" strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -1003,11 +1019,42 @@ export default function Finance() {
           <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
             <DollarSign className="h-6 w-6" /> Módulo Financeiro
           </h1>
-          <p className="text-sm text-muted-foreground">Contas, notas fiscais, relatórios analíticos e inteligência financeira</p>
+          {/* F15 (audit): breadcrumb mostra qual aba está ativa. Antes: usuário
+              perdia contexto entre abas (Contas/Notas/Operacional/Relatórios)
+              ao voltar pra Visão Geral, sem indicação clara de onde estava. */}
+          <p className="text-sm text-muted-foreground">
+            Financeiro
+            <span className="mx-1.5 text-muted-foreground/50">›</span>
+            <span className="text-foreground font-medium">
+              {financeTab === 'dashboard' ? 'Visão Geral'
+                : financeTab === 'accounts' ? 'Contas a Pagar / Receber'
+                : financeTab === 'invoices' ? 'Notas Fiscais'
+                : financeTab === 'operational' ? 'Operacional'
+                : financeTab === 'reports' ? 'Relatórios analíticos'
+                : 'Visão Geral'}
+            </span>
+          </p>
         </div>
 
         {loading ? (
-          <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+          /* F14 (audit): skeleton em vez de spinner — usuário vê o esqueleto
+              da página enquanto contas/recebíveis carregam, mantendo layout
+              estável e percepção de carregamento mais rápida. */
+          <div className="space-y-4">
+            <div className="flex gap-2">
+              <Skeleton className="h-9 w-32" />
+              <Skeleton className="h-9 w-32" />
+              <Skeleton className="h-9 w-32" />
+              <Skeleton className="h-9 w-32" />
+              <Skeleton className="h-9 w-32" />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <Skeleton className="h-24" />
+              <Skeleton className="h-24" />
+              <Skeleton className="h-24" />
+            </div>
+            <Skeleton className="h-80" />
+          </div>
         ) : (
           <Tabs defaultValue="dashboard" value={financeTab} onValueChange={setFinanceTab}>
             <HubTabsList tabs={[
@@ -1068,10 +1115,37 @@ export default function Finance() {
                   .filter(r => !['received', 'cancelled'].includes(r.status))
                   .reduce((s, r) => s + Math.max(0, (r.amount || 0) - (r.amount_received || 0)), 0);
 
+                /* F7 + F9 (audit, partial): subtotais por status no header da AP.
+                   Usuário vê de cara quanto tem em aberto, vencido e total filtrado
+                   sem precisar somar mentalmente nas linhas. */
+                const filteredPSums = filteredP.reduce(
+                  (acc, p) => {
+                    const eff = getEffectiveStatus(p.status, p.due_date);
+                    const remaining = Math.max(0, (p.amount || 0) - (p.amount_paid || 0));
+                    if (eff === 'overdue') acc.overdue += remaining;
+                    else if (eff === 'pending') acc.pending += remaining;
+                    acc.total += p.amount || 0;
+                    return acc;
+                  },
+                  { overdue: 0, pending: 0, total: 0 },
+                );
+
                 const payableContent = (
                   <Card>
-                    <CardHeader className="flex flex-row items-center justify-between pb-3">
-                      <CardTitle className="text-base">Contas a Pagar</CardTitle>
+                    <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-3">
+                      <div>
+                        <CardTitle className="text-base">Contas a Pagar</CardTitle>
+                        <p className="text-xs text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3">
+                          <span>{filteredP.length} conta(s)</span>
+                          {filteredPSums.overdue > 0 && (
+                            <span className="text-destructive">Vencido: {fmt(filteredPSums.overdue)}</span>
+                          )}
+                          {filteredPSums.pending > 0 && (
+                            <span>À vencer: {fmt(filteredPSums.pending)}</span>
+                          )}
+                          <span>Total: {fmt(filteredPSums.total)}</span>
+                        </p>
+                      </div>
                       <div className="flex gap-2">
                         <Button size="sm" variant="outline" onClick={() => exportPayablesBatch(filteredP)}><FileDown className="h-4 w-4 mr-1" /> CSV</Button>
                         <Button size="sm" onClick={() => { setEditingPayable(null); setPayableDialog(true); }}><Plus className="h-4 w-4 mr-1" /> Nova Conta</Button>
@@ -1160,7 +1234,22 @@ export default function Finance() {
                                 <TableCell className={`text-right font-mono font-bold text-sm hidden sm:table-cell ${remaining > 0 ? (eff === 'overdue' ? 'text-destructive' : '') : 'text-muted-foreground'}`}>
                                   {remaining > 0 ? fmt(remaining) : '—'}
                                 </TableCell>
-                                <TableCell className="text-xs hidden lg:table-cell">{p.installment_number}/{p.total_installments}</TableCell>
+                                <TableCell
+                                  className="text-xs hidden lg:table-cell"
+                                  title={
+                                    /* F4 (audit): tooltip explica parcelamento e mostra
+                                       restantes pra parcelas em aberto. */
+                                    p.total_installments > 1
+                                      ? `Parcela ${p.installment_number} de ${p.total_installments}${
+                                          p.status !== 'paid' && p.status !== 'cancelled'
+                                            ? ` · ${Math.max(0, p.total_installments - p.installment_number)} restante(s)`
+                                            : ''
+                                        }`
+                                      : 'Pagamento à vista'
+                                  }
+                                >
+                                  {p.installment_number}/{p.total_installments}
+                                </TableCell>
                                 <TableCell><Badge variant={cfg.variant}>{cfg.label}</Badge></TableCell>
                                 <TableCell className="text-right">
                                   <div className="flex gap-1 justify-end">
@@ -1254,9 +1343,34 @@ export default function Finance() {
                                 <TableCell><Checkbox checked={selectedReceivables.has(r.id)} onCheckedChange={() => toggleReceivable(r.id)} /></TableCell>
                                 <TableCell className="font-medium">{r.description}</TableCell>
                                 <TableCell>{r.client_name}</TableCell>
-                                <TableCell>{format(parseISO(r.due_date), 'dd/MM/yyyy')}</TableCell>
+                                <TableCell className={
+                                  /* F11 (audit): paridade c/ Contas a Pagar — destaque
+                                     vencimentos próximos (≤5d) em âmbar, vencidos em destrutivo. */
+                                  eff === 'overdue' ? 'text-destructive font-medium'
+                                  : isDueSoon(r.due_date, r.status) ? 'text-amber-600 dark:text-amber-400 font-medium'
+                                  : ''
+                                }>
+                                  {format(parseISO(r.due_date), 'dd/MM/yyyy')}
+                                  {isDueSoon(r.due_date, r.status) && (
+                                    <div className="text-[10px] text-amber-600 dark:text-amber-400 font-normal">
+                                      vence em {daysUntilDue(r.due_date)}d
+                                    </div>
+                                  )}
+                                </TableCell>
                                 <TableCell className="text-right font-mono">{fmt(r.amount)}</TableCell>
-                                <TableCell>{r.installment_number}/{r.total_installments}</TableCell>
+                                <TableCell
+                                  title={
+                                    r.total_installments > 1
+                                      ? `Parcela ${r.installment_number} de ${r.total_installments}${
+                                          r.status !== 'received' && r.status !== 'cancelled'
+                                            ? ` · ${Math.max(0, r.total_installments - r.installment_number)} restante(s)`
+                                            : ''
+                                        }`
+                                      : 'Pagamento à vista'
+                                  }
+                                >
+                                  {r.installment_number}/{r.total_installments}
+                                </TableCell>
                                 <TableCell><Badge variant={cfg.variant}>{cfg.label}</Badge></TableCell>
                                 <TableCell className="text-right">
                                   <div className="flex gap-1 justify-end">

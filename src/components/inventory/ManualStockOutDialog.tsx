@@ -97,6 +97,22 @@ export function ManualStockOutDialog({ open, onOpenChange, product }: ManualStoc
               <p className="text-xs text-muted-foreground">
                 SKU: {product.sku} | Estoque atual: <span className="font-mono font-semibold text-foreground">{Number(product.quantity).toLocaleString('pt-BR')} {product.unit}</span>
               </p>
+              {/* E9 (audit): exibe reservado quando > 0. Antes: usuário via "Estoque atual"
+                  e pensava que tinha tudo disponível, mas reservado já estava comprometido
+                  com OPs em aberto — risco de baixa indevida. */}
+              {Number(product.reserved_stock ?? 0) > 0 && (
+                <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+                  <AlertTriangle className="h-3 w-3 inline-block mr-1 -mt-0.5" />
+                  Reservado em OPs:{' '}
+                  <span className="font-mono font-semibold">
+                    {Number(product.reserved_stock).toLocaleString('pt-BR')} {product.unit}
+                  </span>
+                  {' · '}Disponível real:{' '}
+                  <span className="font-mono font-semibold">
+                    {Math.max(0, Number(product.quantity) - Number(product.reserved_stock)).toLocaleString('pt-BR')} {product.unit}
+                  </span>
+                </p>
+              )}
             </div>
 
             <div>

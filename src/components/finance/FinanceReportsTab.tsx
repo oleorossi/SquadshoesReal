@@ -43,12 +43,15 @@ const CATEGORY_LABELS: Record<string, string> = {
   outro: 'Outros',
 };
 
+// F8 (audit): paleta de aging com variantes dark mode pra atingir contraste
+// WCAG AA. text-{amber/orange/red}-600 em fundo dark caía pra ratio < 4.5:1.
+// As variantes -400 mantêm legibilidade em ambos os modos.
 const AGING_BUCKETS = [
-  { key: 'current',  label: 'A Vencer',    min: -Infinity, max: 0,        color: 'text-foreground',    bg: 'bg-muted/40' },
-  { key: 'b1_30',   label: '1–30 dias',   min: 1,         max: 30,       color: 'text-amber-600',     bg: 'bg-amber-500/10' },
-  { key: 'b31_60',  label: '31–60 dias',  min: 31,        max: 60,       color: 'text-orange-600',    bg: 'bg-orange-500/10' },
-  { key: 'b61_90',  label: '61–90 dias',  min: 61,        max: 90,       color: 'text-red-600',       bg: 'bg-red-500/10' },
-  { key: 'b90plus', label: '> 90 dias',   min: 91,        max: Infinity, color: 'text-destructive',   bg: 'bg-destructive/10' },
+  { key: 'current',  label: 'A Vencer',    min: -Infinity, max: 0,        color: 'text-foreground',                        bg: 'bg-muted/40' },
+  { key: 'b1_30',   label: '1–30 dias',   min: 1,         max: 30,       color: 'text-amber-700 dark:text-amber-400',     bg: 'bg-amber-500/10' },
+  { key: 'b31_60',  label: '31–60 dias',  min: 31,        max: 60,       color: 'text-orange-700 dark:text-orange-400',   bg: 'bg-orange-500/10' },
+  { key: 'b61_90',  label: '61–90 dias',  min: 61,        max: 90,       color: 'text-red-700 dark:text-red-400',         bg: 'bg-red-500/10' },
+  { key: 'b90plus', label: '> 90 dias',   min: 91,        max: Infinity, color: 'text-destructive',                        bg: 'bg-destructive/10' },
 ];
 
 const CustomTooltip = ({ active, payload, label }: any) => {

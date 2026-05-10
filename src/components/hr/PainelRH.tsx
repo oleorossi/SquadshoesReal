@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -436,12 +437,13 @@ export default function PainelRH({ onNavigateTab }: Props) {
 // ─────────────────────────────────────────────────────────────────────────────
 function BankHoursAlertList({
   bhAlertas,
-  onNavigateTab,
+  onNavigateTab: _onNavigateTab,
 }: {
   bhAlertas: Array<{ employee_id: string; employee_name: string; balance_min: number }>;
   onNavigateTab: (tab: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const navigate = useNavigate();
   const VISIBLE = 6;
   const showing = expanded ? bhAlertas : bhAlertas.slice(0, VISIBLE);
   const hasMore = bhAlertas.length > VISIBLE;
@@ -451,8 +453,11 @@ function BankHoursAlertList({
         <span>
           <strong>{bhAlertas.length}</strong> funcionário{bhAlertas.length > 1 ? 's com saldo extremo' : ' com saldo extremo'} de banco de horas (&gt;40h)
         </span>
-        <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs" onClick={() => onNavigateTab('folha')}>
-          Ver <ArrowRight className="h-3 w-3" />
+        {/* R14 (audit): linka direto pra página dedicada de Banco de Horas
+            (/rh/banco-de-horas) ao invés de mandar pra aba "folha" do hub.
+            Antes: usuário caía na aba folha e tinha que reachar BH manualmente. */}
+        <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs" onClick={() => navigate('/rh/banco-de-horas')}>
+          Ver detalhes <ArrowRight className="h-3 w-3" />
         </Button>
       </div>
       <div className="flex flex-wrap gap-1.5 mt-1">

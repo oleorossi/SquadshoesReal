@@ -230,6 +230,24 @@ export default function ImportHistoryPanel() {
                 </div>
               </div>
 
+              {/* R5 (audit): banner explicativo quando status=partial. Antes:
+                  badge "Parcial" exibia mas usuário não sabia o que isso
+                  significava em termos de dados — agora a explicação é
+                  contextual e diz que dados válidos JÁ FORAM aplicados. */}
+              {selected.status === 'partial' && (
+                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs">
+                  <p className="font-semibold text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5" /> Importação parcial
+                  </p>
+                  <p className="text-amber-700/80 dark:text-amber-300/80 mt-1">
+                    {selected.inserted_count + selected.updated_count} linha(s) válida(s)
+                    {' '}foram aplicadas com sucesso. As {selected.error_count} linha(s) abaixo
+                    {' '}foram <strong>ignoradas</strong> e não impactam o relógio de ponto.
+                    Corrija o arquivo e reimporte se necessário — duplicatas serão atualizadas.
+                  </p>
+                </div>
+              )}
+
               <div>
                 <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
                   <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />

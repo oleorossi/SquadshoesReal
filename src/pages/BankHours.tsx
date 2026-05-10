@@ -33,6 +33,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EmptyState } from '@/components/ui/empty-state';
+import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { useEmployees } from '@/hooks/useEmployees';
 import {
@@ -289,6 +290,12 @@ export default function BankHours() {
                   <div>
                     <Label>Horas (HH:MM ou decimal)</Label>
                     <Input value={form.hoursStr} onChange={e => setForm(f => ({ ...f, hoursStr: e.target.value }))} placeholder="Ex.: 1:30 ou 1.5" />
+                    {/* R12 (audit): hint sobre formatos aceitos. Antes: usuário
+                        digitava "1h30", "1,5", "90min" e descobria pelo erro
+                        que só HH:MM ou decimal funcionam. */}
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      Formatos aceitos: <span className="font-mono">1:30</span> (1h30min) ou <span className="font-mono">1.5</span> (1h30min decimal). Vírgula não funciona.
+                    </p>
                   </div>
                   {form.movement_type === 'adjustment' && (
                     <div>
@@ -317,7 +324,10 @@ export default function BankHours() {
         </div>
 
         {/* KPIs */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {/* R8 (audit): em telas sm (640-768px) o grid quebrava feio com 2 cards
+            por linha em viewport estreito. sm:grid-cols-3 + md:grid-cols-4 dá
+            um intermediário (2 → 3 → 4) que respeita a leitura. */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
           <Card className="slash-top">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 text-muted-foreground">
@@ -406,13 +416,16 @@ export default function BankHours() {
                         </option>
                       ))}
                     </select>
-                    <div className="relative">
+                    {/* R6 (audit): input de busca em mobile (<400px) extrapolava
+                        a largura disponível e quebrava o card. w-full em mobile,
+                        w-56 em sm+ — permite encolher sem espremer o select. */}
+                    <div className="relative w-full sm:w-auto">
                       <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                       <Input
                         value={search}
                         onChange={e => setSearch(e.target.value)}
                         placeholder="Buscar funcionário..."
-                        className="pl-8 h-9 w-56"
+                        className="pl-8 h-9 w-full sm:w-56"
                       />
                     </div>
                   </div>
@@ -420,8 +433,18 @@ export default function BankHours() {
               </CardHeader>
               <CardContent className="p-0">
                 {employeesQ.isLoading ? (
-                  <div className="flex items-center justify-center py-12">
-                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  /* R13 (audit): skeleton da lista de funcionários — dá noção
+                      visual de qtd antes do query terminar, evita flash de altura. */
+                  <div className="divide-y border-t">
+                    {Array.from({ length: 6 }).map((_, i) => (
+                      <div key={i} className="flex items-center justify-between gap-4 px-4 py-3">
+                        <div className="flex-1 space-y-1.5">
+                          <Skeleton className="h-4 w-40" />
+                          <Skeleton className="h-3 w-24" />
+                        </div>
+                        <Skeleton className="h-6 w-16" />
+                      </div>
+                    ))}
                   </div>
                 ) : filteredEmployees.length === 0 ? (
                   <EmptyState

@@ -96,13 +96,41 @@ function gradeTotal(grade: Record<string, number>): number {
 
 // ── Main page ───────────────────────────────────────────────────────────────
 
+// E6 (audit): filtros persistem em localStorage. Antes: F5/troca de aba zerava
+// filtros aplicados — usuário tinha que reaplicar toda vez que voltava.
+const STOCK_FILTERS_KEY = "stock-adjustment-filters-v1";
+function loadStoredFilters() {
+  try {
+    const raw = localStorage.getItem(STOCK_FILTERS_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as {
+      categoryFilter?: string;
+      statusFilter?: "all" | "ok" | "low" | "zero" | "pending";
+      unitFilter?: string;
+      typeFilter?: "all" | "soles" | "regular";
+    };
+  } catch {
+    return null;
+  }
+}
+
 export default function StockAdjustmentPage() {
   const qc = useQueryClient();
+  const stored = loadStoredFilters();
   const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState<"all" | "ok" | "low" | "zero" | "pending">("all");
-  const [unitFilter, setUnitFilter] = useState("all");
-  const [typeFilter, setTypeFilter] = useState<"all" | "soles" | "regular">("all");
+  const [categoryFilter, setCategoryFilter] = useState(stored?.categoryFilter ?? "all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "ok" | "low" | "zero" | "pending">(stored?.statusFilter ?? "all");
+  const [unitFilter, setUnitFilter] = useState(stored?.unitFilter ?? "all");
+  const [typeFilter, setTypeFilter] = useState<"all" | "soles" | "regular">(stored?.typeFilter ?? "all");
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        STOCK_FILTERS_KEY,
+        JSON.stringify({ categoryFilter, statusFilter, unitFilter, typeFilter }),
+      );
+    } catch {}
+  }, [categoryFilter, statusFilter, unitFilter, typeFilter]);
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
    const [historyProductId, setHistoryProductId] = useState<string | null>(null);
@@ -480,7 +508,7 @@ export default function StockAdjustmentPage() {
             <SelectItem value="ok">OK</SelectItem>
             <SelectItem value="low">Estoque baixo</SelectItem>
             <SelectItem value="zero">Zerados</SelectItem>
-            <SelectItem value="pending">Com pendência</SelectItem>
+            <SelectItem value="pending">Com alterações</SelectItem>
           </SelectContent>
         </Select>
 
@@ -509,15 +537,31 @@ export default function StockAdjustmentPage() {
 
         <div className="flex-1" />
 
-        <Input
-          placeholder="Motivo do ajuste (obrigatório)…"
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          className={cn(
-            "h-8 text-sm w-72",
-            !reason.trim() && totalPending > 0 && "border-destructive focus-visible:ring-destructive"
-          )}
-        />
+        {/* E10 (audit): tooltip informa que a operação fica registrada no histórico
+            com identidade do operador. Antes: usuário não sabia se mudanças tinham
+            audit trail (existe em stock_movements via trigger, mas era invisível). */}
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Input
+                placeholder="Motivo do ajuste (obrigatório)…"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                className={cn(
+                  "h-8 text-sm w-72",
+                  !reason.trim() && totalPending > 0 && "border-destructive focus-visible:ring-destructive"
+                )}
+              />
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="max-w-xs">
+              <p className="text-xs">
+                Cada ajuste fica registrado no histórico do produto com seu usuário,
+                data/hora e motivo. Use o botão <span className="font-semibold">Hist.</span> da
+                linha pra revisar movimentações anteriores.
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
 
         {totalPending > 0 && (
           <span className="text-xs font-semibold text-amber-700 bg-amber-100 dark:bg-amber-900/40 dark:text-amber-300 rounded px-2 py-1 shrink-0">
@@ -711,9 +755,24 @@ export default function StockAdjustmentPage() {
                                   : "Sem grade"}
                               </span>
                               {hasConjugations && (
-                                <span className="text-[9px] font-bold text-primary bg-primary/10 px-1 rounded">
-                                  conj.
-                                </span>
+                                /* E5 (audit): tooltip lista quais numerações estão conjugadas
+                                   neste solado. Antes: badge "conj." não dizia ao usuário
+                                   *quais* eram, exigindo abrir o cadastro do solado. */
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="text-[9px] font-bold text-primary bg-primary/10 px-1 rounded cursor-help">
+                                        conj.
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-xs">
+                                      <p className="text-xs font-semibold mb-1">Numerações conjugadas:</p>
+                                      <p className="text-[11px]">
+                                        {conjs.map((c) => c.size_key).join(' · ')}
+                                      </p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
                               )}
                             </span>
                             {hasSoleDraft && (

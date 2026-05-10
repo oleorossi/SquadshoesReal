@@ -171,10 +171,16 @@ export function OrderDetailsModal({ order, isOpen, onClose }: OrderDetailsModalP
                     const actualMinutes = s.actual_time_minutes || (s.started_at && s.completed_at ? (new Date(s.completed_at).getTime() - new Date(s.started_at).getTime()) / (1000 * 60) : 0);
                     const actualTimeStr = actualMinutes > 0 ? (actualMinutes > 60 ? `${(actualMinutes / 60).toFixed(1)}h` : `${Math.round(actualMinutes)}m`) : '';
 
+                    /* K10 (audit): em mobile só o emoji ficava visível, sem label.
+                       Usuário não conseguia identificar qual setor estava em qual estado.
+                       Agora abrevia (3 letras) em telas estreitas e mantém nome completo
+                       em sm+. title= ainda dá nome completo no hover/long-press. */
+                    const shortName = s.stage_name.slice(0, 3).toUpperCase();
                     return (
                       <Badge
                         key={s.stage_name}
                         variant="outline"
+                        title={`${s.stage_name}${isDone ? ' — concluído' : isRunning ? ' — em andamento' : ' — pendente'}${actualTimeStr ? ` (${actualTimeStr})` : ''}`}
                         className={`text-[10px] py-0.5 px-1.5 gap-1 ${
                           isDone
                             ? 'bg-success/15 text-success border-success/30'
@@ -184,6 +190,7 @@ export function OrderDetailsModal({ order, isOpen, onClose }: OrderDetailsModalP
                         }`}
                       >
                         <span>{SECTOR_ICONS[s.stage_name] || '📋'}</span>
+                        <span className="sm:hidden font-mono uppercase">{shortName}</span>
                         <span className="hidden sm:inline">{s.stage_name}</span>
                         {actualTimeStr && <span className="opacity-60">({actualTimeStr})</span>}
                       </Badge>

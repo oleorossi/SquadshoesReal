@@ -826,7 +826,13 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
           );
         })}
 
-        <div className="flex items-center gap-1.5 ml-auto">
+        <div
+          className="flex items-center gap-1.5 ml-auto"
+          /* K8 (audit): tooltip explica os 3 níveis de severidade do filtro
+             (⚠ warning, 🔴 critical, ✓ ok). Antes, o usuário só via os emojis
+             nos itens do select sem entender o que disparava cada classificação. */
+          title="Severidade: 🔴 crítico = atrasou ≥3 dias o setor seguinte · ⚠ warning = vai atrasar entre 1–2 dias · ✓ OK = dentro do prazo. Filtros aplicam sobre o conjunto após a busca."
+        >
           <Filter className="h-3.5 w-3.5 text-muted-foreground" />
           <Select value={bottleneckFilter} onValueChange={(v: any) => setBottleneckFilter(v)}>
             <SelectTrigger className="h-7 text-xs w-[200px]">
