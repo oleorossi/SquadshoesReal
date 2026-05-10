@@ -62,6 +62,11 @@ interface OperationsTabProps {
   expeditionCapacityPerDay?: number;
   finishingCapacityPerDay?: number;
   onUpdateSheet?: (data: Record<string, any>) => void;
+  /* Audit visual F2: setores ativos no modelo da ficha (vindo de
+     production_sectors). Quando informado, setores não-aplicáveis ficam
+     visualmente desaproximados (opacity + label "não usado neste modelo")
+     pra orientar o operador sem esconder o config (caso ele queira voltar). */
+  activeSectors?: string[];
 }
 
 export function OperationsTab({
@@ -85,6 +90,7 @@ export function OperationsTab({
   expeditionCapacityPerDay = 0,
   finishingCapacityPerDay = 0,
   onUpdateSheet,
+  activeSectors,
 }: OperationsTabProps) {
   const { data: operations = [], isLoading } = useBomOperations(sheetId);
   const { data: costPolicy } = useCostPolicies();
@@ -343,17 +349,36 @@ export function OperationsTab({
             { key: 'expedicao',  label: 'Expedição',  cap: capExpedicao,  setCap: setCapExpedicao,  lt: ltExpedicao,  setLt: setLtExpedicao },
           ] as const).map((s) => {
             const usingCapacity = (s.cap ?? 0) > 0;
+            // Audit visual F2: marca setor como "não usado neste modelo" se
+            // activeSectors foi passado e não inclui este setor. Mantém o card
+            // visível (operador pode voltar pro modelo anterior), mas reduz
+            // opacity e exibe legenda explícita.
+            const sectorIsActive = !activeSectors || activeSectors.length === 0
+              ? true
+              : activeSectors.some(name => {
+                  const n = name.toLowerCase();
+                  return (
+                    (s.key === 'corte' && (n.includes('corte palmilha') || n === 'corte')) ||
+                    (s.key === 'forracao' && (n.includes('corte forração') || n.includes('costura') || n === 'forracao')) ||
+                    (s.key === 'silk' && n.includes('silk')) ||
+                    (s.key === 'colagem' && n.includes('colagem')) ||
+                    (s.key === 'montagem' && n.includes('montagem')) ||
+                    (s.key === 'acabamento' && n.includes('acabamento')) ||
+                    (s.key === 'expedicao' && (n.includes('expedição') || n.includes('expedicao')))
+                  );
+                });
             return (
               <div
                 key={s.key}
-                className="rounded-lg border bg-card p-3 space-y-2"
+                className={`rounded-lg border bg-card p-3 space-y-2 ${!sectorIsActive ? 'opacity-50' : ''}`}
+                title={!sectorIsActive ? 'Este setor não faz parte do modelo de produção configurado pra esta ficha' : undefined}
               >
                 <div className="flex items-center justify-between">
                   <Badge className={`text-[10px] ${STAGE_COLORS[s.label] || 'bg-muted text-muted-foreground'}`}>
                     {s.label}
                   </Badge>
                   <span className="text-[9px] uppercase tracking-wide text-muted-foreground">
-                    {usingCapacity ? '✓ capacidade' : 'lead time'}
+                    {!sectorIsActive ? 'não usado' : usingCapacity ? '✓ capacidade' : 'lead time'}
                   </span>
                 </div>
                 <div>

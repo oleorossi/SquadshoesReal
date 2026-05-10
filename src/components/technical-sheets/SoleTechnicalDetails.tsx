@@ -70,6 +70,10 @@ function getSortedPresets(shoeCategory?: string | null): Array<{ label: string; 
 export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnicalDetailsProps) {
   const qc = useQueryClient();
   const [saving, setSaving] = useState(false);
+  // Audit visual S8: troca window.confirm() nativo por Dialog estilizado.
+  // Antes o prompt do browser era ilegível em dark mode e quebrava o design system.
+  const [missingDialogOpen, setMissingDialogOpen] = useState(false);
+  const [missingWarnings, setMissingWarnings] = useState<string[]>([]);
   const [specs, setSpecs] = useState<Record<number, SoleSpec>>({});
   const [sizes, setSizes] = useState<number[]>([]);
   const [newSize, setNewSize] = useState("");
@@ -449,18 +453,17 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
     return { ok: warnings.length === 0, warnings };
   };
 
-  const handleSave = async () => {
+  const handleSave = async (skipMissingCheck = false) => {
     if (sizes.length === 0) { toast.error("Defina ao menos uma numeração"); return; }
 
-    const { ok, warnings } = validateSpecs();
-    if (!ok) {
-      const proceed = window.confirm(
-        `Os seguintes tamanhos estão SEM consumo preenchido:\n\n` +
-        warnings.map(w => `• ${w}`).join('\n') +
-        `\n\nO sistema vai usar a média escalar da ficha técnica nesses tamanhos ` +
-        `(o que pode subdimensionar o pedido). Salvar mesmo assim?`,
-      );
-      if (!proceed) return;
+    if (!skipMissingCheck) {
+      const { ok, warnings } = validateSpecs();
+      if (!ok) {
+        // Audit visual S8: abre dialog estilizado em vez de window.confirm.
+        setMissingWarnings(warnings);
+        setMissingDialogOpen(true);
+        return;
+      }
     }
 
     setSaving(true);
@@ -918,7 +921,9 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                 <span className="text-amber-600/70">— preencha o consumo de fachete por numeração</span>
               </div>
             )}
-            <div className="rounded-md border overflow-hidden">
+            {/* Audit visual S9: wrapper overflow-x-auto pra tabela não espremer
+                em mobile. Antes overflow-hidden cortava colunas em < 640px. */}
+            <div className="rounded-md border overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/50">
@@ -955,17 +960,20 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                   {displayRows.map((row) => (
                     <TableRow
                       key={row.key}
+                      /* Audit visual S7: bg-blue-500/5 + text-blue-700 caía abaixo
+                         do contraste WCAG em dark mode. Aumentado pra dark:bg-blue-500/15
+                         e dark:text-blue-300 — paleta de alerta visual mantida. */
                       className={
                         row.isConjugated
-                          ? 'bg-blue-500/5 hover:bg-blue-500/10 border-l-2 border-l-blue-500/40'
+                          ? 'bg-blue-500/5 dark:bg-blue-500/15 hover:bg-blue-500/10 dark:hover:bg-blue-500/25 border-l-2 border-l-blue-500/40'
                           : 'hover:bg-muted/30'
                       }
                     >
-                      <TableCell className={`text-center p-2 ${row.isConjugated ? 'bg-blue-500/10' : 'bg-muted/20'}`}>
+                      <TableCell className={`text-center p-2 ${row.isConjugated ? 'bg-blue-500/10 dark:bg-blue-500/25' : 'bg-muted/20'}`}>
                         <div className="flex items-center justify-center gap-1">
                           {row.isConjugated ? (
                             <Badge
-                              className="text-xs gap-1 px-1.5 py-0.5 font-mono font-bold bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/40"
+                              className="text-xs gap-1 px-1.5 py-0.5 font-mono font-bold bg-blue-500/15 text-blue-700 dark:text-blue-300 dark:bg-blue-500/25 border-blue-500/40"
                               title={`Conjugação: ${row.sizes.join(' + ')} — alterar 1 valor sincroniza ${row.sizes.length} tamanhos`}
                             >
                               <Link2 className="h-3 w-3" />
@@ -1084,6 +1092,48 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
           qc.invalidateQueries({ queryKey: ['sheets_audit'] });
         }}
       />
+
+      {/* Audit visual S8: dialog estilizado pra confirmação de save com tamanhos
+          incompletos. Substitui window.confirm() nativo. */}
+      <Dialog open={missingDialogOpen} onOpenChange={setMissingDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+              <AlertTriangle className="h-5 w-5" />
+              Tamanhos sem consumo preenchido
+            </DialogTitle>
+            <DialogDescription className="space-y-2 pt-2">
+              <p className="text-sm text-foreground">
+                Os tamanhos abaixo vão usar a média escalar da ficha técnica como fallback,
+                o que pode <strong>subdimensionar a ordem de produção</strong>:
+              </p>
+              <ul className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs space-y-1">
+                {missingWarnings.map((w, i) => (
+                  <li key={i} className="font-mono">• {w}</li>
+                ))}
+              </ul>
+              <p className="text-xs text-muted-foreground">
+                Recomendado preencher os valores corretos antes de salvar.
+              </p>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setMissingDialogOpen(false)}>
+              Voltar e revisar
+            </Button>
+            <Button
+              variant="default"
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              onClick={() => {
+                setMissingDialogOpen(false);
+                handleSave(true);
+              }}
+            >
+              Salvar mesmo assim
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

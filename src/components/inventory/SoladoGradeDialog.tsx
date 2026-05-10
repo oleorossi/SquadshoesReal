@@ -99,7 +99,11 @@ function ColorGradeEditor({
     : Object.values(grade).reduce((s, v) => s + (v || 0), 0);
 
   const updateKey = (key: string, value: number) => {
-    const next = { ...grade, [key]: value };
+    // Audit visual: força inteiro — par de solado é unidade discreta. Antes
+    // step="1" no NumberInput permitia digitação livre de "12.5" pares,
+    // criando estoque fracionado que confundia auditoria.
+    const intValue = Math.max(0, Math.floor(Number(value) || 0));
+    const next = { ...grade, [key]: intValue };
     setGrade(next);
     const newTotal = effectiveKeys.length > 0
       ? effectiveKeys.reduce((s, k) => s + (next[k] || 0), 0)

@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { getSignedUrl } from '@/lib/getSignedUrl';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { ShoppingCart, Plus, Loader2, Copy, Printer, Factory, Pencil, FileText, Filter, X, Search, Package, DollarSign, Clock, ChevronDown, BarChart3, ClipboardList, RefreshCw, Tag, LayoutDashboard, Zap, FileSpreadsheet, Receipt, XCircle, CheckCircle, Download, TrendingUp } from 'lucide-react';
+import { ShoppingCart, Plus, Loader2, Copy, Printer, Factory, Pencil, FileText, Filter, X, Search, Package, DollarSign, Clock, ChevronDown, BarChart3, ClipboardList, RefreshCw, Tag, LayoutDashboard, Zap, FileSpreadsheet, Receipt, XCircle, CheckCircle, Download, TrendingUp, AlertTriangle } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import MaterialConsumptionDialog from '@/components/sale-orders/MaterialConsumptionDialog';
 import MarginDialog from '@/components/sale-orders/MarginDialog';
@@ -40,11 +40,14 @@ import logoImg from '@/assets/logo-squad-shoes.jpg';
 
 const STATUS_OPTIONS = ['Rascunho', 'Aprovado', 'Em Produção', 'Faturado', 'Cancelado'] as const;
 
+// Audit visual: cores anteriores text-{color}-400 em dark caíam abaixo do
+// ratio WCAG AA (4.5:1) sobre o fundo /15. text-{color}-300 dá contraste
+// adequado mantendo a paleta semântica original.
 const STATUS_COLORS: Record<string, string> = {
   'Rascunho': 'bg-muted text-muted-foreground border-border',
-  'Aprovado': 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30',
-  'Em Produção': 'bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30',
-  'Faturado': 'bg-violet-500/15 text-violet-700 dark:text-violet-400 border-violet-500/30',
+  'Aprovado': 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
+  'Em Produção': 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30',
+  'Faturado': 'bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/30',
   'Cancelado': 'bg-destructive/15 text-destructive border-destructive/30',
 };
 
@@ -2081,6 +2084,19 @@ export default function SaleOrders() {
       <Dialog open={dupDialog} onOpenChange={setDupDialog}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader><DialogTitle>Duplicar por Grupo Econômico</DialogTitle></DialogHeader>
+          {/* Audit visual: aviso explícito sobre impacto de estoque/reservas.
+              Usuário não esperava que duplicar PV gerasse N reservas novas. */}
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 mt-2 flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+            <div className="text-xs text-amber-700 dark:text-amber-300">
+              <p className="font-semibold mb-1">A duplicação reservará insumos novamente</p>
+              <p>
+                Cada cliente selecionado vira um novo PV com mesmos itens — gerando reservas
+                independentes em <span className="font-mono">products.reserved_stock</span>. Verifique
+                a disponibilidade de materiais antes de confirmar pra evitar superalocação.
+              </p>
+            </div>
+          </div>
           <div className="space-y-4 mt-2">
             <div>
               <Label>Grupo Econômico</Label>

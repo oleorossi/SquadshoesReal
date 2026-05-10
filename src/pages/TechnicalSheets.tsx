@@ -2803,6 +2803,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             expeditionCapacityPerDay={Number((sheet as any).expedition_capacity_per_day ?? 0)}
             finishingCapacityPerDay={Number((sheet as any).finishing_capacity_per_day ?? 0)}
             onUpdateSheet={(data) => updateSheet.mutate({ id: sheet.id, data: data as any })}
+            activeSectors={Array.isArray((sheet as any).production_sectors) ? ((sheet as any).production_sectors as string[]) : undefined}
           />
         </TabsContent>
 

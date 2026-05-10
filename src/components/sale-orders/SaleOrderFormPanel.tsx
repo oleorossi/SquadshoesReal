@@ -224,16 +224,39 @@ function FactoringField({ form, setForm, totalValue }: {
       {form.is_factoring && (
         <div className="space-y-3">
           <div>
-            <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">Factoring</Label>
+            <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">
+              Factoring <span className="text-destructive">*</span>
+            </Label>
+            {/* Audit visual: factoring marcado mas sem config selecionada gerava
+                erro silencioso no save. Agora destaca em vermelho e o handler
+                no submit bloqueia. */}
             <Select value={form.factoring_config_id} onValueChange={v => setForm(f => ({ ...f, factoring_config_id: v }))}>
-              <SelectTrigger className="h-9"><SelectValue placeholder="Selecione a factoring..." /></SelectTrigger>
+              <SelectTrigger className={`h-9 ${!form.factoring_config_id ? 'border-destructive focus:ring-destructive' : ''}`}>
+                <SelectValue placeholder="Selecione a factoring..." />
+              </SelectTrigger>
               <SelectContent>
                 {activeConfigs.map(c => (
                   <SelectItem key={c.id} value={c.id}>{c.name} ({c.monthly_interest_rate}% a.m.)</SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            {!form.factoring_config_id && (
+              <p className="text-[10px] text-destructive mt-1">Selecione qual factoring está antecipando este pedido.</p>
+            )}
           </div>
+
+          {form.is_factoring && !form.payment_condition && (
+            /* Audit visual: hint pra completar condição pagamento — sem ela o
+               cálculo cai no fallback de receiving_days, subestimando o desconto. */
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-2 flex items-start gap-2">
+              <span className="text-amber-600 mt-0.5">⚠</span>
+              <div className="text-[11px] text-amber-700 dark:text-amber-300">
+                <span className="font-semibold">Informe a condição de pagamento</span> (ex: 30/60/90 DIAS)
+                no campo correspondente — sem ela o desconto factoring é calculado por estimativa
+                e pode divergir do valor real.
+              </div>
+            </div>
+          )}
 
           {/* Simulação de desconto */}
           {simulation ? (
@@ -577,7 +600,29 @@ export default function SaleOrderFormPanel({
                 </div>
                 <div>
                   <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">CNPJ / CPF</Label>
-                  <Input value={form.client_cnpj} onChange={e => setForm(f => ({ ...f, client_cnpj: e.target.value }))} className="h-9 font-mono" />
+                  {(() => {
+                    /* Audit visual: validação leve de CNPJ/CPF — só conta dígitos.
+                       Aceita 11 (CPF) ou 14 (CNPJ). Não bloqueia submit, mas
+                       sinaliza visualmente formato inválido pra reduzir lixo
+                       no cadastro de clientes. */
+                    const digits = (form.client_cnpj || '').replace(/\D/g, '');
+                    const isInvalidLength = digits.length > 0 && digits.length !== 11 && digits.length !== 14;
+                    return (
+                      <>
+                        <Input
+                          value={form.client_cnpj}
+                          onChange={e => setForm(f => ({ ...f, client_cnpj: e.target.value }))}
+                          className={`h-9 font-mono ${isInvalidLength ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                          placeholder="00.000.000/0001-00 ou 000.000.000-00"
+                        />
+                        {isInvalidLength && (
+                          <p className="text-[10px] text-destructive mt-0.5">
+                            CNPJ deve ter 14 dígitos · CPF deve ter 11 dígitos. Tem {digits.length}.
+                          </p>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             </CardContent>
@@ -989,13 +1034,30 @@ export default function SaleOrderFormPanel({
       })()}
 
       {/* Actions */}
-      <div className="flex justify-end gap-3 pt-2 pb-8">
-        <Button type="button" variant="outline" size="lg" onClick={onCancel}>Cancelar</Button>
-        <Button type="submit" size="lg" disabled={!form.client_name || isPending}>
-          {isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-          {submitLabel}
-        </Button>
-      </div>
+      {/* Audit visual: bloqueia submit quando há condições óbvias não atendidas
+          (sem cliente, sem itens válidos, factoring sem config). Antes só
+          checava client_name; usuário clicava com 0 itens e via toast de erro. */}
+      {(() => {
+        const validItemsCount = items.filter(i => i.reference_id).length;
+        const factoringInvalid = form.is_factoring && !form.factoring_config_id;
+        const submitDisabled = !form.client_name || validItemsCount === 0 || factoringInvalid || isPending;
+        const disabledReason = !form.client_name
+          ? 'Selecione um cliente antes de salvar'
+          : validItemsCount === 0
+            ? 'Adicione pelo menos um item com referência ao pedido'
+            : factoringInvalid
+              ? 'Selecione qual factoring está antecipando o pedido'
+              : undefined;
+        return (
+          <div className="flex justify-end gap-3 pt-2 pb-8">
+            <Button type="button" variant="outline" size="lg" onClick={onCancel}>Cancelar</Button>
+            <Button type="submit" size="lg" disabled={submitDisabled} title={disabledReason}>
+              {isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              {submitLabel}
+            </Button>
+          </div>
+        );
+      })()}
      </form>
  
      <AlertDialog open={showDuplicateDialog} onOpenChange={setShowDuplicateDialog}>

@@ -296,6 +296,13 @@ export default function SaleOrderForm() {
       toast.error('A quantidade dos itens deve ser maior que zero.');
       return;
     }
+    // Audit visual: factoring marcado sem config selecionada criava registro
+    // inválido (is_factoring=true, factoring_config_id='') que quebrava o
+    // syncFinancialRecords ao faturar. Bloqueia explicitamente.
+    if (f.is_factoring && !f.factoring_config_id) {
+      toast.error('Selecione qual factoring está antecipando este pedido.');
+      return;
+    }
 
     const total = validItems.reduce((s, i) => s + i.unit_price * i.quantity, 0);
     const rep = representatives.find(r => r.id === f.representative);
@@ -334,9 +341,14 @@ export default function SaleOrderForm() {
     e.preventDefault();
     const f = formLatestRef.current;
     const validItems = items.filter(i => i.reference_id).map(normalizeItemReference);
+    if (validItems.length === 0) { toast.error('Adicione pelo menos um item ao pedido.'); return; }
     if (validItems.some(i => !i.color?.trim())) { toast.error('Selecione uma cor para todos os itens.'); return; }
     if (!f.delivery_month) { toast.error('Selecione o mês de faturamento.'); return; }
     if (!f.delivery_week) { toast.error('Selecione a semana de faturamento.'); return; }
+    if (f.is_factoring && !f.factoring_config_id) {
+      toast.error('Selecione qual factoring está antecipando este pedido.');
+      return;
+    }
 
     // 1) Em pedidos NOVOS, sugere a semana mínima de faturamento antes dos checks de estoque.
     //    Se a data estiver vazia OU for anterior ao mínimo calculado, abre o diálogo.
