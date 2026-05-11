@@ -71,6 +71,7 @@ const OrdersSummary = lazy(() => import("./pages/OrdersSummary"));
 const GroupedReportSummary = lazy(() => import("./pages/GroupedReportSummary"));
 const CapacityPlanning = lazy(() => import("./pages/CapacityPlanning"));
 const ProductionControlCenter = lazy(() => import("./pages/ProductionControlCenter"));
+const PrintWorkSheets = lazy(() => import("./pages/PrintWorkSheets"));
 const LabelSystem = lazy(() => import("./pages/LabelSystem"));
 const PurchasePlanning = lazy(() => import("./pages/PurchasePlanning"));
 const PricingCalculator = lazy(() => import("./pages/PricingCalculator"));
@@ -718,6 +719,10 @@ const router = createBrowserRouter([
       {
         path: "centro-controle",
         element: <ProductionControlCenter />,
+      },
+      {
+        path: "imprimir-fichas",
+        element: <PrintWorkSheets />,
       },
       // Requested snippet routes with lazy property
       {

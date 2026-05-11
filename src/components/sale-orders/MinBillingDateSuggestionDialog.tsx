@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Calendar, CheckCircle2, Pencil, Truck } from 'lucide-react';
 import { formatBR } from '@/lib/minBillingDate';
+import { SubmitFlowStepper } from './SubmitFlowStepper';
 
 interface Props {
   open: boolean;
@@ -51,6 +52,7 @@ export function MinBillingDateSuggestionDialog({
     >
       <DialogContent className="max-w-md">
         <DialogHeader>
+          <SubmitFlowStepper current="min_billing" />
           <DialogTitle className="flex items-center gap-2">
             <Calendar className="h-5 w-5 text-primary" />
             Próxima janela de pickup disponível

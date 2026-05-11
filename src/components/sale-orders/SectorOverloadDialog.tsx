@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { CapacityCheckResult, SECTOR_LABELS, SectorKey } from '@/lib/sectorCapacity';
+import { SubmitFlowStepper } from './SubmitFlowStepper';
 
 const SECTOR_ICONS: Record<SectorKey, React.ComponentType<any>> = {
   corte_palmilha: Scissors,
@@ -46,6 +47,7 @@ export function SectorOverloadDialog({ open, onOpenChange, result, onKeepDateAnd
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
+          <SubmitFlowStepper current="capacity" />
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-destructive" />
             Capacidade insuficiente para a data de faturamento

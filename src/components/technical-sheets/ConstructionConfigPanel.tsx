@@ -19,7 +19,6 @@ interface ConstructionConfigPanelProps {
   requires_cutting_cabedal?: boolean;
   requires_sewing: boolean;
   has_straps: boolean;
-  corte_a_faca?: boolean;
   has_colored_lining: boolean;
   colored_lining_mode: ColoredLiningMode;
   insole_color_mode: InsoleColorMode;
@@ -197,7 +196,6 @@ export function ConstructionConfigPanel({
   requires_cutting_cabedal: _rcc = true,
   requires_sewing,
   has_straps: _hs,
-  corte_a_faca = false,
   has_colored_lining,
   colored_lining_mode,
   insole_color_mode,
@@ -415,25 +413,9 @@ export function ConstructionConfigPanel({
         />
       </div>
 
-      {/* ─── Corte a Faca — only when cabedal is cut ───────────────────────── */}
-      {hasCabedal && (
-        <div className="flex items-center gap-3 p-3 rounded-lg border bg-amber-50/60 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800">
-          <Scissors className="h-4 w-4 text-amber-600 shrink-0" />
-          <div className="flex-1 space-y-0.5">
-            <Label htmlFor="corte-a-faca" className="text-xs font-semibold text-amber-800 dark:text-amber-300 cursor-pointer">
-              Corte a Faca
-            </Label>
-            <p className="text-[10px] text-amber-700 dark:text-amber-400 leading-tight">
-              O cabedal é cortado a faca — aparece na seção Cabedal do relatório de Corte, com grade por cor.
-            </p>
-          </div>
-          <Checkbox
-            id="corte-a-faca"
-            checked={corte_a_faca}
-            onCheckedChange={v => onChange('corte_a_faca', !!v)}
-          />
-        </div>
-      )}
+      {/* "Corte a Faca" toggle removido em mai/2026 — coluna foi dropada
+          no banco (migration 20260502232827) e a checkbox quebrava o save
+          com erro "column corte_a_faca does not exist in schema cache". */}
     </div>
   );
 }

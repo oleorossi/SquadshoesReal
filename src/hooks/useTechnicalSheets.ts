@@ -121,7 +121,6 @@ export type SheetFormData = {
   requires_cutting: boolean;
   requires_cutting_cabedal: boolean;
   requires_sewing: boolean;
-  corte_a_faca: boolean;
   has_colored_lining: boolean;
   colored_lining_mode: 'standard' | 'follows_variant' | 'manual_mapping';
   insole_color_mode: 'single' | 'follows_lining' | 'restricted_palette' | 'free';
@@ -162,7 +161,6 @@ export const emptySheetForm: SheetFormData = {
   requires_cutting: true,
   requires_cutting_cabedal: true,
   requires_sewing: true,
-  corte_a_faca: false,
   has_colored_lining: false,
   colored_lining_mode: 'standard',
   insole_color_mode: 'free',

@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Calendar, Truck, AlertTriangle, ShoppingCart, Loader2, Save } from 'lucide-react';
 import { MaterialAvailabilityResult } from '@/lib/materialAvailability';
+import { SubmitFlowStepper } from './SubmitFlowStepper';
  import { useUpsertOpenPurchaseOrder } from '@/hooks/usePurchaseOrders';
  import { useUpsertOpenServiceOrder, useContractors } from '@/hooks/useContractors';
  import { useArtisanalRecipes, calcArtisanalRequirement } from '@/hooks/useArtisanalRecipes';
@@ -155,6 +156,7 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
+          <SubmitFlowStepper current="material" />
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-warning" />
             Materiais insuficientes — gerar Ordem de Compra?

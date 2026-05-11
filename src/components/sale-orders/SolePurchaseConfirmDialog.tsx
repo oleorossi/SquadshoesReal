@@ -7,6 +7,7 @@ import { Calendar, Truck, AlertTriangle, ShoppingCart, Loader2, Package, FileTex
 import { SoleAvailabilityResult, SoleShortage, InsoleShortage } from '@/lib/soleAvailability';
 import { useCreatePurchaseOrder } from '@/hooks/usePurchaseOrders';
 import { toast } from 'sonner';
+import { SubmitFlowStepper } from './SubmitFlowStepper';
 
 interface Props {
   open: boolean;
@@ -195,6 +196,7 @@ export function SolePurchaseConfirmDialog({ open, onOpenChange, result, onConfir
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
+          <SubmitFlowStepper current="sole" />
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-warning" />
             {hasInsoleShortages ? 'Solado/Palmilha insuficiente — gerar Ordens de Compra?' : 'Solado insuficiente — gerar Ordem de Compra?'}
