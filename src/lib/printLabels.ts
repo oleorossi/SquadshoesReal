@@ -139,7 +139,9 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
       </div>`;
   });
 
-  // Group labels in pairs (2 per A4 page)
+  // Group labels in pairs (2 per A4 page) — uma folha A4 = 2 caixas.
+  // Ex.: 100 caixas → 50 folhas. Math.ceil cobre o caso ímpar (última
+  // folha com 1 só).
   const pages: string[] = [];
   for (let i = 0; i < labels.length; i += 2) {
     const first = labels[i];
@@ -147,6 +149,7 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
     const isLastPage = i + 2 >= labels.length;
     pages.push(`<div class="page-container${!isLastPage ? ' page-break' : ''}">${first}${second}</div>`);
   }
+  const totalPages = Math.ceil(labels.length / 2);
 
   // Build barcode init script
   const barcodeInits = items.map((item, idx) => {
@@ -165,27 +168,50 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
 ${preloadLinks}
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:Arial,Helvetica,sans-serif;color:#000;padding:10px;background:#e8e8e8;}
+body{font-family:Arial,Helvetica,sans-serif;color:#000;padding:16px 10px;background:#e8e8e8;}
 @media print{body{background:#fff;padding:0;}}
 .label-box{
   width:100%;font-family:Arial,Helvetica,sans-serif;color:#000;
   border:1.5px solid #000;padding:0;box-sizing:border-box;
-  display:flex;flex-direction:column;page-break-inside:avoid;
-  border-radius:0.5mm;overflow:hidden;
+  display:flex;flex-direction:column;page-break-inside:avoid;break-inside:avoid;
+  border-radius:0.5mm;overflow:hidden;height:134mm;
 }
 .page-container{
-  width:190mm;margin:0 auto;display:flex;flex-direction:column;gap:4mm;box-sizing:border-box;
+  width:190mm;margin:0 auto 8mm;display:flex;flex-direction:column;gap:3mm;box-sizing:border-box;
 }
 .page-container.page-break{break-after:page;page-break-after:always;}
-.page-container:last-child{break-after:auto;page-break-after:auto;}
+.page-container:last-child{break-after:auto;page-break-after:auto;margin-bottom:0;}
+.print-footer{
+  max-width:190mm;margin:24px auto 12px;padding:18px 24px;
+  background:#fff;border:1px solid #d4d4d4;border-radius:6px;
+  font-family:Arial,Helvetica,sans-serif;text-align:center;
+  box-shadow:0 1px 3px rgba(0,0,0,0.05);
+}
+.print-footer__title{font-size:12px;font-weight:700;color:#111;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:4px;}
+.print-footer__sub{font-size:11px;color:#555;margin-bottom:14px;}
+.print-footer__btn{
+  display:inline-block;padding:9px 22px;background:#0f172a;color:#fff;
+  text-decoration:none;border:none;border-radius:4px;cursor:pointer;
+  font-size:12px;font-weight:600;letter-spacing:0.3px;font-family:inherit;
+}
+.print-footer__btn:hover{background:#1e293b;}
+.print-footer__btn--ghost{background:#fff;color:#0f172a;border:1px solid #0f172a;margin-left:8px;}
+.print-footer__btn--ghost:hover{background:#f5f5f5;}
 @media print{
   body{padding:0;margin:0;}
-  .page-container{height:276mm;}
-  .label-box{height:calc(50% - 2mm);}
+  .page-container{width:100%;height:287mm;margin:0;}
+  .label-box{height:142mm;}
+  .print-footer{display:none !important;}
 }
 @page{size:A4;margin:5mm 6mm;}
 </style>
 </head><body>${pages.join('')}
+<div class="print-footer">
+  <p class="print-footer__title">${labels.length} etiqueta${labels.length === 1 ? '' : 's'} · ${totalPages} folha${totalPages === 1 ? '' : 's'} A4</p>
+  <p class="print-footer__sub">Cada folha A4 imprime 2 etiquetas (= 2 caixas). Confira o layout antes de mandar pra impressão.</p>
+  <a class="print-footer__btn" href="javascript:window.print()">Imprimir agora</a>
+  <a class="print-footer__btn print-footer__btn--ghost" href="javascript:window.close()">Voltar e ajustar</a>
+</div>
 ${safeScript('https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js')}
 ${safeScriptBlock(`
 var _bcRetry=0;
