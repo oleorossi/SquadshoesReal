@@ -28,6 +28,7 @@ import { computeMinBillingForNewOrder, isBeforeMinDate, toISOWeek } from '@/lib/
 import { MinBillingDateSuggestionDialog } from '@/components/sale-orders/MinBillingDateSuggestionDialog';
 
 const emptyForm: SaleOrderFormData = {
+  client_id: null,
   client_name: '', client_cnpj: '', client_contact: '', client_order_number: '',
   representative: '', payment_condition: '', delivery_deadline: '', delivery_week: '', delivery_month: '',
   notes: '', status: 'Rascunho',
@@ -204,6 +205,7 @@ export default function SaleOrderForm() {
       if (!order) { toast.error('Pedido não encontrado'); navigate('/sales'); return; }
       const rep = representatives.find(r => r.name === order.representative);
       setForm({
+        client_id: (order as any).client_id || null,
         client_name: order.client_name || '', client_cnpj: order.client_cnpj || '',
         client_contact: order.client_contact || '', client_order_number: order.client_order_number || '',
         representative: rep?.id || (order as any).representative_id || '',
@@ -279,7 +281,15 @@ export default function SaleOrderForm() {
     setSelectedClientId(clientId);
     const client = clients.find(c => c.id === clientId);
     if (client) {
-      setForm(f => ({ ...f, client_name: client.razao_social, client_cnpj: client.cnpj || '', client_contact: client.contato || '' }));
+      // client_id grava o FK pra clients — antes só os campos texto eram
+      // salvos, deixando a coluna client_id null e quebrando JOINs.
+      setForm(f => ({
+        ...f,
+        client_id: client.id,
+        client_name: client.razao_social,
+        client_cnpj: client.cnpj || '',
+        client_contact: client.contato || '',
+      }));
     }
   };
 
@@ -313,11 +323,16 @@ export default function SaleOrderForm() {
     const orderData = { ...f, representative: rep?.name || f.representative };
     if (statusOverride) orderData.status = statusOverride;
 
+    // client_id veio do handleClientSelect (form) OU do hydrate de edit.
+    // Garante que a FK chegue na mutação — antes só o nome/CNPJ texto eram
+    // enviados, deixando sale_orders.client_id null e quebrando JOINs.
+    const resolvedClientId = (f as any).client_id || selectedClientId || null;
     if (isEdit) {
       updateOrder.mutate({
         id: id!,
         order: orderData,
         items: validItems,
+        client_id: resolvedClientId,
         representative_id: f.representative || null,
         commission_value,
         packaging_product_id: packagingProductId || null,
@@ -329,6 +344,7 @@ export default function SaleOrderForm() {
       createOrder.mutate({
         order: orderData,
         items: validItems,
+        client_id: resolvedClientId,
         representative_id: f.representative || null,
         commission_value,
         packaging_product_id: packagingProductId || null,

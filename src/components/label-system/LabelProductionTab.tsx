@@ -341,6 +341,24 @@ export function LabelProductionTab() {
     staleTime: 30 * 60 * 1000,
   });
 
+  // Map CNPJ → client completo. Fallback pra PVs antigos que têm o CNPJ
+  // gravado como texto mas client_id NULL (bug histórico do form, agora
+  // corrigido). Sem isso, endereço/cidade/UF não aparecem na etiqueta.
+  const { data: clientsByCnpj = new Map<string, any>() } = useQuery({
+    queryKey: ['clients_by_cnpj_for_labels'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('clients')
+        .select('id, razao_social, cnpj, endereco, bairro, cidade, estado, cep');
+      const map = new Map<string, any>();
+      for (const c of data || []) {
+        if (c.cnpj) map.set((c.cnpj as string).replace(/\D/g, ''), c);
+      }
+      return map;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
   // Fetch sale_order_items with strap_colors to build strap lookup for grouping
   const { data: strapLookup = new Map<string, string>() } = useQuery({
     queryKey: ['sale_order_items_strap_lookup'],
@@ -853,18 +871,21 @@ export function LabelProductionTab() {
             ? `${sizeNumbers[0]}-${sizeNumbers[sizeNumbers.length - 1]}`
             : (sizeNumbers.length === 1 ? String(sizeNumbers[0]) : '');
 
-          // Endereço completo do destinatário formatado em uma linha
-          const client = so?.clients;
+          // Resolve client: prefere o JOIN (so.clients) e cai pra busca por
+          // CNPJ quando o PV legado tem client_id=null mas tem o CNPJ texto.
+          let client = so?.clients;
+          if (!client && so?.client_cnpj) {
+            const cnpjDigits = String(so.client_cnpj).replace(/\D/g, '');
+            client = clientsByCnpj.get(cnpjDigits) || null;
+          }
           const recipientAddress = client
             ? [client.endereco, client.bairro].filter(Boolean).join(', ') || undefined
             : undefined;
           const recipientCity = client?.cidade || undefined;
           const recipientUf = client?.estado || undefined;
-          // Code do cliente: usa os últimos 5 dígitos do CNPJ como identificador
-          // numérico curto (fallback razoável quando não há campo dedicado).
           const recipientCode = client?.cnpj
             ? client.cnpj.replace(/\D/g, '').slice(-5)
-            : undefined;
+            : (so?.client_cnpj ? String(so.client_cnpj).replace(/\D/g, '').slice(-5) : undefined);
           const transporter = so?.transport_companies?.nome || undefined;
 
           for (let f = 0; f < fichas; f++) {

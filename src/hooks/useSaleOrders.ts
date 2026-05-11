@@ -508,6 +508,11 @@ export const PACKAGING_MODE_LABELS: Record<PackagingMode, string> = {
 };
 
 export type SaleOrderFormData = {
+  /** FK pra clients.id — antes só guardávamos o nome/CNPJ como texto, o
+   *  que quebrava JOINs (endereço/cidade/UF na etiqueta de caixa externa
+   *  ficava vazio porque a FK era null). Agora salva o FK pra resolver
+   *  o cliente completo via JOIN. */
+  client_id?: string | null;
   client_name: string;
   client_cnpj: string;
   client_contact: string;
