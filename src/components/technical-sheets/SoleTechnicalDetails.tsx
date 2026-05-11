@@ -196,16 +196,36 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
       fetchMetadata();
       supabase
         .from('products')
-        .select('group_id, is_fachetado, name')
+        .select('group_id, is_fachetado, name, stock_grade')
         .eq('id', soleId)
         .single()
         .then(({ data }) => {
           const d = data as any;
           if (d?.group_id) setSoleGroupId(d.group_id);
           setIsFachetado((data as any)?.is_fachetado ?? false);
-          // Inferência heurística de categoria pelo nome do solado, já que
-          // products não tem coluna shoe_category. Bate com convenção do
-          // catálogo da Squad Shoes ("Solado Infantil", "Saltinho", etc).
+          // Auto-popula `sizes` a partir do range definido na aba Cadastro
+          // (stock_grade._size_from / _size_to). Antes essa seção ficava vazia
+          // quando o solado não tinha sole_technical_specs, e o user tinha
+          // que adicionar manualmente — agora vem direto do range. Por user
+          // request: "deve aparecer apenas os números iniciais até o número
+          // final que eu trabalho".
+          const grade = d?.stock_grade as Record<string, any> | null;
+          if (grade && (grade._size_from != null || grade._size_to != null)) {
+            const from = Number(grade._size_from);
+            const to = Number(grade._size_to);
+            if (Number.isFinite(from) && Number.isFinite(to) && from <= to) {
+              setSizes(prev => {
+                // Só auto-popula se ainda não há sizes carregados de specs.
+                // Não sobrescreve dados existentes — só preenche o vazio.
+                if (prev.length > 0) return prev;
+                const all: number[] = [];
+                for (let s = from; s <= to; s++) all.push(s);
+                return all;
+              });
+            }
+          }
+          // Inferência heurística de categoria pelo nome do solado (legacy,
+          // mantido pra display info, não pra preset buttons que foram removidos)
           const name = (d?.name || '').toLowerCase();
           if (name.includes('baby') || name.includes('beb')) setShoeCategory('Baby');
           else if (name.includes('infantil') || name.includes('kids')) setShoeCategory('Infantil');
@@ -689,8 +709,9 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
             )}
           </CardTitle>
           <CardDescription className="text-xs">
-            Range principal (numeração inicial/final) é definido na aba <strong>Cadastro</strong> do solado.
-            Aqui você pode adicionar tamanhos avulsos pra configuração de consumo individual.
+            Numerações que o solado trabalha — derivadas automaticamente do range
+            (numeração inicial → final) definido na aba <strong>Cadastro</strong>.
+            Aqui você só configura o consumo individual de cada uma.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
