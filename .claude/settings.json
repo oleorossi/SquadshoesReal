@@ -16,7 +16,22 @@
       "Read(//tmp/**)",
       "Bash(bunx tsc *)",
       "Bash(tee /tmp/tsc.out)",
-      "Bash(echo \"---EXIT $?---\")"
+      "Bash(echo \"---EXIT $?---\")",
+      "Bash(git ls-remote *)",
+      "Bash(git rev-list *)",
+      "Read(//Users/leonardomonnerat/.claude/**)",
+      "mcp__claude_ai_Supabase__list_migrations",
+      "mcp__claude_ai_Supabase__get_project",
+      "Bash(gh run *)",
+      "Bash(echo \"=== Pendentes no banco \\(FS - Supabase\\) ===\" *)",
+      "Bash(curl -s https://squadshoes-real.vercel.app/)",
+      "Bash(curl -sI https://squadshoes-real.vercel.app/)",
+      "mcp__claude_ai_Supabase__apply_migration",
+      "mcp__claude_ai_Supabase__execute_sql",
+      "Bash(git mv *)"
+    ],
+    "additionalDirectories": [
+      "/tmp"
     ]
   }
 }
