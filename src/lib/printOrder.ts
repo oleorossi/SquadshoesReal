@@ -383,28 +383,31 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
       ? `<td rowspan="3" class="pv-img-cell"><img src="${imageUrl}" alt="${escapeHtml(refCode)}" /></td>`
       : `<td rowspan="3" class="pv-img-cell empty">sem<br>foto</td>`;
 
+    // Evita duplicação "DS05/DS05" quando code == name. Mostra só o code
+    // se houver, ou só o name. ref-name só aparece quando difere do code.
+    const showName = refName && refName !== refCode;
     const refCellContent = refCode
-      ? `<span class="ref-code">${escapeHtml(refCode)}</span>${refName ? `<span class="ref-name">${escapeHtml(refName)}</span>` : ''}`
+      ? `<span class="ref-code">${escapeHtml(refCode)}</span>${showName ? `<span class="ref-name">${escapeHtml(refName)}</span>` : ''}`
       : escapeHtml(refName || '—');
 
     bodyRows += `
-      <tr class="pv-row-pedida">
+      <tr class="pv-row-qty">
         ${imgCell}
         <td rowspan="3" class="pv-ref-cell">${refCellContent}</td>
         <td rowspan="3" class="pv-color-cell">${escapeHtml(color)}</td>
-        <td class="pv-type-cell">Pedido</td>
+        <td class="pv-type-cell pv-type-cell--qty">Pedido</td>
         ${pedidaCells}
-        <td class="pv-total-cell">${itemPairs}</td>
+        <td class="pv-total-cell pv-total-cell--qty">${itemPairs}</td>
       </tr>
-      <tr>
-        <td class="pv-type-cell">R$ unit.</td>
+      <tr class="pv-row-unit">
+        <td class="pv-type-cell">Unit.</td>
         ${unitarioCells}
-        <td class="pv-total-cell" style="font-size:9px;">${formatCurrency(price)}</td>
+        <td class="pv-total-cell pv-total-cell--unit">${formatCurrency(price)}</td>
       </tr>
-      <tr>
-        <td class="pv-type-cell">R$ total</td>
+      <tr class="pv-row-total">
+        <td class="pv-type-cell">Total</td>
         ${valorCells}
-        <td class="pv-total-cell" style="color:#7f1d1d;">${formatCurrency(itemTotal)}</td>
+        <td class="pv-total-cell pv-total-cell--total">${formatCurrency(itemTotal)}</td>
       </tr>`;
   });
 
@@ -606,12 +609,14 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
   .pv-table thead th.text-left { text-align: left; padding-left: 8px; }
 
   .pv-table tbody td {
-    padding: 4px 5px;
-    border-bottom: 1px solid #e4e4e7;
+    padding: 3px 5px;
     vertical-align: middle;
     font-size: 9.5px;
+    border: none;
   }
-  .pv-table tbody tr:last-child td { border-bottom: 1px solid #d4d4d4; }
+  /* Separador entre grupos de item (foto/ref/cor). Linha leve, não pesada. */
+  .pv-row-qty td { border-top: 1px solid #d4d4d4; }
+  .pv-table tbody tr:first-child td { border-top: none; }
 
   .pv-img-cell { width: 56px; text-align: center; padding: 4px !important; background: #fafafa; }
   .pv-img-cell img {
@@ -629,73 +634,97 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
     font-style: italic;
   }
 
-  .pv-ref-cell { font-weight: 700; color: #18181b; font-size: 10px; }
-  .pv-ref-cell .ref-code { color: #7f1d1d; font-weight: 800; }
-  .pv-ref-cell .ref-name { color: #52525b; font-weight: 600; font-size: 9px; display: block; }
+  .pv-ref-cell { font-weight: 700; color: #18181b; font-size: 10.5px; padding-left: 8px !important; }
+  .pv-ref-cell .ref-code { color: #7f1d1d; font-weight: 800; letter-spacing: 0.02em; }
+  .pv-ref-cell .ref-name { color: #71717a; font-weight: 500; font-size: 9px; display: block; margin-top: 1px; }
 
-  .pv-color-cell { font-weight: 600; color: #18181b; }
+  .pv-color-cell {
+    font-weight: 600;
+    color: #18181b;
+    font-size: 9.5px;
+    letter-spacing: 0.02em;
+  }
 
   .pv-type-cell {
     background: #fafafa;
     font-weight: 700;
-    font-size: 8px;
+    font-size: 8.5px;
     color: #71717a;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.06em;
     text-align: left;
-    padding-left: 6px !important;
-    width: 60px;
+    padding-left: 8px !important;
+    width: 54px;
+    white-space: nowrap;
+  }
+  /* Linha PEDIDO: label preto pra reforçar que é a linha primária */
+  .pv-type-cell--qty {
+    color: #18181b;
+    background: #f4f4f5;
   }
 
   .pv-size-cell {
     text-align: center;
     font-family: 'SFMono-Regular', 'Courier New', monospace;
     font-variant-numeric: tabular-nums;
-    font-weight: 600;
-    color: #27272a;
+    color: #3f3f46;
+    padding: 3px 4px;
   }
   .pv-size-cell.empty { color: #d4d4d8; }
+  /* Quantidade (linha primária): texto mais escuro e bold */
+  .pv-row-qty .pv-size-cell { color: #18181b; font-weight: 700; font-size: 11px; }
+  /* Preço unitário: cinza médio, menor */
+  .pv-row-unit .pv-size-cell { color: #71717a; font-size: 8.5px; font-weight: 500; }
+  /* Valor total: contraste médio, mantém destaque numérico */
+  .pv-row-total .pv-size-cell { color: #3f3f46; font-size: 8.5px; font-weight: 600; }
+
   .pv-total-cell {
     text-align: center;
     font-family: 'SFMono-Regular', 'Courier New', monospace;
     font-variant-numeric: tabular-nums;
-    font-weight: 800;
     color: #18181b;
     background: #fafafa;
-    border-left: 1px solid #d4d4d4;
+    border-left: 1px solid #e4e4e7;
   }
-  .pv-row-pedida td { border-top: 1px solid #d4d4d4; }
+  .pv-total-cell--qty { font-weight: 800; font-size: 11px; }
+  .pv-total-cell--unit { font-weight: 600; font-size: 9px; color: #52525b; }
+  .pv-total-cell--total { font-weight: 800; font-size: 10px; color: #7f1d1d; }
+
+  /* Linha do PEDIDO recebe leve realce de fundo pra firmar hierarquia */
+  .pv-row-qty .pv-size-cell { background: #fdfdfd; }
 
   /* Totais */
   .pv-totals-row td {
     background: #18181b !important;
     color: #fff !important;
     font-weight: 700;
-    padding: 6px 5px;
+    padding: 7px 5px;
     font-size: 10px;
     border: none !important;
   }
   .pv-totals-row .label-cell {
     text-align: right;
-    padding-right: 10px;
+    padding-right: 12px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
+    font-size: 9px;
   }
   .pv-totals-value-row td {
     background: #fafafa !important;
-    color: #18181b !important;
-    font-weight: 800;
+    color: #27272a !important;
+    font-weight: 700;
     padding: 6px 5px;
-    font-size: 10px;
+    font-size: 9.5px;
     border: none !important;
-    border-top: 1px solid #d4d4d4 !important;
+    border-top: 1px solid #e4e4e7 !important;
   }
   .pv-totals-value-row .label-cell {
     text-align: right;
-    padding-right: 10px;
+    padding-right: 12px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: #71717a;
+    font-size: 9px;
   }
 
   /* Card resumo financeiro */
@@ -892,23 +921,23 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
         <th style="width:56px;">Foto</th>
         <th class="text-left" style="min-width:130px;">Referência</th>
         <th style="width:80px;">Cor</th>
-        <th style="width:60px;">Tipo</th>
-        ${sizes.map(s => `<th style="min-width:34px;">${s}</th>`).join('')}
-        <th style="width:80px;">Total</th>
+        <th style="width:54px;">Tipo</th>
+        ${sizes.map(s => `<th style="min-width:32px;">${s}</th>`).join('')}
+        <th style="width:74px;">Total</th>
       </tr>
     </thead>
     <tbody>
       ${bodyRows}
       <tr class="pv-totals-row">
         <td colspan="3" class="label-cell">Total Geral · Pares</td>
-        <td class="pv-type-cell" style="background:transparent !important; color:#fff !important;">PARES</td>
-        ${sizes.map(s => `<td class="pv-size-cell" style="color:#fff !important;">${grandTotals[s].pedida || '·'}</td>`).join('')}
-        <td class="pv-total-cell" style="background:#7f1d1d !important; color:#fff !important; border-left:1px solid #991b1b !important;">${grandTotalPairs}</td>
+        <td class="pv-type-cell" style="background:transparent !important; color:#fff !important;font-weight:700;">PARES</td>
+        ${sizes.map(s => `<td class="pv-size-cell" style="color:#fff !important;font-weight:800;font-size:11px;">${grandTotals[s].pedida || '·'}</td>`).join('')}
+        <td class="pv-total-cell" style="background:#27272a !important; color:#fff !important; border-left:1px solid #3f3f46 !important;font-weight:800;font-size:11px;">${grandTotalPairs}</td>
       </tr>
       <tr class="pv-totals-value-row">
-        <td colspan="4" class="label-cell">Valor por Numeração (R$)</td>
-        ${sizes.map(s => `<td class="pv-size-cell" style="font-size:8.5px;">${grandTotals[s].valor > 0 ? formatCurrency(grandTotals[s].valor) : '·'}</td>`).join('')}
-        <td class="pv-total-cell" style="color:#7f1d1d !important;">${formatCurrency(grandTotalValue)}</td>
+        <td colspan="4" class="label-cell">Valor por Numeração</td>
+        ${sizes.map(s => `<td class="pv-size-cell" style="font-size:8.5px;color:#52525b !important;">${grandTotals[s].valor > 0 ? formatCurrency(grandTotals[s].valor) : '·'}</td>`).join('')}
+        <td class="pv-total-cell" style="color:#7f1d1d !important;font-weight:800;font-size:10px;">${formatCurrency(grandTotalValue)}</td>
       </tr>
     </tbody>
   </table>
