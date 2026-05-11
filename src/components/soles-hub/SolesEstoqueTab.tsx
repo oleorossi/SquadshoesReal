@@ -71,6 +71,34 @@ export default function SolesEstoqueTab({ sole }: Props) {
         </CardContent>
       </Card>
 
+      {/* Badge do tipo do solado — ajuda visualizar como o estoque é interpretado */}
+      {(sole as any).sole_classification && (
+        <Card className={
+          (sole as any).sole_classification === 'tradicional' ? 'border-emerald-300 bg-emerald-50/60 dark:bg-emerald-950/20 dark:border-emerald-800' :
+          (sole as any).sole_classification === 'palmilha_pronta' ? 'border-violet-300 bg-violet-50/60 dark:bg-violet-950/20 dark:border-violet-800' :
+          'border-amber-300 bg-amber-50/60 dark:bg-amber-950/20 dark:border-amber-800'
+        }>
+          <CardContent className="py-2.5 px-4 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className={`text-[10px] font-bold uppercase tracking-wider
+                ${(sole as any).sole_classification === 'tradicional' ? 'text-emerald-700 dark:text-emerald-400' : ''}
+                ${(sole as any).sole_classification === 'palmilha_pronta' ? 'text-violet-700 dark:text-violet-400' : ''}
+                ${(sole as any).sole_classification === 'conjugado' ? 'text-amber-700 dark:text-amber-400' : ''}
+              `}>
+                {(sole as any).sole_classification === 'tradicional' ? 'Solado Tradicional' : ''}
+                {(sole as any).sole_classification === 'palmilha_pronta' ? 'Solado · Palmilha Pronta' : ''}
+                {(sole as any).sole_classification === 'conjugado' ? 'Solado Conjugado' : ''}
+              </span>
+            </div>
+            <span className="text-[11px] text-muted-foreground">
+              {(sole as any).sole_classification === 'tradicional' && 'Cada número individual · palmilha em dm²'}
+              {(sole as any).sole_classification === 'palmilha_pronta' && 'Palmilha em un · coligação cor cabedal'}
+              {(sole as any).sole_classification === 'conjugado' && 'Algumas numerações agrupadas'}
+            </span>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader className="pb-3 flex flex-row items-center justify-between">
           <div>

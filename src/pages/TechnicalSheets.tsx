@@ -1953,13 +1953,12 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               </div>
             </div>
             {form.sole_material && (
-              <div className="flex items-center gap-2 p-2 rounded-md bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800">
-                <Check className="h-3.5 w-3.5 text-green-600" />
-                <span className="text-xs text-green-700 dark:text-green-400 font-medium">
-                  Solado definido: {form.sole_material}
-                  {form.sole_process && ` • ${form.sole_process}`}
-                </span>
-              </div>
+              <SoleClassificationBadge
+                groupId={form.sole_group_id || ''}
+                soleMaterial={form.sole_material}
+                process={form.sole_process || ''}
+                products={products || []}
+              />
             )}
             {!form.sole_material && (
               <div className="flex items-center gap-2 p-2 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
@@ -4089,6 +4088,73 @@ function InsoleColorMappingPanel({ sheetId, soleGroupId, insoleGroupName, insole
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/* ===== Sole Classification Badge =====
+ * Mostra o tipo do solado (tradicional/palmilha_pronta/conjugado) + número
+ * de conjugações/coligações cadastradas, ajudando o usuário a saber se o
+ * solado está totalmente configurado.
+ */
+function SoleClassificationBadge({ groupId, soleMaterial, process, products }: {
+  groupId: string;
+  soleMaterial: string;
+  process: string;
+  products: any[];
+}) {
+  // Pega a classificação do produto específico (não agrega o grupo — pode ter
+  // variantes com tipos diferentes em teoria, embora a recomendação seja
+  // separar em grupos próprios).
+  const matchedProduct = products.find(p => {
+    if (p.group_id !== groupId) return false;
+    const n = (p.name || '').toLowerCase().trim();
+    const m = (soleMaterial || '').toLowerCase().trim();
+    return n === m || n.startsWith(m + ' ') || n.startsWith(m + '-');
+  });
+  const classification = (matchedProduct as any)?.sole_classification || 'tradicional';
+
+  // Query auxiliar pra contar conjugações/coligações
+  const { data: extras } = useQuery({
+    queryKey: ['sole_extras', groupId],
+    enabled: !!groupId,
+    queryFn: async () => {
+      const { count: conjCount } = await supabase
+        .from('sole_size_conjugations')
+        .select('*', { count: 'exact', head: true })
+        .eq('sole_group_id', groupId);
+      return { conjCount: conjCount || 0 };
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const styles = {
+    tradicional: { bg: 'bg-emerald-50 dark:bg-emerald-950/30', border: 'border-emerald-200 dark:border-emerald-800', fg: 'text-emerald-700 dark:text-emerald-400', label: 'TRADICIONAL', hint: 'Cada número individual · palmilha cortada (dm²)' },
+    palmilha_pronta: { bg: 'bg-violet-50 dark:bg-violet-950/30', border: 'border-violet-200 dark:border-violet-800', fg: 'text-violet-700 dark:text-violet-400', label: 'PALMILHA PRONTA', hint: 'Palmilha em un · coligação cor cabedal → palmilha' },
+    conjugado: { bg: 'bg-amber-50 dark:bg-amber-950/30', border: 'border-amber-200 dark:border-amber-800', fg: 'text-amber-700 dark:text-amber-400', label: 'CONJUGADO', hint: 'Algumas numerações agrupadas (ex.: 33/34)' },
+  } as const;
+  const s = styles[classification as keyof typeof styles] || styles.tradicional;
+
+  return (
+    <div className={`p-3 rounded-md border-2 ${s.bg} ${s.border}`}>
+      <div className="flex items-center gap-2 flex-wrap">
+        <Check className={`h-3.5 w-3.5 ${s.fg}`} />
+        <span className={`text-xs font-bold uppercase tracking-wider ${s.fg}`}>{s.label}</span>
+        <span className="text-xs font-medium text-foreground">
+          {soleMaterial}{process && ` • ${process}`}
+        </span>
+        {classification === 'conjugado' && extras && (
+          <Badge variant="outline" className="text-[10px] h-5">
+            {extras.conjCount} conjugação{extras.conjCount !== 1 ? 'ões' : ''} cadastrada{extras.conjCount !== 1 ? 's' : ''}
+          </Badge>
+        )}
+      </div>
+      <p className={`text-[10px] mt-1 ${s.fg} opacity-80`}>{s.hint}</p>
+      {classification === 'conjugado' && extras?.conjCount === 0 && (
+        <p className="text-[10px] mt-1 text-destructive font-semibold">
+          ⚠ Nenhuma conjugação cadastrada — configure em Solados → editar este solado → aba Conjugações.
+        </p>
+      )}
     </div>
   );
 }

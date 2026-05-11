@@ -37,6 +37,8 @@ export function SoleTechnicalEditDialog({ open, onOpenChange, product }: Props) 
    const [isStandardItem, setIsStandardItem] = useState<boolean>(false);
    const [isFachetado, setIsFachetado] = useState<boolean>(false);
   const [insoleMode, setInsoleMode] = useState<'cortar' | 'pronta_na_cor'>('cortar');
+  // Tipo do solado (Fase 1+ da reformulação): tradicional / palmilha_pronta / conjugado
+  const [soleClassification, setSoleClassification] = useState<'tradicional' | 'palmilha_pronta' | 'conjugado'>('tradicional');
 
   useEffect(() => {
     if (product && open) {
@@ -50,8 +52,20 @@ export function SoleTechnicalEditDialog({ open, onOpenChange, product }: Props) 
        setIsStandardItem((product as any).is_standard_sole_item || false);
        setIsFachetado((product as any).is_fachetado || false);
       setInsoleMode(((product as any).insole_mode as 'cortar' | 'pronta_na_cor') || 'cortar');
+      setSoleClassification(((product as any).sole_classification as 'tradicional' | 'palmilha_pronta' | 'conjugado') || 'tradicional');
     }
   }, [product, open]);
+
+  // Quando muda a classificação, deriva o insole_mode automaticamente:
+  // palmilha_pronta → pronta_na_cor; resto → cortar.
+  const handleClassificationChange = (value: 'tradicional' | 'palmilha_pronta' | 'conjugado') => {
+    setSoleClassification(value);
+    if (value === 'palmilha_pronta') {
+      setInsoleMode('pronta_na_cor');
+    } else {
+      setInsoleMode('cortar');
+    }
+  };
 
   const handleSave = async () => {
     if (!product) return;
@@ -71,6 +85,7 @@ export function SoleTechnicalEditDialog({ open, onOpenChange, product }: Props) 
            is_standard_sole_item: isStandardItem,
            is_fachetado: isFachetado,
           insole_mode: insoleMode,
+          sole_classification: soleClassification,
          } as any)
         .eq('id', product.id);
       if (error) throw error;
@@ -102,6 +117,50 @@ export function SoleTechnicalEditDialog({ open, onOpenChange, product }: Props) 
         </DialogHeader>
 
         <div className="space-y-5 py-2">
+          {/* Tipo do Solado — driver principal da configuração */}
+          <div className="space-y-3 p-4 rounded-lg border-2 border-primary/30 bg-primary/5">
+            <h3 className="text-sm font-bold flex items-center gap-2 text-foreground">
+              <Settings2 className="h-4 w-4 text-primary" />
+              Tipo do Solado
+            </h3>
+            <Select value={soleClassification} onValueChange={(v) => handleClassificationChange(v as any)}>
+              <SelectTrigger className="h-10 font-medium"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="tradicional">
+                  <div className="py-1">
+                    <div className="font-semibold">Tradicional</div>
+                    <div className="text-[10px] text-muted-foreground">Cada número individual · palmilha cortada (dm²)</div>
+                  </div>
+                </SelectItem>
+                <SelectItem value="palmilha_pronta">
+                  <div className="py-1">
+                    <div className="font-semibold">Palmilha Pronta</div>
+                    <div className="text-[10px] text-muted-foreground">Palmilha já vem pronta (un) · coligação cor cabedal/palmilha</div>
+                  </div>
+                </SelectItem>
+                <SelectItem value="conjugado">
+                  <div className="py-1">
+                    <div className="font-semibold">Conjugado</div>
+                    <div className="text-[10px] text-muted-foreground">Alguns números agrupados (ex.: 33/34, 39/40)</div>
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            {soleClassification === 'palmilha_pronta' && (
+              <div className="text-[11px] text-foreground/80 bg-amber-500/10 border border-amber-500/30 rounded p-2">
+                <strong>Atenção:</strong> Solados deste tipo têm coligação <em>cor cabedal → cor palmilha</em>.
+                Configure essa coligação na <strong>ficha técnica</strong> (campo "Cores Palmilha"). O sistema vai usar essa
+                tabela pra escolher a palmilha certa quando emitir a ficha de produção.
+              </div>
+            )}
+            {soleClassification === 'conjugado' && (
+              <div className="text-[11px] text-foreground/80 bg-amber-500/10 border border-amber-500/30 rounded p-2">
+                <strong>Atenção:</strong> Solados conjugados têm algumas numerações agrupadas. Configure as conjugações
+                na aba <strong>Conjugações</strong> deste cadastro (ex.: 33/34 conta como 1 par para essa numeração).
+              </div>
+            )}
+          </div>
+
           {/* Fornecedor & Lead Time */}
           <div className="space-y-3">
             <h3 className="text-sm font-semibold flex items-center gap-2 text-foreground">
@@ -202,19 +261,31 @@ export function SoleTechnicalEditDialog({ open, onOpenChange, product }: Props) 
                 <NumberInput min={0} step="0.1" value={heelHeight} onChange={setHeelHeight} className="mt-1" />
               </div>
             </div>
-          <div>
-            <Label className="text-xs">Modo da palmilha</Label>
-            <Select value={insoleMode} onValueChange={v => setInsoleMode(v as 'cortar' | 'pronta_na_cor')}>
-              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="cortar">Cortar (consome dm² de placa)</SelectItem>
-                <SelectItem value="pronta_na_cor">Pronta na cor (consome por par/numeração)</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-[10px] text-muted-foreground mt-1">
-              Define como a palmilha vinculada a este solado será debitada do estoque e contabilizada na ficha técnica.
-            </p>
-          </div>
+          {soleClassification === 'tradicional' && (
+            <div>
+              <Label className="text-xs">Modo da palmilha</Label>
+              <Select value={insoleMode} onValueChange={v => setInsoleMode(v as 'cortar' | 'pronta_na_cor')}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cortar">Cortar (consome dm² de placa)</SelectItem>
+                  <SelectItem value="pronta_na_cor">Pronta na cor (consome por par/numeração)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Define como a palmilha vinculada a este solado será debitada do estoque e contabilizada na ficha técnica.
+              </p>
+            </div>
+          )}
+          {soleClassification === 'palmilha_pronta' && (
+            <div className="text-[11px] text-muted-foreground italic">
+              Modo da palmilha definido automaticamente como <strong>Pronta na cor</strong> por causa do tipo do solado.
+            </div>
+          )}
+          {soleClassification === 'conjugado' && (
+            <div className="text-[11px] text-muted-foreground italic">
+              Modo da palmilha definido automaticamente como <strong>Cortar (dm²)</strong> por causa do tipo do solado.
+            </div>
+          )}
             <div className="flex items-center gap-2 p-3 rounded-md border bg-amber-500/5 border-amber-500/20">
               <Switch
                 id="is-fachetado"

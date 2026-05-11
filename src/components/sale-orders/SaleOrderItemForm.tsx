@@ -113,20 +113,19 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     queryKey: ['sole_size_range_specific', sheetSpecs?.sole_group_id, sheetSpecs?.sole_material],
     enabled: !!sheetSpecs?.sole_group_id,
     queryFn: async () => {
-      // Prioriza a VARIANTE específica configurada na ficha (sole_material),
-      // pra evitar que outras variantes do mesmo group (ex.: "SOLADO INFANTIL"
-      // 25-36, "204" 25-32) puxem o range pra baixo. Antes era MIN/MAX entre
-      // TODAS as variantes — DS05 (sole_material="01", 34-40) aparecia 25-40.
+      // Prioriza a VARIANTE específica configurada na ficha (sole_material).
+      // Também retorna a classificação (tipo) do solado matched pro form
+      // poder mostrar o badge contextual.
       const { data } = await supabase
         .from('products')
-        .select('name, stock_grade')
+        .select('name, stock_grade, sole_classification')
         .eq('group_id', sheetSpecs!.sole_group_id!)
         .eq('category', 'Solado')
         .eq('active', true)
         .not('stock_grade', 'is', null);
       if (!data || data.length === 0) return null;
 
-      const aggregate = (rows: typeof data): { sizeFrom: number; sizeTo: number } | null => {
+      const aggregate = (rows: typeof data): { sizeFrom: number; sizeTo: number; classification?: string } | null => {
         let minFrom: number | null = null;
         let maxTo: number | null = null;
         for (const row of rows) {
@@ -143,8 +142,6 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
 
       const soleMat = (sheetSpecs?.sole_material || '').trim().toLowerCase();
       if (soleMat) {
-        // Match variants whose name = sole_material OR começam com "{sole_material}{sep}"
-        // (ex.: sole_material="01" → casa "01", "01 - CARAMELO", "01-PRETO")
         const matched = (data as any[]).filter(p => {
           const n = (p.name || '').toLowerCase().trim();
           if (!n) return false;
@@ -156,12 +153,18 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           return false;
         });
         const specificRange = aggregate(matched as typeof data);
-        if (specificRange) return specificRange;
+        if (specificRange) {
+          // Pega a classificação da primeira variante matched
+          specificRange.classification = (matched[0] as any)?.sole_classification || 'tradicional';
+          return specificRange;
+        }
       }
 
-      // Fallback: agrega todas (mantém comportamento anterior pra fichas
-      // sem sole_material configurado ou sem match de nome)
-      return aggregate(data);
+      const fallback = aggregate(data);
+      if (fallback) {
+        fallback.classification = (data[0] as any)?.sole_classification || 'tradicional';
+      }
+      return fallback;
     },
     staleTime: 5 * 60_000,
   });
@@ -779,6 +782,25 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
 
         {/* Grade Section */}
         <div className="rounded-lg border border-border/60 overflow-hidden bg-muted/5">
+          {/* Badge contextual do tipo de solado — ajuda a entender por que a
+              grade mostra números individuais vs conjugados, e qual a regra
+              de palmilha (cortada vs pronta na cor). */}
+          {soleSizeRange?.classification && (
+            <div className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider flex items-center gap-2
+              ${soleSizeRange.classification === 'tradicional' ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-b border-emerald-200 dark:border-emerald-800' : ''}
+              ${soleSizeRange.classification === 'palmilha_pronta' ? 'bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-400 border-b border-violet-200 dark:border-violet-800' : ''}
+              ${soleSizeRange.classification === 'conjugado' ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border-b border-amber-200 dark:border-amber-800' : ''}
+            `}>
+              <span>Solado</span>
+              <span className="opacity-50">·</span>
+              <span>{soleSizeRange.classification === 'tradicional' ? 'Tradicional' : soleSizeRange.classification === 'palmilha_pronta' ? 'Palmilha Pronta' : 'Conjugado'}</span>
+              {soleSizeRange.classification === 'conjugado' && soleConjugations.length > 0 && (
+                <span className="opacity-70 normal-case font-medium tracking-normal">
+                  · {soleConjugations.length} slot{soleConjugations.length !== 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
+          )}
           <div className="bg-muted/30 px-3 py-1.5 border-b flex items-center justify-between">
             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Distribuição por Numeração</span>
             <div className="flex items-center gap-2">
