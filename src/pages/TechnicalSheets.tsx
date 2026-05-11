@@ -1195,9 +1195,64 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         (f as any)[key] = sheet[key];
       }
     });
+    // Hidrata campos extras que existem no DB mas não no emptySheetForm
+    // (ex.: fachete_material, fachete_consumption, fachete_consumption_per_size).
+    // Sem isso, ao abrir uma ficha existente os valores desses campos sumiam
+    // do form e qualquer save os zerava.
+    const EXTRA_DB_FIELDS = [
+      'fachete_material', 'fachete_consumption', 'fachete_consumption_per_size',
+      'lead_time_corte_dias', 'lead_time_costura_dias', 'lead_time_silk_dias',
+      'lead_time_colagem_dias', 'lead_time_montagem_dias',
+      'lead_time_acabamento_dias', 'lead_time_expedicao_dias',
+      'lead_time_buffer_material_dias',
+      'cutting_capacity_per_day', 'sewing_capacity_per_day',
+      'silk_capacity_per_day', 'gluing_capacity_per_day',
+      'assembly_capacity_per_day', 'soling_capacity_per_day',
+      'expedition_capacity_per_day', 'finishing_capacity_per_day',
+      'costura_capacity_per_day',
+      'production_sectors', 'shoe_category_id', 'primary_sole_id',
+      'assembly_time_minutes', 'process_difficulty',
+    ];
+    for (const key of EXTRA_DB_FIELDS) {
+      if (sheet[key] !== undefined && sheet[key] !== null) {
+        (f as any)[key] = sheet[key];
+      }
+    }
     return f;
   });
   const [dirty, setDirty] = useState(false);
+
+  // Quando o sheet prop muda (após re-fetch pós-save), sincroniza form pra
+  // refletir os dados frescos do banco — antes o useState init só rodava
+  // 1x e ignorava mudanças subsequentes, deixando a UI defasada.
+  React.useEffect(() => {
+    if (dirty) return; // não sobrescreve mudanças não-salvas do usuário
+    const f = { ...emptySheetForm };
+    Object.keys(f).forEach(key => {
+      if (sheet[key] !== undefined && sheet[key] !== null) {
+        (f as any)[key] = sheet[key];
+      }
+    });
+    const EXTRA = [
+      'fachete_material','fachete_consumption','fachete_consumption_per_size',
+      'lead_time_corte_dias','lead_time_costura_dias','lead_time_silk_dias',
+      'lead_time_colagem_dias','lead_time_montagem_dias',
+      'lead_time_acabamento_dias','lead_time_expedicao_dias',
+      'lead_time_buffer_material_dias','cutting_capacity_per_day',
+      'sewing_capacity_per_day','silk_capacity_per_day','gluing_capacity_per_day',
+      'assembly_capacity_per_day','soling_capacity_per_day',
+      'expedition_capacity_per_day','finishing_capacity_per_day',
+      'costura_capacity_per_day','production_sectors','shoe_category_id',
+      'primary_sole_id','assembly_time_minutes','process_difficulty',
+    ];
+    for (const key of EXTRA) {
+      if (sheet[key] !== undefined && sheet[key] !== null) {
+        (f as any)[key] = sheet[key];
+      }
+    }
+    setForm(f);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sheet.id, sheet.updated_at]);
 
   // Set de campos recentemente importados/auto-preenchidos. Cada entrada
   // some sozinha após 2s. Usado pra aplicar flash verde nas linhas/inputs

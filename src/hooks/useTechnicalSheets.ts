@@ -240,11 +240,25 @@ export function useUpdateSheet() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<SheetFormData> }) => {
-      const { error } = await supabase
+      const payload = sanitizeUuidFields(data as any);
+      // .select('id') retorna as linhas afetadas. Se RLS bloquear silently
+      // (admin do client sem role admin no DB), data fica []. Antes esse caso
+      // passava por "sucesso" e o user via toast verde sem nada ter sido salvo.
+      const { data: updated, error } = await (supabase as any)
         .from('technical_sheets')
-        .update(sanitizeUuidFields(data as any) as any)
-        .eq('id', id);
-      if (error) throw error;
+        .update(payload)
+        .eq('id', id)
+        .select('id');
+      if (error) {
+        console.error('[useUpdateSheet] erro Supabase:', { id, payload, error });
+        throw error;
+      }
+      if (!updated || updated.length === 0) {
+        console.error('[useUpdateSheet] 0 rows affected — possível RLS bloqueando:', { id, payload });
+        throw new Error(
+          'Atualização não persistiu. Verifique permissões (admin/gerente) ou se a ficha foi excluída em outra aba.'
+        );
+      }
       return id;
     },
     onSuccess: async (sheetId) => {
@@ -252,7 +266,10 @@ export function useUpdateSheet() {
       toast.success('Ficha técnica atualizada!');
       await runResyncAndInvalidate(qc, sheetId);
     },
-    onError: (err: Error) => toast.error(`Erro: ${err.message}`),
+    onError: (err: Error) => {
+      console.error('[useUpdateSheet] mutationFn falhou:', err);
+      toast.error(`Falha ao salvar: ${err.message}`, { duration: 8000 });
+    },
   });
 }
 
