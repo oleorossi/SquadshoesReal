@@ -309,7 +309,15 @@ export function LabelProductionTab() {
   const { data: saleOrders = [] } = useQuery({
     queryKey: ['sale_orders_for_labels'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('sale_orders').select('*, clients(economic_group_id, economic_groups(name))');
+      // Endereço/cidade/UF/transportadora vêm via JOIN — usados pra preencher
+      // o rótulo da caixa externa (campos opcionais que omitimos se faltarem).
+      const { data, error } = await supabase
+        .from('sale_orders')
+        .select(`
+          *,
+          clients(id, razao_social, cnpj, endereco, bairro, cidade, estado, cep, economic_group_id, economic_groups(name)),
+          transport_companies:transport_company_id(nome)
+        `);
       if (error) throw error;
       return data || [];
     },
@@ -820,20 +828,66 @@ export function LabelProductionTab() {
               order_number: order.order_number, rawGrade, gradeItems,
             });
           }
+          // Calcula o "range" do tamanho para o destaque grande no canto da
+          // etiqueta — ex.: 29-36, ou só "36" se houver um tamanho só.
+          const sizeKeys = gradePerFicha.map(g => g.size).filter(s => s && !isNaN(Number(s)));
+          const sizeNumbers = sizeKeys.map(Number).sort((a, b) => a - b);
+          const sizeRangeLabel = sizeNumbers.length > 1
+            ? `${sizeNumbers[0]}-${sizeNumbers[sizeNumbers.length - 1]}`
+            : (sizeNumbers.length === 1 ? String(sizeNumbers[0]) : '');
+
+          // Endereço completo do destinatário formatado em uma linha
+          const client = so?.clients;
+          const recipientAddress = client
+            ? [client.endereco, client.bairro].filter(Boolean).join(', ') || undefined
+            : undefined;
+          const recipientCity = client?.cidade || undefined;
+          const recipientUf = client?.estado || undefined;
+          // Code do cliente: usa os últimos 5 dígitos do CNPJ como identificador
+          // numérico curto (fallback razoável quando não há campo dedicado).
+          const recipientCode = client?.cnpj
+            ? client.cnpj.replace(/\D/g, '').slice(-5)
+            : undefined;
+          const transporter = so?.transport_companies?.nome || undefined;
+
           for (let f = 0; f < fichas; f++) {
             const currentBoxNumber = Math.ceil((f + 1) / (fichasPerBox || 1));
             boxItems.push({
               orderNumber: order.order_number || '', refCode: refData?.code || group.refCode || '', refName: group.refName || '',
               color: order.color || '—', boxNumber: currentBoxNumber, totalBoxes: totalMasterBoxes,
               senderName: 'SQUAD SHOES IND. E COM. DE CALÇADOS LTDA', senderCnpj: '62.406.033/0001-93',
-              recipientName: so?.client_name || '', recipientCnpj: so?.client_cnpj || '',
-              clientOrderNumber: so?.client_order_number || '', shoeCategory: refData?.shoe_category || '',
-              mainMaterial, grade: gradePerFicha, barcode: order.order_number,
-              imageUrl: finalImageUrl, nfe: so?.nfe || '', remessa: so?.remessa || '',
+              senderAddress: 'Rua Armando Krug, 525 · Bairro Canabarro · Teutônia/RS',
+              recipientName: so?.client_name || '',
+              recipientCnpj: so?.client_cnpj || '',
+              recipientCode,
+              recipientAddress,
+              recipientCity,
+              recipientUf,
+              transporter,
+              clientOrderNumber: so?.client_order_number || '',
+              shoeCategory: refData?.shoe_category || '',
+              mainMaterial,
+              grade: gradePerFicha,
+              barcode: order.order_number,
+              imageUrl: finalImageUrl,
+              nfe: so?.nfe || '',
+              remessa: so?.remessa || '',
               strapsLabel: getEffectiveStrapsLabel(group),
+              sizeRangeLabel,
+              totalPairsInRemessa: order.quantity,
+              taloes: fichas,
+              lote: order.order_number,
+              pageNumber: undefined, // computado abaixo, depois do loop
+              pageTotal: undefined,
             });
           }
         }
+      }
+      // Preenche pageNumber/pageTotal agora que conhecemos o total de etiquetas
+      const totalItems = boxItems.length;
+      for (let i = 0; i < boxItems.length; i++) {
+        boxItems[i].pageNumber = i + 1;
+        boxItems[i].pageTotal = totalItems;
       }
       setPrintHtml(buildBoxIdentificationHtml(boxItems));
       const orderIds = boxGroups.flatMap(g => g.orders.map((o: any) => o.id));

@@ -20,9 +20,15 @@ export interface BoxIdentificationData {
   boxOfNf?: string;
   senderName: string;
   senderCnpj: string;
+  senderAddress?: string;
   recipientName?: string;
   recipientCnpj?: string;
   recipientNumber?: string;
+  recipientCode?: string;
+  recipientAddress?: string;
+  recipientCity?: string;
+  recipientUf?: string;
+  transporter?: string;
   clientOrderNumber?: string;
   shoeCategory?: string;
   mainMaterial?: string;
@@ -30,6 +36,19 @@ export interface BoxIdentificationData {
   barcode?: string;
   imageUrl?: string;
   strapsLabel?: string;
+  /** Distintivo da grade (ex.: "5-10", "F-PP"). Aparece grande no canto. */
+  sizeRangeLabel?: string;
+  /** Ex.: total de pares na remessa. Quando undefined, omite linha. */
+  totalPairsInRemessa?: number;
+  /** Quantidade de talões/fichas dentro do corrugado/remessa. */
+  taloes?: number;
+  /** Identificador do lote do PV (opcional). */
+  lote?: string;
+  /** Número da fábrica/setor (opcional). */
+  fab?: string;
+  /** Página global e total (ex.: 41 de 72). Omite quando ambos faltam. */
+  pageNumber?: number;
+  pageTotal?: number;
 }
 
 interface LabelData {
@@ -64,78 +83,154 @@ function safeScriptBlock(code: string): string {
   return `<script>${code}<` + `/script>`;
 }
 
-/** Build HTML string for box identification labels (rótulo caixa externa) */
+/** Build HTML string for box identification labels (rótulo caixa externa)
+ *
+ * Layout no estilo Molekinha/Beira-Rio:
+ *   Topo:    Logo + Barcode  |  QR  +  Bloco Cliente
+ *   Sub:     Remessa/Talões  |  Rót Rem/Ped/Ped.Rem
+ *   Stats:   Lote · Corrugado · Fáb · Grade · Total
+ *   Mid:     Mod/Cor/Descrição  |  Imagem  |  Tamanho-grande
+ *   Grade:   Tam: 29 30 31 32 ...  /  Qtd: 1 1 1 1 ...
+ *   Rodapé:  Endereço remetente · CGC · Página X/Y
+ *
+ * Regra: campo vazio → linha/célula NÃO renderiza (em vez de aparecer "—").
+ */
 export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): string {
   const labels = items.map((item, idx) => {
-    const totalPairs = item.grade.reduce((sum, s) => sum + s.qty, 0);
+    const totalPairs = item.totalPairsInRemessa ?? item.grade.reduce((sum, s) => sum + s.qty, 0);
+    const corrugadoPairs = item.grade.reduce((sum, s) => sum + s.qty, 0);
 
+    // Cabeçalho da tabela de tamanhos só com tamanhos que existem na grade
     const gradeHead = item.grade.map(s =>
-      `<th style="text-align:center;padding:3px 5px;border:1px solid #222;font-size:11px;font-weight:900;background:#111;color:#fff;letter-spacing:0.5px;">${s.size}</th>`
+      `<th style="text-align:center;padding:2px 4px;font-size:10px;font-weight:700;color:#000;border:none;">${s.size}</th>`
     ).join('');
     const gradeRow = item.grade.map(s =>
-      `<td style="text-align:center;padding:3px 5px;border:1px solid #ccc;border-top:none;font-size:15px;font-weight:900;">${s.qty}</td>`
+      `<td style="text-align:center;padding:2px 4px;font-size:14px;font-weight:800;border:none;">${s.qty}</td>`
     ).join('');
 
     const barcodeId = `box-bc-${idx}`;
 
+    // Helpers de renderização condicional. Quando o valor é "falsy" (null,
+    // undefined, '', 0), a célula INTEIRA é omitida (em vez de aparecer vazia).
+    const fieldRow = (label: string, val: string | number | undefined, opts: { bold?: boolean; big?: boolean } = {}) => {
+      if (val === undefined || val === null || val === '' || val === 0) return '';
+      const bigStyle = opts.big ? 'font-size:18px;font-weight:900;' : '';
+      const boldStyle = opts.bold ? 'font-weight:700;' : '';
+      return `<div style="display:flex;gap:6px;line-height:1.25;${boldStyle}">
+        <span style="color:#555;font-size:9px;text-transform:none;min-width:48px;">${label}</span>
+        <span style="${bigStyle}">${escapeHtml(String(val))}</span>
+      </div>`;
+    };
+
+    const recipientBlock = [
+      item.recipientCode ? fieldRow('Cliente:', item.recipientCode) : '',
+      item.recipientAddress ? fieldRow('Endereço:', item.recipientAddress) : '',
+      item.recipientCity ? fieldRow('Cidade:', item.recipientCity) : '',
+      item.recipientUf ? fieldRow('UF:', item.recipientUf) : '',
+      item.transporter ? fieldRow('Transp:', item.transporter) : '',
+    ].filter(Boolean).join('');
+
+    const pedidoLine = item.clientOrderNumber
+      ? `<div style="margin-top:4px;padding-top:4px;border-top:1px dashed #999;display:flex;justify-content:space-between;align-items:baseline;gap:6px;">
+          <span style="font-size:10px;color:#444;font-weight:700;">Pedido:</span>
+          <span style="font-size:18px;font-weight:900;letter-spacing:0.5px;">${escapeHtml(item.clientOrderNumber)}</span>
+        </div>`
+      : '';
+
+    // Bloco esquerdo do topo (logo + barcode)
+    const headerLeft = `
+      <div style="flex:1;padding:6px 10px;display:flex;flex-direction:column;justify-content:center;border-right:1.5px solid #000;">
+        <p style="margin:0;font-size:17px;font-weight:900;letter-spacing:2px;text-transform:lowercase;line-height:1;">squad<span style="font-weight:400;">shoes</span></p>
+        ${item.barcode ? `
+          <svg id="${barcodeId}" style="margin-top:3px;max-width:100%;"></svg>
+        ` : ''}
+      </div>`;
+
+    // Bloco direito do topo (QR + cliente)
+    const headerRight = `
+      <div style="width:88mm;padding:5px 8px;display:flex;gap:8px;align-items:flex-start;">
+        <div style="width:18mm;height:18mm;flex-shrink:0;background:#fff;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;font-size:7px;color:#aaa;text-align:center;line-height:1.1;">
+          ${item.clientOrderNumber || item.orderNumber}<br/>QR
+        </div>
+        <div style="flex:1;font-size:10px;color:#000;">
+          ${recipientBlock || '<span style="color:#aaa;font-size:9px;font-style:italic;">Sem dados do destinatário</span>'}
+          ${pedidoLine}
+        </div>
+      </div>`;
+
+    // Linha de identificadores secundários (Remessa, Talões, Rótulos)
+    const subInfoCells = [
+      item.remessa ? `<div style="padding:2px 8px;border-right:1px solid #000;"><strong style="font-size:9px;color:#555;">Remessa:</strong> <span style="font-size:11px;font-weight:700;">${escapeHtml(item.remessa)}</span></div>` : '',
+      item.taloes ? `<div style="padding:2px 8px;border-right:1px solid #000;"><strong style="font-size:9px;color:#555;">Talões:</strong> <span style="font-size:11px;font-weight:700;">${item.taloes}</span></div>` : '',
+      `<div style="padding:2px 8px;border-right:1px solid #000;"><strong style="font-size:9px;color:#555;">Rót. Rem.:</strong> <span style="font-size:11px;font-weight:700;">${item.boxNumber}/${item.totalBoxes}</span></div>`,
+      `<div style="padding:2px 8px;border-right:1px solid #000;"><strong style="font-size:9px;color:#555;">Rót. Pedido:</strong> <span style="font-size:11px;font-weight:700;">${item.boxNumber}/${item.totalBoxes}</span></div>`,
+      item.nfe ? `<div style="padding:2px 8px;"><strong style="font-size:9px;color:#555;">NF-e:</strong> <span style="font-size:11px;font-weight:700;">${escapeHtml(item.nfe)}</span></div>` : '',
+    ].filter(Boolean).join('');
+
+    // Linha de stats (Lote, Corrugado, Fáb, Grade, Total)
+    const statsCells = [
+      item.lote ? `<div style="padding:2px 8px;border-right:1px solid #ccc;"><strong style="font-size:9px;color:#555;">Lote:</strong> <span style="font-size:10px;font-weight:700;">${escapeHtml(item.lote)}</span></div>` : '',
+      `<div style="padding:2px 8px;border-right:1px solid #ccc;"><strong style="font-size:9px;color:#555;">Corrugado:</strong> <span style="font-size:11px;font-weight:800;">${corrugadoPairs} PRS</span></div>`,
+      item.fab ? `<div style="padding:2px 8px;border-right:1px solid #ccc;"><strong style="font-size:9px;color:#555;">Fáb:</strong> <span style="font-size:10px;font-weight:700;">${escapeHtml(item.fab)}</span></div>` : '',
+      `<div style="padding:2px 8px;border-right:1px solid #ccc;"><strong style="font-size:9px;color:#555;">OP:</strong> <span style="font-size:10px;font-weight:700;">${escapeHtml(item.orderNumber)}</span></div>`,
+      `<div style="padding:2px 8px;"><strong style="font-size:9px;color:#555;">Total:</strong> <span style="font-size:11px;font-weight:800;">${totalPairs}</span></div>`,
+    ].filter(Boolean).join('');
+
+    // Bloco do produto: descrição + imagem + tamanho-grande
+    const productLeft = `
+      <div style="flex:1;padding:6px 10px;display:flex;flex-direction:column;gap:2px;">
+        ${item.refCode ? `<div style="font-size:11px;"><strong style="color:#555;font-size:9px;">Mod:</strong> <span style="font-weight:800;letter-spacing:0.3px;">${escapeHtml(item.refCode)}</span></div>` : ''}
+        ${item.color ? `<div style="font-size:11px;line-height:1.2;"><strong style="color:#555;font-size:9px;">Cor:</strong> <span style="font-weight:600;text-transform:uppercase;">${escapeHtml(item.color)}</span></div>` : ''}
+        ${item.refName && item.refName !== item.refCode ? `<div style="font-size:10px;color:#333;line-height:1.2;text-transform:uppercase;">${escapeHtml(item.refName)}</div>` : ''}
+        ${item.strapsLabel ? `<div style="font-size:9.5px;color:#444;"><strong>TIRAS:</strong> ${escapeHtml(item.strapsLabel.replace(/\|/g, ' — ').replace(/:/g, ': '))}</div>` : ''}
+        ${item.mainMaterial ? `<div style="font-size:9px;color:#666;font-style:italic;text-transform:uppercase;">${escapeHtml(item.mainMaterial)}</div>` : ''}
+        ${item.shoeCategory ? `<div style="font-size:9px;color:#666;">${escapeHtml(item.shoeCategory)}</div>` : ''}
+      </div>`;
+
+    const sizeRangeBig = item.sizeRangeLabel
+      ? `<div style="width:32mm;display:flex;align-items:center;justify-content:center;border-left:1px solid #ccc;">
+          <span style="font-size:42px;font-weight:900;line-height:1;letter-spacing:-2px;color:#000;">${escapeHtml(item.sizeRangeLabel)}</span>
+        </div>` : '';
+
+    const productImage = item.imageUrl ? `
+      <div style="width:36mm;border-left:1px solid #ccc;padding:4px;display:flex;align-items:center;justify-content:center;background:#fff;">
+        <img src="${item.imageUrl}" crossorigin="anonymous" style="max-width:32mm;max-height:30mm;width:auto;height:auto;object-fit:contain;" onerror="this.style.display='none'" />
+      </div>` : '';
+
+    // Rodapé: endereço remetente + CGC + página
+    const footerParts = [
+      item.senderAddress ? escapeHtml(item.senderAddress) : '',
+      item.senderCnpj ? `CGC: ${escapeHtml(item.senderCnpj)}` : '',
+      (item.pageNumber && item.pageTotal) ? `Página ${item.pageNumber} de ${item.pageTotal}` : '',
+    ].filter(Boolean).join(' · ');
+
     return `
       <div class="label-box">
-        <div style="display:flex;border-bottom:2.5px solid #000;">
-          <div style="flex:1;padding:7px 12px;border-right:1.5px solid #000;border-left:5px solid #000;background:#f8f8f8;">
-            <p style="margin:0;font-size:18px;font-weight:900;letter-spacing:3px;text-transform:uppercase;line-height:1.1;">SQUAD SHOES</p>
-            <p style="margin:1px 0 0;font-size:9px;color:#333;text-transform:uppercase;letter-spacing:0.5px;line-height:1.3;">Ind. e Com. de Calçados Ltda</p>
-            <p style="margin:0;font-size:9px;color:#555;">CNPJ: ${escapeHtml(item.senderCnpj)}</p>
-          </div>
-          <div style="width:60mm;padding:4px 8px;display:flex;align-items:center;justify-content:center;background:#fff;">
-            ${item.barcode ? `<svg id="${barcodeId}"></svg>` : `<span style="font-size:11px;color:#888;">—</span>`}
-          </div>
+        <div style="display:flex;border-bottom:1.5px solid #000;flex-shrink:0;">
+          ${headerLeft}
+          ${headerRight}
         </div>
-        <div style="display:flex;border-bottom:1px solid #000;font-size:11px;">
-          ${item.remessa ? `<div style="flex:1;padding:3px 8px;border-right:1px solid #000;"><span style="font-weight:bold;">Rem.:</span> ${escapeHtml(item.remessa)}</div>` : ''}
-          <div style="flex:1;padding:3px 8px;border-right:1px solid #000;"><span style="font-weight:bold;">Rót. Rem.:</span> ${item.boxNumber}/${item.totalBoxes}</div>
-          <div style="flex:1;padding:3px 8px;border-right:1px solid #000;"><span style="font-weight:bold;">Rót. Ped.:</span> ${item.boxNumber}/${item.totalBoxes}</div>
-          ${item.nfe ? `<div style="flex:1;padding:3px 8px;"><span style="font-weight:bold;">NF-e:</span> ${escapeHtml(item.nfe)}</div>` : ''}
+        <div style="display:flex;border-bottom:1px solid #000;flex-shrink:0;">
+          ${subInfoCells}
         </div>
-        <div style="display:flex;border-bottom:1px solid #000;font-size:11px;background:#f5f5f5;">
-          <div style="flex:1;padding:3px 8px;border-right:1px solid #ccc;font-weight:600;">CORRUGADO ${totalPairs} PRS</div>
-          <div style="flex:1;padding:3px 8px;border-right:1px solid #ccc;"><span style="font-weight:700;color:#666;font-size:9px;text-transform:uppercase;">Total </span><strong style="font-size:14px;">${totalPairs}</strong></div>
-          <div style="flex:1;padding:3px 8px;border-right:1px solid #ccc;"><span style="font-weight:700;color:#666;font-size:9px;text-transform:uppercase;">OP </span>${escapeHtml(item.orderNumber)}</div>
-          <div style="flex:1;padding:3px 8px;"><span style="font-weight:700;color:#666;font-size:9px;text-transform:uppercase;">Ped. Cli. </span>${escapeHtml(item.clientOrderNumber || '—')}</div>
+        <div style="display:flex;border-bottom:1px solid #000;background:#f5f5f5;flex-shrink:0;">
+          ${statsCells}
         </div>
-        <div style="display:flex;border-bottom:1px solid #000;flex:1;min-height:35mm;">
-          ${item.imageUrl ? `
-            <div style="width:45mm;border-right:1px solid #000;padding:5px;display:flex;align-items:center;justify-content:center;background:#fafafa;overflow:hidden;">
-              <img src="${item.imageUrl}" crossorigin="anonymous" style="max-width:40mm;max-height:32mm;width:auto;height:auto;object-fit:contain;" onerror="this.style.display='none'" />
-            </div>
-          ` : ''}
-          <div style="flex:1;padding:8px 14px;display:flex;flex-direction:column;justify-content:center;">
-            <p style="margin:0;font-size:20px;font-weight:900;text-transform:uppercase;letter-spacing:0.5px;line-height:1.1;">${escapeHtml(item.refName)}</p>
-            <p style="margin:3px 0 0;font-size:12px;font-weight:700;color:#333;text-transform:uppercase;letter-spacing:0.3px;"><span style="color:#888;font-weight:600;">REF </span>${escapeHtml(item.refCode)} &nbsp;·&nbsp; <span style="color:#888;font-weight:600;">COR </span>${escapeHtml(item.color)}</p>
-            ${item.strapsLabel ? `<p style="margin:3px 0 0;font-size:11px;color:#444;"><span style="font-weight:700;">TIRAS:</span> ${escapeHtml(item.strapsLabel.replace(/\|/g, ' — ').replace(/:/g, ': '))}</p>` : ''}
-            ${item.mainMaterial ? `<p style="margin:5px 0 0;font-size:11px;color:#555;text-transform:uppercase;letter-spacing:0.3px;font-style:italic;">${escapeHtml(item.mainMaterial)}</p>` : ''}
-            ${item.shoeCategory ? `<p style="margin:2px 0 0;font-size:10px;color:#666;">${escapeHtml(item.shoeCategory)}</p>` : ''}
-          </div>
+        <div style="display:flex;border-bottom:1px solid #000;flex:1;min-height:0;">
+          ${productLeft}
+          ${productImage}
+          ${sizeRangeBig}
         </div>
-        <div style="border-bottom:1px solid #000;padding:4px 8px;">
+        ${item.grade.length > 0 ? `
+        <div style="padding:3px 8px;border-bottom:1px solid #000;flex-shrink:0;">
           <table style="width:100%;border-collapse:collapse;">
-            <thead><tr>${gradeHead}</tr></thead>
-            <tbody><tr>${gradeRow}</tr></tbody>
+            <tbody>
+              <tr><td style="font-size:9px;color:#555;font-weight:700;padding-right:8px;">Tam.</td>${gradeHead}</tr>
+              <tr><td style="font-size:9px;color:#555;font-weight:700;padding-right:8px;">Qtd.</td>${gradeRow}</tr>
+            </tbody>
           </table>
-        </div>
-        <div style="display:flex;font-size:10px;line-height:1.4;">
-          <div style="flex:1;padding:5px 10px;border-right:1px solid #000;background:#f8f8f8;">
-            <p style="margin:0 0 3px;font-weight:900;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:#000;border-bottom:0.5px solid #ccc;padding-bottom:2px;">Remetente</p>
-            <p style="margin:0;font-weight:600;">${escapeHtml(item.senderName)}</p>
-            <p style="margin:0;color:#555;">CNPJ: ${escapeHtml(item.senderCnpj)}</p>
-          </div>
-          <div style="flex:1;padding:5px 10px;background:#f8f8f8;">
-            <p style="margin:0 0 3px;font-weight:900;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:#000;border-bottom:0.5px solid #ccc;padding-bottom:2px;">Destinatário</p>
-            ${item.recipientName ? `
-              <p style="margin:0;font-weight:600;">${item.recipientNumber ? `<strong style="color:#1a56db;">${escapeHtml(item.recipientNumber)}</strong> — ` : ''}${escapeHtml(item.recipientName)}</p>
-              ${item.recipientCnpj ? `<p style="margin:0;color:#555;">CNPJ: ${escapeHtml(item.recipientCnpj)}</p>` : ''}
-            ` : '<p style="margin:0;color:#999;">—</p>'}
-          </div>
-        </div>
+        </div>` : ''}
+        ${footerParts ? `<div style="padding:3px 10px;font-size:8.5px;color:#444;text-align:center;flex-shrink:0;">${footerParts}</div>` : ''}
       </div>`;
   });
 
