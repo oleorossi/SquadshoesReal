@@ -180,7 +180,10 @@ body{font-family:Arial,Helvetica,sans-serif;color:#000;padding:16px 10px;backgro
   width:190mm;margin:0 auto 8mm;display:flex;flex-direction:column;gap:3mm;box-sizing:border-box;
 }
 .page-container.page-break{break-after:page;page-break-after:always;}
-.page-container:last-child{break-after:auto;page-break-after:auto;margin-bottom:0;}
+/* page-container sem .page-break (= a última) NÃO tem break-after, evitando
+   folha em branco. Não usamos :last-child porque o print-footer fica DEPOIS
+   no DOM (mesmo escondido no print). */
+.page-container:not(.page-break){break-after:avoid;page-break-after:avoid;margin-bottom:0;}
 .print-footer{
   max-width:190mm;margin:24px auto 12px;padding:18px 24px;
   background:#fff;border:1px solid #d4d4d4;border-radius:6px;
@@ -199,9 +202,32 @@ body{font-family:Arial,Helvetica,sans-serif;color:#000;padding:16px 10px;backgro
 .print-footer__btn--ghost:hover{background:#f5f5f5;}
 @media print{
   body{padding:0;margin:0;}
-  .page-container{width:100%;height:287mm;margin:0;}
-  .label-box{height:142mm;}
-  .print-footer{display:none !important;}
+  /* 285mm em vez de 287mm: deixa 2mm de buffer pra evitar overflow de 1-2px
+     que dispararia uma página A4 extra. */
+  .page-container{width:100%;height:285mm;margin:0;}
+  .label-box{height:141mm;}
+  /* Footer tem que sumir COMPLETAMENTE em impressão (sem ocupar nem layout
+     nem fluxo de página). Várias regras em conjunto pra fechar todos os
+     caminhos: display:none deveria bastar, mas alguns navegadores ainda
+     reservam quebra de página, então zeramos tudo. */
+  .print-footer,
+  .print-footer *{
+    display:none !important;
+    visibility:hidden !important;
+    height:0 !important;
+    max-height:0 !important;
+    width:0 !important;
+    max-width:0 !important;
+    margin:0 !important;
+    padding:0 !important;
+    border:0 !important;
+    page-break-before:avoid !important;
+    page-break-inside:avoid !important;
+    page-break-after:avoid !important;
+    break-before:avoid !important;
+    break-inside:avoid !important;
+    break-after:avoid !important;
+  }
 }
 @page{size:A4;margin:5mm 6mm;}
 </style>
