@@ -67,6 +67,8 @@ const printStyles = `
 interface PrintWorkSheetsPageProps {
   orders: any[];
   onBack: () => void;
+  /** Quando true, renderiza fichas de TODOS os setores + relatório gerencial num arquivo único. */
+  printAll?: boolean;
 }
 
 const SECTORS = ['Corte Palmilha', 'Corte Forração', 'Costura', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição', 'Relatório Gerencial'] as const;
@@ -106,7 +108,7 @@ function groupOrdersByRefColor(orders: any[]): Array<{
   return Array.from(map.values());
 }
 
-const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
+const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkSheetsPageProps) => {
   const [selectedSector, setSelectedSector] = useState<typeof SECTORS[number]>('Corte Palmilha');
 
   const referenceIds = useMemo(() => [...new Set(orders.map(o => o.reference_id).filter(Boolean))], [orders]);
@@ -493,7 +495,7 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
 
   // ── Silk / Montagem / Corte Forração / Costura / Aviamento / Acabamento ────
   const silkMontageGroups = useMemo<SoleSilkGroup[] | null>(() => {
-    if (!SOLE_COLOR_GROUPED_SECTORS.includes(selectedSector as GroupedSector)) return null;
+    if (!printAll && !SOLE_COLOR_GROUPED_SECTORS.includes(selectedSector as GroupedSector)) return null;
     const soleMap = new Map<string, Map<string, SilkColorGroup>>();
 
     for (const order of orders) {
@@ -512,14 +514,15 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
       const colorMap = soleMap.get(soleName)!;
 
       if (!colorMap.has(colorName)) {
-        const silk = selectedSector === 'Silk' ? getOrderSilk(order) : undefined;
-        // Imagem: variante exata > fallback "Preto" (sempre cadastrada na ficha)
+        // Sempre calcula silk + alerts (independente do sector). O componente
+        // decide via theme se renderiza. Permite reutilizar o mesmo memo em
+        // modo printAll (todos os setores no mesmo arquivo).
+        const silk = getOrderSilk(order);
         const variants = variantsByRef.get(sheetId) || [];
         const exactVariant = variants.find(v => (v.color || '').toLowerCase() === cabedelColorLower);
-        // Alertas setor-específicos
         const liningFlag = liningFlagLookup.get(sheetId);
         const alerts: SectorAlert[] = [];
-        if (selectedSector === 'Aviamento' && liningFlag) {
+        if (liningFlag) {
           alerts.push({ text: 'Modelo com fachete — duplicar corte de forro', variant: 'warning' });
         }
         colorMap.set(colorName, {
@@ -554,11 +557,11 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
       })
       .sort((a, b) => a.soleName.localeCompare(b.soleName, 'pt-BR'));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orders, selectedSector, soleMappings, silkRegistrations, saleOrders]);
+  }, [orders, selectedSector, printAll, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup]);
 
   // ── Solagem: consolidated by sole color ──────────────────────────────────────
   const solagemData = useMemo<{ bands: SoleColorBand[]; allSizes: string[]; grandTotal: number } | null>(() => {
-    if (selectedSector !== 'Solagem') return null;
+    if (!printAll && selectedSector !== 'Solagem') return null;
     const soleColorMap = new Map<string, { grade: Record<string, number>; totalPairs: number }>();
     const sizeSet = new Set<string>();
 
@@ -592,12 +595,12 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
     const grandTotal = bands.reduce((s, b) => s + b.totalPairs, 0);
 
     return { bands, allSizes, grandTotal };
-  }, [orders, selectedSector, soleColorLookup]);
+  }, [orders, selectedSector, printAll, soleColorLookup]);
 
   // ── Expedição: por cliente (LOJA-A-LOJA), com info de embalagem ──────────
   // Acabamento agora segue mesma lógica de Aviamento (sole+color), per user.
   const expedicaoGroups = useMemo<ExpedicaoCustomerGroup[] | null>(() => {
-    if (selectedSector !== 'Expedição') return null;
+    if (!printAll && selectedSector !== 'Expedição') return null;
 
     const clientById = new Map<string, any>();
     for (const c of clientsInfo as any[]) clientById.set((c as any).id, c);
@@ -676,17 +679,17 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
     }
 
     return Array.from(map.values()).sort((a, b) => a.client_name.localeCompare(b.client_name, 'pt-BR'));
-  }, [orders, saleOrders, clientsInfo, soleMappings, soleGroupPackaging, nfeForExpedicao, saleOrdersTransport, selectedSector]);
+  }, [orders, saleOrders, clientsInfo, soleMappings, soleGroupPackaging, nfeForExpedicao, saleOrdersTransport, selectedSector, printAll]);
 
   // ── Colagem: agrupa por Ref + Cor (não tem solado-específico) ──────────────
   const groupedWorksheets = useMemo(() => {
-    if (selectedSector !== 'Colagem') return null;
+    if (!printAll && selectedSector !== 'Colagem') return null;
     return groupOrdersByRefColor(orders);
-  }, [orders, selectedSector]);
+  }, [orders, selectedSector, printAll]);
 
   // ── Relatório Gerencial: agrupa por sale_order_id, junta costs + stages ────
   const reportGroups = useMemo<Array<{ saleOrder: ReportSaleOrder; reportOrders: ReportOrder[] }> | null>(() => {
-    if (selectedSector !== 'Relatório Gerencial') return null;
+    if (!printAll && selectedSector !== 'Relatório Gerencial') return null;
 
     const clientById = new Map<string, any>();
     for (const c of clientsInfo as any[]) clientById.set((c as any).id, c);
@@ -779,7 +782,7 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
     return Array.from(map.values()).sort((a, b) =>
       (a.saleOrder.order_number || '').localeCompare(b.saleOrder.order_number || ''),
     );
-  }, [orders, saleOrders, clientsInfo, soleMappings, soleGroupPackaging, orderCosts, orderStagesData, selectedSector]);
+  }, [orders, saleOrders, clientsInfo, soleMappings, soleGroupPackaging, orderCosts, orderStagesData, selectedSector, printAll]);
 
   // ── Sheet count for print button label ───────────────────────────────────────
   const sheetCount =
@@ -814,36 +817,46 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
         <div className="flex items-center gap-4">
           <Button variant="ghost" onClick={onBack}><ArrowLeft className="mr-2 h-4 w-4" /> Voltar</Button>
           <div className="h-8 w-[1px] bg-border" />
-          <h2 className="font-bold text-lg">Fichas de Operador</h2>
-          <span className="text-sm text-muted-foreground">
-            {orders.length} OP(s) →{' '}
-            {selectedSector === 'Corte Palmilha' || selectedSector === 'Solagem' ? (
-              <>1 ficha consolidada</>
-            ) : SOLE_COLOR_GROUPED_SECTORS.includes(selectedSector as GroupedSector) ? (
-              <>{sheetCount} ficha(s) por solado</>
-            ) : selectedSector === 'Expedição' ? (
-              <>{expedicaoGroups?.length ?? 0} loja(s) · {sheetCount} ficha(s)</>
-            ) : selectedSector === 'Relatório Gerencial' ? (
-              <>{sheetCount} relatório(s) gerencial(is)</>
-            ) : (
-              <>{sheetCount} fichas agrupadas ({orders.length} OPs)</>
-            )}
-          </span>
+          <h2 className="font-bold text-lg">{printAll ? 'Imprimir Tudo' : 'Fichas de Operador'}</h2>
+          {printAll ? (
+            <span className="text-sm text-muted-foreground">
+              {orders.length} OP(s) → todas as fichas de operador + relatório gerencial num arquivo
+            </span>
+          ) : (
+            <span className="text-sm text-muted-foreground">
+              {orders.length} OP(s) →{' '}
+              {selectedSector === 'Corte Palmilha' || selectedSector === 'Solagem' ? (
+                <>1 ficha consolidada</>
+              ) : SOLE_COLOR_GROUPED_SECTORS.includes(selectedSector as GroupedSector) ? (
+                <>{sheetCount} ficha(s) por solado</>
+              ) : selectedSector === 'Expedição' ? (
+                <>{expedicaoGroups?.length ?? 0} loja(s) · {sheetCount} ficha(s)</>
+              ) : selectedSector === 'Relatório Gerencial' ? (
+                <>{sheetCount} relatório(s) gerencial(is)</>
+              ) : (
+                <>{sheetCount} fichas agrupadas ({orders.length} OPs)</>
+              )}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-xs text-muted-foreground bg-muted rounded-md px-2 py-1 flex items-center gap-1">
-            <Layers className="h-3.5 w-3.5" />
-            {badgeLabel}
-          </span>
-          <select
-            className="p-2 rounded border bg-background text-sm font-medium"
-            value={selectedSector}
-            onChange={e => setSelectedSector(e.target.value as any)}
-          >
-            {SECTORS.map(s => <option key={s} value={s}>Setor: {s}</option>)}
-          </select>
+          {!printAll && (
+            <>
+              <span className="text-xs text-muted-foreground bg-muted rounded-md px-2 py-1 flex items-center gap-1">
+                <Layers className="h-3.5 w-3.5" />
+                {badgeLabel}
+              </span>
+              <select
+                className="p-2 rounded border bg-background text-sm font-medium"
+                value={selectedSector}
+                onChange={e => setSelectedSector(e.target.value as any)}
+              >
+                {SECTORS.map(s => <option key={s} value={s}>Setor: {s}</option>)}
+              </select>
+            </>
+          )}
           <Button onClick={() => window.print()} className="gap-2">
-            <Printer className="h-4 w-4" /> Imprimir {sheetCount} Ficha(s)
+            <Printer className="h-4 w-4" /> {printAll ? 'Imprimir arquivo único' : `Imprimir ${sheetCount} Ficha(s)`}
           </Button>
         </div>
       </div>
@@ -851,52 +864,54 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
       {/* ── Print area ── */}
       <div className="print-area space-y-0">
 
-        {/* ── Corte Palmilha: consolidated insole-cutting sheet ── */}
-        {selectedSector === 'Corte Palmilha' && (
-          <PalmilhaWorkSheet
-            groups={palmilhaGroups}
-            allSizes={palmilhaAllSizes}
-            date={today}
-          />
-        )}
-
-        {/* ── Sole+Color sectors (Silk, Montagem, Corte Forração, Costura, Aviamento, Acabamento) ── */}
-        {silkMontageGroups && silkMontageGroups.map((group, idx) => (
-          <div key={group.soleName} className={idx < silkMontageGroups.length - 1 ? 'page-break' : ''}>
-            <SilkMontageWorkSheet
-              group={group}
-              sector={selectedSector as GroupedSector}
+        {/* ── Corte Palmilha ── */}
+        {(printAll || selectedSector === 'Corte Palmilha') && palmilhaGroups.length > 0 && (
+          <div className="page-break">
+            <PalmilhaWorkSheet
+              groups={palmilhaGroups}
+              allSizes={palmilhaAllSizes}
               date={today}
             />
           </div>
-        ))}
-
-        {/* ── Solagem: one consolidated sheet by sole color ── */}
-        {selectedSector === 'Solagem' && solagemData && (
-          <SolagemWorkSheet
-            bands={solagemData.bands}
-            allSizes={solagemData.allSizes}
-            date={today}
-            grandTotal={solagemData.grandTotal}
-          />
         )}
 
-        {/* ── Expedição: 1 ficha por cliente/CNPJ, com info de embalagem ── */}
-        {selectedSector === 'Expedição' && expedicaoGroups && expedicaoGroups.map((group, idx) => (
-          <div key={group.client_id} className={idx < expedicaoGroups.length - 1 ? 'page-break' : ''}>
-            <ExpedicaoWorkSheet group={group} date={today} />
-          </div>
-        ))}
+        {/* ── Sole+Color sectors (Silk, Corte Forração, Costura, Aviamento, Montagem, Acabamento) ── */}
+        {(() => {
+          if (!silkMontageGroups || silkMontageGroups.length === 0) return null;
+          // Em printAll, renderiza os 6 setores em sequência (ordem de fluxo de produção).
+          // Em modo normal, só o sector selecionado.
+          const sectorsToRender: GroupedSector[] = printAll
+            ? ['Corte Forração', 'Silk', 'Costura', 'Aviamento', 'Montagem', 'Acabamento']
+            : SOLE_COLOR_GROUPED_SECTORS.includes(selectedSector as GroupedSector)
+              ? [selectedSector as GroupedSector]
+              : [];
+          return sectorsToRender.flatMap(sectorName =>
+            silkMontageGroups.map((group, idx) => (
+              <div key={`${sectorName}-${group.soleName}`} className="page-break">
+                <SilkMontageWorkSheet
+                  group={group}
+                  sector={sectorName}
+                  date={today}
+                />
+              </div>
+            ))
+          );
+        })()}
 
-        {/* ── Relatório Gerencial: 1 relatório por PV ── */}
-        {selectedSector === 'Relatório Gerencial' && reportGroups && reportGroups.map((rg, idx) => (
-          <div key={rg.saleOrder.id} className={idx < reportGroups.length - 1 ? 'page-break' : ''}>
-            <ManagementReport saleOrder={rg.saleOrder} orders={rg.reportOrders} date={today} />
+        {/* ── Solagem ── */}
+        {(printAll || selectedSector === 'Solagem') && solagemData && solagemData.bands.length > 0 && (
+          <div className="page-break">
+            <SolagemWorkSheet
+              bands={solagemData.bands}
+              allSizes={solagemData.allSizes}
+              date={today}
+              grandTotal={solagemData.grandTotal}
+            />
           </div>
-        ))}
+        )}
 
-        {/* ── Colagem: agrupado por Ref + Cor (não tem solado-específico) ── */}
-        {groupedWorksheets && groupedWorksheets.map((group, idx) => {
+        {/* ── Colagem: agrupado por Ref + Cor ── */}
+        {(printAll || selectedSector === 'Colagem') && groupedWorksheets && groupedWorksheets.map((group) => {
           const { representative } = group;
           const syntheticOrder = {
             ...representative,
@@ -907,12 +922,11 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
           };
           const silk = getOrderSilk(representative);
           const { soleColor, insoleColor, insoleHasLining, insoleReadyMade, hasStraps, mesaCapacity } = getOrderColors(representative);
-          const isLast = idx === groupedWorksheets.length - 1;
           return (
-            <div key={`${representative.reference_id}::${representative.color}`} className={!isLast ? 'page-break' : ''}>
+            <div key={`colagem-${representative.reference_id}::${representative.color}`} className="page-break">
               <OperatorWorkSheet
                 order={syntheticOrder}
-                sector={selectedSector}
+                sector="Colagem"
                 silk={silk}
                 soleColor={soleColor}
                 insoleColor={insoleColor}
@@ -920,12 +934,26 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
                 insoleReadyMade={insoleReadyMade}
                 hasStraps={hasStraps}
                 mesaCapacity={mesaCapacity}
-                sectorCapacityPerDay={getSheetSectorCapacity(representative.reference_id, selectedSector)}
+                sectorCapacityPerDay={getSheetSectorCapacity(representative.reference_id, 'Colagem')}
                 opNumbers={group.opNumbers}
               />
             </div>
           );
         })}
+
+        {/* ── Expedição: 1 ficha por cliente/CNPJ ── */}
+        {(printAll || selectedSector === 'Expedição') && expedicaoGroups && expedicaoGroups.map((group) => (
+          <div key={`exped-${group.client_id}`} className="page-break">
+            <ExpedicaoWorkSheet group={group} date={today} />
+          </div>
+        ))}
+
+        {/* ── Relatório Gerencial: 1 relatório por PV ── */}
+        {(printAll || selectedSector === 'Relatório Gerencial') && reportGroups && reportGroups.map((rg) => (
+          <div key={`report-${rg.saleOrder.id}`} className="page-break">
+            <ManagementReport saleOrder={rg.saleOrder} orders={rg.reportOrders} date={today} />
+          </div>
+        ))}
       </div>
     </div>
   );
