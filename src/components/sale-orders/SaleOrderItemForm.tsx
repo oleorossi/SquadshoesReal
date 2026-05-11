@@ -9,6 +9,7 @@ import { Trash2, Lock, ChevronsUpDown, Check, Package, ExternalLink, Search, Com
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { SaleOrderItemFormData } from '@/hooks/useSaleOrders';
+import { useAccessControl } from '@/hooks/useAccessControl';
 import { useSheetMaterials } from '@/hooks/useTechnicalSheets';
 // StockAvailabilityBadge removido do form — checagem só no save
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
@@ -64,6 +65,7 @@ const formatCurrency = (v: number) =>
 
 function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, onUpdate, onRemove, onCopyGradeFromPrevious, onSaveStateAndNavigate }: Props) {
   const qc = useQueryClient();
+  const { canSeeFinancialValues } = useAccessControl();
   const fichas = item.fichas || 1;
   const setFichas = (v: number) => onUpdate(index, 'fichas', v);
 
@@ -653,10 +655,12 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             <p className="text-[9px] text-muted-foreground uppercase font-bold leading-none">Pares</p>
             <p className="font-mono font-bold text-sm leading-tight">{totalPairs}</p>
           </div>
-          <div className="text-right">
-            <p className="text-[9px] text-muted-foreground uppercase font-bold leading-none">Subtotal</p>
-            <p className="font-mono font-bold text-sm text-primary leading-tight">{formatCurrency(itemTotal)}</p>
-          </div>
+          {canSeeFinancialValues && (
+            <div className="text-right">
+              <p className="text-[9px] text-muted-foreground uppercase font-bold leading-none">Subtotal</p>
+              <p className="font-mono font-bold text-sm text-primary leading-tight">{formatCurrency(itemTotal)}</p>
+            </div>
+          )}
           {canRemove && (
             <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => onRemove(index)}>
               <Trash2 className="h-4 w-4" />
@@ -767,18 +771,20 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             );
           })()}
 
-          <div className="md:col-span-2">
-            <Label className="text-[10px] font-bold text-muted-foreground uppercase mb-1 block">Preço Unitário</Label>
-            <div className="relative">
-              <NumberInput
-                value={item.unit_price}
-                onChange={(v) => onUpdate(index, 'unit_price', v)}
-                className="h-9 font-mono text-xs"
-                decimals={2}
-              />
-              {pdv > 0 && !isAdmin && <div className="absolute right-2 top-1/2 -translate-y-1/2"><Lock className="h-3 w-3 text-muted-foreground opacity-30" /></div>}
+          {canSeeFinancialValues && (
+            <div className="md:col-span-2">
+              <Label className="text-[10px] font-bold text-muted-foreground uppercase mb-1 block">Preço Unitário</Label>
+              <div className="relative">
+                <NumberInput
+                  value={item.unit_price}
+                  onChange={(v) => onUpdate(index, 'unit_price', v)}
+                  className="h-9 font-mono text-xs"
+                  decimals={2}
+                />
+                {pdv > 0 && !isAdmin && <div className="absolute right-2 top-1/2 -translate-y-1/2"><Lock className="h-3 w-3 text-muted-foreground opacity-30" /></div>}
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="md:col-span-1">
             <Label className="text-[10px] font-bold text-muted-foreground uppercase mb-1 block text-center">Fichas</Label>

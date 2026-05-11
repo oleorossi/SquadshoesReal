@@ -28,6 +28,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import SaleOrderFormPanel from '@/components/sale-orders/SaleOrderFormPanel';
 import { useAuth } from '@/hooks/useAuth';
+import { useAccessControl } from '@/hooks/useAccessControl';
 import { useEmitNfe, useNfeEmitidas, useCheckNfeStatus, useCancelNfe, useCompanies } from '@/hooks/useNfe';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRepresentatives } from '@/hooks/useRepresentatives';
@@ -156,6 +157,10 @@ export default function SaleOrders() {
     },
   });
   const isAdmin = userRoles.includes('admin');
+  // Produção/almoxarifado veem PVs pra contexto de produção, mas SEM valores
+  // (preço unit, total, comissão). canSeeFinancialValues=false bloqueia colunas
+  // e KPIs financeiros sem retirar a navegação.
+  const { canSeeFinancialValues } = useAccessControl();
 
   // Dialog states
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -1359,17 +1364,19 @@ export default function SaleOrders() {
               </div>
             </CardContent>
           </Card>
-          <Card className="border-border/50">
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
-                <DollarSign className="h-5 w-5 text-violet-600" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground font-medium">Valor Total</p>
-                <p className="text-lg font-bold font-mono">{formatCurrency(kpis.total)}</p>
-              </div>
-            </CardContent>
-          </Card>
+          {canSeeFinancialValues && (
+            <Card className="border-border/50">
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
+                  <DollarSign className="h-5 w-5 text-violet-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground font-medium">Valor Total</p>
+                  <p className="text-lg font-bold font-mono">{formatCurrency(kpis.total)}</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Search & Filter Bar */}
@@ -1559,7 +1566,7 @@ export default function SaleOrders() {
                   <TableHead className="font-semibold">Nº Cliente</TableHead>
                   <TableHead className="font-semibold">Cliente</TableHead>
                   <TableHead className="font-semibold">Cidade</TableHead>
-                  <TableHead className="font-semibold text-right">Total</TableHead>
+                  {canSeeFinancialValues && <TableHead className="font-semibold text-right">Total</TableHead>}
                   <TableHead className="font-semibold">Status</TableHead>
                   <TableHead className="font-semibold text-right">Pares</TableHead>
                   <TableHead className="font-semibold">Entrega / Fat.</TableHead>
@@ -1627,11 +1634,13 @@ export default function SaleOrders() {
                           </span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex flex-col items-end">
-                          <span className="font-mono font-bold text-sm text-primary">{formatCurrency(Number(order.total))}</span>
-                        </div>
-                      </TableCell>
+                      {canSeeFinancialValues && (
+                        <TableCell className="text-right">
+                          <div className="flex flex-col items-end">
+                            <span className="font-mono font-bold text-sm text-primary">{formatCurrency(Number(order.total))}</span>
+                          </div>
+                        </TableCell>
+                      )}
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <Select value={order.status} onValueChange={async (v) => {
                           try {
@@ -1883,7 +1892,7 @@ export default function SaleOrders() {
                     <div className="text-right space-y-0.5">
                       <p><span className="font-semibold">Pagamento:</span> {selectedOrder.payment_condition || '—'}</p>
                       <p><span className="font-semibold">Entrega:</span> {selectedOrder.delivery_deadline ? new Date(selectedOrder.delivery_deadline).toLocaleDateString('pt-BR') : '—'}</p>
-                      {selectedOrder.commission_value > 0 && <p><span className="font-semibold">Comissão:</span> <span className="font-mono">{formatCurrency(Number(selectedOrder.commission_value))}</span></p>}
+                      {canSeeFinancialValues && selectedOrder.commission_value > 0 && <p><span className="font-semibold">Comissão:</span> <span className="font-mono">{formatCurrency(Number(selectedOrder.commission_value))}</span></p>}
                     </div>
                   </div>
                 </div>
@@ -1897,13 +1906,18 @@ export default function SaleOrders() {
                   <div className="text-center py-12 text-muted-foreground">Nenhum item</div>
                 ) : (
                   <div className="divide-y">
-                    <div className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] items-center bg-muted/60 px-4 py-2 text-xs font-semibold text-muted-foreground">
+                    <div className={cn(
+                      'grid items-center bg-muted/60 px-4 py-2 text-xs font-semibold text-muted-foreground',
+                      canSeeFinancialValues
+                        ? 'grid-cols-[1fr_auto_auto_auto_auto_auto]'
+                        : 'grid-cols-[1fr_auto_auto_auto]'
+                    )}>
                       <span>Ref. / Descrição</span>
                       <span className="w-20 text-right">PDV</span>
                       <span className="w-[220px] text-center">Grade</span>
                       <span className="w-16 text-center">Qtd</span>
-                      <span className="w-20 text-right">Unitário</span>
-                      <span className="w-24 text-right">Total</span>
+                      {canSeeFinancialValues && <span className="w-20 text-right">Unitário</span>}
+                      {canSeeFinancialValues && <span className="w-24 text-right">Total</span>}
                     </div>
                     {selectedOrderItems.map((item) => {
                       const grade = (item.grade || {}) as Record<string, number>;
@@ -1917,7 +1931,15 @@ export default function SaleOrders() {
                       const tsImages = (item as any).technical_sheets?.images as string[] | null;
                       const refImage = item.variant_image_url || (tsImages && tsImages.length > 0 ? tsImages[0] : ((item as any).technical_sheets?.image_url || ''));
                       return (
-                        <div key={item.id} className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] items-start px-4 py-3 gap-2 hover:bg-muted/20 transition-colors">
+                        <div
+                          key={item.id}
+                          className={cn(
+                            'grid items-start px-4 py-3 gap-2 hover:bg-muted/20 transition-colors',
+                            canSeeFinancialValues
+                              ? 'grid-cols-[1fr_auto_auto_auto_auto_auto]'
+                              : 'grid-cols-[1fr_auto_auto_auto]',
+                          )}
+                        >
                           <div className="flex items-center gap-3">
                             {refImage ? <img src={refImage} alt={refName} className="h-12 w-12 rounded object-cover border shrink-0" /> : <div className="h-12 w-12 rounded bg-muted flex items-center justify-center text-muted-foreground text-[10px] shrink-0">Sem foto</div>}
                             <div className="space-y-0.5">
@@ -1954,8 +1976,12 @@ export default function SaleOrders() {
                             ) : <span className="text-xs text-muted-foreground">—</span>}
                           </div>
                           <div className="w-16 text-center font-mono font-bold text-sm pt-1">{totalQty}</div>
-                          <div className="w-20 text-right font-mono text-sm pt-1">{formatCurrency(unit)}</div>
-                          <div className="w-24 text-right font-mono font-bold text-sm pt-1">{formatCurrency(totalQty * unit)}</div>
+                          {canSeeFinancialValues && (
+                            <>
+                              <div className="w-20 text-right font-mono text-sm pt-1">{formatCurrency(unit)}</div>
+                              <div className="w-24 text-right font-mono font-bold text-sm pt-1">{formatCurrency(totalQty * unit)}</div>
+                            </>
+                          )}
                         </div>
                       );
                     })}
@@ -1965,7 +1991,9 @@ export default function SaleOrders() {
 
               <div className="flex flex-col items-end gap-1 text-sm">
                 <p><span className="text-muted-foreground">Itens:</span> <span className="font-bold font-mono">{selectedOrderItems.reduce((s, i) => s + Number(i.quantity || 0), 0)}</span></p>
-                <p><span className="text-muted-foreground">Total:</span> <span className="font-bold font-mono text-lg">{loadingOrderItems ? '—' : formatCurrency(selectedOrderItems.reduce((s, i) => s + Number(i.quantity || 0) * Number(i.unit_price || 0), 0))}</span></p>
+                {canSeeFinancialValues && (
+                  <p><span className="text-muted-foreground">Total:</span> <span className="font-bold font-mono text-lg">{loadingOrderItems ? '—' : formatCurrency(selectedOrderItems.reduce((s, i) => s + Number(i.quantity || 0) * Number(i.unit_price || 0), 0))}</span></p>
+                )}
               </div>
 
               {/* PV informal: aviso no lugar do painel NF-e */}

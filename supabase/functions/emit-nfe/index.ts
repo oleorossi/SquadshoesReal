@@ -63,9 +63,9 @@ Deno.serve(async (req) => {
     if (rolesErr) {
       return new Response(JSON.stringify({ error: "Role check failed" }), { status: 500, headers: corsHeaders });
     }
-    const allowed = roles?.some((r: { role: string }) => ["admin", "gerente"].includes(r.role));
+    const allowed = roles?.some((r: { role: string }) => ["admin", "gerente", "nfe_operator"].includes(r.role));
     if (!allowed) {
-      return new Response(JSON.stringify({ error: "Forbidden: apenas admin ou gerente podem emitir NF-e" }), { status: 403, headers: corsHeaders });
+      return new Response(JSON.stringify({ error: "Forbidden: apenas admin, gerente ou operador NF-e podem emitir NF-e" }), { status: 403, headers: corsHeaders });
     }
 
     const { sale_order_id, company_id } = await req.json();

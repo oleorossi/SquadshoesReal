@@ -46,9 +46,11 @@ export const MODULES = [
 export const ROLES = [
   { key: 'admin', label: 'Administrador', description: 'Acesso total ao sistema' },
   { key: 'gerente', label: 'Gerente', description: 'Gestão geral com restrições' },
-  { key: 'producao', label: 'Produção', description: 'Ordens, estoque e componentes' },
+  { key: 'producao', label: 'Produção', description: 'Ordens, estoque e componentes (sem valores)' },
   { key: 'almoxarifado', label: 'Almoxarifado', description: 'Estoque e movimentações' },
   { key: 'comercial', label: 'Comercial', description: 'Vendas, clientes e relatórios' },
+  { key: 'nfe_operator', label: 'Operador NF-e', description: 'Emite NF-e, vê PV + cliente; sem AR/AP/DRE' },
+  { key: 'rh', label: 'RH', description: 'Funcionários, ponto, banco de horas, escalas (sem folha)' },
   { key: 'consulta', label: 'Consulta', description: 'Apenas visualização' },
 ] as const;
 

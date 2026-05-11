@@ -4,7 +4,7 @@ import {
   Settings, UserCheck, UserX, Shield, Loader2, ChevronDown, ChevronUp,
   Users, Eye, Pencil, Lock, Unlock, Search, Mail, Calendar, ShieldCheck,
   ShieldAlert, Crown, Briefcase, Factory, Warehouse, Store, BookOpen,
-  Trash2
+  Receipt, UserCog, Trash2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,6 +41,8 @@ const ROLE_ICONS: Record<string, React.ReactNode> = {
   producao: <Factory className="h-3.5 w-3.5" />,
   almoxarifado: <Warehouse className="h-3.5 w-3.5" />,
   comercial: <Store className="h-3.5 w-3.5" />,
+  nfe_operator: <Receipt className="h-3.5 w-3.5" />,
+  rh: <UserCog className="h-3.5 w-3.5" />,
   consulta: <BookOpen className="h-3.5 w-3.5" />,
 };
 
@@ -50,6 +52,8 @@ const ROLE_COLORS: Record<string, string> = {
   producao: 'bg-amber-500/15 text-amber-600 border-amber-500/30',
   almoxarifado: 'bg-emerald-500/15 text-emerald-600 border-emerald-500/30',
   comercial: 'bg-violet-500/15 text-violet-600 border-violet-500/30',
+  nfe_operator: 'bg-sky-500/15 text-sky-600 border-sky-500/30',
+  rh: 'bg-pink-500/15 text-pink-600 border-pink-500/30',
   consulta: 'bg-muted text-muted-foreground border-border/50',
 };
 

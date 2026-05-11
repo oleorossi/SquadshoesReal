@@ -32,13 +32,15 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/suppliers': 'fornecedores',
   '/clients': 'clientes',
   '/finance': 'financeiro',
-  '/nfe': 'financeiro',
+  '/companies': 'empresas_fiscal',
+  '/nfe': 'nfe',
   '/contractors': 'terceirizados',
   '/employees': 'rh',
   '/timesheet': 'rh',
   '/time-control': 'rh',
   '/rh/bank-hours': 'rh',
-  '/rh/payroll': 'rh',
+  '/rh/payroll': 'rh_folha',
+  '/payroll': 'rh_folha',
   '/purchase-orders': 'financeiro',
   '/purchase-planning': 'financeiro',
   '/pricing-calculator': 'financeiro',
@@ -73,7 +75,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/custos-insumos': 'estoque',
   '/imagens-cores': 'produtos',
   '/solados': 'produtos',
-  '/rh?tab=folha': 'rh',
+  '/rh?tab=folha': 'rh_folha',
   '/rh?tab=relatorios': 'rh',
   '/rh?tab=funcionarios': 'rh',
   '/rh?tab=ponto': 'rh',
@@ -113,11 +115,12 @@ const ROLE_MODULES: Record<string, string[]> = {
   admin: ['*'], // all
   gerente: [
     'dashboard', 'estoque', 'produtos', 'ordens', 'vendas', 'clientes',
-    'relatorios', 'financeiro', 'fornecedores', 'terceirizados', 'rh',
+    'relatorios', 'financeiro', 'nfe', 'empresas_fiscal',
+    'fornecedores', 'terceirizados', 'rh', 'rh_folha',
     'producao', 'expedicao',
   ],
   producao: [
-    'dashboard', 'estoque', 'produtos', 'ordens', 'producao',
+    'dashboard', 'estoque', 'produtos', 'ordens', 'producao', 'vendas', 'expedicao',
   ],
   almoxarifado: [
     'dashboard', 'estoque',
@@ -127,10 +130,30 @@ const ROLE_MODULES: Record<string, string[]> = {
   ],
   consulta: [
     'dashboard', 'estoque', 'produtos', 'ordens', 'vendas', 'clientes',
-    'relatorios', 'financeiro', 'fornecedores', 'terceirizados', 'rh',
-    'producao', 'expedicao',
+    'relatorios', 'financeiro', 'nfe', 'empresas_fiscal', 'fornecedores',
+    'terceirizados', 'rh', 'producao', 'expedicao',
+  ],
+  // Operador NF-e: emite/cancela NF + vê PVs com valores + cadastra clientes/empresas.
+  // Não tem acesso a AR/AP/DRE/bancos/folha.
+  nfe_operator: [
+    'dashboard', 'vendas', 'clientes', 'nfe', 'empresas_fiscal',
+  ],
+  // RH: cadastros, ponto, banco de horas, escalas, faltas. SEM folha de pagamento
+  // (gera financial_entries, restrito a admin).
+  rh: [
+    'dashboard', 'rh', 'terceirizados',
   ],
 };
+
+/**
+ * Roles que NÃO podem ver valores financeiros (preços, totais, comissão,
+ * faturamento) nas telas de vendas. Usado pra esconder colunas/campos sem
+ * remover a navegação. Produção e operador NF-e enquadram-se aqui pra
+ * diferentes razões: produção não decide preço (informação irrelevante);
+ * operador NF-e tem acesso a valores mas não a fluxo financeiro completo —
+ * e o nfe_operator NÃO entra aqui porque PRECISA ver valor pra emitir NF.
+ */
+const ROLES_BLOCKED_FROM_FINANCIAL_VALUES = new Set(['producao', 'almoxarifado']);
 
 function getAllowedModules(roles: string[]): Set<string> {
   const modules = new Set<string>();
@@ -183,6 +206,20 @@ function getAllowedModules(roles: string[]): Set<string> {
    const isAdmin = useMemo(() => roleKeys.includes('admin'), [roleKeys]);
   const allowedModules = useMemo(() => getAllowedModules(roleKeys), [roleKeys]);
 
+  /**
+   * Pode ver valores financeiros (preço unitário, total do PV, comissão).
+   * Admin sempre vê. Produção/almoxarifado nunca veem (mesmo que tenham
+   * acesso à página de Vendas pra contexto de produção).
+   */
+  const canSeeFinancialValues = useMemo(() => {
+    if (isAdmin) return true;
+    if (roleKeys.length === 0) return false;
+    // Bloqueia só quando TODAS as roles do usuário estão na blocklist.
+    // Se ele acumula 'producao' + 'comercial', mantém acesso a valores
+    // pelo papel comercial.
+    return roleKeys.some(r => !ROLES_BLOCKED_FROM_FINANCIAL_VALUES.has(r));
+  }, [isAdmin, roleKeys]);
+
   /** Check if a given route path is accessible */
   const canAccessRoute = (path: string): boolean => {
     if (!user) return false;
@@ -200,6 +237,8 @@ function getAllowedModules(roles: string[]): Set<string> {
     if (mod === 'financeiro_admin') return isAdmin;
     // sistema is admin-only
     if (mod === 'sistema') return isAdmin;
+    // rh_folha (folha de pagamento): admin/gerente apenas — role 'rh' não acessa
+    if (mod === 'rh_folha') return isAdmin || roleKeys.includes('gerente');
 
     return allowedModules.has(mod);
   };
@@ -209,6 +248,7 @@ function getAllowedModules(roles: string[]): Set<string> {
     if (!user) return false;
     if (allowedModules.has('*')) return true;
     if (moduleKey === 'sistema' || moduleKey === 'financeiro_admin') return isAdmin;
+    if (moduleKey === 'rh_folha') return isAdmin || roleKeys.includes('gerente');
     return allowedModules.has(moduleKey);
   };
 
@@ -219,6 +259,7 @@ function getAllowedModules(roles: string[]): Set<string> {
     roles: roleKeys,
     canAccessRoute,
     canAccessModule,
+    canSeeFinancialValues,
   };
 }
 

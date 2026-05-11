@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { SaleOrderFormData, SaleOrderItemFormData, PACKAGING_MODE_LABELS, type PackagingMode } from '@/hooks/useSaleOrders';
+import { useAccessControl } from '@/hooks/useAccessControl';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import SaleOrderItemForm from './SaleOrderItemForm';
 import { OrderStatusStepper } from '@/components/ui/order-status-stepper';
@@ -359,6 +360,7 @@ export default function SaleOrderFormPanel({
    // preenchidos. Antes disso, render limpo (sem ruído visual de erro).
    const [submitAttempted, setSubmitAttempted] = useState(false);
    const formRef = useRef<HTMLFormElement>(null);
+  const { canSeeFinancialValues } = useAccessControl();
   const selectedRep = representatives.find(r => r.id === form.representative);
   const selectedClient = clients.find(c => c.id === selectedClientId);
 
@@ -690,7 +692,8 @@ export default function SaleOrderFormPanel({
             </CardContent>
           </Card>
 
-          {/* Card 2: Condições Comerciais */}
+          {/* Card 2: Condições Comerciais — oculto pra produção/almoxarifado */}
+          {canSeeFinancialValues && (
           <Card className="border-border/60 shadow-sm overflow-hidden">
             <CardHeader className="py-3 px-4 bg-muted/30 border-b">
               <CardTitle className="text-sm font-bold flex items-center gap-2">
@@ -790,6 +793,7 @@ export default function SaleOrderFormPanel({
               </div>
             </CardContent>
           </Card>
+          )}
 
           {/* Card 3: Logística e Documentação */}
           <Card className="border-border/60 shadow-sm">
