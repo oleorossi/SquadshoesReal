@@ -28,7 +28,9 @@
       "Bash(curl -sI https://squadshoes-real.vercel.app/)",
       "mcp__claude_ai_Supabase__apply_migration",
       "mcp__claude_ai_Supabase__execute_sql",
-      "Bash(git mv *)"
+      "Bash(git mv *)",
+      "mcp__claude_ai_Supabase__get_advisors",
+      "Bash(tee /tmp/tsc-audit.out)"
     ],
     "additionalDirectories": [
       "/tmp"

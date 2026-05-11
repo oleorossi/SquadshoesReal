@@ -9,13 +9,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, FileText, RefreshCw, XCircle, Download, Search, Building2, Plus, CheckCircle, AlertCircle, Clock, Calculator, Activity } from 'lucide-react';
+import { Loader2, FileText, RefreshCw, XCircle, Download, Search, Building2, Plus, CheckCircle, AlertCircle, Clock, Calculator, Activity, FileEdit } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import CompaniesPanel from '@/components/nfe/CompaniesPanel';
 import TaxConfigPanel from '@/components/nfe/TaxConfigPanel';
 import NfeDiagnosticPanel from '@/components/nfe/NfeDiagnosticPanel';
+import NfeCCePanel from '@/components/nfe/NfeCCePanel';
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
@@ -326,6 +327,9 @@ export default function NfePage() {
           <TabsTrigger value="tributacao" className="gap-2">
             <Calculator className="h-4 w-4" /> Tributação
           </TabsTrigger>
+          <TabsTrigger value="cce" className="gap-2">
+            <FileEdit className="h-4 w-4" /> Cartas de Correção
+          </TabsTrigger>
           <TabsTrigger value="diagnostico" className="gap-2">
             <Activity className="h-4 w-4" /> Diagnóstico
           </TabsTrigger>
@@ -401,6 +405,10 @@ export default function NfePage() {
 
         <TabsContent value="tributacao" className="mt-4">
           <TaxConfigPanel />
+        </TabsContent>
+
+        <TabsContent value="cce" className="mt-4">
+          <NfeCCePanel />
         </TabsContent>
 
         <TabsContent value="diagnostico" className="mt-4">
