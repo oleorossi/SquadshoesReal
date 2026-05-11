@@ -100,7 +100,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     queryFn: async () => {
       const { data, error } = await supabase
         .from('technical_sheets')
-        .select('upper_material, lining_material, insole_material, lining_accessories, components_accessories, sole_group_id')
+        .select('upper_material, lining_material, insole_material, lining_accessories, components_accessories, sole_group_id, sole_material')
         .eq('id', item.reference_id!)
         .single();
       if (error) throw error;
@@ -110,32 +110,58 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   });
 
   const { data: soleSizeRange } = useQuery({
-    queryKey: ['sole_size_range_agg', sheetSpecs?.sole_group_id],
+    queryKey: ['sole_size_range_specific', sheetSpecs?.sole_group_id, sheetSpecs?.sole_material],
     enabled: !!sheetSpecs?.sole_group_id,
     queryFn: async () => {
-      // Agrega MIN(_size_from) / MAX(_size_to) entre TODAS as variantes
-      // de cor do mesmo group de solado — espelha o trigger DB
-      // tg_sync_ficha_sizes_from_sole. Antes pegava LIMIT 1 arbitrário.
+      // Prioriza a VARIANTE específica configurada na ficha (sole_material),
+      // pra evitar que outras variantes do mesmo group (ex.: "SOLADO INFANTIL"
+      // 25-36, "204" 25-32) puxem o range pra baixo. Antes era MIN/MAX entre
+      // TODAS as variantes — DS05 (sole_material="01", 34-40) aparecia 25-40.
       const { data } = await supabase
         .from('products')
-        .select('stock_grade')
+        .select('name, stock_grade')
         .eq('group_id', sheetSpecs!.sole_group_id!)
         .eq('category', 'Solado')
         .eq('active', true)
         .not('stock_grade', 'is', null);
       if (!data || data.length === 0) return null;
-      let minFrom: number | null = null;
-      let maxTo: number | null = null;
-      for (const row of data) {
-        const g = (row as any).stock_grade as Record<string, any> | null;
-        if (!g) continue;
-        const sf = g._size_from != null ? Number(g._size_from) : null;
-        const st = g._size_to != null ? Number(g._size_to) : null;
-        if (sf != null) minFrom = minFrom == null ? sf : Math.min(minFrom, sf);
-        if (st != null) maxTo = maxTo == null ? st : Math.max(maxTo, st);
+
+      const aggregate = (rows: typeof data): { sizeFrom: number; sizeTo: number } | null => {
+        let minFrom: number | null = null;
+        let maxTo: number | null = null;
+        for (const row of rows) {
+          const g = (row as any).stock_grade as Record<string, any> | null;
+          if (!g) continue;
+          const sf = g._size_from != null ? Number(g._size_from) : null;
+          const st = g._size_to != null ? Number(g._size_to) : null;
+          if (sf != null) minFrom = minFrom == null ? sf : Math.min(minFrom, sf);
+          if (st != null) maxTo = maxTo == null ? st : Math.max(maxTo, st);
+        }
+        if (minFrom == null || maxTo == null || minFrom > maxTo) return null;
+        return { sizeFrom: minFrom, sizeTo: maxTo };
+      };
+
+      const soleMat = (sheetSpecs?.sole_material || '').trim().toLowerCase();
+      if (soleMat) {
+        // Match variants whose name = sole_material OR começam com "{sole_material}{sep}"
+        // (ex.: sole_material="01" → casa "01", "01 - CARAMELO", "01-PRETO")
+        const matched = (data as any[]).filter(p => {
+          const n = (p.name || '').toLowerCase().trim();
+          if (!n) return false;
+          if (n === soleMat) return true;
+          for (const sep of [' ', '-', '/', '_']) {
+            if (n.startsWith(soleMat + sep)) return true;
+            if (soleMat.startsWith(n + sep)) return true;
+          }
+          return false;
+        });
+        const specificRange = aggregate(matched as typeof data);
+        if (specificRange) return specificRange;
       }
-      if (minFrom == null || maxTo == null || minFrom > maxTo) return null;
-      return { sizeFrom: minFrom, sizeTo: maxTo };
+
+      // Fallback: agrega todas (mantém comportamento anterior pra fichas
+      // sem sole_material configurado ou sem match de nome)
+      return aggregate(data);
     },
     staleTime: 5 * 60_000,
   });
