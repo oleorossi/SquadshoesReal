@@ -6,7 +6,17 @@
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
       "Bash(git rm *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(curl -s http://localhost:8080/)",
+      "Bash(curl -sI http://localhost:8080/src/main.tsx)",
+      "Bash(kill 15223)",
+      "Bash(curl -s http://localhost:8080/src/main.tsx?t=test)",
+      "Bash(curl -s 'http://localhost:8080/src/main.tsx')",
+      "Bash(curl -s -o /tmp/app.tsx.out -w \"HTTP %{http_code}\\\\n\" 'http://localhost:8080/src/App.tsx')",
+      "Read(//tmp/**)",
+      "Bash(bunx tsc *)",
+      "Bash(tee /tmp/tsc.out)",
+      "Bash(echo \"---EXIT $?---\")"
     ]
   }
 }
