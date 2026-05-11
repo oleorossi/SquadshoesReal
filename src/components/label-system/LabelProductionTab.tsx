@@ -776,7 +776,16 @@ export function LabelProductionTab() {
         const refData = refDataMap.get(group.referenceId);
         const mainMaterial = materialMap.get(group.referenceId) || '';
         for (const order of group.orders) {
-          const grade = order.grade as Record<string, number> | null;
+          // Parse grade defensivamente — Supabase devolve JSONB como objeto JS,
+          // mas se vier string (caso de cache antigo, .raw, ou serialização
+          // intermediária), parseamos. Antes assumíamos sempre objeto.
+          let grade: Record<string, number> | null = null;
+          const rawGrade = (order as any).grade;
+          if (rawGrade && typeof rawGrade === 'object' && !Array.isArray(rawGrade)) {
+            grade = rawGrade as Record<string, number>;
+          } else if (typeof rawGrade === 'string' && rawGrade.trim().startsWith('{')) {
+            try { grade = JSON.parse(rawGrade); } catch { grade = null; }
+          }
           const sizes = grade ? Object.keys(grade).sort((a, b) => Number(a) - Number(b)) : [];
           const gradeItems = sizes.map(size => ({ size, qty: Number(grade?.[size]) || 0 }));
           // grade já é por ficha (sum(grade) = pares em 1 ficha; quantity = pares
@@ -797,10 +806,20 @@ export function LabelProductionTab() {
           //
           // Se pairsPerFicha (config do usuário) for diferente de sum(grade),
           // escala proporcionalmente — cada caixa contém pairsPerFicha pares.
-          const scale = pairsInOneFicha > 0 && pairsPerFicha > 0 && pairsPerFicha !== pairsInOneFicha
-            ? pairsPerFicha / pairsInOneFicha
-            : 1;
-          const gradePerFicha = gradeItems.map(g => ({ size: g.size, qty: Math.round(g.qty * scale) }));
+          const useScale = pairsInOneFicha > 0 && pairsPerFicha > 0 && pairsPerFicha !== pairsInOneFicha;
+          const scale = useScale ? pairsPerFicha / pairsInOneFicha : 1;
+          let gradePerFicha = gradeItems.map(g => ({ size: g.size, qty: Math.round(g.qty * scale) }));
+          // Defesa: se escala fracionária derrubou tudo pra 0 mas a grade
+          // original tem qty (pairsInOneFicha > 0), usa a grade direta — melhor
+          // mostrar a distribuição da ficha do que etiqueta zerada.
+          if (gradePerFicha.reduce((s, g) => s + g.qty, 0) === 0 && pairsInOneFicha > 0) {
+            gradePerFicha = gradeItems.map(g => ({ size: g.size, qty: g.qty }));
+          }
+          if (import.meta.env.DEV && pairsInOneFicha === 0) {
+            console.warn('[LabelProductionTab] order sem grade utilizável:', {
+              order_number: order.order_number, rawGrade, gradeItems,
+            });
+          }
           for (let f = 0; f < fichas; f++) {
             const currentBoxNumber = Math.ceil((f + 1) / (fichasPerBox || 1));
             boxItems.push({
