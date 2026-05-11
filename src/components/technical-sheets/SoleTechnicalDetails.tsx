@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Footprints, Save, Loader2, RefreshCw, Layers, Shield, Plus, X, Copy, Info, Search, Link2, AlertTriangle } from "lucide-react";
+import { Footprints, Save, Loader2, RefreshCw, Layers, Shield, Plus, X, Copy, Info, Search, Link2, AlertTriangle, ChevronDown, Calculator } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { SoleConjugationPanel } from "@/components/inventory/SoleConjugationPanel";
@@ -92,6 +92,10 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
   const [soleGroupId, setSoleGroupId] = useState<string | null>(null);
   const [isFachetado, setIsFachetado] = useState<boolean>(false);
   const [shoeCategory, setShoeCategory] = useState<string | null>(null);
+  // Passo 3 (Materiais padrão) é opcional — escondemos por default pra não
+  // competir visualmente com o Passo 4 (onde o consumo de verdade é definido).
+  // User pode expandir se quiser configurar material default.
+  const [showDefaultMaterials, setShowDefaultMaterials] = useState<boolean>(false);
 
   // Conjugações vinculadas ao GRUPO do solado
   const { data: conjugations = [] } = useSoleConjugations(soleGroupId);
@@ -755,17 +759,33 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
         </CardContent>
       </Card>
 
-      {/* ─── Passo 3: Materiais (forro/palmilha) ─────────────────── */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-muted text-foreground text-[11px] font-bold">3</span>
-            Materiais padrão (forração / palmilha)
-          </CardTitle>
-          <CardDescription className="text-xs">
-            Material específico (recomendado) ou grupo genérico — usado quando o PV não trouxer override.
-          </CardDescription>
-        </CardHeader>
+      {/* ─── Passo 3: Materiais padrão — OPCIONAL (colapsável fechado) ───
+          Renomeado pra "Material default" + Badge "Opcional" + colapsável fechado.
+          O consumo de verdade é definido no Passo 4 — esse passo é só sugestão
+          de qual produto usar quando o PV não escolher.
+      */}
+      <Card className="border-dashed">
+        <button
+          type="button"
+          onClick={() => setShowDefaultMaterials(!showDefaultMaterials)}
+          className="w-full text-left"
+        >
+          <CardHeader className="pb-2 hover:bg-muted/20 transition-colors">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-muted text-muted-foreground text-[11px] font-bold">3</span>
+              Material default (opcional)
+              <Badge variant="outline" className="text-[9px] h-4 ml-1 bg-muted/30 text-muted-foreground border-muted">
+                Configuração avançada
+              </Badge>
+              <ChevronDown className={`h-4 w-4 ml-auto text-muted-foreground transition-transform ${showDefaultMaterials ? 'rotate-180' : ''}`} />
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Material sugerido pra forração/palmilha QUANDO o PV não trouxer um override.
+              {' '}<strong>Não afeta consumo</strong> — o cálculo de dm² vem do Passo 4 abaixo.
+            </CardDescription>
+          </CardHeader>
+        </button>
+        {showDefaultMaterials && (
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -875,22 +895,41 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
             </div>
           </div>
         </CardContent>
+        )}
       </Card>
 
-      {/* ─── Passo 4: Tabela de consumos por numeração ───────────── */}
+      {/* ─── Passo 4: Tabela de consumos por numeração ─────────────
+          Card destacado com border primary + bg gradient — é AQUI que
+          o consumo de verdade vai. Banner explicativo no topo deixa
+          isso visualmente óbvio (resolve confusão do user com Passo 3).
+      */}
       {sizes.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
+        <Card className="border-2 border-primary/40 bg-gradient-to-br from-primary/5 to-primary/10 shadow-sm">
+          <div className="px-4 pt-4 pb-2 flex items-start gap-3">
+            <div className="bg-primary/15 p-1.5 rounded-md shrink-0">
+              <Calculator className="h-5 w-5 text-primary" />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-base font-bold text-foreground">Consumo por numeração</span>
+                <Badge className="bg-primary/15 text-primary border-primary/30 text-[10px] h-5">
+                  ★ Fonte do cálculo
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Define quantos <strong>dm²/par</strong> são consumidos de Forração / Palmilha por tamanho.
+                <strong className="text-foreground"> Vale pra QUALQUER material</strong> que o PV escolher
+                (couro, lona, sintético, etc.) — independe da seleção do Passo 3.
+              </p>
+            </div>
+          </div>
+          <CardHeader className="pb-2 pt-2">
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div>
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-muted text-foreground text-[11px] font-bold">4</span>
-                  Consumo por numeração (dm²/par)
-                </CardTitle>
-                <CardDescription className="text-xs mt-1">
-                  Preencha o consumo de forração, palmilha e fachete por tamanho. Conjugadas (🔗) aparecem
-                  como uma única linha — o valor vale pra todos os tamanhos da conjugação.
-                  Tamanhos sem valor caem na <span className="text-amber-700 dark:text-amber-400 font-semibold">média escalar</span>.
+                {/* Título consolidado no banner acima — aqui só sublabel com dica */}
+                <CardDescription className="text-xs">
+                  Preencha forração, palmilha {isFachetado && '+ fachete'} por tamanho. Conjugadas (🔗) aparecem como UMA
+                  linha. Tamanhos sem valor caem na <span className="text-amber-700 dark:text-amber-400 font-semibold">média escalar</span>.
                 </CardDescription>
               </div>
               {/* Modo simplificado: 1 input que replica pra TODOS — útil quando o consumo é
