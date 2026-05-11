@@ -290,6 +290,73 @@ export function getNfeCancelHoursLeft(dataEmissao: string | null | undefined): n
   return remainingMs / 3600000;
 }
 
+/**
+ * Emite NF-e de devolução (entrada modelo 55, finalidade 4) referenciando a
+ * NF de saída original. Usado quando a janela de 24h pra cancelar passou.
+ * Após autorizada, mercadoria volta ao estoque + AR ajustado proporcionalmente.
+ */
+export function useEmitNfeDevolucao() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: {
+      nfeOriginalId: string;
+      itens: Array<{ sale_order_item_id: string; qty: number }>;
+      motivo: string;
+    }) => {
+      if (!payload.motivo || payload.motivo.trim().length < 15) {
+        throw new Error('Motivo deve ter ao menos 15 caracteres.');
+      }
+      if (!payload.itens || payload.itens.length === 0) {
+        throw new Error('Informe ao menos 1 item a devolver.');
+      }
+      const { data, error } = await supabase.functions.invoke('emit-nfe-devolucao', {
+        body: {
+          nfe_original_id: payload.nfeOriginalId,
+          itens: payload.itens,
+          motivo: payload.motivo.trim(),
+        },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: (data: any) => {
+      qc.invalidateQueries({ queryKey: ['nfe_emitidas'] });
+      qc.invalidateQueries({ queryKey: ['nfe_emitidas_all'] });
+      qc.invalidateQueries({ queryKey: ['nfe_devolucoes'] });
+      qc.invalidateQueries({ queryKey: ['sale_order_items'] });
+      qc.invalidateQueries({ queryKey: ['accounts_receivable'] });
+      qc.invalidateQueries({ queryKey: ['stock_movements'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+      if (data?.partial_cleanup_warning) {
+        toast.warning(`NF de devolução emitida, mas: ${data.partial_cleanup_warning}`, { duration: 8000 });
+      } else if (data?.success) {
+        toast.success(`NF de devolução autorizada! Chave: ${data?.devolucao?.chave_acesso?.slice(-6) || '—'}`);
+      } else {
+        toast.warning('NF de devolução cadastrada mas não autorizada — verifique status.');
+      }
+    },
+    onError: (err: Error) => toast.error(`Erro: ${err.message}`),
+  });
+}
+
+/**
+ * Lista NFs de devolução vinculadas a uma NF original (ou todas).
+ */
+export function useNfeDevolucoes(nfeOriginalId?: string) {
+  return useQuery({
+    queryKey: ['nfe_devolucoes', nfeOriginalId || 'all'],
+    queryFn: async () => {
+      let q = (supabase as any).from('nfe_devolucoes').select('*').order('created_at', { ascending: false });
+      if (nfeOriginalId) q = q.eq('nfe_original_id', nfeOriginalId);
+      const { data, error } = await q;
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 30_000,
+  });
+}
+
 export function useCancelNfe() {
   const qc = useQueryClient();
   return useMutation({

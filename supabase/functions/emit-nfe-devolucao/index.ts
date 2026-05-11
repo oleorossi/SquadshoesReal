@@ -1,0 +1,466 @@
+// =============================================================================
+// emit-nfe-devolucao — NF-e de devolução (entrada modelo 55, finalidade 4)
+// =============================================================================
+// Emite NF-e de entrada referenciando a NF de venda original. Usado quando a
+// janela de 24h pra cancelar passou. Após autorizada:
+//   - Incrementa products.quantity com os pares devolvidos
+//   - Atualiza sale_order_items.qty_devolvida
+//   - Cria stock_movement (tipo "Devolução cliente")
+//   - Reduz proporcionalmente accounts_receivable (se ainda pendente)
+//
+// CFOPs de entrada por devolução:
+//   1202: intra-estadual (NF original 5101/5102)
+//   2202: inter-estadual (NF original 6101/6102)
+// =============================================================================
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+  "Content-Type": "application/json",
+};
+
+const GESTAOCLICK_BASE = "https://api.gestaoclick.com";
+
+function gcHeaders() {
+  const access = Deno.env.get("CLICKNOTAS_ACCESS_TOKEN");
+  const secret = Deno.env.get("CLICKNOTAS_SECRET_TOKEN");
+  if (!access || !secret) {
+    throw new Error("Tokens CLICKNOTAS_ACCESS_TOKEN/CLICKNOTAS_SECRET_TOKEN não configurados.");
+  }
+  return {
+    "Access-Token": access,
+    "Secret-Access-Token": secret,
+    "Content-Type": "application/json",
+  };
+}
+
+async function gcFetch(path: string, init: RequestInit = {}) {
+  const res = await fetch(`${GESTAOCLICK_BASE}${path}`, {
+    ...init,
+    headers: { ...gcHeaders(), ...(init.headers || {}) },
+    signal: AbortSignal.timeout(30_000),
+  });
+  const text = await res.text();
+  let json: any;
+  try { json = JSON.parse(text); } catch { json = { mensagem: text }; }
+  return { ok: res.ok, status: res.status, json };
+}
+
+// Espelho da NF original → CFOP de entrada de devolução
+function cfopDevolucao(cfopSaida: string): string {
+  const c = String(cfopSaida || "").trim();
+  // Saídas intra (5xxx) → entrada 1202
+  if (c.startsWith("5")) {
+    if (c === "5403" || c === "5405") return "1411"; // ST → entrada ST
+    return "1202";
+  }
+  // Saídas inter (6xxx) → entrada 2202
+  if (c.startsWith("6")) {
+    if (c === "6403" || c === "6404") return "2411"; // ST inter → entrada ST inter
+    return "2202";
+  }
+  return "1202"; // fallback intra
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  try {
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+    }
+
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claims, error: claimsError } = await supabase.auth.getClaims(token);
+    if (claimsError || !claims?.claims?.sub) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+    }
+    const userId = claims.claims.sub as string;
+
+    const adminClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+    const { data: roles, error: rolesErr } = await adminClient
+      .from("user_roles").select("role").eq("user_id", userId);
+    if (rolesErr) {
+      return new Response(JSON.stringify({ error: "Role check failed" }), { status: 500, headers: corsHeaders });
+    }
+    const allowed = roles?.some((r: { role: string }) => ["admin", "gerente", "nfe_operator"].includes(r.role));
+    if (!allowed) {
+      return new Response(JSON.stringify({ error: "Forbidden: apenas admin, gerente ou operador NF-e podem emitir devolução" }), { status: 403, headers: corsHeaders });
+    }
+
+    const body = await req.json();
+    const { nfe_original_id, itens, motivo } = body as {
+      nfe_original_id: string;
+      itens: Array<{ sale_order_item_id: string; qty: number }>;
+      motivo: string;
+    };
+
+    if (!nfe_original_id) {
+      return new Response(JSON.stringify({ error: "nfe_original_id é obrigatório" }), { status: 400, headers: corsHeaders });
+    }
+    if (!Array.isArray(itens) || itens.length === 0) {
+      return new Response(JSON.stringify({ error: "Informe ao menos 1 item a devolver" }), { status: 400, headers: corsHeaders });
+    }
+    if (!motivo || motivo.trim().length < 15) {
+      return new Response(JSON.stringify({ error: "Motivo deve ter ao menos 15 caracteres" }), { status: 400, headers: corsHeaders });
+    }
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_RE.test(nfe_original_id)) {
+      return new Response(JSON.stringify({ error: "nfe_original_id inválido" }), { status: 400, headers: corsHeaders });
+    }
+    for (const it of itens) {
+      if (!UUID_RE.test(it.sale_order_item_id) || !Number.isFinite(Number(it.qty)) || Number(it.qty) <= 0) {
+        return new Response(JSON.stringify({ error: "Item inválido na lista de devolução" }), { status: 400, headers: corsHeaders });
+      }
+    }
+
+    // 1) NF original
+    const { data: nfeOriginal, error: nfeErr } = await adminClient
+      .from("nfe_emitidas").select("*").eq("id", nfe_original_id).single();
+    if (nfeErr || !nfeOriginal) {
+      return new Response(JSON.stringify({ error: "NF-e original não encontrada" }), { status: 404, headers: corsHeaders });
+    }
+    if (nfeOriginal.status !== "autorizada") {
+      return new Response(JSON.stringify({ error: `NF-e original com status '${nfeOriginal.status}' — só NFs autorizadas podem ser devolvidas.` }), { status: 400, headers: corsHeaders });
+    }
+    if (!nfeOriginal.chave_acesso || nfeOriginal.chave_acesso.length !== 44) {
+      return new Response(JSON.stringify({ error: "NF-e original sem chave de acesso (44 dígitos) — sincronize o status antes de devolver." }), { status: 400, headers: corsHeaders });
+    }
+
+    // 2) Sale order + cliente + items
+    const { data: saleOrder } = await adminClient
+      .from("sale_orders").select("*").eq("id", nfeOriginal.sale_order_id).maybeSingle();
+    if (!saleOrder) {
+      return new Response(JSON.stringify({ error: "Pedido vinculado à NF não encontrado" }), { status: 404, headers: corsHeaders });
+    }
+
+    let client: any = null;
+    if (saleOrder.client_id) {
+      const { data: c } = await adminClient.from("clients").select("*").eq("id", saleOrder.client_id).maybeSingle();
+      client = c;
+    }
+    if (!client) {
+      return new Response(JSON.stringify({ error: "Cliente do pedido não encontrado" }), { status: 404, headers: corsHeaders });
+    }
+    if (!client.gestaoclick_id) {
+      return new Response(JSON.stringify({ error: "Cliente sem id no GestaoClick — emita a NF original primeiro pra sincronizar." }), { status: 400, headers: corsHeaders });
+    }
+
+    const itemIds = itens.map(i => i.sale_order_item_id);
+    const { data: soItems } = await adminClient
+      .from("sale_order_items")
+      .select("*, technical_sheets(id, name, code, ncm, gestaoclick_id), reference_material_variants(sku, ncm, description_override, unit_price_override)")
+      .in("id", itemIds);
+    if (!soItems || soItems.length !== itens.length) {
+      return new Response(JSON.stringify({ error: "Alguns itens informados não pertencem ao pedido" }), { status: 400, headers: corsHeaders });
+    }
+
+    // 3) Validação de saldo por item
+    const itensFinal: any[] = [];
+    for (const req of itens) {
+      const item = soItems.find(i => i.id === req.sale_order_item_id);
+      if (!item) continue;
+      const qtyOriginal = Number(item.quantity || 0);
+      const qtyDevolvida = Number(item.qty_devolvida || 0);
+      const qtyAvail = qtyOriginal - qtyDevolvida;
+      const qtyToReturn = Number(req.qty);
+      if (qtyToReturn > qtyAvail) {
+        return new Response(JSON.stringify({
+          error: `Item ${item.technical_sheets?.code || item.id} — saldo de ${qtyAvail} pares; tentou devolver ${qtyToReturn}.`,
+        }), { status: 400, headers: corsHeaders });
+      }
+      const variant = item.reference_material_variants;
+      const unitPrice = Number(variant?.unit_price_override ?? item.unit_price ?? 0);
+      itensFinal.push({
+        sale_order_item_id: item.id,
+        reference_id: item.reference_id,
+        color: item.color,
+        ts_id: item.technical_sheets?.id,
+        ts_code: item.technical_sheets?.code,
+        ts_name: item.technical_sheets?.name,
+        ts_ncm: variant?.ncm || item.technical_sheets?.ncm,
+        ts_gc_id: item.technical_sheets?.gestaoclick_id,
+        variant_sku: variant?.sku,
+        variant_desc: variant?.description_override,
+        qty: qtyToReturn,
+        valor_unit: unitPrice,
+        valor_total: Number((qtyToReturn * unitPrice).toFixed(2)),
+      });
+    }
+
+    if (itensFinal.length === 0) {
+      return new Response(JSON.stringify({ error: "Nenhum item válido pra devolver" }), { status: 400, headers: corsHeaders });
+    }
+
+    // 4) Empresa emitente (mesma da NF original)
+    let fiscal: any = null;
+    if (nfeOriginal.company_id) {
+      const { data: c } = await adminClient.from("companies").select("*").eq("id", nfeOriginal.company_id).maybeSingle();
+      fiscal = c;
+    }
+    if (!fiscal) {
+      const { data: c } = await adminClient.from("companies").select("*").eq("is_primary", true).eq("active", true).limit(1).maybeSingle();
+      fiscal = c;
+    }
+    if (!fiscal) {
+      return new Response(JSON.stringify({ error: "Empresa emitente não configurada" }), { status: 400, headers: corsHeaders });
+    }
+
+    // 5) NCM check
+    const itemsMissingNcm = itensFinal.filter(it => !it.ts_ncm || !/^\d{8}$/.test(it.ts_ncm));
+    if (itemsMissingNcm.length > 0) {
+      return new Response(JSON.stringify({
+        error: `Itens sem NCM válido: ${itemsMissingNcm.map(i => i.ts_code).join(", ")}`,
+      }), { status: 400, headers: corsHeaders });
+    }
+
+    // 6) Sync produtos no GestaoClick (caso falte)
+    for (const it of itensFinal) {
+      if (it.ts_gc_id) continue;
+      const desc = (it.variant_desc || (it.color ? `${it.ts_name} - ${it.color}` : it.ts_name)).trim();
+      const r = await gcFetch("/produtos", {
+        method: "POST",
+        body: JSON.stringify({
+          nome: desc.slice(0, 120),
+          codigo: it.variant_sku || it.ts_code || `ITEM-${it.ts_id}`,
+          valor_venda: it.valor_unit.toFixed(2),
+          unidade: "PAR",
+          ncm: it.ts_ncm,
+          tipo: "P",
+        }),
+      });
+      if (!r.ok || r.json?.status === "error") {
+        return new Response(JSON.stringify({
+          error: `Falha ao sincronizar produto ${it.ts_code} com GestaoClick: ${r.json?.message || JSON.stringify(r.json)}`,
+        }), { status: 502, headers: corsHeaders });
+      }
+      it.ts_gc_id = String(r.json?.data?.id);
+      if (it.ts_id) await adminClient.from("technical_sheets").update({ gestaoclick_id: it.ts_gc_id }).eq("id", it.ts_id);
+    }
+
+    // 7) Payload GestaoClick — NF de entrada por devolução
+    const cfopOriginal = String(fiscal.cfop || "5102");
+    const cfopEntrada = cfopDevolucao(cfopOriginal);
+    const valorTotal = Number(itensFinal.reduce((s, it) => s + it.valor_total, 0).toFixed(2));
+
+    const ref = `nfe-dev-${nfe_original_id}-${Date.now()}`;
+    const nfePayload: any = {
+      tipo_nf: "0", // 0 = entrada
+      finalidade_nf: "4", // 4 = devolução
+      natureza_operacao: "Devolução de Venda",
+      id_destinatario: client.gestaoclick_id,
+      codigo_cfop: cfopEntrada,
+      modelo: "55",
+      serie: fiscal.serie_nfe || "1",
+      consumidor_final: "0",
+      chave_referenciada: nfeOriginal.chave_acesso,
+      informacoes_complementares: `Devolução referente à NF ${nfeOriginal.numero || nfeOriginal.chave_acesso}. Motivo: ${motivo.trim()}`,
+      produtos: itensFinal.map(it => ({
+        produto_id: it.ts_gc_id,
+        quantidade: it.qty.toFixed(2),
+        valor_venda: it.valor_total.toFixed(2),
+        cfop: cfopEntrada,
+        unidade: "PAR",
+        NCM: it.ts_ncm,
+        tipo: "P",
+      })),
+    };
+
+    // 8) Grava rascunho local com status processando
+    const devolucaoRecord: any = {
+      nfe_original_id,
+      sale_order_id: nfeOriginal.sale_order_id,
+      status: "processando",
+      ref_nfe: ref,
+      valor_total: valorTotal,
+      itens: itensFinal,
+      motivo: motivo.trim(),
+      cnpj_emitente: nfeOriginal.cnpj_emitente,
+      company_id: fiscal.id,
+      created_by: userId,
+    };
+    const { data: devLocal, error: devLocalErr } = await adminClient
+      .from("nfe_devolucoes").insert(devolucaoRecord).select().single();
+    if (devLocalErr) {
+      return new Response(JSON.stringify({ error: `Falha ao gravar devolução local: ${devLocalErr.message}` }), { status: 500, headers: corsHeaders });
+    }
+
+    // 9) POST cadastro NF
+    const createResp = await gcFetch("/notas_fiscais_produtos", {
+      method: "POST",
+      body: JSON.stringify(nfePayload),
+    });
+    if (!createResp.ok || createResp.json?.status === "error" || createResp.json?.data?.ok === false) {
+      const msg = createResp.json?.data?.mensagem || createResp.json?.message || JSON.stringify(createResp.json);
+      await adminClient.from("nfe_devolucoes")
+        .update({ status: "rejeitada", motivo_rejeicao: `Cadastro: ${msg}`, updated_at: new Date().toISOString() })
+        .eq("id", devLocal.id);
+      return new Response(JSON.stringify({ error: `Falha ao cadastrar devolução: ${msg}` }), { status: 422, headers: corsHeaders });
+    }
+    const gcNfeId = String(createResp.json?.data?.dados || createResp.json?.data?.id);
+
+    // 10) Emite
+    const emitResp = await gcFetch(`/notas_fiscais_produtos/emitir/${gcNfeId}`, { method: "POST" });
+    const emitOk = emitResp.ok && emitResp.json?.data?.ok !== false && emitResp.json?.status !== "error";
+
+    let chave = "";
+    let protocolo = "";
+    let situacao = "";
+    let numero = "";
+    let dataEmissao = "";
+    if (emitOk) {
+      const detail = await gcFetch(`/notas_fiscais_produtos/${gcNfeId}`);
+      const d = detail.json?.data || {};
+      chave = d.chave || "";
+      protocolo = d.protocolo || "";
+      situacao = d.situacao_nf || "";
+      numero = d.numero_nf ? String(d.numero_nf) : "";
+      if (d.data_emissao) {
+        const time = d.hora_emissao ? `${d.data_emissao}T${d.hora_emissao}-03:00` : d.data_emissao;
+        const t = new Date(time).getTime();
+        if (!Number.isNaN(t)) dataEmissao = new Date(t).toISOString();
+      }
+    }
+    const finalStatus = emitOk
+      ? (situacao?.toLowerCase().includes("aprovada") ? "autorizada" : "processando")
+      : "rejeitada";
+
+    const emitMsg = emitResp.json?.data?.mensagem || emitResp.json?.message || "";
+
+    // 11) Atualiza registro local
+    const updatePayload: any = {
+      status: finalStatus,
+      provider_nfe_id: gcNfeId,
+      chave_acesso: chave || null,
+      protocolo: protocolo || null,
+      numero: numero || null,
+      serie: fiscal.serie_nfe ? String(fiscal.serie_nfe) : "1",
+      data_emissao: dataEmissao || null,
+      motivo_rejeicao: emitOk ? null : emitMsg,
+      updated_at: new Date().toISOString(),
+    };
+    await adminClient.from("nfe_devolucoes").update(updatePayload).eq("id", devLocal.id);
+
+    // 12) Se autorizada: estoque + qty_devolvida + AR proporcional
+    const cleanupWarnings: string[] = [];
+    if (finalStatus === "autorizada") {
+      // 12a) Incrementa qty_devolvida em sale_order_items
+      for (const it of itensFinal) {
+        const { error: e } = await adminClient.rpc("increment_qty_devolvida" as any, {
+          p_item_id: it.sale_order_item_id,
+          p_qty: it.qty,
+        });
+        if (e) {
+          // Fallback: update direto se RPC não existe
+          const { data: cur } = await adminClient
+            .from("sale_order_items").select("qty_devolvida").eq("id", it.sale_order_item_id).single();
+          const novoTotal = Number(cur?.qty_devolvida || 0) + Number(it.qty);
+          await adminClient.from("sale_order_items")
+            .update({ qty_devolvida: novoTotal }).eq("id", it.sale_order_item_id);
+        }
+      }
+
+      // 12b) Stock movement de entrada por devolução
+      // Modela: produto = technical_sheet (ref) com cor especificada.
+      // Se houver products row específica pra (ref, color), usar. Senão, registra
+      // só o movimento sem incrementar quantity diretamente.
+      try {
+        for (const it of itensFinal) {
+          await adminClient.from("stock_movements").insert({
+            type: "Devolução cliente",
+            product_id: null,
+            reference_id: it.reference_id,
+            color: it.color,
+            quantity: it.qty,
+            sale_order_id: nfeOriginal.sale_order_id,
+            notes: `NF devolução ${chave || gcNfeId} — motivo: ${motivo.trim()}`,
+            created_by: userId,
+          } as any);
+        }
+      } catch (e: any) {
+        cleanupWarnings.push(`Stock movement não criado: ${e.message}`);
+      }
+
+      // 12c) Reduz accounts_receivable proporcional ao valor devolvido
+      try {
+        const { data: arList } = await adminClient
+          .from("accounts_receivable")
+          .select("id, amount, amount_received, status")
+          .eq("sale_order_id", nfeOriginal.sale_order_id)
+          .not("status", "in", "(received,cancelled)");
+        if (arList && arList.length > 0) {
+          const totalAR = arList.reduce((s, a: any) => s + Number(a.amount || 0), 0);
+          if (totalAR > 0) {
+            // Reduz proporcionalmente cada AR pelo valor devolvido total
+            for (const ar of arList as any[]) {
+              const share = Number(ar.amount) / totalAR;
+              const reducao = Number((share * valorTotal).toFixed(2));
+              const novoAmount = Math.max(0, Number(ar.amount) - reducao);
+              if (novoAmount <= 0.01) {
+                await adminClient.from("accounts_receivable")
+                  .update({ status: "cancelled", notes: `Cancelado por devolução total via NF ${chave || gcNfeId}` })
+                  .eq("id", ar.id);
+              } else {
+                await adminClient.from("accounts_receivable")
+                  .update({ amount: novoAmount, notes: `Reduzido R$ ${reducao.toFixed(2)} por devolução NF ${chave || gcNfeId}` })
+                  .eq("id", ar.id);
+              }
+            }
+          }
+        }
+      } catch (e: any) {
+        cleanupWarnings.push(`AR não ajustado: ${e.message}`);
+      }
+
+      // 12d) Se já houver financial_entry confirmado (receita já reconhecida),
+      // registra ajuste de crédito negativo pra cancelar a receita devolvida.
+      try {
+        const { data: existingEntries } = await adminClient
+          .from("financial_entries")
+          .select("id, status, amount, type")
+          .eq("reference_id", nfeOriginal.sale_order_id)
+          .eq("reference_type", "sale_order")
+          .in("status", ["confirmed", "posted", "reconciled", "paid"]);
+        if (existingEntries && existingEntries.length > 0) {
+          await adminClient.from("financial_entries").insert({
+            type: "receita",
+            category: "venda",
+            amount: -valorTotal,
+            status: "confirmed",
+            description: `Estorno por devolução NF ${chave || gcNfeId}`,
+            reference_id: nfeOriginal.sale_order_id,
+            reference_type: "sale_order_devolucao",
+            entry_date: new Date().toISOString().split("T")[0],
+            created_by: userId,
+          } as any);
+        }
+      } catch (e: any) {
+        cleanupWarnings.push(`Lançamento de estorno não criado: ${e.message}`);
+      }
+    }
+
+    return new Response(JSON.stringify({
+      success: emitOk,
+      devolucao: { ...devLocal, ...updatePayload },
+      provider_response: { create: createResp.json, emit: emitResp.json },
+      ...(cleanupWarnings.length > 0 ? { partial_cleanup_warning: cleanupWarnings.join("; ") } : {}),
+    }), {
+      status: emitOk ? 200 : 422,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : "Erro desconhecido";
+    console.error("emit-nfe-devolucao error:", error);
+    return new Response(JSON.stringify({ error: msg }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+});

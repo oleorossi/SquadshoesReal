@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { getSignedUrl } from '@/lib/getSignedUrl';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { ShoppingCart, Plus, Loader2, Copy, Printer, Factory, Pencil, FileText, Filter, X, Search, Package, DollarSign, Clock, ChevronDown, BarChart3, ClipboardList, RefreshCw, Tag, LayoutDashboard, Zap, FileSpreadsheet, Receipt, XCircle, CheckCircle, Download, TrendingUp, AlertTriangle } from 'lucide-react';
+import { ShoppingCart, Plus, Loader2, Copy, Printer, Factory, Pencil, FileText, Filter, X, Search, Package, DollarSign, Clock, ChevronDown, BarChart3, ClipboardList, RefreshCw, Tag, LayoutDashboard, Zap, FileSpreadsheet, Receipt, XCircle, CheckCircle, Download, TrendingUp, AlertTriangle, RotateCcw } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import MaterialConsumptionDialog from '@/components/sale-orders/MaterialConsumptionDialog';
 import MarginDialog from '@/components/sale-orders/MarginDialog';
@@ -30,6 +30,7 @@ import SaleOrderFormPanel from '@/components/sale-orders/SaleOrderFormPanel';
 import { useAuth } from '@/hooks/useAuth';
 import { useAccessControl } from '@/hooks/useAccessControl';
 import { useEmitNfe, useNfeEmitidas, useCheckNfeStatus, useCancelNfe, useCompanies } from '@/hooks/useNfe';
+import { NfeDevolucaoDialog } from '@/components/nfe/NfeDevolucaoDialog';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRepresentatives } from '@/hooks/useRepresentatives';
 import { printHtml, buildSaleOrderPrintHtml } from '@/lib/printOrder';
@@ -104,6 +105,7 @@ export default function SaleOrders() {
   const [nfeCompanyId, setNfeCompanyId] = useState('');
   const [cancelNfeTarget, setCancelNfeTarget] = useState<{ id: string; numero: string | null } | null>(null);
   const [cancelJustificativa, setCancelJustificativa] = useState('');
+  const [devolucaoTarget, setDevolucaoTarget] = useState<{ id: string; numero: string | null } | null>(null);
   const resyncOPs = useResyncOPsFromSheets();
   const resyncPVOPs = useResyncOPsFromPV();
   // bulkSyncFinancial removido em 2026-05 — sync acontece automaticamente no faturamento
@@ -2085,6 +2087,12 @@ export default function SaleOrders() {
                                 <XCircle className="h-3 w-3" />
                               </Button>
                             )}
+                            {nfe.status === 'autorizada' && (
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-600 hover:text-amber-700" title="Emitir NF-e de devolução"
+                                onClick={() => setDevolucaoTarget({ id: nfe.id, numero: nfe.numero })}>
+                                <RotateCcw className="h-3 w-3" />
+                              </Button>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -2133,6 +2141,18 @@ export default function SaleOrders() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* NF-e devolução dialog */}
+      {devolucaoTarget && selectedOrder && (
+        <NfeDevolucaoDialog
+          open={!!devolucaoTarget}
+          onOpenChange={(v) => { if (!v) setDevolucaoTarget(null); }}
+          nfeId={devolucaoTarget.id}
+          nfeNumero={devolucaoTarget.numero}
+          saleOrderId={selectedOrder.id}
+          clientName={selectedOrder.client_name}
+        />
+      )}
 
       {/* DUPLICATE DIALOG */}
       <Dialog open={dupDialog} onOpenChange={setDupDialog}>
