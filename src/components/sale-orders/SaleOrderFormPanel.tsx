@@ -483,9 +483,24 @@ export default function SaleOrderFormPanel({
 
   const totalPairs = items.reduce((s, i) => s + (i.quantity || 0), 0);
   const totalValue = items.reduce((s, i) => s + (i.quantity || 0) * (i.unit_price || 0), 0);
-  const [shippingRate, setShippingRate] = useState(1.5); // Default rate per pair
-  const [shippingRateText, setShippingRateText] = useState('1,50');
+  // Hidrata do form.shipping_rate_per_pair (persistido no DB).
+  // Padrão 0 quando criando um PV novo — só gera entry financeira se user setar > 0.
+  const initialRate = Number(form.shipping_rate_per_pair) || 0;
+  const [shippingRate, setShippingRate] = useState(initialRate);
+  const [shippingRateText, setShippingRateText] = useState(
+    initialRate > 0 ? initialRate.toFixed(2).replace('.', ',') : '0'
+  );
   const estimatedShippingCost = totalPairs * shippingRate;
+
+  // Sync de volta pro form quando user digita — assim o save (handleSubmit do
+  // SaleOrderForm) já manda shipping_rate_per_pair no payload. Trigger no DB
+  // cria a financial_entry automaticamente.
+  useEffect(() => {
+    if ((Number(form.shipping_rate_per_pair) || 0) !== shippingRate) {
+      setForm(f => ({ ...f, shipping_rate_per_pair: shippingRate }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shippingRate]);
 
   // Group items by reference_id + color, keeping original indices
   const sortedIndices = useMemo(() => {

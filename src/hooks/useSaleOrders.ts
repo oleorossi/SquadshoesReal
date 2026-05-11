@@ -524,6 +524,9 @@ export type SaleOrderFormData = {
   is_factoring: boolean;
   factoring_config_id: string;
   packaging_mode: PackagingMode;
+  /** Taxa de frete por par em R$ — gera financial_entry de despesa
+   *  automaticamente quando > 0 (trigger DB cria/atualiza). */
+  shipping_rate_per_pair?: number;
 };
 
 export type SaleOrderItemFormData = {
