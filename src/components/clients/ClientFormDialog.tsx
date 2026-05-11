@@ -12,6 +12,8 @@ import { toast } from 'sonner';
 import { Client, ClientFormData, EconomicGroup } from '@/hooks/useClients';
 import ClientLogoTab from './ClientLogoTab';
 import RepresentativeTab from './RepresentativeTab';
+import ClientAddressesTab from './ClientAddressesTab';
+import ClientContactsTab from './ClientContactsTab';
 
 const ESTADOS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
@@ -113,7 +115,7 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editingClient ? 'Editar Cliente' : 'Novo Cliente'}</DialogTitle>
         </DialogHeader>
@@ -122,6 +124,8 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
             <TabsList className="w-full">
               <TabsTrigger value="dados" className="flex-1">Dados</TabsTrigger>
               <TabsTrigger value="silk" className="flex-1">SILK (Logo)</TabsTrigger>
+              {editingClient && <TabsTrigger value="enderecos" className="flex-1">Endereços</TabsTrigger>}
+              {editingClient && <TabsTrigger value="contatos" className="flex-1">Contatos</TabsTrigger>}
               {editingClient && <TabsTrigger value="representante" className="flex-1">Representante</TabsTrigger>}
             </TabsList>
 
@@ -249,9 +253,19 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
             </TabsContent>
 
             {editingClient && (
-              <TabsContent value="representante" className="mt-3">
-                <RepresentativeTab entityId={editingClient.id} type="client" />
-              </TabsContent>
+              <>
+                <TabsContent value="enderecos" className="mt-3">
+                  <ClientAddressesTab clientId={editingClient.id} />
+                </TabsContent>
+
+                <TabsContent value="contatos" className="mt-3">
+                  <ClientContactsTab clientId={editingClient.id} />
+                </TabsContent>
+
+                <TabsContent value="representante" className="mt-3">
+                  <RepresentativeTab entityId={editingClient.id} type="client" />
+                </TabsContent>
+              </>
             )}
           </Tabs>
 

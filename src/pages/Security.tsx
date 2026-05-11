@@ -5,8 +5,9 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ShieldCheck, Lock, Eye } from 'lucide-react';
+import { ShieldCheck, Lock, Eye, KeyRound, RefreshCcw } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function Security() {
   const qc = useQueryClient();
@@ -120,6 +121,8 @@ export default function Security() {
         </CardContent>
       </Card>
 
+      <MfaCard />
+
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-bold flex items-center gap-2"><Eye className="h-4 w-4 text-primary" /> Campos sensíveis (mascaramento)</CardTitle>
@@ -144,5 +147,166 @@ export default function Security() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function MfaCard() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  const userId = user?.id;
+
+  const { data: mfa, isLoading } = useQuery({
+    queryKey: ['user_mfa', userId],
+    enabled: !!userId,
+    queryFn: async () => {
+      if (!userId) return null;
+      const { data } = await (supabase as any)
+        .from('user_mfa_settings')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
+      return data;
+    },
+  });
+
+  const upsert = useMutation({
+    mutationFn: async (patch: any) => {
+      if (!userId) throw new Error('Sessão sem usuário.');
+      const payload = { user_id: userId, ...patch };
+      const { error } = await (supabase as any)
+        .from('user_mfa_settings')
+        .upsert(payload, { onConflict: 'user_id' });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['user_mfa', userId] });
+      toast.success('MFA atualizado.');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const regenBackupCodes = useMutation({
+    mutationFn: async () => {
+      if (!userId) throw new Error('Sessão sem usuário.');
+      const codes = Array.from({ length: 8 }, () =>
+        Math.random().toString(36).slice(2, 6).toUpperCase() + '-' +
+        Math.random().toString(36).slice(2, 6).toUpperCase()
+      );
+      const { error } = await (supabase as any)
+        .from('user_mfa_settings')
+        .upsert({ user_id: userId, backup_codes: codes }, { onConflict: 'user_id' });
+      if (error) throw error;
+      return codes;
+    },
+    onSuccess: (codes) => {
+      qc.invalidateQueries({ queryKey: ['user_mfa', userId] });
+      // Cópia para clipboard pra usuário guardar
+      navigator.clipboard?.writeText(codes.join('\n'));
+      toast.success(`8 códigos gerados e copiados pra área de transferência.`);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const enabled = !!mfa?.mfa_enabled;
+  const codes: string[] = mfa?.backup_codes ?? [];
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-bold flex items-center gap-2">
+          <KeyRound className="h-4 w-4 text-primary" /> Autenticação em duas etapas (MFA)
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        {isLoading ? (
+          <p className="text-xs text-muted-foreground">Carregando…</p>
+        ) : (
+          <>
+            <div className="flex items-center justify-between rounded-md border p-3">
+              <div className="flex-1">
+                <p className="text-sm font-medium">MFA ativo</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Quando ativado, login pedirá um código TOTP (Google Authenticator/Authy) além da senha.
+                  {mfa?.enrolled_at && ` · Configurado em ${new Date(mfa.enrolled_at).toLocaleDateString('pt-BR')}`}
+                  {mfa?.last_used_at && ` · Último uso ${new Date(mfa.last_used_at).toLocaleDateString('pt-BR')}`}
+                </p>
+              </div>
+              <Switch
+                checked={enabled}
+                onCheckedChange={(v) => upsert.mutate({
+                  mfa_enabled: v,
+                  enrolled_at: v && !mfa?.enrolled_at ? new Date().toISOString() : mfa?.enrolled_at,
+                })}
+              />
+            </div>
+
+            {enabled && (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-[10px] uppercase font-bold">Método</Label>
+                    <select
+                      value={mfa?.mfa_method ?? 'totp'}
+                      onChange={(e) => upsert.mutate({ mfa_method: e.target.value })}
+                      className="w-full mt-1 h-8 px-2 rounded-md border border-input bg-background text-sm"
+                    >
+                      <option value="totp">TOTP (app autenticador)</option>
+                      <option value="sms">SMS</option>
+                      <option value="email">E-mail</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label className="text-[10px] uppercase font-bold">Telefone recuperação</Label>
+                    <Input
+                      value={mfa?.recovery_phone ?? ''}
+                      onChange={(e) => upsert.mutate({ recovery_phone: e.target.value })}
+                      placeholder="+55 ..."
+                      className="h-8"
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <Label className="text-[10px] uppercase font-bold">E-mail de recuperação</Label>
+                    <Input
+                      type="email"
+                      value={mfa?.recovery_email ?? ''}
+                      onChange={(e) => upsert.mutate({ recovery_email: e.target.value })}
+                      className="h-8"
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-md border p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium">Códigos de backup</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {codes.length > 0 ? `${codes.length} códigos disponíveis` : 'Nenhum código gerado'}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => regenBackupCodes.mutate()}
+                      className="text-xs font-medium text-primary hover:underline flex items-center gap-1"
+                      disabled={regenBackupCodes.isPending}
+                    >
+                      <RefreshCcw className="h-3 w-3" />
+                      {codes.length > 0 ? 'Regenerar' : 'Gerar 8 códigos'}
+                    </button>
+                  </div>
+                  {codes.length > 0 && (
+                    <div className="grid grid-cols-4 gap-1.5 mt-2">
+                      {codes.map((c, i) => (
+                        <code key={i} className="text-[11px] font-mono bg-muted px-2 py-1 rounded text-center">
+                          {c}
+                        </code>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }

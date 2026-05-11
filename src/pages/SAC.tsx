@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Plus, MessageSquare, AlertTriangle, Camera } from 'lucide-react';
+import { Plus, MessageSquare, History, ChevronDown, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -117,66 +117,127 @@ export default function SAC() {
       ) : (
         <div className="space-y-2">
           {tickets.map((t: any) => (
-            <Card key={t.id} className="hover:shadow-md transition-shadow">
-              <CardContent className="p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono text-xs font-bold">{t.ticket_number}</span>
-                      <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[t.status]}`}>
-                        {t.status.replace('_', ' ')}
-                      </Badge>
-                      <Badge variant="outline" className="text-[10px] capitalize">{t.ticket_type}</Badge>
-                      {t.defect_category && (
-                        <Badge variant="outline" className="text-[10px] capitalize">{t.defect_category}</Badge>
-                      )}
-                    </div>
-                    <p className="text-sm font-semibold">{t.clients?.razao_social || '—'}</p>
-                    <p className="text-xs text-muted-foreground line-clamp-2">{t.description}</p>
-                    <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-                      {t.technical_sheets?.name && (
-                        <span>{t.technical_sheets.code} · {t.technical_sheets.name}</span>
-                      )}
-                      {t.color && <span>· {t.color}</span>}
-                      {t.size && <span>· tam {t.size}</span>}
-                      <span>· {format(new Date(t.opened_at), 'dd/MM HH:mm', { locale: ptBR })}</span>
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-1.5 shrink-0">
-                    {t.status === 'aberto' && (
-                      <Button size="sm" variant="outline" className="h-7 text-xs"
-                        onClick={() => updateStatus.mutate({ id: t.id, newStatus: 'em_analise' })}>
-                        Analisar
-                      </Button>
-                    )}
-                    {t.status === 'em_analise' && (
-                      <>
-                        <Button size="sm" variant="default" className="h-7 text-xs"
-                          onClick={() => updateStatus.mutate({ id: t.id, newStatus: 'aprovado' })}>
-                          Aprovar
-                        </Button>
-                        <Button size="sm" variant="outline" className="h-7 text-xs"
-                          onClick={() => updateStatus.mutate({ id: t.id, newStatus: 'rejeitado' })}>
-                          Rejeitar
-                        </Button>
-                      </>
-                    )}
-                    {['aprovado', 'aguarda_coleta', 'recebido'].includes(t.status) && (
-                      <Button size="sm" variant="default" className="h-7 text-xs"
-                        onClick={() => updateStatus.mutate({ id: t.id, newStatus: 'resolvido' })}>
-                        Resolver
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <TicketCard key={t.id} t={t} onStatusChange={(newStatus) => updateStatus.mutate({ id: t.id, newStatus })} />
           ))}
         </div>
       )}
 
       <NewSACDialog open={showNew} onOpenChange={setShowNew} />
     </div>
+  );
+}
+
+function TicketCard({ t, onStatusChange }: { t: any; onStatusChange: (newStatus: string) => void }) {
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  const { data: history = [] } = useQuery({
+    queryKey: ['sac_history', t.id],
+    enabled: historyOpen,
+    queryFn: async () => {
+      const { data } = await (supabase as any)
+        .from('sac_ticket_history')
+        .select('*, profiles:changed_by(full_name)')
+        .eq('ticket_id', t.id)
+        .order('changed_at', { ascending: false });
+      return data || [];
+    },
+  });
+
+  return (
+    <Card className="hover:shadow-md transition-shadow">
+      <CardContent className="p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0 space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-mono text-xs font-bold">{t.ticket_number}</span>
+              <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[t.status]}`}>
+                {t.status.replace('_', ' ')}
+              </Badge>
+              <Badge variant="outline" className="text-[10px] capitalize">{t.ticket_type}</Badge>
+              {t.defect_category && (
+                <Badge variant="outline" className="text-[10px] capitalize">{t.defect_category}</Badge>
+              )}
+            </div>
+            <p className="text-sm font-semibold">{t.clients?.razao_social || '—'}</p>
+            <p className="text-xs text-muted-foreground line-clamp-2">{t.description}</p>
+            <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+              {t.technical_sheets?.name && (
+                <span>{t.technical_sheets.code} · {t.technical_sheets.name}</span>
+              )}
+              {t.color && <span>· {t.color}</span>}
+              {t.size && <span>· tam {t.size}</span>}
+              <span>· {format(new Date(t.opened_at), 'dd/MM HH:mm', { locale: ptBR })}</span>
+              <button
+                onClick={() => setHistoryOpen(o => !o)}
+                className="ml-auto flex items-center gap-1 hover:text-foreground transition-colors"
+              >
+                {historyOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                <History className="h-3 w-3" /> Histórico
+              </button>
+            </div>
+
+            {historyOpen && (
+              <div className="mt-2 ml-2 pl-3 border-l-2 border-muted space-y-1.5">
+                {history.length === 0 ? (
+                  <p className="text-[10px] text-muted-foreground italic">Sem alterações registradas além da criação.</p>
+                ) : (
+                  history.map((h: any) => (
+                    <div key={h.id} className="text-[11px]">
+                      <p className="flex items-center gap-1 flex-wrap">
+                        <span className="text-muted-foreground">
+                          {format(new Date(h.changed_at), 'dd/MM HH:mm', { locale: ptBR })}
+                        </span>
+                        {h.from_status && (
+                          <Badge variant="outline" className="text-[9px] py-0 px-1">
+                            {h.from_status.replace('_', ' ')}
+                          </Badge>
+                        )}
+                        <span className="text-muted-foreground">→</span>
+                        <Badge variant="outline" className={`text-[9px] py-0 px-1 ${STATUS_COLORS[h.to_status]}`}>
+                          {h.to_status.replace('_', ' ')}
+                        </Badge>
+                        {h.profiles?.full_name && (
+                          <span className="text-muted-foreground">· por {h.profiles.full_name}</span>
+                        )}
+                      </p>
+                      {h.note && (
+                        <p className="text-muted-foreground ml-3 mt-0.5">{h.note}</p>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+          <div className="flex flex-col gap-1.5 shrink-0">
+            {t.status === 'aberto' && (
+              <Button size="sm" variant="outline" className="h-7 text-xs"
+                onClick={() => onStatusChange('em_analise')}>
+                Analisar
+              </Button>
+            )}
+            {t.status === 'em_analise' && (
+              <>
+                <Button size="sm" variant="default" className="h-7 text-xs"
+                  onClick={() => onStatusChange('aprovado')}>
+                  Aprovar
+                </Button>
+                <Button size="sm" variant="outline" className="h-7 text-xs"
+                  onClick={() => onStatusChange('rejeitado')}>
+                  Rejeitar
+                </Button>
+              </>
+            )}
+            {['aprovado', 'aguarda_coleta', 'recebido'].includes(t.status) && (
+              <Button size="sm" variant="default" className="h-7 text-xs"
+                onClick={() => onStatusChange('resolvido')}>
+                Resolver
+              </Button>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
