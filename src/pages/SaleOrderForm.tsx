@@ -26,6 +26,7 @@ import { SectorOverloadDialog } from '@/components/sale-orders/SectorOverloadDia
 import { createOutsourceOrdersForOverloads } from '@/lib/outsourceOrders';
 import { computeMinBillingForNewOrder, isBeforeMinDate, toISOWeek } from '@/lib/minBillingDate';
 import { MinBillingDateSuggestionDialog } from '@/components/sale-orders/MinBillingDateSuggestionDialog';
+import { monthWeekToISODate } from '@/lib/billingWeek';
 
 const emptyForm: SaleOrderFormData = {
   client_id: null,
@@ -180,6 +181,19 @@ export default function SaleOrderForm() {
   // Always-current form ref so setTimeout callbacks don't capture stale closures
   const formLatestRef = useRef(form);
   useEffect(() => { formLatestRef.current = form; }, [form]);
+
+  // Auto-deriva delivery_deadline a partir de delivery_month + delivery_week.
+  // Antes o usuário tinha QUE preencher os 2 (mês+semana + data) — sem sentido
+  // já que a data é determinística (segunda da semana N do mês). Agora só o
+  // par mês+semana é editável; a data é resultado.
+  useEffect(() => {
+    if (!form.delivery_month || !form.delivery_week) return;
+    const derived = monthWeekToISODate(form.delivery_month, form.delivery_week);
+    if (derived && derived !== form.delivery_deadline) {
+      setForm(f => ({ ...f, delivery_deadline: derived }));
+    }
+  }, [form.delivery_month, form.delivery_week]);
+
   // Prevents the min-billing dialog from re-opening on the second handleSubmit pass
   const skipMinBillingCheckRef = useRef(false);
 

@@ -14,34 +14,8 @@ import {
 } from '@/components/ui/select';
 import { Calendar, CheckCircle2, Pencil, Truck } from 'lucide-react';
 import { formatBR } from '@/lib/minBillingDate';
+import { monthWeekToISODate } from '@/lib/billingWeek';
 import { SubmitFlowStepper } from './SubmitFlowStepper';
-
-/**
- * Dada uma string "yyyy-mm" + "Sn" (ex: "2026-06" + "S2"), calcula a
- * data da segunda-feira correspondente em ISO yyyy-mm-dd.
- * Espelha a lógica do form principal (SaleOrderFormPanel) que monta
- * a lista de semanas a partir do primeiro dia do mês.
- */
-function monthWeekToISODate(monthValue: string, weekValue: string): string | null {
-  if (!monthValue || !weekValue) return null;
-  const [year, month] = monthValue.split('-').map(Number);
-  const weekNum = parseInt(weekValue.replace(/\D/g, ''), 10);
-  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(weekNum)) return null;
-  const firstDay = new Date(year, month - 1, 1);
-  let weekStart = new Date(firstDay);
-  const dayOfWeek = weekStart.getDay();
-  // Alinha pra segunda da semana 1
-  if (dayOfWeek !== 1) {
-    weekStart.setDate(weekStart.getDate() - ((dayOfWeek + 6) % 7));
-  }
-  // Avança N-1 semanas
-  weekStart.setDate(weekStart.getDate() + (weekNum - 1) * 7);
-  // Clampa pra dentro do mês (segunda do mês quando weekStart cai no mês anterior)
-  if (weekStart < firstDay) {
-    return `${year}-${String(month).padStart(2, '0')}-${String(firstDay.getDate()).padStart(2, '0')}`;
-  }
-  return `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`;
-}
 
 interface Props {
   open: boolean;

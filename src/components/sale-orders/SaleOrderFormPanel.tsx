@@ -699,20 +699,13 @@ export default function SaleOrderFormPanel({
               </CardTitle>
             </CardHeader>
             <CardContent className="p-4 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">Condição de Pagamento</Label>
-                  <Input value={form.payment_condition} onChange={e => setForm(f => ({ ...f, payment_condition: e.target.value }))} className="h-9" placeholder="Ex: 30/60/90 DIAS" />
-                </div>
-                <div>
-                  <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">Prazo de Entrega</Label>
-                  <Input
-                    type="date"
-                    value={form.delivery_deadline}
-                    onChange={e => setForm(f => ({ ...f, delivery_deadline: e.target.value }))}
-                    className="h-9"
-                  />
-                </div>
+              {/* Condição de pagamento numa linha só. Prazo de Entrega (date input)
+                  foi removido: a data é derivada automaticamente de Mês + Semana
+                  via monthWeekToISODate. O comercial só raciocina por
+                  semana de faturamento — data exata é detalhe técnico. */}
+              <div>
+                <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">Condição de Pagamento</Label>
+                <Input value={form.payment_condition} onChange={e => setForm(f => ({ ...f, payment_condition: e.target.value }))} className="h-9" placeholder="Ex: 30/60/90 DIAS" />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
