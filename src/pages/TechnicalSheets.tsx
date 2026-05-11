@@ -1548,15 +1548,38 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
     */
    const autoFillStandardItemsFromSole = async (soleProductId: string) => {
      try {
-       // 1. Get standard items defined for this sole in sole_standard_items_consumption
+       // Resolve o solado (pra obter group_id e sole_classification)
+       const soleProd = (products as any[]).find(p => p.id === soleProductId);
+       const soleGroupId = soleProd?.group_id;
+       const soleClass = soleProd?.sole_classification as 'tradicional' | 'palmilha_pronta' | 'conjugado' | undefined;
+
+       // CAMINHO NOVO (Fase 1+ reformulação): sole_standard_materials POR GRUPO
+       // com filtro applies_to vs sole_classification. Tem prioridade sobre
+       // os caminhos legacy abaixo.
+       let standardByGroup: any[] = [];
+       if (soleGroupId) {
+         const { data } = await (supabase as any)
+           .from('sole_standard_materials')
+           .select('material_product_id, consumption_per_pair, unit_override, applies_to, notes, products!material_product_id(group_id, color, unit)')
+           .eq('sole_group_id', soleGroupId);
+         standardByGroup = (data || []).filter((row: any) => {
+           const a = row.applies_to;
+           if (a === 'any') return true;
+           if (!soleClass) return false;
+           if (a === 'palmilha_cortada') return soleClass === 'tradicional' || soleClass === 'conjugado';
+           if (a === 'palmilha_pronta') return soleClass === 'palmilha_pronta';
+           return false;
+         });
+       }
+
+       // Mantém legacy: 1) sole_standard_items_consumption (por tamanho)
        const { data: standardCons, error: consError } = await supabase
          .from('sole_standard_items_consumption')
          .select('standard_item_id, size, consumption, unit')
          .eq('sole_product_id', soleProductId);
-
        if (consError) throw consError;
 
-       // 2. Get globally marked standard items from products table
+       // 2) Items globais (legacy is_standard_sole_item)
       const { data: globalStandardItems, error: globalError } = await supabase.from('products')
         .select('id, name, group_id, unit_price, unit, category')
         .or('is_standard_sole_item.eq.true,category.eq.Solado,category.eq.Componente')
@@ -1564,12 +1587,32 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
 
        if (globalError) throw globalError;
 
-       if ((!standardCons || standardCons.length === 0) && (!globalStandardItems || globalStandardItems.length === 0)) {
+       if (
+         standardByGroup.length === 0 &&
+         (!standardCons || standardCons.length === 0) &&
+         (!globalStandardItems || globalStandardItems.length === 0)
+       ) {
          return;
        }
 
        const newMaterials: any[] = [];
        const existingProductIds = new Set(sheetMaterials.map((m: any) => m.product_id));
+
+       // NOVO CAMINHO: insere os materiais padrão do grupo (por par)
+       for (const row of standardByGroup) {
+         const pid = row.material_product_id;
+         if (existingProductIds.has(pid)) continue;
+         newMaterials.push({
+           product_id: pid,
+           group_id: row.products?.group_id,
+           quantity_per_unit: Number(row.consumption_per_pair) || 0,
+           consumption_per_size: {},
+           color: row.products?.color || '',
+           notes: row.notes || `Padrão do solado (${row.applies_to === 'any' ? 'sempre' : row.applies_to})`,
+           sizes: form.sizes,
+         });
+         existingProductIds.add(pid);
+       }
 
        // Process specific sole standard items first
        if (standardCons && standardCons.length > 0) {
@@ -1616,12 +1659,17 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
          });
        }
 
-         // Using mutate instead of mutateAsync as we don't need to await here
          if (newMaterials.length > 0) {
-           // Access the mutation via its useBulkAddSheetMaterials call inside SheetBOM if possible,
-           // but here we are in SheetDetail, so we use the bulkAddMaterials we created.
            bulkAddMaterials.mutate({ sheetId: sheet.id, materials: newMaterials });
-           toast.success(`${newMaterials.length} item(ns) padrão adicionados ao BOM.`);
+           const fromNew = standardByGroup.length;
+           const fromLegacy = newMaterials.length - fromNew;
+           if (fromNew > 0 && fromLegacy === 0) {
+             toast.success(`${fromNew} material(is) padrão do solado adicionados ao BOM.`);
+           } else if (fromNew > 0 && fromLegacy > 0) {
+             toast.success(`${fromNew} do cadastro do solado + ${fromLegacy} legados adicionados ao BOM.`);
+           } else {
+             toast.success(`${newMaterials.length} item(ns) padrão adicionados ao BOM.`);
+           }
          }
      } catch (err: any) {
        console.error("Error auto-filling standard items:", err);
@@ -1869,11 +1917,21 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         {/* TAB: Engenharia (BOM, Consumo & Custos) */}
         <TabsContent value="engineering" className="mt-4 space-y-6">
 
-          {/* ═══ SECTION 0: Grupo de Solado (driver técnico central) ═══ */}
-          <div className="rounded-lg border border-border/70 bg-muted/10 p-4 space-y-4">
-            <div className="flex items-center gap-2">
-              <Footprints className="h-5 w-5 text-muted-foreground" />
-              <h3 className="text-sm font-bold">Grupo de Solado — Base do Produto</h3>
+          {/* ═══ SECTION 0: Grupo de Solado (driver técnico central) ═══
+              Visual reforçado — solado é o item principal: borda 2px, sombra,
+              tipografia forte, fundo gradiente sutil. Materiais "padrão"
+              herdados desse solado caem direto no BOM ao selecionar. */}
+          <div className="rounded-xl border-2 border-primary/40 bg-gradient-to-br from-primary/5 to-primary/10 p-5 space-y-4 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="bg-primary/15 p-2 rounded-lg">
+                <Footprints className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-foreground">Solado · Item Principal do Modelo</h3>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Define grade, classificação (tradicional/palmilha pronta/conjugado) e materiais de consumo padrão (cola, linha, forração…). Tudo aplicado ao BOM ao salvar.
+                </p>
+              </div>
               <Badge variant="outline" className="text-[9px] bg-muted text-muted-foreground ml-auto">
                 Driver técnico
               </Badge>
@@ -4859,6 +4917,8 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
               <TableRow className="bg-muted/30">
                 <TableHead className="text-[11px]">Material / Grupo</TableHead>
                 <TableHead className="text-[11px]">Cat.</TableHead>
+                <TableHead className="text-[11px] font-mono">NCM</TableHead>
+                <TableHead className="text-[11px] font-mono">SKU</TableHead>
                 <TableHead className="text-[11px]">Dimensões</TableHead>
                 <TableHead className="text-[11px]">Un.</TableHead>
                 <TableHead className="text-[11px] text-right">Qtd/Par</TableHead>
@@ -4884,7 +4944,7 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
                     lastSection = section;
                     rows.push(
                       <TableRow key={`section-${section}`} className="border-t-2 border-primary/20">
-                        <TableCell colSpan={9} className="py-2 bg-primary/5">
+                        <TableCell colSpan={11} className="py-2 bg-primary/5">
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-bold uppercase tracking-wider text-primary">
                               {section === 'base' ? '📐 Base do Solado — Consumo padrão' : '🎨 Depende do Modelo'}
@@ -4900,7 +4960,7 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
                   
                   rows.push(
                     <TableRow key={`cat-${cat}`} className="bg-muted/20">
-                      <TableCell colSpan={9} className="py-1.5">
+                      <TableCell colSpan={11} className="py-1.5">
                         <div className="flex items-center gap-2">
                           <CatIcon className={`h-3.5 w-3.5 ${catConfig?.color || 'text-muted-foreground'}`} />
                           <span className="text-xs font-semibold">{catConfig?.label || cat}</span>
@@ -4942,6 +5002,18 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
                           </div>
                         </TableCell>
                         <TableCell className="text-xs">{prod?.category ?? '—'}</TableCell>
+                        <TableCell className="text-[11px] font-mono">
+                          {prod?.ncm ? (
+                            <span className={prod.ncm.length === 8 ? '' : 'text-amber-600 dark:text-amber-400'} title={prod.ncm.length !== 8 ? 'NCM precisa ter 8 dígitos' : ''}>
+                              {prod.ncm}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground/60 italic text-[10px]">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-[11px] font-mono text-muted-foreground">
+                          {prod?.sku || '—'}
+                        </TableCell>
                         <TableCell className="text-xs font-mono">
                           {cs && cs.dimensions_length > 0
                             ? `${cs.dimensions_length}×${cs.dimensions_width}×${cs.dimensions_thickness} ${cs.dimensions_unit}`

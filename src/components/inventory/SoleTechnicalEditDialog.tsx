@@ -13,8 +13,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { toast } from 'sonner';
- import { Wrench, Truck, DollarSign, Ruler, Settings2 } from 'lucide-react';
+ import { Wrench, Truck, DollarSign, Ruler, Settings2, Package2 } from 'lucide-react';
  import { Switch } from '@/components/ui/switch';
+import { SoleStandardMaterialsEditor } from './SoleStandardMaterialsEditor';
 
 interface Props {
   open: boolean;
@@ -310,6 +311,20 @@ export function SoleTechnicalEditDialog({ open, onOpenChange, product }: Props) 
                 className="mt-1 min-h-[80px]"
               />
             </div>
+          </div>
+
+          <Separator />
+
+          {/* Consumos padrão — toda ficha que usar este solado herda esses materiais */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold flex items-center gap-2 text-foreground">
+              <Package2 className="h-4 w-4" />
+              Materiais Padrão de Consumo
+            </h3>
+            <SoleStandardMaterialsEditor
+              soleGroupId={(product as any)?.group_id || ''}
+              soleClassification={soleClassification}
+            />
           </div>
         </div>
 

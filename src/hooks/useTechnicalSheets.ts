@@ -208,7 +208,7 @@ export function useSheetMaterials(sheetId: string | null) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('sheet_materials')
-        .select('*, products(name, unit, sku, category, unit_price, quantity, group_id, color), product_groups(id, name)')
+        .select('*, products(name, unit, sku, ncm, category, unit_price, quantity, group_id, color), product_groups(id, name)')
         .eq('sheet_id', sheetId!);
       if (error) throw error;
       return data;
