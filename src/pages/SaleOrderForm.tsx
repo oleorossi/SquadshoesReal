@@ -168,6 +168,27 @@ export default function SaleOrderForm() {
   }, [referencesLoading, isEdit]);
   const [checkingStock, setCheckingStock] = useState(false);
   const [orderLoaded, setOrderLoaded] = useState(false);
+
+  // Bug histórico: navegar de /sales/edit/A pra /sales/edit/B (via GlobalSearch)
+  // não desmontava o componente — `id` mudava no useParams mas o useEffect que
+  // carrega o pedido tinha guarda `if (orderLoaded) return`. Resultado: tela
+  // continuava mostrando PV A com URL nova. Fix: resetar orderLoaded e o form
+  // quando id muda, forçando o reload do useEffect de carregamento.
+  useEffect(() => {
+    if (!id) return; // criar novo: nada a fazer
+    // Reseta só se o componente JÁ tinha carregado um pedido antes (orderLoaded)
+    // pra evitar mexer no mount inicial.
+    if (orderLoaded) {
+      setOrderLoaded(false);
+      setForm(emptyForm);
+      setItems([{ ...emptyItem }]);
+      setSelectedClientId('');
+      setPackagingProductId('');
+      setPackagingQuantity(0);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
   const [soleResult, setSoleResult] = useState<SoleAvailabilityResult | null>(null);
   const [soleDialogOpen, setSoleDialogOpen] = useState(false);
   const [materialResult, setMaterialResult] = useState<MaterialAvailabilityResult | null>(null);
