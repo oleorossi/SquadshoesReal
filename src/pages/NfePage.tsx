@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAllNfeEmitidas, useEmitNfe, useCheckNfeStatus, useCancelNfe, useCompanies, NfeEmitida } from '@/hooks/useNfe';
+import { useAccessControl } from '@/hooks/useAccessControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -45,6 +46,11 @@ function EmitDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [foundOrder, setFoundOrder] = useState<any>(null);
   const emit = useEmitNfe();
   const { data: companies = [] } = useCompanies();
+  const { isAdmin, roles } = useAccessControl();
+
+  // Audit Phase 3 fix: bloqueia o botão Emitir quando o usuário não tem role pra NF-e.
+  // O backend (emit-nfe edge) já bloqueia, mas mostrar feedback antes evita o 403 silencioso.
+  const canEmitNfe = isAdmin || roles.includes('gerente') || roles.includes('nfe_operator');
 
   const search = async () => {
     if (!orderNumber.trim()) return;
@@ -52,7 +58,7 @@ function EmitDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
     // Try exact match first to prevent ilike prefix ambiguity (e.g. "PV-001" matching "PV-0010").
     const { data: exact } = await supabase
       .from('sale_orders')
-      .select('id, order_number, client_name, total, status')
+      .select('id, order_number, client_name, total, status, nfe_required')
       .eq('order_number', orderNumber.trim())
       .maybeSingle();
     if (exact) {
@@ -62,7 +68,7 @@ function EmitDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
     }
     const { data } = await supabase
       .from('sale_orders')
-      .select('id, order_number, client_name, total, status')
+      .select('id, order_number, client_name, total, status, nfe_required')
       .ilike('order_number', `%${orderNumber.trim()}%`)
       .order('order_number', { ascending: true })
       .limit(1);
@@ -71,8 +77,20 @@ function EmitDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
     setSearching(false);
   };
 
+  // Audit Phase 3 fix: bloqueia emissão em PV informal (nfe_required=false) no client
+  // pra mostrar mensagem clara em vez de erro 400 do edge function.
+  const isInformalOrder = foundOrder?.nfe_required === false;
+
   const handleEmit = async () => {
     if (!foundOrder) return;
+    if (isInformalOrder) {
+      toast.error('Este PV é informal (sem NF-e). Edite o pedido e desmarque "Pedido informal" antes de emitir.');
+      return;
+    }
+    if (!canEmitNfe) {
+      toast.error('Sem permissão pra emitir NF-e. Necessário admin, gerente ou operador NF-e.');
+      return;
+    }
     await emit.mutateAsync({ saleOrderId: foundOrder.id, companyId: companyId || undefined });
     onClose();
     setFoundOrder(null);
@@ -122,19 +140,29 @@ function EmitDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
             </div>
           </div>
           {foundOrder && (
-            <Card className="border-green-500/30 bg-green-500/5">
+            <Card className={isInformalOrder ? "border-amber-500/30 bg-amber-500/5" : "border-green-500/30 bg-green-500/5"}>
               <CardContent className="pt-4 space-y-1 text-sm">
                 <p className="font-medium">{foundOrder.order_number}</p>
                 <p className="text-muted-foreground">{foundOrder.client_name}</p>
                 <p className="font-medium">R$ {Number(foundOrder.total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                 <Badge variant="outline" className="text-xs">{foundOrder.status}</Badge>
+                {isInformalOrder && (
+                  <p className="text-xs text-amber-700 mt-2 flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3" /> Pedido informal — NF-e bloqueada
+                  </p>
+                )}
               </CardContent>
             </Card>
+          )}
+          {!canEmitNfe && (
+            <p className="text-xs text-red-600 flex items-center gap-1">
+              <AlertCircle className="h-3 w-3" /> Sem permissão pra emitir NF-e
+            </p>
           )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button onClick={handleEmit} disabled={!foundOrder || emit.isPending}>
+          <Button onClick={handleEmit} disabled={!foundOrder || emit.isPending || isInformalOrder || !canEmitNfe}>
             {emit.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileText className="h-4 w-4 mr-2" />}
             Emitir NF-e
           </Button>
@@ -195,7 +223,7 @@ function CancelDialog({ nfe, open, onClose }: { nfe: NfeEmitida | null; open: bo
 
 // ─── NF-e row ─────────────────────────────────────────────────────────────────
 
-function NfeRow({ nfe, onCancel }: { nfe: any; onCancel: (n: NfeEmitida) => void }) {
+function NfeRow({ nfe, onCancel, canCancel }: { nfe: any; onCancel: (n: NfeEmitida) => void; canCancel: boolean }) {
   const checkStatus = useCheckNfeStatus();
   const order = (nfe as any).sale_orders;
 
@@ -240,7 +268,7 @@ function NfeRow({ nfe, onCancel }: { nfe: any; onCancel: (n: NfeEmitida) => void
             <a href={nfe.xml_url} target="_blank" rel="noopener noreferrer"><FileText className="h-3.5 w-3.5" /></a>
           </Button>
         )}
-        {nfe.status === 'autorizada' && (
+        {nfe.status === 'autorizada' && canCancel && (
           <Button variant="ghost" size="icon" title="Cancelar NF-e" className="text-red-500 hover:text-red-600" onClick={() => onCancel(nfe)}>
             <XCircle className="h-3.5 w-3.5" />
           </Button>
@@ -260,6 +288,8 @@ export default function NfePage() {
   const [cancelTarget, setCancelTarget] = useState<NfeEmitida | null>(null);
   const navigate = useNavigate();
   const { data: companies = [] } = useCompanies();
+  const { isAdmin, roles } = useAccessControl();
+  const canEmitNfe = isAdmin || roles.includes('gerente') || roles.includes('nfe_operator');
 
   const { data: allNfe = [], isLoading } = useAllNfeEmitidas({
     status: statusFilter || undefined,
@@ -294,9 +324,11 @@ export default function NfePage() {
             Centro fiscal — emissão, empresas, tributação e diagnóstico em um só lugar
           </p>
         </div>
-        <Button onClick={() => setEmitOpen(true)} className="gap-2">
-          <Plus className="h-4 w-4" /> Emitir NF-e
-        </Button>
+        {canEmitNfe && (
+          <Button onClick={() => setEmitOpen(true)} className="gap-2">
+            <Plus className="h-4 w-4" /> Emitir NF-e
+          </Button>
+        )}
       </div>
 
       {/* Stats */}
@@ -384,14 +416,16 @@ export default function NfePage() {
                 <div className="text-center py-12 text-muted-foreground">
                   <FileText className="h-10 w-10 mx-auto mb-3 opacity-30" />
                   <p className="text-sm">Nenhuma NF-e encontrada</p>
-                  <Button variant="outline" size="sm" className="mt-3" onClick={() => setEmitOpen(true)}>
-                    Emitir primeira NF-e
-                  </Button>
+                  {canEmitNfe && (
+                    <Button variant="outline" size="sm" className="mt-3" onClick={() => setEmitOpen(true)}>
+                      Emitir primeira NF-e
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <div className="divide-y divide-border/50">
                   {filtered.map((n: any) => (
-                    <NfeRow key={n.id} nfe={n} onCancel={setCancelTarget} />
+                    <NfeRow key={n.id} nfe={n} onCancel={setCancelTarget} canCancel={canEmitNfe} />
                   ))}
                 </div>
               )}

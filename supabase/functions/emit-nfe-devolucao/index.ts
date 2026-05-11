@@ -424,6 +424,8 @@ Deno.serve(async (req) => {
 
       // 12d) Se já houver financial_entry confirmado (receita já reconhecida),
       // registra ajuste de crédito negativo pra cancelar a receita devolvida.
+      // Audit Phase 3 fix: usa nfe_devolucoes.id como reference_id pra evitar
+      // duplicar estorno em retry (mesma devolução nunca cria 2 entries).
       try {
         const { data: existingEntries } = await adminClient
           .from("financial_entries")
@@ -432,17 +434,25 @@ Deno.serve(async (req) => {
           .eq("reference_type", "sale_order")
           .in("status", ["confirmed", "posted", "reconciled", "paid"]);
         if (existingEntries && existingEntries.length > 0) {
-          await adminClient.from("financial_entries").insert({
-            type: "receita",
-            category: "venda",
-            amount: -valorTotal,
-            status: "confirmed",
-            description: `Estorno por devolução NF ${chave || gcNfeId}`,
-            reference_id: nfeOriginal.sale_order_id,
-            reference_type: "sale_order_devolucao",
-            entry_date: new Date().toISOString().split("T")[0],
-            created_by: userId,
-          } as any);
+          const { data: existingEstorno } = await adminClient
+            .from("financial_entries")
+            .select("id")
+            .eq("reference_id", devLocal.id)
+            .eq("reference_type", "sale_order_devolucao")
+            .limit(1);
+          if (!existingEstorno || existingEstorno.length === 0) {
+            await adminClient.from("financial_entries").insert({
+              type: "receita",
+              category: "venda",
+              amount: -valorTotal,
+              status: "confirmed",
+              description: `Estorno por devolução NF ${chave || gcNfeId} (PV ${nfeOriginal.sale_order_id})`,
+              reference_id: devLocal.id,
+              reference_type: "sale_order_devolucao",
+              entry_date: new Date().toISOString().split("T")[0],
+              created_by: userId,
+            } as any);
+          }
         }
       } catch (e: any) {
         cleanupWarnings.push(`Lançamento de estorno não criado: ${e.message}`);

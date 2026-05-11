@@ -391,10 +391,31 @@ Deno.serve(async (req) => {
       }), { status: 500, headers: corsHeaders });
     }
 
+    // Audit Phase 3 fix: NF autorizada → advance SO para 'Faturado' pra disparar
+    // syncFinancialRecords (cria AR + financial_entries). Antes ficava órfão se o
+    // operador NF emitia mas ninguém ajustava o status manualmente.
+    let arSyncWarning: string | null = null;
+    if (finalStatus === "autorizada" && order.status !== "Faturado" && order.status !== "Cancelado") {
+      const numeroNfe = nfe?.numero || (await gcFetch(`/notas_fiscais_produtos/${gcNfeId}`)).json?.data?.numero_nf || null;
+      const { error: soUpdErr } = await adminClient
+        .from("sale_orders")
+        .update({
+          status: "Faturado",
+          nfe: numeroNfe ? String(numeroNfe) : order.nfe,
+        })
+        .eq("id", sale_order_id)
+        .neq("status", "Cancelado");
+      if (soUpdErr) {
+        arSyncWarning = `NF autorizada mas falhou ao avançar PV pra Faturado: ${soUpdErr.message}. Ajuste o status manualmente pra gerar AR.`;
+        console.warn("emit-nfe SO status update failed:", soUpdErr);
+      }
+    }
+
     return new Response(JSON.stringify({
       success: emitOk,
       nfe,
       provider_response: { create: createResp.json, emit: emitResp.json },
+      ...(arSyncWarning ? { ar_sync_warning: arSyncWarning } : {}),
     }), {
       status: emitOk ? 200 : 422,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
