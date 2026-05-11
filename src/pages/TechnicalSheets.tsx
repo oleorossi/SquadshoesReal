@@ -1819,149 +1819,214 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
 
       <Tabs defaultValue="id">
         <TabsList className="flex flex-nowrap overflow-x-auto sm:flex-wrap sm:overflow-visible h-auto gap-1 bg-muted/50 p-1.5 rounded-lg border">
-          <TabsTrigger value="id" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5"><Tag className="h-3.5 w-3.5" /> Identificação</TabsTrigger>
+          {/* Cada tab agora mostra um indicador discreto de "completude" ou
+              contagem (badge) pro usuário saber onde tem trabalho pendente. */}
+          <TabsTrigger value="id" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
+            <Tag className="h-3.5 w-3.5" /> Identificação
+            {form.name && form.code && form.shoe_category ? (
+              <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold">✓</span>
+            ) : (
+              <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 text-[10px] font-bold">!</span>
+            )}
+          </TabsTrigger>
           <Separator orientation="vertical" className="h-5 mx-0.5" />
           <TabsTrigger value="engineering" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
-            <Wrench className="h-3.5 w-3.5" /> BOM, Consumo & Custos
+            <Wrench className="h-3.5 w-3.5" /> BOM & Custos
+            <Badge variant="outline" className="ml-1 h-4 px-1.5 text-[9px] font-mono">
+              {sheetMaterials.length}
+            </Badge>
           </TabsTrigger>
           <Separator orientation="vertical" className="h-5 mx-0.5" />
           <TabsTrigger value="production" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
-            <Factory className="h-3.5 w-3.5" /> Fluxo de Produção
+            <Factory className="h-3.5 w-3.5" /> Produção
+            {form.sole_group_id ? (
+              <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold">✓</span>
+            ) : (
+              <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-muted text-muted-foreground text-[10px] font-bold">·</span>
+            )}
           </TabsTrigger>
           <Separator orientation="vertical" className="h-5 mx-0.5" />
-           <TabsTrigger value="media" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5"><History className="h-3.5 w-3.5" /> Fotos & Histórico</TabsTrigger>
-           <Separator orientation="vertical" className="h-5 mx-0.5" />
-           <TabsTrigger value="variants" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
-             <Palette className="h-3.5 w-3.5" /> Variantes
-           </TabsTrigger>
-           <Separator orientation="vertical" className="h-5 mx-0.5" />
-           <TabsTrigger value="costs" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
-             <DollarSign className="h-3.5 w-3.5" /> Preço de Custo
-           </TabsTrigger>
+          <TabsTrigger value="costs" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
+            <DollarSign className="h-3.5 w-3.5" /> Custos
+            {materialCost > 0 && (
+              <span className="ml-1 text-[9px] font-mono text-muted-foreground">
+                {formatCurrency(materialCost).replace('R$', '')}
+              </span>
+            )}
+          </TabsTrigger>
+          <Separator orientation="vertical" className="h-5 mx-0.5" />
+          <TabsTrigger value="variants" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
+            <Palette className="h-3.5 w-3.5" /> Variantes
+          </TabsTrigger>
+          <Separator orientation="vertical" className="h-5 mx-0.5" />
+          <TabsTrigger value="media" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
+            <History className="h-3.5 w-3.5" /> Fotos & Histórico
+          </TabsTrigger>
         </TabsList>
 
 
-        {/* TAB: Identificação */}
-        <TabsContent value="id" className="mt-4 space-y-6">
-          <SectionTitle>Identificação do Produto</SectionTitle>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            <FieldInput label="SKU / Código (modelo_id)" value={form.code} onChange={v => updateField('code', v)} placeholder="MON-893767-003" mono />
-            <FieldInput label="Nome do Modelo" value={form.name} onChange={v => updateField('name', v)} placeholder="Sandália MONALISA" />
-            <FieldSelect 
-              label="Categoria" 
-              value={form.shoe_category} 
-              onChange={v => {
-                updateField('shoe_category', v);
-                // Auto-sync sizes grid from category (Adulto 34-40 / Infantil 25-36)
-                updateField('sizes', v === 'Infantil' ? '25-36' : '34-40');
-              }} 
-              options={[...SHOE_CATEGORIES]} 
-              placeholder="Tipo" 
-            />
-            <FieldSelect label="Gênero" value={form.gender} onChange={v => updateField('gender', v)} options={[...GENDERS]} placeholder="Gênero" />
-            <FieldSelect label="Status Produção" value={form.status} onChange={v => updateField('status', v)} options={[...STATUSES]} />
-            {/* "Modelo de Caixa" removido em 2026-05: o sistema deriva a
-                embalagem automaticamente do solado vinculado (sole_structures
-                → packaging_configs) — não há motivo pra forçar seleção manual
-                aqui. A coluna box_type_id continua no DB pra retrocompatibilidade
-                e pode ser usada via PackagingTab quando necessário. */}
-          </div>
-          {/* Grade derivada automaticamente da Categoria + Solado */}
-          <div className="rounded-md border bg-muted/30 p-3 flex items-center gap-3 text-xs">
-            <Footprints className="h-4 w-4 text-muted-foreground shrink-0" />
-            <div className="flex-1">
-              <span className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider">Grade de Numeração</span>
-              <div className="text-sm font-mono text-foreground mt-0.5">
-                {form.sizes || (form.shoe_category === 'Infantil' ? '25-36' : '34-40')}
-                <span className="text-muted-foreground text-[10px] ml-2 font-sans normal-case">
-                  (derivada da categoria{form.sole_material ? ` e do solado "${form.sole_material}"` : ''})
-                </span>
-              </div>
+        {/* TAB: Identificação — reorganizada em 4 cards temáticos:
+            (1) Dados Principais, (2) Categoria & Grade, (3) Status & Custo,
+            (4) Foto. Layout mais respiritado, agrupamento claro Gestalt. */}
+        <TabsContent value="id" className="mt-4 space-y-4">
+          {/* CARD 1 — Dados Principais */}
+          <div className="rounded-xl border bg-card shadow-sm">
+            <div className="px-4 py-3 border-b flex items-center gap-2">
+              <Tag className="h-4 w-4 text-primary" />
+              <h3 className="text-sm font-bold">Dados Principais</h3>
+              <span className="text-[10px] text-muted-foreground ml-auto">Identificação comercial do produto</span>
+            </div>
+            <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+              <FieldInput label="SKU / Código" value={form.code} onChange={v => updateField('code', v)} placeholder="MON-893767-003" mono />
+              <FieldInput label="Nome do Modelo" value={form.name} onChange={v => updateField('name', v)} placeholder="Sandália MONALISA" />
+              <FieldSelect label="Gênero" value={form.gender} onChange={v => updateField('gender', v)} options={[...GENDERS]} placeholder="Gênero" />
             </div>
           </div>
-          <Separator />
-          <SectionTitle>Status da Ficha & Revisão</SectionTitle>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div>
-              <Label className="text-xs text-muted-foreground">Status da Ficha</Label>
-              <Select value={form.status_ficha || 'rascunho'} onValueChange={v => updateField('status_ficha', v)}>
-                <SelectTrigger className="mt-1 h-9 text-sm"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {STATUS_FICHA.map(s => (
-                    <SelectItem key={s} value={s}>
-                      <div className="flex items-center gap-2">
-                        <span className={cn('h-2 w-2 rounded-full',
-                          s === 'rascunho' ? 'bg-muted-foreground' :
-                          s === 'em_revisao' ? 'bg-amber-500' :
-                          s === 'validada' ? 'bg-blue-500' : 'bg-green-500'
-                        )} />
-                        {STATUS_FICHA_LABELS[s]}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-             <div>
-               <Label className="text-xs text-muted-foreground">Overhead Customizado (R$/par)</Label>
-                <div className="relative">
-                  <NumberInput 
-                    value={(form as any).custom_overhead ?? ''} 
-                    onChange={v => {
-                      if (v !== null && v < 0) {
-                        toast.error("O overhead não pode ser negativo");
-                        return;
-                      }
-                      updateField('custom_overhead' as any, v);
-                    }} 
-                    className={cn(
-                      "mt-1 h-9 text-sm font-mono",
-                      (form as any).custom_overhead < 0 && "border-destructive focus-visible:ring-destructive"
-                    )} 
-                    placeholder="Padrão global" 
-                    step="0.01" 
-                    min={0}
-                  />
-                  {(form as any).custom_overhead < 0 && (
-                    <span className="text-[10px] text-destructive absolute -bottom-4 left-0">Valor inválido</span>
-                  )}
-                </div>
-               <p className="text-[10px] text-muted-foreground mt-1">Se vazio, usa o overhead global.</p>
-             </div>
-          </div>
-          {form.status_ficha === 'publicada' && (
-            <div className="rounded-lg border border-green-200 bg-green-50 dark:bg-green-950/30 dark:border-green-800 p-3 flex items-center gap-2">
-              <Shield className="h-4 w-4 text-green-600" />
-              <span className="text-xs text-green-700 dark:text-green-400">
-                Ficha publicada — campos críticos (cor e material) estão bloqueados. Para alterar, mude o status para "Em Revisão" com justificativa.
-              </span>
-            </div>
-          )}
-          <Separator />
-          <SectionTitle>Foto do Produto</SectionTitle>
-          <SheetImageUpload images={form.images} onChange={(imgs) => updateField('images', imgs)} />
-          <Separator />
 
-          {materialCost > 0 && (
-            <>
-              <Separator />
-              <SectionTitle>Custo de Produção (Material)</SectionTitle>
-              <div className="rounded-lg border bg-muted/30 p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Package className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">Custo total de materiais (BOM)</span>
+          {/* CARD 2 — Categoria & Grade */}
+          <div className="rounded-xl border bg-card shadow-sm">
+            <div className="px-4 py-3 border-b flex items-center gap-2">
+              <Footprints className="h-4 w-4 text-primary" />
+              <h3 className="text-sm font-bold">Categoria & Grade</h3>
+              <span className="text-[10px] text-muted-foreground ml-auto">Define numeração automaticamente</span>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FieldSelect
+                  label="Categoria"
+                  value={form.shoe_category}
+                  onChange={v => {
+                    updateField('shoe_category', v);
+                    updateField('sizes', v === 'Infantil' ? '25-36' : '34-40');
+                  }}
+                  options={[...SHOE_CATEGORIES]}
+                  placeholder="Tipo"
+                />
+                <FieldSelect label="Status Produção" value={form.status} onChange={v => updateField('status', v)} options={[...STATUSES]} />
+              </div>
+              <div className="rounded-md border bg-muted/30 px-3 py-2.5 flex items-center gap-3 text-xs">
+                <Footprints className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <div className="flex-1">
+                  <span className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider">Grade Resultante</span>
+                  <div className="text-sm font-mono text-foreground font-bold mt-0.5">
+                    {form.sizes || (form.shoe_category === 'Infantil' ? '25-36' : '34-40')}
+                    <span className="text-muted-foreground text-[10px] ml-2 font-sans normal-case font-normal">
+                      derivada da categoria{form.sole_material ? ` + solado "${form.sole_material}"` : ''}
+                    </span>
                   </div>
-                  <span className="text-lg font-bold font-mono text-foreground">{formatCurrency(materialCost)}</span>
                 </div>
               </div>
-            </>
-          )}
+            </div>
+          </div>
+
+          {/* CARD 3 — Status da Ficha & Custos */}
+          <div className="rounded-xl border bg-card shadow-sm">
+            <div className="px-4 py-3 border-b flex items-center gap-2">
+              <Shield className="h-4 w-4 text-primary" />
+              <h3 className="text-sm font-bold">Status da Ficha & Custos</h3>
+              <span className="text-[10px] text-muted-foreground ml-auto">Revisão e overhead customizado</span>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Status da Ficha</Label>
+                  <Select value={form.status_ficha || 'rascunho'} onValueChange={v => updateField('status_ficha', v)}>
+                    <SelectTrigger className="mt-1 h-9 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {STATUS_FICHA.map(s => (
+                        <SelectItem key={s} value={s}>
+                          <div className="flex items-center gap-2">
+                            <span className={cn('h-2 w-2 rounded-full',
+                              s === 'rascunho' ? 'bg-muted-foreground' :
+                              s === 'em_revisao' ? 'bg-amber-500' :
+                              s === 'validada' ? 'bg-blue-500' : 'bg-green-500'
+                            )} />
+                            {STATUS_FICHA_LABELS[s]}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Overhead Customizado (R$/par)</Label>
+                  <div className="relative">
+                    <NumberInput
+                      value={(form as any).custom_overhead ?? ''}
+                      onChange={v => {
+                        if (v !== null && v < 0) { toast.error('O overhead não pode ser negativo'); return; }
+                        updateField('custom_overhead' as any, v);
+                      }}
+                      className={cn('mt-1 h-9 text-sm font-mono', (form as any).custom_overhead < 0 && 'border-destructive focus-visible:ring-destructive')}
+                      placeholder="Padrão global"
+                      step="0.01"
+                      min={0}
+                    />
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1">Se vazio, usa o overhead global.</p>
+                </div>
+              </div>
+
+              {form.status_ficha === 'publicada' && (
+                <div className="rounded-lg border border-green-200 bg-green-50 dark:bg-green-950/30 dark:border-green-800 p-3 flex items-center gap-2">
+                  <Shield className="h-4 w-4 text-green-600" />
+                  <span className="text-xs text-green-700 dark:text-green-400">
+                    Ficha publicada — campos críticos (cor e material) bloqueados. Mude pra "Em Revisão" pra alterar.
+                  </span>
+                </div>
+              )}
+
+              {materialCost > 0 && (
+                <div className="rounded-lg border bg-muted/30 p-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Package className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">Custo total de materiais (BOM)</span>
+                  </div>
+                  <span className="text-base font-bold font-mono text-foreground">{formatCurrency(materialCost)}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* CARD 4 — Fotos */}
+          <div className="rounded-xl border bg-card shadow-sm">
+            <div className="px-4 py-3 border-b flex items-center gap-2">
+              <History className="h-4 w-4 text-primary" />
+              <h3 className="text-sm font-bold">Fotos do Produto</h3>
+              <span className="text-[10px] text-muted-foreground ml-auto">Primeira foto vira capa do produto</span>
+            </div>
+            <div className="p-4">
+              <SheetImageUpload images={form.images} onChange={(imgs) => updateField('images', imgs)} />
+            </div>
+          </div>
         </TabsContent>
 
 
         {/* TAB: Engenharia (BOM, Consumo & Custos) */}
-        <TabsContent value="engineering" className="mt-4 space-y-6">
+        <TabsContent value="engineering" className="mt-4 space-y-4">
+
+          {/* CARD DE RESUMO — mostra panorama do BOM logo no topo
+              Materiais carregados | Custo de material | Tipo de solado |
+              Status. Ajuda o usuário a entender onde está antes de scrollar. */}
+          <div className="rounded-xl border bg-gradient-to-r from-card to-muted/20 p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div>
+              <div className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Materiais no BOM</div>
+              <div className="text-xl font-bold font-mono mt-1">{sheetMaterials.length}</div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Custo de Material</div>
+              <div className="text-xl font-bold font-mono mt-1">{formatCurrency(materialCost)}</div>
+              <div className="text-[9px] text-muted-foreground">por par</div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Solado</div>
+              <div className="text-sm font-bold mt-1">{form.sole_material || <span className="text-muted-foreground italic font-normal">não definido</span>}</div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Grade</div>
+              <div className="text-sm font-bold font-mono mt-1">{form.sizes || '—'}</div>
+            </div>
+          </div>
 
           {/* ═══ SECTION 0: Grupo de Solado (driver técnico central) ═══
               Visual reforçado — solado é o item principal: borda 2px, sombra,
@@ -2953,7 +3018,17 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         </TabsContent>
 
          {/* TAB: Produção & Embalagens */}
-         <TabsContent value="production" className="mt-4 space-y-6">
+         <TabsContent value="production" className="mt-4 space-y-4">
+           {/* Header explicativo — orienta o usuário do que essa aba faz */}
+           <div className="rounded-lg border bg-muted/20 px-4 py-2.5 flex items-center gap-3">
+             <Factory className="h-4 w-4 text-primary shrink-0" />
+             <div>
+               <div className="text-sm font-bold">Fluxo de Produção</div>
+               <div className="text-[11px] text-muted-foreground">
+                 Setores ativos + capacidades por dia + lead times. Define como a ficha entra no sistema de ondas.
+               </div>
+             </div>
+           </div>
            <ProductionSectorsTab
              sectors={sheet.production_sectors || ['Corte', 'Forração', 'Silk', 'Colagem', 'Montagem', 'Acabamento', 'Expedição']}
              onChange={(sectors: string[]) => {
@@ -2987,7 +3062,16 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         </TabsContent>
 
         {/* TAB: Custos */}
-        <TabsContent value="costs" className="mt-4 space-y-6">
+        <TabsContent value="costs" className="mt-4 space-y-4">
+          <div className="rounded-lg border bg-muted/20 px-4 py-2.5 flex items-center gap-3">
+            <DollarSign className="h-4 w-4 text-primary shrink-0" />
+            <div>
+              <div className="text-sm font-bold">Preço de Custo</div>
+              <div className="text-[11px] text-muted-foreground">
+                Rollup de material (BOM) + mão de obra + overhead. Defina preço de venda e margem por canal.
+              </div>
+            </div>
+          </div>
           <CostsTab sheetId={sheet.id} form={form} groups={groups || []} />
         </TabsContent>
 
