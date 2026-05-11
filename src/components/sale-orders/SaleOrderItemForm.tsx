@@ -663,14 +663,22 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           )}
 
           {/* Cor — disabled until material is selected (when groups exist) */}
+          {(() => {
+            const isLocked = activeMaterialVariants.length > 0 && !item.material_variant_id;
+            return (
           <div className={cn(
             "md:col-span-3",
-            activeMaterialVariants.length > 0 && !item.material_variant_id && "opacity-40 pointer-events-none"
+            isLocked && "pointer-events-none"
           )}>
-            <Label className="text-[10px] font-bold text-muted-foreground uppercase mb-1 block">
+            <Label className={cn(
+              "text-[10px] font-bold uppercase mb-1 block flex items-center gap-1",
+              isLocked ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'
+            )}>
               Cor Principal
-              {activeMaterialVariants.length > 0 && !item.material_variant_id && (
-                <span className="ml-1 normal-case font-normal text-muted-foreground">(selecione o material)</span>
+              {isLocked && (
+                <span className="inline-flex items-center gap-1 ml-1 px-1.5 py-0.5 rounded bg-amber-500/15 text-[9px] font-bold border border-amber-500/30 normal-case">
+                  🔒 Escolha o material primeiro
+                </span>
               )}
             </Label>
             <div className="flex gap-1">
@@ -693,6 +701,8 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               )}
             </div>
           </div>
+            );
+          })()}
 
           <div className="md:col-span-2">
             <Label className="text-[10px] font-bold text-muted-foreground uppercase mb-1 block">Preço Unitário</Label>
@@ -754,7 +764,17 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                 </Button>
               )}
               <div className="text-[10px] font-bold">
-                {gradeTotal} <span className="text-muted-foreground font-normal">pares/ficha</span>
+                {fichas > 1 ? (
+                  <>
+                    {gradeTotal} <span className="text-muted-foreground font-normal">×</span> {fichas} ={' '}
+                    <span className="text-primary">{totalPairs}</span>
+                    <span className="text-muted-foreground font-normal"> pares</span>
+                  </>
+                ) : (
+                  <>
+                    {gradeTotal} <span className="text-muted-foreground font-normal">pares</span>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -768,19 +788,27 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                 // claramente que é dado preservado (não vai sumir ao salvar).
                 const isOrphan = orphanSizes.has(size);
                 return (
-                  <div key={size} className="text-center" style={{ width: isConjugated ? '4.5rem' : (isInfantil ? '3.2rem' : '3.6rem') }}>
+                  <div key={size} className="text-center relative" style={{ width: isConjugated ? '5.2rem' : (isInfantil ? '3.5rem' : '3.8rem') }}>
+                    {isOrphan && (
+                      <span
+                        className="absolute -top-1 -right-1 z-10 inline-flex items-center justify-center h-4 w-4 rounded-full bg-amber-500 text-white text-[9px] font-bold border border-background shadow-sm"
+                        title={`Tamanho ${size} fora do range atual do solado, mas preservado do PV original`}
+                      >
+                        ⚠
+                      </span>
+                    )}
                     <label
                       className={cn(
                         "text-[11px] font-bold block mb-1",
                         isOrphan
-                          ? 'text-amber-600 dark:text-amber-400'
+                          ? 'text-amber-700 dark:text-amber-300'
                           : isConjugated ? 'text-primary' : 'text-muted-foreground',
                       )}
                       title={isOrphan
                         ? `Tamanho ${size} fora do range atual do solado, mas preservado do PV original`
                         : undefined}
                     >
-                      {isOrphan && '⚠ '}{size}
+                      {size}
                     </label>
                     <input
                       type="number"
@@ -934,7 +962,7 @@ function ColorSearchSelect({ colors, value, onSelect }: { colors: string[]; valu
           <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[280px] p-0" align="start">
+      <PopoverContent className="w-[300px] sm:w-[340px] p-0" align="start">
         <div className="p-2 space-y-2">
           <div className="flex items-center gap-2 px-2 border rounded-md">
             <Search className="h-4 w-4 text-muted-foreground opacity-50" />
@@ -1056,11 +1084,11 @@ function ColorPickerDropdown({ value, colors, onChange, disabled, onAddNew }: { 
           <ChevronsUpDown className="h-3 w-3 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[200px] p-1">
-        <Input placeholder="Cor..." value={search} onChange={e => setSearch(e.target.value)} className="h-8 mb-1 text-xs" />
-        <div className="max-h-40 overflow-y-auto space-y-0.5">
+      <PopoverContent className="w-[260px] sm:w-[280px] p-1">
+        <Input placeholder="Cor..." value={search} onChange={e => setSearch(e.target.value)} className="h-9 mb-1 text-sm" autoFocus />
+        <div className="max-h-48 overflow-y-auto space-y-0.5">
           {filtered.map(c => (
-            <button key={c} onClick={() => { onChange(c); setOpen(false); }} className="w-full text-left px-2 py-1 text-xs hover:bg-accent rounded-sm">{c}</button>
+            <button key={c} onClick={() => { onChange(c); setOpen(false); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-accent rounded-sm break-words">{c}</button>
           ))}
           {showAdd && (
             <button
@@ -1072,7 +1100,7 @@ function ColorPickerDropdown({ value, colors, onChange, disabled, onAddNew }: { 
                 }
                 setOpen(false);
               }}
-              className="w-full text-left px-2 py-1 text-xs text-primary hover:bg-accent rounded-sm"
+              className="w-full text-left px-2 py-1.5 text-xs text-primary font-medium hover:bg-accent rounded-sm"
             >
               + Cadastrar "{search}" no estoque
             </button>

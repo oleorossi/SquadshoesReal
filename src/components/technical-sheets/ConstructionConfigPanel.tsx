@@ -253,9 +253,9 @@ export function ConstructionConfigPanel({
           subtitle="Palmilha e solado já vêm prontos. Apenas o cabedal é cortado internamente. Ideal para sapatilhas, scarpin simples, chinela."
           routing={routingLabel('cabedal', hasSilk, requires_sewing)}
         >
-          <Alert className="bg-blue-500/5 border-blue-500/20 py-2">
-            <Info className="h-3 w-3 text-blue-500" />
-            <AlertDescription className="text-[11px]">
+          <Alert className="bg-amber-500/5 border-amber-500/30 py-2">
+            <Info className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+            <AlertDescription className="text-xs text-amber-700 dark:text-amber-300">
               Solado e palmilha são debitados como <strong>1 un por par (por numeração)</strong>.
               No solado, configure as cores de palmilha disponíveis e o vínculo com o cabedal.
             </AlertDescription>

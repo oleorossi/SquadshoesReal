@@ -541,7 +541,15 @@ export function SoladoGradeDialog({ open, onOpenChange, product }: SoladoGradeDi
               ) : (
                 <Badge variant="destructive">Sem faixa cadastrada</Badge>
               )}
-              {hasAnyConjugation && <Badge variant="outline" className="text-[10px] gap-1"><Link2 className="h-3 w-3" />Conjugado</Badge>}
+              {hasAnyConjugation && (
+                <Badge
+                  variant="outline"
+                  className="text-[10px] h-5 gap-1 px-1.5 border-primary/40 text-primary bg-primary/5"
+                  title="Esta grade contém numerações conjugadas (ex: 23/24)"
+                >
+                  <Link2 className="h-3 w-3" /> Conjugado
+                </Badge>
+              )}
               {!hasMultipleColors && product.color && <Badge variant="secondary">{product.color}</Badge>}
             </div>
           </DialogHeader>

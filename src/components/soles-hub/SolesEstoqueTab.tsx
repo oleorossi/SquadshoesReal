@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Boxes, Edit3, AlertTriangle } from 'lucide-react';
+import { Boxes, Edit3, AlertTriangle, AlertCircle, Link2 } from 'lucide-react';
 import { SoladoGradeDialog } from '@/components/inventory/SoladoGradeDialog';
 import type { Product } from '@/types/inventory';
 import type { SoleProduct } from './types';
@@ -103,28 +103,34 @@ export default function SolesEstoqueTab({ sole }: Props) {
               <p className="text-xs mt-1">Configure o range na aba <strong>Cadastro</strong> primeiro.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
+            <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
               {sizeKeys.map(k => {
                 const qty = Number(grade[k]) || 0;
                 const isConjugated = k.includes('/');
+                const isZeroCell = qty === 0;
                 return (
                   <div
                     key={k}
-                    className={`rounded-lg border p-3 text-center transition-colors ${
-                      qty === 0
-                        ? 'bg-rose-50/30 dark:bg-rose-950/10 border-rose-200/60 dark:border-rose-900/40'
-                        : 'bg-card hover:bg-muted/40'
+                    className={`rounded-lg border-l-4 border-t border-r border-b p-2.5 text-center transition-colors relative ${
+                      isZeroCell
+                        ? 'bg-rose-50/40 dark:bg-rose-950/10 border-t-rose-200/60 border-r-rose-200/60 border-b-rose-200/60 border-l-rose-500 dark:border-l-rose-400'
+                        : 'bg-card border-l-emerald-500/50 hover:bg-muted/40'
                     }`}
+                    title={isZeroCell ? `Tamanho ${k}: sem estoque` : `Tamanho ${k}: ${qty} pares`}
                   >
+                    {isZeroCell && (
+                      <AlertCircle
+                        className="absolute top-1 right-1 h-3 w-3 text-rose-500"
+                        aria-label="Sem estoque"
+                      />
+                    )}
                     <div className="flex items-center justify-center gap-1">
-                      <p className="text-xs text-muted-foreground font-mono">{k}</p>
+                      <p className={`text-sm font-mono ${isConjugated ? 'text-primary font-bold' : 'text-muted-foreground'}`}>{k}</p>
                       {isConjugated && (
-                        <Badge variant="outline" className="text-[8px] h-3 px-0.5 leading-none border-primary/40 text-primary">
-                          conj
-                        </Badge>
+                        <Link2 className="h-2.5 w-2.5 text-primary" aria-label="Tamanho conjugado" />
                       )}
                     </div>
-                    <p className={`text-lg font-bold font-mono mt-1 ${qty === 0 ? 'text-rose-600' : 'text-foreground'}`}>
+                    <p className={`text-xl font-bold font-mono mt-1 leading-none ${isZeroCell ? 'text-rose-600 dark:text-rose-400' : 'text-foreground'}`}>
                       {qty}
                     </p>
                   </div>

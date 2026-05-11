@@ -1657,8 +1657,11 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
   return (
     <div className="space-y-4">
       {dirty && (
-        <div className="flex items-center justify-between bg-primary/5 border border-primary/20 rounded-lg px-4 py-2">
-          <span className="text-sm text-primary font-medium">Alterações não salvas</span>
+        <div className="sticky top-2 z-30 flex items-center justify-between bg-primary/10 backdrop-blur-md border border-primary/30 rounded-lg px-4 py-2 shadow-md">
+          <span className="text-sm text-primary font-medium flex items-center gap-1.5">
+            <span className="inline-block h-2 w-2 rounded-full bg-primary animate-pulse" />
+            Alterações não salvas
+          </span>
           <Button size="sm" onClick={saveAll} disabled={updateSheet.isPending} className="gap-1">
             <Save className="h-3.5 w-3.5" /> Salvar
           </Button>
@@ -1666,7 +1669,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       )}
 
       <Tabs defaultValue="id">
-        <TabsList className="flex flex-wrap h-auto gap-1 bg-muted/50 p-1.5 rounded-lg border">
+        <TabsList className="flex flex-nowrap overflow-x-auto sm:flex-wrap sm:overflow-visible h-auto gap-1 bg-muted/50 p-1.5 rounded-lg border">
           <TabsTrigger value="id" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5"><Tag className="h-3.5 w-3.5" /> Identificação</TabsTrigger>
           <Separator orientation="vertical" className="h-5 mx-0.5" />
           <TabsTrigger value="engineering" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
