@@ -13,17 +13,30 @@ import { useOrderStraps } from '@/hooks/useOrderStraps';
  import { buildGroupedReportSummary } from '@/lib/groupedReportSummary';
 import { SignedImage } from '@/components/ui/signed-image';
 
+ // Ordem canônica pós PR1-PR3. Setores legacy ('corte','mesa') mapeados para
+ // os canônicos via alias abaixo. Todos backPath agora apontam para o hub
+ // unificado de produção (/orders).
  const SECTOR_CONFIG = {
-   corte: { label: 'Corte', emoji: '✂️', backPath: '/corte' },
-   costura: { label: 'Costura', emoji: '🪡', backPath: '/costura' },
-   aviamento: { label: 'Aviamento', emoji: '🧷', backPath: '/aviamento' },
-   mesa: { label: 'Mesa', emoji: '🪑', backPath: '/mesa' },
-   montagem: { label: 'Montagem', emoji: '🏗️', backPath: '/montagem' },
-   solagem: { label: 'Solagem', emoji: '🦶', backPath: '/solagem' },
-   acabamento: { label: 'Acabamento', emoji: '✨', backPath: '/acabamento' },
+   corte_palmilha: { label: 'Corte Palmilha', emoji: '✂️', backPath: '/orders' },
+   corte_forracao: { label: 'Corte Forração', emoji: '✂️', backPath: '/orders' },
+   aviamento:      { label: 'Aviamento', emoji: '🧷', backPath: '/orders' },
+   costura:        { label: 'Costura', emoji: '🪡', backPath: '/orders' },
+   silk:           { label: 'Silk', emoji: '🎨', backPath: '/orders' },
+   colagem:        { label: 'Colagem', emoji: '💨', backPath: '/orders' },
+   montagem:       { label: 'Montagem', emoji: '🏗️', backPath: '/orders' },
+   solagem:        { label: 'Solagem', emoji: '🦶', backPath: '/orders' },
+   acabamento:     { label: 'Acabamento', emoji: '✨', backPath: '/orders' },
+   expedicao:      { label: 'Expedição', emoji: '📦', backPath: '/orders' },
  } as const;
 
 type SectorKey = keyof typeof SECTOR_CONFIG;
+
+// Aliases legacy: rotas/URLs antigas continuam funcionando.
+const SECTOR_ALIAS: Record<string, SectorKey> = {
+  corte: 'corte_palmilha',
+  forracao: 'corte_forracao',
+  mesa: 'aviamento',
+};
 
 function StatCard({ label, value }: { label: string; value: string | number }) {
   return (
@@ -39,7 +52,8 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
 export default function GroupedReportSummary() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const sectorKey = (searchParams.get('sector') || '').toLowerCase() as SectorKey;
+  const rawSectorKey = (searchParams.get('sector') || '').toLowerCase();
+  const sectorKey = (SECTOR_ALIAS[rawSectorKey] || rawSectorKey) as SectorKey;
   const sector = SECTOR_CONFIG[sectorKey];
   const idsParam = searchParams.get('ids') || '';
   const selectedIds = useMemo(() => idsParam.split(',').map((id) => id.trim()).filter(Boolean), [idsParam]);

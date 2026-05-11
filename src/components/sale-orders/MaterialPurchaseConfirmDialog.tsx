@@ -65,7 +65,9 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
            toast.warning(`Material "${supplier.product_name}" sem fornecedor padrão — defina antes de gerar a OC.`);
            continue;
          }
-         // Usa upsert: agrega numa OC ABERTA do mesmo fornecedor + vincula este PV
+         // O3: usa suggested_purchase_qty + purchase_unit (já convertidos pra
+         // unidade do fornecedor: m → rolo, kg → saco). Sem conversão, vira
+         // OC em unidade interna e o comprador refaz manualmente.
          await upsertPO.mutateAsync({
            supplier_id: supplier.supplier_id,
            supplier_name: supplier.supplier_name,
@@ -73,9 +75,9 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
            notes: `Itens adicionados automaticamente pelo PV.`,
            items: group.map(g => ({
              product_id: g.product_id,
-             quantity: g.suggested_qty,
+             quantity: g.suggested_purchase_qty ?? g.suggested_qty,
              unit_price: g.unit_price,
-             unit: g.unit,
+             unit: g.purchase_unit ?? g.unit,
              current_stock: g.available,
              min_stock: g.min_stock,
              max_stock: 0,
@@ -89,15 +91,32 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
        for (const art of artisanalShortages) {
          const groupName = (art.product_name || '').split(':')[0].trim();
          const colorName = (art.product_name || '').split(':')[1]?.trim() || '';
-         const recipe = recipes.find(r => r.artisanal_product_name.includes(groupName));
+         // O7: match priorizado — preferir EXACT match (artisanal_product_name = groupName)
+         // sobre includes (que confundia "Tira Overlock 5mm" com "Tira Overlock 5mm Reforçada").
+         // Em empate, prefere receita ativa com default_contractor_id setado.
+         const exactRecipes = recipes.filter(r =>
+           r.artisanal_product_name?.trim().toLowerCase() === groupName.toLowerCase()
+         );
+         const looseRecipes = exactRecipes.length > 0
+           ? exactRecipes
+           : recipes.filter(r => r.artisanal_product_name?.toLowerCase().includes(groupName.toLowerCase()));
+         const recipe = looseRecipes
+           .sort((a, b) => Number(!!b.default_contractor_id) - Number(!!a.default_contractor_id))[0];
          if (!recipe) {
            toast.warning(`Produto artesanal "${art.product_name}" sem receita cadastrada.`);
            continue;
          }
-         const contractorId = recipe.default_contractor_id || contractors[0]?.id;
+         // O8: filtra contractors ativos antes de fallback. Sem isso, pegava
+         // alphabetic[0] mesmo se inativo. Também alerta antes de criar.
+         const activeContractors = contractors.filter((c: any) => c.active !== false);
+         const contractorId = recipe.default_contractor_id || activeContractors[0]?.id;
          if (!contractorId) {
-           toast.warning(`Produto "${art.product_name}" sem terceirizado definido para OS.`);
+           toast.warning(`Produto "${art.product_name}" sem terceirizado ativo definido para OS.`);
            continue;
+         }
+         if (!recipe.default_contractor_id) {
+           const fallbackName = activeContractors[0]?.name || '?';
+           toast.info(`OS de "${art.product_name}" usando contractor fallback: ${fallbackName}. Defina default na receita.`, { duration: 6000 });
          }
 
          // forOrder = shortage (o que falta pro pedido); forStock = repor min_stock

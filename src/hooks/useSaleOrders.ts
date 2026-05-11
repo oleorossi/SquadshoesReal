@@ -835,13 +835,57 @@ export function useUpdateSaleOrderStatus() {
             if (stagesDelErr) { await revertPvClaim(); throw new Error(`Falha ao remover etapas: ${stagesDelErr.message}`); }
             const { error: consDelErr } = await supabase.from('production_consumptions').delete().in('order_id', newlyCancelledOpIds);
             if (consDelErr) { await revertPvClaim(); throw new Error(`Falha ao remover consumos: ${consDelErr.message}`); }
-            const { error: resDelErr } = await supabase.from('material_reservations').delete().in('order_id', newlyCancelledOpIds);
-            if (resDelErr) { await revertPvClaim(); throw new Error(`Falha ao remover reservas: ${resDelErr.message}`); }
+            // O5: preserva histórico em material_reservations (status='cancelled')
+            // em vez de DELETE. Trigger AFTER UPDATE decrementa reserved_stock.
+            const { error: resCancelErr } = await supabase
+              .from('material_reservations')
+              .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+              .in('order_id', newlyCancelledOpIds)
+              .in('status', ['reserved', 'partially_consumed']);
+            if (resCancelErr) { await revertPvClaim(); throw new Error(`Falha ao cancelar reservas: ${resCancelErr.message}`); }
           }
         }
 
-        // 3) Limpa MRP suggestions do PV cancelado para não poluir o dashboard MRP.
-        await supabase.from('mrp_suggestions').delete().eq('sale_order_id', id);
+        // 3) Cancela MRP suggestions (preserva trilha de auditoria — O5).
+        await supabase.from('mrp_suggestions')
+          .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+          .eq('sale_order_id', id)
+          .neq('status', 'cancelled');
+
+        // 3b) O1: Cancela OC e OS vinculadas (abertas/pendentes) — evita comprador
+        // receber material que ninguém mais precisa e terceirizado produzir tira órfã.
+        try {
+          // OCs: linked_sale_order_ids @> [id] e ainda não recebidas/canceladas
+          const { data: linkedPOs } = await supabase
+            .from('purchase_orders')
+            .select('id, status')
+            .contains('linked_sale_order_ids', [id])
+            .not('status', 'in', '(received,cancelled,closed)');
+          for (const po of (linkedPOs || [])) {
+            await supabase.from('purchase_orders')
+              .update({ status: 'cancelled', notes: `Cancelada — PV vinculado cancelado`, updated_at: new Date().toISOString() })
+              .eq('id', po.id);
+          }
+          // OSs: linked_sale_order_ids @> [id] OU sale_order_id = id, e não concluídas
+          const { data: linkedSOs } = await supabase
+            .from('service_orders')
+            .select('id, status, sale_order_id, linked_sale_order_ids')
+            .or(`sale_order_id.eq.${id},linked_sale_order_ids.cs.{${id}}`)
+            .not('status', 'in', '(concluido,concluida,finalizado,cancelado,cancelled)');
+          for (const so of (linkedSOs || [])) {
+            await supabase.from('service_orders')
+              .update({ status: 'cancelado', notes: `Cancelada — PV vinculado cancelado`, updated_at: new Date().toISOString() })
+              .eq('id', so.id);
+          }
+          if ((linkedPOs?.length ?? 0) + (linkedSOs?.length ?? 0) > 0) {
+            toast.warning(
+              `${linkedPOs?.length ?? 0} OC(s) e ${linkedSOs?.length ?? 0} OS(s) vinculadas foram canceladas automaticamente.`,
+              { duration: 8000 },
+            );
+          }
+        } catch (cascadeErr: any) {
+          console.warn('Falha ao cancelar OC/OS vinculadas:', cascadeErr?.message);
+        }
 
         // 4) Sincroniza contas a receber / financial_entries (cancela AR e remove ghost revenue).
         // Wrapped in try/catch: if AR sync fails, the PV is already Cancelado and

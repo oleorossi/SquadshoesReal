@@ -13,8 +13,19 @@ export interface MaterialShortage {
   supplier_name: string;
   lead_time_days: number;
   moq: number;
-   /** Quantity that should be ordered or produced (max of shortage and MOQ). */
+   /** Quantity that should be ordered or produced (max of shortage and MOQ).
+    * Em UNIDADE DE CONSUMO interna (metros, kg, un). Para gerar OC, multiplicar
+    * por conversion_rate e arredondar pra cima → suggested_purchase_qty. */
    suggested_qty: number;
+   /** Quantidade já convertida pra unidade de compra do fornecedor (rolos, sacos)
+    *  com CEIL aplicado. Vai pro INSERT em purchase_orders.items.quantity. */
+   suggested_purchase_qty: number;
+   /** Unidade interna de consumo (m, kg, un). */
+   consumption_unit: string;
+   /** Unidade de compra do fornecedor (rolo, saco, un); fallback = consumption_unit. */
+   purchase_unit: string;
+   /** Quantos consumption_unit por purchase_unit. Ex: 1 rolo = 50 m → 50. Default 1. */
+   conversion_rate: number;
    is_artisanal: boolean;
   /** Minimum stock target — used to calculate artisanal forStock buffer. */
   min_stock: number;
@@ -52,6 +63,9 @@ type ProductRow = {
   sole_moq: number | null;
   min_stock: number | null;
   is_artisanal: boolean | null;
+  purchase_unit: string | null;
+  purchase_order_unit: string | null;
+  conversion_rate: number | null;
 };
 
 type SupplierRow = { id: string; name: string | null; lead_time_days: number | null };
@@ -88,7 +102,7 @@ export async function enrichMaterialShortages(rawShortages: RawShortage[]): Prom
   const productIds = [...aggregated.keys()];
   const { data: products } = await supabase
     .from('products')
-    .select('id, name, sku, unit, quantity, reserved_stock, unit_price, supplier_id, supplier_lead_time_days, lead_time_days, sole_moq, min_stock, is_artisanal')
+    .select('id, name, sku, unit, quantity, reserved_stock, unit_price, supplier_id, supplier_lead_time_days, lead_time_days, sole_moq, min_stock, is_artisanal, purchase_unit, purchase_order_unit, conversion_rate')
     .in('id', productIds);
 
   const rows = (products || []) as unknown as ProductRow[];
@@ -123,6 +137,15 @@ export async function enrichMaterialShortages(rawShortages: RawShortage[]): Prom
       ? shortageQty + Math.max(0, minStock - need.available)
       : Math.max(shortageQty, moq);
 
+    // O3: aplica conversion_rate quando o fornecedor vende em unidade diferente
+    // (ex: m → rolo, kg → saco). CEIL pra não pedir fração de rolo.
+    const consumptionUnit = product.unit || 'un';
+    const purchaseUnit = product.purchase_order_unit || product.purchase_unit || consumptionUnit;
+    const conversionRate = Number(product.conversion_rate) > 0 ? Number(product.conversion_rate) : 1;
+    const suggestedPurchaseQty = conversionRate > 1
+      ? Math.ceil(suggested / conversionRate)
+      : suggested;
+
     shortages.push({
       product_id: product.id,
       product_name: product.name || need.product_name,
@@ -130,13 +153,17 @@ export async function enrichMaterialShortages(rawShortages: RawShortage[]): Prom
       required: need.required,
       available: need.available,
       shortage: shortageQty,
-      unit: product.unit || 'un',
+      unit: consumptionUnit,
       unit_price: Number(product.unit_price ?? 0),
       supplier_id: product.supplier_id ?? null,
       supplier_name: supplier?.name || (product.is_artisanal ? 'Terceirizado (OS)' : 'Fornecedor não definido'),
       lead_time_days: leadTime,
       moq,
       suggested_qty: suggested,
+      suggested_purchase_qty: suggestedPurchaseQty,
+      consumption_unit: consumptionUnit,
+      purchase_unit: purchaseUnit,
+      conversion_rate: conversionRate,
       is_artisanal: !!product.is_artisanal,
       min_stock: minStock,
       reference_labels: [...need.references],

@@ -106,6 +106,12 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
   const margin = totalRevenue - totalCost;
   const marginPct = totalRevenue > 0 ? margin / totalRevenue : 0;
 
+  // F7: Detecta under-reporting de receita/margem. Se há OPs sem custo carregado
+  // (o.cost null/undefined), KPIs somam só as restantes — alerta amber explícito.
+  const opsWithCost = orders.filter(o => o.cost != null).length;
+  const opsWithoutCost = orders.length - opsWithCost;
+  const isPartialReport = opsWithoutCost > 0 && opsWithCost > 0;
+
   // Setores únicos presentes em qualquer OP do PV.
   // Normaliza nomes legacy (Mesa → Aviamento) pra evitar coluna duplicada.
   const sectorsPresent = new Set<string>();
@@ -199,7 +205,12 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
           </thead>
           <tbody>
             {orders.map(o => {
-              const stageByName = new Map((o.stages || []).map(s => [s.stage_name, s]));
+              // F6: chaves do mapa normalizadas (igual à coluna). Garante que
+              // OPs antigas com stage_name='Mesa'/'Forração' batem com coluna
+              // 'Aviamento'/'Corte Forração' canônica.
+              const stageByName = new Map(
+                (o.stages || []).map(s => [normalizeStageName(s.stage_name), s])
+              );
               return (
                 <tr key={o.id}>
                   <td className="border border-slate-300 py-1 px-1 font-mono text-[10px]">{o.op_number || '—'}</td>
@@ -211,7 +222,8 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
                   <td className="border border-slate-300 py-1 px-1 text-[10px] text-slate-600">{o.sole_name || '—'}</td>
                   <td className="border border-slate-300 py-1 px-1 text-right font-mono font-black text-[11px]">{o.total_pairs}</td>
                   {sectorsOrdered.map(s => {
-                    const stage = stageByName.get(s) || (s === 'Aviamento' ? stageByName.get('Mesa') : null);
+                    // s já é canônico (Aviamento/Costura/etc). Mapa usa chaves normalizadas.
+                    const stage = stageByName.get(s) || null;
                     const status = stage?.status || 'pendente';
                     const cls = STATUS_COLOR[status] || STATUS_COLOR.pendente;
                     return (
@@ -287,6 +299,15 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
           <AlertTriangle className="h-4 w-4 text-amber-600" />
           <p className="text-xs text-amber-800">
             Sem custos calculados ainda — calcule via "Calcular Custos" no PV pra ver material/mão de obra/margem aqui.
+          </p>
+        </div>
+      )}
+      {isPartialReport && (
+        <div className="keep-together mb-3 border border-amber-300 rounded p-2 bg-amber-50 flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 text-amber-600" />
+          <p className="text-xs text-amber-800">
+            <strong>Receita/Margem PARCIAIS:</strong> {opsWithCost} de {orders.length} OPs com custo
+            carregado. {opsWithoutCost} OP(s) sem custo — execute "Calcular Custos" pra atualizar.
           </p>
         </div>
       )}
