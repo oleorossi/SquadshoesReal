@@ -137,22 +137,22 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
         </div>`
       : '';
 
-    // Bloco esquerdo do topo (logo + barcode)
+    // Bloco esquerdo do topo (logo + barcode) — altura limitada
     const headerLeft = `
-      <div style="flex:1;padding:6px 10px;display:flex;flex-direction:column;justify-content:center;border-right:1.5px solid #000;">
-        <p style="margin:0;font-size:17px;font-weight:900;letter-spacing:2px;text-transform:lowercase;line-height:1;">squad<span style="font-weight:400;">shoes</span></p>
+      <div style="flex:1;padding:5px 10px;display:flex;flex-direction:column;justify-content:center;border-right:1.5px solid #000;overflow:hidden;">
+        <p style="margin:0;font-size:16px;font-weight:900;letter-spacing:2px;text-transform:lowercase;line-height:1;">squad<span style="font-weight:400;">shoes</span></p>
         ${item.barcode ? `
-          <svg id="${barcodeId}" style="margin-top:3px;max-width:100%;"></svg>
+          <svg id="${barcodeId}" style="margin-top:2px;max-width:100%;max-height:14mm;"></svg>
         ` : ''}
       </div>`;
 
     // Bloco direito do topo (QR + cliente)
     const headerRight = `
-      <div style="width:88mm;padding:5px 8px;display:flex;gap:8px;align-items:flex-start;">
-        <div style="width:18mm;height:18mm;flex-shrink:0;background:#fff;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;font-size:7px;color:#aaa;text-align:center;line-height:1.1;">
+      <div style="width:88mm;padding:4px 8px;display:flex;gap:6px;align-items:flex-start;overflow:hidden;">
+        <div style="width:16mm;height:16mm;flex-shrink:0;background:#fff;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;font-size:6.5px;color:#aaa;text-align:center;line-height:1.1;">
           ${item.clientOrderNumber || item.orderNumber}<br/>QR
         </div>
-        <div style="flex:1;font-size:10px;color:#000;">
+        <div style="flex:1;font-size:9.5px;color:#000;line-height:1.3;overflow:hidden;">
           ${recipientBlock || '<span style="color:#aaa;font-size:9px;font-style:italic;">Sem dados do destinatário</span>'}
           ${pedidoLine}
         </div>
@@ -188,13 +188,13 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
       </div>`;
 
     const sizeRangeBig = item.sizeRangeLabel
-      ? `<div style="width:32mm;display:flex;align-items:center;justify-content:center;border-left:1px solid #ccc;">
-          <span style="font-size:42px;font-weight:900;line-height:1;letter-spacing:-2px;color:#000;">${escapeHtml(item.sizeRangeLabel)}</span>
+      ? `<div style="width:30mm;display:flex;align-items:center;justify-content:center;border-left:1px solid #ccc;">
+          <span style="font-size:34px;font-weight:900;line-height:1;letter-spacing:-1.5px;color:#000;">${escapeHtml(item.sizeRangeLabel)}</span>
         </div>` : '';
 
     const productImage = item.imageUrl ? `
-      <div style="width:36mm;border-left:1px solid #ccc;padding:4px;display:flex;align-items:center;justify-content:center;background:#fff;">
-        <img src="${item.imageUrl}" crossorigin="anonymous" style="max-width:32mm;max-height:30mm;width:auto;height:auto;object-fit:contain;" onerror="this.style.display='none'" />
+      <div style="width:34mm;border-left:1px solid #ccc;padding:3px;display:flex;align-items:center;justify-content:center;background:#fff;">
+        <img src="${item.imageUrl}" crossorigin="anonymous" style="max-width:30mm;max-height:28mm;width:auto;height:auto;object-fit:contain;" onerror="this.style.display='none'" />
       </div>` : '';
 
     // Rodapé: endereço remetente + CGC + página
@@ -269,10 +269,13 @@ body{font-family:Arial,Helvetica,sans-serif;color:#000;padding:16px 10px;backgro
   width:100%;font-family:Arial,Helvetica,sans-serif;color:#000;
   border:1.5px solid #000;padding:0;box-sizing:border-box;
   display:flex;flex-direction:column;page-break-inside:avoid;break-inside:avoid;
-  border-radius:0.5mm;overflow:hidden;height:134mm;
+  border-radius:0.5mm;overflow:hidden;height:138mm;
 }
+/* Cada bloco interno respeita seu espaço. flex-shrink:0 no que tem altura
+   "natural" e flex:1 no espaço de produto (foto+descrição). */
+.label-box > *{overflow:hidden;}
 .page-container{
-  width:190mm;margin:0 auto 8mm;display:flex;flex-direction:column;gap:3mm;box-sizing:border-box;
+  width:198mm;margin:0 auto 8mm;display:flex;flex-direction:column;gap:3mm;box-sizing:border-box;
 }
 .page-container.page-break{break-after:page;page-break-after:always;}
 /* page-container sem .page-break (= a última) NÃO tem break-after, evitando
@@ -297,10 +300,12 @@ body{font-family:Arial,Helvetica,sans-serif;color:#000;padding:16px 10px;backgro
 .print-footer__btn--ghost:hover{background:#f5f5f5;}
 @media print{
   body{padding:0;margin:0;}
-  /* 285mm em vez de 287mm: deixa 2mm de buffer pra evitar overflow de 1-2px
-     que dispararia uma página A4 extra. */
-  .page-container{width:100%;height:285mm;margin:0;}
-  .label-box{height:141mm;}
+  /* A4 portrait = 297mm. Com @page margin 5mm × 2 = 287mm úteis.
+     page-container = 282mm pra deixar buffer (5mm) que evita overflow
+     de sub-pixel disparar página A4 extra. Cada label-box = 139mm
+     (= (282-3 de gap) / 2 = 139.5mm — arredondado pra baixo). */
+  .page-container{width:100%;height:282mm;margin:0;}
+  .label-box{height:139mm;}
   /* Footer tem que sumir COMPLETAMENTE em impressão (sem ocupar nem layout
      nem fluxo de página). Várias regras em conjunto pra fechar todos os
      caminhos: display:none deveria bastar, mas alguns navegadores ainda
