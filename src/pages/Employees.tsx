@@ -25,6 +25,7 @@ import AppLayout from '@/components/layout/AppLayout';
 
 const emptyEmployee = {
   name: '', external_id: '', role: '', department: '', salary: 0, overtime_hourly_rate: null as number | null,
+  hourly_rate: null as number | null, overtime_multiplier: 1.20,
   work_schedule_id: null as string | null, phone: '', whatsapp: '', pix_key: '', pix_type: '', notes: '', active: true, admission_date: new Date().toISOString().split('T')[0]
 };
 
@@ -404,9 +405,18 @@ export default function Employees() {
             <div><Label>Admissão</Label><Input type="date" value={form.admission_date} onChange={e => setForm(f => ({ ...f, admission_date: e.target.value }))} /></div>
             <div><Label>Salário (R$)</Label><CurrencyInput value={form.salary} onChange={v => setForm(f => ({ ...f, salary: v }))} /></div>
             <div>
-              <Label>Valor Hora Extra (R$/hr)</Label>
-              <CurrencyInput value={form.overtime_hourly_rate ?? 0} onChange={v => setForm(f => ({ ...f, overtime_hourly_rate: v > 0 ? v : null }))} />
-              <p className="text-xs text-muted-foreground mt-1">Se vazio, calcula automaticamente pelo salário.</p>
+              <Label>Valor Hora (R$/hr)</Label>
+              <CurrencyInput value={form.hourly_rate ?? 0} onChange={v => setForm(f => ({ ...f, hourly_rate: v > 0 ? v : null }))} />
+              <p className="text-xs text-muted-foreground mt-1">Se vazio, usa salário ÷ 220h (padrão CLT).</p>
+            </div>
+            <div>
+              <Label>Multiplicador HE (ex: 1.20 = +20%)</Label>
+              <Input
+                type="number" step="0.01" min="1" max="3"
+                value={form.overtime_multiplier}
+                onChange={e => setForm(f => ({ ...f, overtime_multiplier: Number(e.target.value) || 1.20 }))}
+              />
+              <p className="text-xs text-muted-foreground mt-1">CLT mínimo: 1.50. Padrão da Squad: 1.20. Configurável por funcionário.</p>
             </div>
             <div>
               <Label>Escala de Trabalho</Label>

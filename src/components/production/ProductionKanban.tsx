@@ -238,6 +238,8 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
   const [bulkFinalizing, setBulkFinalizing] = useState(false);
   const [bottleneckFilter, setBottleneckFilter] = useState<'all' | 'any-issue' | 'critical-only' | 'hide-ok'>('all');
   const [bottleneckDetail, setBottleneckDetail] = useState<KanbanOrder | null>(null);
+  const [bulkMoveSector, setBulkMoveSector] = useState<string>('');
+  const [bulkMoveRunning, setBulkMoveRunning] = useState(false);
   const { finalizeSectorTask, invalidateProductionCaches } = useProductionTransitions();
 
   // ===== Busca interna + persistência URL/localStorage =====
@@ -815,6 +817,50 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
                 </span>
               );
             })}
+          </div>
+        )}
+
+        {/* Bulk move: move todas OPs filtradas pro setor escolhido */}
+        {hasActiveFilter && filteredOrders.length > 0 && (
+          <div className="flex items-center gap-2 p-2 rounded-md border-2 border-primary/40 bg-primary/5">
+            <span className="text-xs font-bold text-primary">
+              Mover {filteredOrders.length} OP{filteredOrders.length !== 1 ? 's' : ''} filtrada{filteredOrders.length !== 1 ? 's' : ''} para:
+            </span>
+            <select
+              className="h-7 text-xs rounded border bg-background px-2"
+              value={bulkMoveSector}
+              onChange={e => setBulkMoveSector(e.target.value)}
+            >
+              <option value="">Selecione setor destino…</option>
+              {KANBAN_SECTORS.filter(s => s.key !== 'Pendente').map(s => (
+                <option key={s.key} value={s.key}>{s.label}</option>
+              ))}
+            </select>
+            <Button
+              size="sm"
+              className="h-7 text-xs"
+              disabled={!bulkMoveSector || bulkMoveRunning}
+              onClick={async () => {
+                if (!bulkMoveSector || filteredOrders.length === 0) return;
+                if (!confirm(`Mover ${filteredOrders.length} OP(s) para ${bulkMoveSector}?`)) return;
+                setBulkMoveRunning(true);
+                let ok = 0;
+                let failed = 0;
+                for (const o of filteredOrders) {
+                  try {
+                    await moveOrder(o.id, bulkMoveSector);
+                    ok++;
+                  } catch {
+                    failed++;
+                  }
+                }
+                setBulkMoveRunning(false);
+                setBulkMoveSector('');
+                toast.success(`${ok} OP(s) movida(s)${failed > 0 ? ` · ${failed} falharam` : ''}`);
+              }}
+            >
+              {bulkMoveRunning ? 'Movendo…' : 'Mover em massa'}
+            </Button>
           </div>
         )}
 

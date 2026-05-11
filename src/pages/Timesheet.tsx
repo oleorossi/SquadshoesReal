@@ -8,12 +8,13 @@ import ImportHistoryPanel from '@/components/timesheet/ImportHistoryPanel';
 import PendingTimeRecordsPanel from '@/components/timesheet/PendingTimeRecordsPanel';
 import TimeValidationPanel from '@/components/timeControl/TimeValidationPanel';
 import ReportsPanel from '@/components/timeControl/ReportsPanel';
+import { OvertimeResolutionPanel } from '@/components/timesheet/OvertimeResolutionPanel';
 import { useState, useRef, useMemo, useEffect } from 'react';
 import {
   Clock, Upload, Plus, Trash2, Loader2, Calendar, Settings2, AlertTriangle,
   FileSpreadsheet, ChevronDown, Sun, Moon, Coffee, CheckCircle2, XCircle, MinusCircle,
   Printer, Users2, DollarSign, Link2, Unlink2, Shield, FileText, ClipboardEdit, AlarmClock,
-  History,
+  History, Wallet,
 } from 'lucide-react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
@@ -443,9 +444,50 @@ function TimesheetRecordsTab() {
     if (!file) return;
     setParsing(true);
     try {
-      const isTxt = file.name.toLowerCase().endsWith('.txt');
-      const result = isTxt ? await parseTimesheetTxt(file) : await parseTimesheetXlsx(file);
-      // Preserva o File original pra arquivamento no bucket após confirm.
+      const name = file.name.toLowerCase();
+      const isTxt = name.endsWith('.txt');
+      const isCsv = name.endsWith('.csv');
+      const isJson = name.endsWith('.json');
+
+      // Detecta arquivo do relógio AGL (UTF-16 LE BOM) lendo primeiros bytes
+      let isAGLClock = false;
+      if (isTxt || isCsv || isJson) {
+        const head = new Uint8Array(await file.slice(0, 2).arrayBuffer());
+        isAGLClock = isTxt && head.length >= 2 && head[0] === 0xFF && head[1] === 0xFE;
+      }
+
+      let result: { employees: ParsedEmployee[]; startDate: string; endDate: string };
+      if (isAGLClock || isCsv || isJson) {
+        const { parseTimeClockFile, groupPunchesByDay } = await import('@/lib/timeClockParser');
+        const parsed = await parseTimeClockFile(file);
+        const days = groupPunchesByDay(parsed.punches);
+        // Converte pro formato ParsedEmployee
+        const empMap = new Map<string, ParsedEmployee>();
+        for (const day of days) {
+          const key = day.employee_external_id;
+          if (!empMap.has(key)) {
+            empMap.set(key, {
+              externalId: day.employee_external_id,
+              name: day.employee_name,
+              department: '',
+              records: [],
+            });
+          }
+          const e = empMap.get(key)!;
+          const dayNum = parseInt(day.date.split('-')[2], 10);
+          e.records.push({ day: dayNum, dateStr: day.date, punches: day.punches });
+        }
+        result = {
+          employees: Array.from(empMap.values()),
+          startDate: parsed.dateRange?.from || '',
+          endDate: parsed.dateRange?.to || '',
+        };
+        toast.info(`Detectado formato ${parsed.format} — ${parsed.totalRows} batidas em ${parsed.employees.length} funcionários`);
+      } else if (isTxt) {
+        result = await parseTimesheetTxt(file);
+      } else {
+        result = await parseTimesheetXlsx(file);
+      }
       setPreview({ ...result, rawFile: file });
       autoMatchEmployees(result.employees);
       const matched = result.employees.filter(emp => !!findBestEmployeeMatch(emp.name, emp.externalId)).length;
@@ -1498,6 +1540,7 @@ export default function Timesheet() {
             { value: 'manual',      label: 'Lançamento',     icon: ClipboardEdit },
             { value: 'late',        label: 'Atrasos',        icon: AlarmClock },
             { value: 'occurrences', label: 'Ocorrências',    icon: AlertTriangle },
+            { value: 'overtime',    label: 'Resolução HE',   icon: Wallet },
             { value: 'reports',     label: 'Relatórios',     icon: FileText },
             { value: 'history',     label: 'Histórico Imp.', icon: History },
             { value: 'schedule',    label: 'Horário Padrão', icon: Clock },
@@ -1516,6 +1559,7 @@ export default function Timesheet() {
             <Separator />
             <TimeValidationPanel />
           </TabsContent>
+          <TabsContent value="overtime"><OvertimeResolutionPanel /></TabsContent>
           <TabsContent value="reports"><ReportsPanel /></TabsContent>
           <TabsContent value="history"><ImportHistoryPanel /></TabsContent>
           <TabsContent value="schedule"><WorkScheduleTab /></TabsContent>
