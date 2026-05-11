@@ -203,30 +203,50 @@ export default function SolesCadastroTab({ sole }: Props) {
 
       {/* GroupBindingFallback é declarado abaixo */}
 
-      {/* Conjugações */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Layers className="h-4 w-4 text-primary" />
-            Conjugações de numeração
-          </CardTitle>
-          <p className="text-xs text-muted-foreground">
-            Quando duas numerações compartilham estoque (ex.: 33/34, 39/40), defina aqui.
-            O estoque, a venda e o consumo respeitam a conjugação automaticamente.
-          </p>
-        </CardHeader>
-        <CardContent>
-          {groupId ? (
-            <SoleSizeConjugationsEditor
-              soleGroupId={groupId}
-              sizeFrom={Number(form.size_from) || 33}
-              sizeTo={Number(form.size_to) || 40}
-            />
-          ) : (
-            <GroupBindingFallback soleId={sole.id} />
-          )}
-        </CardContent>
-      </Card>
+      {/* Conjugações — só aparece se o tipo do solado é 'conjugado'.
+          Pra Tradicional/Palmilha Pronta, a seção seria ruído visual
+          (não tem como ter conjugação se cada número é individual ou
+          se a palmilha vem pronta). O tipo é definido na tela de Dados
+          Técnicos do produto. */}
+      {sole.sole_classification === 'conjugado' ? (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Layers className="h-4 w-4 text-primary" />
+              Conjugações de numeração
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Quando duas numerações compartilham estoque (ex.: 33/34, 39/40), defina aqui.
+              O estoque, a venda e o consumo respeitam a conjugação automaticamente.
+            </p>
+          </CardHeader>
+          <CardContent>
+            {groupId ? (
+              <SoleSizeConjugationsEditor
+                soleGroupId={groupId}
+                sizeFrom={Number(form.size_from) || 33}
+                sizeTo={Number(form.size_to) || 40}
+              />
+            ) : (
+              <GroupBindingFallback soleId={sole.id} />
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        /* Hint discreto pra usuário que escolheu o tipo errado ou não definiu */
+        sole.sole_classification && sole.sole_classification !== 'conjugado' && (
+          <div className="rounded-md border border-dashed bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground flex items-center gap-2">
+            <Layers className="h-3.5 w-3.5 shrink-0" />
+            <span>
+              Conjugações de numeração só se aplicam a solados do tipo <strong>Conjugado</strong>. Este solado é do tipo{' '}
+              <strong>
+                {sole.sole_classification === 'tradicional' ? 'Tradicional' : 'Palmilha Pronta'}
+              </strong>.
+              Pra habilitar conjugações, abra "Editar Dados Técnicos" e mude o tipo.
+            </span>
+          </div>
+        )
+      )}
     </div>
   );
 }

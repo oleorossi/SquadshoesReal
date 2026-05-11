@@ -44,7 +44,7 @@ function useSoleProducts() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('products')
-        .select('id, name, sku, category, color, quantity, unit, min_stock, stock_grade, group_id, active')
+        .select('id, name, sku, category, color, quantity, unit, min_stock, stock_grade, group_id, active, sole_classification')
         .eq('active', true)
         .order('name');
       if (error) throw error;
