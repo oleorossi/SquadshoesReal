@@ -1759,17 +1759,63 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
 
   return (
     <div className="space-y-4">
-      {dirty && (
-        <div className="sticky top-2 z-30 flex items-center justify-between bg-primary/10 backdrop-blur-md border border-primary/30 rounded-lg px-4 py-2 shadow-md">
-          <span className="text-sm text-primary font-medium flex items-center gap-1.5">
-            <span className="inline-block h-2 w-2 rounded-full bg-primary animate-pulse" />
-            Alterações não salvas
-          </span>
-          <Button size="sm" onClick={saveAll} disabled={updateSheet.isPending} className="gap-1">
-            <Save className="h-3.5 w-3.5" /> Salvar
-          </Button>
+      {/* Sticky toolbar: identidade da ficha + ações sempre visíveis */}
+      <div className="sticky top-2 z-30 bg-background/95 backdrop-blur-md border rounded-lg shadow-md">
+        <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <div className="bg-primary/10 p-1.5 rounded-md shrink-0">
+              <Tag className="h-4 w-4 text-primary" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-bold text-sm truncate">{form.name || sheet.name || '(sem nome)'}</span>
+                {form.code && form.code !== form.name && (
+                  <Badge variant="outline" className="text-[10px] h-4.5 font-mono">{form.code}</Badge>
+                )}
+                {form.shoe_category && (
+                  <Badge variant="secondary" className="text-[10px] h-4.5">{form.shoe_category}</Badge>
+                )}
+                {form.status_ficha && (
+                  <Badge
+                    className={cn(
+                      'text-[10px] h-4.5 uppercase tracking-wider',
+                      form.status_ficha === 'publicada' && 'bg-emerald-500/15 text-emerald-700 border-emerald-300 dark:text-emerald-400 dark:border-emerald-800',
+                      form.status_ficha === 'em_revisao' && 'bg-amber-500/15 text-amber-700 border-amber-300 dark:text-amber-400 dark:border-amber-800',
+                      form.status_ficha === 'rascunho' && 'bg-muted text-muted-foreground border-border',
+                    )}
+                  >
+                    {form.status_ficha === 'publicada' ? 'Publicada' : form.status_ficha === 'em_revisao' ? 'Em Revisão' : 'Rascunho'}
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-0.5 flex-wrap">
+                {form.ncm && (
+                  <span className="font-mono">
+                    NCM <span className={cn('font-bold', /^\d{8}$/.test(form.ncm) ? 'text-foreground' : 'text-amber-600')}>{form.ncm}</span>
+                  </span>
+                )}
+                {form.sole_material && (
+                  <span>Solado: <span className="font-semibold text-foreground">{form.sole_material}</span></span>
+                )}
+                <span>Materiais: <span className="font-semibold text-foreground">{sheetMaterials.length}</span></span>
+                <span>Custo/par: <span className="font-mono font-bold text-foreground">{formatCurrency(materialCost)}</span></span>
+              </div>
+            </div>
+          </div>
+          <div className="shrink-0">
+            {dirty ? (
+              <Button size="sm" onClick={saveAll} disabled={updateSheet.isPending} className="gap-1.5 h-8">
+                <span className="inline-block h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+                <Save className="h-3.5 w-3.5" /> Salvar
+              </Button>
+            ) : (
+              <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" /> Salvo
+              </span>
+            )}
+          </div>
         </div>
-      )}
+      </div>
 
       <Tabs defaultValue="id">
         <TabsList className="flex flex-nowrap overflow-x-auto sm:flex-wrap sm:overflow-visible h-auto gap-1 bg-muted/50 p-1.5 rounded-lg border">
@@ -4367,6 +4413,78 @@ function DirectComponentSelect({ label, value, onChange }: { label: string; valu
 }
 
 /* ===== BOM / Materials ===== */
+/**
+ * Editor inline de NCM por produto.
+ * Clica no NCM da linha do BOM → abre popover com input + save.
+ * Atualiza products.ncm direto. Validação leve: aceita 8 dígitos OU vazio
+ * (avisa visualmente em amber se diferente de 8 dígitos).
+ */
+function NcmInlineEditor({ productId, currentNcm }: { productId: string; currentNcm: string }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState(currentNcm);
+
+  useEffect(() => { if (open) setValue(currentNcm); }, [open, currentNcm]);
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const cleaned = value.replace(/\D/g, '');
+      const { error } = await supabase
+        .from('products')
+        .update({ ncm: cleaned || null } as any)
+        .eq('id', productId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sheet_materials'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+      toast.success('NCM atualizado.');
+      setOpen(false);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const isValid = !currentNcm || /^\d{8}$/.test(currentNcm);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            'px-1.5 py-0.5 rounded text-[11px] font-mono w-full text-left hover:bg-muted transition-colors',
+            !isValid && 'text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30',
+            !currentNcm && 'text-muted-foreground/60 italic',
+          )}
+          title={currentNcm ? (isValid ? 'Clique pra editar NCM' : 'NCM precisa ter 8 dígitos — clique pra corrigir') : 'Clique pra adicionar NCM'}
+        >
+          {currentNcm || '+ NCM'}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64 p-3 space-y-2">
+        <Label className="text-[10px] uppercase tracking-wider font-bold">NCM (8 dígitos)</Label>
+        <Input
+          autoFocus
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          placeholder="00000000"
+          maxLength={20}
+          className="font-mono text-sm h-8"
+          onKeyDown={e => { if (e.key === 'Enter') save.mutate(); if (e.key === 'Escape') setOpen(false); }}
+        />
+        <p className="text-[10px] text-muted-foreground">
+          Usado na emissão de NF-e. Validação: 8 dígitos numéricos.
+        </p>
+        <div className="flex justify-end gap-1.5 pt-1">
+          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setOpen(false)}>Cancelar</Button>
+          <Button size="sm" className="h-7 text-xs" onClick={() => save.mutate()} disabled={save.isPending}>
+            {save.isPending ? 'Salvando…' : 'Salvar'}
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, shoeCategory }: {
   sheetId: string; lossPct: number; safetyPct: number;
   onLossChange: (v: number) => void; onSafetyChange: (v: number) => void; shoeCategory?: string;
@@ -5002,14 +5120,8 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
                           </div>
                         </TableCell>
                         <TableCell className="text-xs">{prod?.category ?? '—'}</TableCell>
-                        <TableCell className="text-[11px] font-mono">
-                          {prod?.ncm ? (
-                            <span className={prod.ncm.length === 8 ? '' : 'text-amber-600 dark:text-amber-400'} title={prod.ncm.length !== 8 ? 'NCM precisa ter 8 dígitos' : ''}>
-                              {prod.ncm}
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground/60 italic text-[10px]">—</span>
-                          )}
+                        <TableCell className="text-[11px] font-mono p-1">
+                          <NcmInlineEditor productId={m.product_id} currentNcm={prod?.ncm || ''} />
                         </TableCell>
                         <TableCell className="text-[11px] font-mono text-muted-foreground">
                           {prod?.sku || '—'}
