@@ -18,7 +18,22 @@ import { useProducts } from '@/hooks/useProducts';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { SignedImage } from '@/components/ui/signed-image';
 
-export function SilkGlobalPanel() {
+type SilkScope = 'all' | 'default' | 'client' | 'economic_group';
+
+interface SilkGlobalPanelProps {
+  /**
+   * Escopo da listagem:
+   *   - 'all': mostra tudo (default)
+   *   - 'default': só padrão do solado (sem cliente/grupo)
+   *   - 'client': só silks customizadas por cliente
+   *   - 'economic_group': só silks customizadas por grupo econômico
+   * Quando scope ≠ 'all', o dialog de criação pré-bloqueia os campos
+   * não relevantes pra que o usuário não erre.
+   */
+  scope?: SilkScope;
+}
+
+export function SilkGlobalPanel({ scope = 'all' }: SilkGlobalPanelProps = {}) {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -140,12 +155,20 @@ export function SilkGlobalPanel() {
     setDialogOpen(true);
   };
 
-  const filtered = registrations.filter((r: any) =>
-    (r.sole_type || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (r.silk_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (r.clients?.nome_fantasia || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (r.economic_groups?.name || '').toLowerCase().includes(searchTerm.toLowerCase()),
-  );
+  const filtered = registrations
+    .filter((r: any) => {
+      // Filtro por escopo (sub-aba)
+      if (scope === 'default') return !r.client_id && !r.economic_group_id;
+      if (scope === 'client') return !!r.client_id;
+      if (scope === 'economic_group') return !!r.economic_group_id;
+      return true;
+    })
+    .filter((r: any) =>
+      (r.sole_type || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (r.silk_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (r.clients?.nome_fantasia || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (r.economic_groups?.name || '').toLowerCase().includes(searchTerm.toLowerCase()),
+    );
 
   return (
     <div className="space-y-4">
@@ -353,38 +376,54 @@ export function SilkGlobalPanel() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Cliente (Opcional)</label>
-                <Select
-                  value={formData.client_id}
-                  onValueChange={val => setFormData(prev => ({ ...prev, client_id: val, economic_group_id: '' }))}
-                >
-                  <SelectTrigger><SelectValue placeholder="Selecione um cliente" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Nenhum (Geral)</SelectItem>
-                    {clients.map((c: any) => (
-                      <SelectItem key={c.id} value={c.id}>{c.nome_fantasia}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            {scope !== 'default' && (
+              <div className={scope === 'all' ? 'grid grid-cols-2 gap-4' : ''}>
+                {(scope === 'all' || scope === 'client') && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">
+                      Cliente {scope === 'client' ? <span className="text-destructive">*</span> : '(Opcional)'}
+                    </label>
+                    <Select
+                      value={formData.client_id || 'none'}
+                      onValueChange={val => setFormData(prev => ({ ...prev, client_id: val === 'none' ? '' : val, economic_group_id: '' }))}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Selecione um cliente" /></SelectTrigger>
+                      <SelectContent>
+                        {scope === 'all' && <SelectItem value="none">Nenhum (Geral)</SelectItem>}
+                        {clients.map((c: any) => (
+                          <SelectItem key={c.id} value={c.id}>{c.nome_fantasia}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                {(scope === 'all' || scope === 'economic_group') && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">
+                      Grupo Econômico {scope === 'economic_group' ? <span className="text-destructive">*</span> : '(Opcional)'}
+                    </label>
+                    <Select
+                      value={formData.economic_group_id || 'none'}
+                      onValueChange={val => setFormData(prev => ({ ...prev, economic_group_id: val === 'none' ? '' : val, client_id: '' }))}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Selecione um grupo" /></SelectTrigger>
+                      <SelectContent>
+                        {scope === 'all' && <SelectItem value="none">Nenhum (Geral)</SelectItem>}
+                        {groups.map((g: any) => (
+                          <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Grupo Econômico (Opcional)</label>
-                <Select
-                  value={formData.economic_group_id}
-                  onValueChange={val => setFormData(prev => ({ ...prev, economic_group_id: val, client_id: '' }))}
-                >
-                  <SelectTrigger><SelectValue placeholder="Selecione um grupo" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Nenhum (Geral)</SelectItem>
-                    {groups.map((g: any) => (
-                      <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            )}
+            {scope === 'default' && (
+              <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800">
+                <strong>Padrão do solado:</strong> esta silk será usada por padrão quando nenhum cliente
+                ou grupo econômico tiver silk própria cadastrada.
               </div>
-            </div>
+            )}
 
             <div className="pt-4 flex justify-end gap-2">
               <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
@@ -395,7 +434,13 @@ export function SilkGlobalPanel() {
                   economic_group_id: formData.economic_group_id === 'none' ? '' : formData.economic_group_id,
                   shoe_category: formData.shoe_category || '',
                 })}
-                disabled={upsertMutation.isPending || !formData.sole_product_id || !formData.silk_name}
+                disabled={
+                  upsertMutation.isPending
+                  || !formData.sole_product_id
+                  || !formData.silk_name
+                  || (scope === 'client' && !formData.client_id)
+                  || (scope === 'economic_group' && !formData.economic_group_id)
+                }
               >
                 {upsertMutation.isPending
                   ? <Loader2 className="h-4 w-4 animate-spin mr-2" />

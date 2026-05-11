@@ -28,6 +28,7 @@ const Index = lazy(() => import("./pages/Index"));
 // Rota /imagens-cores agora redireciona pra /fichas-tecnicas.
 const InputCostsPage = lazy(() => import("./pages/InputCostsPage"));
  const TechnicalSheets = lazy(() => import("./pages/TechnicalSheets"));
+const Silks = lazy(() => import("./pages/Silks"));
 const ProductDetail = lazy(() => import("./pages/ProductDetail"));
 const Orders = lazy(() => import("./pages/Orders"));
 const OrderEdit = lazy(() => import("./pages/OrderEdit"));
@@ -477,8 +478,13 @@ const router = createBrowserRouter([
          element: <TechnicalSheets />,
        },
        {
+         path: "silks",
+         element: <Silks />,
+       },
+       {
+         // Compat: rota antiga redireciona pra /silks
          path: "silk-registrations",
-         element: <Navigate to="/consumo-base" replace />,
+         element: <Navigate to="/silks" replace />,
        },
       {
         path: "consumo-base",

@@ -946,44 +946,10 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                 </div>
                 <GroupColorsManager groupId={group.id} groupName={group.name} />
 
-                {/* Silk padrão (usada para grupos do tipo Solado) */}
-                <Card className="border-dashed">
-                  <CardHeader className="pb-2 pt-3 px-4">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      <Palette className="h-4 w-4" /> Silk padrão (Solado)
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="px-4 pb-3 space-y-2">
-                    <p className="text-xs text-muted-foreground">
-                      Imagem usada nas fichas quando o cliente/grupo econômico não tiver silk própria. Ideal para grupos do tipo <strong>Solado</strong>.
-                    </p>
-                    {silkUrl ? (
-                      <div className="flex items-center gap-3">
-                        <div className="border rounded-lg p-2 bg-muted/30">
-                          <img src={silkUrl} alt="Silk do grupo" className="max-w-[120px] max-h-[120px] object-contain" />
-                        </div>
-                        <div className="flex flex-col gap-2">
-                          <label>
-                            <Button type="button" variant="outline" size="sm" asChild>
-                              <span>Trocar imagem</span>
-                            </Button>
-                            <input type="file" accept="image/*" className="hidden" onChange={handleSilkUpload} disabled={uploadingSilk} />
-                          </label>
-                          <Button type="button" variant="outline" size="sm" onClick={() => setSilkUrl('')}>Remover</Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <label className="flex items-center justify-center border-2 border-dashed rounded-lg p-4 cursor-pointer hover:bg-muted/50 transition-colors">
-                        {uploadingSilk ? (
-                          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                        ) : (
-                          <span className="text-xs text-muted-foreground">Clique para enviar a silk padrão</span>
-                        )}
-                        <input type="file" accept="image/*" className="hidden" onChange={handleSilkUpload} disabled={uploadingSilk} />
-                      </label>
-                    )}
-                  </CardContent>
-                </Card>
+                {/* Silk padrão removida em 2026-06: silk agora é gerenciada
+                    centralmente em /silks (Engenharia → Silks → Por Solado).
+                    A coluna product_groups.silk_url ainda existe pra compat,
+                    mas o campo de UI foi movido pra evitar duplicidade. */}
 
                 {/* Box Types */}
                 <Card className="border-dashed">

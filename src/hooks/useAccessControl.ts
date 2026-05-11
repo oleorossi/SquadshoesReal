@@ -69,6 +69,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/artisanal-recipes': 'estoque',
   '/expedicao': 'expedicao',
   '/silk-registrations': 'produtos',
+  '/silks': 'produtos',
   '/consumo-base': 'produtos',
   '/alertas-estoque': 'estoque',
   '/reservas-estoque': 'estoque',

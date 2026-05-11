@@ -123,7 +123,6 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
           <Tabs defaultValue="dados">
             <TabsList className="w-full">
               <TabsTrigger value="dados" className="flex-1">Dados</TabsTrigger>
-              <TabsTrigger value="silk" className="flex-1">SILK (Logo)</TabsTrigger>
               {editingClient && <TabsTrigger value="enderecos" className="flex-1">Endereços</TabsTrigger>}
               {editingClient && <TabsTrigger value="contatos" className="flex-1">Contatos</TabsTrigger>}
               {editingClient && <TabsTrigger value="representante" className="flex-1">Representante</TabsTrigger>}
@@ -290,13 +289,10 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
               </div>
             </TabsContent>
 
-            <TabsContent value="silk" className="mt-3">
-              <ClientLogoTab
-                clientId={editingClient?.id || null}
-                logoUrl={form.silk_url || ''}
-                onLogoChange={(url) => setForm(f => ({ ...f, silk_url: url || null }))}
-              />
-            </TabsContent>
+            {/* Aba SILK (Logo) removida em 2026-06: silk agora é gerenciada
+                centralmente em /silks (por solado / cliente / grupo econômico).
+                clients.silk_url permanece no banco por compat (não é mais
+                editável neste form). */}
 
             {editingClient && (
               <>

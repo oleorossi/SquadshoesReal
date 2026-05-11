@@ -67,6 +67,7 @@ export const menuGroups = [
     items: [
       { name: "Fichas Técnicas",  icon: Ruler,        path: "/fichas-tecnicas" },
       { name: "Solados",          icon: Footprints,   path: "/solados" },
+      { name: "Silks",            icon: Sparkles,     path: "/silks" },
       { name: "Receitas",         icon: Sparkles,     path: "/artisanal-recipes" },
     ],
   },
