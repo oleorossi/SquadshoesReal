@@ -100,12 +100,14 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
     const totalPairs = item.totalPairsInRemessa ?? item.grade.reduce((sum, s) => sum + s.qty, 0);
     const corrugadoPairs = item.grade.reduce((sum, s) => sum + s.qty, 0);
 
-    // Cabeçalho da tabela de tamanhos só com tamanhos que existem na grade
+    // Cabeçalho da tabela de tamanhos só com tamanhos que existem na grade.
+    // Fontes mais pesadas (800/900) e cor preta pura — laser/térmica perde
+    // muita densidade em cinzas; 700 ficava cinza claro na impressão.
     const gradeHead = item.grade.map(s =>
-      `<th style="text-align:center;padding:2px 4px;font-size:10px;font-weight:700;color:#000;border:none;">${s.size}</th>`
+      `<th style="text-align:center;padding:3px 5px;font-size:13px;font-weight:900;color:#000;border:none;">${s.size}</th>`
     ).join('');
     const gradeRow = item.grade.map(s =>
-      `<td style="text-align:center;padding:2px 4px;font-size:14px;font-weight:800;border:none;">${s.qty}</td>`
+      `<td style="text-align:center;padding:3px 5px;font-size:17px;font-weight:900;color:#000;border:none;">${s.qty}</td>`
     ).join('');
 
     const barcodeId = `box-bc-${idx}`;
@@ -114,11 +116,13 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
     // undefined, '', 0), a célula INTEIRA é omitida (em vez de aparecer vazia).
     const fieldRow = (label: string, val: string | number | undefined, opts: { bold?: boolean; big?: boolean } = {}) => {
       if (val === undefined || val === null || val === '' || val === 0) return '';
-      const bigStyle = opts.big ? 'font-size:18px;font-weight:900;' : '';
+      const bigStyle = opts.big ? 'font-size:18px;font-weight:900;' : 'font-weight:700;';
       const boldStyle = opts.bold ? 'font-weight:700;' : '';
-      return `<div style="display:flex;gap:6px;line-height:1.25;${boldStyle}">
-        <span style="color:#555;font-size:9px;text-transform:none;min-width:48px;">${label}</span>
-        <span style="${bigStyle}">${escapeHtml(String(val))}</span>
+      // label em #222 (cinza muito escuro) + bold pra ler bem em impressão.
+      // Antes era #555 que sumia no toner.
+      return `<div style="display:flex;gap:6px;line-height:1.3;${boldStyle}">
+        <span style="color:#222;font-size:10px;font-weight:700;min-width:54px;">${label}</span>
+        <span style="color:#000;${bigStyle}">${escapeHtml(String(val))}</span>
       </div>`;
     };
 
@@ -131,9 +135,9 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
     ].filter(Boolean).join('');
 
     const pedidoLine = item.clientOrderNumber
-      ? `<div style="margin-top:4px;padding-top:4px;border-top:1px dashed #999;display:flex;justify-content:space-between;align-items:baseline;gap:6px;">
-          <span style="font-size:10px;color:#444;font-weight:700;">Pedido:</span>
-          <span style="font-size:18px;font-weight:900;letter-spacing:0.5px;">${escapeHtml(item.clientOrderNumber)}</span>
+      ? `<div style="margin-top:4px;padding-top:4px;border-top:1px dashed #555;display:flex;justify-content:space-between;align-items:baseline;gap:6px;">
+          <span style="font-size:11px;color:#000;font-weight:800;">Pedido:</span>
+          <span style="font-size:20px;font-weight:900;letter-spacing:0.5px;color:#000;">${escapeHtml(item.clientOrderNumber)}</span>
         </div>`
       : '';
 
@@ -149,11 +153,11 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
     // Bloco direito do topo (QR + cliente)
     const headerRight = `
       <div style="width:88mm;padding:4px 8px;display:flex;gap:6px;align-items:flex-start;overflow:hidden;">
-        <div style="width:16mm;height:16mm;flex-shrink:0;background:#fff;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;font-size:6.5px;color:#aaa;text-align:center;line-height:1.1;">
+        <div style="width:16mm;height:16mm;flex-shrink:0;background:#fff;border:1px solid #555;display:flex;align-items:center;justify-content:center;font-size:7px;color:#333;text-align:center;line-height:1.1;font-weight:700;">
           ${item.clientOrderNumber || item.orderNumber}<br/>QR
         </div>
-        <div style="flex:1;font-size:9.5px;color:#000;line-height:1.3;overflow:hidden;">
-          ${recipientBlock || '<span style="color:#aaa;font-size:9px;font-style:italic;">Sem dados do destinatário</span>'}
+        <div style="flex:1;font-size:10px;color:#000;line-height:1.3;overflow:hidden;">
+          ${recipientBlock || '<span style="color:#555;font-size:10px;font-style:italic;font-weight:600;">Sem dados do destinatário</span>'}
           ${pedidoLine}
         </div>
       </div>`;
@@ -161,56 +165,61 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
     // Linha de identificadores secundários (Remessa, Talões, Rótulo, NF-e).
     // "Rót. Rem." era o mesmo valor de "Rót. Pedido" — removido a pedido
     // do usuário pra não duplicar a informação.
+    // Labels em #222 + bold pra serem legíveis na impressão; valores em
+    // preto puro + 12px bold.
     const subInfoCells = [
-      item.remessa ? `<div style="padding:2px 10px;border-right:1px solid #000;"><strong style="font-size:9px;color:#555;">Remessa:</strong> <span style="font-size:11px;font-weight:700;">${escapeHtml(item.remessa)}</span></div>` : '',
-      item.taloes ? `<div style="padding:2px 10px;border-right:1px solid #000;"><strong style="font-size:9px;color:#555;">Talões:</strong> <span style="font-size:11px;font-weight:700;">${item.taloes}</span></div>` : '',
-      `<div style="padding:2px 10px;border-right:1px solid #000;"><strong style="font-size:9px;color:#555;">Rót. Pedido:</strong> <span style="font-size:11px;font-weight:700;">${item.boxNumber}/${item.totalBoxes}</span></div>`,
-      item.nfe ? `<div style="padding:2px 10px;"><strong style="font-size:9px;color:#555;">NF-e:</strong> <span style="font-size:11px;font-weight:700;">${escapeHtml(item.nfe)}</span></div>` : '',
+      item.remessa ? `<div style="padding:3px 10px;border-right:1px solid #000;"><strong style="font-size:10px;color:#222;font-weight:700;">Remessa:</strong> <span style="font-size:12px;font-weight:800;color:#000;margin-left:4px;">${escapeHtml(item.remessa)}</span></div>` : '',
+      item.taloes ? `<div style="padding:3px 10px;border-right:1px solid #000;"><strong style="font-size:10px;color:#222;font-weight:700;">Talões:</strong> <span style="font-size:12px;font-weight:800;color:#000;margin-left:4px;">${item.taloes}</span></div>` : '',
+      `<div style="padding:3px 10px;border-right:1px solid #000;"><strong style="font-size:10px;color:#222;font-weight:700;">Rót. Pedido:</strong> <span style="font-size:12px;font-weight:800;color:#000;margin-left:4px;">${item.boxNumber}/${item.totalBoxes}</span></div>`,
+      item.nfe ? `<div style="padding:3px 10px;"><strong style="font-size:10px;color:#222;font-weight:700;">NF-e:</strong> <span style="font-size:12px;font-weight:800;color:#000;margin-left:4px;">${escapeHtml(item.nfe)}</span></div>` : '',
     ].filter(Boolean).join('');
 
-    // Linha de stats (Lote, Corrugado, Fáb, Grade, Total)
+    // Linha de stats (Lote, Corrugado, Fáb, OP, Total) — mesma regra: tudo
+    // legível com label cinza-muito-escuro e valor preto bold.
     const statsCells = [
-      item.lote ? `<div style="padding:2px 8px;border-right:1px solid #ccc;"><strong style="font-size:9px;color:#555;">Lote:</strong> <span style="font-size:10px;font-weight:700;">${escapeHtml(item.lote)}</span></div>` : '',
-      `<div style="padding:2px 8px;border-right:1px solid #ccc;"><strong style="font-size:9px;color:#555;">Corrugado:</strong> <span style="font-size:11px;font-weight:800;">${corrugadoPairs} PRS</span></div>`,
-      item.fab ? `<div style="padding:2px 8px;border-right:1px solid #ccc;"><strong style="font-size:9px;color:#555;">Fáb:</strong> <span style="font-size:10px;font-weight:700;">${escapeHtml(item.fab)}</span></div>` : '',
-      `<div style="padding:2px 8px;border-right:1px solid #ccc;"><strong style="font-size:9px;color:#555;">OP:</strong> <span style="font-size:10px;font-weight:700;">${escapeHtml(item.orderNumber)}</span></div>`,
-      `<div style="padding:2px 8px;"><strong style="font-size:9px;color:#555;">Total:</strong> <span style="font-size:11px;font-weight:800;">${totalPairs}</span></div>`,
+      item.lote ? `<div style="padding:3px 10px;border-right:1px solid #555;"><strong style="font-size:10px;color:#222;font-weight:700;">Lote:</strong> <span style="font-size:11px;font-weight:800;color:#000;margin-left:4px;">${escapeHtml(item.lote)}</span></div>` : '',
+      `<div style="padding:3px 10px;border-right:1px solid #555;"><strong style="font-size:10px;color:#222;font-weight:700;">Corrugado:</strong> <span style="font-size:12px;font-weight:900;color:#000;margin-left:4px;">${corrugadoPairs} PRS</span></div>`,
+      item.fab ? `<div style="padding:3px 10px;border-right:1px solid #555;"><strong style="font-size:10px;color:#222;font-weight:700;">Fáb:</strong> <span style="font-size:11px;font-weight:800;color:#000;margin-left:4px;">${escapeHtml(item.fab)}</span></div>` : '',
+      `<div style="padding:3px 10px;border-right:1px solid #555;"><strong style="font-size:10px;color:#222;font-weight:700;">OP:</strong> <span style="font-size:11px;font-weight:800;color:#000;margin-left:4px;">${escapeHtml(item.orderNumber)}</span></div>`,
+      `<div style="padding:3px 10px;"><strong style="font-size:10px;color:#222;font-weight:700;">Total:</strong> <span style="font-size:12px;font-weight:900;color:#000;margin-left:4px;">${totalPairs}</span></div>`,
     ].filter(Boolean).join('');
 
     // Bloco do produto: descrição + imagem + tamanho-grande.
     // Layout adaptativo: como o destinatário pode vir vazio (PV sem cliente),
     // a referência, cor e categoria sobem em peso/tamanho pra ocupar o
     // espaço disponível sem ficar desproporcional.
+    // Cores: tudo preto puro ou cinza-muito-escuro (#222) — sem cinzas
+    // claros que somem no toner laser/térmico.
     const productLeft = `
       <div style="flex:1;padding:10px 14px;display:flex;flex-direction:column;justify-content:center;gap:6px;">
         ${item.refCode ? `
           <div style="display:flex;align-items:baseline;gap:8px;line-height:1;">
-            <span style="font-size:11px;color:#666;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Ref.</span>
-            <span style="font-size:26px;font-weight:900;letter-spacing:0.5px;">${escapeHtml(item.refCode)}</span>
+            <span style="font-size:12px;color:#222;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;">Ref.</span>
+            <span style="font-size:26px;font-weight:900;letter-spacing:0.5px;color:#000;">${escapeHtml(item.refCode)}</span>
           </div>` : ''}
         ${item.color ? `
           <div style="display:flex;align-items:baseline;gap:8px;line-height:1;">
-            <span style="font-size:11px;color:#666;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Cor</span>
-            <span style="font-size:18px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">${escapeHtml(item.color)}</span>
+            <span style="font-size:12px;color:#222;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;">Cor</span>
+            <span style="font-size:18px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;color:#000;">${escapeHtml(item.color)}</span>
           </div>` : ''}
         ${item.shoeCategory ? `
           <div style="display:flex;align-items:baseline;gap:8px;line-height:1;">
-            <span style="font-size:11px;color:#666;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Tipo</span>
-            <span style="font-size:15px;font-weight:600;color:#222;text-transform:uppercase;">${escapeHtml(item.shoeCategory)}</span>
+            <span style="font-size:12px;color:#222;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;">Tipo</span>
+            <span style="font-size:15px;font-weight:700;color:#000;text-transform:uppercase;">${escapeHtml(item.shoeCategory)}</span>
           </div>` : ''}
         ${item.refName && item.refName !== item.refCode ? `
-          <div style="font-size:11px;color:#555;line-height:1.2;text-transform:uppercase;letter-spacing:0.3px;">${escapeHtml(item.refName)}</div>` : ''}
-        ${item.strapsLabel ? `<div style="font-size:10px;color:#444;line-height:1.2;"><strong>TIRAS:</strong> ${escapeHtml(item.strapsLabel.replace(/\|/g, ' — ').replace(/:/g, ': '))}</div>` : ''}
-        ${item.mainMaterial ? `<div style="font-size:10px;color:#666;font-style:italic;text-transform:uppercase;line-height:1.2;">${escapeHtml(item.mainMaterial)}</div>` : ''}
+          <div style="font-size:11px;color:#222;font-weight:600;line-height:1.2;text-transform:uppercase;letter-spacing:0.3px;">${escapeHtml(item.refName)}</div>` : ''}
+        ${item.strapsLabel ? `<div style="font-size:10px;color:#000;font-weight:600;line-height:1.2;"><strong>TIRAS:</strong> ${escapeHtml(item.strapsLabel.replace(/\|/g, ' — ').replace(/:/g, ': '))}</div>` : ''}
+        ${item.mainMaterial ? `<div style="font-size:10px;color:#222;font-weight:600;font-style:italic;text-transform:uppercase;line-height:1.2;">${escapeHtml(item.mainMaterial)}</div>` : ''}
       </div>`;
 
     const sizeRangeBig = item.sizeRangeLabel
-      ? `<div style="width:30mm;display:flex;align-items:center;justify-content:center;border-left:1px solid #ccc;">
+      ? `<div style="width:30mm;display:flex;align-items:center;justify-content:center;border-left:1px solid #444;">
           <span style="font-size:34px;font-weight:900;line-height:1;letter-spacing:-1.5px;color:#000;">${escapeHtml(item.sizeRangeLabel)}</span>
         </div>` : '';
 
     const productImage = item.imageUrl ? `
-      <div style="width:34mm;border-left:1px solid #ccc;padding:3px;display:flex;align-items:center;justify-content:center;background:#fff;">
+      <div style="width:34mm;border-left:1px solid #444;padding:3px;display:flex;align-items:center;justify-content:center;background:#fff;">
         <img src="${item.imageUrl}" crossorigin="anonymous" style="max-width:30mm;max-height:28mm;width:auto;height:auto;object-fit:contain;" onerror="this.style.display='none'" />
       </div>` : '';
 
@@ -239,15 +248,15 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
           ${sizeRangeBig}
         </div>
         ${item.grade.length > 0 ? `
-        <div style="padding:3px 8px;border-bottom:1px solid #000;flex-shrink:0;">
+        <div style="padding:4px 10px;border-bottom:1px solid #000;flex-shrink:0;">
           <table style="width:100%;border-collapse:collapse;">
             <tbody>
-              <tr><td style="font-size:9px;color:#555;font-weight:700;padding-right:8px;">Tam.</td>${gradeHead}</tr>
-              <tr><td style="font-size:9px;color:#555;font-weight:700;padding-right:8px;">Qtd.</td>${gradeRow}</tr>
+              <tr><td style="font-size:11px;color:#000;font-weight:800;padding-right:10px;text-transform:uppercase;letter-spacing:0.4px;">Tam.</td>${gradeHead}</tr>
+              <tr><td style="font-size:11px;color:#000;font-weight:800;padding-right:10px;text-transform:uppercase;letter-spacing:0.4px;">Qtd.</td>${gradeRow}</tr>
             </tbody>
           </table>
         </div>` : ''}
-        ${footerParts ? `<div style="padding:3px 10px;font-size:8.5px;color:#444;text-align:center;flex-shrink:0;">${footerParts}</div>` : ''}
+        ${footerParts ? `<div style="padding:4px 10px;font-size:9.5px;color:#000;font-weight:600;text-align:center;flex-shrink:0;">${footerParts}</div>` : ''}
       </div>`;
   });
 
