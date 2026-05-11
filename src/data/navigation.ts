@@ -8,7 +8,8 @@ import {
   Footprints, Sparkles, Tag, ClipboardCheck,
   DollarSign, Calendar, Box, History,
   ListChecks, Boxes, Activity, GanttChartSquare, Clock,
-  Calculator,
+  Calculator, TrendingUp, HeartHandshake, MessageSquare,
+  FileSpreadsheet, Lock, Scale, FileCheck2,
 } from 'lucide-react';
 
 // ════════════════════════════════════════════════════════════════════════
@@ -37,9 +38,13 @@ export const menuGroups = [
     label: "Comercial",
     icon: ShoppingCart,
     items: [
-      { name: "Pedidos de Venda", icon: FileText,     path: "/sales" },
-      { name: "Pronta-Entrega",   icon: Box,          path: "/pronta-entrega" },
-      { name: "Clientes",         icon: Users,        path: "/clients" },
+      { name: "Pedidos de Venda", icon: FileText,         path: "/sales" },
+      { name: "Pronta-Entrega",   icon: Box,              path: "/pronta-entrega" },
+      { name: "Clientes",         icon: Users,            path: "/clients" },
+      { name: "Tabelas de Preço", icon: DollarSign,       path: "/price-lists" },
+      { name: "CRM",              icon: HeartHandshake,   path: "/crm" },
+      { name: "SAC",              icon: MessageSquare,    path: "/sac" },
+      { name: "Forecast",         icon: TrendingUp,       path: "/forecast" },
     ],
   },
   {
@@ -78,6 +83,7 @@ export const menuGroups = [
     icon: ShoppingBag,
     items: [
       { name: "Ordens de Compra", icon: ShoppingBag,  path: "/purchase-orders" },
+      { name: "Cotações (RFQ)",   icon: FileSpreadsheet, path: "/quotations" },
       { name: "Planejamento",     icon: Calendar,     path: "/purchase-planning" },
       { name: "Fornecedores",     icon: Briefcase,    path: "/suppliers" },
       { name: "Custos de Insumos", icon: DollarSign,  path: "/custos-insumos" },
@@ -88,7 +94,11 @@ export const menuGroups = [
     icon: Truck,
     items: [
       { name: "Expedição",        icon: PackageOpen,    path: "/expedicao" },
+      { name: "Picking",          icon: ClipboardCheck, path: "/picking" },
       { name: "Conferência",      icon: ClipboardCheck, path: "/conferencia-saida" },
+      { name: "Romaneios",        icon: FileCheck2,     path: "/manifests" },
+      { name: "Transportadoras",  icon: Truck,          path: "/transporters" },
+      { name: "Rastreamento",     icon: Activity,       path: "/delivery-tracking" },
       { name: "Etiquetas",        icon: Tag,            path: "/label-system" },
     ],
   },
@@ -100,6 +110,11 @@ export const menuGroups = [
       { name: "Contas (AR/AP)",   icon: DollarSign,     path: "/finance" },
       { name: "Markup",           icon: Calculator,     path: "/pricing-calculator" },
       { name: "NF-e",             icon: Receipt,        path: "/nfe" },
+      { name: "CT-e",             icon: Truck,          path: "/cte" },
+      { name: "MDF-e",            icon: FileText,       path: "/mdfe" },
+      { name: "CNAB / Boletos",   icon: FileSpreadsheet, path: "/cnab" },
+      { name: "Conciliação",      icon: Scale,          path: "/bank-reconciliation" },
+      { name: "SPED",             icon: FileText,       path: "/sped" },
     ],
   },
   {
@@ -118,6 +133,8 @@ export const systemItems = [
   { to: '/automations',        icon: Zap,       label: 'Automações' },
   { to: '/reports',            icon: BarChart2, label: 'Relatórios' },
   { to: '/audit-logs',         icon: FileText,  label: 'Auditoria' },
+  { to: '/lgpd',               icon: Lock,      label: 'LGPD' },
+  { to: '/security',           icon: ShieldCheck, label: 'Segurança' },
   { to: '/system-monitor',     icon: Monitor,   label: 'Monitoramento' },
   { to: '/system-diagnostics', icon: Cpu,       label: 'Diagnóstico' },
 ];

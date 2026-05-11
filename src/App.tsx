@@ -748,6 +748,23 @@ const router = createBrowserRouter([
          path: "audit-logs",
          lazy: () => import("./pages/AuditLogs").then(m => ({ Component: m.default })),
        },
+       // ─── Expansão ERP (gap analysis 2026-05-10) ───
+       { path: "price-lists",         lazy: () => import("./pages/PriceLists").then(m => ({ Component: m.default })) },
+       { path: "crm",                 lazy: () => import("./pages/CRM").then(m => ({ Component: m.default })) },
+       { path: "sac",                 lazy: () => import("./pages/SAC").then(m => ({ Component: m.default })) },
+       { path: "forecast",            lazy: () => import("./pages/Forecast").then(m => ({ Component: m.default })) },
+       { path: "quotations",          lazy: () => import("./pages/Quotations").then(m => ({ Component: m.default })) },
+       { path: "cte",                 lazy: () => import("./pages/CTe").then(m => ({ Component: m.default })) },
+       { path: "mdfe",                lazy: () => import("./pages/MDFe").then(m => ({ Component: m.default })) },
+       { path: "cnab",                lazy: () => import("./pages/CNAB").then(m => ({ Component: m.default })) },
+       { path: "bank-reconciliation", lazy: () => import("./pages/BankReconciliation").then(m => ({ Component: m.default })) },
+       { path: "sped",                lazy: () => import("./pages/SPED").then(m => ({ Component: m.default })) },
+       { path: "picking",             lazy: () => import("./pages/Picking").then(m => ({ Component: m.default })) },
+       { path: "manifests",           lazy: () => import("./pages/Manifests").then(m => ({ Component: m.default })) },
+       { path: "transporters",        lazy: () => import("./pages/Transporters").then(m => ({ Component: m.default })) },
+       { path: "delivery-tracking",   lazy: () => import("./pages/DeliveryTracking").then(m => ({ Component: m.default })) },
+       { path: "lgpd",                lazy: () => import("./pages/LGPD").then(m => ({ Component: m.default })) },
+       { path: "security",            lazy: () => import("./pages/Security").then(m => ({ Component: m.default })) },
       // Heavy modules (can be used elsewhere if needed)
       {
         path: "modules",

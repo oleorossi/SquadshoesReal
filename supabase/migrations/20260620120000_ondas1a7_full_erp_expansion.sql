@@ -1,0 +1,50 @@
+-- =============================================================================
+-- Expansão ERP — 7 ondas de gap closing (gap analysis 2026-05-10)
+-- =============================================================================
+-- Aplicada via Supabase MCP em 7 migrations sequenciais:
+--   onda1_quick_wins_price_lists_forecast_ean
+--   onda2_cadastros_expandidos
+--   onda3_pcp_producao_avancado
+--   onda4_crm_sac_comissao
+--   onda5_compras_fiscal
+--   onda6_logistica_picking_romaneio
+--   onda7_qualidade_seguranca
+--
+-- Este arquivo é apenas registro histórico. As migrations reais já estão no DB
+-- (consultar via `supabase migration list --linked`).
+-- =============================================================================
+
+-- Tabelas criadas:
+--   price_lists, price_list_items, get_effective_price()
+--   client_addresses, client_contacts (+ clients.expanded)
+--   suppliers.expanded, supplier_non_conformities
+--   technical_sheets.expanded (family, theme, tags, ean_by_size, cutting_plan_*)
+--   technical_sheet_versions
+--   leather_hides (couro por pele individual)
+--   sale_orders.order_type
+--   production_lots, sale_order_lot_allocations, recall_lot_buyers()
+--   production_stop_reasons, production_stops, v_sector_oee
+--   stock_quarantines (+ products.quarantine_qty, blocked_qty)
+--   production_setup_times
+--   cyclic_inventory_runs, cyclic_inventory_counts, v_products_abc_class
+--   crm_interactions, crm_campaigns, crm_nps_responses
+--   v_crm_inactive_clients, v_crm_birthdays_month, v_crm_expected_repurchase
+--   sac_tickets, sac_ticket_history
+--   commission_tiers, calculate_tiered_commission()
+--   v_sku_forecast, v_sku_forecast_summary
+--   purchase_quotations, purchase_quotation_items, _responses, _prices
+--   approval_rules, purchase_order_approvals (+ purchase_orders.approval_status)
+--   cnab_remittance_files, cnab_remittance_items
+--   bank_reconciliations, bank_reconciliation_items
+--   nfe_cce (Carta de Correção)
+--   cte_emissions (CT-e), mdfe_emissions (MDF-e)
+--   sped_exports (FISCAL, CONTRIBUICOES, CONTABIL, ECF, REINF)
+--   picking_sessions, picking_items
+--   shipping_manifests, shipping_volumes
+--   transporters, freight_tables, delivery_tracking
+--   orders.is_cross_dock, cross_dock_sale_order_id
+--   quality_inspection_plans, quality_inspections, quality_defects
+--   v_quality_pareto, v_quality_cost
+--   lgpd_consents, lgpd_requests
+--   user_mfa_settings, security_settings, sensitive_field_registry
+SELECT 1;  -- no-op
