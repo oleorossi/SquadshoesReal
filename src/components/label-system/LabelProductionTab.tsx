@@ -779,16 +779,29 @@ export function LabelProductionTab() {
           const grade = order.grade as Record<string, number> | null;
           const sizes = grade ? Object.keys(grade).sort((a, b) => Number(a) - Number(b)) : [];
           const gradeItems = sizes.map(size => ({ size, qty: Number(grade?.[size]) || 0 }));
-          const totalPairs = gradeItems.reduce((sum, g) => sum + g.qty, 0);
-          const fichas = pairsPerFicha > 0 ? Math.ceil(order.quantity / pairsPerFicha) : (totalPairs > 0 ? Math.max(1, Math.round(order.quantity / totalPairs)) : 1);
+          // grade já é por ficha (sum(grade) = pares em 1 ficha; quantity = pares
+          // totais = sum(grade) × fichas). Nº de fichas vem de pairsPerFicha
+          // configurado pelo usuário OU do próprio sum(grade) se não setado.
+          const pairsInOneFicha = gradeItems.reduce((sum, g) => sum + g.qty, 0);
+          const fichas = pairsPerFicha > 0
+            ? Math.ceil(order.quantity / pairsPerFicha)
+            : (pairsInOneFicha > 0 ? Math.max(1, Math.round(order.quantity / pairsInOneFicha)) : 1);
           const totalMasterBoxes = Math.ceil(fichas / (fichasPerBox || 1));
           const so = saleOrdersMap.get(order.sale_order_id);
           const finalImageUrl = imageMap.get(`${group.referenceId}|${order.color || ''}`) || logoUrl;
-          // Distribute pairs per ficha: base = floor, remainder to last ficha
-          const gradeBase = gradeItems.map(g => ({ size: g.size, qty: fichas > 0 ? Math.floor(g.qty / fichas) : g.qty }));
-          const gradeRemainder = gradeItems.map((g, i) => ({ size: g.size, qty: gradeBase[i].qty + (fichas > 0 ? g.qty % fichas : 0) }));
+          // Cada ficha imprime a grade COMPLETA (não dividir por fichas — a grade
+          // do PV já representa a distribuição de 1 ficha). Bug anterior: dividia
+          // por fichas e perdia tudo no floor (1/50 = 0), só a última ficha
+          // herdava o resto via remainder. Resultado: 49 etiquetas em branco com
+          // "CORRUGADO 0 PRS" e 1 etiqueta completa no final.
+          //
+          // Se pairsPerFicha (config do usuário) for diferente de sum(grade),
+          // escala proporcionalmente — cada caixa contém pairsPerFicha pares.
+          const scale = pairsInOneFicha > 0 && pairsPerFicha > 0 && pairsPerFicha !== pairsInOneFicha
+            ? pairsPerFicha / pairsInOneFicha
+            : 1;
+          const gradePerFicha = gradeItems.map(g => ({ size: g.size, qty: Math.round(g.qty * scale) }));
           for (let f = 0; f < fichas; f++) {
-            const gradePerFicha = f === fichas - 1 ? gradeRemainder : gradeBase;
             const currentBoxNumber = Math.ceil((f + 1) / (fichasPerBox || 1));
             boxItems.push({
               orderNumber: order.order_number || '', refCode: refData?.code || group.refCode || '', refName: group.refName || '',
