@@ -159,9 +159,12 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
   const { data: clientsInfo = [] } = useQuery({
     queryKey: ['clients_for_expedicao'],
     queryFn: async () => {
+      // Bug histórico: select pedia 'name' e 'city' que NÃO existem na tabela
+      // clients (as colunas reais são razao_social e cidade). Causava 400
+      // no Supabase e quebrava o print da ficha de produção.
       const { data, error } = await (supabase as any)
         .from('clients')
-        .select('id, name, cnpj, city');
+        .select('id, razao_social, cnpj, cidade');
       if (error) throw error;
       return data || [];
     },
@@ -526,9 +529,10 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
       if (!map.has(clientId)) {
         map.set(clientId, {
           client_id: clientId,
-          client_name: client?.name || so?.client_name || 'Sem cliente',
+          // Columns reais do clients: razao_social, cidade (não name/city)
+          client_name: client?.razao_social || so?.client_name || 'Sem cliente',
           client_cnpj: client?.cnpj || so?.client_cnpj || null,
-          client_city: client?.city || null,
+          client_city: client?.cidade || null,
           sale_order_number: so?.order_number || null,
           orders: [],
         });
@@ -613,9 +617,9 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
             id: so.id,
             order_number: so.order_number,
             client_order_number: so.client_order_number,
-            client_name: client?.name || so.client_name || null,
+            client_name: client?.razao_social || so.client_name || null,
             client_cnpj: client?.cnpj || so.client_cnpj || null,
-            client_city: client?.city || null,
+            client_city: client?.cidade || null,
             delivery_deadline: so.delivery_deadline,
             status: so.status,
             total_value: so.total_value,

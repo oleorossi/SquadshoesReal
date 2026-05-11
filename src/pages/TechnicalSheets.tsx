@@ -4415,9 +4415,10 @@ function DirectComponentSelect({ label, value, onChange }: { label: string; valu
 /* ===== BOM / Materials ===== */
 /**
  * Editor inline de NCM por produto.
- * Clica no NCM da linha do BOM → abre popover com input + save.
- * Atualiza products.ncm direto. Validação leve: aceita 8 dígitos OU vazio
- * (avisa visualmente em amber se diferente de 8 dígitos).
+ * - Validação leve: 8 dígitos + capítulo NCM válido (01-99 — captulos com 00,
+ *   98, 99 são reservados e geralmente bloqueiam emissão)
+ * - Mostra histórico das últimas 3 mudanças (audit log via ncm_change_log)
+ * - Atualiza products.ncm direto, trigger DB grava no log automaticamente
  */
 function NcmInlineEditor({ productId, currentNcm }: { productId: string; currentNcm: string }) {
   const qc = useQueryClient();
@@ -4426,9 +4427,34 @@ function NcmInlineEditor({ productId, currentNcm }: { productId: string; current
 
   useEffect(() => { if (open) setValue(currentNcm); }, [open, currentNcm]);
 
+  // Histórico de mudanças (carregado só quando o popover abre)
+  const { data: history = [] } = useQuery({
+    queryKey: ['ncm_change_log', productId],
+    enabled: open,
+    queryFn: async () => {
+      const { data } = await (supabase as any)
+        .from('ncm_change_log')
+        .select('old_ncm, new_ncm, changed_at, changed_by')
+        .eq('product_id', productId)
+        .order('changed_at', { ascending: false })
+        .limit(3);
+      return (data || []) as Array<{ old_ncm: string | null; new_ncm: string | null; changed_at: string; changed_by: string | null }>;
+    },
+    staleTime: 30_000,
+  });
+
+  const cleaned = value.replace(/\D/g, '');
+  const isFormatValid = !cleaned || /^\d{8}$/.test(cleaned);
+  // Capítulo NCM = primeiros 2 dígitos. 00, 98, 99 são reservados/inválidos.
+  const chapter = cleaned.slice(0, 2);
+  const isChapterValid = !cleaned || (cleaned.length === 8 && chapter !== '00' && chapter !== '99');
+  const willBeValid = isFormatValid && isChapterValid;
+
   const save = useMutation({
     mutationFn: async () => {
-      const cleaned = value.replace(/\D/g, '');
+      if (cleaned && !willBeValid) {
+        throw new Error('NCM inválido: precisa 8 dígitos e capítulo válido (01-98).');
+      }
       const { error } = await supabase
         .from('products')
         .update({ ncm: cleaned || null } as any)
@@ -4438,13 +4464,14 @@ function NcmInlineEditor({ productId, currentNcm }: { productId: string; current
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sheet_materials'] });
       qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['ncm_change_log', productId] });
       toast.success('NCM atualizado.');
       setOpen(false);
     },
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const isValid = !currentNcm || /^\d{8}$/.test(currentNcm);
+  const isCurrentValid = !currentNcm || /^\d{8}$/.test(currentNcm);
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -4452,15 +4479,15 @@ function NcmInlineEditor({ productId, currentNcm }: { productId: string; current
           type="button"
           className={cn(
             'px-1.5 py-0.5 rounded text-[11px] font-mono w-full text-left hover:bg-muted transition-colors',
-            !isValid && 'text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30',
+            !isCurrentValid && 'text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30',
             !currentNcm && 'text-muted-foreground/60 italic',
           )}
-          title={currentNcm ? (isValid ? 'Clique pra editar NCM' : 'NCM precisa ter 8 dígitos — clique pra corrigir') : 'Clique pra adicionar NCM'}
+          title={currentNcm ? (isCurrentValid ? 'Clique pra editar NCM' : 'NCM inválido — clique pra corrigir') : 'Clique pra adicionar NCM'}
         >
           {currentNcm || '+ NCM'}
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-64 p-3 space-y-2">
+      <PopoverContent align="start" className="w-72 p-3 space-y-2">
         <Label className="text-[10px] uppercase tracking-wider font-bold">NCM (8 dígitos)</Label>
         <Input
           autoFocus
@@ -4468,15 +4495,34 @@ function NcmInlineEditor({ productId, currentNcm }: { productId: string; current
           onChange={e => setValue(e.target.value)}
           placeholder="00000000"
           maxLength={20}
-          className="font-mono text-sm h-8"
+          className={cn('font-mono text-sm h-8', !willBeValid && 'border-destructive')}
           onKeyDown={e => { if (e.key === 'Enter') save.mutate(); if (e.key === 'Escape') setOpen(false); }}
         />
-        <p className="text-[10px] text-muted-foreground">
-          Usado na emissão de NF-e. Validação: 8 dígitos numéricos.
-        </p>
+        {cleaned && !isFormatValid && (
+          <p className="text-[10px] text-destructive">⚠ NCM precisa ter exatamente 8 dígitos (atual: {cleaned.length})</p>
+        )}
+        {cleaned && isFormatValid && !isChapterValid && (
+          <p className="text-[10px] text-destructive">⚠ Capítulo "{chapter}" é reservado/inválido. Use 01-97.</p>
+        )}
+        {!cleaned && (
+          <p className="text-[10px] text-muted-foreground">
+            Usado na emissão de NF-e. Validação: 8 dígitos numéricos + capítulo válido (01-97).
+          </p>
+        )}
+        {history.length > 0 && (
+          <div className="pt-2 border-t space-y-1">
+            <Label className="text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Últimas mudanças</Label>
+            {history.map((h, i) => (
+              <div key={i} className="text-[10px] font-mono text-muted-foreground">
+                <span>{new Date(h.changed_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })} · </span>
+                <span>{h.old_ncm || '—'} → <strong className="text-foreground">{h.new_ncm || '—'}</strong></span>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="flex justify-end gap-1.5 pt-1">
           <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setOpen(false)}>Cancelar</Button>
-          <Button size="sm" className="h-7 text-xs" onClick={() => save.mutate()} disabled={save.isPending}>
+          <Button size="sm" className="h-7 text-xs" onClick={() => save.mutate()} disabled={save.isPending || (!!cleaned && !willBeValid)}>
             {save.isPending ? 'Salvando…' : 'Salvar'}
           </Button>
         </div>

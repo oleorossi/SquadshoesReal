@@ -15,10 +15,13 @@ import { Label } from '@/components/ui/label';
 import { NumberInput } from '@/components/ui/number-input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Trash2, Package2, Copy, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, Trash2, Package2, Copy, ArrowUp, ArrowDown, Send, Check } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { HelpCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -61,6 +64,10 @@ export function SoleStandardMaterialsEditor({ soleGroupId, soleClassification }:
   const [showCopyDialog, setShowCopyDialog] = useState(false);
   const [copyFromGroupId, setCopyFromGroupId] = useState<string>('');
   const [copyOverwrite, setCopyOverwrite] = useState(false);
+  // Cópia INVERSA: aplicar consumos DESTE solado em outros (selecionados)
+  const [showApplyDialog, setShowApplyDialog] = useState(false);
+  const [applyTargetIds, setApplyTargetIds] = useState<Set<string>>(new Set());
+  const [applyOverwrite, setApplyOverwrite] = useState(false);
   const [newMaterial, setNewMaterial] = useState<{
     productId: string;
     qty: number;
@@ -90,6 +97,28 @@ export function SoleStandardMaterialsEditor({ soleGroupId, soleClassification }:
         const ex = uniq.get(g.id) || { id: g.id, name: g.name, count: 0 };
         ex.count += 1;
         uniq.set(g.id, ex);
+      }
+      return Array.from(uniq.values()).sort((a, b) => a.name.localeCompare(b.name));
+    },
+    enabled: !!soleGroupId,
+    staleTime: 60_000,
+  });
+
+  // TODOS os grupos de solado (pra "Aplicar este em outros")
+  const { data: allOtherSoleGroups = [] } = useQuery({
+    queryKey: ['all_sole_groups_except', soleGroupId],
+    queryFn: async () => {
+      // Pega grupos que contêm pelo menos 1 produto category=Solado
+      const { data: prods } = await supabase
+        .from('products')
+        .select('group_id, product_groups!group_id(id, name)')
+        .eq('category', 'Solado')
+        .eq('active', true)
+        .neq('group_id', soleGroupId);
+      const uniq = new Map<string, { id: string; name: string }>();
+      for (const p of (prods || []) as any[]) {
+        const g = p.product_groups;
+        if (g && !uniq.has(g.id)) uniq.set(g.id, { id: g.id, name: g.name });
       }
       return Array.from(uniq.values()).sort((a, b) => a.name.localeCompare(b.name));
     },
@@ -228,6 +257,54 @@ export function SoleStandardMaterialsEditor({ soleGroupId, soleClassification }:
     onError: (err: Error) => toast.error(err.message),
   });
 
+  // Cópia INVERSA: aplica os materiais DESTE solado nos solados selecionados
+  const applyMutation = useMutation({
+    mutationFn: async () => {
+      if (applyTargetIds.size === 0) throw new Error('Selecione pelo menos um solado destino.');
+      if (materials.length === 0) throw new Error('Este solado não tem materiais pra aplicar.');
+
+      let totalInserted = 0;
+      for (const targetGroupId of applyTargetIds) {
+        if (applyOverwrite) {
+          await (supabase as any).from('sole_standard_materials').delete().eq('sole_group_id', targetGroupId);
+        }
+        // Lê o que já existe no destino pra evitar duplicar (modo "merge")
+        let existingKeys = new Set<string>();
+        if (!applyOverwrite) {
+          const { data: existing } = await (supabase as any)
+            .from('sole_standard_materials')
+            .select('material_product_id, applies_to')
+            .eq('sole_group_id', targetGroupId);
+          existingKeys = new Set((existing || []).map((r: any) => `${r.material_product_id}|${r.applies_to}`));
+        }
+        const rows = materials
+          .filter(m => !existingKeys.has(`${m.material_product_id}|${m.applies_to}`))
+          .map((m, i) => ({
+            sole_group_id: targetGroupId,
+            material_product_id: m.material_product_id,
+            consumption_per_pair: m.consumption_per_pair,
+            unit_override: m.unit_override,
+            applies_to: m.applies_to,
+            notes: m.notes,
+            display_order: i,
+          }));
+        if (rows.length === 0) continue;
+        const { error } = await (supabase as any).from('sole_standard_materials').insert(rows);
+        if (error) throw error;
+        totalInserted += rows.length;
+      }
+      return totalInserted;
+    },
+    onSuccess: (count) => {
+      qc.invalidateQueries({ queryKey: ['sole_groups_with_standard_materials'] });
+      toast.success(`${count} material(is) aplicado(s) em ${applyTargetIds.size} solado(s).`);
+      setShowApplyDialog(false);
+      setApplyTargetIds(new Set());
+      setApplyOverwrite(false);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   // Reordena via display_order: swap entre o item alvo e o adjacente
   const reorderMutation = useMutation({
     mutationFn: async ({ id, direction }: { id: string; direction: 'up' | 'down' }) => {
@@ -280,6 +357,11 @@ export function SoleStandardMaterialsEditor({ soleGroupId, soleClassification }:
           {groupsWithMaterials.length > 0 && (
             <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setShowCopyDialog(true)}>
               <Copy className="h-3 w-3" /> Copiar de outro
+            </Button>
+          )}
+          {materials.length > 0 && allOtherSoleGroups.length > 0 && (
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setShowApplyDialog(true)}>
+              <Send className="h-3 w-3" /> Aplicar em outros
             </Button>
           )}
           <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setShowAddRow(true)}>
@@ -341,7 +423,25 @@ export function SoleStandardMaterialsEditor({ soleGroupId, soleClassification }:
               />
             </div>
             <div className="md:col-span-3">
-              <Label className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Aplicar quando</Label>
+              <div className="flex items-center gap-1">
+                <Label className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Aplicar quando</Label>
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button type="button" className="text-muted-foreground hover:text-foreground">
+                        <HelpCircle className="h-3 w-3" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-xs text-xs">
+                      <div className="space-y-1.5">
+                        <div><strong>Sempre:</strong> material entra no BOM em qualquer ficha que usar este solado. Use pra cola, linha, embalagem.</div>
+                        <div><strong>Só palmilha cortada:</strong> entra só quando o solado é Tipo 1 (tradicional) ou Tipo 3 (conjugado). Use pra forração, palmilha em dm².</div>
+                        <div><strong>Só palmilha pronta:</strong> entra só quando o solado é Tipo 2. Use pra reforços/etiquetas exclusivos desse tipo.</div>
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
               <Select value={newMaterial.appliesTo} onValueChange={(v) => setNewMaterial({ ...newMaterial, appliesTo: v as AppliesTo })}>
                 <SelectTrigger className="h-8 text-xs mt-0.5"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -499,6 +599,81 @@ export function SoleStandardMaterialsEditor({ soleGroupId, soleClassification }:
             <Button variant="ghost" size="sm" onClick={() => setShowCopyDialog(false)}>Cancelar</Button>
             <Button size="sm" onClick={() => copyMutation.mutate()} disabled={!copyFromGroupId || copyMutation.isPending}>
               {copyMutation.isPending ? 'Copiando…' : copyOverwrite ? 'Substituir e copiar' : 'Copiar faltantes'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: aplicar consumos DESTE solado em outros (cópia inversa em lote) */}
+      <Dialog open={showApplyDialog} onOpenChange={setShowApplyDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Aplicar materiais em outros solados</DialogTitle>
+            <DialogDescription className="text-xs">
+              Copia os {materials.length} material(is) deste solado pra todos os solados que você selecionar.
+              Útil quando você cadastra "Cola PU + Linha 60 + Forração X" e quer aplicar em N solados similares de uma vez.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Solados destino ({applyTargetIds.size} selecionado{applyTargetIds.size === 1 ? '' : 's'})
+              </Label>
+              <div className="mt-1 max-h-64 overflow-y-auto rounded border divide-y">
+                {allOtherSoleGroups.length === 0 ? (
+                  <p className="p-3 text-xs text-muted-foreground italic">Não há outros solados cadastrados.</p>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2 p-2 bg-muted/40 hover:bg-muted/60">
+                      <Checkbox
+                        checked={applyTargetIds.size === allOtherSoleGroups.length}
+                        onCheckedChange={(v) => {
+                          if (v) setApplyTargetIds(new Set(allOtherSoleGroups.map(g => g.id)));
+                          else setApplyTargetIds(new Set());
+                        }}
+                      />
+                      <span className="text-xs font-semibold">Selecionar todos</span>
+                    </div>
+                    {allOtherSoleGroups.map(g => {
+                      const checked = applyTargetIds.has(g.id);
+                      return (
+                        <label key={g.id} className="flex items-center gap-2 p-2 hover:bg-muted/40 cursor-pointer">
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(v) => {
+                              const next = new Set(applyTargetIds);
+                              if (v) next.add(g.id); else next.delete(g.id);
+                              setApplyTargetIds(next);
+                            }}
+                          />
+                          <span className="text-xs">{g.name}</span>
+                          {checked && <Check className="h-3 w-3 ml-auto text-primary" />}
+                        </label>
+                      );
+                    })}
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="flex items-start gap-2 p-2 rounded border bg-muted/30">
+              <Checkbox
+                id="apply-overwrite"
+                checked={applyOverwrite}
+                onCheckedChange={(v) => setApplyOverwrite(!!v)}
+                className="mt-0.5"
+              />
+              <label htmlFor="apply-overwrite" className="text-xs cursor-pointer">
+                <strong>Sobrescrever materiais existentes nos destinos</strong>
+                <span className="block text-[10px] text-muted-foreground mt-0.5">
+                  Marcado: apaga os materiais atuais dos destinos antes de aplicar. Desmarcado: só adiciona os que faltam (não duplica).
+                </span>
+              </label>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setShowApplyDialog(false)}>Cancelar</Button>
+            <Button size="sm" onClick={() => applyMutation.mutate()} disabled={applyTargetIds.size === 0 || applyMutation.isPending}>
+              {applyMutation.isPending ? 'Aplicando…' : `Aplicar em ${applyTargetIds.size}`}
             </Button>
           </DialogFooter>
         </DialogContent>
