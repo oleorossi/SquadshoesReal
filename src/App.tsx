@@ -70,6 +70,7 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 const OrdersSummary = lazy(() => import("./pages/OrdersSummary"));
 const GroupedReportSummary = lazy(() => import("./pages/GroupedReportSummary"));
 const CapacityPlanning = lazy(() => import("./pages/CapacityPlanning"));
+const ProductionControlCenter = lazy(() => import("./pages/ProductionControlCenter"));
 const LabelSystem = lazy(() => import("./pages/LabelSystem"));
 const PurchasePlanning = lazy(() => import("./pages/PurchasePlanning"));
 const PricingCalculator = lazy(() => import("./pages/PricingCalculator"));
@@ -713,6 +714,10 @@ const router = createBrowserRouter([
       {
         path: "capacity-planning",
         element: <CapacityPlanning />,
+      },
+      {
+        path: "centro-controle",
+        element: <ProductionControlCenter />,
       },
       // Requested snippet routes with lazy property
       {

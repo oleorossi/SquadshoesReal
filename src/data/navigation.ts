@@ -9,7 +9,7 @@ import {
   DollarSign, Calendar, Box, History,
   ListChecks, Boxes, Activity, GanttChartSquare, Clock,
   Calculator, TrendingUp, HeartHandshake, MessageSquare,
-  FileSpreadsheet, Lock, Scale, FileCheck2,
+  FileSpreadsheet, Lock, Scale, FileCheck2, AlertTriangle,
 } from 'lucide-react';
 
 // ════════════════════════════════════════════════════════════════════════
@@ -56,6 +56,7 @@ export const menuGroups = [
       { name: "Live",             icon: Activity,          path: "/producao/live" },
       { name: "Timeline",         icon: GanttChartSquare,  path: "/producao/timeline" },
       { name: "Capacidade",       icon: BarChart3,         path: "/capacity-planning" },
+      { name: "Centro Controle",  icon: AlertTriangle,     path: "/centro-controle" },
       { name: "Qualidade",        icon: ShieldCheck,       path: "/quality" },
     ],
   },
