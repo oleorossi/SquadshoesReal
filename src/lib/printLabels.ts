@@ -158,13 +158,14 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
         </div>
       </div>`;
 
-    // Linha de identificadores secundários (Remessa, Talões, Rótulos)
+    // Linha de identificadores secundários (Remessa, Talões, Rótulo, NF-e).
+    // "Rót. Rem." era o mesmo valor de "Rót. Pedido" — removido a pedido
+    // do usuário pra não duplicar a informação.
     const subInfoCells = [
-      item.remessa ? `<div style="padding:2px 8px;border-right:1px solid #000;"><strong style="font-size:9px;color:#555;">Remessa:</strong> <span style="font-size:11px;font-weight:700;">${escapeHtml(item.remessa)}</span></div>` : '',
-      item.taloes ? `<div style="padding:2px 8px;border-right:1px solid #000;"><strong style="font-size:9px;color:#555;">Talões:</strong> <span style="font-size:11px;font-weight:700;">${item.taloes}</span></div>` : '',
-      `<div style="padding:2px 8px;border-right:1px solid #000;"><strong style="font-size:9px;color:#555;">Rót. Rem.:</strong> <span style="font-size:11px;font-weight:700;">${item.boxNumber}/${item.totalBoxes}</span></div>`,
-      `<div style="padding:2px 8px;border-right:1px solid #000;"><strong style="font-size:9px;color:#555;">Rót. Pedido:</strong> <span style="font-size:11px;font-weight:700;">${item.boxNumber}/${item.totalBoxes}</span></div>`,
-      item.nfe ? `<div style="padding:2px 8px;"><strong style="font-size:9px;color:#555;">NF-e:</strong> <span style="font-size:11px;font-weight:700;">${escapeHtml(item.nfe)}</span></div>` : '',
+      item.remessa ? `<div style="padding:2px 10px;border-right:1px solid #000;"><strong style="font-size:9px;color:#555;">Remessa:</strong> <span style="font-size:11px;font-weight:700;">${escapeHtml(item.remessa)}</span></div>` : '',
+      item.taloes ? `<div style="padding:2px 10px;border-right:1px solid #000;"><strong style="font-size:9px;color:#555;">Talões:</strong> <span style="font-size:11px;font-weight:700;">${item.taloes}</span></div>` : '',
+      `<div style="padding:2px 10px;border-right:1px solid #000;"><strong style="font-size:9px;color:#555;">Rót. Pedido:</strong> <span style="font-size:11px;font-weight:700;">${item.boxNumber}/${item.totalBoxes}</span></div>`,
+      item.nfe ? `<div style="padding:2px 10px;"><strong style="font-size:9px;color:#555;">NF-e:</strong> <span style="font-size:11px;font-weight:700;">${escapeHtml(item.nfe)}</span></div>` : '',
     ].filter(Boolean).join('');
 
     // Linha de stats (Lote, Corrugado, Fáb, Grade, Total)
@@ -176,15 +177,31 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
       `<div style="padding:2px 8px;"><strong style="font-size:9px;color:#555;">Total:</strong> <span style="font-size:11px;font-weight:800;">${totalPairs}</span></div>`,
     ].filter(Boolean).join('');
 
-    // Bloco do produto: descrição + imagem + tamanho-grande
+    // Bloco do produto: descrição + imagem + tamanho-grande.
+    // Layout adaptativo: como o destinatário pode vir vazio (PV sem cliente),
+    // a referência, cor e categoria sobem em peso/tamanho pra ocupar o
+    // espaço disponível sem ficar desproporcional.
     const productLeft = `
-      <div style="flex:1;padding:6px 10px;display:flex;flex-direction:column;gap:2px;">
-        ${item.refCode ? `<div style="font-size:11px;"><strong style="color:#555;font-size:9px;">Mod:</strong> <span style="font-weight:800;letter-spacing:0.3px;">${escapeHtml(item.refCode)}</span></div>` : ''}
-        ${item.color ? `<div style="font-size:11px;line-height:1.2;"><strong style="color:#555;font-size:9px;">Cor:</strong> <span style="font-weight:600;text-transform:uppercase;">${escapeHtml(item.color)}</span></div>` : ''}
-        ${item.refName && item.refName !== item.refCode ? `<div style="font-size:10px;color:#333;line-height:1.2;text-transform:uppercase;">${escapeHtml(item.refName)}</div>` : ''}
-        ${item.strapsLabel ? `<div style="font-size:9.5px;color:#444;"><strong>TIRAS:</strong> ${escapeHtml(item.strapsLabel.replace(/\|/g, ' — ').replace(/:/g, ': '))}</div>` : ''}
-        ${item.mainMaterial ? `<div style="font-size:9px;color:#666;font-style:italic;text-transform:uppercase;">${escapeHtml(item.mainMaterial)}</div>` : ''}
-        ${item.shoeCategory ? `<div style="font-size:9px;color:#666;">${escapeHtml(item.shoeCategory)}</div>` : ''}
+      <div style="flex:1;padding:10px 14px;display:flex;flex-direction:column;justify-content:center;gap:6px;">
+        ${item.refCode ? `
+          <div style="display:flex;align-items:baseline;gap:8px;line-height:1;">
+            <span style="font-size:11px;color:#666;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Ref.</span>
+            <span style="font-size:26px;font-weight:900;letter-spacing:0.5px;">${escapeHtml(item.refCode)}</span>
+          </div>` : ''}
+        ${item.color ? `
+          <div style="display:flex;align-items:baseline;gap:8px;line-height:1;">
+            <span style="font-size:11px;color:#666;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Cor</span>
+            <span style="font-size:18px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">${escapeHtml(item.color)}</span>
+          </div>` : ''}
+        ${item.shoeCategory ? `
+          <div style="display:flex;align-items:baseline;gap:8px;line-height:1;">
+            <span style="font-size:11px;color:#666;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Tipo</span>
+            <span style="font-size:15px;font-weight:600;color:#222;text-transform:uppercase;">${escapeHtml(item.shoeCategory)}</span>
+          </div>` : ''}
+        ${item.refName && item.refName !== item.refCode ? `
+          <div style="font-size:11px;color:#555;line-height:1.2;text-transform:uppercase;letter-spacing:0.3px;">${escapeHtml(item.refName)}</div>` : ''}
+        ${item.strapsLabel ? `<div style="font-size:10px;color:#444;line-height:1.2;"><strong>TIRAS:</strong> ${escapeHtml(item.strapsLabel.replace(/\|/g, ' — ').replace(/:/g, ': '))}</div>` : ''}
+        ${item.mainMaterial ? `<div style="font-size:10px;color:#666;font-style:italic;text-transform:uppercase;line-height:1.2;">${escapeHtml(item.mainMaterial)}</div>` : ''}
       </div>`;
 
     const sizeRangeBig = item.sizeRangeLabel

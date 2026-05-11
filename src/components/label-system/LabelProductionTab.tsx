@@ -324,6 +324,23 @@ export function LabelProductionTab() {
     staleTime: 2 * 60 * 1000,
   });
 
+  // Endereço da fábrica vem de system_settings (key='company_address').
+  // Configurável via SQL/edição direta — não hardcoded. Aparece no rodapé
+  // da etiqueta externa. Quando ausente, rodapé mostra só o CNPJ.
+  const { data: companyAddress } = useQuery({
+    queryKey: ['system_settings', 'company_address'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'company_address')
+        .maybeSingle();
+      const raw = (data as any)?.value;
+      return typeof raw === 'string' ? raw : (raw ?? null);
+    },
+    staleTime: 30 * 60 * 1000,
+  });
+
   // Fetch sale_order_items with strap_colors to build strap lookup for grouping
   const { data: strapLookup = new Map<string, string>() } = useQuery({
     queryKey: ['sale_order_items_strap_lookup'],
@@ -856,7 +873,7 @@ export function LabelProductionTab() {
               orderNumber: order.order_number || '', refCode: refData?.code || group.refCode || '', refName: group.refName || '',
               color: order.color || '—', boxNumber: currentBoxNumber, totalBoxes: totalMasterBoxes,
               senderName: 'SQUAD SHOES IND. E COM. DE CALÇADOS LTDA', senderCnpj: '62.406.033/0001-93',
-              senderAddress: 'Rua Armando Krug, 525 · Bairro Canabarro · Teutônia/RS',
+              senderAddress: companyAddress || undefined,
               recipientName: so?.client_name || '',
               recipientCnpj: so?.client_cnpj || '',
               recipientCode,
