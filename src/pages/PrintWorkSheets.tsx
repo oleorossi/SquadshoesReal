@@ -96,10 +96,14 @@ export default function PrintWorkSheets() {
   };
 
   // Mapeia rows selecionadas pro formato esperado pelo PrintWorkSheetsPage
+  // Inclui `id` (alias de op_id) pq OperatorWorkSheet e ManagementReport leem
+  // order.id; sem isso, OperatorWorkSheet quebrava com .id.split('-') no
+  // 'Imprimir tudo' e as queries de order_stages/order_costs ficavam vazias.
   const selectedOrders = useMemo(() => {
     return rows
       .filter(r => selectedIds.has(r.id))
       .map(r => ({
+        id: r.id,
         op_id: r.id,
         op_number: r.order_number,
         reference_id: r.reference_id,

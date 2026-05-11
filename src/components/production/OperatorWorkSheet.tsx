@@ -164,7 +164,7 @@ const OperatorWorkSheet = ({
         {/* QR placeholder */}
         <div className="flex flex-col items-center justify-center px-3 bg-white border-l border-slate-200">
           <QrCode className="h-12 w-12 text-slate-700" />
-          <span className="text-[8px] font-mono text-slate-400 mt-0.5">{order.id.split('-')[0]}</span>
+          <span className="text-[8px] font-mono text-slate-400 mt-0.5">{order.id?.split('-')[0] || order.op_number || '—'}</span>
         </div>
       </div>
 
