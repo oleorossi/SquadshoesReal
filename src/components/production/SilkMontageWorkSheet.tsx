@@ -92,7 +92,7 @@ const SECTOR_THEME: Record<GroupedSector, {
   'Corte Forração': { border: 'border-cyan-700',    bg: 'bg-cyan-600',    bgLight: 'bg-cyan-50',    border1: 'border-cyan-500',   textColor: 'text-cyan-900',    icon: Cloud,      accentColor: 'cyan',    showFrenteTraseiro: false, showSilkImage: false, showProductImage: false, showAlerts: false, showMaterials: 'lining',showStitching: false, showFinishingChecklist: false, showIndividualBox: false },
   'Costura':        { border: 'border-violet-700',  bg: 'bg-violet-600',  bgLight: 'bg-violet-50',  border1: 'border-violet-500', textColor: 'text-violet-900',  icon: Pen,        accentColor: 'violet',  showFrenteTraseiro: false, showSilkImage: false, showProductImage: true,  showAlerts: false, showMaterials: 'none',  showStitching: true,  showFinishingChecklist: false, showIndividualBox: false },
   'Aviamento':      { border: 'border-amber-700',   bg: 'bg-amber-600',   bgLight: 'bg-amber-50',   border1: 'border-amber-500',  textColor: 'text-amber-900',   icon: Paperclip,  accentColor: 'amber',   showFrenteTraseiro: true,  showSilkImage: false, showProductImage: true,  showAlerts: true,  showMaterials: 'both',  showStitching: false, showFinishingChecklist: false, showIndividualBox: false },
-  'Acabamento':     { border: 'border-emerald-700', bg: 'bg-emerald-600', bgLight: 'bg-emerald-50', border1: 'border-emerald-500',textColor: 'text-emerald-900', icon: Sparkles,   accentColor: 'emerald', showFrenteTraseiro: false, showSilkImage: false, showProductImage: true,  showAlerts: false, showMaterials: 'none',  showStitching: false, showFinishingChecklist: true,  showIndividualBox: true  },
+  'Acabamento':     { border: 'border-emerald-700', bg: 'bg-emerald-600', bgLight: 'bg-emerald-50', border1: 'border-emerald-500',textColor: 'text-emerald-900', icon: Sparkles,   accentColor: 'emerald', showFrenteTraseiro: false, showSilkImage: true,  showProductImage: true,  showAlerts: false, showMaterials: 'none',  showStitching: false, showFinishingChecklist: true,  showIndividualBox: true  },
 };
 
 /**
@@ -109,7 +109,21 @@ const SECTOR_THEME: Record<GroupedSector, {
 export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }: Props) => {
   const theme = SECTOR_THEME[sector];
   const Icon = theme.icon;
-  const primarySilk = theme.showSilkImage ? group.colorGroups.find(g => g.silk)?.silk : undefined;
+  // Silks únicos deste solado (deduplica por silk_url). Pra setores que
+  // exibem silk (Silk + Acabamento), mostra cada silk uma vez — se o cliente
+  // tiver silk própria, ela aparece aqui no lugar da silk padrão do solado
+  // (resolução já feita no PrintWorkSheetsPage.getOrderSilk com cascata
+  // cliente → grupo econômico → silk default do solado).
+  const uniqueSilks = theme.showSilkImage
+    ? Array.from(
+        new Map(
+          group.colorGroups
+            .map(g => g.silk)
+            .filter((s): s is { silk_name: string; silk_url: string | null } => !!s)
+            .map(s => [s.silk_url || s.silk_name, s] as const),
+        ).values(),
+      )
+    : [];
 
   return (
     <div
@@ -139,18 +153,37 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
         date={date}
       />
 
-      {/* Silk image em destaque (apenas setor Silk) */}
-      {theme.showSilkImage && primarySilk && (
-        <div className={`mb-2 border-2 ${theme.border1} rounded-lg p-2 ${theme.bgLight} flex items-center gap-3 keep-together`}>
-          {primarySilk.silk_url && (
-            <div className="w-32 h-32 border-2 border-pink-300 bg-white rounded overflow-hidden shrink-0 flex items-center justify-center">
-              <img src={primarySilk.silk_url} alt="Silk" className="w-full h-full object-contain" />
-            </div>
-          )}
-          <div>
-            <p className="text-[9px] font-bold text-pink-600 uppercase tracking-wide">Arte do silk</p>
-            <p className={`text-2xl font-black ${theme.textColor}`}>{primarySilk.silk_name}</p>
-            <p className="text-[10px] text-pink-700 mt-1 font-semibold">Verificar posicionamento e pressão antes do lote.</p>
+      {/* Silks em destaque — uma por solado, multiple se cliente/grupo tem silk própria */}
+      {theme.showSilkImage && uniqueSilks.length > 0 && (
+        <div className={`mb-2 border-2 ${theme.border1} rounded-lg p-2 ${theme.bgLight} keep-together`}>
+          <div className="flex items-center justify-between mb-2">
+            <p className={`text-[10px] font-bold uppercase tracking-wide ${theme.textColor}`}>
+              Silk{uniqueSilks.length > 1 ? 's' : ''} pra forração — solado {group.soleName}
+            </p>
+            <p className="text-[9px] text-slate-500">
+              {uniqueSilks.length} arte{uniqueSilks.length > 1 ? 's' : ''} · verificar antes de iniciar
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {uniqueSilks.map((silk, idx) => (
+              <div key={`${silk.silk_url}-${idx}`} className="flex items-center gap-2 bg-white border border-slate-200 rounded p-1.5">
+                {silk.silk_url ? (
+                  <div className="w-20 h-20 border border-slate-300 bg-white rounded overflow-hidden shrink-0 flex items-center justify-center">
+                    <img src={silk.silk_url} alt={silk.silk_name} className="w-full h-full object-contain" />
+                  </div>
+                ) : (
+                  <div className="w-20 h-20 bg-slate-100 border border-slate-200 rounded shrink-0" />
+                )}
+                <div className="min-w-0">
+                  <p className={`text-base font-black leading-tight truncate ${theme.textColor}`} title={silk.silk_name}>
+                    {silk.silk_name}
+                  </p>
+                  {!silk.silk_url && (
+                    <p className="text-[9px] text-amber-600 mt-0.5">Imagem não cadastrada</p>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
