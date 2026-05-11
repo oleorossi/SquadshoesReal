@@ -21,7 +21,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useBulkSyncFinancial, SaleOrderFormData, SaleOrderItemFormData, PackagingMode } from '@/hooks/useSaleOrders';
+import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, SaleOrderFormData, SaleOrderItemFormData, PackagingMode } from '@/hooks/useSaleOrders';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
 import { useClients, useEconomicGroups } from '@/hooks/useClients';
 import { supabase } from '@/integrations/supabase/client';
@@ -101,7 +101,7 @@ export default function SaleOrders() {
   const [cancelJustificativa, setCancelJustificativa] = useState('');
   const resyncOPs = useResyncOPsFromSheets();
   const resyncPVOPs = useResyncOPsFromPV();
-  const bulkSyncFinancial = useBulkSyncFinancial();
+  // bulkSyncFinancial removido em 2026-05 — sync acontece automaticamente no faturamento
   const navigate = useNavigate();
 
   // Sugestões para SmartSearch (PV): Cliente, Representante, Referência
@@ -1164,10 +1164,10 @@ export default function SaleOrders() {
               <span className="hidden sm:inline">Consumo</span>
               {selectedIds.size > 0 && <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">{selectedIds.size}</Badge>}
             </Button>
-            <Button variant="outline" onClick={() => bulkSyncFinancial.mutate()} disabled={bulkSyncFinancial.isPending} className="gap-2">
-              <DollarSign className="h-4 w-4" />
-              <span className="hidden sm:inline">{bulkSyncFinancial.isPending ? 'Sincronizando...' : 'Sync Financeiro'}</span>
-            </Button>
+            {/* "Sync Financeiro" removido em 2026-05: a sincronização
+                financeira já acontece automaticamente ao faturar (via
+                syncFinancialRecords no auto_bill_sale_order_on_finishing).
+                Botão manual confundia usuários e abria espaço pra duplo-debit. */}
             <Button
               variant="outline"
               onClick={() => handleExportSaleOrdersExcel(selectedIds.size > 0 ? filteredOrders.filter(o => selectedIds.has(o.id)) : filteredOrders)}

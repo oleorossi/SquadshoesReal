@@ -38,7 +38,9 @@ export default function PrintWorkSheets() {
     queryFn: async () => {
       let q = (supabase as any)
         .from('orders')
-        .select('id, order_number, reference_id, color, quantity, grade, status, sale_order_id, sale_orders(order_number, client_name, delivery_deadline), technical_sheets:reference_id(name, code)')
+        // sale_orders!sale_order_id desambigua: orders tem 2 FKs pra sale_orders
+        // (sale_order_id e cross_dock_sale_order_id). PostgREST não escolhe sozinho.
+        .select('id, order_number, reference_id, color, quantity, grade, status, sale_order_id, sale_orders!sale_order_id(order_number, client_name, delivery_deadline), technical_sheets:reference_id(name, code)')
         .order('order_number', { ascending: false })
         .limit(500);
       if (statusFilter !== 'todos') q = q.eq('status', statusFilter);

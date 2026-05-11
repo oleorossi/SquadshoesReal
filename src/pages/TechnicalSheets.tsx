@@ -1766,18 +1766,11 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             />
             <FieldSelect label="Gênero" value={form.gender} onChange={v => updateField('gender', v)} options={[...GENDERS]} placeholder="Gênero" />
             <FieldSelect label="Status Produção" value={form.status} onChange={v => updateField('status', v)} options={[...STATUSES]} />
-            <div className="col-span-2 sm:col-span-1">
-              <Label className="text-xs text-muted-foreground">Modelo de Caixa</Label>
-              <Select value={form.box_type_id || 'none'} onValueChange={v => updateField('box_type_id', v === 'none' ? null : v)}>
-                <SelectTrigger className="mt-1 h-9 text-sm"><SelectValue placeholder="Selecione a caixa..." /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">— Nenhuma —</SelectItem>
-                  {((groups as any[]) || []).filter(g => g.box_type_id).map((g: any) => (
-                    <SelectItem key={g.id} value={g.box_type_id}>{g.name} (Sugerida)</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* "Modelo de Caixa" removido em 2026-05: o sistema deriva a
+                embalagem automaticamente do solado vinculado (sole_structures
+                → packaging_configs) — não há motivo pra forçar seleção manual
+                aqui. A coluna box_type_id continua no DB pra retrocompatibilidade
+                e pode ser usada via PackagingTab quando necessário. */}
           </div>
           {/* Grade derivada automaticamente da Categoria + Solado */}
           <div className="rounded-md border bg-muted/30 p-3 flex items-center gap-3 text-xs">

@@ -486,6 +486,7 @@ export default function SaleOrderFormPanel({
   const totalPairs = items.reduce((s, i) => s + (i.quantity || 0), 0);
   const totalValue = items.reduce((s, i) => s + (i.quantity || 0) * (i.unit_price || 0), 0);
   const [shippingRate, setShippingRate] = useState(1.5); // Default rate per pair
+  const [shippingRateText, setShippingRateText] = useState('1,50');
   const estimatedShippingCost = totalPairs * shippingRate;
 
   // Group items by reference_id + color, keeping original indices
@@ -785,7 +786,7 @@ export default function SaleOrderFormPanel({
                 </div>
               </div>
 
-              {/* Shipping Calculator */}
+              {/* Shipping Calculator — aceita decimal (0.33, 1,50) via parse manual */}
               <div className="p-3 rounded-lg border border-border bg-muted/20 space-y-3">
                 <div className="flex items-center justify-between">
                   <Label className="text-xs font-bold flex items-center gap-1.5 text-foreground">
@@ -796,24 +797,44 @@ export default function SaleOrderFormPanel({
                     {totalPairs} pares
                   </Badge>
                 </div>
-                {/* grid-cols-1 em mobile evita truncamento dos labels longos.
-                    Em sm (≥640px) volta pra 2 colunas. */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <Label className="text-[10px] uppercase font-bold text-muted-foreground">Taxa por Par (R$)</Label>
+                    {/* type="text" + inputMode="decimal" aceita "," ou "." e
+                        teclado mobile vem com decimal. type="number" estrangulava
+                        valores como 0,33 no locale pt-BR. */}
                     <Input
-                      type="number"
-                      value={shippingRate}
+                      type="text"
+                      inputMode="decimal"
+                      value={shippingRateText}
                       onChange={e => {
-                        const parsed = Number(e.target.value);
+                        const raw = e.target.value;
+                        setShippingRateText(raw);
+                        // Normaliza vírgula → ponto e parse
+                        const parsed = Number(raw.replace(',', '.'));
                         setShippingRate(Number.isFinite(parsed) ? Math.max(0, parsed) : 0);
                       }}
-                      className="h-8 mt-1"
+                      onBlur={() => {
+                        // Snap visual pra notação consistente (sempre ponto, 2 casas)
+                        if (Number.isFinite(shippingRate) && shippingRate > 0) {
+                          setShippingRateText(shippingRate.toFixed(2));
+                        } else if (!shippingRateText) {
+                          setShippingRateText('0');
+                        }
+                      }}
+                      placeholder="0,33"
+                      className="h-9 mt-1 font-mono text-sm"
                     />
                   </div>
                   <div>
+                    <Label className="text-[10px] uppercase font-bold text-muted-foreground">Pares × Taxa</Label>
+                    <div className="h-9 mt-1 flex items-center px-3 rounded-md border border-border bg-muted/30 font-mono text-xs text-muted-foreground">
+                      {totalPairs} × {formatCurrency(shippingRate)}
+                    </div>
+                  </div>
+                  <div>
                     <Label className="text-[10px] uppercase font-bold text-muted-foreground">Custo Estimado</Label>
-                    <div className="h-8 mt-1 flex items-center px-3 rounded-md border border-border bg-muted/30 font-mono font-bold text-foreground text-sm">
+                    <div className="h-9 mt-1 flex items-center px-3 rounded-md border border-primary/40 bg-primary/5 font-mono font-bold text-foreground text-sm">
                       {formatCurrency(estimatedShippingCost)}
                     </div>
                   </div>

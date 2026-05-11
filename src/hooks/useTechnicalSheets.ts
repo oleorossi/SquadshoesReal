@@ -392,6 +392,21 @@ export function useCloneSheet() {
       if (insertErr || !newSheet) throw new Error(insertErr?.message || 'Erro ao criar ficha');
       const newId = (newSheet as any).id as string;
 
+      // Trigger sync_construction_routing roda no INSERT e sobrescreve
+      // has_straps/strap_colors baseado em construction_type. Se a ficha
+      // original tinha has_straps=true mas construction_type='corte_costura'
+      // (modelo com tiras opcionais), o trigger zera as tiras no clone.
+      // Re-aplica esses campos via UPDATE depois pra preservar a config real.
+      if (fields.has_straps || (fields.strap_colors && fields.strap_colors.length > 0)) {
+        await supabase
+          .from('technical_sheets')
+          .update({
+            has_straps: fields.has_straps,
+            strap_colors: fields.strap_colors,
+          } as any)
+          .eq('id', newId);
+      }
+
       // Helper: rollback the new sheet if any side-effect fails, so we don't leave
       // a half-cloned ficha técnica behind.
       const rollback = async (cause: string): Promise<never> => {

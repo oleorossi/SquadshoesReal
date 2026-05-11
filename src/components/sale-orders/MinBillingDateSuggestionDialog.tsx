@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -8,11 +8,40 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import { Calendar, CheckCircle2, Pencil, Truck } from 'lucide-react';
 import { formatBR } from '@/lib/minBillingDate';
 import { SubmitFlowStepper } from './SubmitFlowStepper';
+
+/**
+ * Dada uma string "yyyy-mm" + "Sn" (ex: "2026-06" + "S2"), calcula a
+ * data da segunda-feira correspondente em ISO yyyy-mm-dd.
+ * Espelha a lógica do form principal (SaleOrderFormPanel) que monta
+ * a lista de semanas a partir do primeiro dia do mês.
+ */
+function monthWeekToISODate(monthValue: string, weekValue: string): string | null {
+  if (!monthValue || !weekValue) return null;
+  const [year, month] = monthValue.split('-').map(Number);
+  const weekNum = parseInt(weekValue.replace(/\D/g, ''), 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(weekNum)) return null;
+  const firstDay = new Date(year, month - 1, 1);
+  let weekStart = new Date(firstDay);
+  const dayOfWeek = weekStart.getDay();
+  // Alinha pra segunda da semana 1
+  if (dayOfWeek !== 1) {
+    weekStart.setDate(weekStart.getDate() - ((dayOfWeek + 6) % 7));
+  }
+  // Avança N-1 semanas
+  weekStart.setDate(weekStart.getDate() + (weekNum - 1) * 7);
+  // Clampa pra dentro do mês (segunda do mês quando weekStart cai no mês anterior)
+  if (weekStart < firstDay) {
+    return `${year}-${String(month).padStart(2, '0')}-${String(firstDay.getDate()).padStart(2, '0')}`;
+  }
+  return `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`;
+}
 
 interface Props {
   open: boolean;
@@ -40,7 +69,55 @@ export function MinBillingDateSuggestionDialog({
   onPickManual,
 }: Props) {
   const [editing, setEditing] = useState(false);
-  const [manualDate, setManualDate] = useState(minDateISO);
+  // Em vez de date picker (calendar), usa Mês + Semana — espelha o form principal
+  // pra manter coerência com a forma como o sistema raciocina sobre faturamento.
+  const [manualMonth, setManualMonth] = useState<string>(() => {
+    if (!minDateISO) return '';
+    return minDateISO.slice(0, 7); // yyyy-mm
+  });
+  const [manualWeek, setManualWeek] = useState<string>('');
+
+  const computedManualDate = useMemo(
+    () => monthWeekToISODate(manualMonth, manualWeek),
+    [manualMonth, manualWeek],
+  );
+
+  const monthOptions = useMemo(() => {
+    const months: { value: string; label: string }[] = [];
+    const now = new Date();
+    for (let i = 0; i < 6; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+      months.push({ value, label: label.charAt(0).toUpperCase() + label.slice(1) });
+    }
+    return months;
+  }, []);
+
+  const weekOptions = useMemo(() => {
+    if (!manualMonth) return [] as { value: string; label: string }[];
+    const [year, month] = manualMonth.split('-').map(Number);
+    const weeks: { value: string; label: string }[] = [];
+    const firstDay = new Date(year, month - 1, 1);
+    const lastDay = new Date(year, month, 0);
+    let weekStart = new Date(firstDay);
+    const dayOfWeek = weekStart.getDay();
+    if (dayOfWeek !== 1) {
+      weekStart.setDate(weekStart.getDate() - ((dayOfWeek + 6) % 7));
+    }
+    let weekNum = 1;
+    while (weekStart <= lastDay) {
+      const displayStart = weekStart < firstDay ? new Date(firstDay) : new Date(weekStart);
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 4);
+      const displayEnd = weekEnd > lastDay ? new Date(lastDay) : weekEnd;
+      const label = `Semana ${weekNum} (${displayStart.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} - ${displayEnd.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })})`;
+      weeks.push({ value: `S${weekNum}`, label });
+      weekStart.setDate(weekStart.getDate() + 7);
+      weekNum++;
+    }
+    return weeks;
+  }, [manualMonth]);
 
   return (
     <Dialog
@@ -91,16 +168,41 @@ export function MinBillingDateSuggestionDialog({
         })()}
 
         {editing && (
-          <div className="space-y-2">
-            <Label htmlFor="manual-billing-date" className="text-xs uppercase font-bold text-muted-foreground">
-              Data manual de faturamento
-            </Label>
-            <Input
-              id="manual-billing-date"
-              type="date"
-              value={manualDate}
-              onChange={(e) => setManualDate(e.target.value)}
-            />
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground mb-1 block">
+                  Mês de Faturamento
+                </Label>
+                <Select value={manualMonth} onValueChange={(v) => { setManualMonth(v); setManualWeek(''); }}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Mês..." /></SelectTrigger>
+                  <SelectContent>
+                    {monthOptions.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground mb-1 block">
+                  Semana de Faturamento
+                </Label>
+                <Select value={manualWeek} onValueChange={setManualWeek}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Semana..." /></SelectTrigger>
+                  <SelectContent>
+                    {weekOptions.length === 0 ? (
+                      <SelectItem value="none" disabled>Selecione o mês primeiro</SelectItem>
+                    ) : (
+                      weekOptions.map(w => <SelectItem key={w.value} value={w.value}>{w.label}</SelectItem>)
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {computedManualDate && (
+              <p className="text-[11px] text-muted-foreground">
+                Faturamento previsto: <strong className="text-foreground font-mono">{formatBR(computedManualDate)}</strong>
+                {' '}(segunda-feira da semana selecionada)
+              </p>
+            )}
             <p className="text-[11px] text-muted-foreground">
               Se a data escolhida for anterior à mínima, o pedido será marcado como
               <strong> override manual</strong> (destacado em âmbar no Kanban).
@@ -116,11 +218,12 @@ export function MinBillingDateSuggestionDialog({
               </Button>
               <Button
                 onClick={() => {
-                  if (!manualDate) return;
-                  onPickManual(manualDate);
+                  if (!computedManualDate) return;
+                  onPickManual(computedManualDate);
                 }}
+                disabled={!computedManualDate}
               >
-                Usar esta data
+                Usar esta semana
               </Button>
             </>
           ) : (
