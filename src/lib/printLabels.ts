@@ -222,8 +222,8 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
         </div>` : '';
 
     const productImage = item.imageUrl ? `
-      <div style="width:34mm;border-left:1px solid #444;padding:3px;display:flex;align-items:center;justify-content:center;background:#fff;">
-        <img src="${item.imageUrl}" crossorigin="anonymous" style="max-width:30mm;max-height:28mm;width:auto;height:auto;object-fit:contain;" onerror="this.style.display='none'" />
+      <div style="width:34mm;border-left:1px solid #444;padding:3px;display:flex;align-items:center;justify-content:center;background:#fff;overflow:hidden;">
+        <img src="${item.imageUrl}" crossorigin="anonymous" style="max-width:30mm;max-height:58mm;width:auto;height:auto;object-fit:contain;" onerror="this.style.display='none'" />
       </div>` : '';
 
     // Rodapé: endereço remetente + CGC + página
@@ -233,25 +233,29 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
       (item.pageNumber && item.pageTotal) ? `Página ${item.pageNumber} de ${item.pageTotal}` : '',
     ].filter(Boolean).join(' · ');
 
+    // Alturas hardcoded em cada seção. Total = 135mm = altura do label-box.
+    // Sem flex:1 (que cresceria indefinidamente). Cada caixa tem altura
+    // exata + overflow:hidden — o engine de impressão não tem mais como
+    // empurrar conteúdo pra outra página A4.
     return `
       <div class="label-box">
-        <div style="display:flex;border-bottom:1.5px solid #000;flex-shrink:0;">
+        <div style="height:30mm;display:flex;border-bottom:1.5px solid #000;overflow:hidden;">
           ${headerLeft}
           ${headerRight}
         </div>
-        <div style="display:flex;border-bottom:1px solid #000;flex-shrink:0;">
+        <div style="height:7mm;display:flex;border-bottom:1px solid #000;overflow:hidden;">
           ${subInfoCells}
         </div>
-        <div style="display:flex;border-bottom:1px solid #000;background:#f5f5f5;flex-shrink:0;">
+        <div style="height:7mm;display:flex;border-bottom:1px solid #000;background:#f5f5f5;overflow:hidden;">
           ${statsCells}
         </div>
-        <div style="display:flex;border-bottom:1px solid #000;flex:1;min-height:0;">
+        <div style="height:65mm;display:flex;border-bottom:1px solid #000;overflow:hidden;">
           ${productLeft}
           ${productImage}
           ${sizeRangeBig}
         </div>
         ${item.grade.length > 0 ? `
-        <div class="grade-block" style="padding:4px 10px;border-bottom:1px solid #000;flex-shrink:0;page-break-inside:avoid;break-inside:avoid;">
+        <div class="grade-block" style="height:18mm;padding:3px 10px;border-bottom:1px solid #000;overflow:hidden;page-break-inside:avoid;break-inside:avoid;display:flex;flex-direction:column;justify-content:center;gap:2px;">
           <div style="display:flex;align-items:center;">
             <div style="width:48px;font-size:11px;color:#000;font-weight:800;padding-right:8px;text-transform:uppercase;letter-spacing:0.4px;">Tam.</div>
             <div style="flex:1;display:flex;">${gradeHead}</div>
@@ -260,8 +264,8 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
             <div style="width:48px;font-size:11px;color:#000;font-weight:800;padding-right:8px;text-transform:uppercase;letter-spacing:0.4px;">Qtd.</div>
             <div style="flex:1;display:flex;">${gradeRow}</div>
           </div>
-        </div>` : ''}
-        ${footerParts ? `<div class="footer-block" style="padding:4px 10px;font-size:9.5px;color:#000;font-weight:600;text-align:center;flex-shrink:0;page-break-inside:avoid;break-inside:avoid;">${footerParts}</div>` : ''}
+        </div>` : '<div style="height:18mm;border-bottom:1px solid #000;"></div>'}
+        <div class="footer-block" style="height:8mm;padding:3px 10px;font-size:9.5px;color:#000;font-weight:600;text-align:center;overflow:hidden;display:flex;align-items:center;justify-content:center;">${footerParts || '&nbsp;'}</div>
       </div>`;
   });
 
@@ -336,10 +340,9 @@ body{font-family:Arial,Helvetica,sans-serif;color:#000;padding:16px 10px;backgro
 @media print{
   body{padding:0;margin:0;}
   /* A4 portrait = 297mm. Com @page margin 5mm × 2 = 287mm úteis.
-     Reduzimos page-container pra 275mm (12mm de buffer ao A4 útil)
-     e cada label pra 135mm. Folga grande pra acomodar diferenças de
-     renderização que antes empurravam o último elemento (footer/grade)
-     pra uma página A4 extra em branco. */
+     Soma das seções hardcoded do label = 135mm (30+7+7+65+18+8).
+     2 labels × 135mm + 3mm gap = 273mm. page-container = 275mm
+     pra dar 2mm de "respiro" final. */
   .page-container{width:100%;height:275mm;margin:0;}
   .label-box{height:135mm;}
   /* Tudo dentro do label respeita break-inside em print também */
