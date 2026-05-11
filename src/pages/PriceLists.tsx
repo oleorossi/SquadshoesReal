@@ -13,7 +13,10 @@ export default function PriceLists() {
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('price_lists')
-        .select('*, clients(razao_social)')
+        // FK explícita: price_lists.client_id → clients.id. Sem nomear a
+        // constraint, PostgREST falha com "more than one relationship" pq
+        // existe a FK reversa clients.price_list_id → price_lists.id.
+        .select('*, clients!price_lists_client_id_fkey(razao_social)')
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data || [];
