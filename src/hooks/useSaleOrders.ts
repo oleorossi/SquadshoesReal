@@ -74,6 +74,30 @@ async function syncFinancialRecords(saleOrderId: string) {
 
   const total = Number(so.total) || 0;
 
+  // PVs informais (nfe_required=false) e PVs finalizados sem NF não geram AR
+  // nem lançamentos financeiros. Cancelamos qualquer AR pré-existente (caso
+  // a flag tenha sido virada depois de Faturar) e saímos.
+  if (so.nfe_required === false || so.status === 'Finalizado s/ NF') {
+    if (existingAR && existingAR.length > 0) {
+      const idsToCancel = existingAR.filter(ar => ar.status !== 'cancelled' && ar.status !== 'received').map(ar => ar.id);
+      if (idsToCancel.length > 0) {
+        const { error } = await supabase.from('accounts_receivable')
+          .update({ status: 'cancelled' })
+          .in('id', idsToCancel)
+          .neq('status', 'received');
+        must('Cancelar AR de PV informal', error);
+      }
+    }
+    const { error: delErr } = await supabase
+      .from('financial_entries')
+      .delete()
+      .eq('reference_id', saleOrderId)
+      .eq('reference_type', 'sale_order')
+      .not('status', 'in', '(posted,paid,reconciled,confirmed)');
+    must('Remover financial_entries de PV informal', delErr);
+    return;
+  }
+
   if (so.status === 'Cancelado') {
     if (existingAR && existingAR.length > 0) {
       const idsToCancel = existingAR.filter(ar => ar.status !== 'cancelled').map(ar => ar.id);
@@ -532,6 +556,9 @@ export type SaleOrderFormData = {
   /** Taxa de frete por par em R$ — gera financial_entry de despesa
    *  automaticamente quando > 0 (trigger DB cria/atualiza). */
   shipping_rate_per_pair?: number;
+  /** Quando false, pedido é informal: não emite NF-e, não gera AR/financial.
+   *  Default true (mantém comportamento existente). */
+  nfe_required?: boolean;
 };
 
 export type SaleOrderItemFormData = {
@@ -1469,8 +1496,9 @@ export function useUpdateSaleOrderStatus() {
         }
       }
 
-      // Quando faturado, dar baixa (finalizar) todas as OPs vinculadas (exceto as já canceladas)
-      if (status === 'Faturado') {
+      // Quando faturado OU finalizado sem NF, dar baixa em todas as OPs vinculadas
+      // (exceto canceladas). PV informal completa o ciclo via "Finalizado s/ NF".
+      if (status === 'Faturado' || status === 'Finalizado s/ NF') {
         const { data: linkedOps, error: faturadoLinkedErr } = await supabase
           .from('orders')
           .select('id, status')
@@ -1571,7 +1599,9 @@ export function useUpdateSaleOrderStatus() {
           ? 'Pedido em produção — onda de setores iniciada!'
           : vars.status === 'Faturado'
             ? 'Pedido faturado e OPs finalizadas!'
-            : 'Status atualizado!';
+            : vars.status === 'Finalizado s/ NF'
+              ? 'Pedido informal finalizado (sem NF).'
+              : 'Status atualizado!';
       toast.success(msg);
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),

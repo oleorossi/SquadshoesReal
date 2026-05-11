@@ -199,7 +199,7 @@ export default function Solagem() {
       if (status === 'finalizado' || status === 'cancelada') return false;
       if (order.sale_order_id) {
         const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
-        if (so && (so.status === 'Faturado' || so.status === 'Cancelado')) return false;
+        if (so && (so.status === 'Faturado' || so.status === 'Finalizado s/ NF' || so.status === 'Cancelado')) return false;
       }
       // Status filter - only filter if "active" is selected
       if (filterStatus === 'active' && status !== 'em produção') return false;

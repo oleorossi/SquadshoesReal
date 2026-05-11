@@ -38,7 +38,7 @@ import { buildThermalLabelsHtml } from '@/lib/printLabels';
 import { openPrintWindow, writeRawPrintWindow } from '@/lib/printOrder';
 import logoImg from '@/assets/logo-squad-shoes.jpg';
 
-const STATUS_OPTIONS = ['Rascunho', 'Aprovado', 'Em Produção', 'Faturado', 'Cancelado'] as const;
+const STATUS_OPTIONS = ['Rascunho', 'Aprovado', 'Em Produção', 'Faturado', 'Finalizado s/ NF', 'Cancelado'] as const;
 
 // Audit visual: cores anteriores text-{color}-400 em dark caíam abaixo do
 // ratio WCAG AA (4.5:1) sobre o fundo /15. text-{color}-300 dá contraste
@@ -48,6 +48,7 @@ const STATUS_COLORS: Record<string, string> = {
   'Aprovado': 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
   'Em Produção': 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30',
   'Faturado': 'bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/30',
+  'Finalizado s/ NF': 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30',
   'Cancelado': 'bg-destructive/15 text-destructive border-destructive/30',
 };
 
@@ -56,8 +57,11 @@ const STATUS_DOT: Record<string, string> = {
   'Aprovado': 'bg-emerald-500',
   'Em Produção': 'bg-blue-500',
   'Faturado': 'bg-violet-500',
+  'Finalizado s/ NF': 'bg-amber-500',
   'Cancelado': 'bg-destructive',
 };
+
+const TERMINAL_BILLED_STATUSES = ['Faturado', 'Finalizado s/ NF'];
 
 const emptyForm: SaleOrderFormData = {
   client_name: '', client_cnpj: '', client_contact: '', client_order_number: '',
@@ -297,11 +301,12 @@ export default function SaleOrders() {
 
   const filteredOrders = useMemo(() => {
     return orders.filter(order => {
-      // Tab gating: ativos => everything except Faturado; faturados => only Faturado
+      // Tab gating: ativos => não-terminais; faturados => Faturado + Finalizado s/ NF
+      const isBilled = TERMINAL_BILLED_STATUSES.includes(order.status);
       if (mainTab === 'faturados') {
-        if (order.status !== 'Faturado') return false;
+        if (!isBilled) return false;
       } else {
-        if (order.status === 'Faturado') return false;
+        if (isBilled) return false;
       }
       if (filterStatus !== 'all' && order.status !== filterStatus) return false;
       if (filterRep !== 'all' && order.representative !== filterRep) return false;
@@ -346,8 +351,8 @@ export default function SaleOrders() {
     });
   }, [orders, mainTab, filterStatus, filterRep, filterGroup, filterSegment, segmentsBySaleOrder, searchTerm, clientGroupMap, clientByName, itemsBySaleOrder]);
 
-  const activeCount = useMemo(() => orders.filter(o => o.status !== 'Rascunho' && o.status !== 'Cancelado' && o.status !== 'Faturado').length, [orders]);
-  const billedCount = useMemo(() => orders.filter(o => o.status === 'Faturado').length, [orders]);
+  const activeCount = useMemo(() => orders.filter(o => o.status !== 'Rascunho' && o.status !== 'Cancelado' && !TERMINAL_BILLED_STATUSES.includes(o.status)).length, [orders]);
+  const billedCount = useMemo(() => orders.filter(o => TERMINAL_BILLED_STATUSES.includes(o.status)).length, [orders]);
 
   const pendingOrders = useMemo(() => orders.filter(o => o.status === 'Rascunho'), [orders]);
 
@@ -508,7 +513,7 @@ export default function SaleOrders() {
     // Only allow editing delivery dates for PVs in editable statuses.
     // Faturado/Expedido PVs have NF-e issued against the old delivery date;
     // Cancelado/Concluído PVs should be immutable.
-    const PROTECTED_STATUSES = ['Faturado', 'Expedido', 'Cancelado', 'Concluído'];
+    const PROTECTED_STATUSES = ['Faturado', 'Finalizado s/ NF', 'Expedido', 'Cancelado', 'Concluído'];
     const editableIds = orders
       .filter(o => selectedIds.has(o.id) && !PROTECTED_STATUSES.includes(o.status))
       .map(o => o.id);
@@ -516,11 +521,9 @@ export default function SaleOrders() {
     if (skipped > 0) toast.info(`${skipped} pedido(s) ignorado(s) — status não permite edição de entrega.`);
     if (editableIds.length === 0) return;
 
-    // Add DB-side status guard to prevent updating orders that transitioned to
-    // a protected status between the client-side filter and this write.
     const { data: updated, error } = await supabase.from('sale_orders').update(updates)
       .in('id', editableIds)
-      .not('status', 'in', '("Faturado","Expedido","Cancelado","Concluído")')
+      .not('status', 'in', '("Faturado","Finalizado s/ NF","Expedido","Cancelado","Concluído")')
       .select('id');
     if (error) {
       toast.error(`Erro ao atualizar: ${error.message}`);
@@ -1314,7 +1317,7 @@ export default function SaleOrders() {
                 : 'border-transparent text-muted-foreground hover:text-foreground'
             )}
           >
-            Faturados
+            Faturados / Sem NF
             <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-[10px]">{billedCount}</Badge>
           </button>
         </div>
@@ -1566,14 +1569,16 @@ export default function SaleOrders() {
               <TableBody>
                 {filteredOrders.map(order => {
                   const isSelected = selectedIds.has(order.id);
-                  const isOverdue = order.delivery_deadline && new Date(order.delivery_deadline) < new Date() && order.status !== 'Faturado' && order.status !== 'Cancelado';
+                  const isOverdue = order.delivery_deadline && new Date(order.delivery_deadline) < new Date() && !TERMINAL_BILLED_STATUSES.includes(order.status) && order.status !== 'Cancelado';
+                  const isInformal = (order as any).nfe_required === false;
                   return (
                     <TableRow
                       key={order.id}
                       className={cn(
                         "group transition-colors cursor-pointer",
                         isSelected ? "bg-primary/10 hover:bg-primary/15" : "hover:bg-muted/50",
-                        isOverdue && "border-l-4 border-l-destructive"
+                        isOverdue && "border-l-4 border-l-destructive",
+                        isInformal && !isSelected && "bg-amber-500/[0.04] hover:bg-amber-500/[0.08]"
                       )}
                       onClick={(e) => {
                         const target = e.target as HTMLElement;
@@ -1586,13 +1591,20 @@ export default function SaleOrders() {
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col">
-                          <button 
-                            type="button" 
-                            onClick={(e) => { e.stopPropagation(); openOrderDetails(order); }} 
-                            className="font-mono text-sm text-primary hover:underline font-bold text-left w-fit"
-                          >
-                            {order.order_number || '—'}
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); openOrderDetails(order); }}
+                              className="font-mono text-sm text-primary hover:underline font-bold text-left w-fit"
+                            >
+                              {order.order_number || '—'}
+                            </button>
+                            {isInformal && (
+                              <Badge variant="outline" className="h-4 px-1.5 text-[9px] uppercase font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40">
+                                Sem NF
+                              </Badge>
+                            )}
+                          </div>
                           <span className="text-[10px] text-muted-foreground uppercase font-medium">{formatDate(order.created_at)}</span>
                         </div>
                       </TableCell>
@@ -1681,7 +1693,7 @@ export default function SaleOrders() {
                           <Button variant="ghost" size="icon" className="h-7 w-7" title="Consumo de materiais" onClick={() => { setQuickConsumptionId(order.id); setQuickConsumptionNumber(order.order_number); }}>
                             <Package className="h-3.5 w-3.5" />
                           </Button>
-                          {isAdmin && order.status !== 'Faturado' && order.status !== 'Cancelado' && (
+                          {isAdmin && !TERMINAL_BILLED_STATUSES.includes(order.status) && order.status !== 'Cancelado' && (
                             <Button
                               variant="ghost"
                               size="icon"
@@ -1956,8 +1968,22 @@ export default function SaleOrders() {
                 <p><span className="text-muted-foreground">Total:</span> <span className="font-bold font-mono text-lg">{loadingOrderItems ? '—' : formatCurrency(selectedOrderItems.reduce((s, i) => s + Number(i.quantity || 0) * Number(i.unit_price || 0), 0))}</span></p>
               </div>
 
-              {/* NF-e panel */}
-              {(selectedOrder.status === 'Faturado' || selectedOrder.status === 'Aprovado' || selectedOrderNfes.length > 0) && (
+              {/* PV informal: aviso no lugar do painel NF-e */}
+              {(selectedOrder as any).nfe_required === false && selectedOrderNfes.length === 0 && (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 flex items-start gap-3">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-xs">
+                    <p className="font-semibold text-amber-700 dark:text-amber-300">Pedido informal — sem NF-e</p>
+                    <p className="text-muted-foreground mt-0.5">
+                      Material e produção debitam normalmente. Não emite nota, não gera conta a receber.
+                      Vai pra <strong>Finalizado s/ NF</strong> ao ser expedido.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* NF-e panel — só pra PVs formais (nfe_required=true) ou que já têm NF emitida */}
+              {(selectedOrder as any).nfe_required !== false && (selectedOrder.status === 'Faturado' || selectedOrder.status === 'Aprovado' || selectedOrderNfes.length > 0) && (
                 <div className="rounded-lg border bg-card overflow-hidden">
                   <div className="flex items-center justify-between px-4 py-2.5 bg-muted/30 border-b">
                     <div className="flex items-center gap-2 text-sm font-medium">

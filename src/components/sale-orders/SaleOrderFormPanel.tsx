@@ -765,6 +765,29 @@ export default function SaleOrderFormPanel({
               </div>
 
               <FactoringField form={form} setForm={setForm} totalValue={totalValue} />
+
+              {/* Pedido informal — não emite NF-e. Quando marcado, o PV pula
+                  Faturado e vai direto a "Finalizado s/ NF" na expedição. Sem
+                  AR, sem lançamento financeiro. */}
+              <div className="flex items-start gap-3 p-3 rounded-lg border border-amber-500/30 bg-amber-500/5">
+                <Checkbox
+                  id="nfe_required_off"
+                  checked={form.nfe_required === false}
+                  onCheckedChange={(checked) => setForm(f => ({ ...f, nfe_required: !checked }))}
+                  className="mt-0.5"
+                />
+                <div className="flex-1 -mt-0.5">
+                  <Label htmlFor="nfe_required_off" className="text-xs font-bold cursor-pointer flex items-center gap-1.5 text-amber-700 dark:text-amber-300">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    Pedido informal (sem NF-e)
+                  </Label>
+                  <p className="text-[11px] text-muted-foreground mt-1 leading-snug">
+                    Marque pra pedidos que <strong>não precisam de NF-e</strong> (venda no atacado direta, amostra, brinde).
+                    Material e produção debitam normal, mas: <strong>não emite nota</strong>, <strong>não gera conta a receber</strong> e termina
+                    em "Finalizado s/ NF" ao ser expedido.
+                  </p>
+                </div>
+              </div>
             </CardContent>
           </Card>
 

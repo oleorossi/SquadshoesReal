@@ -380,10 +380,13 @@ function AddVolumeDialog({
   const { data: saleOrders = [] } = useQuery({
     queryKey: ['sale_orders_for_manifest'],
     queryFn: async () => {
+      // PVs aptos a manifesto: 'Pronto'/'Faturado' (fluxo formal com NF) OU
+      // 'Em Produção' com nfe_required=false (fluxo informal, vai pra
+      // 'Finalizado s/ NF' quando register_order_shipment for chamado).
       const { data } = await (supabase as any)
         .from('sale_orders')
-        .select('id, order_number, client_name, delivery_city, delivery_state')
-        .in('status', ['Pronto', 'pronto', 'Faturado', 'faturado'])
+        .select('id, order_number, client_name, delivery_city, delivery_state, status, nfe_required')
+        .or('status.in.(Pronto,pronto,Faturado,faturado),and(status.eq.Em Produção,nfe_required.eq.false)')
         .order('created_at', { ascending: false })
         .limit(200);
       return data || [];

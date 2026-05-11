@@ -138,7 +138,7 @@ export default function Corte() {
       // Exclude OPs whose sale order is already faturado or cancelled
       if (order.sale_order_id) {
         const so = saleOrders?.find((s: any) => s.id === order.sale_order_id);
-        if (so && (so.status === 'Faturado' || so.status === 'Cancelado')) return false;
+        if (so && (so.status === 'Faturado' || so.status === 'Finalizado s/ NF' || so.status === 'Cancelado')) return false;
       }
       // Status filter - only filter if "active" is selected
       if (filterStatus === 'active' && status !== 'em produção') return false;

@@ -480,7 +480,7 @@ export function LabelProductionTab() {
   const productionOrders = allOrders.filter((o: any) => !!o.sale_order_id);
   const finishedSaleOrderIds = useMemo(
     () => new Set(
-      saleOrders.filter((so: any) => ['Faturado', 'Expedido', 'Concluído'].includes(so.status)).map((so: any) => so.id)
+      saleOrders.filter((so: any) => ['Faturado', 'Finalizado s/ NF', 'Expedido', 'Concluído'].includes(so.status)).map((so: any) => so.id)
     ),
     [saleOrders]
   );

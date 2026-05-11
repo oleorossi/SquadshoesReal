@@ -86,6 +86,12 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Pedido não encontrado" }), { status: 404, headers: corsHeaders });
     }
 
+    if (order.nfe_required === false) {
+      return new Response(JSON.stringify({
+        error: "Pedido marcado como informal (sem NF-e). Para emitir, edite o pedido e desmarque \"Pedido informal\".",
+      }), { status: 400, headers: corsHeaders });
+    }
+
     const { data: existingActiveNfe } = await adminClient
       .from("nfe_emitidas")
       .select("id, status, ref_nfe")

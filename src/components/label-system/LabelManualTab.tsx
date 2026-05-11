@@ -79,7 +79,7 @@ export function LabelManualTab() {
       const { data } = await supabase
         .from('sale_orders')
         .select('id, order_number, client_name, status, billing_week, delivery_deadline')
-        .in('status', ['Aprovado', 'Em Produção', 'Faturado', 'Pendente'])
+        .in('status', ['Aprovado', 'Em Produção', 'Faturado', 'Finalizado s/ NF', 'Pendente'])
         .order('created_at', { ascending: false })
         .limit(200);
       return (data || []) as Array<{ id: string; order_number: string; client_name: string; status: string; billing_week: string | null; delivery_deadline: string | null }>;
