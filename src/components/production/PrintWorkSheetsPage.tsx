@@ -115,11 +115,14 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
   });
 
   const { data: saleOrders = [] } = useQuery({
-    queryKey: ['sale_orders_for_worksheets_v4'],
+    queryKey: ['sale_orders_for_worksheets_v5'],
     queryFn: async () => {
+      // Bug: pedia 'economic_group_id' (não existe em sale_orders — está em
+      // clients) e 'total_value' (a coluna real é 'total'). Resultado: 400
+      // do Supabase quebrava o print de toda OP em produção.
       const { data, error } = await (supabase as any)
         .from('sale_orders')
-        .select('id, client_id, economic_group_id, client_name, client_cnpj, order_number, client_order_number, delivery_deadline, status, total_value');
+        .select('id, client_id, client_name, client_cnpj, order_number, client_order_number, delivery_deadline, status, total');
       if (error) throw error;
       return data;
     },
@@ -164,7 +167,7 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
       // no Supabase e quebrava o print da ficha de produção.
       const { data, error } = await (supabase as any)
         .from('clients')
-        .select('id, razao_social, cnpj, cidade');
+        .select('id, razao_social, cnpj, cidade, economic_group_id');
       if (error) throw error;
       return data || [];
     },
@@ -322,7 +325,9 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
     if (!soleProductId && !soleProductName) return undefined;
     const saleOrder = saleOrders.find((so: any) => so.id === order.sale_order_id);
     const clientId = saleOrder?.client_id;
-    const economicGroupId = saleOrder?.economic_group_id;
+    // economic_group_id está em clients (não em sale_orders) — busca via clientsInfo
+    const clientRecord = clientId ? (clientsInfo as any[]).find((c: any) => c.id === clientId) : null;
+    const economicGroupId = clientRecord?.economic_group_id;
     const baseSoleName = soleProductName ? getBaseName(soleProductName) : null;
     const findSilk = (cId?: string | null, gId?: string | null) =>
       silkRegistrations.find((s: any) => {
@@ -622,7 +627,7 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
             client_city: client?.cidade || null,
             delivery_deadline: so.delivery_deadline,
             status: so.status,
-            total_value: so.total_value,
+            total_value: (so as any).total ?? (so as any).total_value ?? null,
           },
           reportOrders: [],
         });
