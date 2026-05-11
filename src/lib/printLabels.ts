@@ -233,23 +233,21 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
       (item.pageNumber && item.pageTotal) ? `Página ${item.pageNumber} de ${item.pageTotal}` : '',
     ].filter(Boolean).join(' · ');
 
-    // Alturas hardcoded em cada seção. Total = 135mm = altura do label-box.
-    // Sem flex:1 (que cresceria indefinidamente). Cada caixa tem altura
-    // exata + overflow:hidden — o engine de impressão não tem mais como
-    // empurrar conteúdo pra outra página A4.
+    // Alturas hardcoded por seção. Total = 140mm = altura do label-box.
+    // Distribuição: 30+8+8+68+18+8 = 140.
     return `
       <div class="label-box">
         <div style="height:30mm;display:flex;border-bottom:1.5px solid #000;overflow:hidden;">
           ${headerLeft}
           ${headerRight}
         </div>
-        <div style="height:7mm;display:flex;border-bottom:1px solid #000;overflow:hidden;">
+        <div style="height:8mm;display:flex;border-bottom:1px solid #000;overflow:hidden;">
           ${subInfoCells}
         </div>
-        <div style="height:7mm;display:flex;border-bottom:1px solid #000;background:#f5f5f5;overflow:hidden;">
+        <div style="height:8mm;display:flex;border-bottom:1px solid #000;background:#f5f5f5;overflow:hidden;">
           ${statsCells}
         </div>
-        <div style="height:65mm;display:flex;border-bottom:1px solid #000;overflow:hidden;">
+        <div style="height:68mm;display:flex;border-bottom:1px solid #000;overflow:hidden;">
           ${productLeft}
           ${productImage}
           ${sizeRangeBig}
@@ -269,15 +267,19 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
       </div>`;
   });
 
-  // Group labels in pairs (2 per A4 page) — uma folha A4 = 2 caixas.
-  // Ex.: 100 caixas → 50 folhas. Math.ceil cobre o caso ímpar (última
-  // folha com 1 só).
+  // Cada A4 = 1 page-container com 2 slots absolutos (top/bottom).
+  // Position absolute remove os labels do fluxo de documento — engine
+  // de impressão não tem como quebrar entre eles.
   const pages: string[] = [];
   for (let i = 0; i < labels.length; i += 2) {
     const first = labels[i];
     const second = labels[i + 1] || '';
     const isLastPage = i + 2 >= labels.length;
-    pages.push(`<div class="page-container${!isLastPage ? ' page-break' : ''}">${first}${second}</div>`);
+    pages.push(`<div class="page-container${!isLastPage ? ' page-break' : ''}">
+      <div class="label-slot-top">${first}</div>
+      ${second ? `<div class="label-slot-bottom">${second}</div>` : ''}
+      <div class="print-version-marker">v4-abs</div>
+    </div>`);
   }
   const totalPages = Math.ceil(labels.length / 2);
 
@@ -304,23 +306,37 @@ body{font-family:Arial,Helvetica,sans-serif;color:#000;padding:16px 10px;backgro
   width:100%;font-family:Arial,Helvetica,sans-serif;color:#000;
   border:1.5px solid #000;padding:0;box-sizing:border-box;
   display:flex;flex-direction:column;
-  /* Belt-and-suspenders: TODA forma de break-inside disponível */
   page-break-inside:avoid !important;
   break-inside:avoid-page !important;
   border-radius:0.5mm;overflow:hidden;height:135mm;
 }
-/* Cada bloco interno respeita seu espaço. break-inside:avoid em tudo
-   pra qualquer sub-elemento que tenta quebrar (ex.: grade-block) ficar
-   inteiro na mesma página do label. */
 .label-box > *{overflow:hidden;page-break-inside:avoid;break-inside:avoid;}
+/* Layout em POSITION:ABSOLUTE — cada page-container vira um plano A4
+   onde os 2 labels ficam ancorados em posições FIXAS (X,Y). Saem do
+   fluxo do documento → engine de impressão não tem como "decidir"
+   quebrar entre eles. */
 .page-container{
-  width:198mm;margin:0 auto 8mm;display:flex;flex-direction:column;gap:3mm;box-sizing:border-box;
+  width:198mm;height:287mm;margin:0 auto 0;
+  position:relative;box-sizing:border-box;
 }
+.page-container .label-slot-top{
+  position:absolute;top:0;left:0;right:0;
+  height:140mm;
+}
+.page-container .label-slot-bottom{
+  position:absolute;top:143mm;left:0;right:0;
+  height:140mm;
+}
+.page-container .label-slot-top .label-box,
+.page-container .label-slot-bottom .label-box{height:140mm;}
 .page-container.page-break{break-after:page;page-break-after:always;}
-/* page-container sem .page-break (= a última) NÃO tem break-after, evitando
-   folha em branco. Não usamos :last-child porque o print-footer fica DEPOIS
-   no DOM (mesmo escondido no print). */
-.page-container:not(.page-break){break-after:avoid;page-break-after:avoid;margin-bottom:0;}
+.page-container:not(.page-break){break-after:avoid;page-break-after:avoid;}
+/* Marcador de versão pra diferenciar do cache antigo no debug */
+.print-version-marker{
+  position:absolute;bottom:1mm;right:2mm;
+  font-size:6px;color:#888;font-family:monospace;
+  pointer-events:none;
+}
 .print-footer{
   max-width:190mm;margin:24px auto 12px;padding:18px 24px;
   background:#fff;border:1px solid #d4d4d4;border-radius:6px;
@@ -339,13 +355,14 @@ body{font-family:Arial,Helvetica,sans-serif;color:#000;padding:16px 10px;backgro
 .print-footer__btn--ghost:hover{background:#f5f5f5;}
 @media print{
   body{padding:0;margin:0;}
-  /* A4 portrait = 297mm. Com @page margin 5mm × 2 = 287mm úteis.
-     Soma das seções hardcoded do label = 135mm (30+7+7+65+18+8).
-     2 labels × 135mm + 3mm gap = 273mm. page-container = 275mm
-     pra dar 2mm de "respiro" final. */
-  .page-container{width:100%;height:275mm;margin:0;}
-  .label-box{height:135mm;}
-  /* Tudo dentro do label respeita break-inside em print também */
+  /* A4 = 297mm. Com @page margin 5mm × 2 = 287mm úteis.
+     page-container ocupa o A4 útil (287mm) com posição relativa.
+     Slot top em (0, 0..140mm). Slot bottom em (143mm, +140mm).
+     143+140=283mm dentro dos 287mm úteis — 4mm de respiro. */
+  .page-container{width:100%;height:287mm;margin:0;}
+  .page-container .label-slot-top{height:140mm;}
+  .page-container .label-slot-bottom{height:140mm;top:143mm;}
+  .label-box{height:140mm;}
   .label-box,
   .label-box *{
     page-break-inside:avoid !important;
