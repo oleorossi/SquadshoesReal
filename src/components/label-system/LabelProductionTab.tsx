@@ -407,6 +407,9 @@ export function LabelProductionTab() {
   const [serializationStart, setSerializationStart] = useState(1);
   const [useSerialization, setUseSerialization] = useState(false);
   const [periodFilter, setPeriodFilter] = useState<string>('all');
+  // billing_week dropdown — '__all__' lista tudo, demais valores são keys
+  // como "2026-05-S4" provenientes de sale_orders.billing_week
+  const [billingWeekFilter, setBillingWeekFilter] = useState<string>('__all__');
   const [showScanner, setShowScanner] = useState(false);
   const [pairsPerFicha, setPairsPerFicha] = useState(12);
   const [fichasPerBox, setFichasPerBox] = useState(1);
@@ -449,22 +452,44 @@ export function LabelProductionTab() {
   );
   const currentOrders = statusTab === 'producao' ? activeOrders : statusTab === 'imprimidos' ? printedActiveOrders : finishedOrders;
 
+  // Available billing_weeks for the dropdown — collected from current orders'
+  // associated sale_orders. Sorted by year-month-week (ascending).
+  const availableBillingWeeks = useMemo(() => {
+    const set = new Set<string>();
+    for (const o of currentOrders as any[]) {
+      const bw = saleOrdersMap.get(o.sale_order_id)?.billing_week;
+      if (bw) set.add(bw);
+    }
+    return Array.from(set).sort();
+  }, [currentOrders, saleOrdersMap]);
+
   const periodFilteredOrders = useMemo(() => {
-    if (periodFilter === 'all') return currentOrders;
+    let result = currentOrders;
+
+    // Filtro 1: billing_week específica (dropdown estilo faturamento)
+    if (billingWeekFilter !== '__all__') {
+      result = result.filter((o: any) => {
+        const bw = saleOrdersMap.get(o.sale_order_id)?.billing_week;
+        return bw === billingWeekFilter;
+      });
+    }
+
+    // Filtro 2: período "rápido" (Semana atual / Mês atual / Todos)
+    if (periodFilter === 'all') return result;
     const now = new Date();
     let start: Date; let end: Date;
     switch (periodFilter) {
       case 'week': start = startOfWeek(now); end = endOfWeek(now); break;
       case 'month': start = startOfMonth(now); end = endOfMonth(now); break;
-      default: return currentOrders;
+      default: return result;
     }
-    return currentOrders.filter((o: any) => {
+    return result.filter((o: any) => {
       const deadline = saleOrdersMap.get(o.sale_order_id)?.delivery_deadline;
       if (!deadline) return true;
       const d = parseISO(deadline);
       return isWithinInterval(d, { start, end });
     });
-  }, [currentOrders, periodFilter, saleOrdersMap]);
+  }, [currentOrders, periodFilter, billingWeekFilter, saleOrdersMap]);
 
   const groupedRefs = groupOrdersByReference(periodFilteredOrders, saleOrdersMap, strapLookup);
   const filtered = groupedRefs.filter((g) => {
@@ -946,6 +971,20 @@ export function LabelProductionTab() {
             <SelectItem value="all">Todos</SelectItem>
             <SelectItem value="week">Esta Semana</SelectItem>
             <SelectItem value="month">Este Mês</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {/* Filtro por semana de faturamento — espelha como o financeiro/PV usa billing_week (formato "2026-05-S4") */}
+        <Select value={billingWeekFilter} onValueChange={setBillingWeekFilter}>
+          <SelectTrigger className="h-9 w-48 text-xs">
+            <CalendarDays className="h-3.5 w-3.5 mr-1" />
+            <SelectValue placeholder="Semana faturamento" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">Todas as semanas</SelectItem>
+            {availableBillingWeeks.map(bw => (
+              <SelectItem key={bw} value={bw}>{bw}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
