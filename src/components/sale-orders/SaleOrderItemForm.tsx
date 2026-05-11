@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { SaleOrderItemFormData } from '@/hooks/useSaleOrders';
 import { useSheetMaterials } from '@/hooks/useTechnicalSheets';
-import StockAvailabilityBadge from './StockAvailabilityBadge';
+// StockAvailabilityBadge removido do form — checagem só no save
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAllGroupColors } from '@/hooks/useGroupColors';
@@ -615,9 +615,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               </>
             );
           })()}
-          {item.reference_id && totalPairs > 0 && (
-            <StockAvailabilityBadge referenceId={item.reference_id} quantity={totalPairs} color={item.color} />
-          )}
+          {/* StockAvailabilityBadge removido: a verificação de estoque/cor
+              fica APENAS no save (via checkSoleAvailability +
+              enrichMaterialShortages em SaleOrderForm). Antes, o badge
+              rodava o RPC check_stock_availability a cada mudança de
+              qtd/cor — gerava ruído visual e chamadas desnecessárias. */}
         </div>
         <div className="flex items-center gap-4">
           <div className="text-right">
