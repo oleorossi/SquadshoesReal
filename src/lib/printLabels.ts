@@ -100,15 +100,18 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
     const totalPairs = item.totalPairsInRemessa ?? item.grade.reduce((sum, s) => sum + s.qty, 0);
     const corrugadoPairs = item.grade.reduce((sum, s) => sum + s.qty, 0);
 
-    // Cabeçalho da tabela de tamanhos só com tamanhos que existem na grade.
-    // Fontes mais pesadas (800/900) e cor preta pura — laser/térmica perde
-    // muita densidade em cinzas; 700 ficava cinza claro na impressão.
+    // Tamanhos da grade renderizados como divs flex (NÃO usar <table>).
+    // Tabelas em HTML têm regras próprias de page-break que ignoram o
+    // break-inside:avoid do pai — foi o que causou a quebra entre TAM
+    // e QTD vista em produção. Divs flex respeitam o avoid normalmente.
+    const gradeCellWidth = item.grade.length > 0 ? `${100 / item.grade.length}%` : '0%';
     const gradeHead = item.grade.map(s =>
-      `<th style="text-align:center;padding:3px 5px;font-size:13px;font-weight:900;color:#000;border:none;">${s.size}</th>`
+      `<div style="flex:1;text-align:center;padding:3px 4px;font-size:13px;font-weight:900;color:#000;">${s.size}</div>`
     ).join('');
     const gradeRow = item.grade.map(s =>
-      `<td style="text-align:center;padding:3px 5px;font-size:17px;font-weight:900;color:#000;border:none;">${s.qty}</td>`
+      `<div style="flex:1;text-align:center;padding:3px 4px;font-size:17px;font-weight:900;color:#000;">${s.qty}</div>`
     ).join('');
+    void gradeCellWidth;
 
     const barcodeId = `box-bc-${idx}`;
 
@@ -248,15 +251,17 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
           ${sizeRangeBig}
         </div>
         ${item.grade.length > 0 ? `
-        <div style="padding:4px 10px;border-bottom:1px solid #000;flex-shrink:0;">
-          <table style="width:100%;border-collapse:collapse;">
-            <tbody>
-              <tr><td style="font-size:11px;color:#000;font-weight:800;padding-right:10px;text-transform:uppercase;letter-spacing:0.4px;">Tam.</td>${gradeHead}</tr>
-              <tr><td style="font-size:11px;color:#000;font-weight:800;padding-right:10px;text-transform:uppercase;letter-spacing:0.4px;">Qtd.</td>${gradeRow}</tr>
-            </tbody>
-          </table>
+        <div class="grade-block" style="padding:4px 10px;border-bottom:1px solid #000;flex-shrink:0;page-break-inside:avoid;break-inside:avoid;">
+          <div style="display:flex;align-items:center;">
+            <div style="width:48px;font-size:11px;color:#000;font-weight:800;padding-right:8px;text-transform:uppercase;letter-spacing:0.4px;">Tam.</div>
+            <div style="flex:1;display:flex;">${gradeHead}</div>
+          </div>
+          <div style="display:flex;align-items:center;">
+            <div style="width:48px;font-size:11px;color:#000;font-weight:800;padding-right:8px;text-transform:uppercase;letter-spacing:0.4px;">Qtd.</div>
+            <div style="flex:1;display:flex;">${gradeRow}</div>
+          </div>
         </div>` : ''}
-        ${footerParts ? `<div style="padding:4px 10px;font-size:9.5px;color:#000;font-weight:600;text-align:center;flex-shrink:0;">${footerParts}</div>` : ''}
+        ${footerParts ? `<div class="footer-block" style="padding:4px 10px;font-size:9.5px;color:#000;font-weight:600;text-align:center;flex-shrink:0;page-break-inside:avoid;break-inside:avoid;">${footerParts}</div>` : ''}
       </div>`;
   });
 
@@ -294,12 +299,16 @@ body{font-family:Arial,Helvetica,sans-serif;color:#000;padding:16px 10px;backgro
 .label-box{
   width:100%;font-family:Arial,Helvetica,sans-serif;color:#000;
   border:1.5px solid #000;padding:0;box-sizing:border-box;
-  display:flex;flex-direction:column;page-break-inside:avoid;break-inside:avoid;
-  border-radius:0.5mm;overflow:hidden;height:138mm;
+  display:flex;flex-direction:column;
+  /* Belt-and-suspenders: TODA forma de break-inside disponível */
+  page-break-inside:avoid !important;
+  break-inside:avoid-page !important;
+  border-radius:0.5mm;overflow:hidden;height:135mm;
 }
-/* Cada bloco interno respeita seu espaço. flex-shrink:0 no que tem altura
-   "natural" e flex:1 no espaço de produto (foto+descrição). */
-.label-box > *{overflow:hidden;}
+/* Cada bloco interno respeita seu espaço. break-inside:avoid em tudo
+   pra qualquer sub-elemento que tenta quebrar (ex.: grade-block) ficar
+   inteiro na mesma página do label. */
+.label-box > *{overflow:hidden;page-break-inside:avoid;break-inside:avoid;}
 .page-container{
   width:198mm;margin:0 auto 8mm;display:flex;flex-direction:column;gap:3mm;box-sizing:border-box;
 }
@@ -327,11 +336,18 @@ body{font-family:Arial,Helvetica,sans-serif;color:#000;padding:16px 10px;backgro
 @media print{
   body{padding:0;margin:0;}
   /* A4 portrait = 297mm. Com @page margin 5mm × 2 = 287mm úteis.
-     page-container = 282mm pra deixar buffer (5mm) que evita overflow
-     de sub-pixel disparar página A4 extra. Cada label-box = 139mm
-     (= (282-3 de gap) / 2 = 139.5mm — arredondado pra baixo). */
-  .page-container{width:100%;height:282mm;margin:0;}
-  .label-box{height:139mm;}
+     Reduzimos page-container pra 275mm (12mm de buffer ao A4 útil)
+     e cada label pra 135mm. Folga grande pra acomodar diferenças de
+     renderização que antes empurravam o último elemento (footer/grade)
+     pra uma página A4 extra em branco. */
+  .page-container{width:100%;height:275mm;margin:0;}
+  .label-box{height:135mm;}
+  /* Tudo dentro do label respeita break-inside em print também */
+  .label-box,
+  .label-box *{
+    page-break-inside:avoid !important;
+    break-inside:avoid !important;
+  }
   /* Footer tem que sumir COMPLETAMENTE em impressão (sem ocupar nem layout
      nem fluxo de página). Várias regras em conjunto pra fechar todos os
      caminhos: display:none deveria bastar, mas alguns navegadores ainda
