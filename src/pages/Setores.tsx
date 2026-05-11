@@ -1,8 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Scissors, Footprints, Sparkles, Wrench, Factory, Paperclip, ClipboardList, Palette, Package, Flame, Cloud, Pen } from 'lucide-react';
- const Orders = lazy(() => import('./Orders'));
+import { Scissors, Footprints, Sparkles, Wrench, Paperclip, Palette, Package, Flame, Cloud, Pen } from 'lucide-react';
 import { Loader2 } from 'lucide-react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 
@@ -23,11 +22,18 @@ const TabLoader = () => (
   </div>
 );
 
- const SECTOR_TABS = ['ordens', 'corte', 'forracao', 'costura', 'aviamento', 'silk', 'colagem', 'montagem', 'solagem', 'acabamento', 'expedicao'] as const;
+ const SECTOR_TABS = ['corte', 'forracao', 'costura', 'aviamento', 'silk', 'colagem', 'montagem', 'solagem', 'acabamento', 'expedicao'] as const;
 
 export default function Setores() {
-   const [activeTab, setActiveTab] = usePersistedState<string>('setores-active-tab', 'ordens');
+   // Removido 'ordens' como sub-aba — lista global vive no menu lateral em /orders
+   // pra eliminar duplicidade (era o mesmo componente embutido aqui).
+   const [activeTab, setActiveTab] = usePersistedState<string>('setores-active-tab', 'corte');
   const [searchParams] = useSearchParams();
+
+  // Redireciona quem ainda tem 'ordens' salvo no localStorage
+  useEffect(() => {
+    if (activeTab === 'ordens') setActiveTab('corte');
+  }, [activeTab, setActiveTab]);
 
   // Deep-link from legacy ?tab=corte (etc.) URLs into the consolidated hub
   useEffect(() => {
@@ -41,10 +47,7 @@ export default function Setores() {
    return (
      <div className="space-y-4">
        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-11 max-w-7xl">
-           <TabsTrigger value="ordens" className="gap-1.5">
-             <ClipboardList className="h-4 w-4" /> Todas OPs
-           </TabsTrigger>
+          <TabsList className="grid w-full grid-cols-10 max-w-7xl">
            <TabsTrigger value="corte" className="gap-1.5">
              <Scissors className="h-4 w-4" /> Corte Palmilha
            </TabsTrigger>
@@ -76,13 +79,7 @@ export default function Setores() {
               <Package className="h-4 w-4" /> Expedição
             </TabsTrigger>
          </TabsList>
- 
-         <TabsContent value="ordens">
-           <Suspense fallback={<TabLoader />}>
-             <Orders hideHeader />
-           </Suspense>
-         </TabsContent>
- 
+
          <TabsContent value="corte">
           <Suspense fallback={<TabLoader />}>
             <Corte />

@@ -42,7 +42,7 @@ const TabLoader = () => (
    { value: "cronograma", label: "Cronograma Reverso", icon: Workflow },
   { value: "lead-time", label: "Lead Time", icon: Clock },
    { value: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-   { value: "setores", label: "Ordens & Setores", icon: Factory },
+   { value: "setores", label: "Setores", icon: Factory },
   { value: "capacidade", label: "Capacidade", icon: BarChart3 },
   { value: "picking", label: "Picking Semanal", icon: Boxes },
   { value: "auditoria", label: "Auditoria", icon: History },
