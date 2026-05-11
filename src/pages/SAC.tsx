@@ -18,7 +18,7 @@ const STATUS_COLORS: Record<string, string> = {
   rejeitado: 'bg-destructive/10 text-destructive border-destructive/30',
   aguarda_coleta: 'bg-purple-100 text-purple-700 border-purple-300',
   recebido: 'bg-indigo-100 text-indigo-700 border-indigo-300',
-  resolvido: 'bg-slate-100 text-slate-700 border-slate-300',
+  resolvido: 'bg-muted text-foreground border-border',
   cancelado: 'bg-muted text-muted-foreground border-border',
 };
 
@@ -40,6 +40,17 @@ export default function SAC() {
     },
   });
 
+  // KPIs precisam refletir o universo completo, não o subset filtrado.
+  const { data: countsRaw = [] } = useQuery({
+    queryKey: ['sac_tickets_counts'],
+    queryFn: async () => {
+      const { data } = await (supabase as any)
+        .from('sac_tickets')
+        .select('status');
+      return data || [];
+    },
+  });
+
   const updateStatus = useMutation({
     mutationFn: async ({ id, newStatus }: { id: string; newStatus: string }) => {
       const { error } = await (supabase as any)
@@ -53,14 +64,15 @@ export default function SAC() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sac_tickets'] });
+      qc.invalidateQueries({ queryKey: ['sac_tickets_counts'] });
       toast.success('Status atualizado');
     },
   });
 
   const counts = {
-    abertos: tickets.filter((t: any) => ['aberto', 'em_analise'].includes(t.status)).length,
-    aguardando: tickets.filter((t: any) => ['aprovado', 'aguarda_coleta', 'recebido'].includes(t.status)).length,
-    resolvidos: tickets.filter((t: any) => t.status === 'resolvido').length,
+    abertos: countsRaw.filter((t: any) => ['aberto', 'em_analise'].includes(t.status)).length,
+    aguardando: countsRaw.filter((t: any) => ['aprovado', 'aguarda_coleta', 'recebido'].includes(t.status)).length,
+    resolvidos: countsRaw.filter((t: any) => t.status === 'resolvido').length,
   };
 
   return (

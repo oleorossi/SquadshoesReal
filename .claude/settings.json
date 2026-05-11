@@ -30,7 +30,9 @@
       "mcp__claude_ai_Supabase__execute_sql",
       "Bash(git mv *)",
       "mcp__claude_ai_Supabase__get_advisors",
-      "Bash(tee /tmp/tsc-audit.out)"
+      "Bash(tee /tmp/tsc-audit.out)",
+      "Bash(tee /tmp/tsc3.out)",
+      "Bash(bash scripts/check-design-tokens.sh)"
     ],
     "additionalDirectories": [
       "/tmp"

@@ -123,18 +123,21 @@ function normalizeKanbanSector(s: string): string {
   return KANBAN_SECTORS.find(k => k.key.toLowerCase() === lower)?.key ?? s;
 }
 
+// `parallel: true` marca os 3 setores prep que rodam simultaneamente (PR3+S4).
+// Renderizamos um header visual destacado pra equipe entender que pode atacar
+// os 3 ao mesmo tempo, em vez de esperar fila sequencial.
 const KANBAN_SECTORS = [
-  { key: 'Pendente',       label: 'Pendente',       color: 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-400', icon: Clock      },
-  { key: 'Corte Palmilha', label: 'Corte Palmilha', color: 'bg-blue-500/20 text-blue-700 dark:text-blue-400',       icon: Scissors   },
-  { key: 'Corte Forração', label: 'Corte Forração', color: 'bg-purple-500/20 text-purple-700 dark:text-purple-400', icon: Layers     },
-  { key: 'Costura',        label: 'Costura',        color: 'bg-fuchsia-500/20 text-fuchsia-700 dark:text-fuchsia-400', icon: Layers   },
-  { key: 'Aviamento',      label: 'Aviamento',      color: 'bg-rose-500/20 text-rose-700 dark:text-rose-400',       icon: Hand       },
-  { key: 'Silk',           label: 'Silk',           color: 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-400',       icon: Printer    },
-  { key: 'Colagem',        label: 'Colagem',        color: 'bg-orange-500/20 text-orange-700 dark:text-orange-400', icon: Flame      },
-  { key: 'Montagem',       label: 'Montagem',       color: 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400', icon: Hammer  },
-  { key: 'Solagem',        label: 'Solagem',        color: 'bg-amber-500/20 text-amber-700 dark:text-amber-400',    icon: Footprints },
-  { key: 'Acabamento',     label: 'Acabamento',     color: 'bg-indigo-500/20 text-indigo-700 dark:text-indigo-400', icon: Sparkles   },
-  { key: 'Expedição',      label: 'Expedição',      color: 'bg-teal-500/20 text-teal-700 dark:text-teal-400',       icon: FileText   },
+  { key: 'Pendente',       label: 'Pendente',       color: 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-400', icon: Clock,      parallel: false },
+  { key: 'Corte Palmilha', label: 'Corte Palmilha', color: 'bg-blue-500/20 text-blue-700 dark:text-blue-400',       icon: Scissors,   parallel: true  },
+  { key: 'Corte Forração', label: 'Corte Forração', color: 'bg-purple-500/20 text-purple-700 dark:text-purple-400', icon: Layers,     parallel: true  },
+  { key: 'Aviamento',      label: 'Aviamento',      color: 'bg-rose-500/20 text-rose-700 dark:text-rose-400',       icon: Hand,       parallel: true  },
+  { key: 'Costura',        label: 'Costura',        color: 'bg-fuchsia-500/20 text-fuchsia-700 dark:text-fuchsia-400', icon: Layers,  parallel: false },
+  { key: 'Silk',           label: 'Silk',           color: 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-400',       icon: Printer,    parallel: false },
+  { key: 'Colagem',        label: 'Colagem',        color: 'bg-orange-500/20 text-orange-700 dark:text-orange-400', icon: Flame,      parallel: false },
+  { key: 'Montagem',       label: 'Montagem',       color: 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400', icon: Hammer,  parallel: false },
+  { key: 'Solagem',        label: 'Solagem',        color: 'bg-amber-500/20 text-amber-700 dark:text-amber-400',    icon: Footprints, parallel: false },
+  { key: 'Acabamento',     label: 'Acabamento',     color: 'bg-indigo-500/20 text-indigo-700 dark:text-indigo-400', icon: Sparkles,   parallel: false },
+  { key: 'Expedição',      label: 'Expedição',      color: 'bg-teal-500/20 text-teal-700 dark:text-teal-400',       icon: FileText,   parallel: false },
 ];
 
 function formatWeekLabel(week: string): string {
@@ -919,6 +922,13 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
         💡 Dica: arraste uma OP e solte em qualquer setor à frente para pulá-la diretamente para lá. As etapas intermediárias serão tratadas conforme sua escolha.
       </p>
 
+      <div className="text-[11px] flex items-center gap-2 text-muted-foreground bg-muted/40 border border-border/50 rounded-md px-2.5 py-1.5">
+        <Layers className="h-3.5 w-3.5 text-primary shrink-0" />
+        <span>
+          <span className="font-medium text-foreground">Corte Palmilha</span> ‖ <span className="font-medium text-foreground">Corte Forração</span> ‖ <span className="font-medium text-foreground">Aviamento</span> rodam <span className="font-medium text-primary">em paralelo</span>; Costura só inicia quando os 3 estiverem prontos.
+        </span>
+      </div>
+
       {/* Kanban columns */}
       <div className="overflow-x-auto pb-4">
         <div className="flex gap-3" style={{ minWidth: `${KANBAN_SECTORS.length * 220}px` }}>
@@ -939,12 +949,24 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
                     : 'bg-muted/30 border-border/50'
                 }`}
               >
-                {/* Column header */}
-                <div className="p-3 border-b border-border/30 flex flex-col gap-1.5 sticky top-0 bg-muted/30 rounded-t-xl z-10">
+                {/* Column header — destaca prep paralelos (#9 auditoria) */}
+                <div className={`p-3 border-b border-border/30 flex flex-col gap-1.5 sticky top-0 rounded-t-xl z-10 ${
+                  sector.parallel
+                    ? 'bg-primary/5 ring-1 ring-inset ring-primary/20'
+                    : 'bg-muted/30'
+                }`}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       {(() => { const SI = sector.icon; return <SI className="h-4 w-4 shrink-0" />; })()}
                       <h3 className="font-semibold text-xs text-foreground">{sector.label}</h3>
+                      {sector.parallel && (
+                        <span
+                          className="text-[9px] font-bold text-primary bg-primary/10 px-1 rounded leading-tight"
+                          title="Roda em paralelo com os outros setores prep (Corte Palmilha ‖ Corte Forração ‖ Aviamento). Costura só inicia quando os 3 finalizam."
+                        >
+                          ‖ PREP
+                        </span>
+                      )}
                     </div>
                     <Badge variant="secondary" className="rounded-full px-1.5 py-0 text-[10px] h-5 min-w-[20px] flex items-center justify-center">
                       {sectorOrders.length}

@@ -11,11 +11,19 @@ import { toast } from 'sonner';
 export default function Security() {
   const qc = useQueryClient();
 
-  const { data: settings } = useQuery({
+  const { data: settings, isLoading: loadingSettings } = useQuery({
     queryKey: ['security_settings'],
     queryFn: async () => {
-      const { data } = await (supabase as any).from('security_settings').select('*').limit(1).single();
-      return data;
+      // maybeSingle pra não jogar quando ainda não há row (primeira vez).
+      const { data: existing } = await (supabase as any)
+        .from('security_settings').select('*').limit(1).maybeSingle();
+      if (existing) return existing;
+
+      // Seed defaults na primeira vez. Se falhar (RLS, FK, etc.), volta
+      // null pra a UI mostrar empty-state em vez de travar em "Carregando".
+      const { data: seeded } = await (supabase as any)
+        .from('security_settings').insert({}).select('*').maybeSingle();
+      return seeded ?? null;
     },
   });
 
@@ -35,7 +43,20 @@ export default function Security() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['security_settings'] }); toast.success('Configurações atualizadas'); },
   });
 
-  if (!settings) return <p className="p-6 text-muted-foreground">Carregando configurações...</p>;
+  if (loadingSettings) return <p className="p-6 text-muted-foreground">Carregando configurações...</p>;
+  if (!settings) return (
+    <div className="p-6">
+      <Card>
+        <CardContent className="py-10 text-center space-y-2">
+          <ShieldCheck className="h-10 w-10 mx-auto text-muted-foreground/30" />
+          <p className="text-sm text-muted-foreground">
+            Não foi possível criar a row inicial de <code>security_settings</code>.
+            Verifique as permissões/RLS da tabela.
+          </p>
+        </CardContent>
+      </Card>
+    </div>
+  );
 
   return (
     <div className="space-y-4">
