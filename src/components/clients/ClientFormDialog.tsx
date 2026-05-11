@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Loader2, Search } from 'lucide-react';
+import { Loader2, Search, Building2, MapPin, Phone, DollarSign } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -115,7 +115,7 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editingClient ? 'Editar Cliente' : 'Novo Cliente'}</DialogTitle>
         </DialogHeader>
@@ -129,117 +129,163 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
               {editingClient && <TabsTrigger value="representante" className="flex-1">Representante</TabsTrigger>}
             </TabsList>
 
-            <TabsContent value="dados" className="space-y-4 mt-3">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <Label>Razão Social *</Label>
-                  <Input value={form.razao_social} onChange={e => setForm(f => ({ ...f, razao_social: e.target.value }))} required className="mt-1" />
+            <TabsContent value="dados" className="space-y-3 mt-3">
+              {/* CARD 1 — Identificação */}
+              <div className="rounded-xl border bg-card shadow-sm">
+                <div className="px-4 py-2.5 border-b flex items-center gap-2">
+                  <Building2 className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-bold">Identificação</h3>
+                  <span className="text-[10px] text-muted-foreground ml-auto">Dados oficiais da empresa</span>
                 </div>
-                <div className="col-span-2">
-                  <Label>Nome Fantasia</Label>
-                  <Input value={form.nome_fantasia} onChange={e => setForm(f => ({ ...f, nome_fantasia: e.target.value }))} className="mt-1" />
-                </div>
-                <div>
-                  <Label>CNPJ</Label>
-                  <div className="relative mt-1">
-                    <Input
-                      value={form.cnpj}
-                      onChange={e => setForm(f => ({ ...f, cnpj: e.target.value }))}
-                      className="font-mono pr-10"
-                      placeholder="00.000.000/0000-00"
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="absolute right-0 top-0 h-full w-9 hover:bg-primary/10"
-                      onClick={handleCnpjSearch}
-                      disabled={loadingCnpj}
-                      title="Buscar dados do CNPJ"
-                    >
-                      {loadingCnpj ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : <Search className="h-4 w-4 text-muted-foreground" />}
-                    </Button>
+                <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="md:col-span-2">
+                    <Label className="text-xs">Razão Social *</Label>
+                    <Input value={form.razao_social} onChange={e => setForm(f => ({ ...f, razao_social: e.target.value }))} required className="mt-1 h-9" />
+                  </div>
+                  <div className="md:col-span-2">
+                    <Label className="text-xs">Nome Fantasia</Label>
+                    <Input value={form.nome_fantasia} onChange={e => setForm(f => ({ ...f, nome_fantasia: e.target.value }))} className="mt-1 h-9" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">CNPJ</Label>
+                    <div className="relative mt-1">
+                      <Input
+                        value={form.cnpj}
+                        onChange={e => setForm(f => ({ ...f, cnpj: e.target.value }))}
+                        className="font-mono pr-10 h-9"
+                        placeholder="00.000.000/0000-00"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-0 top-0 h-full w-9 hover:bg-primary/10"
+                        onClick={handleCnpjSearch}
+                        disabled={loadingCnpj}
+                        title="Buscar dados do CNPJ na Receita Federal"
+                      >
+                        {loadingCnpj ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : <Search className="h-4 w-4 text-muted-foreground" />}
+                      </Button>
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Inscrição Estadual</Label>
+                    <Input value={form.inscricao_estadual} onChange={e => setForm(f => ({ ...f, inscricao_estadual: e.target.value }))} className="mt-1 h-9 font-mono" />
                   </div>
                 </div>
-                <div>
-                  <Label>Inscrição Estadual</Label>
-                  <Input value={form.inscricao_estadual} onChange={e => setForm(f => ({ ...f, inscricao_estadual: e.target.value }))} className="mt-1 font-mono" />
+              </div>
+
+              {/* CARD 2 — Endereço */}
+              <div className="rounded-xl border bg-card shadow-sm">
+                <div className="px-4 py-2.5 border-b flex items-center gap-2">
+                  <MapPin className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-bold">Endereço</h3>
+                  <span className="text-[10px] text-muted-foreground ml-auto">CEP busca dados automaticamente</span>
                 </div>
-                <div>
-                  <Label>CEP</Label>
-                  <div className="relative mt-1">
-                    <Input
-                      value={form.cep}
-                      onChange={e => setForm(f => ({ ...f, cep: e.target.value }))}
-                      onBlur={handleCepBlur}
-                      className="font-mono pr-8"
-                      placeholder="00000-000"
-                    />
-                    {loadingCep && <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />}
+                <div className="p-4 grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div>
+                    <Label className="text-xs">CEP</Label>
+                    <div className="relative mt-1">
+                      <Input
+                        value={form.cep}
+                        onChange={e => setForm(f => ({ ...f, cep: e.target.value }))}
+                        onBlur={handleCepBlur}
+                        className="font-mono pr-8 h-9"
+                        placeholder="00000-000"
+                      />
+                      {loadingCep && <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />}
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Estado</Label>
+                    <Select value={form.estado} onValueChange={v => setForm(f => ({ ...f, estado: v }))}>
+                      <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="UF" /></SelectTrigger>
+                      <SelectContent>
+                        {ESTADOS.map(uf => <SelectItem key={uf} value={uf}>{uf}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="md:col-span-2">
+                    <Label className="text-xs">Cidade</Label>
+                    <Input value={form.cidade} onChange={e => setForm(f => ({ ...f, cidade: e.target.value }))} className="mt-1 h-9" />
+                  </div>
+                  <div className="md:col-span-4">
+                    <Label className="text-xs">Endereço completo</Label>
+                    <Input value={form.endereco} onChange={e => setForm(f => ({ ...f, endereco: e.target.value }))} className="mt-1 h-9" placeholder="Rua, Número, Bairro, Complemento" />
                   </div>
                 </div>
-                <div>
-                  <Label>Estado</Label>
-                  <Select value={form.estado} onValueChange={v => setForm(f => ({ ...f, estado: v }))}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="UF" /></SelectTrigger>
-                    <SelectContent>
-                      {ESTADOS.map(uf => <SelectItem key={uf} value={uf}>{uf}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+              </div>
+
+              {/* CARD 3 — Contato */}
+              <div className="rounded-xl border bg-card shadow-sm">
+                <div className="px-4 py-2.5 border-b flex items-center gap-2">
+                  <Phone className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-bold">Contato</h3>
+                  <span className="text-[10px] text-muted-foreground ml-auto">Canais de comunicação</span>
                 </div>
-                <div className="col-span-2">
-                  <Label>Endereço</Label>
-                  <Input value={form.endereco} onChange={e => setForm(f => ({ ...f, endereco: e.target.value }))} className="mt-1" />
+                <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-xs">Telefone</Label>
+                    <Input value={form.telefone} onChange={e => setForm(f => ({ ...f, telefone: e.target.value }))} className="mt-1 h-9 font-mono" placeholder="(00) 00000-0000" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Email</Label>
+                    <Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className="mt-1 h-9" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Pessoa de Contato</Label>
+                    <Input value={form.contato} onChange={e => setForm(f => ({ ...f, contato: e.target.value }))} className="mt-1 h-9" />
+                  </div>
                 </div>
-                <div>
-                  <Label>Cidade</Label>
-                  <Input value={form.cidade} onChange={e => setForm(f => ({ ...f, cidade: e.target.value }))} className="mt-1" />
+              </div>
+
+              {/* CARD 4 — Comercial & Configurações */}
+              <div className="rounded-xl border bg-card shadow-sm">
+                <div className="px-4 py-2.5 border-b flex items-center gap-2">
+                  <DollarSign className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-bold">Comercial & Configurações</h3>
+                  <span className="text-[10px] text-muted-foreground ml-auto">Grupo, crédito e regras</span>
                 </div>
-                <div>
-                  <Label>Telefone</Label>
-                  <Input value={form.telefone} onChange={e => setForm(f => ({ ...f, telefone: e.target.value }))} className="mt-1" />
-                </div>
-                <div>
-                  <Label>Email</Label>
-                  <Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className="mt-1" />
-                </div>
-                <div>
-                  <Label>Contato</Label>
-                  <Input value={form.contato} onChange={e => setForm(f => ({ ...f, contato: e.target.value }))} className="mt-1" />
-                </div>
-                <div>
-                  <Label>Grupo Econômico</Label>
-                  <Select value={form.economic_group_id || 'none'} onValueChange={v => setForm(f => ({ ...f, economic_group_id: v === 'none' ? null : v }))}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Sem grupo" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Sem grupo</SelectItem>
-                      {economicGroups.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="col-span-2">
-                  <Label>Observações</Label>
-                  <Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} className="mt-1" rows={2} />
-                </div>
-                <div>
-                  <Label>Limite de Crédito (R$)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    step={100}
-                    value={form.credit_limit || ''}
-                    onChange={e => setForm(f => ({ ...f, credit_limit: parseFloat(e.target.value) || 0 }))}
-                    className="mt-1"
-                    placeholder="0,00"
-                  />
-                </div>
-                <div className="flex items-center gap-3 pt-2">
-                  <Switch checked={form.active} onCheckedChange={v => setForm(f => ({ ...f, active: v }))} />
-                  <Label>Ativo</Label>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Switch checked={form.accepts_bundled_packaging} onCheckedChange={v => setForm(f => ({ ...f, accepts_bundled_packaging: v }))} />
-                  <Label>Permitir Amarrados</Label>
+                <div className="p-4 space-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs">Grupo Econômico</Label>
+                      <Select value={form.economic_group_id || 'none'} onValueChange={v => setForm(f => ({ ...f, economic_group_id: v === 'none' ? null : v }))}>
+                        <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Sem grupo" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Sem grupo</SelectItem>
+                          {economicGroups.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-[10px] text-muted-foreground mt-1">Lojas do mesmo grupo aparecem agrupadas na lista.</p>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Limite de Crédito (R$)</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        step={100}
+                        value={form.credit_limit || ''}
+                        onChange={e => setForm(f => ({ ...f, credit_limit: parseFloat(e.target.value) || 0 }))}
+                        className="mt-1 h-9 font-mono"
+                        placeholder="0,00"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Observações</Label>
+                    <Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} className="mt-1" rows={2} placeholder="Notas internas, condições especiais, histórico..." />
+                  </div>
+                  <div className="flex items-center gap-6 pt-1">
+                    <div className="flex items-center gap-2">
+                      <Switch checked={form.active} onCheckedChange={v => setForm(f => ({ ...f, active: v }))} />
+                      <Label className="text-xs cursor-pointer">Cliente Ativo</Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Switch checked={form.accepts_bundled_packaging} onCheckedChange={v => setForm(f => ({ ...f, accepts_bundled_packaging: v }))} />
+                      <Label className="text-xs cursor-pointer">Permite Amarrados</Label>
+                    </div>
+                  </div>
                 </div>
               </div>
             </TabsContent>

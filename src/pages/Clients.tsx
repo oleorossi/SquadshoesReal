@@ -287,16 +287,48 @@ export default function Clients() {
                 {groupedClients.map(({ group, clients: gc }) => {
                   const key = group?.id || 'ungrouped';
                   const isCollapsed = collapsedGroups[key];
+                  // Estatísticas inline do grupo: total clientes ativos +
+                  // limite de crédito agregado. Ajuda visualizar "peso" de
+                  // cada grupo na carteira.
+                  const activeCount = gc.filter(c => c.active).length;
+                  const totalCredit = gc.reduce((s, c) => s + (Number(c.credit_limit) || 0), 0);
+                  const cities = new Set(gc.map(c => c.cidade).filter(Boolean));
                   return (
-                    <div key={key} className="rounded-lg border bg-card overflow-hidden">
-                      {group && (
-                        <button onClick={() => toggleGroup(key)} className="w-full flex items-center gap-2 px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors text-left">
-                          <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", isCollapsed && "-rotate-90")} />
-                          <Building2 className="h-4 w-4 text-primary" />
-                          <span className="font-mono text-xs text-muted-foreground">{group.group_number}</span>
-                          <span className="font-semibold text-sm">{group.name}</span>
-                          <Badge variant="outline" className="ml-2 text-xs">{gc.length} lojas</Badge>
+                    <div key={key} className={cn(
+                      "rounded-xl border overflow-hidden bg-card shadow-sm",
+                      group ? "border-primary/30" : "border-dashed"
+                    )}>
+                      {group ? (
+                        <button onClick={() => toggleGroup(key)} className="w-full flex items-center gap-3 px-4 py-3 bg-gradient-to-r from-primary/5 to-transparent hover:from-primary/10 transition-colors text-left">
+                          <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform shrink-0", isCollapsed && "-rotate-90")} />
+                          <div className="bg-primary/15 p-1.5 rounded-md shrink-0">
+                            <Building2 className="h-4 w-4 text-primary" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-sm">{group.name}</span>
+                              <span className="font-mono text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                                #{group.group_number}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-0.5">
+                              <span><strong className="text-foreground">{gc.length}</strong> {gc.length === 1 ? 'loja' : 'lojas'}{activeCount < gc.length ? ` (${activeCount} ativas)` : ''}</span>
+                              {cities.size > 0 && <span>· {cities.size} {cities.size === 1 ? 'cidade' : 'cidades'}</span>}
+                              {totalCredit > 0 && (
+                                <span>· Crédito total: <strong className="font-mono text-foreground">{totalCredit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</strong></span>
+                              )}
+                            </div>
+                          </div>
+                          <Badge variant="outline" className="text-[10px] shrink-0 bg-background">
+                            {gc.length} {gc.length === 1 ? 'loja' : 'lojas'}
+                          </Badge>
                         </button>
+                      ) : (
+                        <div className="px-4 py-2 bg-muted/20 border-b flex items-center gap-2">
+                          <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Clientes sem Grupo</span>
+                          <Badge variant="outline" className="ml-auto text-[10px]">{gc.length}</Badge>
+                        </div>
                       )}
                       {(!group || !isCollapsed) && (
                         <Table>
