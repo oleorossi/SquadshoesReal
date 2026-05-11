@@ -221,20 +221,32 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
           <span style="font-size:34px;font-weight:900;line-height:1;letter-spacing:-1.5px;color:#000;">${escapeHtml(item.sizeRangeLabel)}</span>
         </div>` : '';
 
+    // Imagem do produto: SEM crossorigin (carrega tudo sem CORS bloqueando)
+    // + onerror que substitui pelo SVG da silhueta de calçado em vez de
+    // esconder o elemento (antes ficava em branco quando CORS falhava).
+    // print-color-adjust:exact garante que a impressora não otimize a
+    // imagem pra fora.
+    const sandalSvg = `data:image/svg+xml;utf8,${encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><path fill="%23999" d="M10 38c0-4 3-8 8-8h28c4 0 8 3 8 8v6c0 3-2 5-5 5H15c-3 0-5-2-5-5v-6zM18 30c0-7 6-12 14-12s14 5 14 12"/></svg>'
+    )}`;
     const productImage = item.imageUrl ? `
-      <div style="width:34mm;border-left:1px solid #444;padding:3px;display:flex;align-items:center;justify-content:center;background:#fff;overflow:hidden;">
-        <img src="${item.imageUrl}" crossorigin="anonymous" style="max-width:30mm;max-height:58mm;width:auto;height:auto;object-fit:contain;" onerror="this.style.display='none'" />
+      <div style="width:34mm;border-left:1px solid #444;padding:3px;display:flex;align-items:center;justify-content:center;background:#fff;overflow:hidden;print-color-adjust:exact;-webkit-print-color-adjust:exact;">
+        <img src="${item.imageUrl}" style="max-width:30mm;max-height:40mm;width:auto;height:auto;object-fit:contain;print-color-adjust:exact;-webkit-print-color-adjust:exact;" onerror="this.onerror=null;this.src='${sandalSvg}';" />
       </div>` : '';
 
-    // Rodapé: endereço remetente + CGC + página
-    const footerParts = [
-      item.senderAddress ? escapeHtml(item.senderAddress) : '',
+    // Rodapé em DUAS linhas estruturadas — antes era uma só com " · "
+    // que quebrava no meio e o overflow:hidden cortava metade.
+    // Linha 1: endereço completo da fábrica
+    // Linha 2: CGC + Página X de Y
+    const footerLine1 = item.senderAddress ? escapeHtml(item.senderAddress) : '';
+    const footerLine2 = [
       item.senderCnpj ? `CGC: ${escapeHtml(item.senderCnpj)}` : '',
       (item.pageNumber && item.pageTotal) ? `Página ${item.pageNumber} de ${item.pageTotal}` : '',
     ].filter(Boolean).join(' · ');
+    const hasFooter = footerLine1 || footerLine2;
 
     // Alturas hardcoded por seção. Total = 140mm = altura do label-box.
-    // Distribuição: 30+8+8+68+18+8 = 140.
+    // Distribuição: 30+8+8+66+18+10 = 140.
     return `
       <div class="label-box">
         <div style="height:30mm;display:flex;border-bottom:1.5px solid #000;overflow:hidden;">
@@ -247,7 +259,7 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
         <div style="height:8mm;display:flex;border-bottom:1px solid #000;background:#f5f5f5;overflow:hidden;">
           ${statsCells}
         </div>
-        <div style="height:68mm;display:flex;border-bottom:1px solid #000;overflow:hidden;">
+        <div style="height:66mm;display:flex;border-bottom:1px solid #000;overflow:hidden;">
           ${productLeft}
           ${productImage}
           ${sizeRangeBig}
@@ -263,7 +275,12 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
             <div style="flex:1;display:flex;">${gradeRow}</div>
           </div>
         </div>` : '<div style="height:18mm;border-bottom:1px solid #000;"></div>'}
-        <div class="footer-block" style="height:8mm;padding:3px 10px;font-size:9.5px;color:#000;font-weight:600;text-align:center;overflow:hidden;display:flex;align-items:center;justify-content:center;">${footerParts || '&nbsp;'}</div>
+        <div class="footer-block" style="height:10mm;padding:1mm 8mm;font-size:8.5px;color:#000;font-weight:600;text-align:center;overflow:hidden;display:flex;flex-direction:column;justify-content:center;line-height:1.25;">
+          ${hasFooter ? `
+            ${footerLine1 ? `<div>${footerLine1}</div>` : ''}
+            ${footerLine2 ? `<div>${footerLine2}</div>` : ''}
+          ` : '&nbsp;'}
+        </div>
       </div>`;
   });
 
