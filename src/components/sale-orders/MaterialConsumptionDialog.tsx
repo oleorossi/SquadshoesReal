@@ -550,33 +550,81 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
   };
 
   const handlePrintPdf = useCallback(() => {
-    const printRows = sortedRows;
-    const tableRows = printRows.map(row =>
-      `<tr>
-        <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-weight:500">${row.groupName}</td>
-        <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb">${row.materialName}</td>
-        <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb">${row.color}</td>
-        <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace;font-weight:700">${row.totalQuantity.toFixed(2)}</td>
-        <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:center">${formatUnit(row.productUnit)}</td>
-      </tr>`
-    ).join('');
+    // Cores de cabeçalho por componentType (visual hierarchy)
+    const componentColors: Record<string, { bg: string; border: string; text: string }> = {
+      'Cabedal':    { bg: '#fef3c7', border: '#f59e0b', text: '#78350f' },
+      'Forro':      { bg: '#cffafe', border: '#06b6d4', text: '#155e75' },
+      'Palmilha':   { bg: '#dbeafe', border: '#3b82f6', text: '#1e3a8a' },
+      'Solado':     { bg: '#dcfce7', border: '#22c55e', text: '#14532d' },
+      'Tiras':      { bg: '#fce7f3', border: '#ec4899', text: '#831843' },
+      'Químicos':   { bg: '#ede9fe', border: '#8b5cf6', text: '#4c1d95' },
+      'Embalagem':  { bg: '#e0e7ff', border: '#6366f1', text: '#312e81' },
+      'Outros':     { bg: '#f3f4f6', border: '#9ca3af', text: '#374151' },
+    };
+
+    // Agrupa por componentType pra cards
+    const cards: string[] = [];
+    for (const [componentType, componentRows] of grouped.entries()) {
+      if (componentType === 'Todos') continue;
+      const colors = componentColors[componentType] || componentColors['Outros'];
+      // Calcula total do componente (agrupa por unidade)
+      const totalsThisComp = new Map<string, number>();
+      for (const r of componentRows) {
+        totalsThisComp.set(r.productUnit, (totalsThisComp.get(r.productUnit) || 0) + r.totalQuantity);
+      }
+      const totalSummary = Array.from(totalsThisComp.entries())
+        .map(([u, v]) => `${v.toFixed(1)} ${formatUnit(u)}`)
+        .join(' · ');
+
+      const rowsHtml = componentRows.map(row => `
+        <tr>
+          <td style="padding:3px 6px;border-bottom:1px solid #e5e7eb">
+            <div style="font-weight:600;font-size:10pt">${row.materialName}</div>
+            <div style="color:#6b7280;font-size:8.5pt">${row.groupName}${row.color && row.color !== '—' ? ` · ${row.color}` : ''}</div>
+          </td>
+          <td style="padding:3px 6px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace;font-weight:700;font-size:10pt">
+            ${row.totalQuantity.toFixed(2)} <span style="color:#6b7280;font-weight:400;font-size:8.5pt">${formatUnit(row.productUnit)}</span>
+          </td>
+        </tr>
+      `).join('');
+
+      cards.push(`
+        <div class="card" style="border:2px solid ${colors.border};border-radius:6px;overflow:hidden;break-inside:avoid;margin-bottom:6px">
+          <div style="background:${colors.bg};color:${colors.text};padding:4px 8px;font-weight:700;font-size:10pt;text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between;align-items:center">
+            <span>▌${componentType}</span>
+            <span style="font-size:8.5pt;font-weight:600;opacity:.8">${totalSummary}</span>
+          </div>
+          <table style="width:100%;border-collapse:collapse;background:white">
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>
+      `);
+    }
 
     const totalsHtml = Array.from(totalsByUnit.entries()).map(([unit, total]) =>
-      `<span style="display:inline-block;background:#f3f4f6;padding:4px 12px;border-radius:6px;margin-right:8px;font-size:13px;font-weight:600">${total.toFixed(2)} ${formatUnit(unit)}</span>`
+      `<span style="display:inline-block;background:#1f2937;color:white;padding:3px 10px;border-radius:4px;margin-right:6px;font-size:9.5pt;font-weight:600">
+        ${total.toFixed(1)} ${formatUnit(unit)}
+      </span>`
     ).join('');
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Consumo de Materiais — ${orderNumber}</title>
-      <style>@page{size:A4;margin:5mm 6mm}body{font-family:system-ui,-apple-system,sans-serif;color:#111;margin:0;padding:5mm 6mm}
-      table{width:100%;border-collapse:collapse;font-size:13px}th{background:#f9fafb;padding:8px 10px;text-align:left;border-bottom:2px solid #d1d5db;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.3px}
-      h1{font-size:18px;margin:0 0 4px}p.sub{color:#6b7280;font-size:13px;margin:0 0 16px}</style></head>
+      <style>
+        @page { size: A4 portrait; margin: 6mm 6mm; }
+        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        body { font-family: system-ui, -apple-system, sans-serif; color: #111; margin: 0; padding: 0; font-size: 10pt; line-height: 1.3; }
+        h1 { font-size: 14pt; margin: 0 0 2px; }
+        .sub { color: #6b7280; font-size: 9pt; margin: 0 0 8px; }
+        .totals-strip { margin-bottom: 10px; padding: 6px 0; border-top: 2px solid #1f2937; border-bottom: 2px solid #1f2937; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        @media print {
+          .card { break-inside: avoid; }
+        }
+      </style></head>
       <body>
         <h1>Consumo de Materiais — ${orderNumber}</h1>
-        <p class="sub">${rows.length} item(ns) · Gerado em ${new Date().toLocaleDateString('pt-BR')}</p>
-        <div style="margin-bottom:16px">${totalsHtml}</div>
-        <table><thead><tr>
-          <th>Grupo de Material</th><th>Aplicação</th><th>Cor</th>
-          <th style="text-align:right">Consumo Total</th><th style="text-align:center">Unidade</th>
-        </tr></thead><tbody>${tableRows}</tbody></table>
+        <p class="sub">${rows.length} item${rows.length !== 1 ? 'ns' : ''} · ${grouped.size} componente${grouped.size !== 1 ? 's' : ''} · Gerado em ${new Date().toLocaleDateString('pt-BR')}</p>
+        <div class="totals-strip">${totalsHtml}</div>
+        <div class="grid">${cards.join('')}</div>
       </body></html>`;
 
     const printWindow = window.open('', '_blank');
@@ -586,7 +634,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       printWindow.focus();
       setTimeout(() => printWindow.print(), 400);
     }
-  }, [sortedRows, totalsByUnit, orderNumber, rows.length]);
+  }, [grouped, totalsByUnit, orderNumber, rows.length]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

@@ -6,6 +6,7 @@ import { Printer, ArrowLeft, Layers } from 'lucide-react';
 import OperatorWorkSheet from '@/components/production/OperatorWorkSheet';
 import { PalmilhaWorkSheet, type PalmilhaGroup } from '@/components/production/PalmilhaWorkSheet';
 import { SilkMontageWorkSheet, type SoleSilkGroup, type SilkColorGroup, type GroupedSector } from '@/components/production/SilkMontageWorkSheet';
+import type { SectorAlert } from '@/components/production/worksheet/SectorAlerts';
 import { SolagemWorkSheet, type SoleColorBand } from '@/components/production/SolagemWorkSheet';
 import { ExpedicaoWorkSheet, type ExpedicaoCustomerGroup, type ExpedicaoOrder } from '@/components/production/ExpedicaoWorkSheet';
 import { ManagementReport, type ReportSaleOrder, type ReportOrder, type ReportStage } from '@/components/production/ManagementReport';
@@ -50,10 +51,15 @@ const printStyles = `
       print-color-adjust: exact !important;
     }
 
-    /* Tipografia otimizada pra A4 */
+    /* Tipografia otimizada pra A4 — mais densa que antes */
     body {
-      font-size: 10pt;
-      line-height: 1.3;
+      font-size: 9pt;
+      line-height: 1.25;
+    }
+
+    /* Reduz padding interno de containers de print pra evitar desperdício */
+    .print-area > div {
+      page-break-inside: auto;
     }
   }
 `;
@@ -160,14 +166,47 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
   });
 
   const { data: clientsInfo = [] } = useQuery({
-    queryKey: ['clients_for_expedicao'],
+    queryKey: ['clients_for_expedicao_v2'],
     queryFn: async () => {
-      // Bug histórico: select pedia 'name' e 'city' que NÃO existem na tabela
-      // clients (as colunas reais são razao_social e cidade). Causava 400
-      // no Supabase e quebrava o print da ficha de produção.
+      // Endereço completo necessário pra ficha de expedição (etiqueta correta).
       const { data, error } = await (supabase as any)
         .from('clients')
-        .select('id, razao_social, cnpj, cidade, economic_group_id');
+        .select('id, razao_social, cnpj, inscricao_estadual, endereco, bairro, cidade, estado, cep, telefone, economic_group_id');
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // NF-e emitidas vinculadas aos PVs (pra exibir número/chave na ficha de expedição)
+  const saleOrderIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const o of orders as any[]) if (o.sale_order_id) ids.add(o.sale_order_id);
+    return Array.from(ids);
+  }, [orders]);
+
+  const { data: nfeForExpedicao = [] } = useQuery({
+    queryKey: ['nfe_emitidas_for_expedicao', saleOrderIds],
+    enabled: saleOrderIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('nfe_emitidas')
+        .select('sale_order_id, numero, chave_acesso, status')
+        .in('sale_order_id', saleOrderIds)
+        .eq('status', 'autorizada');
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Transportadora do PV (pra ficha de expedição)
+  const { data: saleOrdersTransport = [] } = useQuery({
+    queryKey: ['sale_orders_transport', saleOrderIds],
+    enabled: saleOrderIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('sale_orders')
+        .select('id, transport_company_id, transport_companies:transport_company_id(name)')
+        .in('id', saleOrderIds);
       if (error) throw error;
       return data || [];
     },
@@ -204,6 +243,34 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
         .from('product_groups')
         .select('id, pairs_per_box_individual')
         .in('id', soleGroupIds);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Variantes de cor por referência (pra exibir foto na ficha + fallback cor preta)
+  const { data: refColorVariants = [] } = useQuery({
+    queryKey: ['ref_color_variants_for_print', referenceIds],
+    enabled: referenceIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('reference_color_variants')
+        .select('reference_id, color, image_url')
+        .in('reference_id', referenceIds);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Imagem mestre da ficha técnica (último fallback antes do placeholder)
+  const { data: refTechnicalSheets = [] } = useQuery({
+    queryKey: ['ref_technical_sheets_image', referenceIds],
+    enabled: referenceIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('technical_sheets')
+        .select('id, image_url')
+        .in('id', referenceIds);
       if (error) throw error;
       return data || [];
     },
@@ -406,6 +473,24 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
     'Silk', 'Montagem', 'Corte Forração', 'Costura', 'Aviamento', 'Acabamento',
   ];
 
+  // Lookup: variantes de cor por ref (pra foto + fallback "Preto")
+  const variantsByRef = useMemo(() => {
+    const m = new Map<string, Array<{ color?: string; image_url?: string | null }>>();
+    for (const v of refColorVariants as any[]) {
+      const list = m.get(v.reference_id) ?? [];
+      list.push({ color: v.color, image_url: v.image_url });
+      m.set(v.reference_id, list);
+    }
+    return m;
+  }, [refColorVariants]);
+
+  // Lookup: imagem mestre da ficha técnica
+  const tsImageByRef = useMemo(() => {
+    const m = new Map<string, string | null>();
+    for (const r of refTechnicalSheets as any[]) m.set(r.id, r.image_url || null);
+    return m;
+  }, [refTechnicalSheets]);
+
   // ── Silk / Montagem / Corte Forração / Costura / Aviamento / Acabamento ────
   const silkMontageGroups = useMemo<SoleSilkGroup[] | null>(() => {
     if (!SOLE_COLOR_GROUPED_SECTORS.includes(selectedSector as GroupedSector)) return null;
@@ -428,11 +513,24 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
 
       if (!colorMap.has(colorName)) {
         const silk = selectedSector === 'Silk' ? getOrderSilk(order) : undefined;
+        // Imagem: variante exata > fallback "Preto" (sempre cadastrada na ficha)
+        const variants = variantsByRef.get(sheetId) || [];
+        const exactVariant = variants.find(v => (v.color || '').toLowerCase() === cabedelColorLower);
+        // Alertas setor-específicos
+        const liningFlag = liningFlagLookup.get(sheetId);
+        const alerts: SectorAlert[] = [];
+        if (selectedSector === 'Aviamento' && liningFlag) {
+          alerts.push({ text: 'Modelo com fachete — duplicar corte de forro', variant: 'warning' });
+        }
         colorMap.set(colorName, {
           color: colorName,
           colorHex,
           combinedGrid: {},
           totalPairs: 0,
+          variantImageUrl: exactVariant?.image_url || null,
+          alternateVariants: variants,
+          technicalSheetImageUrl: tsImageByRef.get(sheetId) || null,
+          alerts: alerts.length > 0 ? alerts : undefined,
           opNumbers: [],
           silk,
         });
@@ -522,23 +620,43 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
       return { soleName, pairsPerBox };
     };
 
+    // Lookups extras: NF emitida + transportadora
+    const nfeByOrder = new Map<string, any>();
+    for (const n of nfeForExpedicao as any[]) {
+      if (!nfeByOrder.has(n.sale_order_id)) nfeByOrder.set(n.sale_order_id, n);
+    }
+    const transportByOrder = new Map<string, string | null>();
+    for (const t of saleOrdersTransport as any[]) {
+      transportByOrder.set(t.id, (t.transport_companies as any)?.name || null);
+    }
+
     // Agrupa por client_id (fallback: sale_order_id pra avulsos)
     const map = new Map<string, ExpedicaoCustomerGroup>();
     for (const order of orders) {
       const so = (saleOrders as any[]).find((s: any) => s.id === order.sale_order_id);
       const clientId = so?.client_id || `__order_${order.sale_order_id ?? order.id}`;
       const client = so?.client_id ? clientById.get(so.client_id) : null;
+      const nfe = order.sale_order_id ? nfeByOrder.get(order.sale_order_id) : null;
+      const transport = order.sale_order_id ? transportByOrder.get(order.sale_order_id) : null;
 
       const { soleName, pairsPerBox } = resolveSoleInfo(order);
 
       if (!map.has(clientId)) {
         map.set(clientId, {
           client_id: clientId,
-          // Columns reais do clients: razao_social, cidade (não name/city)
           client_name: client?.razao_social || so?.client_name || 'Sem cliente',
           client_cnpj: client?.cnpj || so?.client_cnpj || null,
+          client_ie: client?.inscricao_estadual || null,
+          client_endereco: client?.endereco || null,
+          client_bairro: client?.bairro || null,
           client_city: client?.cidade || null,
+          client_estado: client?.estado || null,
+          client_cep: client?.cep || null,
+          client_telefone: client?.telefone || null,
           sale_order_number: so?.order_number || null,
+          nfe_numero: nfe?.numero || null,
+          nfe_chave: nfe?.chave_acesso || null,
+          transport_name: transport,
           orders: [],
         });
       }
@@ -558,7 +676,7 @@ const PrintWorkSheetsPage = ({ orders, onBack }: PrintWorkSheetsPageProps) => {
     }
 
     return Array.from(map.values()).sort((a, b) => a.client_name.localeCompare(b.client_name, 'pt-BR'));
-  }, [orders, saleOrders, clientsInfo, soleMappings, soleGroupPackaging, selectedSector]);
+  }, [orders, saleOrders, clientsInfo, soleMappings, soleGroupPackaging, nfeForExpedicao, saleOrdersTransport, selectedSector]);
 
   // ── Colagem: agrupa por Ref + Cor (não tem solado-específico) ──────────────
   const groupedWorksheets = useMemo(() => {

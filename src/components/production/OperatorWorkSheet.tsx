@@ -3,6 +3,7 @@ import { QrCode, Scissors, Hammer, Footprints, Package, Layers, Wind, Paintbrush
 import { getProductImage } from '@/utils/productUtils';
 import { ProductionOrder } from '@/types/inventory';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
+import { TallyBox } from './worksheet/TallyBox';
 
 interface Props {
   order: ProductionOrder;
@@ -111,7 +112,7 @@ const OperatorWorkSheet = ({
 
   return (
     <div
-      className="w-[210mm] min-h-[287mm] p-[8mm] bg-white border border-slate-300 shadow-none print:shadow-none print:border-0 m-auto flex flex-col gap-0"
+      className="w-[210mm] p-[8mm] bg-white border border-slate-300 shadow-none print:shadow-none print:border-0 m-auto flex flex-col gap-0"
       style={{ boxSizing: 'border-box', fontFamily: "'Helvetica Neue', Arial, sans-serif" }}
     >
       {/* ── Header bar ── */}
@@ -515,6 +516,7 @@ const OperatorWorkSheet = ({
                 </div>
               </div>
             </div>
+            <TallyBox count={Math.max(1, Math.ceil(totalPairs / 12))} pairsPerCard={12} accentColor="amber" />
           </>
         )}
 
@@ -558,6 +560,7 @@ const OperatorWorkSheet = ({
                 </div>
               )}
             </div>
+            <TallyBox count={Math.max(1, Math.ceil(totalPairs / 12))} pairsPerCard={12} accentColor="blue" />
           </>
         )}
 
@@ -595,6 +598,7 @@ const OperatorWorkSheet = ({
                 </div>
               </div>
             </div>
+            <TallyBox count={Math.max(1, Math.ceil(totalPairs / 12))} pairsPerCard={12} accentColor="lime" />
           </>
         )}
 
@@ -644,15 +648,7 @@ const OperatorWorkSheet = ({
                 )}
               </div>
               <div className="border-t border-slate-200 pt-1.5">
-                <p className="text-[9px] font-black uppercase tracking-wide text-slate-600 mb-1">
-                  Caixas — {boxes} × 12 pares
-                </p>
-                <div className="flex flex-wrap gap-1">
-                  {Array.from({ length: Math.min(boxes, 16) }, (_, i) => (
-                    <div key={i} className="w-7 h-7 border-2 border-emerald-700 rounded flex items-center justify-center text-[10px] font-black text-emerald-800">{i + 1}</div>
-                  ))}
-                  {boxes > 16 && <span className="text-xs text-slate-400">+{boxes - 16}</span>}
-                </div>
+                <TallyBox count={boxes} pairsPerCard={12} accentColor="emerald" title={`Caixas — ${boxes} × 12 pares (marcar cada ficha concluída)`} />
               </div>
               {(order.master as any).packaging_notes && (
                 <p className="text-[10px] text-slate-600 border-t border-slate-200 pt-1">
