@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Calendar, CheckCircle2, Pencil, Truck } from 'lucide-react';
+import { Calendar, CheckCircle2, Pencil, Truck, AlertTriangle, Package } from 'lucide-react';
 import { formatBR } from '@/lib/minBillingDate';
 import { monthWeekToISODate } from '@/lib/billingWeek';
 import { SubmitFlowStepper } from './SubmitFlowStepper';
@@ -24,6 +24,12 @@ interface Props {
   minDateISO: string;
   /** Semana ISO correspondente (ex: 2026-W18). */
   minWeekISO: string;
+  /** True quando faltou material em casa e o sistema teve que somar lead do fornecedor. */
+  materialShortage?: boolean;
+  /** Dias úteis adicionados por causa de compra de material. */
+  supplierLeadDays?: number;
+  /** Lista de materiais em falta (resumo). */
+  shortageItems?: Array<{ product_name: string; needed: number; available: number; supplier_lead_days: number }>;
   /** Quando o usuário aceita a data mínima. */
   onConfirmMin: () => void;
   /** Quando o usuário escolhe uma data diferente — a validação de override é feita pelo caller. */
@@ -39,6 +45,9 @@ export function MinBillingDateSuggestionDialog({
   onOpenChange,
   minDateISO,
   minWeekISO,
+  materialShortage = false,
+  supplierLeadDays = 0,
+  shortageItems = [],
   onConfirmMin,
   onPickManual,
 }: Props) {
@@ -137,9 +146,46 @@ export function MinBillingDateSuggestionDialog({
               <div className="text-sm text-muted-foreground mt-0.5">
                 a partir de <strong className="text-foreground">{formatBR(minDateISO)}</strong>
               </div>
+              {materialShortage ? (
+                <div className="mt-2 flex items-start gap-1.5 text-[11px] text-amber-700">
+                  <AlertTriangle className="h-3.5 w-3.5 mt-px shrink-0" />
+                  <span>
+                    Material precisa ser comprado — somados <strong>{supplierLeadDays} dias úteis</strong> de lead time do fornecedor.
+                  </span>
+                </div>
+              ) : (
+                <div className="mt-2 flex items-start gap-1.5 text-[11px] text-emerald-700">
+                  <Package className="h-3.5 w-3.5 mt-px shrink-0" />
+                  <span>Material disponível em estoque — sem espera por compra.</span>
+                </div>
+              )}
             </div>
           );
         })()}
+
+        {materialShortage && shortageItems.length > 0 && (
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs space-y-1">
+            <p className="font-semibold text-amber-800 flex items-center gap-1.5">
+              <Package className="h-3.5 w-3.5" />
+              Materiais em falta ({shortageItems.length}):
+            </p>
+            <ul className="space-y-0.5 max-h-32 overflow-y-auto pr-1">
+              {shortageItems.slice(0, 8).map((s, i) => (
+                <li key={i} className="flex justify-between gap-2 font-mono text-[10.5px]">
+                  <span className="truncate text-foreground">{s.product_name}</span>
+                  <span className="text-muted-foreground shrink-0">
+                    faltam {(s.needed - s.available).toFixed(1)} · {s.supplier_lead_days}d
+                  </span>
+                </li>
+              ))}
+              {shortageItems.length > 8 && (
+                <li className="text-[10px] text-muted-foreground italic">
+                  …e mais {shortageItems.length - 8} item(s).
+                </li>
+              )}
+            </ul>
+          </div>
+        )}
 
         {editing && (
           <div className="space-y-3">

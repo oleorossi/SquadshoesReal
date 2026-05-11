@@ -7,7 +7,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Loader2, DollarSign, Calculator, Settings, FileDown, CheckCircle2, Receipt } from 'lucide-react';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Loader2, DollarSign, Calculator, Settings, FileDown, CheckCircle2, Receipt, AlertTriangle, Wallet } from 'lucide-react';
 import { useEmployees } from '@/hooks/useEmployees';
 import {
   useBenefitsConfig, useSaveBenefitsConfig,
@@ -48,6 +52,7 @@ export default function Payroll() {
   const [calcRunning, setCalcRunning] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
   const [detailRun, setDetailRun] = useState<string | null>(null);
+  const [approveRun, setApproveRun] = useState<string | null>(null);
 
   const { data: employees = [] } = useEmployees();
   const { data: config } = useBenefitsConfig();
@@ -69,7 +74,9 @@ export default function Payroll() {
     const proventos = runs.reduce((s, r) => s + (r.total_proventos || 0), 0);
     const descontos = runs.reduce((s, r) => s + (r.total_descontos || 0), 0);
     const liquido = runs.reduce((s, r) => s + (r.total_liquido || 0), 0);
-    return { proventos, descontos, liquido };
+    const advances = runs.reduce((s, r) => s + (r.advances_total || 0), 0);
+    const advancesCount = runs.filter(r => (r.advances_total || 0) > 0).length;
+    return { proventos, descontos, liquido, advances, advancesCount };
   }, [runs]);
 
   async function calculateAll() {
@@ -221,7 +228,7 @@ export default function Payroll() {
       </div>
 
       {/* Totais */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Funcionários</p>
           <p className="text-2xl font-bold">{runs.length}</p>
@@ -230,6 +237,19 @@ export default function Payroll() {
           <p className="text-xs text-muted-foreground uppercase">Total proventos</p>
           <p className="text-xl font-bold text-emerald-600">{fmt(totals.proventos)}</p>
         </CardContent></Card>
+        <Card className={totals.advances > 0 ? 'border-amber-500/40 bg-amber-500/5' : ''}>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground uppercase flex items-center gap-1">
+              <Wallet className="h-3 w-3" /> Adiantamentos
+            </p>
+            <p className="text-xl font-bold text-amber-600">{fmt(totals.advances)}</p>
+            {totals.advances > 0 && (
+              <p className="text-[10px] text-amber-700 mt-0.5">
+                {totals.advancesCount} func. com vale
+              </p>
+            )}
+          </CardContent>
+        </Card>
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Total descontos</p>
           <p className="text-xl font-bold text-destructive">{fmt(totals.descontos)}</p>
@@ -251,6 +271,7 @@ export default function Payroll() {
                 <TableHead className="text-right">HE</TableHead>
                 <TableHead className="text-right">Noturno</TableHead>
                 <TableHead className="text-right">DSR</TableHead>
+                <TableHead className="text-right text-amber-700">Adiantamentos</TableHead>
                 <TableHead className="text-right">Descontos</TableHead>
                 <TableHead className="text-right">Líquido</TableHead>
                 <TableHead>Status</TableHead>
@@ -260,7 +281,7 @@ export default function Payroll() {
             <TableBody>
               {runs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground py-12">
+                  <TableCell colSpan={10} className="text-center text-muted-foreground py-12">
                     Nenhuma folha calculada para este período. Clique em "Calcular folha".
                   </TableCell>
                 </TableRow>
@@ -268,13 +289,24 @@ export default function Payroll() {
                 const emp = employeeMap.get(r.employee_id);
                 const heValue = (r.overtime_50_value || 0) + (r.overtime_100_value || 0);
                 const sb = STATUS_BADGES[r.status] || STATUS_BADGES.rascunho;
+                const hasAdvance = (r.advances_total || 0) > 0;
                 return (
-                  <TableRow key={r.id} className="hover:bg-muted/30">
-                    <TableCell className="font-medium">{emp?.name || '—'}</TableCell>
+                  <TableRow key={r.id} className={hasAdvance ? 'hover:bg-muted/30 bg-amber-500/5' : 'hover:bg-muted/30'}>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-1.5">
+                        {emp?.name || '—'}
+                        {hasAdvance && (
+                          <Wallet className="h-3.5 w-3.5 text-amber-600" aria-label="Possui adiantamento" />
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-right font-mono">{fmt(r.base_salary)}</TableCell>
                     <TableCell className="text-right font-mono text-muted-foreground">{fmt(heValue)}</TableCell>
                     <TableCell className="text-right font-mono text-muted-foreground">{fmt(r.night_bonus_value)}</TableCell>
                     <TableCell className="text-right font-mono text-muted-foreground">{fmt(r.dsr_value)}</TableCell>
+                    <TableCell className={`text-right font-mono ${hasAdvance ? 'text-amber-700 font-semibold' : 'text-muted-foreground'}`}>
+                      {hasAdvance ? `− ${fmt(r.advances_total)}` : fmt(0)}
+                    </TableCell>
                     <TableCell className="text-right font-mono text-destructive">{fmt(r.total_descontos)}</TableCell>
                     <TableCell className="text-right font-mono font-bold">{fmt(r.total_liquido)}</TableCell>
                     <TableCell><Badge variant={sb.variant}>{sb.label}</Badge></TableCell>
@@ -284,7 +316,18 @@ export default function Payroll() {
                           <Receipt className="h-4 w-4" />
                         </Button>
                         {r.status === 'rascunho' && (
-                          <Button size="sm" variant="ghost" onClick={() => updateStatus.mutate({ id: r.id, status: 'aprovado' })}>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              if (hasAdvance) {
+                                setApproveRun(r.id);
+                              } else {
+                                updateStatus.mutate({ id: r.id, status: 'aprovado' });
+                              }
+                            }}
+                            title={hasAdvance ? 'Revisar adiantamento antes de aprovar' : 'Aprovar folha'}
+                          >
                             <CheckCircle2 className="h-4 w-4 text-emerald-600" />
                           </Button>
                         )}
@@ -302,6 +345,66 @@ export default function Payroll() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Confirmação de aprovação quando há adiantamento */}
+      <AlertDialog open={!!approveRun} onOpenChange={(o) => !o && setApproveRun(null)}>
+        <AlertDialogContent>
+          {(() => {
+            const r = runs.find(x => x.id === approveRun);
+            if (!r) return null;
+            const emp = employeeMap.get(r.employee_id);
+            const adv = r.advances_total || 0;
+            const gross = (r.base_salary || 0) + (r.overtime_50_value || 0) + (r.overtime_100_value || 0)
+                       + (r.night_bonus_value || 0) + (r.dsr_value || 0);
+            return (
+              <>
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2 text-amber-700">
+                    <AlertTriangle className="h-5 w-5" />
+                    Adiantamento já pago — confirmar?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription asChild>
+                    <div className="space-y-3 pt-2 text-sm">
+                      <p>
+                        <strong>{emp?.name}</strong> recebeu <strong className="text-amber-700">{fmt(adv)}</strong> de
+                        adiantamento neste período. O líquido a pagar JÁ desconta esse valor.
+                      </p>
+                      <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 space-y-1">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Bruto (base + HE + Adic. + DSR):</span>
+                          <span className="font-mono">{fmt(gross)}</span>
+                        </div>
+                        <div className="flex justify-between text-amber-700">
+                          <span>Adiantamento já recebido:</span>
+                          <span className="font-mono font-semibold">− {fmt(adv)}</span>
+                        </div>
+                        <div className="flex justify-between border-t pt-1 mt-1">
+                          <span className="font-semibold">Líquido a pagar:</span>
+                          <span className="font-mono font-bold text-primary">{fmt(r.total_liquido)}</span>
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Pague apenas o líquido acima. Não pague o valor bruto — o vale já foi entregue.
+                      </p>
+                    </div>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => {
+                      updateStatus.mutate({ id: r.id, status: 'aprovado' });
+                      setApproveRun(null);
+                    }}
+                  >
+                    Ciente, aprovar
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </>
+            );
+          })()}
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Detalhe do holerite */}
       <Dialog open={!!detailRun} onOpenChange={(o) => !o && setDetailRun(null)}>
@@ -324,7 +427,7 @@ export default function Payroll() {
               { label: 'Vale-transporte (cota func.)', value: r.vt_employee_discount, type: 'd' as const },
               { label: 'Plano de saúde', value: r.health_plan_discount, type: 'd' as const },
               { label: `Faltas injust. (${r.absent_days} dias)`, value: r.absence_discount, type: 'd' as const },
-              { label: 'Adiantamentos do mês', value: r.advances_total, type: 'd' as const },
+              { label: 'Adiantamentos do mês', value: r.advances_total, type: 'd' as const, highlight: true },
             ].filter(l => l.value > 0);
 
             return (
@@ -339,10 +442,15 @@ export default function Payroll() {
                   </TableHeader>
                   <TableBody>
                     {lines.map((l, i) => (
-                      <TableRow key={i}>
-                        <TableCell>{l.label}</TableCell>
+                      <TableRow key={i} className={(l as any).highlight ? 'bg-amber-500/10' : ''}>
+                        <TableCell className={(l as any).highlight ? 'font-semibold text-amber-700' : ''}>
+                          {(l as any).highlight && <Wallet className="inline h-3.5 w-3.5 mr-1 -mt-0.5" />}
+                          {l.label}
+                        </TableCell>
                         <TableCell className="text-right font-mono">{l.type === 'p' ? fmt(l.value) : ''}</TableCell>
-                        <TableCell className="text-right font-mono text-destructive">{l.type === 'd' ? fmt(l.value) : ''}</TableCell>
+                        <TableCell className={`text-right font-mono ${(l as any).highlight ? 'text-amber-700 font-semibold' : 'text-destructive'}`}>
+                          {l.type === 'd' ? fmt(l.value) : ''}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

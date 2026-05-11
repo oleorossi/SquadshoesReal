@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { checkSectorCapacity, CapacityCheckInput } from '@/lib/sectorCapacity';
+import { computeSectorLeadTimeDays } from '@/lib/leadTime';
 import { nextDOW } from '@/lib/isoWeek';
 
 /**
@@ -83,42 +84,253 @@ function addBusinessDaysISO(startISO: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+export interface MinBillingPreview {
+  minDateISO: string;
+  minWeekISO: string;
+  /** True quando faltou material em casa e o sistema teve que somar lead do fornecedor. */
+  materialShortage: boolean;
+  /** Dias úteis adicionados por causa de compra (0 quando material está em casa). */
+  supplierLeadDays: number;
+  /** Lista de materiais em falta (para mostrar ao usuário). */
+  shortageItems: Array<{ product_id: string; product_name: string; needed: number; available: number; supplier_lead_days: number }>;
+}
+
+/**
+ * Calcula o piso de lead time (em dias úteis) considerando MATERIAL — espelha a
+ * parte de supplier_lead da função SQL `compute_min_billing_date` (audit P3):
+ *
+ *   1. Agrega `total_needed` por produto somando `sheet_materials.quantity_per_unit * soi.quantity`
+ *      em todos os itens do pedido.
+ *   2. Para cada produto cujo `total_needed > (quantity - reserved_stock)`, considera
+ *      `supplier_lead_time_days` (default 10).
+ *   3. Retorna o MAIOR lead time entre os produtos em falta + lista de detalhes.
+ *
+ * Quando não há ruptura, retorna 0 (sinaliza "material está em casa, pode entrar no
+ * próximo slot livre só pela capacidade").
+ */
+export async function computeMaterialFloor(items: CapacityCheckInput[]): Promise<{
+  supplierLeadDays: number;
+  shortageItems: MinBillingPreview['shortageItems'];
+}> {
+  if (!items || items.length === 0) return { supplierLeadDays: 0, shortageItems: [] };
+
+  const refIds = Array.from(new Set(items.map((i) => i.reference_id))).filter(Boolean);
+  if (refIds.length === 0) return { supplierLeadDays: 0, shortageItems: [] };
+
+  // Soma quantity por referência (mesmo PV pode ter mais de uma linha por ref)
+  const qtyByRef = new Map<string, number>();
+  for (const it of items) {
+    qtyByRef.set(it.reference_id, (qtyByRef.get(it.reference_id) || 0) + Number(it.quantity || 0));
+  }
+
+  // Busca sheet_materials das fichas envolvidas
+  const { data: smRows, error } = await supabase
+    .from('sheet_materials')
+    .select('sheet_id, product_id, quantity_per_unit, products(id, name, quantity, reserved_stock, supplier_lead_time_days)')
+    .in('sheet_id', refIds);
+  if (error) {
+    console.error('[computeMaterialFloor] erro:', error);
+    return { supplierLeadDays: 0, shortageItems: [] };
+  }
+
+  // Agrega total_needed por product_id
+  type AggRow = {
+    product_id: string;
+    product_name: string;
+    needed: number;
+    available: number;
+    supplierLead: number;
+  };
+  const byProduct = new Map<string, AggRow>();
+  for (const r of (smRows || []) as any[]) {
+    const refQty = qtyByRef.get(r.sheet_id) || 0;
+    if (refQty <= 0 || !r.product_id) continue;
+    const need = Number(r.quantity_per_unit || 0) * refQty;
+    if (need <= 0) continue;
+    const prev = byProduct.get(r.product_id);
+    const pName = r.products?.name || '—';
+    const pQty = Number(r.products?.quantity || 0);
+    const pReserved = Number(r.products?.reserved_stock || 0);
+    const available = Math.max(0, pQty - pReserved);
+    const supplierLead = Number(r.products?.supplier_lead_time_days ?? 10);
+    if (prev) {
+      prev.needed += need;
+    } else {
+      byProduct.set(r.product_id, {
+        product_id: r.product_id,
+        product_name: pName,
+        needed: need,
+        available,
+        supplierLead,
+      });
+    }
+  }
+
+  const shortageItems: MinBillingPreview['shortageItems'] = [];
+  let maxLead = 0;
+  for (const row of byProduct.values()) {
+    if (row.needed > row.available) {
+      shortageItems.push({
+        product_id: row.product_id,
+        product_name: row.product_name,
+        needed: row.needed,
+        available: row.available,
+        supplier_lead_days: row.supplierLead,
+      });
+      if (row.supplierLead > maxLead) maxLead = row.supplierLead;
+    }
+  }
+  return { supplierLeadDays: maxLead, shortageItems };
+}
+
+/**
+ * Calcula o piso de cascata produtiva (em dias úteis) — espelha a soma da
+ * função SQL `compute_min_billing_date`:
+ *
+ *   buffer + MAX(palmilha, forração, mesa) + costura + silk + colagem
+ *           + montagem + solagem + acabamento
+ *
+ * Setores fora de `production_sectors` contam 0. MAX entre items por setor
+ * (idêntico ao MAX() agregado da SQL).
+ */
+export async function computeCascadeFloorDays(items: CapacityCheckInput[]): Promise<number> {
+  if (!items || items.length === 0) return 0;
+  const refIds = Array.from(new Set(items.map((i) => i.reference_id))).filter(Boolean);
+  if (refIds.length === 0) return 0;
+
+  const { data: sheets, error } = await supabase
+    .from('technical_sheets')
+    .select(
+      'id, shoe_category, production_sectors, cutting_capacity_per_day, sewing_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, mesa_daily_capacity, costura_capacity_per_day, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, lead_time_corte_dias, lead_time_costura_dias, lead_time_montagem_dias, lead_time_acabamento_dias, lead_time_buffer_material_dias',
+    )
+    .in('id', refIds);
+  if (error) {
+    console.error('[computeCascadeFloorDays] erro:', error);
+    return 0;
+  }
+
+  const categories = Array.from(new Set((sheets || []).map((s: any) => s.shoe_category).filter(Boolean)));
+  const defaultsMap = new Map<string, any>();
+  if (categories.length > 0) {
+    const { data: defs } = await supabase
+      .from('default_lead_times')
+      .select('shoe_category, cutting_capacity_per_day, sewing_capacity_per_day, costura_capacity_per_day, mesa_daily_capacity, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, lead_time_corte_dias, lead_time_costura_dias, lead_time_montagem_dias, lead_time_acabamento_dias, lead_time_buffer_material_dias')
+      .in('shoe_category', categories as string[]);
+    (defs || []).forEach((d: any) => defaultsMap.set(d.shoe_category, d));
+  }
+
+  const SECTOR_NORMALIZE: Record<string, string> = {
+    'corte palmilha': 'corte_palmilha', 'corte forração': 'corte_forracao', 'corte forracao': 'corte_forracao',
+    'aviamento': 'mesa', 'mesa': 'mesa', 'costura': 'costura', 'silk': 'silk', 'colagem': 'colagem',
+    'montagem': 'montagem', 'solagem': 'solagem', 'acabamento': 'acabamento',
+    'expedição': 'expedicao', 'expedicao': 'expedicao',
+    'corte': 'corte_palmilha', 'palmilha': 'corte_palmilha',
+    'forração': 'corte_forracao', 'forracao': 'corte_forracao', 'serigrafia': 'silk',
+  };
+  const norm = (s: string) => SECTOR_NORMALIZE[s.toLowerCase().trim()] ?? s.toLowerCase().trim();
+  const hasSec = (sheet: any, canonical: string) => {
+    const list: string[] = Array.isArray(sheet?.production_sectors) ? sheet.production_sectors : [];
+    if (list.length === 0) return true;
+    return list.some((s) => norm(s) === canonical);
+  };
+
+  // MAX por setor entre items (idêntico ao MAX() do SQL)
+  let mxPalm = 0, mxForr = 0, mxCost = 0, mxMesa = 0, mxSilk = 0, mxCola = 0;
+  let mxMont = 0, mxSola = 0, mxAcab = 0, mxBuffer = 0;
+
+  for (const it of items) {
+    const sheet = (sheets || []).find((s: any) => s.id === it.reference_id);
+    if (!sheet) continue;
+    const defs = sheet.shoe_category ? defaultsMap.get(sheet.shoe_category) || null : null;
+    const qty = Number(it.quantity || 0);
+
+    if (hasSec(sheet, 'corte_palmilha')) mxPalm = Math.max(mxPalm, computeSectorLeadTimeDays('corte_palmilha', qty, sheet, defs));
+    if (hasSec(sheet, 'corte_forracao')) mxForr = Math.max(mxForr, computeSectorLeadTimeDays('corte_forracao', qty, sheet, defs));
+    if (hasSec(sheet, 'costura'))        mxCost = Math.max(mxCost, computeSectorLeadTimeDays('costura', qty, sheet, defs));
+    if (hasSec(sheet, 'mesa'))           mxMesa = Math.max(mxMesa, computeSectorLeadTimeDays('mesa', qty, sheet, defs));
+    if (hasSec(sheet, 'silk'))           mxSilk = Math.max(mxSilk, computeSectorLeadTimeDays('silk', qty, sheet, defs));
+    if (hasSec(sheet, 'colagem'))        mxCola = Math.max(mxCola, computeSectorLeadTimeDays('colagem', qty, sheet, defs));
+    mxMont = Math.max(mxMont, computeSectorLeadTimeDays('montagem', qty, sheet, defs));
+    if (hasSec(sheet, 'solagem'))        mxSola = Math.max(mxSola, computeSectorLeadTimeDays('solagem', qty, sheet, defs));
+    mxAcab = Math.max(mxAcab, computeSectorLeadTimeDays('acabamento', qty, sheet, defs));
+
+    const buf = Number(sheet.lead_time_buffer_material_dias || defs?.lead_time_buffer_material_dias || 2);
+    if (buf > mxBuffer) mxBuffer = buf;
+  }
+
+  return (
+    Math.max(mxBuffer, 2)
+    + Math.max(mxPalm, mxForr, mxMesa)  // prep paralelo
+    + mxCost + mxSilk + mxCola + mxMont + mxSola + mxAcab
+  );
+}
+
 /**
  * Calcula a data mínima de faturamento para um pedido AINDA NÃO PERSISTIDO,
  * a partir dos itens em memória (referência + quantidade).
  *
- * Estratégia: itera datas de faturamento candidatas a partir de hoje + lead time
- * mínimo, e retorna a primeira em que `checkSectorCapacity` reporta `hasOverload === false`.
- * Limitado a 60 dias úteis para evitar loop infinito em sistemas saturados.
+ * Espelha a função SQL `compute_min_billing_date` (audit P1-P3):
+ *   1. Verifica material em casa (estoque - reserved_stock) — se faltar,
+ *      soma `supplier_lead_time_days` no piso.
+ *   2. Soma a cascata produtiva (paralelismo prep + setores sequenciais).
+ *   3. Itera a partir desse piso somando 2 dias úteis a cada tentativa e
+ *      verifica capacidade contra demanda existente via `checkSectorCapacity`.
+ *   4. Retorna a primeira data sem sobrecarga, snapped pra próxima Ter/Sex.
  */
 export async function computeMinBillingForNewOrder(
   items: CapacityCheckInput[],
-): Promise<{ minDateISO: string; minWeekISO: string } | null> {
+): Promise<MinBillingPreview | null> {
   if (!items || items.length === 0) return null;
 
-  // Ponto de partida: hoje + 7 dias úteis (margem mínima de produção)
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  let candidate = addBusinessDaysISO(today.toISOString().slice(0, 10), 7);
+  const todayISO = today.toISOString().slice(0, 10);
 
-  // Limita a 20 tentativas (4 semanas úteis) — suficiente para a maioria dos casos
+  // 1. Lead time de material + cascata produtiva (em paralelo)
+  const [{ supplierLeadDays, shortageItems }, cascadeDays] = await Promise.all([
+    computeMaterialFloor(items),
+    computeCascadeFloorDays(items),
+  ]);
+
+  // 2. Piso: hoje + supplier (se faltar material) + cascata. Espelha a soma da SQL.
+  const floorDays = supplierLeadDays + cascadeDays;
+  let candidate = addBusinessDaysISO(todayISO, floorDays);
+
+  // 3. Itera verificando capacidade contra demanda existente (max 20 tentativas)
   for (let i = 0; i < 20; i++) {
     try {
       const result = await checkSectorCapacity(items, candidate);
       if (!result.hasOverload) {
         const snapped = snapToNextPickup(candidate);
-        return { minDateISO: snapped, minWeekISO: toISOWeek(snapped) };
+        return {
+          minDateISO: snapped,
+          minWeekISO: toISOWeek(snapped),
+          materialShortage: shortageItems.length > 0,
+          supplierLeadDays,
+          shortageItems,
+        };
       }
     } catch {
       const snapped = snapToNextPickup(candidate);
-      return { minDateISO: snapped, minWeekISO: toISOWeek(snapped) };
+      return {
+        minDateISO: snapped,
+        minWeekISO: toISOWeek(snapped),
+        materialShortage: shortageItems.length > 0,
+        supplierLeadDays,
+        shortageItems,
+      };
     }
-    // Avança em saltos de 2 dias úteis para reduzir o número de queries
     candidate = addBusinessDaysISO(candidate, 2);
   }
 
   const snapped = snapToNextPickup(candidate);
-  return { minDateISO: snapped, minWeekISO: toISOWeek(snapped) };
+  return {
+    minDateISO: snapped,
+    minWeekISO: toISOWeek(snapped),
+    materialShortage: shortageItems.length > 0,
+    supplierLeadDays,
+    shortageItems,
+  };
 }
 
 /**
