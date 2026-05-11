@@ -58,7 +58,7 @@ export function MesaCapacityDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <TrendingUp className="w-4 h-4 text-purple-500" />
-            Capacidade da Mesa — {waveCode}
+            Capacidade do Aviamento — {waveCode}
           </DialogTitle>
         </DialogHeader>
 

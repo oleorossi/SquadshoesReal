@@ -13,7 +13,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import {
   CalendarDays, Package, AlertTriangle, Users, ChevronDown, ChevronRight,
   CheckCircle, XCircle, Clock, ShoppingBag, ArrowRight, Scissors, Loader2, Wrench, Search,
-  Hand, Printer, Flame, Hammer, Footprints, Sparkles, Truck,
+  Hand, Pen, Printer, Flame, Hammer, Footprints, Sparkles, Truck,
 } from 'lucide-react';
 import { snapToMonday } from '@/lib/isoWeek';
 import { useCreateWave } from '@/hooks/useProductionWaves';
@@ -60,12 +60,17 @@ type ClientGroup = {
 // ─── Step 2: Timeline panel ───────────────────────────────────────────────────
 
 function TimelinePanel({ tl }: { tl: WaveTimeline }) {
+  // Ordem canônica pós PR1-PR3: prep paralelo (Palmilha/Forração/Aviamento) →
+  // Costura (PR 2) → Silk → Colagem → Montagem → Solagem → Acabamento → Entrega.
+  // "Mesa" foi renomeado pra "Aviamento" mas a coluna do timeline ainda se
+  // chama mesa_start_date (não vamos migrar a coluna agora).
   const stages = [
     { label: 'Compra',         date: tl.purchase_deadline,           icon: ShoppingBag, className: 'text-orange-600 bg-orange-500/10 border-orange-500/20' },
     { label: 'Mat. chega',     date: tl.material_ready_date,         icon: Package,     className: 'text-blue-600 bg-blue-500/10 border-blue-500/20' },
     { label: 'Corte Palmilha', date: tl.corte_palmilha_start_date,   icon: Scissors,    className: 'text-violet-600 bg-violet-500/10 border-violet-500/20' },
     { label: 'Corte Forração', date: tl.corte_forracao_start_date,   icon: Wrench,      className: 'text-indigo-600 bg-indigo-500/10 border-indigo-500/20' },
-    tl.mesa_start_date      ? { label: 'Mesa',      date: tl.mesa_start_date,      icon: Hand,      className: 'text-rose-600 bg-rose-500/10 border-rose-500/20' }      : null,
+    tl.mesa_start_date      ? { label: 'Aviamento', date: tl.mesa_start_date,      icon: Hand,      className: 'text-rose-600 bg-rose-500/10 border-rose-500/20' }      : null,
+    tl.costura_start_date   ? { label: 'Costura',   date: tl.costura_start_date,   icon: Pen,       className: 'text-pink-600 bg-pink-500/10 border-pink-500/20' }      : null,
     tl.silk_start_date      ? { label: 'Silk',      date: tl.silk_start_date,      icon: Printer,   className: 'text-cyan-600 bg-cyan-500/10 border-cyan-500/20' }      : null,
     tl.colagem_start_date   ? { label: 'Colagem',   date: tl.colagem_start_date,   icon: Flame,     className: 'text-orange-600 bg-orange-500/10 border-orange-500/20' } : null,
     { label: 'Montagem',       date: tl.montagem_start_date,         icon: Hammer,      className: 'text-emerald-600 bg-emerald-500/10 border-emerald-500/20' },

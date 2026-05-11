@@ -766,14 +766,16 @@ function getWeekOptions() {
     // Canonical post-rename order (migration 20260506120000); legacy values
     // mapped to their new equivalent so XLS export still works for in-flight
     // orders that haven't been migrated yet.
+    // Ordem canônica pós PR1-PR3: prep (palmilha‖forração‖mesa) → costura → restantes.
     const STAGE_ORDER_XLS = [
-      'corte_palmilha', 'corte_forracao', 'mesa', 'silk', 'colagem',
+      'corte_palmilha', 'corte_forracao', 'mesa', 'costura', 'silk', 'colagem',
       'montagem', 'solagem', 'acabamento', 'expedicao',
     ];
     const STAGE_LABEL_XLS: Record<string, string> = {
       corte_palmilha: 'Corte Palmilha',
       corte_forracao: 'Corte Forração',
-      mesa: 'Mesa',
+      mesa: 'Aviamento',
+      costura: 'Costura',
       silk: 'Silk',
       colagem: 'Colagem',
       montagem: 'Montagem',
@@ -783,14 +785,12 @@ function getWeekOptions() {
       // legacy aliases
       corte: 'Corte',
       palmilha: 'Palmilha',
-      costura: 'Costura',
     };
-    // Legacy stage normalisation: when a wave still has current_stage='corte'
-    // (pre-rename data), treat it as 'corte_palmilha' for indexOf/next-stage.
+    // Legacy stage normalisation: 'corte'/'palmilha' → corte_palmilha.
+    // Cuidado: 'costura' agora é setor canônico próprio (PR 2) — NÃO normalizar pra corte_forracao.
     const normalizeStage = (s?: string | null): string => {
       if (!s) return '';
       if (s === 'corte' || s === 'palmilha') return 'corte_palmilha';
-      if (s === 'costura') return 'corte_forracao';
       return s;
     };
 

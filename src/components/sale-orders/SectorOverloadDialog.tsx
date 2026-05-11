@@ -1,14 +1,25 @@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { AlertTriangle, Calendar, Wrench, Scissors, Hammer } from 'lucide-react';
+import {
+  AlertTriangle, Calendar, Scissors, Hammer,
+  Layers, LayoutGrid, Pen, Paintbrush, Wind, Footprints, Package, Truck,
+} from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { CapacityCheckResult, SECTOR_LABELS, SectorKey } from '@/lib/sectorCapacity';
 
 const SECTOR_ICONS: Record<SectorKey, React.ComponentType<any>> = {
-  corte: Scissors,
-  costura: Wrench,
-  montagem: Hammer,
+  corte_palmilha: Scissors,
+  corte_forracao: Layers,
+  mesa:           LayoutGrid,
+  costura:        Pen,
+  silk:           Paintbrush,
+  colagem:        Wind,
+  montagem:       Hammer,
+  solagem:        Footprints,
+  acabamento:     Package,
+  expedicao:      Truck,
+  corte:          Scissors,
 };
 
 interface Props {

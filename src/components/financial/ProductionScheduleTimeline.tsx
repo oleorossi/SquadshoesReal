@@ -132,15 +132,19 @@ const toneClasses: Record<string, string> = {
   muted: 'bg-muted text-muted-foreground border-border',
 };
 
+// Ordem canônica pós PR1-PR3. A view purchase_projection_timeline ainda usa as
+// colunas legacy `data_inicio_mesa`, `data_inicio_corte` etc. (refactor da view
+// é outro fix — ver AUDIT_FLUXO_COMPLETO #P4); aqui apenas reordenamos a
+// renderização pra refletir o fluxo real (Aviamento ‖ Cortes → Costura → ...).
 const stages = [
-  { key: 'data_limite_compra',    label: 'Comprar',          icon: ShoppingCart, hint: 'Enviar pedido ao fornecedor' },
-  { key: 'data_chegada_material', label: 'Material no pátio', icon: Warehouse,   hint: 'Material físico na fábrica' },
-  { key: 'data_inicio_corte',     label: 'Iniciar Corte',    icon: Scissors,     hint: 'Liberar para corte' },
-  { key: 'data_inicio_costura',   label: 'Iniciar Costura',  icon: PenLine,      hint: 'Liberar para costura' },
-  { key: 'data_inicio_montagem',  label: 'Iniciar Montagem', icon: Hammer,       hint: 'Liberar para montagem' },
-  { key: 'data_inicio_mesa',      label: 'Mesa (Tiras)',     icon: Hand,         hint: 'Setor Mesa — separação e preparo das tiras artesanais' },
-  { key: 'data_inicio_acabamento',label: 'Iniciar Acabamento', icon: Sparkles,   hint: 'Acabamento e embalagem' },
-  { key: 'data_entrega_cliente',  label: 'Entrega',          icon: CalendarCheck, hint: 'Entrega ao cliente' },
+  { key: 'data_limite_compra',    label: 'Comprar',           icon: ShoppingCart, hint: 'Enviar pedido ao fornecedor' },
+  { key: 'data_chegada_material', label: 'Material no pátio', icon: Warehouse,    hint: 'Material físico na fábrica' },
+  { key: 'data_inicio_corte',     label: 'Iniciar Corte',     icon: Scissors,     hint: 'Liberar para corte (paralelo com Aviamento)' },
+  { key: 'data_inicio_mesa',      label: 'Aviamento',         icon: Hand,         hint: 'Setor Aviamento (ex-Mesa) — separação e preparo das tiras artesanais' },
+  { key: 'data_inicio_costura',   label: 'Iniciar Costura',   icon: PenLine,      hint: 'Após preparos paralelos — Costura' },
+  { key: 'data_inicio_montagem',  label: 'Iniciar Montagem',  icon: Hammer,       hint: 'Liberar para montagem' },
+  { key: 'data_inicio_acabamento',label: 'Iniciar Acabamento', icon: Sparkles,    hint: 'Acabamento e embalagem' },
+  { key: 'data_entrega_cliente',  label: 'Entrega',           icon: CalendarCheck, hint: 'Entrega ao cliente' },
 ] as const;
 
 function computeLateStages(row: ScheduleRow) {

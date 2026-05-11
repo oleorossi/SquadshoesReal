@@ -313,32 +313,39 @@ export async function printAllSectorsForSaleOrder(saleOrderId: string, orderNumb
     throw new Error('Nenhuma OP vinculada a este pedido de venda.');
   }
 
-  // Build all 4 sections into ONE document
+  // Ordem canônica pós PR1-PR3. Corte unificado renderiza Palmilha+Forração
+  // juntos (buildCorteHtml). Setores que tinham apenas placeholder genérico
+  // agora recebem checklist próprio.
   const corteHtml = buildCorteHtml(ops);
+  const aviamentoHtml = await buildSectorChecklistHtml(ops, 'Aviamento', '🧷', 'Aviamento');
+  const costuraHtml = await buildSectorChecklistHtml(ops, 'Costura', '🧵', 'Costura');
+  const silkHtml = await buildSectorChecklistHtml(ops, 'Silk', '🎨', 'Silk');
+  const colagemHtml = await buildSectorChecklistHtml(ops, 'Colagem', '💨', 'Colagem');
+  const montagemHtml = await buildSectorChecklistHtml(ops, 'Montagem', '🔧', 'Montagem');
   const solagemHtml = buildSolagemHtml(ops);
-  const aviamentoHtml = await buildSectorChecklistHtml(ops, 'Aviamento', '🧵', 'Aviamento');
-  const acabamentoHtml = await buildSectorChecklistHtml(ops, 'Acabamento', '✅', 'Acabamento');
+  const acabamentoHtml = await buildSectorChecklistHtml(ops, 'Acabamento', '✨', 'Acabamento');
+
+  const section = (title: string, html: string, fallbackEmoji: string) =>
+    html ? html : `<h1>${fallbackEmoji} ${title}</h1><p>Sem dados</p>`;
 
   const combinedHtml = `
     <div style="margin-bottom:8px;font-size:10px;color:#666;">Pedido de Venda: <strong>${escapeHtml(orderNumber)}</strong> | ${ops.length} OP(s): ${escapeHtml(ops.map(o => o.order_number).join(', '))}</div>
 
-    <!-- CORTE -->
     ${corteHtml}
-
     <div style="page-break-before:always;"></div>
-
-    <!-- SOLAGEM -->
+    ${section('Aviamento', aviamentoHtml, '🧷')}
+    <div style="page-break-before:always;"></div>
+    ${section('Costura', costuraHtml, '🧵')}
+    <div style="page-break-before:always;"></div>
+    ${section('Silk', silkHtml, '🎨')}
+    <div style="page-break-before:always;"></div>
+    ${section('Colagem', colagemHtml, '💨')}
+    <div style="page-break-before:always;"></div>
+    ${section('Montagem', montagemHtml, '🔧')}
+    <div style="page-break-before:always;"></div>
     ${solagemHtml}
-
     <div style="page-break-before:always;"></div>
-
-    <!-- AVIAMENTO -->
-    ${aviamentoHtml ? aviamentoHtml : '<h1>🧵 Aviamento</h1><p>Sem dados</p>'}
-
-    <div style="page-break-before:always;"></div>
-
-    <!-- ACABAMENTO -->
-    ${acabamentoHtml ? acabamentoHtml : '<h1>✅ Acabamento</h1><p>Sem dados</p>'}
+    ${section('Acabamento', acabamentoHtml, '✨')}
   `;
 
   printHtml(`OPs - ${orderNumber}`, combinedHtml);

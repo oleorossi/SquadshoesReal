@@ -165,11 +165,13 @@ export async function checkSectorCapacity(
   // production_sectors=["Corte","Forração","Aviamento",…] from before the
   // rename — cutting/forração windows would collapse to 0 days.
   const SECTOR_NORMALIZE: Record<string, string> = {
-    // canonical
+    // canonical pós PR1-PR3
     'corte palmilha': 'corte_palmilha',
     'corte forração': 'corte_forracao',
     'corte forracao': 'corte_forracao',
+    'aviamento':      'mesa',
     'mesa':           'mesa',
+    'costura':        'costura',
     'silk':           'silk',
     'colagem':        'colagem',
     'montagem':       'montagem',
@@ -177,13 +179,11 @@ export async function checkSectorCapacity(
     'acabamento':     'acabamento',
     'expedição':      'expedicao',
     'expedicao':      'expedicao',
-    // legacy aliases (pre-2026-05-06 sector rename)
+    // legacy aliases pre-PR1
     'corte':          'corte_palmilha',
     'palmilha':       'corte_palmilha',
-    'costura':        'corte_forracao',
     'forração':       'corte_forracao',
     'forracao':       'corte_forracao',
-    'aviamento':      'mesa',
     'serigrafia':     'silk',
   };
   const normalizeSector = (s: string) =>

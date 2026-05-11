@@ -68,7 +68,8 @@ const SECTOR_TO_CAPACITY_COLUMN: Record<string, string> = {
   // Post-rename canonical names (migration 20260506120000)
   'Corte Palmilha': 'sewing_capacity_per_day',
   'Corte Forração': 'cutting_capacity_per_day',
-  'Mesa':           'mesa_daily_capacity',
+  'Aviamento':      'mesa_daily_capacity',
+  'Costura':        'costura_capacity_per_day',
   'Silk':           'silk_capacity_per_day',
   'Colagem':        'gluing_capacity_per_day',
   'Montagem':       'assembly_capacity_per_day',
@@ -76,13 +77,12 @@ const SECTOR_TO_CAPACITY_COLUMN: Record<string, string> = {
   'Acabamento':     'finishing_capacity_per_day',
   'Expedição':      'finishing_capacity_per_day',
   // Pre-rename names kept for historical stage rows.
-  // 'Corte' was renamed to corte_palmilha → sewing_capacity_per_day
-  // 'Costura' was renamed to corte_forracao → cutting_capacity_per_day
-  // (see sector_display_to_enum in migration 20260506120000)
+  // 'Mesa' foi renomeado pra 'Aviamento' (PR 1).
+  // 'Costura' antes da PR 2 era apelido de Corte Forração; após PR 2 virou setor próprio
+  // com coluna 'costura_capacity_per_day'. Mapping acima já cobre o caso canônico.
   Corte:     'sewing_capacity_per_day',
-  Costura:   'cutting_capacity_per_day',
   Forração:  'cutting_capacity_per_day',
-  Aviamento: 'mesa_daily_capacity',
+  Mesa:      'mesa_daily_capacity',
 };
 
 export interface BottleneckInput {

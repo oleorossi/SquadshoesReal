@@ -8,10 +8,11 @@ interface Props {
 }
 
 const STAGE_ICONS: Record<string, LucideIcon> = {
-  // Canonical names (post-Grupo 13 rename)
+  // Canonical names pós PR1-PR3
   'Corte Palmilha': Scissors,
   'Corte Forração': Layers,
-  'Mesa':           Hand,
+  'Aviamento':      Gem,         // ex-"Mesa", renomeado pela PR 1
+  'Costura':        PenLine,     // setor próprio pela PR 2
   'Silk':           Printer,
   'Colagem':        Flame,
   'Montagem':       Hammer,
@@ -19,10 +20,9 @@ const STAGE_ICONS: Record<string, LucideIcon> = {
   'Acabamento':     Sparkles,
   'Expedição':      Box,
   // Legacy fallbacks for in-flight orders created before rename
+  'Mesa':           Hand,
   'Corte':          Scissors,
   'Forração':       Layers,
-  'Aviamento':      Gem,
-  'Costura':        PenLine,
   'Embalagem':      Box,
   'Inspeção':       ScanSearch,
 };

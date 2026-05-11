@@ -1,9 +1,11 @@
-import { Scissors, Layers, LayoutGrid, Paintbrush, Wind, Hammer, Footprints, Package, Truck } from "lucide-react";
+import { Scissors, Layers, LayoutGrid, Pen, Paintbrush, Wind, Hammer, Footprints, Package, Truck } from "lucide-react";
 
+// Ordem canônica pós PR1-PR3: prep (Palmilha‖Forração‖Aviamento) → Costura → restantes.
 const STEPS = [
   { id: 'Corte Palmilha', label: 'C. Palmilha',  icon: Scissors,    color: 'text-orange-500' },
   { id: 'Corte Forração', label: 'C. Forração',  icon: Layers,      color: 'text-teal-500' },
-  { id: 'Mesa',           label: 'Mesa',          icon: LayoutGrid,  color: 'text-purple-500' },
+  { id: 'Aviamento',      label: 'Aviamento',    icon: LayoutGrid,  color: 'text-purple-500' },
+  { id: 'Costura',        label: 'Costura',      icon: Pen,         color: 'text-rose-500' },
   { id: 'Silk',           label: 'Silk',          icon: Paintbrush,  color: 'text-pink-500' },
   { id: 'Colagem',        label: 'Colagem',       icon: Wind,        color: 'text-amber-500' },
   { id: 'Montagem',       label: 'Montagem',      icon: Hammer,      color: 'text-blue-500' },
@@ -12,12 +14,22 @@ const STEPS = [
   { id: 'Expedição',      label: 'Expedição',     icon: Truck,       color: 'text-indigo-500' },
 ];
 
-// Map legacy (pre-rename) step ids to their canonical equivalents
+// Map legacy (pre-rename) step ids to their canonical equivalents.
+// 'mesa' antigo virou Aviamento (PR 1); 'costura' antigo era apelido de
+// Corte Forração (antes da PR 2 que criou Costura como setor próprio) — agora
+// preservamos como setor canônico distinto.
 const LEGACY_STEP_MAP: Record<string, string> = {
   corte:      'Corte Palmilha',
   palmilha:   'Corte Palmilha',
-  costura:    'Corte Forração',
   forracao:   'Corte Forração',
+  mesa:       'Aviamento',
+  aviamento:  'Aviamento',
+  costura:    'Costura',
+  silk:       'Silk',
+  colagem:    'Colagem',
+  montagem:   'Montagem',
+  solagem:    'Solagem',
+  acabamento: 'Acabamento',
   expedicao:  'Expedição',
 };
 

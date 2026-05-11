@@ -143,8 +143,10 @@ export function useCreateOrder() {
       // Create production stages atomically inside the same mutation so a
       // network drop between "OP inserted" and "createStages.mutate" never
       // leaves a stageless OP. Callers no longer need to chain createStages.
+      // Ordem canônica pós PR1-PR3: prep paralelo (Palmilha/Forração/Aviamento)
+      // → Costura (PR2) → restantes sequenciais. "Mesa" foi renomeado pra "Aviamento".
       const DEFAULT_SECTOR_NAMES = [
-        'Corte Palmilha', 'Corte Forração', 'Mesa', 'Silk',
+        'Corte Palmilha', 'Corte Forração', 'Aviamento', 'Costura', 'Silk',
         'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição',
       ];
       const { data: sheet } = await supabase

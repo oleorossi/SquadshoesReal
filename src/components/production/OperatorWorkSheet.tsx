@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { QrCode, Scissors, Hammer, Footprints, Package, Layers, Wind, Paintbrush, LayoutGrid, Truck } from 'lucide-react';
+import { QrCode, Scissors, Hammer, Footprints, Package, Layers, Wind, Paintbrush, LayoutGrid, Pen, Truck } from 'lucide-react';
 import { getProductImage } from '@/utils/productUtils';
 import { ProductionOrder } from '@/types/inventory';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
@@ -27,7 +27,11 @@ interface Props {
 const SECTOR_META: Record<string, { icon: React.ReactNode; color: string; bg: string; border: string }> = {
   'Corte Palmilha': { icon: <Scissors className="h-5 w-5" />,   color: 'text-orange-800',  bg: 'bg-orange-600',   border: 'border-orange-700' },
   'Corte Forração': { icon: <Layers className="h-5 w-5" />,     color: 'text-teal-800',    bg: 'bg-teal-600',     border: 'border-teal-700' },
+  // Pós PR1: "Mesa" foi renomeado pra "Aviamento" — aceitamos ambos.
+  Aviamento:        { icon: <LayoutGrid className="h-5 w-5" />, color: 'text-purple-800',  bg: 'bg-purple-600',   border: 'border-purple-700' },
   Mesa:             { icon: <LayoutGrid className="h-5 w-5" />, color: 'text-purple-800',  bg: 'bg-purple-600',   border: 'border-purple-700' },
+  // Pós PR2: Costura é setor próprio entre Corte Forração e Aviamento.
+  Costura:          { icon: <Pen className="h-5 w-5" />,         color: 'text-rose-800',    bg: 'bg-rose-600',     border: 'border-rose-700' },
   Silk:             { icon: <Paintbrush className="h-5 w-5" />, color: 'text-pink-800',    bg: 'bg-pink-600',     border: 'border-pink-700' },
   Colagem:          { icon: <Wind className="h-5 w-5" />,        color: 'text-amber-800',   bg: 'bg-amber-600',    border: 'border-amber-700' },
   Montagem:         { icon: <Hammer className="h-5 w-5" />,     color: 'text-blue-800',    bg: 'bg-blue-600',     border: 'border-blue-700' },
@@ -397,12 +401,12 @@ const OperatorWorkSheet = ({
         )}
 
 
-        {/* MESA: tiras assembly + artisanal upper work */}
+        {/* AVIAMENTO: tiras assembly + artisanal upper work (ex-Mesa) */}
         {isAviamento && (
           <>
             <div className="border border-purple-200 rounded p-2.5 bg-purple-50 space-y-1">
               <p className="text-[9px] font-black uppercase tracking-wide text-purple-700 mb-1.5">
-                Checklist — Mesa{hasStraps ? ' (Tiras)' : ' (Cabedal)'}
+                Checklist — Aviamento{hasStraps ? ' (Tiras)' : ' (Cabedal)'}
               </p>
               {hasStraps ? [
                 'Tiras conferidas (qtd + cor)',
@@ -426,7 +430,7 @@ const OperatorWorkSheet = ({
               ))}
             </div>
             <div className="border border-purple-200 rounded p-2.5 bg-slate-50 space-y-2">
-              <p className="text-[9px] font-black uppercase tracking-wide text-slate-600">Controle Mesa</p>
+              <p className="text-[9px] font-black uppercase tracking-wide text-slate-600">Controle Aviamento</p>
               {hasStraps && (
                 <div className="text-xs mb-1">
                   <div className="flex justify-between">

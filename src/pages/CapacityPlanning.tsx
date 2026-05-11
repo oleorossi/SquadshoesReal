@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Scissors, Layers, Hammer, Sparkles, AlertTriangle, TrendingUp, Hand, Printer, Flame, Footprints, Package } from 'lucide-react';
+import { Scissors, Layers, Hammer, Sparkles, AlertTriangle, TrendingUp, Hand, Pen, Printer, Flame, Footprints, Package } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -17,7 +17,7 @@ import { computeSectorLeadTimeDays } from '@/lib/leadTime';
 
 // ─── TYPES & CONFIG ──────────────────────────────────────────────────────────
 
-type SectorKey = 'corte_palmilha' | 'corte_forracao' | 'mesa' | 'silk' | 'colagem' | 'montagem' | 'solagem' | 'acabamento' | 'expedicao';
+type SectorKey = 'corte_palmilha' | 'corte_forracao' | 'mesa' | 'costura' | 'silk' | 'colagem' | 'montagem' | 'solagem' | 'acabamento' | 'expedicao';
 
 const SECTORS = [
   {
@@ -42,12 +42,22 @@ const SECTORS = [
   },
   {
     key: 'mesa' as SectorKey,
-    label: 'Mesa',
+    label: 'Aviamento',
     icon: Hand,
     color: '#EC4899',
     capField: 'mesa_daily_capacity',
     ltField: 'lead_time_corte_dias',
     defaultCap: 275,
+    defaultLt: 1,
+  },
+  {
+    key: 'costura' as SectorKey,
+    label: 'Costura',
+    icon: Pen,
+    color: '#F43F5E',
+    capField: 'costura_capacity_per_day',
+    ltField: 'lead_time_costura_dias',
+    defaultCap: 300,
     defaultLt: 1,
   },
   {

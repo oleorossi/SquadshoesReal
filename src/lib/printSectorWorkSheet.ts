@@ -552,8 +552,10 @@ type RenderCaches = {
       </div>`;
     }
     if (sectorName === 'Mesa') {
+      // Fallback legacy: setor "Mesa" pre-PR1, hoje "Aviamento". Mantido pra OPs
+      // antigas; conteúdo é o checklist de preparação de kit (separar materiais).
       sectorSpecific = `<div style="margin-top:8px;border:1px solid #ccc;border-radius:4px;padding:8px;">
-        <p style="font-size:9px;font-weight:700;color:#666;margin-bottom:4px;">CHECKLIST MESA</p>
+        <p style="font-size:9px;font-weight:700;color:#666;margin-bottom:4px;">CHECKLIST AVIAMENTO (LEGACY: Mesa)</p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:10px;">
           <label style="display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:14px;height:14px;border:2px solid #333;border-radius:2px;"></span> Materiais separados</label>
           <label style="display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:14px;height:14px;border:2px solid #333;border-radius:2px;"></span> Quantidades conferidas</label>
@@ -935,14 +937,19 @@ export async function printAllSectorsWorkSheets(
   baseOptions: Omit<WorkSheetOptions, 'sectorName' | 'sectorEmoji'>,
   selectedSectors?: string[],
 ) {
+  // Ordem canônica pós PR1-PR3: prep (Palmilha‖Forração‖Aviamento) → Costura → seq.
+  // "Mesa" antigo virou "Aviamento" (PR 1); removido pra não duplicar setor.
   const allSectors: Array<{ name: string; emoji: string }> = [
-    { name: 'Corte', emoji: '✂️' },
-    { name: 'Costura', emoji: '🧵' },
+    { name: 'Corte Palmilha', emoji: '✂️' },
+    { name: 'Corte Forração', emoji: '✂️' },
     { name: 'Aviamento', emoji: '🧷' },
-    { name: 'Mesa', emoji: '🪑' },
+    { name: 'Costura', emoji: '🧵' },
+    { name: 'Silk', emoji: '🎨' },
+    { name: 'Colagem', emoji: '💨' },
     { name: 'Montagem', emoji: '🔧' },
     { name: 'Solagem', emoji: '🦶' },
     { name: 'Acabamento', emoji: '✨' },
+    { name: 'Expedição', emoji: '📦' },
   ];
   const sectors = selectedSectors && selectedSectors.length > 0
     ? allSectors.filter(s => selectedSectors.includes(s.name))
