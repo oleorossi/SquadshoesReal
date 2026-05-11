@@ -264,14 +264,16 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
     },
   });
 
-  // Imagem mestre da ficha técnica (último fallback antes do placeholder)
+  // Imagem mestre da ficha técnica (último fallback antes do placeholder).
+  // technical_sheets tem dois campos: image_url (legacy, geralmente vazio) e
+  // images (jsonb array — fonte atual). Pegamos o primeiro item do array.
   const { data: refTechnicalSheets = [] } = useQuery({
-    queryKey: ['ref_technical_sheets_image', referenceIds],
+    queryKey: ['ref_technical_sheets_image_v2', referenceIds],
     enabled: referenceIds.length > 0,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('technical_sheets')
-        .select('id, image_url')
+        .select('id, image_url, images')
         .in('id', referenceIds);
       if (error) throw error;
       return data || [];
@@ -486,10 +488,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
     return m;
   }, [refColorVariants]);
 
-  // Lookup: imagem mestre da ficha técnica
+  // Lookup: imagem mestre da ficha técnica. Prioriza `images[0]` (campo atual)
+  // sobre `image_url` (legacy, normalmente vazio).
   const tsImageByRef = useMemo(() => {
     const m = new Map<string, string | null>();
-    for (const r of refTechnicalSheets as any[]) m.set(r.id, r.image_url || null);
+    for (const r of refTechnicalSheets as any[]) {
+      const images = Array.isArray(r.images) ? r.images : [];
+      const firstImage = images.length > 0 ? images[0] : null;
+      m.set(r.id, firstImage || r.image_url || null);
+    }
     return m;
   }, [refTechnicalSheets]);
 
@@ -664,12 +671,21 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
         });
       }
       const cust = map.get(clientId)!;
+      // Resolve foto via cascata: variante exata > variante "Preto" > images[0] master.
+      const orderColorLower = (order.color || '').toLowerCase();
+      const orderVariants = variantsByRef.get(order.reference_id) || [];
+      const exactImg = orderVariants.find(v => (v.color || '').toLowerCase() === orderColorLower)?.image_url;
+      const pretoImg = !exactImg
+        ? orderVariants.find(v => v.image_url && /^preto$/i.test((v.color || '').trim()))?.image_url
+        : null;
+      const tsImg = tsImageByRef.get(order.reference_id) || null;
       cust.orders.push({
         id: order.id,
         op_number: order.op_number,
         reference_id: order.reference_id,
         reference_code: order.reference_code,
         reference_name: order.reference_name,
+        image_url: exactImg || pretoImg || tsImg || null,
         color: order.color,
         total_pairs: order.total_pairs ?? 0,
         grid: order.grid,
@@ -679,7 +695,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
     }
 
     return Array.from(map.values()).sort((a, b) => a.client_name.localeCompare(b.client_name, 'pt-BR'));
-  }, [orders, saleOrders, clientsInfo, soleMappings, soleGroupPackaging, nfeForExpedicao, saleOrdersTransport, selectedSector, printAll]);
+  }, [orders, saleOrders, clientsInfo, soleMappings, soleGroupPackaging, nfeForExpedicao, saleOrdersTransport, selectedSector, printAll, variantsByRef, tsImageByRef]);
 
   // ── Colagem: agrupa por Ref + Cor (não tem solado-específico) ──────────────
   const groupedWorksheets = useMemo(() => {
@@ -913,8 +929,26 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
         {/* ── Colagem: agrupado por Ref + Cor ── */}
         {(printAll || selectedSector === 'Colagem') && groupedWorksheets && groupedWorksheets.map((group) => {
           const { representative } = group;
+          // Resolve foto via cascata: variante exata > variante "Preto" > images[0] master.
+          const repColorLower = (representative.color || '').toLowerCase();
+          const variantsList = variantsByRef.get(representative.reference_id) || [];
+          const exactVariant = variantsList.find(v => (v.color || '').toLowerCase() === repColorLower);
+          const pretoVariant = !exactVariant?.image_url
+            ? variantsList.find(v => v.image_url && /^preto$/i.test((v.color || '').trim()))
+            : null;
+          const tsImage = tsImageByRef.get(representative.reference_id) || null;
+          const resolvedImageUrl = exactVariant?.image_url || pretoVariant?.image_url || tsImage;
           const syntheticOrder = {
             ...representative,
+            // Sobrescreve variant.variant_image_url pra getProductImage usar
+            variant: {
+              ...(representative.variant || {}),
+              variant_image_url: resolvedImageUrl || (representative.variant?.variant_image_url ?? null),
+            },
+            master: {
+              ...(representative.master || {}),
+              main_image_url: tsImage || (representative.master?.main_image_url ?? null),
+            },
             grid: group.combinedGrid,
             total_pairs: group.totalPairs,
             due_date: group.latestDueDate || representative.due_date,

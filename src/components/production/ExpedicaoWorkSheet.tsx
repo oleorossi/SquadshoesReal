@@ -15,6 +15,8 @@ export interface ExpedicaoOrder {
   grid?: Record<string, number>;
   pairs_per_box?: number | null;
   sole_name?: string | null;
+  /** URL da foto do produto (variante exata ou fallback). */
+  image_url?: string | null;
 }
 
 export interface ExpedicaoCustomerGroup {
@@ -197,6 +199,7 @@ export const ExpedicaoWorkSheet = ({ group, date }: Props) => {
         <table className="w-full text-xs" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
           <thead>
             <tr className="bg-slate-100">
+              <th className="border border-slate-300 py-1 px-1 text-center text-[10px] font-bold" style={{ width: 40 }}>Foto</th>
               <th className="border border-slate-300 py-1 px-1 text-left text-[10px] font-bold" style={{ width: 60 }}>OP</th>
               <th className="border border-slate-300 py-1 px-1 text-left text-[10px] font-bold">Referência</th>
               <th className="border border-slate-300 py-1 px-1 text-left text-[10px] font-bold" style={{ width: 70 }}>Cor</th>
@@ -211,6 +214,13 @@ export const ExpedicaoWorkSheet = ({ group, date }: Props) => {
           <tbody>
             {group.orders.map(o => (
               <tr key={o.id}>
+                <td className="border border-slate-300 p-1 text-center">
+                  {o.image_url ? (
+                    <img src={o.image_url} alt={o.reference_code || ''} className="w-9 h-9 object-contain mix-blend-multiply bg-white inline-block" />
+                  ) : (
+                    <div className="w-9 h-9 bg-slate-100 inline-block rounded" />
+                  )}
+                </td>
                 <td className="border border-slate-300 py-1 px-1 font-mono text-[10px] text-slate-600">{o.op_number || '—'}</td>
                 <td className="border border-slate-300 py-1 px-1 text-[11px]">
                   {o.reference_code ? <span className="font-bold">{o.reference_code}</span> : null}
@@ -234,7 +244,7 @@ export const ExpedicaoWorkSheet = ({ group, date }: Props) => {
           </tbody>
           <tfoot>
             <tr className="bg-emerald-100 font-black">
-              <td colSpan={4 + allSizes.length} className="border border-emerald-300 py-1.5 px-2 text-right text-[10px] uppercase text-emerald-800">
+              <td colSpan={5 + allSizes.length} className="border border-emerald-300 py-1.5 px-2 text-right text-[10px] uppercase text-emerald-800">
                 Total da Loja
               </td>
               <td className="border border-emerald-300 py-1.5 px-1 text-right font-mono text-base text-emerald-900">
