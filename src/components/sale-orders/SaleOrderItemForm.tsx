@@ -580,6 +580,33 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Ref</span>
                 <span className="font-mono font-bold text-sm">{selectedRef?.code || '—'}</span>
+                {/* Badge NCM da ficha — fica amber quando inválido (faltando ou
+                    fora do formato 8 dígitos). NF-e exige NCM válido pra emissão;
+                    mostrando aqui o usuário enxerga problema antes mesmo de
+                    tentar emitir. */}
+                {selectedRef && (() => {
+                  const ncm = (selectedRef as any).ncm as string | null | undefined;
+                  const valid = ncm && /^\d{8}$/.test(ncm);
+                  if (!ncm) {
+                    return (
+                      <Badge variant="outline" className="h-4 text-[9px] bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800" title="Ficha sem NCM — NF-e será bloqueada">
+                        ⚠ NCM
+                      </Badge>
+                    );
+                  }
+                  if (!valid) {
+                    return (
+                      <Badge variant="outline" className="h-4 text-[9px] bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800 font-mono" title="NCM precisa de 8 dígitos">
+                        NCM {ncm}
+                      </Badge>
+                    );
+                  }
+                  return (
+                    <Badge variant="outline" className="h-4 text-[9px] font-mono opacity-60" title="NCM válido">
+                      {ncm}
+                    </Badge>
+                  );
+                })()}
               </div>
               <span className="text-xs font-medium text-foreground truncate max-w-[200px]">{selectedRef?.name || 'Selecione uma referência'}</span>
             </div>
