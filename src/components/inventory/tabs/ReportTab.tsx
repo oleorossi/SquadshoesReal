@@ -13,10 +13,11 @@ export function ReportTab() {
   const { data: stats, isLoading } = useInventoryStats();
    const navigate = useNavigate();
   const { data: allProducts = [] } = useProducts(); // Still needed for charts
-  // Embalagens vivem no módulo "Embalagens" — não devem entrar nos gráficos do estoque.
+  // Embalagens vivem no módulo "Embalagens"; Solados vivem em SolesHub —
+  // nenhum dos dois deve entrar nos gráficos do estoque "tradicional".
   const products = allProducts.filter(p => {
     const cat = (p.category || '').toLowerCase().trim();
-    return cat !== 'embalagem' && cat !== 'embalagens';
+    return cat !== 'embalagem' && cat !== 'embalagens' && cat !== 'solado';
   });
 
    const { data: topProducts = [], isLoading: loadingTop } = useQuery({

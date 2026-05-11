@@ -10,7 +10,10 @@ import { ProductFormDialog } from '@/components/inventory/ProductFormDialog';
 const CONSUMABLE_CATEGORIES = ['Escritório', 'Limpeza', 'Manutenção', 'TI'];
 
 export function ConsumablesTab() {
-  const { data: products = [] } = useProducts();
+  // Solados gerenciados só na aba dedicada SolesHub. Filtramos aqui pra
+  // limpar UI do estoque tradicional. Débitos do PV não dependem dessa UI.
+  const { data: allProducts = [] } = useProducts();
+  const products = (allProducts as any[]).filter(p => p.category !== 'Solado');
   const updateProduct = useUpdateProduct();
   const deleteProduct = useDeleteProduct();
   const addProduct = useAddProduct();

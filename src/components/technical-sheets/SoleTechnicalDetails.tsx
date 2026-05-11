@@ -670,7 +670,13 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
         </CardContent>
       </Card>
 
-      {/* ─── Passo 2: Grade de numerações ────────────────────────── */}
+      {/* ─── Passo 2: Grade de numerações ──────────────────────────
+          User feedback: o range já é definido no Cadastro (size_from/size_to).
+          Removidos os preset buttons (Adulto/Infantil/Baby) — eram duplicação.
+          O card agora mostra só o resumo dos tamanhos cadastrados e o input
+          de "adicionar tamanho avulso" como escape hatch pra casos especiais
+          (ex.: solado com pula numeração).
+      */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
@@ -683,28 +689,11 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
             )}
           </CardTitle>
           <CardDescription className="text-xs">
-            Defina quais tamanhos este solado tem. Use um preset ou adicione individualmente.
+            Range principal (numeração inicial/final) é definido na aba <strong>Cadastro</strong> do solado.
+            Aqui você pode adicionar tamanhos avulsos pra configuração de consumo individual.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            {getSortedPresets(shoeCategory).map((p) => (
-              <Button
-                key={p.label}
-                size="sm"
-                variant="outline"
-                className={`h-7 text-xs gap-1.5 ${p.recommended ? 'border-primary/40 bg-primary/5 text-primary' : ''}`}
-                onClick={() => applyPreset(p.sizes)}
-                title={p.recommended ? `Recomendado pra ${shoeCategory ?? 'esta categoria'}` : undefined}
-              >
-                {p.label}
-                {p.recommended && (
-                  <span className="text-[9px] uppercase tracking-wider opacity-70">★</span>
-                )}
-              </Button>
-            ))}
-          </div>
-
           {sizes.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {sizes.map((s) => {
@@ -732,7 +721,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
 
           <div className="flex items-center gap-2 max-w-xs">
             <Input
-              placeholder="Ex: 41"
+              placeholder="Adicionar tamanho avulso (ex: 41)"
               value={newSize}
               onChange={(e) => setNewSize(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && addSize()}

@@ -141,7 +141,13 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
   const [page, setPage] = useState(1);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: products = [] } = useProducts();
+  // Estoque tradicional NÃO mostra solados — eles são gerenciados na aba
+  // dedicada "Solados" (SolesHub). Mantemos os produtos no DB intactos (a
+  // tabela `products` ainda tem solados pra os débitos do PV via funções
+  // SQL `debit_sole_stock_by_grade` / `hybrid_debit_stock_for_order` que
+  // leem direto da tabela, NÃO dependem dessa UI).
+  const { data: allProducts = [] } = useProducts();
+  const products = (allProducts as any[]).filter(p => p.category !== 'Solado');
   const { data: groups = [] } = useGroups();
   const { data: suppliers = [] } = useSuppliers();
   const addSupplier = useAddSupplier();
