@@ -566,14 +566,20 @@ export default function SaleOrderFormPanel({
      }
    };
  
+   const isNewOrder = form.status === 'Rascunho' || !form.status;
+
    return (
      <>
-     <form ref={formRef} onSubmit={handlePreSubmit} className="space-y-5">
-      <Card className="border-border/60 shadow-sm">
-        <CardContent className="p-3">
-          <OrderStatusStepper currentStatus={form.status} />
-        </CardContent>
-      </Card>
+     <form ref={formRef} onSubmit={handlePreSubmit} className="space-y-5 pb-24">
+      {/* Stepper só faz sentido em PV existente — em "Novo Pedido" o status é sempre
+          Rascunho e o widget completo confunde mais do que informa. */}
+      {!isNewOrder && (
+        <Card className="border-border/60 shadow-sm">
+          <CardContent className="p-3">
+            <OrderStatusStepper currentStatus={form.status} />
+          </CardContent>
+        </Card>
+      )}
       {/* Header section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2 space-y-5">
@@ -998,82 +1004,30 @@ export default function SaleOrderFormPanel({
         </Button>
       </div>
 
-      {/* Totals footer */}
-      <div className="rounded-xl border bg-card/50 backdrop-blur-sm shadow-lg p-5 flex flex-col md:flex-row items-center justify-between gap-6 border-primary/20 bg-gradient-to-r from-background to-primary/5">
-        <div className="flex flex-col gap-1">
-          <div className="text-sm text-muted-foreground flex items-center gap-2">
-            <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-            <span className="font-semibold text-foreground">{items.filter(i => i.reference_id).length}</span> referência(s) no total
-          </div>
-          <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Resumo Financeiro e de Volume</p>
-        </div>
-        
-        <div className="flex flex-wrap items-center gap-8 md:gap-12">
-          <div className="flex flex-col items-center md:items-end">
-            <span className="text-[10px] text-muted-foreground uppercase font-bold">Total de Pares</span>
-            <span className="font-mono font-bold text-2xl tracking-tight">{totalPairs}</span>
-          </div>
-          <div className="flex flex-col items-center md:items-end">
-            <span className="text-[10px] text-muted-foreground uppercase font-bold">Valor Total do Pedido</span>
-            <span className="font-mono font-bold text-3xl text-primary tracking-tighter">{formatCurrency(totalValue)}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Validation Summary */}
+      {/* Action bar fixa no rodapé: totais + validações + Cancelar/Salvar.
+          Substitui o trio "footer-de-totais + bloco-de-revisão + botões" antigo
+          que ocupava 3 alturas de tela e fazia o usuário scrollar pra confirmar.
+          Sticky bottom = sempre visível enquanto edita itens. */}
       {(() => {
-        const issues: { type: 'error' | 'warning'; msg: string }[] = [];
-        if (!form.client_name) issues.push({ type: 'error', msg: 'Nome do cliente é obrigatório' });
+        const issues: { type: 'error' | 'warning'; msg: string; field?: string }[] = [];
+        if (!form.client_name) issues.push({ type: 'error', msg: 'Cliente obrigatório', field: 'client_name' });
         const validItems = items.filter(i => i.reference_id);
-        if (validItems.length === 0) issues.push({ type: 'error', msg: 'Adicione pelo menos um item ao pedido' });
+        if (validItems.length === 0) issues.push({ type: 'error', msg: 'Adicione um item', field: 'items' });
         validItems.forEach((item, i) => {
-          if (!item.color?.trim()) issues.push({ type: 'error', msg: `Item ${i + 1}: cor não selecionada` });
-          if (item.quantity <= 0) issues.push({ type: 'warning', msg: `Item ${i + 1}: quantidade zerada` });
-          if (item.unit_price <= 0) issues.push({ type: 'warning', msg: `Item ${i + 1}: preço unitário zerado` });
+          if (!item.color?.trim()) issues.push({ type: 'error', msg: `Item ${i + 1}: cor faltando` });
+          if (item.quantity <= 0) issues.push({ type: 'warning', msg: `Item ${i + 1}: qtd zerada` });
+          if (item.unit_price <= 0) issues.push({ type: 'warning', msg: `Item ${i + 1}: preço zerado` });
           const refVariants = item.reference_id ? allVariantsByRef.get(item.reference_id) : undefined;
           if (refVariants && refVariants.length > 0 && !item.material_variant_id) {
-            issues.push({ type: 'error', msg: `Item ${i + 1}: selecione o grupo de material — ${refVariants.map(v => v.material_name).join(' / ')}` });
+            issues.push({ type: 'error', msg: `Item ${i + 1}: selecione grupo de material` });
           }
         });
-        if (!form.payment_condition) issues.push({ type: 'warning', msg: 'Condição de pagamento não informada' });
-        if (!form.delivery_deadline) issues.push({ type: 'warning', msg: 'Prazo de entrega não informado' });
+        if (!form.payment_condition) issues.push({ type: 'warning', msg: 'Sem condição de pagamento' });
+        if (!form.delivery_deadline) issues.push({ type: 'warning', msg: 'Sem prazo de entrega' });
 
         const errors = issues.filter(i => i.type === 'error');
         const warnings = issues.filter(i => i.type === 'warning');
 
-        if (issues.length === 0) {
-          return (
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-success/5 border border-success/20">
-              <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
-              <p className="text-xs text-success font-medium">Pedido pronto para envio — todos os campos validados</p>
-            </div>
-          );
-        }
-
-        return (
-          <div className="p-3 rounded-lg border border-border space-y-2">
-            <p className="text-xs font-bold text-muted-foreground uppercase">Revisão do Pedido</p>
-            {errors.map((issue, i) => (
-              <div key={`e-${i}`} className="flex items-center gap-2 text-xs text-destructive">
-                <AlertTriangle className="h-3 w-3 shrink-0" />
-                {issue.msg}
-              </div>
-            ))}
-            {warnings.map((issue, i) => (
-              <div key={`w-${i}`} className="flex items-center gap-2 text-xs text-warning">
-                <AlertTriangle className="h-3 w-3 shrink-0" />
-                {issue.msg}
-              </div>
-            ))}
-          </div>
-        );
-      })()}
-
-      {/* Actions */}
-      {/* Audit visual: bloqueia submit quando há condições óbvias não atendidas
-          (sem cliente, sem itens válidos, factoring sem config). Antes só
-          checava client_name; usuário clicava com 0 itens e via toast de erro. */}
-      {(() => {
         const validItemsCount = items.filter(i => i.reference_id).length;
         const factoringInvalid = form.is_factoring && !form.factoring_config_id;
         const submitDisabled = !form.client_name || validItemsCount === 0 || factoringInvalid || isPending;
@@ -1084,13 +1038,95 @@ export default function SaleOrderFormPanel({
             : factoringInvalid
               ? 'Selecione qual factoring está antecipando o pedido'
               : undefined;
+
         return (
-          <div className="flex justify-end gap-3 pt-2 pb-8">
-            <Button type="button" variant="outline" size="lg" onClick={onCancel}>Cancelar</Button>
-            <Button type="submit" size="lg" disabled={submitDisabled} title={disabledReason}>
-              {isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              {submitLabel}
-            </Button>
+          <div className="fixed bottom-0 left-0 right-0 z-30 border-t bg-background/95 backdrop-blur-md shadow-[0_-4px_12px_rgba(0,0,0,0.05)] dark:shadow-[0_-4px_12px_rgba(0,0,0,0.3)]">
+            <div className="max-w-[var(--main-max,1600px)] mx-auto px-4 sm:px-6 py-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              {/* Resumo de totais — esquerda */}
+              <div className="flex items-center gap-6 flex-1 min-w-0">
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Itens</span>
+                  <span className="font-mono font-bold text-lg tracking-tight leading-none">{validItemsCount}</span>
+                </div>
+                <div className="h-8 w-px bg-border" />
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Pares</span>
+                  <span className="font-mono font-bold text-lg tracking-tight leading-none">{totalPairs}</span>
+                </div>
+                <div className="h-8 w-px bg-border" />
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Valor Total</span>
+                  <span className="font-mono font-bold text-xl text-primary tracking-tight leading-none">{formatCurrency(totalValue)}</span>
+                </div>
+              </div>
+
+              {/* Indicador de validação — meio */}
+              <div className="flex items-center gap-2">
+                {issues.length === 0 ? (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-xs font-semibold">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Pronto
+                  </span>
+                ) : (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className={cn(
+                          'h-8 gap-1.5 text-xs font-semibold',
+                          errors.length > 0
+                            ? 'text-destructive hover:bg-destructive/10'
+                            : 'text-amber-600 hover:bg-amber-500/10'
+                        )}
+                      >
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                        {errors.length > 0
+                          ? `${errors.length} erro(s)`
+                          : `${warnings.length} aviso(s)`}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-80 max-h-80 overflow-y-auto">
+                      <div className="space-y-1">
+                        {errors.length > 0 && (
+                          <>
+                            <p className="text-[10px] font-bold text-destructive uppercase tracking-wider mb-1.5">Erros bloqueantes</p>
+                            {errors.map((issue, i) => (
+                              <div key={`e-${i}`} className="flex items-start gap-2 text-xs text-destructive/90 py-0.5">
+                                <span className="mt-0.5">•</span>
+                                <span>{issue.msg}</span>
+                              </div>
+                            ))}
+                          </>
+                        )}
+                        {warnings.length > 0 && (
+                          <>
+                            {errors.length > 0 && <div className="h-px bg-border my-2" />}
+                            <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-1.5">Avisos</p>
+                            {warnings.map((issue, i) => (
+                              <div key={`w-${i}`} className="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-300 py-0.5">
+                                <span className="mt-0.5">•</span>
+                                <span>{issue.msg}</span>
+                              </div>
+                            ))}
+                          </>
+                        )}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                )}
+              </div>
+
+              {/* Botões — direita */}
+              <div className="flex items-center gap-2">
+                <Button type="button" variant="outline" onClick={onCancel}>Cancelar</Button>
+                <Button type="submit" disabled={submitDisabled} title={disabledReason} className="min-w-[160px]">
+                  {isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  {submitLabel}
+                </Button>
+              </div>
+            </div>
           </div>
         );
       })()}

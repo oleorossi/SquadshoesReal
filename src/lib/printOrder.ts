@@ -354,7 +354,8 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
 
   items.forEach(item => {
     const grade = item.grade as Record<string, number> | null;
-    const refLabel = `${item.technical_sheets?.code || ''}-${item.technical_sheets?.name || ''}`;
+    const refCode = item.technical_sheets?.code || '';
+    const refName = item.technical_sheets?.name || '';
     const color = item.color || '—';
     const price = Number(item.unit_price);
     let itemTotal = 0;
@@ -367,9 +368,9 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
     sizes.forEach(s => {
       const qty = grade?.[s] ? Number(grade[s]) : 0;
       const val = qty * price;
-      pedidaCells += `<td class="text-center mono">${qty || ''}</td>`;
-      unitarioCells += `<td class="text-center mono">${qty > 0 ? formatCurrency(price) : ''}</td>`;
-      valorCells += `<td class="text-center mono">${qty > 0 ? formatCurrency(val) : ''}</td>`;
+      pedidaCells += `<td class="pv-size-cell${qty ? '' : ' empty'}">${qty || '·'}</td>`;
+      unitarioCells += `<td class="pv-size-cell${qty > 0 ? '' : ' empty'}" style="font-size:8.5px;">${qty > 0 ? formatCurrency(price) : '·'}</td>`;
+      valorCells += `<td class="pv-size-cell${qty > 0 ? '' : ' empty'}" style="font-size:8.5px;">${qty > 0 ? formatCurrency(val) : '·'}</td>`;
       itemTotal += val;
       itemPairs += qty;
       grandTotals[s].pedida += qty;
@@ -379,27 +380,31 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
     grandTotalValue += itemTotal;
 
     const imgCell = imageUrl
-      ? `<td rowspan="3" class="img-cell"><img src="${imageUrl}" alt="${escapeHtml(refLabel)}" /></td>`
-      : `<td rowspan="3" class="img-cell" style="color:#aaa;font-size:8px;">Sem foto</td>`;
+      ? `<td rowspan="3" class="pv-img-cell"><img src="${imageUrl}" alt="${escapeHtml(refCode)}" /></td>`
+      : `<td rowspan="3" class="pv-img-cell empty">sem<br>foto</td>`;
+
+    const refCellContent = refCode
+      ? `<span class="ref-code">${escapeHtml(refCode)}</span>${refName ? `<span class="ref-name">${escapeHtml(refName)}</span>` : ''}`
+      : escapeHtml(refName || '—');
 
     bodyRows += `
-      <tr class="row-product">
+      <tr class="pv-row-pedida">
         ${imgCell}
-        <td rowspan="3" class="product-cell">${escapeHtml(refLabel)}</td>
-        <td rowspan="3" class="color-cell">${escapeHtml(color)}</td>
-        <td class="type-cell">PEDIDA</td>
+        <td rowspan="3" class="pv-ref-cell">${refCellContent}</td>
+        <td rowspan="3" class="pv-color-cell">${escapeHtml(color)}</td>
+        <td class="pv-type-cell">Pedido</td>
         ${pedidaCells}
-        <td class="text-center mono total-col">${itemPairs}</td>
+        <td class="pv-total-cell">${itemPairs}</td>
       </tr>
-      <tr class="row-unit">
-        <td class="type-cell">UNITÁRIO</td>
+      <tr>
+        <td class="pv-type-cell">R$ unit.</td>
         ${unitarioCells}
-        <td class="text-center mono total-col">${formatCurrency(price)}</td>
+        <td class="pv-total-cell" style="font-size:9px;">${formatCurrency(price)}</td>
       </tr>
-      <tr class="row-value">
-        <td class="type-cell">VALOR</td>
+      <tr>
+        <td class="pv-type-cell">R$ total</td>
         ${valorCells}
-        <td class="text-center mono total-col">${formatCurrency(itemTotal)}</td>
+        <td class="pv-total-cell" style="color:#7f1d1d;">${formatCurrency(itemTotal)}</td>
       </tr>`;
   });
 
@@ -407,192 +412,544 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
   const avgUnitPrice = grandTotalPairs > 0 ? grandTotalValue / grandTotalPairs : unitPrice;
 
 
+  // Status badge color por status (cor semântica)
+  const statusColors: Record<string, { bg: string; fg: string; border: string }> = {
+    'Rascunho':     { bg: '#f1f5f9', fg: '#475569', border: '#cbd5e1' },
+    'Pendente':     { bg: '#fef3c7', fg: '#92400e', border: '#fbbf24' },
+    'Aprovado':     { bg: '#dbeafe', fg: '#1e40af', border: '#60a5fa' },
+    'Em Produção':  { bg: '#ede9fe', fg: '#6d28d9', border: '#a78bfa' },
+    'Pronto':       { bg: '#d1fae5', fg: '#065f46', border: '#34d399' },
+    'Faturado':     { bg: '#cffafe', fg: '#155e75', border: '#22d3ee' },
+    'Cancelado':    { bg: '#fee2e2', fg: '#991b1b', border: '#f87171' },
+  };
+  const sc = statusColors[order.status] || statusColors['Rascunho'];
+
+  const issuedDate = order.created_at
+    ? new Date(order.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    : new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
   return `
 <style>
-  .order-container { font-family: 'Segoe UI', Arial, sans-serif; color: #333; }
-  .order-header {
+  .pv-doc {
+    font-family: 'Helvetica Neue', -apple-system, 'Segoe UI', Arial, sans-serif;
+    color: #1a1a1a;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+  .pv-doc * { box-sizing: border-box; }
+
+  /* Header — burgundy band com identidade Squad Shoes */
+  .pv-header {
     display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 10px;
-    padding-bottom: 6px;
-    border-bottom: 2px solid #1a56db;
-  }
-  .order-title { font-size: 18px; font-weight: 800; color: #1a56db; margin: 0; }
-  .order-number { font-size: 14px; font-weight: 600; color: #666; }
-  .status-badge { 
-    padding: 4px 8px; 
-    background: #eef2ff; 
-    color: #1a56db; 
-    border-radius: 4px; 
-    font-size: 10px; 
-    font-weight: 700;
-    text-transform: uppercase;
-  }
-  
-  .info-section {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 4px 12px;
-    margin-bottom: 10px;
-    background: #f8fafc;
-    padding: 8px 12px;
+    align-items: stretch;
+    margin-bottom: 12px;
     border-radius: 6px;
-    border: 1px solid #e2e8f0;
+    overflow: hidden;
+    border: 1px solid #d4d4d4;
   }
-  .info-item { display: flex; flex-direction: column; gap: 2px; }
-  .info-label { font-size: 9px; text-transform: uppercase; color: #64748b; font-weight: 700; letter-spacing: 0.5px; }
-  .info-value { font-size: 11px; font-weight: 600; color: #1e293b; }
-
-  .order-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 10px; margin-bottom: 8px; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; }
-  .order-table th {
-    background: #f1f5f9;
-    color: #475569;
-    font-weight: 700;
-    text-align: center;
-    padding: 5px 4px;
-    border-bottom: 1px solid #e2e8f0;
+  .pv-header__brand {
+    background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%);
+    color: #fff;
+    padding: 14px 18px;
+    flex: 0 0 36%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+  }
+  .pv-header__brand-title {
     font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    opacity: 0.85;
+  }
+  .pv-header__brand-name {
+    font-size: 18px;
+    font-weight: 900;
+    letter-spacing: -0.2px;
+    line-height: 1;
+  }
+  .pv-header__brand-tag {
+    font-size: 9px;
+    opacity: 0.7;
+    margin-top: 2px;
+    letter-spacing: 0.05em;
+  }
+  .pv-header__title {
+    flex: 1;
+    padding: 14px 18px;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 6px;
+  }
+  .pv-header__doc {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.2em;
+    color: #71717a;
     text-transform: uppercase;
   }
-  .order-table td {
-    padding: 4px 5px;
-    border-bottom: 1px solid #f1f5f9;
-    vertical-align: middle;
+  .pv-header__num {
+    font-size: 22px;
+    font-weight: 900;
+    color: #18181b;
+    line-height: 1;
+    letter-spacing: -0.5px;
+    font-family: 'SFMono-Regular', 'Courier New', monospace;
   }
-  .product-cell { font-weight: 700; color: #1a56db; }
-  .type-cell { font-weight: 700; font-size: 8px; color: #64748b; background: #f8fafc; width: 60px; }
-  
-  .img-cell { width: 70px; text-align: center; padding: 5px; }
-  .img-cell img { width: 60px; height: 60px; object-fit: cover; border-radius: 6px; border: 1px solid #e2e8f0; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-  
-  .row-product td { border-top: 1px solid #e2e8f0; }
-  .row-value td { border-bottom: 1px solid #cbd5e1; }
-  
-  .grand-total-section { margin-top: 0; }
-  .grand-total { background: #1e293b !important; color: white !important; font-weight: 700; }
-  .grand-total td { border-color: #334155 !important; padding: 5px 4px !important; }
-  
-  .notes-section {
-    margin-top: 10px;
-    padding: 8px 10px;
-    background: #fff;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
+  .pv-header__meta {
+    display: flex;
+    gap: 14px;
+    font-size: 9.5px;
+    color: #52525b;
+    margin-top: 2px;
   }
-  .notes-title { font-size: 10px; font-weight: 700; color: #64748b; margin-bottom: 5px; text-transform: uppercase; }
-  .notes-content { font-size: 11px; color: #334155; line-height: 1.5; }
+  .pv-header__meta strong { color: #18181b; }
+  .pv-header__status {
+    flex: 0 0 110px;
+    background: ${sc.bg};
+    border-left: 1px solid #d4d4d4;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 10px;
+  }
+  .pv-header__status-label {
+    font-size: 8px;
+    font-weight: 700;
+    color: ${sc.fg};
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    opacity: 0.7;
+  }
+  .pv-header__status-value {
+    font-size: 11px;
+    font-weight: 800;
+    color: ${sc.fg};
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
 
-  .signature-grid {
+  /* Cards de informações */
+  .pv-info {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .pv-card {
+    border: 1px solid #d4d4d4;
+    border-radius: 6px;
+    padding: 8px 12px;
+    background: #fafafa;
+    page-break-inside: avoid;
+  }
+  .pv-card__title {
+    font-size: 8.5px;
+    font-weight: 800;
+    color: #71717a;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    margin-bottom: 4px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #e4e4e7;
+  }
+  .pv-card__row { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; font-size: 10px; }
+  .pv-card__row .lbl { color: #71717a; font-weight: 600; }
+  .pv-card__row .val { color: #18181b; font-weight: 600; text-align: right; }
+  .pv-card__row .val strong { font-weight: 800; }
+
+  /* Tabela de itens */
+  .pv-items-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .pv-items-title h2 {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: #18181b;
+    margin: 0;
+  }
+  .pv-items-title .count { font-size: 9.5px; color: #71717a; font-weight: 600; }
+
+  .pv-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9.5px;
+    margin-bottom: 4px;
+    border: 1px solid #d4d4d4;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .pv-table thead th {
+    background: #18181b;
+    color: #fff;
+    font-weight: 700;
+    font-size: 8.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 6px 4px;
+    text-align: center;
+    border: none;
+  }
+  .pv-table thead th:first-child { border-top-left-radius: 6px; }
+  .pv-table thead th:last-child  { border-top-right-radius: 6px; }
+  .pv-table thead th.text-left { text-align: left; padding-left: 8px; }
+
+  .pv-table tbody td {
+    padding: 4px 5px;
+    border-bottom: 1px solid #e4e4e7;
+    vertical-align: middle;
+    font-size: 9.5px;
+  }
+  .pv-table tbody tr:last-child td { border-bottom: 1px solid #d4d4d4; }
+
+  .pv-img-cell { width: 56px; text-align: center; padding: 4px !important; background: #fafafa; }
+  .pv-img-cell img {
+    width: 48px;
+    height: 48px;
+    object-fit: cover;
+    border-radius: 4px;
+    border: 1px solid #e4e4e7;
+    display: block;
+    margin: 0 auto;
+  }
+  .pv-img-cell.empty {
+    color: #d4d4d8;
+    font-size: 8px;
+    font-style: italic;
+  }
+
+  .pv-ref-cell { font-weight: 700; color: #18181b; font-size: 10px; }
+  .pv-ref-cell .ref-code { color: #7f1d1d; font-weight: 800; }
+  .pv-ref-cell .ref-name { color: #52525b; font-weight: 600; font-size: 9px; display: block; }
+
+  .pv-color-cell { font-weight: 600; color: #18181b; }
+
+  .pv-type-cell {
+    background: #fafafa;
+    font-weight: 700;
+    font-size: 8px;
+    color: #71717a;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    text-align: left;
+    padding-left: 6px !important;
+    width: 60px;
+  }
+
+  .pv-size-cell {
+    text-align: center;
+    font-family: 'SFMono-Regular', 'Courier New', monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: #27272a;
+  }
+  .pv-size-cell.empty { color: #d4d4d8; }
+  .pv-total-cell {
+    text-align: center;
+    font-family: 'SFMono-Regular', 'Courier New', monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 800;
+    color: #18181b;
+    background: #fafafa;
+    border-left: 1px solid #d4d4d4;
+  }
+  .pv-row-pedida td { border-top: 1px solid #d4d4d4; }
+
+  /* Totais */
+  .pv-totals-row td {
+    background: #18181b !important;
+    color: #fff !important;
+    font-weight: 700;
+    padding: 6px 5px;
+    font-size: 10px;
+    border: none !important;
+  }
+  .pv-totals-row .label-cell {
+    text-align: right;
+    padding-right: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .pv-totals-value-row td {
+    background: #fafafa !important;
+    color: #18181b !important;
+    font-weight: 800;
+    padding: 6px 5px;
+    font-size: 10px;
+    border: none !important;
+    border-top: 1px solid #d4d4d4 !important;
+  }
+  .pv-totals-value-row .label-cell {
+    text-align: right;
+    padding-right: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #71717a;
+  }
+
+  /* Card resumo financeiro */
+  .pv-summary {
+    display: grid;
+    grid-template-columns: 1.5fr 1fr 1fr;
+    gap: 8px;
+    margin-top: 12px;
+    page-break-inside: avoid;
+  }
+  .pv-summary__notes {
+    border: 1px solid #d4d4d4;
+    border-radius: 6px;
+    padding: 8px 12px;
+    background: #fffbeb;
+    border-color: #fde68a;
+  }
+  .pv-summary__notes-title {
+    font-size: 8.5px;
+    font-weight: 800;
+    color: #92400e;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    margin-bottom: 3px;
+  }
+  .pv-summary__notes-content {
+    font-size: 10px;
+    color: #422006;
+    line-height: 1.5;
+    white-space: pre-wrap;
+  }
+  .pv-summary__kpi {
+    border: 1px solid #d4d4d4;
+    border-radius: 6px;
+    padding: 8px 12px;
+    background: #fafafa;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .pv-summary__kpi.primary {
+    background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%);
+    color: #fff;
+    border-color: #7f1d1d;
+  }
+  .pv-summary__kpi-label {
+    font-size: 8.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: #71717a;
+    margin-bottom: 4px;
+  }
+  .pv-summary__kpi.primary .pv-summary__kpi-label { color: #fbcfe8; opacity: 0.9; }
+  .pv-summary__kpi-value {
+    font-size: 18px;
+    font-weight: 900;
+    font-family: 'SFMono-Regular', 'Courier New', monospace;
+    color: #18181b;
+    line-height: 1;
+    letter-spacing: -0.5px;
+  }
+  .pv-summary__kpi.primary .pv-summary__kpi-value { color: #fff; font-size: 20px; }
+  .pv-summary__kpi-sub {
+    font-size: 9px;
+    color: #71717a;
+    margin-top: 3px;
+  }
+  .pv-summary__kpi.primary .pv-summary__kpi-sub { color: #fde2e2; }
+
+  /* Footer / assinaturas */
+  .pv-signatures {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 20px;
-    margin-top: 20px;
-    padding: 0 10px;
+    gap: 24px;
+    margin-top: 22px;
+    padding: 0 8px;
+    page-break-inside: avoid;
   }
-  .signature-box {
+  .pv-sig-box {
     text-align: center;
-    border-top: 1px solid #94a3b8;
-    padding-top: 10px;
+    border-top: 1px solid #18181b;
+    padding-top: 6px;
   }
-  .signature-label { font-size: 9px; color: #64748b; font-weight: 600; }
+  .pv-sig-box .lbl {
+    font-size: 8.5px;
+    color: #52525b;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }
+  .pv-sig-box .sub {
+    font-size: 8px;
+    color: #a1a1aa;
+    margin-top: 2px;
+  }
 
-  .text-center { text-align: center; }
-  .text-right { text-align: right; }
-  .mono { font-family: 'Courier New', monospace; font-weight: 600; }
+  .pv-footer {
+    margin-top: 14px;
+    padding-top: 8px;
+    border-top: 1px solid #e4e4e7;
+    font-size: 8px;
+    color: #a1a1aa;
+    text-align: center;
+    letter-spacing: 0.05em;
+  }
 </style>
 
-<div class="order-container">
-  <div class="order-header">
-    <div>
-      <h1 class="order-title">PEDIDO DE VENDA</h1>
-      <div class="order-number">Nº ${escapeHtml(order.order_number || '')}</div>
+<div class="pv-doc">
+  <!-- Cabeçalho -->
+  <div class="pv-header">
+    <div class="pv-header__brand">
+      <div class="pv-header__brand-title">Squad Shoes · Indústria</div>
+      <div class="pv-header__brand-name">SQUAD SHOES</div>
+      <div class="pv-header__brand-tag">GESTÃO COMERCIAL</div>
     </div>
-    <div class="status-badge">
-      ${escapeHtml((order.status || '').toUpperCase())}
+    <div class="pv-header__title">
+      <div class="pv-header__doc">Pedido de Venda</div>
+      <div class="pv-header__num">${escapeHtml(order.order_number || '—')}</div>
+      <div class="pv-header__meta">
+        <span>Emitido em <strong>${issuedDate}</strong></span>
+        ${order.client_order_number ? `<span>Ped. cliente <strong>${escapeHtml(order.client_order_number)}</strong></span>` : ''}
+      </div>
     </div>
-  </div>
-
-  <div class="info-section">
-    <div class="info-item">
-      <span class="info-label">Cliente</span>
-      <span class="info-value">
-        ${(order as any).client_number ? `<strong style="color:#1a56db;">[${escapeHtml((order as any).client_number)}]</strong> ` : ''}${escapeHtml(order.client_name)}
-      </span>
-    </div>
-    <div class="info-item">
-      <span class="info-label">CNPJ / CPF</span>
-      <span class="info-value">${escapeHtml(order.client_cnpj || '—')}</span>
-    </div>
-    <div class="info-item">
-      <span class="info-label">Representante</span>
-      <span class="info-value">${escapeHtml(order.representative || '—')}</span>
-    </div>
-    <div class="info-item">
-      <span class="info-label">Ped. Cliente</span>
-      <span class="info-value">${escapeHtml(order.client_order_number || '—')}</span>
-    </div>
-    <div class="info-item">
-      <span class="info-label">Condição de Pagamento</span>
-      <span class="info-value">${escapeHtml(order.payment_condition || '—')}</span>
-    </div>
-    <div class="info-item">
-      <span class="info-label">Prazo de Entrega</span>
-      <span class="info-value">${order.delivery_deadline ? new Date(order.delivery_deadline).toLocaleDateString('pt-BR') : '—'}</span>
-    </div>
-    <div class="info-item">
-      <span class="info-label">Contato</span>
-      <span class="info-value">${escapeHtml(order.client_contact || '—')}</span>
+    <div class="pv-header__status">
+      <div class="pv-header__status-label">Status</div>
+      <div class="pv-header__status-value">${escapeHtml(order.status || '—')}</div>
     </div>
   </div>
 
-  <table class="order-table">
+  <!-- Cards de info -->
+  <div class="pv-info">
+    <div class="pv-card">
+      <div class="pv-card__title">Cliente</div>
+      <div class="pv-card__row">
+        <span class="lbl">Razão Social</span>
+        <span class="val">
+          ${(order as any).client_number ? `<strong style="color:#7f1d1d;">#${escapeHtml((order as any).client_number)}</strong> · ` : ''}<strong>${escapeHtml(order.client_name || '—')}</strong>
+        </span>
+      </div>
+      <div class="pv-card__row">
+        <span class="lbl">CNPJ / CPF</span>
+        <span class="val mono">${escapeHtml(order.client_cnpj || '—')}</span>
+      </div>
+      <div class="pv-card__row">
+        <span class="lbl">Contato</span>
+        <span class="val">${escapeHtml(order.client_contact || '—')}</span>
+      </div>
+    </div>
+    <div class="pv-card">
+      <div class="pv-card__title">Comercial</div>
+      <div class="pv-card__row">
+        <span class="lbl">Representante</span>
+        <span class="val">${escapeHtml(order.representative || '—')}</span>
+      </div>
+      <div class="pv-card__row">
+        <span class="lbl">Pagamento</span>
+        <span class="val">${escapeHtml(order.payment_condition || '—')}</span>
+      </div>
+      ${order.commission_value ? `
+      <div class="pv-card__row">
+        <span class="lbl">Comissão</span>
+        <span class="val">R$ ${formatCurrency(Number(order.commission_value))}</span>
+      </div>` : ''}
+    </div>
+    <div class="pv-card">
+      <div class="pv-card__title">Entrega</div>
+      <div class="pv-card__row">
+        <span class="lbl">Prazo</span>
+        <span class="val"><strong>${order.delivery_deadline ? new Date(order.delivery_deadline + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</strong></span>
+      </div>
+      ${order.delivery_month ? `
+      <div class="pv-card__row">
+        <span class="lbl">Mês fatur.</span>
+        <span class="val">${escapeHtml(order.delivery_month)}${order.delivery_week ? ` · ${escapeHtml(order.delivery_week)}` : ''}</span>
+      </div>` : ''}
+      ${order.nfe ? `
+      <div class="pv-card__row">
+        <span class="lbl">NF-e</span>
+        <span class="val mono">${escapeHtml(order.nfe)}</span>
+      </div>` : ''}
+    </div>
+  </div>
+
+  <!-- Tabela de itens -->
+  <div class="pv-items-title">
+    <h2>Itens do Pedido</h2>
+    <span class="count">${items.length} referência(s) · ${grandTotalPairs} pares</span>
+  </div>
+
+  <table class="pv-table">
     <thead>
       <tr>
-        <th style="width:70px">Foto</th>
-        <th style="text-align:left">Produto / Referência</th>
-        <th>Cor</th>
-        <th>Tipo</th>
-        ${sizes.map(s => `<th>${s}</th>`).join('')}
-        <th>Total</th>
+        <th style="width:56px;">Foto</th>
+        <th class="text-left" style="min-width:130px;">Referência</th>
+        <th style="width:80px;">Cor</th>
+        <th style="width:60px;">Tipo</th>
+        ${sizes.map(s => `<th style="min-width:34px;">${s}</th>`).join('')}
+        <th style="width:80px;">Total</th>
       </tr>
     </thead>
     <tbody>
       ${bodyRows}
-      <tr class="grand-total">
-        <td colspan="3" style="text-align:right; padding-right:15px; font-size:11px">TOTAL GERAL DO PEDIDO</td>
-        <td class="text-center type-cell" style="background:transparent; color:white">PARES</td>
-        ${sizes.map(s => `<td class="text-center mono">${grandTotals[s].pedida || ''}</td>`).join('')}
-        <td class="text-center mono">${grandTotalPairs}</td>
+      <tr class="pv-totals-row">
+        <td colspan="3" class="label-cell">Total Geral · Pares</td>
+        <td class="pv-type-cell" style="background:transparent !important; color:#fff !important;">PARES</td>
+        ${sizes.map(s => `<td class="pv-size-cell" style="color:#fff !important;">${grandTotals[s].pedida || '·'}</td>`).join('')}
+        <td class="pv-total-cell" style="background:#7f1d1d !important; color:#fff !important; border-left:1px solid #991b1b !important;">${grandTotalPairs}</td>
       </tr>
-      <tr class="grand-total" style="background:#f8fafc !important; color:#1e293b !important">
-        <td colspan="4" style="text-align:right; padding-right:15px; border-color:#e2e8f0 !important">VALOR TOTAL (R$)</td>
-        ${sizes.map(s => `<td class="text-center mono" style="border-color:#e2e8f0 !important">${grandTotals[s].valor > 0 ? formatCurrency(grandTotals[s].valor) : ''}</td>`).join('')}
-        <td class="text-center mono" style="border-color:#e2e8f0 !important">${formatCurrency(grandTotalValue)}</td>
+      <tr class="pv-totals-value-row">
+        <td colspan="4" class="label-cell">Valor por Numeração (R$)</td>
+        ${sizes.map(s => `<td class="pv-size-cell" style="font-size:8.5px;">${grandTotals[s].valor > 0 ? formatCurrency(grandTotals[s].valor) : '·'}</td>`).join('')}
+        <td class="pv-total-cell" style="color:#7f1d1d !important;">${formatCurrency(grandTotalValue)}</td>
       </tr>
     </tbody>
   </table>
 
-  ${order.notes ? `
-    <div class="notes-section">
-      <div class="notes-title">Observações Complementares</div>
-      <div class="notes-content">${escapeHtml(order.notes)}</div>
+  <!-- Resumo + KPIs -->
+  <div class="pv-summary">
+    ${order.notes ? `
+    <div class="pv-summary__notes">
+      <div class="pv-summary__notes-title">📝 Observações</div>
+      <div class="pv-summary__notes-content">${escapeHtml(order.notes)}</div>
+    </div>` : `
+    <div class="pv-summary__notes" style="background:#fafafa; border-color:#e4e4e7;">
+      <div class="pv-summary__notes-title" style="color:#a1a1aa;">Observações</div>
+      <div class="pv-summary__notes-content" style="color:#a1a1aa; font-style:italic;">Nenhuma observação adicional.</div>
+    </div>`}
+    <div class="pv-summary__kpi">
+      <div class="pv-summary__kpi-label">Total de Pares</div>
+      <div class="pv-summary__kpi-value">${grandTotalPairs}</div>
+      <div class="pv-summary__kpi-sub">${items.length} referência(s)</div>
     </div>
-  ` : ''}
+    <div class="pv-summary__kpi primary">
+      <div class="pv-summary__kpi-label">Valor Total</div>
+      <div class="pv-summary__kpi-value">R$ ${formatCurrency(grandTotalValue)}</div>
+      <div class="pv-summary__kpi-sub">Preço médio R$ ${formatCurrency(avgUnitPrice)}/par</div>
+    </div>
+  </div>
 
-  ${order.commission_value ? `
-    <div style="margin-top:10px; text-align:right; font-size:10px; color:#64748b;">
-      <strong>Comissão estimada:</strong> R$ ${formatCurrency(Number(order.commission_value))}
+  <!-- Assinaturas -->
+  <div class="pv-signatures">
+    <div class="pv-sig-box">
+      <div class="lbl">Cliente</div>
+      <div class="sub">${escapeHtml(order.client_name || '')}</div>
     </div>
-  ` : ''}
+    <div class="pv-sig-box">
+      <div class="lbl">Vendedor / Representante</div>
+      <div class="sub">${escapeHtml(order.representative || '—')}</div>
+    </div>
+  </div>
 
-  <div class="signature-grid">
-    <div class="signature-box">
-      <div class="signature-label">Assinatura do Cliente</div>
-    </div>
-    <div class="signature-box">
-      <div class="signature-label">Assinatura do Vendedor / Representante</div>
-    </div>
+  <div class="pv-footer">
+    Documento gerado pelo Squad Shoes — Sistema de Gestão Comercial · ${new Date().toLocaleString('pt-BR')}
   </div>
 </div>`;
 }
