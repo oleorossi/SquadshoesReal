@@ -629,6 +629,21 @@ export function useCreateSaleOrder() {
         if (insertData[f] === '') insertData[f] = null;
       }
 
+      // Defensivo: packaging_product_id tem FK em products(id), mas estava
+      // chegando aqui com box_type_id (FK em box_types) em alguns fluxos
+      // legados. Verifica existência em products; se inválido, null.
+      if (insertData.packaging_product_id) {
+        const { data: pkg } = await supabase
+          .from('products')
+          .select('id')
+          .eq('id', insertData.packaging_product_id)
+          .maybeSingle();
+        if (!pkg) {
+          console.warn('[useCreateSaleOrder] packaging_product_id inválido (não existe em products), zerando:', insertData.packaging_product_id);
+          insertData.packaging_product_id = null;
+        }
+      }
+
       const { data, error } = await supabase
         .from('sale_orders')
         .insert(insertData)
@@ -1572,6 +1587,21 @@ export function useUpdateSaleOrder() {
       const uuidFields = ['client_id', 'representative_id', 'factoring_config_id', 'packaging_product_id', 'economic_group_id'];
       for (const f of uuidFields) {
         if (updateData[f] === '') updateData[f] = null;
+      }
+
+      // Defensivo: packaging_product_id tem FK em products(id). Em fluxos
+      // legados chegava com box_type_id (FK em box_types) → quebrava o save.
+      // Verifica existência em products; se inválido, null.
+      if (updateData.packaging_product_id) {
+        const { data: pkg } = await supabase
+          .from('products')
+          .select('id')
+          .eq('id', updateData.packaging_product_id)
+          .maybeSingle();
+        if (!pkg) {
+          console.warn('[useUpdateSaleOrder] packaging_product_id inválido, zerando:', updateData.packaging_product_id);
+          updateData.packaging_product_id = null;
+        }
       }
 
       // 0a. Bloqueia edição se alguma OP vinculada estiver em produção avançada.

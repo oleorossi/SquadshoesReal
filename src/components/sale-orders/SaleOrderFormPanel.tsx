@@ -437,16 +437,14 @@ export default function SaleOrderFormPanel({
     staleTime: 30_000,
   });
 
-  useEffect(() => {
-    // Só auto-suggerir quando ainda não há embalagem escolhida
-    if (packagingProductId) return;
-    if (!onPackagingProductChange) return;
-    // Pega o primeiro solado com box_type_id definido
-    const firstBox = soleBoxes.find(s => (s as any).box_type_id);
-    if (firstBox && (firstBox as any).box_type_id) {
-      onPackagingProductChange((firstBox as any).box_type_id);
-    }
-  }, [soleBoxes, packagingProductId, onPackagingProductChange]);
+  // Auto-suggest de embalagem desabilitado: a lógica antiga setava
+  // sale_orders.packaging_product_id com um box_type_id (FK em box_types),
+  // mas a coluna tem FK em products(id) — quebrava o save com
+  // "violates foreign key constraint sale_orders_packaging_product_id_fkey".
+  // box_types e products são tabelas independentes; precisaria do produto
+  // correspondente em products (category='Embalagem') pra setar corretamente.
+  // Sistema já deriva embalagem do solado em outros lugares (PackagingTab/
+  // packaging_configs), então não há perda funcional em deixar isso vazio.
 
   const _selectedPackaging = boxTypes.find(p => p.id === packagingProductId);
 
