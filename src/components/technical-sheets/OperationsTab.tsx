@@ -370,15 +370,25 @@ export function OperationsTab({
             return (
               <div
                 key={s.key}
-                className={`rounded-lg border bg-card p-3 space-y-2 ${!sectorIsActive ? 'opacity-50' : ''}`}
+                className={`rounded-lg p-3 space-y-2 ${
+                  !sectorIsActive
+                    ? 'border-2 border-dashed border-muted-foreground/20 bg-muted/10'
+                    : 'border bg-card'
+                }`}
                 title={!sectorIsActive ? 'Este setor não faz parte do modelo de produção configurado pra esta ficha' : undefined}
               >
                 <div className="flex items-center justify-between">
-                  <Badge className={`text-[10px] ${STAGE_COLORS[s.label] || 'bg-muted text-muted-foreground'}`}>
+                  <Badge className={`text-[10px] ${
+                    !sectorIsActive
+                      ? 'bg-muted/50 text-muted-foreground border-muted-foreground/20'
+                      : STAGE_COLORS[s.label] || 'bg-muted text-muted-foreground'
+                  }`}>
                     {s.label}
                   </Badge>
-                  <span className="text-[9px] uppercase tracking-wide text-muted-foreground">
-                    {!sectorIsActive ? 'não usado' : usingCapacity ? '✓ capacidade' : 'lead time'}
+                  <span className={`text-[9px] uppercase tracking-wide font-bold ${
+                    !sectorIsActive ? 'text-muted-foreground/60' : 'text-muted-foreground'
+                  }`}>
+                    {!sectorIsActive ? '— não usado —' : usingCapacity ? '✓ capacidade' : 'lead time'}
                   </span>
                 </div>
                 <div>

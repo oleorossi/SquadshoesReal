@@ -110,13 +110,13 @@ export function VersionsTab({ sheetId, form, updateField }: {
         <div className="rounded-lg border overflow-hidden">
           <Table>
             <TableHeader>
-              <TableRow className="bg-muted/30">
-                <TableHead className="text-[11px]">Versão</TableHead>
-                <TableHead className="text-[11px]">Data</TableHead>
-                <TableHead className="text-[11px]">Descrição</TableHead>
-                <TableHead className="text-[11px]">Criado por</TableHead>
-                <TableHead className="text-[11px]">Status</TableHead>
-                <TableHead className="text-[11px]">Aprovador</TableHead>
+              <TableRow className="bg-muted/40 border-b-2 border-border">
+                <TableHead className="text-[11px] font-bold uppercase tracking-wider">Versão</TableHead>
+                <TableHead className="text-[11px] font-bold uppercase tracking-wider">Data</TableHead>
+                <TableHead className="text-[11px] font-bold uppercase tracking-wider">Descrição</TableHead>
+                <TableHead className="text-[11px] font-bold uppercase tracking-wider">Criado por</TableHead>
+                <TableHead className="text-[11px] font-bold uppercase tracking-wider">Status</TableHead>
+                <TableHead className="text-[11px] font-bold uppercase tracking-wider">Aprovador</TableHead>
                 <TableHead className="w-20"></TableHead>
               </TableRow>
             </TableHeader>

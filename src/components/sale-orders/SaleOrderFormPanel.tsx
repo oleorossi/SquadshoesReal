@@ -984,7 +984,18 @@ export default function SaleOrderFormPanel({
           const isSameRefAndColor = isSameRef && prevItem?.color === item.color;
           return (
             <div key={`${idx}-${item.reference_id}`}
-              className={isSameRefAndColor && item.color ? 'ml-6 border-l-2 border-primary/30 pl-2' : isSameRef ? 'ml-3 border-l-2 border-muted-foreground/15 pl-2' : ''}>
+              className={
+                isSameRefAndColor && item.color
+                  ? 'ml-6 border-l-4 border-destructive/50 pl-3 bg-destructive/5 rounded-r-md relative'
+                  : isSameRef
+                    ? 'ml-3 border-l-2 border-primary/30 pl-2 bg-primary/5 rounded-r-md'
+                    : ''
+              }>
+              {isSameRefAndColor && item.color && (
+                <div className="absolute -top-2 left-3 px-2 py-0.5 rounded-full bg-destructive text-destructive-foreground text-[9px] font-bold uppercase tracking-wider shadow-sm z-10">
+                  Duplicado · mesma ref+cor
+                </div>
+              )}
               <SaleOrderItemForm
                 item={item}
                 index={idx}

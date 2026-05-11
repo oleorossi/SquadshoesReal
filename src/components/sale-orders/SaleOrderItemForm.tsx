@@ -519,7 +519,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   const isInfantil = selectedRef?.shoe_category === 'Infantil';
 
   return (
-    <div className="rounded-xl border bg-card shadow-sm overflow-hidden mb-4 transition-all hover:border-primary/30">
+    <div className="rounded-lg border bg-card shadow-sm overflow-hidden mb-4 transition-all hover:border-primary/30">
       {/* Item header bar */}
       <div className="flex items-center justify-between bg-muted/20 px-4 py-2 border-b">
         <div className="flex items-center gap-3">
@@ -888,20 +888,28 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         <div>
           {item.observation !== null && item.observation !== undefined ? (
             <div className="space-y-1">
-              <Label className="text-[10px] font-bold text-muted-foreground uppercase">Observação</Label>
-              <textarea
-                value={item.observation || ''}
-                onChange={e => onUpdate(index, 'observation', e.target.value.slice(0, 300))}
-                maxLength={300}
-                rows={2}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                placeholder="Observação para esta referência (aparece nos relatórios)..."
-              />
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-muted-foreground">{(item.observation || '').length}/300</span>
-                <Button type="button" variant="ghost" size="sm" className="h-6 text-[10px] text-muted-foreground" onClick={() => onUpdate(index, 'observation', null)}>
-                  Remover
-                </Button>
+                <Label className="text-[10px] font-bold text-muted-foreground uppercase">Observação</Label>
+                <button
+                  type="button"
+                  onClick={() => onUpdate(index, 'observation', null)}
+                  className="text-[10px] text-muted-foreground hover:text-destructive underline underline-offset-2"
+                >
+                  remover
+                </button>
+              </div>
+              <div className="relative">
+                <textarea
+                  value={item.observation || ''}
+                  onChange={e => onUpdate(index, 'observation', e.target.value.slice(0, 300))}
+                  maxLength={300}
+                  rows={2}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 pr-14 text-xs ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+                  placeholder="Observação para esta referência (aparece nos relatórios)..."
+                />
+                <span className="absolute bottom-1.5 right-2 text-[9px] text-muted-foreground/70 font-mono bg-background/80 px-1 rounded pointer-events-none">
+                  {(item.observation || '').length}/300
+                </span>
               </div>
             </div>
           ) : (

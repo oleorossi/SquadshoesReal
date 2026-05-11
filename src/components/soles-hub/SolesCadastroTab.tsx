@@ -32,6 +32,28 @@ export default function SolesCadastroTab({ sole }: Props) {
   // Conjugações deste solado (ou do grupo, se group_id)
   const groupId = sole.group_id;
 
+  // Sugestões de cor: histórico de cores já cadastradas em produtos de solado.
+  // Atalho via datalist nativo do browser — evita poluição de dados
+  // ("Preto" vs "PRETO" vs "Preto Fosco" criando 3 valores diferentes).
+  const { data: soleColorSuggestions = [] } = useQuery({
+    queryKey: ['sole_color_suggestions'],
+    queryFn: async () => {
+      const { data } = await (supabase as any)
+        .from('products')
+        .select('color')
+        .eq('category', 'Solado')
+        .not('color', 'is', null)
+        .neq('color', '')
+        .limit(500);
+      const set = new Set<string>();
+      for (const r of (data ?? []) as Array<{ color: string }>) {
+        const c = (r.color ?? '').trim();
+        if (c) set.add(c);
+      }
+      return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    },
+  });
+
   const update = useMutation({
     mutationFn: async (patch: Partial<SoleProduct>) => {
       const { error } = await supabase.from('products').update(patch as any).eq('id', sole.id);
@@ -131,7 +153,11 @@ export default function SolesCadastroTab({ sole }: Props) {
                 onChange={e => setForm(f => ({ ...f, color: e.target.value }))}
                 disabled={!editing}
                 placeholder="—"
+                list="sole-colors-suggestions"
               />
+              <datalist id="sole-colors-suggestions">
+                {soleColorSuggestions.map(c => <option key={c} value={c} />)}
+              </datalist>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs flex items-center gap-1.5">

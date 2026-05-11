@@ -103,15 +103,17 @@ import { supabase } from '@/integrations/supabase/client';
       // Audit visual F1+F11: toast persistente com botão de retry. Antes
       // sumia em 4-6s e usuário não conseguia agir; agora fica até clicar
       // (duration: Infinity) e oferece retry inline.
-      toast.error(
-        isTimeout ? 'Tempo esgotado pra sugerir NCM' : 'Falha ao sugerir NCM',
+      // Timeout usa warning (amber, visível em dark) em vez de error (rosa).
+      const toastFn = isTimeout ? toast.warning : toast.error;
+      toastFn(
+        isTimeout ? '⏱ Tempo esgotado pra sugerir NCM' : 'Falha ao sugerir NCM',
         {
           description: isTimeout
             ? 'O serviço de IA não respondeu em 8s. Tente novamente ou preencha manualmente.'
             : err?.message ?? 'Tente novamente em alguns segundos.',
           duration: Infinity,
           action: {
-            label: 'Tentar de novo',
+            label: '↻ Tentar de novo',
             onClick: () => handleSuggestNcm(),
           },
         }

@@ -616,7 +616,7 @@ export function MasterVariantDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-4xl max-h-[92vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-4xl max-h-[92vh] overflow-y-auto flex flex-col">
           <DialogHeader>
             <DialogTitle className="text-lg font-bold flex items-center gap-2">
               <Package className="h-5 w-5 text-primary" />
@@ -779,8 +779,8 @@ export function MasterVariantDialog({
                 <div className="text-sm text-muted-foreground p-6 text-center">Carregando…</div>
               ) : (
                 <div className="flex flex-col space-y-4">
-                  <div className="overflow-y-auto pr-4 max-h-[calc(92vh-220px)]">
-                    <div className="space-y-6 pb-4">
+                  <div className="overflow-y-auto pr-2 sm:pr-4 max-h-[calc(92vh-260px)]">
+                    <div className="space-y-6 pb-32 sm:pb-8">
                       <div className="rounded-md border-l-4 border-l-primary bg-primary/5 p-3 text-xs text-muted-foreground">
                         Os campos abaixo são <strong>compartilhados por todas as variantes</strong>. Salvar aqui aplica
                         em <strong>{variants.length} variante{variants.length === 1 ? '' : 's'}</strong> de uma vez.

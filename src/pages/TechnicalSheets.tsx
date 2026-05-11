@@ -1693,7 +1693,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
 
 
         {/* TAB: Identificação */}
-        <TabsContent value="id" className="mt-4 space-y-4">
+        <TabsContent value="id" className="mt-4 space-y-6">
           <SectionTitle>Identificação do Produto</SectionTitle>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             <FieldInput label="SKU / Código (modelo_id)" value={form.code} onChange={v => updateField('code', v)} placeholder="MON-893767-003" mono />
@@ -1819,7 +1819,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
 
 
         {/* TAB: Engenharia (BOM, Consumo & Custos) */}
-        <TabsContent value="engineering" className="mt-4 space-y-8">
+        <TabsContent value="engineering" className="mt-4 space-y-6">
 
           {/* ═══ SECTION 0: Grupo de Solado (driver técnico central) ═══ */}
           <div className="rounded-lg border border-border/70 bg-muted/10 p-4 space-y-4">
@@ -2811,7 +2811,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         </TabsContent>
 
         {/* TAB: Custos */}
-        <TabsContent value="costs" className="mt-4">
+        <TabsContent value="costs" className="mt-4 space-y-6">
           <CostsTab sheetId={sheet.id} form={form} groups={groups || []} />
         </TabsContent>
 

@@ -15,7 +15,7 @@ import { useProducts } from '@/hooks/useProducts';
 import { useSoleConjugations } from '@/hooks/useSoleConjugations';
 import { getSoleModelName } from '@/lib/utils';
 import { toast } from 'sonner';
-import { Search, Plus, Package, Palette, Info, Link2 } from 'lucide-react';
+import { Search, Plus, Package, Palette, Info, Link2, Check } from 'lucide-react';
 
 interface SoladoGradeDialogProps {
   open: boolean;
@@ -153,8 +153,9 @@ function ColorGradeEditor({
                   <NumberInput
                     min={0}
                     step="1"
+                    decimals={0}
                     value={curVal}
-                    onChange={v => updateKey(key, v)}
+                    onChange={v => updateKey(key, Math.max(0, Math.floor(Number(v) || 0)))}
                     className="h-9 text-sm text-center px-1"
                     placeholder="0"
                   />
@@ -204,11 +205,15 @@ function AddToGroupDialog({ open, onOpenChange, groupId, groupName }: {
     }
   }, [open, queryClient]);
 
-  const available = useMemo(() => {
+  const { available, alreadyInGroup } = useMemo(() => {
     const q = search.toLowerCase();
-    return allProducts
-      .filter(p => p.group_id !== groupId && p.active)
-      .filter(p => !q || p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || p.category.toLowerCase().includes(q));
+    const matchesSearch = (p: any) =>
+      !q || p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || p.category.toLowerCase().includes(q);
+    const active = allProducts.filter(p => p.active && matchesSearch(p));
+    return {
+      available: active.filter(p => p.group_id !== groupId),
+      alreadyInGroup: groupId ? active.filter(p => p.group_id === groupId) : [],
+    };
   }, [allProducts, groupId, search]);
 
   const toggle = (id: string) => {
@@ -255,33 +260,64 @@ function AddToGroupDialog({ open, onOpenChange, groupId, groupName }: {
         </div>
 
         <ScrollArea className="flex-1 min-h-0 max-h-[400px] -mx-6 px-6">
-          {available.length === 0 ? (
+          {available.length === 0 && alreadyInGroup.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Package className="h-8 w-8 mx-auto mb-2 opacity-50" />
               <p className="text-sm">Nenhum item disponível</p>
             </div>
           ) : (
-            <div className="space-y-1">
-              {available.map(p => (
-                <label
-                  key={p.id}
-                  className={`flex items-center gap-3 p-2 rounded-md cursor-pointer hover:bg-accent transition-colors ${selected.has(p.id) ? 'bg-primary/5 border border-primary/20' : 'border border-transparent'}`}
-                >
-                  <Checkbox checked={selected.has(p.id)} onCheckedChange={() => toggle(p.id)} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{p.name}</p>
-                    <div className="flex gap-2 text-xs text-muted-foreground">
-                      <span>{p.sku}</span>
-                      <span>•</span>
-                      <span>{p.category}</span>
-                      {p.color && <><span>•</span><span>{p.color}</span></>}
+            <div className="space-y-3">
+              {available.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-1 pb-0.5">
+                    Disponíveis ({available.length})
+                  </p>
+                  {available.map(p => (
+                    <label
+                      key={p.id}
+                      className={`flex items-center gap-3 p-2 rounded-md cursor-pointer hover:bg-accent transition-colors ${selected.has(p.id) ? 'bg-primary/5 border border-primary/20' : 'border border-transparent'}`}
+                    >
+                      <Checkbox checked={selected.has(p.id)} onCheckedChange={() => toggle(p.id)} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{p.name}</p>
+                        <div className="flex gap-2 text-xs text-muted-foreground">
+                          <span>{p.sku}</span>
+                          <span>•</span>
+                          <span>{p.category}</span>
+                          {p.color && <><span>•</span><span>{p.color}</span></>}
+                        </div>
+                      </div>
+                      <Badge variant="outline" className="text-xs shrink-0">
+                        {Number(p.quantity).toLocaleString('pt-BR')} {p.unit}
+                      </Badge>
+                    </label>
+                  ))}
+                </div>
+              )}
+              {alreadyInGroup.length > 0 && (
+                <div className="space-y-1 pt-2 border-t border-border/50">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-1 pb-0.5">
+                    Já no grupo ({alreadyInGroup.length})
+                  </p>
+                  {alreadyInGroup.map(p => (
+                    <div
+                      key={p.id}
+                      className="flex items-center gap-3 p-2 rounded-md opacity-60 border border-transparent"
+                      title="Já pertence a este grupo"
+                    >
+                      <Check className="h-4 w-4 text-emerald-600 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate line-through decoration-muted-foreground">{p.name}</p>
+                        <div className="flex gap-2 text-xs text-muted-foreground">
+                          <span>{p.sku}</span>
+                          {p.color && <><span>•</span><span>{p.color}</span></>}
+                        </div>
+                      </div>
+                      <Badge variant="secondary" className="text-[10px] shrink-0">no grupo</Badge>
                     </div>
-                  </div>
-                  <Badge variant="outline" className="text-xs shrink-0">
-                    {Number(p.quantity).toLocaleString('pt-BR')} {p.unit}
-                  </Badge>
-                </label>
-              ))}
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </ScrollArea>

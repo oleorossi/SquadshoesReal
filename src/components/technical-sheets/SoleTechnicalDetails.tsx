@@ -712,12 +712,14 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                 return (
                   <span
                     key={s}
-                    className={`inline-flex items-center gap-0.5 rounded px-2 py-0.5 text-xs font-mono border ${
-                      conjKey ? 'bg-primary/10 border-primary/40 text-primary' : 'bg-background border-border'
+                    className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-mono border ${
+                      conjKey
+                        ? 'bg-primary/15 border-primary/50 text-primary font-bold'
+                        : 'bg-background border-border'
                     }`}
-                    title={conjKey ? `Conjugada em "${conjKey}"` : 'Numeração individual'}
+                    title={conjKey ? `Numeração ${s} faz parte da conjugada "${conjKey}"` : 'Numeração individual'}
                   >
-                    {conjKey && <Link2 className="h-3 w-3" />}
+                    {conjKey && <Link2 className="h-3.5 w-3.5" />}
                     {s}
                     <button onClick={() => removeSize(s)} className="ml-0.5 text-muted-foreground hover:text-destructive">
                       <X className="h-3 w-3" />
@@ -965,7 +967,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                          e dark:text-blue-300 — paleta de alerta visual mantida. */
                       className={
                         row.isConjugated
-                          ? 'bg-blue-500/5 dark:bg-blue-500/15 hover:bg-blue-500/10 dark:hover:bg-blue-500/25 border-l-2 border-l-blue-500/40'
+                          ? 'bg-blue-500/5 dark:bg-blue-500/15 hover:bg-blue-500/10 dark:hover:bg-blue-500/25 border-l-2 border-l-blue-500/40 focus-within:bg-blue-500/15 dark:focus-within:bg-blue-500/30 focus-within:ring-2 focus-within:ring-inset focus-within:ring-blue-500/50 transition-colors'
                           : 'hover:bg-muted/30'
                       }
                     >
