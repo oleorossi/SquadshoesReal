@@ -1,9 +1,5 @@
 {
   "permissions": {
-    "defaultMode": "acceptEdits",
-    "additionalDirectories": [
-      "/tmp"
-    ],
     "allow": [
       "Read(*)",
       "Edit(*)",
@@ -77,7 +73,8 @@
       "Bash(docker-compose *)",
       "Bash(until *)",
       "Bash(while *)",
-      "mcp__claude_ai_Supabase__*"
+      "mcp__claude_ai_Supabase__*",
+      "Bash(rm src/../supabase/migrations/20260620200000_audit-view-ficha-sole-range-mismatch.sql 2>/dev/null *)"
     ],
     "deny": [
       "Bash(rm -rf /)",
@@ -97,6 +94,11 @@
       "Bash(mkfs *)",
       "Bash(dd if=*of=/dev/*)",
       "Bash(rm -rf /Users*)"
+    ],
+    "defaultMode": "acceptEdits",
+    "additionalDirectories": [
+      "/tmp",
+      "/Users/leonardomonnerat/Downloads/CODE/supabase/migrations"
     ]
   }
 }

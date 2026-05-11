@@ -1889,11 +1889,36 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                    updateField('sole_material', productName);
                    updateField('sole_group_id', groupId);
                    autoFillSole(productName);
+                   // Auto-sync ficha.sizes a partir do range agregado (MIN/MAX)
+                   // das variantes do solado — mesma lógica do trigger DB
+                   // tg_sync_ficha_sizes_from_sole. Regra de produto:
+                   // solado é fonte da verdade do range físico produzível.
+                   if (groupId && products && products.length > 0) {
+                     const variants = products.filter((p: any) =>
+                       p.group_id === groupId && p.category === 'Solado' && p.stock_grade);
+                     let minFrom: number | null = null;
+                     let maxTo: number | null = null;
+                     for (const v of variants) {
+                       const g = (v as any).stock_grade as Record<string, any>;
+                       const sf = g?._size_from != null ? Number(g._size_from) : null;
+                       const st = g?._size_to != null ? Number(g._size_to) : null;
+                       if (sf != null) minFrom = minFrom == null ? sf : Math.min(minFrom, sf);
+                       if (st != null) maxTo = maxTo == null ? st : Math.max(maxTo, st);
+                     }
+                     if (minFrom != null && maxTo != null && minFrom <= maxTo) {
+                       const newSizes = `${minFrom}-${maxTo}`;
+                       if (newSizes !== form.sizes) {
+                         updateField('sizes', newSizes);
+                         flashField('sizes');
+                         toast.success(`Grade atualizada para ${newSizes} (faixa do solado)`);
+                       }
+                     }
+                   }
                    if (productId) {
                      // Check if sole is fachetado
                      const soleProd = products.find(p => p.id === productId);
                      setIsSoleFachetado(!!soleProd?.is_fachetado);
- 
+
                      // Auto-fill lining/insole specs from sole technical specs
                      autoFillFromSoleSpecs(productId);
                      // Auto-fill standard items like glue/EVA/thread

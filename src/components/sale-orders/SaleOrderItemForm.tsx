@@ -110,23 +110,32 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   });
 
   const { data: soleSizeRange } = useQuery({
-    queryKey: ['sole_size_range', sheetSpecs?.sole_group_id],
+    queryKey: ['sole_size_range_agg', sheetSpecs?.sole_group_id],
     enabled: !!sheetSpecs?.sole_group_id,
     queryFn: async () => {
+      // Agrega MIN(_size_from) / MAX(_size_to) entre TODAS as variantes
+      // de cor do mesmo group de solado — espelha o trigger DB
+      // tg_sync_ficha_sizes_from_sole. Antes pegava LIMIT 1 arbitrário.
       const { data } = await supabase
         .from('products')
         .select('stock_grade')
         .eq('group_id', sheetSpecs!.sole_group_id!)
+        .eq('category', 'Solado')
         .eq('active', true)
-        .not('stock_grade', 'is', null)
-        .limit(1)
-        .maybeSingle();
-      if (!data?.stock_grade) return null;
-      const g = data.stock_grade as Record<string, any>;
-      const sf = g._size_from != null ? Number(g._size_from) : null;
-      const st = g._size_to != null ? Number(g._size_to) : null;
-      if (sf == null || st == null || sf > st) return null;
-      return { sizeFrom: sf, sizeTo: st };
+        .not('stock_grade', 'is', null);
+      if (!data || data.length === 0) return null;
+      let minFrom: number | null = null;
+      let maxTo: number | null = null;
+      for (const row of data) {
+        const g = (row as any).stock_grade as Record<string, any> | null;
+        if (!g) continue;
+        const sf = g._size_from != null ? Number(g._size_from) : null;
+        const st = g._size_to != null ? Number(g._size_to) : null;
+        if (sf != null) minFrom = minFrom == null ? sf : Math.min(minFrom, sf);
+        if (st != null) maxTo = maxTo == null ? st : Math.max(maxTo, st);
+      }
+      if (minFrom == null || maxTo == null || minFrom > maxTo) return null;
+      return { sizeFrom: minFrom, sizeTo: maxTo };
     },
     staleTime: 5 * 60_000,
   });
@@ -145,41 +154,29 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     staleTime: 5 * 60_000,
   });
 
-  // Grade size list — RANGE vem da FICHA TÉCNICA (sizes), conjugações vêm do SOLADO.
+  // Grade size list — RANGE vem do SOLADO (fonte da verdade física).
   //
-  // Decisão (2026-05): ficha.sizes é a fonte da verdade pra range. O range
-  // do solado (_size_from/_size_to) podia estar incompleto (ex.: solado 238
-  // cadastrado 35-38, mas ficha DS05 vende 34-40) — antes a UI usava range do
-  // solado e o user perdia 34/39/40. Agora respeitamos a ficha SEMPRE, e o
-  // solado só contribui com (1) conjugações configuradas e (2) info de estoque
-  // visível em outras telas (Solados Hub). Tamanhos da ficha que não existem
-  // no solado aparecem normalmente — fica visível que falta cadastrar.
+  // Decisão (2026-05): o solado define quais tamanhos podem ser produzidos.
+  // Ficha técnica e PV refletem isso. Trigger no DB sincroniza ficha.sizes
+  // automaticamente quando sole_group_id muda. Aqui usamos:
+  //   1. soleSizeRange (stock_grade._size_from/_to)
+  //   2. fallback: conjugações
+  //   3. último fallback: ficha.sizes (caso solado não tenha range cadastrado)
   const SIZES = useMemo((): string[] => {
-    const fichaSizes = parseSizeRange(selectedRef?.sizes, selectedRef?.shoe_category);
+    let sf: number | null = soleSizeRange?.sizeFrom ?? null;
+    let st: number | null = soleSizeRange?.sizeTo ?? null;
 
-    // Determina range: prioriza ficha; se ficha não tem range explícito, cai
-    // pra range do solado, depois pra conjugações.
-    let sf: number | null = null;
-    let st: number | null = null;
-
-    if (fichaSizes.length > 0) {
-      sf = fichaSizes[0];
-      st = fichaSizes[fichaSizes.length - 1];
-    } else if (soleSizeRange?.sizeFrom != null && soleSizeRange?.sizeTo != null) {
-      sf = soleSizeRange.sizeFrom;
-      st = soleSizeRange.sizeTo;
-    } else if (soleConjugations.length > 0) {
+    if ((sf == null || st == null) && soleConjugations.length > 0) {
       const allSizes = soleConjugations.flatMap(c => c.sizes);
       if (allSizes.length > 0) {
-        sf = Math.min(...allSizes);
-        st = Math.max(...allSizes);
+        sf = sf ?? Math.min(...allSizes);
+        st = st ?? Math.max(...allSizes);
       }
     }
 
     let baseSizes: string[];
     if (sf != null && st != null && sf <= st) {
       if (soleConjugations.length > 0) {
-        // Aplica conjugações ao range da ficha
         const result: string[] = [];
         const added = new Set<string>();
         for (let s = sf; s <= st; s++) {
@@ -195,8 +192,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         baseSizes = Array.from({ length: st - sf + 1 }, (_, i) => String(sf! + i));
       }
     } else {
-      // Último fallback: vai por SHOE_CATEGORY (Adulto 34-40 / Infantil 25-36)
-      baseSizes = parseSizeRange(undefined, selectedRef?.shoe_category).map(String);
+      baseSizes = parseSizeRange(selectedRef?.sizes, selectedRef?.shoe_category).map(String);
     }
 
     // Audit visual #15 (CRÍTICO): preservar tamanhos do grade original que
@@ -230,15 +226,20 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     return merged;
   }, [soleSizeRange, soleConjugations, selectedRef?.sizes, selectedRef?.shoe_category, grade]);
 
-  // Set de keys que vêm do grade salvo mas NÃO fazem parte do range atual da
-  // FICHA. Usado pra marcar visualmente esses inputs (ícone de aviso) — pode
-  // ser que o range da ficha foi reduzido depois do PV criado (tamanhos
-  // "órfãos" permanecem visíveis pra não perder a distribuição original).
+  // Set de keys que vêm do grade salvo mas NÃO fazem parte do range atual do
+  // SOLADO. Pode acontecer se o solado teve seu range alterado depois do PV
+  // ser criado — preservamos visualmente pra não perder a distribuição original.
   const orphanSizes = useMemo(() => {
-    const fichaSizes = parseSizeRange(selectedRef?.sizes, selectedRef?.shoe_category);
-    if (fichaSizes.length === 0) return new Set<string>();
-    const sf = fichaSizes[0];
-    const st = fichaSizes[fichaSizes.length - 1];
+    let sf = soleSizeRange?.sizeFrom;
+    let st = soleSizeRange?.sizeTo;
+    if ((sf == null || st == null) && soleConjugations.length > 0) {
+      const allSizes = soleConjugations.flatMap(c => c.sizes);
+      if (allSizes.length > 0) {
+        sf = sf ?? Math.min(...allSizes);
+        st = st ?? Math.max(...allSizes);
+      }
+    }
+    if (sf == null || st == null) return new Set<string>();
     const baseRangeKeys = new Set<string>();
     if (soleConjugations.length > 0) {
       for (let s = sf; s <= st; s++) {
@@ -252,7 +253,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     return new Set(
       Object.keys(grade || {}).filter(k => Number(grade[k]) > 0 && !baseRangeKeys.has(k)),
     );
-  }, [selectedRef?.sizes, selectedRef?.shoe_category, soleConjugations, grade]);
+  }, [soleSizeRange, soleConjugations, grade]);
 
   // colorVariants removido — variante de cor sai do escopo da ficha técnica.
   // As cores disponíveis vêm exclusivamente das variantes de material
@@ -783,30 +784,6 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             </div>
           </div>
           <div className="p-3">
-            {/* Alerta de mismatch: ficha vende uma faixa de tamanhos que o
-                solado vinculado não cobre. UI continua mostrando a faixa
-                da ficha (decisão de 2026-05), mas avisa o operador pra que
-                ele saiba que pode faltar solado físico em alguns tamanhos. */}
-            {soleSizeRange?.sizeFrom != null && soleSizeRange?.sizeTo != null && (() => {
-              const fichaSizes = parseSizeRange(selectedRef?.sizes, selectedRef?.shoe_category);
-              if (fichaSizes.length === 0) return null;
-              const fichaFrom = fichaSizes[0];
-              const fichaTo = fichaSizes[fichaSizes.length - 1];
-              const missingBelow = Math.max(0, soleSizeRange.sizeFrom - fichaFrom);
-              const missingAbove = Math.max(0, fichaTo - soleSizeRange.sizeTo);
-              if (missingBelow === 0 && missingAbove === 0) return null;
-              return (
-                <div className="mb-2 flex items-start gap-2 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-md p-2">
-                  <span className="text-amber-600 dark:text-amber-400 mt-0.5">⚠</span>
-                  <span>
-                    Ficha declara <strong>{fichaFrom}–{fichaTo}</strong> mas solado vinculado só tem{' '}
-                    <strong>{soleSizeRange.sizeFrom}–{soleSizeRange.sizeTo}</strong>.
-                    Mostrando o range da ficha — verifique se o solado precisa ser atualizado
-                    em <em>Solados → Cadastro</em>.
-                  </span>
-                </div>
-              );
-            })()}
             <div className="flex gap-1.5 justify-center flex-wrap">
               {SIZES.map(size => {
                 const val = grade[size] || 0;
