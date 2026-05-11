@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,15 +9,17 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   AlertTriangle, Activity, Truck, Loader2, Send, CheckCircle2,
-  Calendar, TrendingUp, ChevronRight, ArrowRight,
+  Calendar, TrendingUp, ArrowRight, Settings, Bell, Clock,
+  Award, AlertCircle, BellRing, X,
 } from 'lucide-react';
-import { format, parseISO, addWeeks, startOfWeek, getISOWeek, getISOWeekYear } from 'date-fns';
+import { format, parseISO, addWeeks, startOfWeek, getISOWeek, getISOWeekYear, differenceInBusinessDays, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 
-// ─── Setores monitorados (canon = ordem real do fluxo) ─────────────────────
+// ─── Setores monitorados ───────────────────────────────────────────────────
 
 type MonitoredSector = 'Corte Palmilha' | 'Corte Forração' | 'Aviamento' | 'Costura';
 
@@ -28,7 +30,6 @@ const MONITORED_SECTORS: { key: MonitoredSector; capCol: string; label: string }
   { key: 'Costura',        capCol: 'costura_capacity_per_day',  label: 'Costura' },
 ];
 
-// Mapeamento sector → coluna de data_inicio na view purchase_projection_timeline
 const SECTOR_TO_DATE_COLUMN: Record<MonitoredSector, string> = {
   'Corte Palmilha': 'data_inicio_palmilha',
   'Corte Forração': 'data_inicio_corte',
@@ -47,13 +48,8 @@ const WEEKS_TO_SHOW = 8;
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-function isoWeekKey(d: Date): string {
-  return `${getISOWeekYear(d)}-W${String(getISOWeek(d)).padStart(2, '0')}`;
-}
-
-function weekHeader(d: Date): string {
-  return `S${getISOWeek(d)}`;
-}
+const isoWeekKey = (d: Date) => `${getISOWeekYear(d)}-W${String(getISOWeek(d)).padStart(2, '0')}`;
+const weekHeader = (d: Date) => `S${getISOWeek(d)}`;
 
 function loadColor(pct: number): string {
   if (pct > 110) return 'bg-destructive/40 text-destructive-foreground border-destructive/60 font-bold';
@@ -71,6 +67,7 @@ interface TimelineRow {
   pedido_ref: string;
   sale_order_id: string;
   referencia_nome: string;
+  reference_id: string;
   op_quantity: number;
   order_status: string;
   data_entrega_cliente: string;
@@ -84,14 +81,26 @@ interface TimelineRow {
   lead_time_costura_dias: number;
 }
 
+interface SheetCapacityRow {
+  id: string;
+  name: string;
+  sewing_capacity_per_day: number | null;
+  cutting_capacity_per_day: number | null;
+  mesa_daily_capacity: number | null;
+  costura_capacity_per_day: number | null;
+}
+
 interface BottleneckRow {
   orderId: string;
   orderNumber: string;
   reference: string;
+  sheetId: string;
   quantity: number;
   sector: MonitoredSector;
   weekKey: string;
   weekLabel: string;
+  fichaCapacity: number;
+  dailyNeeded: number;
   loadPct: number;
   reason: string;
 }
@@ -111,19 +120,22 @@ interface HeatmapCell {
 export default function ProductionControlCenter() {
   const [outsourceTarget, setOutsourceTarget] = useState<BottleneckRow | null>(null);
   const [confirmDeadlineFor, setConfirmDeadlineFor] = useState<any>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
+  const qc = useQueryClient();
+
+  // ── Timeline (OPs ativas com datas planejadas e refs)
   const { data: timelineRows = [], isLoading: loadingTimeline } = useQuery({
     queryKey: ['production_control_timeline'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('purchase_projection_timeline' as any)
         .select(
-          'order_id, pedido_ref, sale_order_id, referencia_nome, op_quantity, order_status, data_entrega_cliente, ' +
+          'order_id, pedido_ref, sale_order_id, referencia_nome, reference_id, op_quantity, order_status, data_entrega_cliente, ' +
           'data_inicio_palmilha, data_inicio_corte, data_inicio_mesa, data_inicio_costura, ' +
           'lead_time_palmilha_dias, lead_time_corte_dias, lead_time_mesa_dias, lead_time_costura_dias'
         );
       if (error) throw error;
-      // Dedup por order_id (view tem 1 row por (OP × material))
       const seen = new Set<string>();
       const rows: TimelineRow[] = [];
       for (const r of (data || []) as unknown as TimelineRow[]) {
@@ -135,30 +147,80 @@ export default function ProductionControlCenter() {
     },
   });
 
-  // Capacidade global por setor (média ponderada das fichas técnicas ativas)
-  const { data: capacities = {} as Record<MonitoredSector, number>, isLoading: loadingCaps } = useQuery({
-    queryKey: ['sector_capacities_avg'],
+  // ── Capacidades por ficha (per-OP usa sua própria ficha)
+  const { data: sheetCapacities = [] as SheetCapacityRow[], isLoading: loadingCaps } = useQuery({
+    queryKey: ['sheets_capacities'],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await (supabase as any)
         .from('technical_sheets')
-        .select('sewing_capacity_per_day, cutting_capacity_per_day, mesa_daily_capacity, costura_capacity_per_day')
-        .eq('active', true)
-        .limit(2000);
-      const rows = (data || []) as any[];
-      const result: Record<MonitoredSector, number> = {
-        'Corte Palmilha': 0, 'Corte Forração': 0, 'Aviamento': 0, 'Costura': 0,
-      };
-      for (const s of MONITORED_SECTORS) {
-        const vals = rows.map(r => Number(r[s.capCol]) || 0).filter(v => v > 0);
-        result[s.key] = vals.length > 0
-          ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length)
-          : 300; // fallback razoável
-      }
-      return result;
+        .select('id, name, sewing_capacity_per_day, cutting_capacity_per_day, mesa_daily_capacity, costura_capacity_per_day')
+        .limit(5000);
+      if (error) throw error;
+      return data || [];
     },
   });
 
-  // OSes terceirizadas ativas
+  // Lookup map id → ficha
+  const sheetById = useMemo(() => {
+    const m = new Map<string, SheetCapacityRow>();
+    for (const s of sheetCapacities) m.set(s.id, s);
+    return m;
+  }, [sheetCapacities]);
+
+  // Capacidade média (fallback pra heatmap aggregate)
+  const avgCapacities = useMemo(() => {
+    const result: Record<MonitoredSector, number> = {
+      'Corte Palmilha': 0, 'Corte Forração': 0, 'Aviamento': 0, 'Costura': 0,
+    };
+    for (const s of MONITORED_SECTORS) {
+      const col = s.capCol as keyof SheetCapacityRow;
+      const vals = sheetCapacities
+        .map(r => Number(r[col] as any) || 0)
+        .filter(v => v > 0);
+      result[s.key] = vals.length > 0
+        ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length)
+        : 300;
+    }
+    return result;
+  }, [sheetCapacities]);
+
+  // ── Alertas em aberto (assinatura realtime)
+  const { data: activeAlerts = [] } = useQuery({
+    queryKey: ['production_alerts_active'],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('production_alerts')
+        .select('*')
+        .is('dismissed_at', null)
+        .order('severity', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Subscribe em realtime — quando chega novo alert, toast + refetch
+  useEffect(() => {
+    const channel = (supabase as any)
+      .channel('production-alerts-realtime')
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'production_alerts' },
+        (payload: any) => {
+          const a = payload.new;
+          if (a?.severity === 'critical') {
+            toast.error(a.title, { description: a.body, duration: 8000 });
+          } else {
+            toast.warning(a.title, { description: a.body, duration: 6000 });
+          }
+          qc.invalidateQueries({ queryKey: ['production_alerts_active'] });
+        },
+      )
+      .subscribe();
+    return () => { (supabase as any).removeChannel(channel); };
+  }, [qc]);
+
+  // ── OSes terceirizadas ativas
   const { data: activeOutsourceOses = [] } = useQuery({
     queryKey: ['active_outsource_oses'],
     queryFn: async () => {
@@ -174,13 +236,13 @@ export default function ProductionControlCenter() {
     },
   });
 
-  // Gera grade de semanas
+  // ── Semanas
   const weeks = useMemo(() => {
     const start = startOfWeek(new Date(), { weekStartsOn: 1 });
     return Array.from({ length: WEEKS_TO_SHOW }, (_, i) => addWeeks(start, i));
   }, []);
 
-  // Heatmap: pra cada (semana, setor) agrega pares planejados
+  // ── Heatmap (aggregate) + Gargalos (per-ficha)
   const { heatmap, bottlenecks } = useMemo(() => {
     const cells = new Map<string, HeatmapCell>();
     const initCell = (weekKey: string, weekLabel: string, sector: MonitoredSector) => {
@@ -189,7 +251,7 @@ export default function ProductionControlCenter() {
         cells.set(id, {
           weekKey, weekLabel, sector,
           plannedPairs: 0,
-          capacityPairs: (capacities[sector] || 300) * 5, // 5 dias úteis
+          capacityPairs: (avgCapacities[sector] || 300) * 5,
           loadPct: 0,
           orderIds: [],
         });
@@ -203,22 +265,53 @@ export default function ProductionControlCenter() {
       }
     }
 
+    const perOpBottlenecks: BottleneckRow[] = [];
+
     for (const row of timelineRows) {
       const status = (row.order_status || '').toLowerCase();
-      if (['finalizado', 'faturado', 'cancelado', 'concluido', 'concluído'].includes(status)) continue;
+      if (['finalizado', 'faturado', 'cancelado', 'concluido', 'concluído', 'pronto'].includes(status)) continue;
+
+      const ficha = sheetById.get(row.reference_id);
+
       for (const s of MONITORED_SECTORS) {
         const dateCol = SECTOR_TO_DATE_COLUMN[s.key];
         const leadCol = SECTOR_TO_LEAD_COLUMN[s.key];
         const startDate = (row as any)[dateCol] as string | null;
         const leadDays = Number((row as any)[leadCol]) || 0;
         if (!startDate || leadDays <= 0) continue;
+
         try {
           const d = parseISO(startDate);
           const wk = isoWeekKey(d);
           const cell = cells.get(`${wk}:${s.key}`);
-          if (!cell) continue; // fora da janela visualizada
-          cell.plannedPairs += row.op_quantity;
-          cell.orderIds.push(row.order_id);
+          if (cell) {
+            cell.plannedPairs += row.op_quantity;
+            cell.orderIds.push(row.order_id);
+          }
+
+          // Per-ficha bottleneck check: daily_needed vs ficha_capacity
+          const fichaCapacity = ficha ? Number((ficha as any)[s.capCol]) || avgCapacities[s.key] : avgCapacities[s.key];
+          if (fichaCapacity <= 0) continue;
+          const dailyNeeded = row.op_quantity / leadDays;
+          const loadPct = (dailyNeeded / fichaCapacity) * 100;
+          if (loadPct > 100 && cell) {
+            perOpBottlenecks.push({
+              orderId: row.order_id,
+              orderNumber: row.pedido_ref,
+              reference: row.referencia_nome,
+              sheetId: row.reference_id,
+              quantity: row.op_quantity,
+              sector: s.key,
+              weekKey: cell.weekKey,
+              weekLabel: cell.weekLabel,
+              fichaCapacity,
+              dailyNeeded,
+              loadPct,
+              reason: loadPct > 130
+                ? `Ficha precisa de ${Math.round(dailyNeeded)} pares/dia mas só faz ${Math.round(fichaCapacity)}/dia (${Math.round(loadPct)}%).`
+                : `Setor próximo do limite: ${Math.round(dailyNeeded)}/${Math.round(fichaCapacity)} pares/dia (${Math.round(loadPct)}%).`,
+            });
+          }
         } catch {/* ignore */}
       }
     }
@@ -228,237 +321,634 @@ export default function ProductionControlCenter() {
       loadPct: c.capacityPairs > 0 ? (c.plannedPairs / c.capacityPairs) * 100 : 0,
     }));
 
-    // Gargalos = OPs em células > 100%
-    const overloadedCells = heatmap.filter(c => c.loadPct > 100);
-    const bottlenecks: BottleneckRow[] = [];
-    for (const cell of overloadedCells) {
-      for (const orderId of cell.orderIds) {
-        const row = timelineRows.find(r => r.order_id === orderId);
-        if (!row) continue;
-        bottlenecks.push({
-          orderId,
-          orderNumber: row.pedido_ref,
-          reference: row.referencia_nome,
-          quantity: row.op_quantity,
-          sector: cell.sector,
-          weekKey: cell.weekKey,
-          weekLabel: cell.weekLabel,
-          loadPct: cell.loadPct,
-          reason: cell.loadPct > 130
-            ? `Setor saturado: ${Math.round(cell.loadPct)}% da capacidade`
-            : `Setor próximo do limite: ${Math.round(cell.loadPct)}% da capacidade`,
-        });
-      }
-    }
-    bottlenecks.sort((a, b) => b.loadPct - a.loadPct);
-    return { heatmap, bottlenecks };
-  }, [timelineRows, weeks, capacities]);
+    perOpBottlenecks.sort((a, b) => b.loadPct - a.loadPct);
+    return { heatmap, bottlenecks: perOpBottlenecks };
+  }, [timelineRows, weeks, avgCapacities, sheetById]);
 
   const opsAtRisk = new Set(bottlenecks.map(b => b.orderId)).size;
   const worstCell = heatmap.reduce(
     (acc, c) => (c.loadPct > acc.loadPct ? c : acc),
     { loadPct: 0, sector: 'Costura' as MonitoredSector, weekLabel: '—' } as HeatmapCell,
   );
+  const criticalAlerts = activeAlerts.filter((a: any) => a.severity === 'critical').length;
 
   const isLoading = loadingTimeline || loadingCaps;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start gap-3">
-        <Activity className="h-7 w-7 text-primary mt-1" />
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Centro de Controle de Produção</h1>
-          <p className="text-sm text-muted-foreground">
-            Monitora capacidade vs demanda de Corte, Aviamento e Costura.
-            Identifica gargalos por semana e permite terceirizar OPs problemáticas com 1 clique.
-          </p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <Activity className="h-7 w-7 text-primary mt-1" />
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Centro de Controle de Produção</h1>
+            <p className="text-sm text-muted-foreground">
+              Capacidade por ficha · Alertas automáticos via WhatsApp · Terceirização com 1 clique.
+            </p>
+          </div>
         </div>
+        <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)} className="gap-1.5">
+          <Settings className="h-4 w-4" /> Configurações
+        </Button>
       </div>
 
-      {/* KPIs */}
-      <div className="grid sm:grid-cols-4 gap-3">
-        <Card>
-          <CardContent className="p-3">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase">OPs em risco</p>
-            <p className="text-2xl font-bold text-destructive">{opsAtRisk}</p>
-            <p className="text-[10px] text-muted-foreground">{bottlenecks.length} gargalos detectados</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-3">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase">Maior gargalo</p>
-            <p className="text-lg font-bold text-amber-600 truncate">{worstCell.sector}</p>
-            <p className="text-[10px] text-muted-foreground">
-              {worstCell.weekLabel} · {Math.round(worstCell.loadPct)}% de carga
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-3">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase">OSes terceirizadas</p>
-            <p className="text-2xl font-bold">{activeOutsourceOses.length}</p>
-            <p className="text-[10px] text-muted-foreground">ativas</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-3">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase">Capacidade média</p>
-            <p className="text-lg font-bold">
-              {(capacities['Costura'] || 0)}/d
-            </p>
-            <p className="text-[10px] text-muted-foreground">pares/dia · Costura</p>
-          </CardContent>
-        </Card>
-      </div>
+      <Tabs defaultValue="dashboard">
+        <TabsList>
+          <TabsTrigger value="dashboard" className="gap-1.5">
+            <Activity className="h-3.5 w-3.5" /> Visão geral
+          </TabsTrigger>
+          <TabsTrigger value="alertas" className="gap-1.5">
+            <Bell className="h-3.5 w-3.5" /> Alertas
+            {activeAlerts.length > 0 && (
+              <Badge variant="destructive" className="ml-1 h-4 px-1 text-[9px]">{activeAlerts.length}</Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="historico" className="gap-1.5">
+            <Award className="h-3.5 w-3.5" /> Histórico terceirização
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Heatmap */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-bold flex items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-primary" /> Capacidade × Demanda · próximas {WEEKS_TO_SHOW} semanas
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="overflow-x-auto">
-          {isLoading ? (
-            <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
-          ) : (
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left p-2 sticky left-0 bg-card">Setor</th>
-                  {weeks.map(w => (
-                    <th key={isoWeekKey(w)} className="text-center p-2 min-w-[68px]">
-                      <p className="font-bold">{weekHeader(w)}</p>
-                      <p className="text-[9px] text-muted-foreground font-normal">
-                        {format(w, 'dd/MM', { locale: ptBR })}
-                      </p>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {MONITORED_SECTORS.map(s => (
-                  <tr key={s.key} className="border-b border-border/40">
-                    <td className="p-2 font-medium sticky left-0 bg-card">
-                      {s.label}
-                      <p className="text-[10px] text-muted-foreground">
-                        cap. {capacities[s.key] || 0}/d
-                      </p>
-                    </td>
-                    {weeks.map(w => {
-                      const wk = isoWeekKey(w);
-                      const cell = heatmap.find(c => c.weekKey === wk && c.sector === s.key);
-                      const pct = cell?.loadPct ?? 0;
-                      const planned = cell?.plannedPairs ?? 0;
-                      return (
-                        <td key={wk} className="p-1 text-center">
-                          <div
-                            className={`rounded-md border px-1.5 py-1 ${loadColor(pct)}`}
-                            title={`${planned} pares planejados · capacidade ${cell?.capacityPairs ?? 0} pares/semana`}
-                          >
-                            <p className="font-mono font-bold leading-none">
-                              {Math.round(pct)}%
-                            </p>
-                            <p className="text-[9px] leading-tight mt-0.5 opacity-80">
-                              {planned}p
-                            </p>
-                          </div>
+        {/* ── Tab: Visão geral ── */}
+        <TabsContent value="dashboard" className="mt-4 space-y-4">
+          {/* KPIs */}
+          <div className="grid sm:grid-cols-4 gap-3">
+            <Card>
+              <CardContent className="p-3">
+                <p className="text-[10px] font-bold text-muted-foreground uppercase">OPs em risco</p>
+                <p className="text-2xl font-bold text-destructive">{opsAtRisk}</p>
+                <p className="text-[10px] text-muted-foreground">{bottlenecks.length} gargalos (per-ficha)</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-3">
+                <p className="text-[10px] font-bold text-muted-foreground uppercase">Maior gargalo</p>
+                <p className="text-lg font-bold text-amber-600 truncate">{worstCell.sector}</p>
+                <p className="text-[10px] text-muted-foreground">{worstCell.weekLabel} · {Math.round(worstCell.loadPct)}%</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-3">
+                <p className="text-[10px] font-bold text-muted-foreground uppercase">Alertas críticos</p>
+                <p className="text-2xl font-bold text-destructive">{criticalAlerts}</p>
+                <p className="text-[10px] text-muted-foreground">{activeAlerts.length} alertas ativos</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-3">
+                <p className="text-[10px] font-bold text-muted-foreground uppercase">OSes terceirizadas</p>
+                <p className="text-2xl font-bold">{activeOutsourceOses.length}</p>
+                <p className="text-[10px] text-muted-foreground">ativas</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Heatmap */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-bold flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-primary" /> Capacidade × Demanda · próximas {WEEKS_TO_SHOW} semanas
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="overflow-x-auto">
+              {isLoading ? (
+                <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+              ) : (
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left p-2 sticky left-0 bg-card">Setor</th>
+                      {weeks.map(w => (
+                        <th key={isoWeekKey(w)} className="text-center p-2 min-w-[68px]">
+                          <p className="font-bold">{weekHeader(w)}</p>
+                          <p className="text-[9px] text-muted-foreground font-normal">{format(w, 'dd/MM', { locale: ptBR })}</p>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {MONITORED_SECTORS.map(s => (
+                      <tr key={s.key} className="border-b border-border/40">
+                        <td className="p-2 font-medium sticky left-0 bg-card">
+                          {s.label}
+                          <p className="text-[10px] text-muted-foreground">média {avgCapacities[s.key] || 0}/d</p>
                         </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Gargalos */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-bold flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-amber-500" /> Gargalos detectados ({bottlenecks.length})
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {bottlenecks.length === 0 ? (
-            <p className="text-xs text-muted-foreground text-center py-6 italic">
-              Nenhum gargalo detectado nas próximas {WEEKS_TO_SHOW} semanas. 🎉
-            </p>
-          ) : (
-            <div className="divide-y divide-border/50">
-              {bottlenecks.slice(0, 50).map((b, i) => (
-                <div key={`${b.orderId}-${b.sector}-${i}`} className="p-3 flex items-center gap-3">
-                  <Badge
-                    variant="outline"
-                    className={`text-[10px] capitalize ${
-                      b.loadPct > 130 ? 'bg-destructive/10 text-destructive border-destructive/30' :
-                      'bg-amber-500/10 text-amber-700 border-amber-500/30'
-                    }`}
-                  >
-                    {b.loadPct > 130 ? 'Crítico' : 'Atenção'}
-                  </Badge>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">
-                      OP {b.orderNumber} · <span className="text-muted-foreground">{b.reference}</span>
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {b.quantity} pares · Setor <span className="font-medium">{b.sector}</span> · {b.weekLabel}
-                      <span className="ml-2">· {b.reason}</span>
-                    </p>
-                  </div>
-                  <Button size="sm" className="gap-1.5" onClick={() => setOutsourceTarget(b)}>
-                    <Truck className="h-3.5 w-3.5" /> Terceirizar
-                  </Button>
-                </div>
-              ))}
-              {bottlenecks.length > 50 && (
-                <p className="text-[11px] text-muted-foreground text-center py-2">
-                  +{bottlenecks.length - 50} gargalos adicionais (mostrando os 50 mais críticos)
-                </p>
+                        {weeks.map(w => {
+                          const wk = isoWeekKey(w);
+                          const cell = heatmap.find(c => c.weekKey === wk && c.sector === s.key);
+                          const pct = cell?.loadPct ?? 0;
+                          const planned = cell?.plannedPairs ?? 0;
+                          return (
+                            <td key={wk} className="p-1 text-center">
+                              <div
+                                className={`rounded-md border px-1.5 py-1 ${loadColor(pct)}`}
+                                title={`${planned} pares planejados · capacidade ${cell?.capacityPairs ?? 0} pares/semana`}
+                              >
+                                <p className="font-mono font-bold leading-none">{Math.round(pct)}%</p>
+                                <p className="text-[9px] leading-tight mt-0.5 opacity-80">{planned}p</p>
+                              </div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
 
-      {/* OSes terceirizadas ativas */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-bold flex items-center gap-2">
-            <Truck className="h-4 w-4 text-primary" /> OSes terceirizadas ativas ({activeOutsourceOses.length})
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {activeOutsourceOses.length === 0 ? (
-            <p className="text-xs text-muted-foreground text-center py-6 italic">Sem OSes terceirizadas em aberto.</p>
-          ) : (
-            <div className="divide-y divide-border/50">
-              {activeOutsourceOses.map((os: any) => (
-                <OutsourceOsRow
-                  key={os.id}
-                  os={os}
-                  onConfirmDeadline={() => setConfirmDeadlineFor(os)}
-                />
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          {/* Gargalos per-ficha */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-bold flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-500" />
+                Gargalos por ficha técnica ({bottlenecks.length})
+                <span className="text-[10px] text-muted-foreground font-normal ml-2">
+                  Detecção compara demanda diária da OP com capacidade real da sua ficha
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {bottlenecks.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-6 italic">
+                  Nenhum gargalo per-ficha detectado nas próximas {WEEKS_TO_SHOW} semanas. 🎉
+                </p>
+              ) : (
+                <div className="divide-y divide-border/50">
+                  {bottlenecks.slice(0, 50).map((b, i) => (
+                    <div key={`${b.orderId}-${b.sector}-${i}`} className="p-3 flex items-center gap-3">
+                      <Badge variant="outline" className={`text-[10px] capitalize ${
+                        b.loadPct > 130 ? 'bg-destructive/10 text-destructive border-destructive/30'
+                                        : 'bg-amber-500/10 text-amber-700 border-amber-500/30'
+                      }`}>
+                        {b.loadPct > 130 ? 'Crítico' : 'Atenção'}
+                      </Badge>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">
+                          OP {b.orderNumber} · <span className="text-muted-foreground">{b.reference}</span>
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {b.quantity} pares · <span className="font-medium">{b.sector}</span> · {b.weekLabel}
+                          <span className="ml-2 font-mono">{Math.round(b.dailyNeeded)}/{Math.round(b.fichaCapacity)} pares/dia</span>
+                        </p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">{b.reason}</p>
+                      </div>
+                      <Button size="sm" className="gap-1.5" onClick={() => setOutsourceTarget(b)}>
+                        <Truck className="h-3.5 w-3.5" /> Terceirizar
+                      </Button>
+                    </div>
+                  ))}
+                  {bottlenecks.length > 50 && (
+                    <p className="text-[11px] text-muted-foreground text-center py-2">
+                      +{bottlenecks.length - 50} gargalos adicionais
+                    </p>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-      <OutsourceDialog
-        target={outsourceTarget}
-        onClose={() => setOutsourceTarget(null)}
-      />
+          {/* OSes terceirizadas ativas */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-bold flex items-center gap-2">
+                <Truck className="h-4 w-4 text-primary" /> OSes terceirizadas ativas ({activeOutsourceOses.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {activeOutsourceOses.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-6 italic">Sem OSes em aberto.</p>
+              ) : (
+                <div className="divide-y divide-border/50">
+                  {activeOutsourceOses.map((os: any) => (
+                    <OutsourceOsRow key={os.id} os={os} onConfirmDeadline={() => setConfirmDeadlineFor(os)} />
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-      <ConfirmDeadlineDialog
-        os={confirmDeadlineFor}
-        onClose={() => setConfirmDeadlineFor(null)}
-      />
+        {/* ── Tab: Alertas ── */}
+        <TabsContent value="alertas" className="mt-4">
+          <AlertsSection alerts={activeAlerts} />
+        </TabsContent>
+
+        {/* ── Tab: Histórico terceirização ── */}
+        <TabsContent value="historico" className="mt-4">
+          <OutsourceHistorySection />
+        </TabsContent>
+      </Tabs>
+
+      <OutsourceDialog target={outsourceTarget} onClose={() => setOutsourceTarget(null)} />
+      <ConfirmDeadlineDialog os={confirmDeadlineFor} onClose={() => setConfirmDeadlineFor(null)} />
+      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }
+
+// ─── Alerts section ─────────────────────────────────────────────────────────
+
+function AlertsSection({ alerts }: { alerts: any[] }) {
+  const qc = useQueryClient();
+
+  const dismiss = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await (supabase as any)
+        .from('production_alerts')
+        .update({ dismissed_at: new Date().toISOString() })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['production_alerts_active'] });
+    },
+  });
+
+  const triggerDetection = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await (supabase as any).rpc('detect_production_bottlenecks_and_alert');
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data: any) => {
+      qc.invalidateQueries({ queryKey: ['production_alerts_active'] });
+      const created = data?.alerts_created ?? 0;
+      const notified = data?.alerts_notified ?? 0;
+      toast.success(`Detecção rodada: ${created} alertas novos, ${notified} notificados.`);
+    },
+    onError: (e: Error) => toast.error(`Falha: ${e.message}`),
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <BellRing className="h-5 w-5 text-primary" />
+          <div>
+            <h2 className="text-sm font-bold">Alertas de produção</h2>
+            <p className="text-xs text-muted-foreground">
+              Detecção automática a cada 30min (SEG-SEX 8h-18h). Disparo WhatsApp se webhook configurado.
+            </p>
+          </div>
+        </div>
+        <Button size="sm" variant="outline" onClick={() => triggerDetection.mutate()} disabled={triggerDetection.isPending}>
+          {triggerDetection.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />}
+          Rodar detecção agora
+        </Button>
+      </div>
+
+      {alerts.length === 0 ? (
+        <Card>
+          <CardContent className="py-10 text-center space-y-2">
+            <CheckCircle2 className="h-10 w-10 mx-auto text-emerald-500/40" />
+            <p className="text-sm text-muted-foreground">Nenhum alerta ativo. 🎉</p>
+            <p className="text-[11px] text-muted-foreground">Alertas críticos param de aparecer aqui quando você dispensa ou quando o gargalo é resolvido.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-2">
+          {alerts.map((a: any) => (
+            <Card key={a.id} className={a.severity === 'critical' ? 'border-destructive/30 bg-destructive/5' : 'border-amber-500/30 bg-amber-500/5'}>
+              <CardContent className="p-3 flex items-start gap-3">
+                {a.severity === 'critical'
+                  ? <AlertCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+                  : <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-sm font-medium">{a.title}</p>
+                    <Badge variant="outline" className={`text-[10px] capitalize ${
+                      a.severity === 'critical' ? 'bg-destructive/10 text-destructive border-destructive/30'
+                                                : 'bg-amber-500/10 text-amber-700 border-amber-500/30'
+                    }`}>
+                      {a.severity}
+                    </Badge>
+                    {a.notification_status === 'sent' && (
+                      <Badge variant="outline" className="text-[9px] bg-emerald-500/10 text-emerald-700 border-emerald-500/30">
+                        WhatsApp enviado
+                      </Badge>
+                    )}
+                    {a.notification_status === 'failed' && (
+                      <Badge variant="outline" className="text-[9px] bg-destructive/10 text-destructive border-destructive/30" title={a.notification_error}>
+                        WhatsApp falhou
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">{a.body}</p>
+                  <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    {format(parseISO(a.created_at), 'dd/MM HH:mm', { locale: ptBR })}
+                  </p>
+                </div>
+                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground"
+                  onClick={() => dismiss.mutate(a.id)}
+                  title="Dispensar alerta">
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Outsource history section ──────────────────────────────────────────────
+
+interface ContractorStats {
+  contractorId: string;
+  contractorName: string;
+  totalOses: number;
+  totalPairs: number;
+  totalValue: number;
+  onTimeCount: number;
+  lateCount: number;
+  inProgressCount: number;
+  avgDelayDays: number;
+}
+
+function OutsourceHistorySection() {
+  const { data: history = [], isLoading } = useQuery({
+    queryKey: ['outsource_history'],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('service_orders')
+        .select('*, contractors(id, name)')
+        .not('related_order_id', 'is', null)
+        .not('sector', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(1000);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const stats = useMemo<ContractorStats[]>(() => {
+    const map = new Map<string, ContractorStats>();
+    for (const os of history) {
+      const cid = os.contractor_id || 'unknown';
+      const cname = os.contractors?.name || 'Sem contractor';
+      if (!map.has(cid)) {
+        map.set(cid, {
+          contractorId: cid,
+          contractorName: cname,
+          totalOses: 0,
+          totalPairs: 0,
+          totalValue: 0,
+          onTimeCount: 0,
+          lateCount: 0,
+          inProgressCount: 0,
+          avgDelayDays: 0,
+        });
+      }
+      const s = map.get(cid)!;
+      s.totalOses += 1;
+      s.totalPairs += Number(os.quantity || 0);
+      s.totalValue += Number(os.total_value || 0);
+
+      const status = String(os.status || '').toLowerCase();
+      if (status === 'concluido') {
+        const promised = os.service_date ? parseISO(os.service_date) : null;
+        const delivered = os.updated_at ? parseISO(os.updated_at) : null;
+        if (promised && delivered) {
+          const delta = differenceInDays(delivered, promised);
+          if (delta <= 0) {
+            s.onTimeCount += 1;
+          } else {
+            s.lateCount += 1;
+            s.avgDelayDays = (s.avgDelayDays * (s.lateCount - 1) + delta) / s.lateCount;
+          }
+        }
+      } else if (['em_andamento', 'pendente', 'aguardando_aceite'].includes(status)) {
+        s.inProgressCount += 1;
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => b.totalOses - a.totalOses);
+  }, [history]);
+
+  if (isLoading) return <p className="text-xs text-muted-foreground">Carregando…</p>;
+  if (stats.length === 0) {
+    return (
+      <Card>
+        <CardContent className="py-10 text-center space-y-2">
+          <Award className="h-10 w-10 mx-auto text-muted-foreground/30" />
+          <p className="text-sm text-muted-foreground">Nenhum histórico de terceirização ainda.</p>
+          <p className="text-[11px] text-muted-foreground">Após criar e concluir OSes, o ranking aparece aqui.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-bold flex items-center gap-2">
+          <Award className="h-4 w-4 text-primary" /> Performance de costureiras / terceirizados
+        </h2>
+        <span className="text-[11px] text-muted-foreground">{history.length} OSes históricas</span>
+      </div>
+
+      <div className="space-y-2">
+        {stats.map((s, i) => {
+          const totalConcluded = s.onTimeCount + s.lateCount;
+          const onTimePct = totalConcluded > 0 ? Math.round((s.onTimeCount / totalConcluded) * 100) : null;
+          return (
+            <Card key={s.contractorId}>
+              <CardContent className="p-3 flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
+                  {i + 1}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm">{s.contractorName}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {s.totalOses} OSes · {s.totalPairs} pares · R$ {s.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 text-[11px] shrink-0">
+                  {onTimePct !== null && (
+                    <div className="text-center">
+                      <p className={`font-bold ${onTimePct >= 80 ? 'text-emerald-600' : onTimePct >= 60 ? 'text-amber-600' : 'text-destructive'}`}>
+                        {onTimePct}%
+                      </p>
+                      <p className="text-muted-foreground text-[9px]">no prazo</p>
+                    </div>
+                  )}
+                  <div className="text-center">
+                    <p className="font-bold text-emerald-600">{s.onTimeCount}</p>
+                    <p className="text-muted-foreground text-[9px]">concluídas</p>
+                  </div>
+                  {s.lateCount > 0 && (
+                    <div className="text-center">
+                      <p className="font-bold text-destructive">{s.lateCount}</p>
+                      <p className="text-muted-foreground text-[9px]">+{s.avgDelayDays.toFixed(1)}d médio</p>
+                    </div>
+                  )}
+                  <div className="text-center">
+                    <p className="font-bold">{s.inProgressCount}</p>
+                    <p className="text-muted-foreground text-[9px]">em andamento</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Settings dialog ────────────────────────────────────────────────────────
+
+function SettingsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const qc = useQueryClient();
+
+  const { data: settings = [] } = useQuery({
+    queryKey: ['system_settings_alerts'],
+    enabled: open,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('system_settings')
+        .select('*')
+        .in('key', ['alert_phone_whatsapp', 'alert_webhook_url', 'alert_min_load_pct', 'alert_critical_load_pct']);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const settingsMap = useMemo(() => {
+    const m = new Map<string, any>();
+    for (const s of settings) m.set(s.key, s.value);
+    return m;
+  }, [settings]);
+
+  const [phone, setPhone] = useState('');
+  const [webhook, setWebhook] = useState('');
+  const [minPct, setMinPct] = useState(105);
+  const [critPct, setCritPct] = useState(130);
+
+  useEffect(() => {
+    if (open && settings.length > 0) {
+      setPhone(String(settingsMap.get('alert_phone_whatsapp') ?? '').replace(/^"|"$/g, ''));
+      setWebhook(String(settingsMap.get('alert_webhook_url') ?? '').replace(/^"|"$/g, ''));
+      setMinPct(Number(settingsMap.get('alert_min_load_pct') ?? 105));
+      setCritPct(Number(settingsMap.get('alert_critical_load_pct') ?? 130));
+    }
+  }, [open, settings.length, settingsMap]);
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const updates = [
+        { key: 'alert_phone_whatsapp', value: JSON.stringify(phone) },
+        { key: 'alert_webhook_url', value: JSON.stringify(webhook) },
+        { key: 'alert_min_load_pct', value: String(minPct) },
+        { key: 'alert_critical_load_pct', value: String(critPct) },
+      ];
+      for (const u of updates) {
+        const { error } = await (supabase as any)
+          .from('system_settings')
+          .upsert({ ...u, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['system_settings_alerts'] });
+      toast.success('Configurações salvas.');
+      onClose();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const testWebhook = useMutation({
+    mutationFn: async () => {
+      if (!webhook) throw new Error('Configure a URL primeiro.');
+      const response = await fetch(webhook, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone,
+          title: '[Teste] Centro de Controle',
+          body: 'Mensagem de teste do sistema de alertas. Se você recebeu, está tudo OK!',
+          severity: 'warning',
+          alert_id: 'test',
+          payload: { test: true },
+        }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    },
+    onSuccess: () => toast.success('Webhook OK! Teste enviado.'),
+    onError: (e: Error) => toast.error(`Falha: ${e.message}`),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Settings className="h-4 w-4" /> Configurações do Centro de Controle
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          <div>
+            <Label className="text-xs font-bold uppercase">WhatsApp destinatário</Label>
+            <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="+5521982622290" className="mt-1 font-mono" />
+            <p className="text-[10px] text-muted-foreground mt-1">
+              Formato E.164 (com código do país). Ex: +5521982622290.
+            </p>
+          </div>
+
+          <div>
+            <Label className="text-xs font-bold uppercase">URL do webhook</Label>
+            <Input value={webhook} onChange={e => setWebhook(e.target.value)}
+              placeholder="https://api.z-api.io/instances/.../send-text" className="mt-1 font-mono text-xs" />
+            <p className="text-[10px] text-muted-foreground mt-1">
+              POST que recebe <code className="font-mono">{`{phone, title, body, severity, payload}`}</code>.
+              Use Z-API, Make.com, Zapier, WPPConnect ou Twilio. O endpoint deve enviar a mensagem pra WhatsApp.
+            </p>
+            <Button size="sm" variant="outline" className="mt-2 gap-1.5" onClick={() => testWebhook.mutate()} disabled={testWebhook.isPending || !webhook}>
+              {testWebhook.isPending && <Loader2 className="h-3 w-3 animate-spin" />}
+              <Send className="h-3 w-3" /> Testar webhook
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs font-bold uppercase">Carga mínima (% alerta)</Label>
+              <Input type="number" min={100} max={200} value={minPct} onChange={e => setMinPct(+e.target.value)} className="mt-1" />
+              <p className="text-[10px] text-muted-foreground mt-1">Acima desse % dispara warning.</p>
+            </div>
+            <div>
+              <Label className="text-xs font-bold uppercase">Carga crítica (% alerta)</Label>
+              <Input type="number" min={100} max={300} value={critPct} onChange={e => setCritPct(+e.target.value)} className="mt-1" />
+              <p className="text-[10px] text-muted-foreground mt-1">Acima desse % vira critical.</p>
+            </div>
+          </div>
+
+          <Card className="bg-muted/30 border-border/50">
+            <CardContent className="p-3 text-[11px] space-y-1 text-muted-foreground">
+              <p className="font-medium text-foreground">Como funciona:</p>
+              <ul className="list-disc ml-4 space-y-0.5">
+                <li>Cron roda a cada 30min em horário comercial</li>
+                <li>Detecta OPs cuja demanda diária excede capacidade da ficha</li>
+                <li>Cria alerta + POST no webhook com payload completo</li>
+                <li>Toast aparece pra quem estiver com a página aberta</li>
+              </ul>
+            </CardContent>
+          </Card>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button onClick={() => save.mutate()} disabled={save.isPending}>
+            {save.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Salvar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Outsource Os row ───────────────────────────────────────────────────────
 
 function OutsourceOsRow({ os, onConfirmDeadline }: { os: any; onConfirmDeadline: () => void }) {
   const status = String(os.status || '').toLowerCase();
@@ -485,9 +975,7 @@ function OutsourceOsRow({ os, onConfirmDeadline }: { os: any; onConfirmDeadline:
           {os.total_value ? ` · total R$ ${Number(os.total_value).toFixed(2)}` : ''}
           {os.service_date ? ` · prazo ${format(parseISO(os.service_date), 'dd/MM/yyyy')}` : ''}
         </p>
-        {os.description && (
-          <p className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5">{os.description}</p>
-        )}
+        {os.description && <p className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5">{os.description}</p>}
       </div>
       {needsDeadline && (
         <Button size="sm" variant="outline" className="gap-1.5" onClick={onConfirmDeadline}>
@@ -498,7 +986,7 @@ function OutsourceOsRow({ os, onConfirmDeadline }: { os: any; onConfirmDeadline:
   );
 }
 
-// ─── Outsource dialog (terceiriza OP) ─────────────────────────────────────
+// ─── Outsource dialog ──────────────────────────────────────────────────────
 
 function OutsourceDialog({ target, onClose }: { target: BottleneckRow | null; onClose: () => void }) {
   const qc = useQueryClient();
@@ -510,8 +998,7 @@ function OutsourceDialog({ target, onClose }: { target: BottleneckRow | null; on
   const [materialsNotes, setMaterialsNotes] = useState('');
   const [notes, setNotes] = useState('');
 
-  // Reset quando muda target
-  useMemo(() => {
+  useEffect(() => {
     if (target) {
       setQuantity(target.quantity);
       setUnitPrice(0);
@@ -568,13 +1055,14 @@ function OutsourceDialog({ target, onClose }: { target: BottleneckRow | null; on
         service_date: deadline || null,
         status: deadline ? 'em_andamento' : 'aguardando_aceite',
         materials_sent: materialsNotes ? [{ note: materialsNotes }] : [],
-        notes: notes || `OP em gargalo: ${target.reason}. Setor saturado em ${target.weekLabel}.`,
+        notes: notes || `OP em gargalo: ${target.reason}. Capacidade da ficha: ${Math.round(target.fichaCapacity)}/dia.`,
       };
       const { error } = await (supabase as any).from('service_orders').insert(payload);
       if (error) throw error;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['active_outsource_oses'] });
+      qc.invalidateQueries({ queryKey: ['outsource_history'] });
       qc.invalidateQueries({ queryKey: ['production_control_timeline'] });
       toast.success(deadline ? 'OS criada com prazo. Setor seguinte bloqueado até a entrega.' : 'OS criada. Aguardando aceite da costureira.');
       onClose();
@@ -603,7 +1091,7 @@ function OutsourceDialog({ target, onClose }: { target: BottleneckRow | null; on
                 <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5" />
                 <div>
                   <p className="font-medium">{target.reference} · {target.quantity} pares</p>
-                  <p className="text-muted-foreground mt-1">{target.reason} · semana {target.weekLabel}</p>
+                  <p className="text-muted-foreground mt-1">{target.reason} · {target.weekLabel}</p>
                 </div>
               </div>
             </CardContent>
@@ -624,7 +1112,6 @@ function OutsourceDialog({ target, onClose }: { target: BottleneckRow | null; on
                   </SelectContent>
                 </Select>
               </div>
-              {/* Botão pra cadastrar novo terceiro inline */}
               <div className="flex gap-2 mt-2">
                 <Input
                   className="h-8 text-xs"
@@ -632,13 +1119,9 @@ function OutsourceDialog({ target, onClose }: { target: BottleneckRow | null; on
                   value={newContractor}
                   onChange={e => setNewContractor(e.target.value)}
                 />
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8"
+                <Button size="sm" variant="outline" className="h-8"
                   onClick={() => createContractor.mutate(newContractor)}
-                  disabled={!newContractor.trim() || createContractor.isPending}
-                >
+                  disabled={!newContractor.trim() || createContractor.isPending}>
                   {createContractor.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : '+ Cadastrar'}
                 </Button>
               </div>
@@ -648,38 +1131,32 @@ function OutsourceDialog({ target, onClose }: { target: BottleneckRow | null; on
               <Label>Quantidade (pares) *</Label>
               <Input type="number" min={1} max={target.quantity} value={quantity}
                 onChange={e => setQuantity(+e.target.value)} />
-              <p className="text-[10px] text-muted-foreground mt-1">
-                OP completa: {target.quantity} pares
-              </p>
+              <p className="text-[10px] text-muted-foreground mt-1">OP completa: {target.quantity} pares</p>
             </div>
             <div>
               <Label>Valor unitário (R$/par)</Label>
               <Input type="number" step="0.01" min={0} value={unitPrice}
                 onChange={e => setUnitPrice(+e.target.value)} />
-              <p className="text-[10px] text-muted-foreground mt-1 font-mono">
-                Total: R$ {total.toFixed(2)}
-              </p>
+              <p className="text-[10px] text-muted-foreground mt-1 font-mono">Total: R$ {total.toFixed(2)}</p>
             </div>
 
             <div className="col-span-2">
-              <Label>Prazo de entrega <span className="text-muted-foreground">(opcional — costureira pode confirmar depois)</span></Label>
+              <Label>Prazo de entrega <span className="text-muted-foreground">(opcional)</span></Label>
               <Input type="date" value={deadline} onChange={e => setDeadline(e.target.value)} />
               <p className="text-[10px] text-muted-foreground mt-1">
                 Se definir agora, o setor seguinte da OP fica bloqueado até esta data.
-                Sem prazo, a OS fica "aguardando aceite" até você cadastrar a data.
               </p>
             </div>
 
             <div className="col-span-2">
               <Label>Materiais enviados</Label>
               <Textarea rows={2} value={materialsNotes} onChange={e => setMaterialsNotes(e.target.value)}
-                placeholder="Ex: 220 cabedais MOD-038 marrom, 220 forros, 1 cartão de medidas" />
+                placeholder="Ex: 220 cabedais MOD-038 marrom, 220 forros..." />
             </div>
 
             <div className="col-span-2">
               <Label>Observações</Label>
-              <Textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)}
-                placeholder="Notas internas (opcional)" />
+              <Textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notas internas (opcional)" />
             </div>
           </div>
         </div>
@@ -717,7 +1194,8 @@ function ConfirmDeadlineDialog({ os, onClose }: { os: any | null; onClose: () =>
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['active_outsource_oses'] });
-      toast.success('Prazo registrado. Setor seguinte da OP foi bloqueado automaticamente.');
+      qc.invalidateQueries({ queryKey: ['outsource_history'] });
+      toast.success('Prazo registrado. Setor seguinte da OP bloqueado automaticamente.');
       setDeadline('');
       onClose();
     },
@@ -750,16 +1228,13 @@ function ConfirmDeadlineDialog({ os, onClose }: { os: any | null; onClose: () =>
             <Label>Data prometida pela costureira *</Label>
             <Input type="date" value={deadline} onChange={e => setDeadline(e.target.value)} />
             <p className="text-[10px] text-muted-foreground mt-1">
-              Quando confirmar, o setor seguinte da OP (geralmente Montagem) fica bloqueado
-              até esta data via trigger no banco — não vai iniciar antes mesmo se outro
-              operador tentar.
+              Setor seguinte da OP fica bloqueado até esta data via trigger no banco.
             </p>
           </div>
 
           <div className="text-[11px] text-muted-foreground flex items-center gap-1">
             <ArrowRight className="h-3 w-3" />
-            Após confirmar: status muda pra <strong>em andamento</strong>, kanban da OP
-            mostra o bloqueio até <strong>{deadline ? format(parseISO(deadline), 'dd/MM/yyyy') : '—'}</strong>.
+            Após confirmar: status muda pra <strong>em andamento</strong>, bloqueio até <strong>{deadline ? format(parseISO(deadline), 'dd/MM/yyyy') : '—'}</strong>.
           </div>
         </div>
 
