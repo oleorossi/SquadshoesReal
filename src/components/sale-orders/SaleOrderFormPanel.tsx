@@ -175,6 +175,9 @@ function FactoringField({ form, setForm, totalValue }: {
   setForm: (fn: (f: SaleOrderFormData) => SaleOrderFormData) => void;
   totalValue: number;
 }) {
+  // Detalhes da simulação ficam colapsados por padrão — o card era um wall-of-text.
+  // Resumo (taxa%, valor descontado, líquido) sempre visível; detalhamento sob demanda.
+  const [showSimDetails, setShowSimDetails] = useState(false);
   const { data: configs = [] } = useFactoringConfigs();
   const activeConfigs = configs.filter(c => c.active);
   const selectedConfig = activeConfigs.find(c => c.id === form.factoring_config_id);
@@ -262,71 +265,74 @@ function FactoringField({ form, setForm, totalValue }: {
             </div>
           )}
 
-          {/* Simulação de desconto */}
+          {/* Simulação de desconto — resumo compacto, expansível pra detalhes */}
           {simulation ? (
-            <div className={`rounded-md border p-3 space-y-2 ${
+            <div className={`rounded-md border p-2.5 ${
               simulation.source === 'fallback'
                 ? 'border-orange-500/40 bg-orange-500/5'
                 : 'border-amber-500/30 bg-amber-500/5'
             }`}>
-              <div className="flex items-center justify-between">
-                <p className="text-[10px] font-bold uppercase text-amber-700 dark:text-amber-300 tracking-wide">
-                  Simulação de Desconto
-                </p>
-                {/* Audit B2 (round 28): badge indica se cálculo é exato ou estimativa.
-                    Antes a UI mostrava só o valor sem dizer a precisão da base. */}
-                {simulation.source === 'delivery+payment' ? (
-                  <span
-                    className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30"
-                    title="Cálculo exato: usa a data real de entrega + condição de pagamento"
-                  >
-                    EXATO
+              {/* Resumo sempre visível — 1 linha */}
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] font-bold uppercase text-amber-700 dark:text-amber-300 tracking-wide">
+                    Desconto factoring
                   </span>
-                ) : (
-                  <span
-                    className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-orange-500/15 text-orange-700 dark:text-orange-300 border border-orange-500/40"
-                    title="Cálculo aproximado: faltam dados (semana de entrega ou condição). Usa fallback receiving_days da factoring."
-                  >
-                    ESTIMADO
+                  {simulation.source === 'delivery+payment' ? (
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30"
+                      title="Cálculo exato">
+                      EXATO
+                    </span>
+                  ) : (
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-orange-500/15 text-orange-700 dark:text-orange-300 border border-orange-500/40"
+                      title="Cálculo aproximado — faltam dados">
+                      ESTIMADO
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 text-xs font-mono">
+                  <span className="text-destructive font-bold">
+                    -{fmt(simulation.discount)} ({simulation.discountPct.toFixed(2)}%)
                   </span>
-                )}
+                  <span className="text-green-700 font-bold">
+                    Líquido {fmt(simulation.net)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowSimDetails(s => !s)}
+                    className="text-[10px] font-medium text-muted-foreground hover:text-foreground underline underline-offset-2"
+                  >
+                    {showSimDetails ? 'Ocultar' : 'Detalhar'}
+                  </button>
+                </div>
               </div>
-              {simulation.source === 'fallback' && (
-                <p className="text-[10px] text-orange-700 dark:text-orange-300">
-                  ⚠ Preencha <span className="font-semibold">mês + semana de faturamento</span> e a
-                  <span className="font-semibold"> condição de pagamento</span> pra simulação ficar exata.
-                  O valor real pode divergir.
-                </p>
-              )}
-              <div className="text-xs space-y-1">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Parcelas:</span>
-                  <span className="font-medium">
-                    {simulation.days.join(' / ')} dias
-                    {' → '}média {simulation.avgDays.toFixed(0)}d ({simulation.months.toFixed(1)} meses)
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Taxa:</span>
-                  <span className="font-medium">
-                    {selectedConfig!.monthly_interest_rate}% a.m. × {simulation.months.toFixed(1)} = {simulation.discountPct.toFixed(2)}%
-                  </span>
-                </div>
-                <div className="border-t border-amber-500/20 pt-1 mt-1 space-y-1">
+              {/* Detalhes — só quando expandido */}
+              {showSimDetails && (
+                <div className="mt-2 pt-2 border-t border-amber-500/20 text-xs space-y-1">
+                  {simulation.source === 'fallback' && (
+                    <p className="text-[10px] text-orange-700 dark:text-orange-300">
+                      ⚠ Preencha <span className="font-semibold">mês + semana de faturamento</span> e
+                      <span className="font-semibold"> condição de pagamento</span> pra simulação ficar exata.
+                    </p>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Parcelas:</span>
+                    <span className="font-medium">
+                      {simulation.days.join(' / ')} dias → média {simulation.avgDays.toFixed(0)}d ({simulation.months.toFixed(1)} meses)
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Taxa:</span>
+                    <span className="font-medium">
+                      {selectedConfig!.monthly_interest_rate}% a.m. × {simulation.months.toFixed(1)} meses
+                    </span>
+                  </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Valor bruto:</span>
                     <span className="font-mono">{fmt(totalValue)}</span>
                   </div>
-                  <div className="flex justify-between text-destructive">
-                    <span>Desconto factoring:</span>
-                    <span className="font-mono font-bold">-{fmt(simulation.discount)}</span>
-                  </div>
-                  <div className="flex justify-between text-green-700 font-bold">
-                    <span>Líquido a receber:</span>
-                    <span className="font-mono">{fmt(simulation.net)}</span>
-                  </div>
                 </div>
-              </div>
+              )}
             </div>
           ) : selectedConfig && totalValue > 0 && (
             <p className="text-[11px] text-muted-foreground italic">
@@ -570,7 +576,7 @@ export default function SaleOrderFormPanel({
 
    return (
      <>
-     <form ref={formRef} onSubmit={handlePreSubmit} className="space-y-5 pb-24">
+     <form ref={formRef} onSubmit={handlePreSubmit} className="space-y-5 pb-40 sm:pb-24">
       {/* Stepper só faz sentido em PV existente — em "Novo Pedido" o status é sempre
           Rascunho e o widget completo confunde mais do que informa. */}
       {!isNewOrder && (
@@ -1009,21 +1015,25 @@ export default function SaleOrderFormPanel({
           que ocupava 3 alturas de tela e fazia o usuário scrollar pra confirmar.
           Sticky bottom = sempre visível enquanto edita itens. */}
       {(() => {
+        // Só popula issues após o 1º submit. Antes disso, footer fica "limpo"
+        // pra não poluir o form vazio com "Adicione um item" / "Sem condição".
         const issues: { type: 'error' | 'warning'; msg: string; field?: string }[] = [];
-        if (!form.client_name) issues.push({ type: 'error', msg: 'Cliente obrigatório', field: 'client_name' });
-        const validItems = items.filter(i => i.reference_id);
-        if (validItems.length === 0) issues.push({ type: 'error', msg: 'Adicione um item', field: 'items' });
-        validItems.forEach((item, i) => {
-          if (!item.color?.trim()) issues.push({ type: 'error', msg: `Item ${i + 1}: cor faltando` });
-          if (item.quantity <= 0) issues.push({ type: 'warning', msg: `Item ${i + 1}: qtd zerada` });
-          if (item.unit_price <= 0) issues.push({ type: 'warning', msg: `Item ${i + 1}: preço zerado` });
-          const refVariants = item.reference_id ? allVariantsByRef.get(item.reference_id) : undefined;
-          if (refVariants && refVariants.length > 0 && !item.material_variant_id) {
-            issues.push({ type: 'error', msg: `Item ${i + 1}: selecione grupo de material` });
-          }
-        });
-        if (!form.payment_condition) issues.push({ type: 'warning', msg: 'Sem condição de pagamento' });
-        if (!form.delivery_deadline) issues.push({ type: 'warning', msg: 'Sem prazo de entrega' });
+        if (submitAttempted) {
+          if (!form.client_name) issues.push({ type: 'error', msg: 'Cliente obrigatório', field: 'client_name' });
+          const validItems = items.filter(i => i.reference_id);
+          if (validItems.length === 0) issues.push({ type: 'error', msg: 'Adicione um item', field: 'items' });
+          validItems.forEach((item, i) => {
+            if (!item.color?.trim()) issues.push({ type: 'error', msg: `Item ${i + 1}: cor faltando` });
+            if (item.quantity <= 0) issues.push({ type: 'warning', msg: `Item ${i + 1}: qtd zerada` });
+            if (item.unit_price <= 0) issues.push({ type: 'warning', msg: `Item ${i + 1}: preço zerado` });
+            const refVariants = item.reference_id ? allVariantsByRef.get(item.reference_id) : undefined;
+            if (refVariants && refVariants.length > 0 && !item.material_variant_id) {
+              issues.push({ type: 'error', msg: `Item ${i + 1}: selecione grupo de material` });
+            }
+          });
+          if (!form.payment_condition) issues.push({ type: 'warning', msg: 'Sem condição de pagamento' });
+          if (!form.delivery_deadline) issues.push({ type: 'warning', msg: 'Sem prazo de entrega' });
+        }
 
         const errors = issues.filter(i => i.type === 'error');
         const warnings = issues.filter(i => i.type === 'warning');
@@ -1041,27 +1051,27 @@ export default function SaleOrderFormPanel({
 
         return (
           <div className="fixed bottom-0 left-0 right-0 z-30 border-t bg-background/95 backdrop-blur-md shadow-[0_-4px_12px_rgba(0,0,0,0.05)] dark:shadow-[0_-4px_12px_rgba(0,0,0,0.3)]">
-            <div className="max-w-[var(--main-max,1600px)] mx-auto px-4 sm:px-6 py-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-              {/* Resumo de totais — esquerda */}
-              <div className="flex items-center gap-6 flex-1 min-w-0">
+            <div className="max-w-[var(--main-max,1600px)] mx-auto px-3 sm:px-6 py-2.5 sm:py-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3">
+              {/* Resumo de totais — grid em mobile pra evitar squeeze, inline em sm+ */}
+              <div className="grid grid-cols-3 sm:flex sm:items-center sm:gap-6 sm:flex-1 sm:min-w-0">
                 <div className="flex flex-col">
                   <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Itens</span>
-                  <span className="font-mono font-bold text-lg tracking-tight leading-none">{validItemsCount}</span>
+                  <span className="font-mono font-bold text-base sm:text-lg tracking-tight leading-none">{validItemsCount}</span>
                 </div>
-                <div className="h-8 w-px bg-border" />
+                <div className="hidden sm:block h-8 w-px bg-border" />
                 <div className="flex flex-col">
                   <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Pares</span>
-                  <span className="font-mono font-bold text-lg tracking-tight leading-none">{totalPairs}</span>
+                  <span className="font-mono font-bold text-base sm:text-lg tracking-tight leading-none">{totalPairs}</span>
                 </div>
-                <div className="h-8 w-px bg-border" />
+                <div className="hidden sm:block h-8 w-px bg-border" />
                 <div className="flex flex-col">
                   <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Valor Total</span>
-                  <span className="font-mono font-bold text-xl text-primary tracking-tight leading-none">{formatCurrency(totalValue)}</span>
+                  <span className="font-mono font-bold text-base sm:text-xl text-primary tracking-tight leading-none">{formatCurrency(totalValue)}</span>
                 </div>
               </div>
 
               {/* Indicador de validação — meio */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 justify-end sm:justify-start">
                 {issues.length === 0 ? (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-xs font-semibold">
                     <CheckCircle2 className="h-3.5 w-3.5" />
@@ -1118,10 +1128,17 @@ export default function SaleOrderFormPanel({
                 )}
               </div>
 
-              {/* Botões — direita */}
-              <div className="flex items-center gap-2">
-                <Button type="button" variant="outline" onClick={onCancel}>Cancelar</Button>
-                <Button type="submit" disabled={submitDisabled} title={disabledReason} className="min-w-[160px]">
+              {/* Botões — direita; em mobile, full-width pra toque confortável */}
+              <div className="flex items-center gap-2 sm:gap-2">
+                <Button type="button" variant="outline" onClick={onCancel} className="flex-1 sm:flex-none">
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={submitDisabled}
+                  title={disabledReason}
+                  className="flex-[2] sm:flex-none sm:min-w-[160px]"
+                >
                   {isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                   {submitLabel}
                 </Button>

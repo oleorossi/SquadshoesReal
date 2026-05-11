@@ -768,10 +768,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                 // claramente que é dado preservado (não vai sumir ao salvar).
                 const isOrphan = orphanSizes.has(size);
                 return (
-                  <div key={size} className="text-center" style={{ width: isConjugated ? '4.2rem' : (isInfantil ? '3rem' : '3.4rem') }}>
+                  <div key={size} className="text-center" style={{ width: isConjugated ? '4.5rem' : (isInfantil ? '3.2rem' : '3.6rem') }}>
                     <label
                       className={cn(
-                        "text-[10px] font-bold block mb-1",
+                        "text-[11px] font-bold block mb-1",
                         isOrphan
                           ? 'text-amber-600 dark:text-amber-400'
                           : isConjugated ? 'text-primary' : 'text-muted-foreground',
@@ -794,10 +794,6 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                         handleGradeChange(size, safe);
                       }}
                       onBlur={e => {
-                        // After leaving the field, snap the displayed value to
-                        // the integer that was stored so it's clear decimals are
-                        // not accepted — prevents the "I typed 2.5 but it saved
-                        // as 2" confusion.
                         const raw = e.target.value.replace(',', '.');
                         const parsed = Number(raw);
                         if (Number.isFinite(parsed) && parsed !== Math.floor(parsed)) {
@@ -806,7 +802,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                       }}
                       onFocus={e => e.target.select()}
                       className={cn(
-                        "w-full h-8 text-xs font-mono text-center rounded border transition-all",
+                        "w-full h-10 text-sm font-mono text-center rounded border transition-all",
                         val > 0 ? 'border-primary/50 bg-primary/5 font-bold ring-1 ring-primary/10' : 'border-input hover:bg-muted/30',
                         isConjugated && 'border-primary/30',
                         isOrphan && 'border-amber-400 bg-amber-50 dark:bg-amber-950/30 ring-1 ring-amber-300/40',
