@@ -368,7 +368,17 @@ export function LabelProductionTab() {
       for (const item of data || []) {
         const straps = item.strap_colors as any[];
         if (Array.isArray(straps) && straps.length > 0) {
-          const sig = straps
+          // Ordena por id numérico antes de montar a label, garantindo
+          // sequência TIRA 1 → TIRA 2 → TIRA 3 mesmo se o usuário tiver
+          // reordenado/deletado tiras na ficha técnica (id pode ficar
+          // fora de ordem natural no array).
+          const ordered = [...straps].sort((a: any, b: any) => {
+            const ka = parseInt(a?.id, 10);
+            const kb = parseInt(b?.id, 10);
+            if (isFinite(ka) && isFinite(kb)) return ka - kb;
+            return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
+          });
+          const sig = ordered
             .filter((s: any) => s.label && s.color)
             .map((s: any) => `${s.label}:${s.color}`)
             .join('|');
