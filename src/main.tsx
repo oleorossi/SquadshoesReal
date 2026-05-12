@@ -1,4 +1,4 @@
-// Build trigger: 2026-05-12 — primeiro teste do workflow GitHub Actions deploy Vercel
+// Build trigger: 2026-05-12 — teste 2 do workflow GitHub Actions (com diagnose)
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import { GlobalErrorBoundary } from "./components/GlobalErrorBoundary";
