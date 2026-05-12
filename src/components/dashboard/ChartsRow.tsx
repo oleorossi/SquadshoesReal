@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Skeleton } from "@/components/ui/skeleton";
 import { subMonths, format, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { getDashboardPeriodRange, type DashboardPeriod } from "@/lib/dashboardPeriod";
 
 const PRIMARY      = "hsl(162, 90%, 15%)";
 const CHART_BLUE   = "#3b82f6";
@@ -25,10 +26,16 @@ const CARD_TOOLTIP_STYLE = {
   boxShadow: "0 4px 12px -2px rgb(0 0 0 / 0.1)",
 };
 
-export function ChartsRow() {
+export function ChartsRow({ period = 'current_month' }: { period?: DashboardPeriod } = {}) {
+  const range = getDashboardPeriodRange(period);
+
+  // Quantidade de buckets no chart varia conforme período:
+  // current_month=1 (mostra dia/semana — fallback 1 mês), last_3m=3, last_6m=6,
+  // current_year=mês atual, all=12. Garantimos mínimo 1.
   const months = useMemo(() => {
-    return Array.from({ length: 6 }, (_, i) => {
-      const d = subMonths(new Date(), 5 - i);
+    const count = Math.max(1, range.bucketMonths);
+    return Array.from({ length: count }, (_, i) => {
+      const d = subMonths(new Date(), count - 1 - i);
       return {
         label: format(d, "MMM", { locale: ptBR }),
         start: startOfMonth(d).toISOString(),
@@ -36,16 +43,16 @@ export function ChartsRow() {
         key:   format(d, "yyyy-MM"),
       };
     });
-  }, []);
+  }, [range.cacheKey]);
 
   const { data: salesData = [], isLoading: salesLoading } = useQuery({
-    queryKey: ["dashboard-charts-sales"],
+    queryKey: ["dashboard-charts-sales", range.cacheKey],
     queryFn: async () => {
-      const since = subMonths(new Date(), 6).toISOString();
       const { data, error } = await supabase
         .from("sale_orders")
         .select("created_at, total")
-        .gte("created_at", since)
+        .gte("created_at", range.startISO)
+        .lte("created_at", range.endISO)
         .not("status", "eq", "cancelled");
       if (error) throw error;
       return data ?? [];
@@ -54,13 +61,13 @@ export function ChartsRow() {
   });
 
   const { data: productionData = [], isLoading: prodLoading } = useQuery({
-    queryKey: ["dashboard-charts-production"],
+    queryKey: ["dashboard-charts-production", range.cacheKey],
     queryFn: async () => {
-      const since = subMonths(new Date(), 6).toISOString();
       const { data, error } = await supabase
         .from("orders")
         .select("created_at, quantity")
-        .gte("created_at", since)
+        .gte("created_at", range.startISO)
+        .lte("created_at", range.endISO)
         .not("status", "eq", "cancelled");
       if (error) throw error;
       return data ?? [];
