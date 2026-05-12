@@ -1,9 +1,15 @@
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Phone, Mail, MessageSquare, Calendar, Cake, AlertCircle, Repeat } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -15,6 +21,47 @@ const CHANNEL_ICONS: Record<string, any> = {
 };
 
 export default function CRM() {
+  const qc = useQueryClient();
+  const [newOpen, setNewOpen] = useState(false);
+  const [newInt, setNewInt] = useState({
+    client_id: '',
+    interaction_type: 'ligacao',
+    subject: '',
+    notes: '',
+    outcome: '',
+  });
+
+  const { data: clientsList = [] } = useQuery({
+    queryKey: ['crm_clients_select'],
+    queryFn: async () => {
+      const { data } = await (supabase as any)
+        .from('clients').select('id, razao_social').eq('active', true).order('razao_social').limit(500);
+      return data || [];
+    },
+  });
+
+  const createInteraction = useMutation({
+    mutationFn: async () => {
+      if (!newInt.client_id || !newInt.subject) throw new Error('Cliente e assunto são obrigatórios');
+      const { error } = await (supabase as any).from('crm_interactions').insert({
+        client_id: newInt.client_id,
+        interaction_type: newInt.interaction_type,
+        subject: newInt.subject,
+        notes: newInt.notes || null,
+        outcome: newInt.outcome || null,
+        completed_at: new Date().toISOString(),
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['crm_interactions'] });
+      setNewOpen(false);
+      setNewInt({ client_id: '', interaction_type: 'ligacao', subject: '', notes: '', outcome: '' });
+      toast.success('Interação registrada');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const { data: interactions = [] } = useQuery({
     queryKey: ['crm_interactions'],
     queryFn: async () => {
@@ -79,10 +126,71 @@ export default function CRM() {
           <h1 className="text-2xl font-bold tracking-tight">CRM</h1>
           <p className="text-sm text-muted-foreground">Histórico, campanhas, recompra prevista, NPS</p>
         </div>
-        <Button size="sm" className="gap-1.5" onClick={() => toast.info('Nova interação em breve')}>
+        <Button size="sm" className="gap-1.5" onClick={() => setNewOpen(true)}>
           <Plus className="h-4 w-4" /> Nova Interação
         </Button>
       </div>
+
+      <Dialog open={newOpen} onOpenChange={setNewOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Nova Interação</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs">Cliente *</Label>
+              <Select value={newInt.client_id} onValueChange={v => setNewInt({ ...newInt, client_id: v })}>
+                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  {clientsList.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.razao_social}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Canal</Label>
+              <Select value={newInt.interaction_type} onValueChange={v => setNewInt({ ...newInt, interaction_type: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ligacao">Ligação</SelectItem>
+                  <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                  <SelectItem value="email">E-mail</SelectItem>
+                  <SelectItem value="sms">SMS</SelectItem>
+                  <SelectItem value="visita">Visita</SelectItem>
+                  <SelectItem value="reuniao">Reunião</SelectItem>
+                  <SelectItem value="feira">Feira</SelectItem>
+                  <SelectItem value="outro">Outro</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Assunto *</Label>
+              <Input value={newInt.subject} onChange={e => setNewInt({ ...newInt, subject: e.target.value })}
+                placeholder="Ex.: Apresentação do novo modelo I50" />
+            </div>
+            <div>
+              <Label className="text-xs">Resultado</Label>
+              <Select value={newInt.outcome || '__none__'} onValueChange={v => setNewInt({ ...newInt, outcome: v === '__none__' ? '' : v })}>
+                <SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">—</SelectItem>
+                  <SelectItem value="positivo">Positivo</SelectItem>
+                  <SelectItem value="negativo">Negativo</SelectItem>
+                  <SelectItem value="neutro">Neutro</SelectItem>
+                  <SelectItem value="agendado">Agendado retorno</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Anotações</Label>
+              <Textarea rows={3} value={newInt.notes} onChange={e => setNewInt({ ...newInt, notes: e.target.value })} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewOpen(false)}>Cancelar</Button>
+            <Button onClick={() => createInteraction.mutate()} disabled={createInteraction.isPending || !newInt.client_id || !newInt.subject}>
+              {createInteraction.isPending ? 'Salvando...' : 'Registrar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
         <Card>
@@ -167,7 +275,9 @@ export default function CRM() {
                           {c.total_orders} pedido(s) · último em {c.last_order_date ? format(new Date(c.last_order_date), 'dd/MM/yyyy') : '—'}
                         </p>
                       </div>
-                      <Badge variant="outline">{c.days_inactive}d inativo</Badge>
+                      <Badge variant="outline">
+                        {c.days_inactive ? `${c.days_inactive}d inativo` : 'Nunca pediu'}
+                      </Badge>
                     </div>
                   ))}
                 </div>

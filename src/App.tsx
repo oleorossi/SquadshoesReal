@@ -793,7 +793,7 @@ const router = createBrowserRouter([
        { path: "cnab",                lazy: () => import("./pages/CNAB").then(m => ({ Component: m.default })) },
        { path: "bank-reconciliation", lazy: () => import("./pages/BankReconciliation").then(m => ({ Component: m.default })) },
        { path: "sped",                lazy: () => import("./pages/SPED").then(m => ({ Component: m.default })) },
-       { path: "picking",             lazy: () => import("./pages/Picking").then(m => ({ Component: m.default })) },
+       { path: "picking-sessions",    lazy: () => import("./pages/Picking").then(m => ({ Component: m.default })) },
        { path: "manifests",           lazy: () => import("./pages/Manifests").then(m => ({ Component: m.default })) },
        { path: "transporters",        lazy: () => import("./pages/Transporters").then(m => ({ Component: m.default })) },
        { path: "delivery-tracking",   lazy: () => import("./pages/DeliveryTracking").then(m => ({ Component: m.default })) },

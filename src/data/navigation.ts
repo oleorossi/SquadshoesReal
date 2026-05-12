@@ -100,6 +100,7 @@ export const menuGroups = [
     items: [
       { name: "Expedição",        icon: PackageOpen,    path: "/expedicao" },
       { name: "Conferência",      icon: ClipboardCheck, path: "/conferencia-saida" },
+      { name: "Sessões Picking",  icon: ClipboardCheck, path: "/picking-sessions" },
       { name: "Romaneios",        icon: FileCheck2,     path: "/manifests" },
       { name: "Transportadoras",  icon: Truck,          path: "/transporters" },
       { name: "Entregas",         icon: RouteIcon,      path: "/entregas" },
