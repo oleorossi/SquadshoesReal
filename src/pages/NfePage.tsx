@@ -19,6 +19,7 @@ import TaxConfigPanel from '@/components/nfe/TaxConfigPanel';
 import NfeDiagnosticPanel from '@/components/nfe/NfeDiagnosticPanel';
 import NfeCCePanel from '@/components/nfe/NfeCCePanel';
 import { NfeBillingHealthCard } from '@/components/nfe/NfeBillingHealthCard';
+import { AppErrorBoundary } from '@/components/ErrorBoundary';
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
@@ -461,7 +462,9 @@ export default function NfePage() {
         </TabsContent>
 
         <TabsContent value="cce" className="mt-4">
-          <NfeCCePanel />
+          <AppErrorBoundary fallbackTitle="Erro ao carregar Cartas de Correção">
+            <NfeCCePanel />
+          </AppErrorBoundary>
         </TabsContent>
 
         <TabsContent value="diagnostico" className="mt-4">
