@@ -569,7 +569,7 @@ export default function Silk() {
           <Card>
             <CardContent className="p-4 text-center">
               <p className="text-2xl font-bold text-primary">{solagemOrders.length}</p>
-              <p className="text-xs text-muted-foreground">OPs p/ Solagem</p>
+              <p className="text-xs text-muted-foreground">OPs p/ Silk</p>
             </CardContent>
           </Card>
           {soleData.map(row => (
