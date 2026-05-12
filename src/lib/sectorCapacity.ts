@@ -344,3 +344,111 @@ export const SECTOR_LABELS: Record<SectorKey, string> = {
   // legacy alias — pré rename de 2026-05-06
   corte:          'Corte',
 };
+
+// =============================================================================
+// computeParallelWindows — single source of truth pras janelas por setor
+// =============================================================================
+// D2+D3: telas frontend (ProductionDailySchedule, ProductionCapacityCalendar,
+// CapacityPlanning) calculavam cascata SEQUENCIAL e ignoravam o setor Costura,
+// divergindo do SQL compute_wave_timeline (PR 3 + PR 2 paralelos).
+//
+// Esta função espelha exatamente o que checkSectorCapacity.computeWindows faz
+// internamente (e o que update_wave_timeline grava no banco):
+//   - Corte Palmilha ‖ Corte Forração ‖ Aviamento (Mesa) — paralelos prep
+//   - Costura é sequencial entre prep e Silk
+//   - Pós-prep: Costura → Silk → Colagem → Montagem → Solagem → Acabamento
+// =============================================================================
+
+const SECTOR_NORMALIZE_PUB: Record<string, string> = {
+  'corte palmilha': 'corte_palmilha',
+  'corte forração': 'corte_forracao',
+  'corte forracao': 'corte_forracao',
+  'aviamento':      'mesa',
+  'mesa':           'mesa',
+  'costura':        'costura',
+  'silk':           'silk',
+  'colagem':        'colagem',
+  'montagem':       'montagem',
+  'solagem':        'solagem',
+  'acabamento':     'acabamento',
+  'expedição':      'expedicao',
+  'expedicao':      'expedicao',
+  'corte':          'corte_palmilha',
+  'palmilha':       'corte_palmilha',
+  'forração':       'corte_forracao',
+  'forracao':       'corte_forracao',
+  'serigrafia':     'silk',
+};
+
+function normSec(s: string): string {
+  return SECTOR_NORMALIZE_PUB[s.toLowerCase().trim()] ?? s.toLowerCase().trim();
+}
+
+function hasSectorPub(sheet: any, canonical: string): boolean {
+  const sectors: string[] = Array.isArray(sheet?.production_sectors) ? sheet.production_sectors : [];
+  if (sectors.length === 0) return true;
+  const target = normSec(canonical);
+  return sectors.some((s: string) => normSec(s) === target);
+}
+
+export interface ParallelWindow {
+  start: Date;
+  end: Date;
+  cap: number;
+  required: boolean;
+}
+
+export type ParallelWindows = Record<
+  'corte_palmilha' | 'corte_forracao' | 'costura' | 'mesa' | 'silk'
+  | 'colagem' | 'montagem' | 'solagem' | 'acabamento',
+  ParallelWindow
+>;
+
+export function computeParallelWindows(
+  sheet: any,
+  qty: number,
+  deadline: Date,
+): ParallelWindows {
+  const ltAcab     = computeSectorLeadTimeDays('acabamento',     qty, sheet, null);
+  const ltSolagem  = computeSectorLeadTimeDays('solagem',        qty, sheet, null);
+  const ltMont     = computeSectorLeadTimeDays('montagem',       qty, sheet, null);
+  const ltColagem  = hasSectorPub(sheet, 'Colagem') ? computeSectorLeadTimeDays('colagem', qty, sheet, null) : 0;
+  const ltSilk     = hasSectorPub(sheet, 'Silk')    ? computeSectorLeadTimeDays('silk',    qty, sheet, null) : 0;
+  const ltCostura  = hasSectorPub(sheet, 'Costura') ? computeSectorLeadTimeDays('costura', qty, sheet, null) : 0;
+  const ltMesa     = (hasSectorPub(sheet, 'Mesa') || hasSectorPub(sheet, 'Aviamento'))
+    ? computeSectorLeadTimeDays('mesa', qty, sheet, null) : 0;
+  const ltForracao = hasSectorPub(sheet, 'Corte Forração') ? computeSectorLeadTimeDays('corte_forracao', qty, sheet, null) : 0;
+  const ltPalmilha = hasSectorPub(sheet, 'Corte Palmilha') ? computeSectorLeadTimeDays('corte_palmilha', qty, sheet, null) : 0;
+
+  const acabEnd    = deadline;
+  const acabStart  = addBusinessDays(acabEnd,    -ltAcab);
+  const solaEnd    = acabStart;
+  const solaStart  = addBusinessDays(solaEnd,    -ltSolagem);
+  const montEnd    = solaStart;
+  const montStart  = addBusinessDays(montEnd,    -ltMont);
+  const colaEnd    = montStart;
+  const colaStart  = addBusinessDays(colaEnd,    -ltColagem);
+  const silkEnd    = colaStart;
+  const silkStart  = addBusinessDays(silkEnd,    -ltSilk);
+  const costuraEnd   = silkStart;
+  const costuraStart = addBusinessDays(costuraEnd, -ltCostura);
+  // Os 3 prep rodam em PARALELO — cada um termina em costuraStart com SEU lead.
+  const palmEnd    = costuraStart;
+  const palmStart  = addBusinessDays(palmEnd,    -ltPalmilha);
+  const forrEnd    = costuraStart;
+  const forrStart  = addBusinessDays(forrEnd,    -ltForracao);
+  const mesaEnd    = costuraStart;
+  const mesaStart  = addBusinessDays(mesaEnd,    -ltMesa);
+
+  return {
+    corte_palmilha: { start: palmStart,    end: palmEnd,    cap: Number(sheet.sewing_capacity_per_day   || 0), required: hasSectorPub(sheet, 'Corte Palmilha') && sheet.requires_sewing !== false },
+    corte_forracao: { start: forrStart,    end: forrEnd,    cap: Number(sheet.cutting_capacity_per_day  || 0), required: hasSectorPub(sheet, 'Corte Forração') && sheet.requires_cutting !== false },
+    costura:        { start: costuraStart, end: costuraEnd, cap: Number(sheet.costura_capacity_per_day  || 0), required: hasSectorPub(sheet, 'Costura') },
+    mesa:           { start: mesaStart,    end: mesaEnd,    cap: Number(sheet.mesa_daily_capacity       || 0), required: (hasSectorPub(sheet, 'Mesa') || hasSectorPub(sheet, 'Aviamento')) && Number(sheet.mesa_daily_capacity) > 0 },
+    silk:           { start: silkStart,    end: silkEnd,    cap: Number(sheet.silk_capacity_per_day     || 0), required: hasSectorPub(sheet, 'Silk') && Number(sheet.silk_capacity_per_day) > 0 },
+    colagem:        { start: colaStart,    end: colaEnd,    cap: Number(sheet.gluing_capacity_per_day   || 0), required: hasSectorPub(sheet, 'Colagem') && Number(sheet.gluing_capacity_per_day) > 0 },
+    montagem:       { start: montStart,    end: montEnd,    cap: Number(sheet.assembly_capacity_per_day || 0), required: true },
+    solagem:        { start: solaStart,    end: solaEnd,    cap: Number(sheet.soling_capacity_per_day   || 0), required: Number(sheet.soling_capacity_per_day) > 0 },
+    acabamento:     { start: acabStart,    end: acabEnd,    cap: Number(sheet.finishing_capacity_per_day|| 0), required: true },
+  };
+}
