@@ -214,8 +214,9 @@ export function useOwnDeliveryOrders() {
         .from('sale_orders')
         .select(`
           id, order_number, status, client_id, client_name, client_cnpj,
-          total_pairs, delivery_deadline,
-          clients(razao_social, endereco, bairro, cidade, estado, cep, branch_code, branch_name, cnpj)
+          delivery_deadline,
+          clients(razao_social, endereco, bairro, cidade, estado, cep, branch_code, branch_name, cnpj),
+          sale_order_items(quantity)
         `)
         .eq('own_delivery' as any, true)
         .order('delivery_deadline', { ascending: true, nullsFirst: false });
@@ -223,7 +224,7 @@ export function useOwnDeliveryOrders() {
 
       const orders = (data || []) as any[];
       const ids = orders.map((o) => o.id);
-      let assignedMap = new Map<string, string>();
+      const assignedMap = new Map<string, string>();
       if (ids.length > 0) {
         const { data: stops } = await (supabase.from as any)('delivery_route_stops')
           .select('sale_order_id, route_id, delivery_routes!inner(status)')
@@ -236,18 +237,22 @@ export function useOwnDeliveryOrders() {
         }
       }
 
-      return orders.map((o) => ({
-        id: o.id,
-        order_number: o.order_number,
-        status: o.status,
-        client_id: o.client_id,
-        client_name: o.client_name,
-        client_cnpj: o.client_cnpj,
-        total_pairs: o.total_pairs,
-        delivery_deadline: o.delivery_deadline,
-        client: o.clients || null,
-        current_route_id: assignedMap.get(o.id) || null,
-      })) as OwnDeliveryOrder[];
+      return orders.map((o) => {
+        const items = (o.sale_order_items || []) as { quantity: number | null }[];
+        const totalPairs = items.reduce((s, i) => s + (Number(i.quantity) || 0), 0);
+        return {
+          id: o.id,
+          order_number: o.order_number,
+          status: o.status,
+          client_id: o.client_id,
+          client_name: o.client_name,
+          client_cnpj: o.client_cnpj,
+          total_pairs: totalPairs,
+          delivery_deadline: o.delivery_deadline,
+          client: o.clients || null,
+          current_route_id: assignedMap.get(o.id) || null,
+        };
+      }) as OwnDeliveryOrder[];
     },
     staleTime: 60 * 1000,
   });

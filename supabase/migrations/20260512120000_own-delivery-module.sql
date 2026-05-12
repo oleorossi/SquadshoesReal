@@ -135,9 +135,10 @@ BEGIN
   SELECT COALESCE(SUM(distance_from_previous_km),0) INTO v_dist
   FROM delivery_route_stops WHERE route_id = p_route_id;
 
-  SELECT COALESCE(SUM(so.total_pairs),0) INTO v_pairs
+  -- Pares vêm de sale_order_items.quantity (sale_orders não tem total_pairs)
+  SELECT COALESCE(SUM(soi.quantity),0) INTO v_pairs
   FROM delivery_route_stops s
-  LEFT JOIN sale_orders so ON so.id = s.sale_order_id
+  LEFT JOIN sale_order_items soi ON soi.sale_order_id = s.sale_order_id
   WHERE s.route_id = p_route_id;
 
   v_fuel_cost := ROUND( (v_dist / NULLIF(v_vehicle.fuel_consumption_km_l,0)) * COALESCE(v_fuel_price,0), 2);

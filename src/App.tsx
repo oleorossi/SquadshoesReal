@@ -4,7 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { createBrowserRouter, RouterProvider, Navigate, Outlet, useLocation, useParams } from "react-router-dom";
+import { createBrowserRouter, RouterProvider, Navigate, Outlet, useLocation, useParams, useRouteError } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useCurrentProfile } from "@/hooks/useUserManagement";
 import { useAccessControl } from "@/hooks/useAccessControl";
@@ -386,14 +386,28 @@ function PedidosRedirect() {
 
 // Router configuration using createBrowserRouter
 const RouteErrorFallback = () => {
+  const error = useRouteError() as any;
+  // Loga no Console pra ficar inspecionável mesmo quando o usuário só vê a UI.
+  console.error('[RouteErrorFallback] error:', error);
+  const message = error?.message || error?.statusText || error?.toString?.() || 'Erro desconhecido';
+  const stack = error?.stack || error?.componentStack;
   return (
     <div className="min-h-[300px] flex items-center justify-center p-8">
-      <div className="text-center space-y-4 max-w-md">
+      <div className="text-center space-y-4 max-w-2xl w-full">
         <ShieldAlert className="h-10 w-10 text-destructive mx-auto" />
         <h3 className="text-lg font-semibold">Algo deu errado</h3>
         <p className="text-sm text-muted-foreground">
           Ocorreu um erro ao carregar esta página.
         </p>
+        <details className="text-left text-xs bg-muted p-3 rounded">
+          <summary className="cursor-pointer text-destructive font-semibold hover:underline">
+            Ver detalhes do erro
+          </summary>
+          <pre className="mt-2 p-2 bg-background rounded overflow-auto max-h-60 text-xs whitespace-pre-wrap break-words">
+            {message}
+            {stack ? `\n\n${stack}` : ''}
+          </pre>
+        </details>
         <Button variant="outline" onClick={() => window.location.reload()}>
           Recarregar página
         </Button>
