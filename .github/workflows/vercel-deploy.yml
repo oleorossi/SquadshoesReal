@@ -51,6 +51,43 @@ jobs:
       - name: Install Vercel CLI
         run: npm install -g vercel@latest
 
+      - name: Diagnose secrets (sem expor valores sensíveis)
+        env:
+          TOK: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          echo "== Secrets check =="
+          if [ -z "$TOK" ]; then echo "❌ VERCEL_TOKEN ausente"; exit 1; fi
+          echo "✅ VERCEL_TOKEN setado (length=${#TOK})"
+
+          if [ -z "$VERCEL_ORG_ID" ]; then echo "❌ VERCEL_ORG_ID ausente"; exit 1; fi
+          echo "✅ VERCEL_ORG_ID setado (prefix=${VERCEL_ORG_ID:0:10}...)"
+
+          if [ -z "$VERCEL_PROJECT_ID" ]; then echo "❌ VERCEL_PROJECT_ID ausente"; exit 1; fi
+          echo "✅ VERCEL_PROJECT_ID setado (prefix=${VERCEL_PROJECT_ID:0:10}...)"
+
+          echo ""
+          echo "== Vercel CLI whoami =="
+          if vercel whoami --token=$TOK; then
+            echo "✅ Token aceito pelo CLI"
+          else
+            echo "❌ Token rejeitado — verifique scope e validade"
+            exit 1
+          fi
+
+          echo ""
+          echo "== Project access check via API =="
+          STATUS=$(curl -s -o /tmp/proj.json -w "%{http_code}" \
+            "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID?teamId=$VERCEL_ORG_ID" \
+            -H "Authorization: Bearer $TOK")
+          echo "HTTP $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "❌ Falha ao acessar projeto $VERCEL_PROJECT_ID via API"
+            jq -r '.error.message // .' < /tmp/proj.json 2>/dev/null || cat /tmp/proj.json
+            exit 1
+          fi
+          PROJECT_NAME=$(jq -r '.name' < /tmp/proj.json)
+          echo "✅ Projeto encontrado: $PROJECT_NAME"
+
       - name: Pull Vercel config
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
 
