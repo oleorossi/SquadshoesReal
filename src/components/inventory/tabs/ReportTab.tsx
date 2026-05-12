@@ -23,12 +23,21 @@ export function ReportTab() {
    const { data: topProducts = [], isLoading: loadingTop } = useQuery({
      queryKey: ['top-sold-products'],
      queryFn: async () => {
-       const { data, error } = await supabase
-         .from('product_references')
-         .select('id, name, image_url, shoe_category')
+       // Antes lia product_references (vazia em produção). Mudamos pra technical_sheets
+       // que tem os modelos reais com referência + imagem + categoria.
+       const { data, error } = await (supabase as any)
+         .from('technical_sheets')
+         .select('id, name, code, image_url, status')
+         .eq('status', 'publicada')
+         .order('updated_at', { ascending: false })
          .limit(4);
        if (error) return [];
-       return data;
+       return (data || []).map((t: any) => ({
+         id: t.id,
+         name: t.name || t.code,
+         image_url: t.image_url,
+         shoe_category: t.code,
+       }));
      }
    });
 

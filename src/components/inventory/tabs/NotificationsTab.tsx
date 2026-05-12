@@ -14,15 +14,16 @@ export function NotificationsTab() {
     queryFn: () => apiService.getDashboardNotifications(),
   });
 
+  const productsArr = Array.isArray(products) ? products : [];
   const zeroStockItems = useMemo(() =>
-    products.filter(p => p.quantity === 0 && p.active),
-    [products]
+    productsArr.filter(p => p.quantity === 0 && p.active),
+    [productsArr]
   );
 
   // Exclude zero-stock items to avoid double-counting (they appear in zeroStockItems)
   const lowStockItems = useMemo(() =>
-    products.filter(p => p.quantity > 0 && p.quantity <= p.min_stock && p.active).sort((a, b) => a.quantity - b.quantity),
-    [products]
+    productsArr.filter(p => p.quantity > 0 && p.quantity <= p.min_stock && p.active).sort((a, b) => a.quantity - b.quantity),
+    [productsArr]
   );
 
   if (isLoading) {
