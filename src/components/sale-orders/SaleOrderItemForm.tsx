@@ -994,8 +994,29 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           </div>
         </div>
 
-        {/* Straps Section */}
-        {(item.strap_colors as any[])?.length > 0 && (() => {
+        {/* Straps Section — fluxo sequencial: só abre após cor principal definida.
+            Sem isso, ao selecionar referência com tiras o user via cor principal +
+            tiras juntas e ficava confuso sobre qual preencher primeiro.
+            Fallback: se o item já tem alguma tira com cor (edição de PV existente),
+            sempre mostra. */}
+        {(() => {
+          const straps = (item.strap_colors as any[]) || [];
+          if (straps.length === 0) return null;
+          const anyStrapHasColor = straps.some((s: any) => !!s?.color);
+          const principalDefined = !!item.color;
+          // Se cor principal ainda não foi escolhida E nenhuma tira ainda tem cor,
+          // mostra placeholder com hint em vez da section completa.
+          if (!principalDefined && !anyStrapHasColor) {
+            return (
+              <div className="rounded-lg border border-dashed border-border/60 bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground italic flex items-center gap-2">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-muted-foreground/40" />
+                Defina a <strong className="text-foreground">Cor Principal</strong> acima para abrir as <strong className="text-foreground">cores das {straps.length} tira{straps.length > 1 ? 's' : ''}</strong>.
+              </div>
+            );
+          }
+          return null;
+        })()}
+        {(item.strap_colors as any[])?.length > 0 && (!!item.color || ((item.strap_colors as any[]) || []).some((s: any) => !!s?.color)) && (() => {
           const straps = item.strap_colors as any[];
           // Detecta tiras com cor escolhida mas SEM produto no estoque (group_id + color)
           // Antes o operador só descobria isso quando OP entrava em produção e
