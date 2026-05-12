@@ -61,15 +61,15 @@ const normalizeCalculationMethod = (
 };
 
 const emptyForm: ProductFormData = {
-   name: '', technical_name: '', sku: '', category: '', color: '', quantity: 0, min_stock: 0, max_stock: 0, unit: 'un', unit_price: 0, price_wholesale: 0, price_retail: 0, location: '', group_id: null, active: true, image_url: '', min_stock_grade: {}, stock_grade: {}, yield_per_meter: null, yield_unit: 'dm²', dimensions_length: 0, dimensions_width: 0, dimensions_thickness: 0, dimensions_unit: 'mm',
+  name: '', technical_name: '', sku: '', category: '', color: '', quantity: 0, min_stock: 0, max_stock: 0, unit: 'un', unit_price: 0, location: '', group_id: null, active: true, image_url: '', min_stock_grade: {}, stock_grade: {}, dimensions_length: 0, dimensions_width: 0, dimensions_thickness: 0, dimensions_unit: 'mm',
   purchase_unit: 'un', production_unit: 'un', conversion_rate: 1, purchase_order_unit: 'un', min_order_quantity: 0,
-  safety_stock: 0, lead_time_days: 7, supplier_lead_time_days: 7,
+  safety_stock: 0, supplier_lead_time_days: 7,
   calculation_method: 'weight',
   supplier_id: null,
-  lot_number: null, expiration_date: null, is_chemical: false,
-   linked_last_id: null, sole_material: null, heel_height: null,
-   consumption_unit: null, is_standard_sole_item: false,
- };
+  is_chemical: false,
+  sole_material: null, heel_height: null,
+  consumption_unit: null, is_standard_sole_item: false,
+};
 
 function getBaseName(name: string): string {
   const colonIdx = name.lastIndexOf(':');
@@ -231,8 +231,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
         max_stock: rest.max_stock ?? 0,
         unit: rest.unit || 'un',
         unit_price: rest.unit_price ?? 0,
-        price_wholesale: (rest as any).price_wholesale ?? 0,
-        price_retail: (rest as any).price_retail ?? 0,
         location: rest.location || '',
         group_id: rest.group_id || null,
         active: rest.active ?? true,
@@ -241,8 +239,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
           ? (rest.min_stock_grade as Record<string, number>) : {},
         stock_grade: (rest.stock_grade && typeof rest.stock_grade === 'object' && !Array.isArray(rest.stock_grade))
           ? (rest.stock_grade as Record<string, number>) : {},
-        yield_per_meter: rest.yield_per_meter ?? null,
-        yield_unit: rest.yield_unit || 'dm²',
         dimensions_length: rest.dimensions_length ?? 0,
         dimensions_width: rest.dimensions_width ?? 0,
         dimensions_thickness: rest.dimensions_thickness ?? 0,
@@ -253,19 +249,15 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
         purchase_order_unit: normalizeUnit(rest.purchase_unit || rest.purchase_order_unit),
         min_order_quantity: rest.min_order_quantity ?? 1,
         safety_stock: rest.safety_stock ?? 0,
-        lead_time_days: rest.lead_time_days ?? 10,
         supplier_lead_time_days: rest.supplier_lead_time_days ?? 10,
         calculation_method: normalizeCalculationMethod(rest.calculation_method),
-        lot_number: rest.lot_number || null,
-        expiration_date: rest.expiration_date || null,
         is_chemical: rest.is_chemical ?? false,
-        linked_last_id: rest.linked_last_id || null,
         sole_material: rest.sole_material || null,
         heel_height: rest.heel_height ?? null,
-         box_type_id: rest.box_type_id || null,
-         consumption_unit: (rest as any).consumption_unit || null,
-         is_standard_sole_item: (rest as any).is_standard_sole_item ?? false,
-       });
+        box_type_id: rest.box_type_id || null,
+        consumption_unit: (rest as any).consumption_unit || null,
+        is_standard_sole_item: (rest as any).is_standard_sole_item ?? false,
+      });
       setMultiColorMode(false);
       setMultiColors([]);
       setColorInput('');
