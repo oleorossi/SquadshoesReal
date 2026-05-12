@@ -217,8 +217,12 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
   };
 
   
-  const effectiveGroup = defaultGroupName ? defaultGroupId : groupFilter;
-  
+  // Se chip foi clicado (defaultGroupName setado), usa SÓ category — não filtra
+  // groupId. Senão (uso fora do chip), respeita o groupFilter manual.
+  // Sem isso o AND filter (groupId + category) eliminaria produtos como
+  // "01-CARAMELO" que pertencem a "SOLADO 01" (group) mas category='Solado'.
+  const effectiveGroup = defaultGroupName ? 'all' : groupFilter;
+
   const { data: paginatedData, isLoading: isPaginatedLoading } = usePaginatedProducts({
     search: debouncedSearch,
     groupId: effectiveGroup,
