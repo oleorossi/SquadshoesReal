@@ -14,7 +14,12 @@ import { ManagementReport, type ReportSaleOrder, type ReportOrder, type ReportSt
 const printStyles = `
   @page {
     size: A4 portrait;
-    margin: 0;
+    /* BUG ANTIGO: margin: 0 fazia o conteúdo (w-[210mm]) colar nas bordas
+       absolutas do A4. Quase nenhuma impressora consegue imprimir até a borda
+       física (têm ~4-7mm de área não-imprimível), então o lado direito das
+       tabelas (e o pé da página) saía cortado. FIX: 8mm de margem segura
+       em todos os lados — área imprimível resultante = 194mm × 281mm. */
+    margin: 8mm;
   }
   @media print {
     /* BUG ANTIGO: usávamos position:absolute na print-area pra tirar o app
@@ -43,6 +48,34 @@ const printStyles = `
       width: 100%;
       margin: 0;
       padding: 0;
+    }
+
+    /* Cada ficha tem className="w-[210mm] p-[8mm] ..." no <div> raiz. Isso
+       é OK em tela (preview do tamanho real), mas em impressão estoura
+       a margem segura do @page (210mm > 194mm imprimíveis). Forçamos o
+       container a usar 100% da área imprimível e zeramos o padding (a
+       margem do @page já dá o respiro de 8mm em todos os lados). */
+    .print-area .page-break > div,
+    .print-area > div > div:first-child {
+      width: 100% !important;
+      max-width: 100% !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      border: 0 !important;
+      box-sizing: border-box !important;
+    }
+
+    /* Tabelas nunca devem estourar o container — quebra texto se preciso
+       (evita que célula com texto longo empurre a coluna pra fora). */
+    .print-area table {
+      width: 100% !important;
+      max-width: 100% !important;
+      table-layout: fixed !important;
+    }
+    .print-area th, .print-area td {
+      overflow: hidden !important;
+      word-wrap: break-word !important;
+      word-break: break-word !important;
     }
 
     /* Quebras de página entre setores/grupos */
