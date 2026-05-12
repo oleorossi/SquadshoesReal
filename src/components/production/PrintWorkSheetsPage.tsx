@@ -572,7 +572,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
   // (Corte Palmilha = só por solado; Solagem = por cor de solado;
   //  Expedição = por cliente; Colagem ainda usa Ref+Cor.)
   const SOLE_COLOR_GROUPED_SECTORS: ReadonlyArray<GroupedSector> = [
-    'Silk', 'Montagem', 'Corte Forração', 'Costura', 'Aviamento', 'Acabamento',
+    'Silk', 'Montagem', 'Corte Forração', 'Corte Cabedal', 'Costura', 'Aviamento', 'Acabamento',
   ];
 
   // Lookup: variantes de cor por ref (pra foto + fallback "Preto")

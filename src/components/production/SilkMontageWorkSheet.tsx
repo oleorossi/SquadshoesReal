@@ -1,5 +1,5 @@
 import React from 'react';
-import { PaintBrush as Paintbrush, Hammer, Pen, Paperclip, Sparkle as Sparkles, Cloud } from '@phosphor-icons/react';
+import { PaintBrush as Paintbrush, Hammer, Pen, Paperclip, Sparkle as Sparkles, Cloud, Scissors } from '@phosphor-icons/react';
 import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { ProductImageBlock } from './worksheet/ProductImageBlock';
@@ -51,6 +51,7 @@ export type GroupedSector =
   | 'Silk'
   | 'Montagem'
   | 'Corte Forração'
+  | 'Corte Cabedal'
   | 'Costura'
   | 'Aviamento'
   | 'Acabamento';
@@ -70,7 +71,7 @@ const SECTOR_THEME: Record<GroupedSector, {
   border1: string;
   textColor: string;
   icon: typeof Paintbrush;
-  accentColor: 'pink' | 'blue' | 'cyan' | 'violet' | 'amber' | 'emerald';
+  accentColor: 'pink' | 'blue' | 'cyan' | 'violet' | 'amber' | 'emerald' | 'orange';
   showFrenteTraseiro: boolean;
   showSilkImage: boolean;
   /** Renderiza foto do produto (sandália). Desligar em setores que cortam só
@@ -90,6 +91,10 @@ const SECTOR_THEME: Record<GroupedSector, {
   'Silk':           { border: 'border-pink-700',    bg: 'bg-pink-600',    bgLight: 'bg-pink-50',    border1: 'border-pink-500',   textColor: 'text-pink-900',    icon: Paintbrush, accentColor: 'pink',    showFrenteTraseiro: false, showSilkImage: true,  showProductImage: true,  showAlerts: false, showMaterials: 'none',  showStitching: false, showFinishingChecklist: false, showIndividualBox: false },
   'Montagem':       { border: 'border-blue-700',    bg: 'bg-blue-600',    bgLight: 'bg-blue-50',    border1: 'border-blue-500',   textColor: 'text-blue-900',    icon: Hammer,     accentColor: 'blue',    showFrenteTraseiro: false, showSilkImage: false, showProductImage: true,  showAlerts: false, showMaterials: 'none',  showStitching: false, showFinishingChecklist: false, showIndividualBox: false },
   'Corte Forração': { border: 'border-cyan-700',    bg: 'bg-cyan-600',    bgLight: 'bg-cyan-50',    border1: 'border-cyan-500',   textColor: 'text-cyan-900',    icon: Cloud,      accentColor: 'cyan',    showFrenteTraseiro: false, showSilkImage: false, showProductImage: false, showAlerts: false, showMaterials: 'lining',showStitching: false, showFinishingChecklist: false, showIndividualBox: false },
+  // Corte Cabedal — só em modelos has_straps=false. Mostra material do cabedal,
+  // sem silk, sem foto do calçado (cortador só vê o cabedal por cor). Amber pra
+  // distinguir visualmente dos outros 2 cortes.
+  'Corte Cabedal':  { border: 'border-orange-700',  bg: 'bg-orange-600',  bgLight: 'bg-orange-50',  border1: 'border-orange-500', textColor: 'text-orange-900', icon: Scissors,   accentColor: 'orange',  showFrenteTraseiro: false, showSilkImage: false, showProductImage: false, showAlerts: true,  showMaterials: 'upper', showStitching: false, showFinishingChecklist: false, showIndividualBox: false },
   'Costura':        { border: 'border-violet-700',  bg: 'bg-violet-600',  bgLight: 'bg-violet-50',  border1: 'border-violet-500', textColor: 'text-violet-900',  icon: Pen,        accentColor: 'violet',  showFrenteTraseiro: false, showSilkImage: false, showProductImage: true,  showAlerts: false, showMaterials: 'none',  showStitching: true,  showFinishingChecklist: false, showIndividualBox: false },
   'Aviamento':      { border: 'border-amber-700',   bg: 'bg-amber-600',   bgLight: 'bg-amber-50',   border1: 'border-amber-500',  textColor: 'text-amber-900',   icon: Paperclip,  accentColor: 'amber',   showFrenteTraseiro: true,  showSilkImage: false, showProductImage: true,  showAlerts: true,  showMaterials: 'both',  showStitching: false, showFinishingChecklist: false, showIndividualBox: false },
   'Acabamento':     { border: 'border-emerald-700', bg: 'bg-emerald-600', bgLight: 'bg-emerald-50', border1: 'border-emerald-500',textColor: 'text-emerald-900', icon: Sparkles,   accentColor: 'emerald', showFrenteTraseiro: false, showSilkImage: true,  showProductImage: true,  showAlerts: false, showMaterials: 'none',  showStitching: false, showFinishingChecklist: true,  showIndividualBox: true  },
