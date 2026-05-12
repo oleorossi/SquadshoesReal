@@ -4489,13 +4489,14 @@ function SoleProductSelect({ label, value, onChange }: { label: string; value: s
   const { data: soleModels = [] } = useQuery({
     queryKey: ['products_solado_groups_unified'],
     queryFn: async () => {
-      const { data: groups } = await supabase.from('product_groups').select('id, name').ilike('name', '%solado%');
-      if (!groups || groups.length === 0) return [];
-      const groupIds = groups.map(g => g.id);
+      // Antes filtrava product_groups por nome ILIKE '%solado%' — perdia grupos
+      // como "SALTINHO BLOCO" cujo nome não contém 'solado'. Filtra direto pela
+      // categoria do produto pra cobrir todos os saltos/solados, independente
+      // do nome do grupo.
       const { data, error } = await supabase
         .from('products')
-        .select('id, name, sku, color, group_id, unit_price, quantity')
-        .in('group_id', groupIds)
+        .select('id, name, sku, color, group_id, unit_price, quantity, product_groups(id, name)')
+        .ilike('category', '%solado%')
         .eq('active', true)
         .order('name');
       if (error) throw error;
@@ -4508,7 +4509,7 @@ function SoleProductSelect({ label, value, onChange }: { label: string; value: s
       const modelMap = new Map<string, { id: string; name: string; group_id: string; groupName: string; totalStock: number; variantCount: number; sku: string | null }>();
       (data || []).forEach((p: any) => {
         const key = normalizeBaseName(p.name, p.color);
-        const groupName = groups.find(g => g.id === p.group_id)?.name || '';
+        const groupName = (p.product_groups?.name as string | undefined) || '';
         const displayName = getSoleModelName(p.name, p.color);
         const existing = modelMap.get(key);
         if (existing) {
