@@ -382,7 +382,10 @@ RETURNS TABLE (
 LANGUAGE sql STABLE AS $$
   SELECT
     COALESCE(c.price_list_id,             eg.default_price_list_id)         AS price_list_id,
-    COALESCE(NULLIF(c.contato,'')::text,  eg.default_payment_condition)     AS payment_condition,
+    -- ATENÇÃO: payment_condition vem APENAS do grupo. NÃO usar c.contato aqui —
+    -- 'contato' é nome da pessoa de contato no cliente, não condição de pgto.
+    -- Se quiser override por cliente, criar coluna clients.default_payment_condition.
+    eg.default_payment_condition                                            AS payment_condition,
     eg.default_factoring_config_id                                          AS factoring_config_id,
     eg.default_modalidade_frete                                             AS modalidade_frete,
     COALESCE(c.preferred_transporter_id,  eg.default_transport_company_id)  AS transport_company_id,
@@ -404,3 +407,24 @@ GRANT EXECUTE ON FUNCTION public.get_client_commercial_defaults(uuid) TO authent
 
 COMMENT ON FUNCTION public.get_client_commercial_defaults(uuid) IS
   'Resolve defaults comerciais com precedência cliente > grupo. Frontend usa pra pré-popular PV.';
+
+
+-- ───────────────────────────────────────────────────────────────────
+-- Storage bucket pra anexos do grupo (contratos, propostas, NDAs)
+-- ───────────────────────────────────────────────────────────────────
+
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('economic-group-attachments', 'economic-group-attachments', true)
+ON CONFLICT (id) DO NOTHING;
+
+DROP POLICY IF EXISTS "Authenticated can read eg attachments" ON storage.objects;
+CREATE POLICY "Authenticated can read eg attachments" ON storage.objects FOR SELECT
+  USING (bucket_id = 'economic-group-attachments' AND auth.role() = 'authenticated');
+
+DROP POLICY IF EXISTS "Authenticated can upload eg attachments" ON storage.objects;
+CREATE POLICY "Authenticated can upload eg attachments" ON storage.objects FOR INSERT
+  WITH CHECK (bucket_id = 'economic-group-attachments' AND auth.role() = 'authenticated');
+
+DROP POLICY IF EXISTS "Authenticated can delete eg attachments" ON storage.objects;
+CREATE POLICY "Authenticated can delete eg attachments" ON storage.objects FOR DELETE
+  USING (bucket_id = 'economic-group-attachments' AND auth.role() = 'authenticated');
