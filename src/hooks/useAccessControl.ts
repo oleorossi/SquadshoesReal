@@ -26,6 +26,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/order-flow-audit': 'ordens',
   '/labels': 'expedicao',
   '/label-system': 'expedicao',
+  '/entregas': 'expedicao',
   '/sales': 'vendas',
   '/pronta-entrega': 'vendas',
   '/sales-report': 'relatorios',
