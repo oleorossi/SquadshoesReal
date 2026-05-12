@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { FloppyDisk as Save, PencilSimple as Pencil, Gear as Settings2, Stack as Layers, Palette, Link as Link2, Plus, Sneaker as Shoe } from '@phosphor-icons/react';
+import { Switch } from '@/components/ui/switch';
+import { FloppyDisk as Save, PencilSimple as Pencil, Gear as Settings2, Stack as Layers, Palette, Link as Link2, Plus, Sneaker as Shoe, Crown } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { SoleSizeConjugationsEditor } from '@/components/inventory/SoleSizeConjugationsEditor';
 import { SoleColorConjugationsEditor } from './SoleColorConjugationsEditor';
@@ -86,6 +87,31 @@ export default function SolesCadastroTab({ sole }: Props) {
       qc.invalidateQueries({ queryKey: ['soles_hub_products'] });
       qc.invalidateQueries({ queryKey: ['products'] });
       toast.success('Range de numeração atualizado!');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  // Toggle is_fachetado em todas variantes do grupo
+  const updateFachetado = useMutation({
+    mutationFn: async (next: boolean) => {
+      if (!groupId) {
+        const { error } = await supabase
+          .from('products')
+          .update({ is_fachetado: next } as any)
+          .eq('id', sole.id);
+        if (error) throw error;
+        return;
+      }
+      const { error } = await supabase
+        .from('products')
+        .update({ is_fachetado: next } as any)
+        .eq('group_id', groupId);
+      if (error) throw error;
+    },
+    onSuccess: (_data, next) => {
+      qc.invalidateQueries({ queryKey: ['soles_hub_products'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+      toast.success(next ? 'Solado marcado como fachetado' : 'Solado não-fachetado');
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -282,6 +308,35 @@ export default function SolesCadastroTab({ sole }: Props) {
       </Card>
 
       {/* GroupBindingFallback é declarado abaixo */}
+
+      {/* Salto Fachetado — toggle global do grupo */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Crown className="h-4 w-4 text-primary" />
+            Salto Fachetado
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center gap-3">
+            <Switch
+              id="sole-fachetado"
+              checked={(sole as any).is_fachetado ?? false}
+              onCheckedChange={(v) => updateFachetado.mutate(!!v)}
+              disabled={updateFachetado.isPending}
+            />
+            <Label htmlFor="sole-fachetado" className="text-sm cursor-pointer">
+              Solado tem salto fachetado (com forração no salto)
+            </Label>
+          </div>
+          {(sole as any).is_fachetado && (
+            <p className="text-[11px] text-muted-foreground">
+              Configure o consumo de fachete por numeração na aba <strong>Consumos → Forração/Palmilha</strong>.
+              Na ficha técnica só será preenchido o <em>material</em> do fachete.
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Conjugações de numeração (só pra 'conjugado') */}
       {sole.sole_classification === 'conjugado' && (

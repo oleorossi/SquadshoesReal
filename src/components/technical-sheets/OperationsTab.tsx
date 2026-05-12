@@ -21,13 +21,18 @@ import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 const STAGE_COLORS: Record<string, string> = {
-   'Corte': 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
-   // Legacy 'Forração' mantido pra colorir operações cadastradas antes do rename.
-   'Forração': 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+   // Sub-etapas de Corte — 3 cores diferentes pra distinguir visualmente
+   'Corte': 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300', // legacy genérico
+   'Corte Palmilha': 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
    'Corte Forração': 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+   'Corte Cabedal':  'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+   'Forração': 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300', // legacy alias
+   'Costura': 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300',
+   'Aviamento': 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
   'Silk': 'bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300',
    'Colagem': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
-   'Montagem': 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
+   'Montagem': 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300',
+   'Solagem': 'bg-lime-100 text-lime-800 dark:bg-lime-900/30 dark:text-lime-300',
   'Acabamento': 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
    'Expedição': 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-300',
 };
@@ -231,12 +236,17 @@ export function OperationsTab({
     const toAdd = PRODUCTION_STAGES.filter(s => !existing.has(s));
     if (toAdd.length === 0) return;
     const DEFAULT_COSTS: Record<string, { time: number; cost: number; resource: string }> = {
-   'Corte': { time: 2, cost: 18, resource: 'Cortador' },
-   'Corte Forração': { time: 2, cost: 18, resource: 'Forrador' },
-   'Forração': { time: 2, cost: 18, resource: 'Forrador' }, // legacy
+   'Corte': { time: 2, cost: 18, resource: 'Cortador' }, // legacy genérico
+   'Corte Palmilha': { time: 1.5, cost: 18, resource: 'Cortador Palmilha' },
+   'Corte Forração': { time: 2,   cost: 18, resource: 'Forrador' },
+   'Corte Cabedal':  { time: 2.5, cost: 20, resource: 'Cortador Cabedal' },
+   'Forração': { time: 2, cost: 18, resource: 'Forrador' }, // legacy alias
+   'Costura': { time: 2, cost: 22, resource: 'Costureira' },
+   'Aviamento': { time: 2, cost: 18, resource: 'Aviamento' },
    'Silk': { time: 1, cost: 16, resource: 'Silk' },
    'Colagem': { time: 1, cost: 16, resource: 'Colagem' },
    'Montagem': { time: 3, cost: 22, resource: 'Montador' },
+   'Solagem': { time: 1.5, cost: 18, resource: 'Solagem' },
    'Acabamento': { time: 1.5, cost: 18, resource: 'Acabamento' },
    'Expedição': { time: 1, cost: 20, resource: 'Expedição' },
     };

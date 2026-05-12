@@ -165,7 +165,11 @@ interface PrintWorkSheetsPageProps {
   printAll?: boolean;
 }
 
-const SECTORS = ['Corte Palmilha', 'Corte Forração', 'Costura', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição', 'Relatório Gerencial'] as const;
+// 'Corte Cabedal' adicionado em 2026-05-12 como 3ª sub-etapa de Corte
+// (ao lado de Corte Palmilha + Corte Forração). Ficha de operador específica
+// vem em Phase 2 — por ora aceita seleção mas reusa o template do SilkMontage
+// para sole+color sectors (vide SOLE_COLOR_GROUPED_SECTORS abaixo).
+const SECTORS = ['Corte Palmilha', 'Corte Forração', 'Corte Cabedal', 'Costura', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição', 'Relatório Gerencial'] as const;
 
 // ── Group orders by reference_id + color ────────────────────────────────────
 function groupOrdersByRefColor(orders: any[]): Array<{
