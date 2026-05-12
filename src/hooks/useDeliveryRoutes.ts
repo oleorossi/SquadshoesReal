@@ -129,6 +129,7 @@ export function useCreateDeliveryRoute() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['delivery_routes'] });
       qc.invalidateQueries({ queryKey: ['delivery_route_stops'] });
+      qc.invalidateQueries({ queryKey: ['own_delivery_orders'] });
       toast.success('Rota criada!');
     },
     onError: (err: Error) => toast.error(`Erro ao criar rota: ${err.message}`),
@@ -144,6 +145,7 @@ export function useUpdateRouteStatus() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['delivery_routes'] });
+      qc.invalidateQueries({ queryKey: ['own_delivery_orders'] });
       toast.success('Status da rota atualizado.');
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
@@ -173,6 +175,7 @@ export function useDeleteRoute() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['delivery_routes'] });
+      qc.invalidateQueries({ queryKey: ['own_delivery_orders'] });
       toast.success('Rota removida.');
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),

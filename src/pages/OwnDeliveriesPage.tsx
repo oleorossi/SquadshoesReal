@@ -288,18 +288,21 @@ function RoutesTab() {
               <div className="flex gap-1 pt-1">
                 {r.status === 'planned' && (
                   <Button size="sm" variant="outline" className="h-7 text-xs"
+                    disabled={updateStatus.isPending}
                     onClick={() => updateStatus.mutate({ id: r.id, status: 'in_progress' })}>
                     Iniciar entrega
                   </Button>
                 )}
                 {r.status === 'in_progress' && (
                   <Button size="sm" variant="outline" className="h-7 text-xs"
+                    disabled={updateStatus.isPending}
                     onClick={() => updateStatus.mutate({ id: r.id, status: 'completed' })}>
                     Concluir
                   </Button>
                 )}
                 {(r.status === 'planned' || r.status === 'in_progress') && (
                   <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive"
+                    disabled={updateStatus.isPending}
                     onClick={() => updateStatus.mutate({ id: r.id, status: 'cancelled' })}>
                     Cancelar
                   </Button>

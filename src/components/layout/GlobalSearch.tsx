@@ -192,7 +192,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
               .limit(5),
             supabase
               .from('technical_sheets')
-              .select('id, name, gender')
+              .select('id, name, shoe_category')
               .ilike('name', `%${searchTerm}%`)
               .order('updated_at', { ascending: false })
               .limit(5),
@@ -207,7 +207,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
           const fromSheets = (sheetRes.data ?? []).map((r: any) => ({
             id: r.id,
             name: r.name,
-            category: r.gender,
+            category: r.shoe_category,
             source: 'technical_sheets' as const,
           }));
 

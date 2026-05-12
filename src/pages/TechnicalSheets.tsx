@@ -192,7 +192,8 @@ import { AppErrorBoundary } from '@/components/ErrorBoundary';
 const STATUSES = ['Ativo', 'Em desenvolvimento', 'Descontinuado'] as const;
 const STATUS_FICHA = ['rascunho', 'em_revisao', 'validada', 'publicada'] as const;
 const STATUS_FICHA_LABELS: Record<string, string> = { rascunho: 'Rascunho', em_revisao: 'Em Revisão', validada: 'Validada', publicada: 'Publicada' };
-const GENDERS = ['Feminino', 'Masculino', 'Unissex', 'Infantil'] as const;
+// GENDERS removido em 2026-05: campo `gender` foi marcado como dead code
+// (nunca era lido em business logic, search, filtros ou cálculos).
 const SOLE_PROCESSES = ['Injetada', 'Colada', 'Costurada', 'Vulcanizada'] as const;
 const ACABAMENTOS_TIRAS = ['brilho', 'fosco', 'metálico', 'metalic', 'glow', 'texturizado', 'envernizado'] as const;
 const MATERIAIS_SOLADO = ['TR', 'EVA', 'Borracha', 'PVC', 'TPU'] as const;
@@ -792,7 +793,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
           <DialogHeader>
             <DialogTitle>Nova Ficha Técnica</DialogTitle>
           </DialogHeader>
-          <QuickCreateForm onCreated={(id) => { setDialogOpen(false); setExpandedId(id); }} />
+          <QuickCreateForm onCreated={(id) => { setDialogOpen(false); setExpandedId(id); }} onCancel={() => setDialogOpen(false)} />
         </DialogContent>
       </Dialog>
 
@@ -963,11 +964,25 @@ function SheetImageEditor({ sheet, onSaved, updateSheet }: { sheet: any; onSaved
   );
 }
 
-function QuickCreateForm({ onCreated }: { onCreated: (id: string) => void }) {
+function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => void; onCancel: () => void }) {
   const addSheet = useAddSheet();
-  const [form, setForm] = useState({ name: '', brand: '', model: '', code: '', shoe_category: '', gender: '', sizes: '33-41', status: 'Ativo', images: [] as string[] });
+  // Form reformulado em 2026-05: agora inclui campos essenciais (descrição,
+  // coleção, status da ficha) pra reduzir asymmetry com edit. Removido
+  // 'gender' — campo morto sem uso em business logic. Layout em 2 seções
+  // (Identidade + Especificações) com Cancelar visível no rodapé.
+  const [form, setForm] = useState({
+    name: '', brand: '', model: '', code: '', shoe_category: '',
+    sizes: '33-41', status: 'Ativo',
+    collection: '', description: '',
+    images: [] as string[],
+  });
   const [uploading, setUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [touched, setTouched] = useState(false);
+
+  const nameMissing = touched && !form.name.trim();
+  const codeMissing = touched && !form.code.trim();
+  const categoryMissing = touched && !form.shoe_category;
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -991,75 +1006,127 @@ function QuickCreateForm({ onCreated }: { onCreated: (id: string) => void }) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setTouched(true);
+    if (!form.name.trim() || !form.code.trim() || !form.shoe_category) {
+      toast.error('Preencha Nome, SKU e Categoria.');
+      return;
+    }
     const result = await addSheet.mutateAsync(form);
     if (result) onCreated(result.id);
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 mt-2">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="col-span-2 flex flex-col gap-2">
-          <Label>Foto do Produto</Label>
-          {previewUrl ? (
-            <div className="relative w-full h-40 rounded-lg border overflow-hidden bg-muted">
-              <SignedImage src={previewUrl} alt="Preview" className="w-full h-full object-contain" />
-              <Button type="button" variant="destructive" size="icon" className="absolute top-2 right-2 h-6 w-6"
-                onClick={() => { setPreviewUrl(null); setForm(f => ({ ...f, images: [] })); }}>
-                <Trash2 className="h-3 w-3" />
-              </Button>
+    <form onSubmit={handleSubmit} className="space-y-5 mt-2">
+      {/* ── Seção 1: Identidade ──────────────────────────────── */}
+      <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+          <Package className="h-3.5 w-3.5" /> Identidade
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* Foto (full width) */}
+          <div className="md:col-span-2">
+            <Label className="text-xs">Foto do Produto</Label>
+            <div className="mt-1">
+              {previewUrl ? (
+                <div className="relative w-full h-36 rounded-lg border overflow-hidden bg-muted">
+                  <SignedImage src={previewUrl} alt="Preview" className="w-full h-full object-contain" />
+                  <Button type="button" variant="destructive" size="icon" className="absolute top-2 right-2 h-6 w-6"
+                    onClick={() => { setPreviewUrl(null); setForm(f => ({ ...f, images: [] })); }}>
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              ) : (
+                <label className="cursor-pointer w-full">
+                  <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={uploading} />
+                  <div className="w-full h-28 rounded-lg border-2 border-dashed border-muted-foreground/30 flex flex-col items-center justify-center gap-1 hover:border-primary/50 transition-colors">
+                    {uploading ? <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /> : (
+                      <>
+                        <Package className="h-6 w-6 text-muted-foreground/50" />
+                        <span className="text-[11px] text-muted-foreground">Clique pra adicionar foto</span>
+                      </>
+                    )}
+                  </div>
+                </label>
+              )}
             </div>
-          ) : (
-            <label className="cursor-pointer w-full">
-              <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={uploading} />
-              <div className="w-full h-32 rounded-lg border-2 border-dashed border-muted-foreground/30 flex flex-col items-center justify-center gap-2 hover:border-primary/50 transition-colors">
-                {uploading ? <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /> : (
-                  <>
-                    <Package className="h-8 w-8 text-muted-foreground/50" />
-                    <span className="text-xs text-muted-foreground">Clique para adicionar foto</span>
-                  </>
-                )}
-              </div>
-            </label>
-          )}
+          </div>
+
+          <div className="md:col-span-2">
+            <Label htmlFor="qc-name" className="text-xs">Nome da Ficha / Referência <span className="text-red-500">*</span></Label>
+            <Input
+              id="qc-name"
+              value={form.name}
+              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              required
+              className={cn("mt-1 h-9", nameMissing && "border-red-500")}
+              placeholder="Ex: Sandália MONALISA"
+              autoFocus
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="qc-code" className="text-xs">SKU / Código <span className="text-red-500">*</span></Label>
+            <Input
+              id="qc-code"
+              value={form.code}
+              onChange={e => setForm(f => ({ ...f, code: e.target.value }))}
+              required
+              className={cn("mt-1 h-9 font-mono", codeMissing && "border-red-500")}
+              placeholder="Ex: MON-893767-003"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="qc-category" className="text-xs">Categoria <span className="text-red-500">*</span></Label>
+            <Select value={form.shoe_category} onValueChange={v => setForm(f => ({ ...f, shoe_category: v, sizes: v === 'Infantil' ? '25-36' : '34-40' }))}>
+              <SelectTrigger id="qc-category" className={cn("mt-1 h-9", categoryMissing && "border-red-500")}>
+                <SelectValue placeholder="Selecione…" />
+              </SelectTrigger>
+              <SelectContent>{SHOE_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="qc-brand" className="text-xs">Marca</Label>
+            <Input id="qc-brand" value={form.brand} onChange={e => setForm(f => ({ ...f, brand: e.target.value }))} className="mt-1 h-9" placeholder="Ex: Squad Shoes" />
+          </div>
+          <div>
+            <Label htmlFor="qc-model" className="text-xs">Modelo</Label>
+            <Input id="qc-model" value={form.model} onChange={e => setForm(f => ({ ...f, model: e.target.value }))} className="mt-1 h-9" placeholder="Ex: Air Max Style" />
+          </div>
+
+          <div className="md:col-span-2">
+            <Label htmlFor="qc-description" className="text-xs">Descrição (opcional)</Label>
+            <Input
+              id="qc-description"
+              value={form.description}
+              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+              className="mt-1 h-9"
+              placeholder="Detalhes do modelo, especificações breves…"
+            />
+          </div>
         </div>
+      </div>
+
+      {/* ── Seção 2: Especificações ───────────────────────────── */}
+      <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+          <Footprints className="h-3.5 w-3.5" /> Especificações
+        </div>
+
         <div>
-          <Label>Marca</Label>
-          <Input value={form.brand} onChange={e => setForm(f => ({ ...f, brand: e.target.value }))} className="mt-1" placeholder="Ex: Squad Shoes" />
+          <Label htmlFor="qc-collection" className="text-xs">Coleção (opcional)</Label>
+          <Input id="qc-collection" value={form.collection} onChange={e => setForm(f => ({ ...f, collection: e.target.value }))} className="mt-1 h-9" placeholder="Ex: Verão 2026" />
         </div>
+
         <div>
-          <Label>Modelo</Label>
-          <Input value={form.model} onChange={e => setForm(f => ({ ...f, model: e.target.value }))} className="mt-1" placeholder="Ex: Air Max Style" />
-        </div>
-        <div className="col-span-2">
-          <Label>Nome da Ficha / Referência</Label>
-          <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required className="mt-1" placeholder="Ex: Sandália MONALISA" />
-        </div>
-        <div>
-          <Label>SKU / Código</Label>
-          <Input value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} className="mt-1 font-mono" placeholder="Ex: MON-893767-003" />
-        </div>
-        <div>
-          <Label>Categoria</Label>
-          <Select value={form.shoe_category} onValueChange={v => setForm(f => ({ ...f, shoe_category: v, sizes: v === 'Infantil' ? '25-36' : '34-40' }))}>
-            <SelectTrigger className="mt-1"><SelectValue placeholder="Tipo" /></SelectTrigger>
-            <SelectContent>{SHOE_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label>Gênero</Label>
-          <Select value={form.gender} onValueChange={v => setForm(f => ({ ...f, gender: v }))}>
-            <SelectTrigger className="mt-1"><SelectValue placeholder="Gênero" /></SelectTrigger>
-            <SelectContent>{GENDERS.map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
-          </Select>
-        </div>
-        <div className="col-span-2">
-          <Label className="mb-1.5 block">Grade de Numeração</Label>
-          <div className="flex gap-2 mb-2">
-            <Button type="button" variant={form.sizes === '34-40' || form.sizes === '33-41' ? 'default' : 'outline'} size="sm" className="gap-1.5"
+          <Label className="text-xs mb-1.5 block">Grade de Numeração</Label>
+          <div className="flex gap-2 mb-2 flex-wrap">
+            <Button type="button" variant={form.sizes === '34-40' || form.sizes === '33-41' ? 'default' : 'outline'} size="sm" className="gap-1.5 h-8"
               onClick={() => setForm(f => ({ ...f, sizes: '34-40' }))}>
               <Footprints className="h-3.5 w-3.5" /> Adulto (34-40)
             </Button>
-            <Button type="button" variant={form.sizes === '25-36' ? 'default' : 'outline'} size="sm" className="gap-1.5"
+            <Button type="button" variant={form.sizes === '25-36' ? 'default' : 'outline'} size="sm" className="gap-1.5 h-8"
               onClick={() => setForm(f => ({ ...f, sizes: '25-36' }))}>
               <Footprints className="h-3.5 w-3.5" /> Infantil (25-36)
             </Button>
@@ -1095,8 +1162,21 @@ function QuickCreateForm({ onCreated }: { onCreated: (id: string) => void }) {
           </div>
         </div>
       </div>
-      <div className="flex justify-end gap-3">
-        <Button type="submit" disabled={addSheet.isPending || uploading}>Criar e Editar</Button>
+
+      {/* ── Aviso de próximos passos + ações ──────────────────────── */}
+      <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground flex items-start gap-2">
+        <span className="font-bold text-primary mt-0.5">→</span>
+        <span>Após criar, você poderá completar materiais, consumo por setor, custos e variantes de cor na tela de edição.</span>
+      </div>
+
+      <div className="flex justify-end gap-2 pt-1 border-t pt-3">
+        <Button type="button" variant="outline" onClick={onCancel} disabled={addSheet.isPending}>
+          Cancelar
+        </Button>
+        <Button type="submit" disabled={addSheet.isPending || uploading} className="gap-2">
+          {addSheet.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+          Criar e abrir edição
+        </Button>
       </div>
     </form>
   );
@@ -1865,9 +1945,12 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         </TabsList>
 
 
-        {/* TAB: Identificação — reorganizada em 4 cards temáticos:
-            (1) Dados Principais, (2) Categoria & Grade, (3) Status & Custo,
-            (4) Foto. Layout mais respiritado, agrupamento claro Gestalt. */}
+        {/* TAB: Identificação — reorganizada em cards temáticos.
+            (1) Dados Principais (SKU + Nome + Marca + Modelo)
+            (2) Categoria & Grade
+            (3) Comercial & Tributário
+            (4) Foto
+            Removido "Gênero" — campo morto sem uso em business logic. */}
         <TabsContent value="id" className="mt-4 space-y-4">
           {/* CARD 1 — Dados Principais */}
           <div className="rounded-xl border bg-card shadow-sm">
@@ -1876,10 +1959,22 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               <h3 className="text-sm font-bold">Dados Principais</h3>
               <span className="text-[10px] text-muted-foreground ml-auto">Identificação comercial do produto</span>
             </div>
-            <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
               <FieldInput label="SKU / Código" value={form.code} onChange={v => updateField('code', v)} placeholder="MON-893767-003" mono />
               <FieldInput label="Nome do Modelo" value={form.name} onChange={v => updateField('name', v)} placeholder="Sandália MONALISA" />
-              <FieldSelect label="Gênero" value={form.gender} onChange={v => updateField('gender', v)} options={[...GENDERS]} placeholder="Gênero" />
+              <FieldInput label="Marca" value={form.brand} onChange={v => updateField('brand', v)} placeholder="Ex: Squad Shoes" />
+              <FieldInput label="Modelo" value={form.model} onChange={v => updateField('model', v)} placeholder="Ex: Air Max Style" />
+              <div className="md:col-span-2">
+                <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Descrição</Label>
+                <Textarea
+                  value={form.description}
+                  onChange={e => updateField('description', e.target.value)}
+                  rows={2}
+                  placeholder="Detalhes do modelo, especificações, observações…"
+                  className="mt-1"
+                />
+              </div>
+              <FieldInput label="Coleção" value={form.collection} onChange={v => updateField('collection', v)} placeholder="Ex: Verão 2026" />
             </div>
           </div>
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus, Pencil, Trash2, Fuel, Truck, User } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -93,6 +93,9 @@ function FuelPriceRow({
   saving: boolean;
 }) {
   const [val, setVal] = useState<string>('');
+  // Reset val quando o preço de referência muda (ex: refetch pós-save) pra
+  // evitar mostrar valor velho na input
+  useEffect(() => { setVal(''); }, [currentPrice]);
   const display = val !== '' ? val : currentPrice.toFixed(3);
   return (
     <div className="rounded-md border border-border bg-muted/20 p-3">
@@ -155,8 +158,9 @@ function VehiclesPanel() {
     setOpen(true);
   };
 
+  const canSubmitVehicle = form.plate.trim().length > 0 && form.fuel_consumption_km_l > 0;
   const submit = () => {
-    if (!form.plate.trim()) return;
+    if (!canSubmitVehicle) return;
     if (editing) update.mutate({ id: editing.id, data: form }, { onSuccess: () => setOpen(false) });
     else create.mutate(form, { onSuccess: () => setOpen(false) });
   };
@@ -322,7 +326,7 @@ function VehiclesPanel() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-            <Button onClick={submit} disabled={create.isPending || update.isPending || !form.plate.trim()}>
+            <Button onClick={submit} disabled={create.isPending || update.isPending || !canSubmitVehicle}>
               {editing ? 'Salvar' : 'Cadastrar'}
             </Button>
           </DialogFooter>

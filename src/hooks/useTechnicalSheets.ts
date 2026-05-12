@@ -67,7 +67,8 @@ export type SheetFormData = {
   sizes: string;
   status: string;
   code: string;
-  gender: string;
+  // (Removido em 2026-05: campo `gender` era dead — coluna existia no DB
+  // mas sem uso em business logic. Migration drop_gender_column elimina.)
   // Commercial fields (unified from references)
   collection: string;
   colors: string;
@@ -137,7 +138,7 @@ export type SheetFormData = {
 
 export const emptySheetForm: SheetFormData = {
   name: '', brand: '', model: '', description: '', shoe_category: '', sizes: '33-41', status: 'Ativo',
-  code: '', gender: '',
+  code: '',
   collection: '', colors: '', cost_price: 0, sale_price: 0, barcode: '', has_straps: false, strap_colors: [], image_url: '',
   cor_predominante_id: null, cor_palmilha_id: null, cor_tiras_id: null, cor_solado_id: null, box_type_id: null,
   status_ficha: 'rascunho',

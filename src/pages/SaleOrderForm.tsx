@@ -36,6 +36,7 @@ const emptyForm: SaleOrderFormData = {
   nfe: '', remessa: '', is_factoring: false, factoring_config_id: '', packaging_mode: 'individual_amarrado',
   shipping_rate_per_pair: 0,
   nfe_required: true,
+  own_delivery: false,
 };
 
 const emptyItem: SaleOrderItemFormData = {
@@ -254,6 +255,7 @@ export default function SaleOrderForm() {
         packaging_mode: (order as any).packaging_mode || 'individual_amarrado',
         shipping_rate_per_pair: Number((order as any).shipping_rate_per_pair) || 0,
         nfe_required: (order as any).nfe_required !== false,
+        own_delivery: (order as any).own_delivery === true,
       });
       setPackagingProductId((order as any).packaging_product_id || '');
       setPackagingQuantity((order as any).packaging_quantity || 0);
