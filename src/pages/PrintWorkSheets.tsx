@@ -25,10 +25,17 @@ interface OrderRow {
   technical_sheets?: { name: string; code: string | null } | null;
 }
 
-const STATUS_OPTIONS = ['Reservado', 'Em Produção', 'Pronto', 'Faturado'];
+// Status REAIS de `orders` (OPs) no backend, conforme auditoria 2026-05:
+//   Reservado · Em Produção · Finalizado
+// Antes a UI listava 'Pronto' e 'Faturado' que não existem em orders
+// ('Faturado' é status de sale_orders, não de orders). Remover essas opções
+// mortas evita o filtro mostrar vazio e o user achar que algo sumiu.
+// Default 'em_fluxo' cobre OPs ainda passíveis de impressão de ficha.
+const STATUS_OPTIONS = ['Reservado', 'Em Produção', 'Finalizado'];
+const EM_FLUXO = ['Reservado', 'Em Produção'];
 
 export default function PrintWorkSheets() {
-  const [statusFilter, setStatusFilter] = useState<string>('Em Produção');
+  const [statusFilter, setStatusFilter] = useState<string>('em_fluxo');
   const [search, setSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showPrintView, setShowPrintView] = useState(false);
@@ -45,7 +52,11 @@ export default function PrintWorkSheets() {
         .select('id, order_number, reference_id, color, quantity, grade, status, sale_order_id, sale_orders!sale_order_id(order_number, client_name, delivery_deadline), technical_sheets:reference_id(name, code)')
         .order('order_number', { ascending: false })
         .limit(500);
-      if (statusFilter !== 'todos') q = q.eq('status', statusFilter);
+      if (statusFilter === 'em_fluxo') {
+        q = q.in('status', EM_FLUXO);
+      } else if (statusFilter !== 'todos') {
+        q = q.eq('status', statusFilter);
+      }
       const { data, error } = await q;
       if (error) throw error;
       return (data || []) as unknown as OrderRow[];
@@ -187,10 +198,11 @@ export default function PrintWorkSheets() {
               />
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-44 h-9">
+              <SelectTrigger className="w-52 h-9">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="em_fluxo">Em fluxo (Reservado + Em Produção)</SelectItem>
                 <SelectItem value="todos">Todos os status</SelectItem>
                 {STATUS_OPTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
               </SelectContent>

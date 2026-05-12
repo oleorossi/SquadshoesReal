@@ -55,7 +55,8 @@ export default function SaldoFinalTab() {
           id, order_number, quantity, status, planned_delivery, reference_id,
           sale_orders!orders_sale_order_id_fkey(delivery_deadline, delivery_week, delivery_month)
         `)
-        .in('status', ['Reservado', 'Em Produção', 'Pronto'])
+        // Status REAIS de orders no backend (audit 2026-05): 'Pronto' não existe.
+        .in('status', ['Reservado', 'Em Produção'])
         .order('planned_delivery', { ascending: true });
 
       const refIds = [...new Set((orders as any[]).map(o => o.reference_id).filter(Boolean))];

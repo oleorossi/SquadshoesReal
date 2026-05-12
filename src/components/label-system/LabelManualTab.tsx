@@ -94,7 +94,9 @@ export function LabelManualTab() {
       const { data } = await supabase
         .from('orders')
         .select('id, order_number, color, status, technical_sheets:reference_id(name, code)')
-        .in('status', ['Em Produção', 'Pronto', 'Faturado'])
+        // Status REAIS de orders no backend (audit 2026-05): 'Pronto' e
+        // 'Faturado' não existem em orders — só Finalizado pra OP concluída.
+        .in('status', ['Em Produção', 'Finalizado'])
         .order('created_at', { ascending: false })
         .limit(200);
       return (data || []) as any[];

@@ -112,7 +112,8 @@ export default function PurchasePlanningWizard() {
           sale_order_id,
           sale_orders!orders_sale_order_id_fkey(order_number, delivery_deadline, delivery_week, delivery_month, client_name)
         `)
-        .in('status', ['Reservado', 'Em Produção', 'Pronto'])
+        // Status REAIS de orders no backend (audit 2026-05): 'Pronto' não existe.
+        .in('status', ['Reservado', 'Em Produção'])
         .order('planned_delivery', { ascending: true });
       if (ordersError) throw ordersError;
 
