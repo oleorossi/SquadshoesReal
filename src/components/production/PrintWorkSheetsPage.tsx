@@ -17,21 +17,43 @@ const printStyles = `
     margin: 0;
   }
   @media print {
-    /* Reset visibility — só mostra a print-area */
+    /* BUG ANTIGO: usávamos position:absolute na print-area pra tirar o app
+       chrome (sidebar/header) do caminho. Mas position:absolute remove o
+       elemento do fluxo de paginação — o navegador só renderizava a primeira
+       página e ignorava .page-break dos filhos. Resultado: PDF saía com 1
+       página apenas mesmo em arquivo único.
+       FIX: deixar print-area no fluxo natural (sem position) + esconder o
+       chrome do app (aside/header e elementos com .no-print) via display:none
+       para não criar páginas em branco fantasma. */
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      background: white !important;
+      height: auto !important;
+      overflow: visible !important;
+    }
+    /* Esconde chrome do app (AppLayout: sidebar como <aside>, topbar como <header>) */
+    aside, header, .no-print { display: none !important; }
+
+    /* Esconde o resto via visibility (mantém layout pra não quebrar refs)
+       e só re-ativa visibilidade no que está dentro da print-area */
     body * { visibility: hidden; }
     .print-area, .print-area * { visibility: visible; }
     .print-area {
-      position: absolute;
-      left: 0;
-      top: 0;
       width: 100%;
+      margin: 0;
+      padding: 0;
     }
-    .no-print { display: none !important; }
 
-    /* Quebras de página */
+    /* Quebras de página entre setores/grupos */
     .page-break {
       page-break-after: always;
       break-after: page;
+    }
+    /* Última página não precisa do break extra (evita página em branco final) */
+    .page-break:last-child {
+      page-break-after: auto;
+      break-after: auto;
     }
     .store-divider {
       page-break-before: always;
@@ -57,7 +79,7 @@ const printStyles = `
       line-height: 1.25;
     }
 
-    /* Reduz padding interno de containers de print pra evitar desperdício */
+    /* Containers internos da print-area podem quebrar livremente */
     .print-area > div {
       page-break-inside: auto;
     }
