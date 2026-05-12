@@ -2925,6 +2925,14 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                       { id: '3', label: 'TIRA 3', color: '' },
                     ]);
                   }
+                  // BUG ANTIGO: ao desmarcar 'Habilitar tiras', strap_colors
+                  // ficava órfão no JSON. Resultado: PV não sabia se tinha
+                  // tiras (has_straps=false mas strap_colors preenchido) e
+                  // a seção de cores nunca aparecia.
+                  // FIX: ao desmarcar, limpa strap_colors também.
+                  if (!v && (form.strap_colors || []).length > 0) {
+                    updateField('strap_colors', []);
+                  }
                 }}
               />
               <Label htmlFor="has-straps" className="text-sm font-medium">Habilitar tiras neste modelo</Label>

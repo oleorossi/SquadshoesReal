@@ -494,11 +494,20 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     // strap_colors refresh in the query cache, skip — otherwise a cache update
     // would silently restore straps the user deliberately removed.
     const refIdForStraps = selectedRef?.id ?? item.reference_id ?? '';
+    // BUG ANTIGO 2026-05-12: exigíamos selectedRef.has_straps=true. Mas
+    // várias fichas técnicas existem com strap_colors configuradas (TIRA 1,
+    // 2…) e has_straps=false (estado inconsistente vindo do save da ficha).
+    // Resultado: PV nunca populava as tiras → section "Cores das Tiras"
+    // ficava invisível mesmo após cor principal escolhida (SP117/SP119).
+    // FIX: derivar — se a ficha tem strap_colors.length>0, considera que
+    // tem tiras (independente do flag has_straps).
+    const refStrapDefs = Array.isArray(selectedRef?.strap_colors) ? selectedRef!.strap_colors : [];
+    const refHasStrapsEffective = !!selectedRef?.has_straps || refStrapDefs.length > 0;
     if (strapSyncedForRef.current !== refIdForStraps) {
       strapSyncedForRef.current = refIdForStraps;
 
-      if (selectedRef?.has_straps && selectedRef.strap_colors?.length && currentStraps.length === 0) {
-        const straps = (selectedRef.strap_colors as any[]).map((s: any) => ({
+      if (refHasStrapsEffective && refStrapDefs.length > 0 && currentStraps.length === 0) {
+        const straps = (refStrapDefs as any[]).map((s: any) => ({
           id: s.id || String(Math.random()),
           label: s.label || 'TIRA',
           color: '',
@@ -508,11 +517,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           consumption_per_size: s.consumption_per_size || {},
         }));
         update(idx, 'strap_colors', straps);
-      } else if (selectedRef?.has_straps && selectedRef.strap_colors?.length && currentStraps.length > 0) {
+      } else if (refHasStrapsEffective && refStrapDefs.length > 0 && currentStraps.length > 0) {
         // Sync structure with current reference definition (straps added/removed in sheet)
         // but preserve colors the user already selected.
-        const refStrapIds = new Set((selectedRef.strap_colors as any[]).map(s => s.id));
-        const updatedStraps = (selectedRef.strap_colors as any[]).map((refStrap: any) => {
+        const refStrapIds = new Set((refStrapDefs as any[]).map(s => s.id));
+        const updatedStraps = (refStrapDefs as any[]).map((refStrap: any) => {
           const existing = currentStraps.find(s => s.id === refStrap.id);
           return {
             id: refStrap.id || String(Math.random()),
