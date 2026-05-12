@@ -128,12 +128,12 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
       style={{ boxSizing: 'border-box', fontFamily: "'Helvetica Neue', Arial, sans-serif" }}
     >
       {/* ── Header: PV + cliente ── */}
-      <div className="flex items-stretch gap-0 mb-3 rounded-lg overflow-hidden border-2 border-indigo-700">
-        <div className="bg-indigo-600 text-white flex items-center gap-2 px-4 py-2.5 shrink-0">
-          <FileText className="h-5 w-5" />
-          <span className="text-base font-black uppercase tracking-tight">Relatório Gerencial</span>
+      <div className="flex items-stretch gap-0 mb-2 rounded-lg overflow-hidden border-2 border-indigo-700">
+        <div className="bg-indigo-600 text-white flex items-center gap-2 px-3 py-1.5 shrink-0">
+          <FileText className="h-4 w-4" />
+          <span className="text-sm font-black uppercase tracking-tight">Relatório Gerencial</span>
         </div>
-        <div className="flex-1 flex flex-col justify-center px-4 bg-slate-50">
+        <div className="flex-1 flex flex-col justify-center px-3 bg-slate-50">
           <div className="flex items-baseline gap-3 flex-wrap">
             <p className="text-lg font-black text-indigo-900 leading-tight">
               PV {saleOrder.order_number || '—'}
@@ -171,15 +171,15 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
             )}
           </div>
         </div>
-        <div className="flex flex-col items-center justify-center px-3 bg-white border-l border-slate-200">
-          <QrCode className="h-10 w-10 text-slate-700" />
+        <div className="flex flex-col items-center justify-center px-2 bg-white border-l border-slate-200">
+          <QrCode className="h-8 w-8 text-slate-700" />
           <span className="text-[7px] font-mono text-slate-400 mt-0.5">RELATÓRIO</span>
           {date && <span className="text-[8px] text-slate-500 mt-0.5">{date}</span>}
         </div>
       </div>
 
       {/* ── KPIs ── */}
-      <div className="keep-together grid grid-cols-4 gap-2 mb-3">
+      <div className="keep-together grid grid-cols-4 gap-1.5 mb-2">
         <KpiCard label="OPs" value={orders.length} color="indigo" />
         <KpiCard label="Pares" value={totalPairs} color="indigo" />
         <KpiCard label="Receita" value={fmtCurrency(totalRevenue)} color="emerald" />
@@ -187,7 +187,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
       </div>
 
       {/* ── Tabela de OPs com status por setor ── */}
-      <div className="keep-together mb-3">
+      <div className="keep-together mb-2">
         <div className="bg-slate-100 px-3 py-1.5 rounded-t-lg border border-slate-300 border-b-0">
           <p className="text-xs font-black text-slate-700 uppercase tracking-wide">Ordens de Produção · Status por setor</p>
         </div>
@@ -246,7 +246,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
 
       {/* ── Custos ── */}
       {totalCost > 0 && (
-        <div className="keep-together mb-3 border-2 border-slate-300 rounded-lg overflow-hidden">
+        <div className="keep-together mb-2 border-2 border-slate-300 rounded-lg overflow-hidden">
           <div className="bg-slate-700 text-white px-3 py-1.5 flex items-center gap-2">
             <TrendingUp className="h-4 w-4" />
             <span className="text-xs font-black uppercase tracking-wide">Custos</span>
@@ -300,7 +300,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
         </div>
       )}
       {totalCost === 0 && (
-        <div className="keep-together mb-3 border border-amber-300 rounded p-2 bg-amber-50 flex items-center gap-2">
+        <div className="keep-together mb-2 border border-amber-300 rounded p-1.5 bg-amber-50 flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 text-amber-600" />
           <p className="text-xs text-amber-800">
             Sem custos calculados ainda — calcule via "Calcular Custos" no PV pra ver material/mão de obra/margem aqui.
@@ -308,7 +308,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
         </div>
       )}
       {isPartialReport && (
-        <div className="keep-together mb-3 border border-amber-300 rounded p-2 bg-amber-50 flex items-center gap-2">
+        <div className="keep-together mb-2 border border-amber-300 rounded p-1.5 bg-amber-50 flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 text-amber-600" />
           <p className="text-xs text-amber-800">
             <strong>Receita/Margem PARCIAIS:</strong> {opsWithCost} de {orders.length} OPs com custo
@@ -318,11 +318,11 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
       )}
 
       {/* ── Footer: assinaturas ── */}
-      <div className="mt-auto pt-2 border-t border-slate-200">
-        <div className="flex items-end justify-between gap-3">
+      <div className="mt-auto pt-1.5 border-t border-slate-200">
+        <div className="flex items-end justify-between gap-2">
           {['PCP', 'Comercial', 'Financeiro'].map(label => (
             <div key={label} className="text-center flex-1">
-              <div className="border-t border-slate-400 mt-6 pt-1">
+              <div className="border-t border-slate-400 mt-4 pt-0.5">
                 <p className="text-[9px] text-slate-500 uppercase font-bold">{label}</p>
               </div>
             </div>
