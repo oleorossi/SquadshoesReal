@@ -2180,10 +2180,15 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
           </div>
 
           {/* ═══ SECTION 0: Grupo de Solado (driver técnico central) ═══
-              Visual reforçado — solado é o item principal: borda 2px, sombra,
-              tipografia forte, fundo gradiente sutil. Materiais "padrão"
-              herdados desse solado caem direto no BOM ao selecionar. */}
-          <div className="rounded-xl border-2 border-primary/40 bg-gradient-to-br from-primary/5 to-primary/10 p-5 space-y-4 shadow-sm">
+              Visual: borda colorida só quando solado AINDA não foi selecionado
+              (chama atenção). Depois de selecionar, neutral (não confunde com
+              estado de erro, já que primary=vermelho no tema). */}
+          <div className={cn(
+            "rounded-xl border-2 p-5 space-y-4 shadow-sm transition-colors",
+            form.sole_material
+              ? "border-border bg-card"
+              : "border-primary/40 bg-gradient-to-br from-primary/5 to-primary/10"
+          )}>
             <div className="flex items-center gap-3">
               <div className="bg-primary/15 p-2 rounded-lg">
                 <Footprints className="h-5 w-5 text-primary" />
@@ -2201,7 +2206,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             <p className="text-xs text-muted-foreground">
               O solado define a estrutura base do produto: fôrma, numeração, consumo de palmilha e forração. Selecione o grupo de solado antes de preencher os demais materiais.
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
               <SoleProductSelect
                 label="Solado"
                 value={form.sole_material || ''}
@@ -2262,14 +2267,6 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               <div>
                 <Label className="text-xs text-muted-foreground">Consumo Solado (un/par)</Label>
                 <NumberInput value={form.sole_consumption || 0} onChange={v => updateField('sole_consumption', v)} className="mt-1 h-9 text-sm" placeholder="1" step="1" />
-              </div>
-              <div className="flex items-center gap-2 pb-2">
-                <Checkbox 
-                  id="sole-drives-cons" 
-                  checked={form.sole_drives_consumption} 
-                  onCheckedChange={v => updateField('sole_drives_consumption', !!v)} 
-                />
-                <Label htmlFor="sole-drives-cons" className="text-xs font-semibold cursor-pointer">Consumo por Grade</Label>
               </div>
             </div>
             {form.sole_material && (

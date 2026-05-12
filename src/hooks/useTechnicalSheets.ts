@@ -165,7 +165,7 @@ export const emptySheetForm: SheetFormData = {
   colored_lining_mode: 'standard',
   insole_color_mode: 'free',
   max_insole_colors: 3,
-   sole_drives_consumption: false,
+   sole_drives_consumption: true,
    custom_overhead: null,
    insole_has_lining: true,
    insole_ready_made: false,
