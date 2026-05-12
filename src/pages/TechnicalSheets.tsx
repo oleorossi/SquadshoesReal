@@ -2316,78 +2316,24 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                        </div>
                        <Label className="text-xs font-bold text-amber-800">Forração de Salto (Fachete)</Label>
                      </div>
-                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
-                       <div>
-                         <Label className="text-[10px] text-muted-foreground uppercase">Material do Fachete</Label>
-                         <Select 
-                           value={form.fachete_material || ''} 
-                           onValueChange={v => updateField('fachete_material', v)}
-                         >
-                           <SelectTrigger className="h-8 text-xs mt-1">
-                             <SelectValue placeholder="Selecionar grupo..." />
-                           </SelectTrigger>
-                           <SelectContent>
-                             {(groups || []).map((g: any) => (
-                               <SelectItem key={g.id} value={g.name} className="text-xs">{g.name}</SelectItem>
-                             ))}
-                           </SelectContent>
-                         </Select>
-                       </div>
-                        <div className="flex flex-col gap-1">
-                          <Label className="text-[10px] text-muted-foreground uppercase">Consumo Médio (dm²)</Label>
-                          <Input 
-                            type="number" 
-                            value={form.fachete_consumption || 0} 
-                            onChange={e => updateField('fachete_consumption', Number(e.target.value))}
-                            className="h-8 text-xs"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="pt-2 border-t border-amber-200">
-                        <Label className="text-[10px] text-amber-800 font-semibold uppercase mb-2 block">Consumo de Fachete por Numeração (dm²)</Label>
-                        <div className="overflow-x-auto pb-2">
-                          <div className="flex gap-1.5 min-w-max">
-                            {(form.sizes || '').split(',').map((size: string) => {
-                              const s = size.trim();
-                              if (!s) return null;
-                              return (
-                                <div key={s} className="flex flex-col items-center gap-1">
-                                  <span className="text-[9px] font-bold text-amber-700">{s}</span>
-                                  <Input
-                                    type="number"
-                                    className="w-12 h-7 text-[10px] px-1 text-center"
-                                    value={(form.fachete_consumption_per_size as any)?.[s] || ''}
-                                    onChange={(e) => {
-                                      const val = Number(e.target.value);
-                                      const next = { ...(form.fachete_consumption_per_size as any) || {} };
-                                      if (val > 0) next[s] = val; else delete next[s];
-                                      updateField('fachete_consumption_per_size', next);
-                                    }}
-                                  />
-                                </div>
-                              );
-                            })}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 w-7 p-0 self-end mb-0.5 text-amber-600 hover:text-amber-700 hover:bg-amber-100"
-                              title="Preencher restante"
-                              onClick={() => {
-                                const grid = { ...(form.fachete_consumption_per_size as any) || {} };
-                                const firstVal = Object.values(grid).find(v => Number(v) > 0);
-                                if (!firstVal) return;
-                                (form.sizes || '').split(',').forEach((sz: string) => {
-                                  const s = sz.trim();
-                                  if (s && !grid[s]) grid[s] = Number(firstVal);
-                                });
-                                updateField('fachete_consumption_per_size', grid);
-                              }}
-                            >
-                              <Wand2 className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </div>
+                     <div>
+                       <Label className="text-[10px] text-muted-foreground uppercase">Material do Fachete</Label>
+                       <Select
+                         value={form.fachete_material || ''}
+                         onValueChange={v => updateField('fachete_material', v)}
+                       >
+                         <SelectTrigger className="h-8 text-xs mt-1">
+                           <SelectValue placeholder="Selecionar grupo..." />
+                         </SelectTrigger>
+                         <SelectContent>
+                           {(groups || []).map((g: any) => (
+                             <SelectItem key={g.id} value={g.name} className="text-xs">{g.name}</SelectItem>
+                           ))}
+                         </SelectContent>
+                       </Select>
+                       <p className="text-[10px] text-muted-foreground mt-1">
+                         Consumo de fachete por numeração é configurado em <strong>Solados → Cadastro</strong>.
+                       </p>
                      </div>
                    </div>
                  )}
@@ -2703,8 +2649,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 </div>
                 <div className="space-y-3">
                   <GroupMaterialSelect label="Material" value={form.insole_material} onChange={v => { updateField('insole_material', v); autoFillConsumption(v, 'insole_material'); }} />
-                  <InsolePlateProductSelect label="Tipo de Placa" value={form.insole_plate_product} onChange={v => updateField('insole_plate_product', v)} />
-                  
+                  {/* Tipo de Placa removido — vem do cadastro do Solado (insole_plate_product
+                      duplicava o que já tá em Solados → Cadastro). */}
+
                   {(() => {
                     const soleProd = form.sole_group_id ? products.find(p => p.group_id === form.sole_group_id) : null;
                     const mode = (soleProd as any)?.insole_mode || 'cortar';
