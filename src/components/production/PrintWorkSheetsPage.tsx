@@ -50,25 +50,18 @@ const printStyles = `
       padding: 0;
     }
 
-    /* Cada ficha tem className="w-[210mm] p-[8mm] ..." no <div> raiz. Isso
-       é OK em tela (preview do tamanho real), mas em impressão estoura
-       a margem segura do @page (210mm > 194mm imprimíveis). Forçamos o
-       container a usar 100% da área imprimível e zeramos o padding (a
-       margem do @page já dá o respiro de 8mm em todos os lados). */
-    .print-area .page-break > div,
-    .print-area > div > div:first-child {
-      width: 100% !important;
-      max-width: 100% !important;
-      padding: 0 !important;
-      margin: 0 !important;
-      border: 0 !important;
-      box-sizing: border-box !important;
-    }
+    /* Cada ficha tem `w-[210mm] p-[8mm]` no <div> raiz (tamanho real pra
+       preview em tela). Em print, o ajuste pra área imprimível é feito via
+       `print:w-full print:p-0` direto no className de cada componente
+       (PalmilhaWorkSheet, SilkMontageWorkSheet, SolagemWorkSheet,
+       ExpedicaoWorkSheet, ManagementReport, OperatorWorkSheet). Tentamos
+       um override CSS global aqui antes (.print-area .page-break > div) mas
+       em conjunto com flex+mt-auto da ManagementReport o resultado saía em
+       branco — modifier Tailwind por componente é mais previsível. */
 
     /* Tabelas nunca devem estourar o container — quebra texto se preciso
        (evita que célula com texto longo empurre a coluna pra fora). */
     .print-area table {
-      width: 100% !important;
       max-width: 100% !important;
       table-layout: fixed !important;
     }
