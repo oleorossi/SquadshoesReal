@@ -2808,12 +2808,13 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               groupName: string;
               show: boolean;
             };
+            // Apenas Cabedal — consumo do cabedal é exclusivo do MODELO (varia
+            // por linha/coleção). Palmilha/Forração/Fachete são especs do
+            // SOLADO (mesmo solado tem o mesmo consumo independente do modelo)
+            // e ficam centralizados em Solados → Consumos → Forração/Palmilha.
             const rows: MaterialRow[] = ([
-               { label: 'Cabedal',  field: 'upper_consumption_per_size',  scalarField: 'upper_consumption',  groupName: form.upper_material || '',  show: !!form.upper_material },
-               { label: 'Forração', field: 'lining_consumption_per_size', scalarField: 'lining_consumption', groupName: form.lining_material || '', show: !!form.lining_material },
-                { label: 'Palmilha', field: 'insole_consumption_per_size', scalarField: 'insole_consumption', groupName: form.insole_material || '', show: !!form.insole_material && !insoleIsPronta },
-                { label: 'Salto Fachetado', field: 'fachete_consumption_per_size' as any, scalarField: 'fachete_consumption' as any, groupName: form.fachete_material || '', show: isSoleFachetado && !!form.fachete_material },
-             ] as MaterialRow[]).filter(r => r.show);
+              { label: 'Cabedal', field: 'upper_consumption_per_size', scalarField: 'upper_consumption', groupName: form.upper_material || '', show: !!form.upper_material },
+            ] as MaterialRow[]).filter(r => r.show);
  
              if (rows.length === 0) return null;
 
@@ -3178,7 +3179,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
              </div>
            </div>
            <ProductionSectorsTab
-             sectors={sheet.production_sectors || ['Corte', 'Forração', 'Silk', 'Colagem', 'Montagem', 'Acabamento', 'Expedição']}
+             sectors={sheet.production_sectors || ['Corte', 'Corte Forração', 'Silk', 'Colagem', 'Montagem', 'Acabamento', 'Expedição']}
              onChange={(sectors: string[]) => {
                updateSheet.mutate({ id: sheet.id, data: { production_sectors: sectors } as any });
              }}
@@ -3395,7 +3396,7 @@ function PhotosByColorTab({ sheetId, form, groups, products }: {
 
  const ALL_PRODUCTION_SECTORS = [
    { name: 'Corte', order: 1 },
-   { name: 'Forração', order: 2 },
+   { name: 'Corte Forração', order: 2 },
     { name: 'Aviamento', order: 3 },
     { name: 'Silk', order: 4 },
     { name: 'Colagem', order: 5 },

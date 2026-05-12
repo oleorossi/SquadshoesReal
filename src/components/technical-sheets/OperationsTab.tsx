@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
-import { parseSafeNumber, formatCurrency as globalFormatCurrency, safeToFixed } from '@/lib/utils';
+import { formatCurrency as globalFormatCurrency, safeToFixed } from '@/lib/utils';
 import {
   useBomOperations, useAddBomOperation, useUpdateBomOperation, useDeleteBomOperation,
   BomOperationFormData, emptyOperationForm, PRODUCTION_STAGES,
@@ -22,7 +22,9 @@ import { toast } from 'sonner';
 
 const STAGE_COLORS: Record<string, string> = {
    'Corte': 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
+   // Legacy 'Forração' mantido pra colorir operações cadastradas antes do rename.
    'Forração': 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+   'Corte Forração': 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
   'Silk': 'bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300',
    'Colagem': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
    'Montagem': 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
@@ -236,7 +238,8 @@ export function OperationsTab({
     if (toAdd.length === 0) return;
     const DEFAULT_COSTS: Record<string, { time: number; cost: number; resource: string }> = {
    'Corte': { time: 2, cost: 18, resource: 'Cortador' },
-   'Forração': { time: 2, cost: 18, resource: 'Forrador' },
+   'Corte Forração': { time: 2, cost: 18, resource: 'Forrador' },
+   'Forração': { time: 2, cost: 18, resource: 'Forrador' }, // legacy
    'Silk': { time: 1, cost: 16, resource: 'Silk' },
    'Colagem': { time: 1, cost: 16, resource: 'Colagem' },
    'Montagem': { time: 3, cost: 22, resource: 'Montador' },
@@ -331,7 +334,7 @@ export function OperationsTab({
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {([
             { key: 'corte',     label: 'Corte',      cap: capCorte,      setCap: setCapCorte,      lt: ltCorte,      setLt: setLtCorte },
-            { key: 'forracao',  label: 'Forração',   cap: capCostura,    setCap: setCapCostura,    lt: ltCostura,    setLt: setLtCostura },
+            { key: 'forracao',  label: 'Corte Forração', cap: capCostura,    setCap: setCapCostura,    lt: ltCostura,    setLt: setLtCostura },
             { key: 'silk',      label: 'Silk',       cap: capSilk,       setCap: setCapSilk,       lt: ltSilk,       setLt: setLtSilk },
             { key: 'colagem',   label: 'Colagem',    cap: capColagem,    setCap: setCapColagem,    lt: ltColagem,    setLt: setLtColagem },
             {
