@@ -36,11 +36,18 @@ on:
         options:
           - 'true'
           - 'false'
-  push:
-    branches: [main]
-    paths:
-      - 'supabase/migrations/**'
-      - '.github/workflows/supabase-migrate.yml'
+  # NOTA: trigger automático em push foi desativado em 2026-05-12 porque o banco
+  # tem backlog de migrations aplicadas via MCP que ainda não estão registradas
+  # em supabase_migrations.schema_migrations — cada push falhava no apply.
+  # Pra reativar: descomente o bloco abaixo APÓS rodar
+  # scripts/repair-applied-migrations.sh com a lista completa de timestamps
+  # já aplicados, e validar via dry_run manual.
+  #
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     - 'supabase/migrations/**'
+  #     - '.github/workflows/supabase-migrate.yml'
 
 # Cancela runs antigas se uma nova começar (evita race ao rebase rápido)
 concurrency:
