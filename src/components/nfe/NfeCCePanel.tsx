@@ -47,10 +47,14 @@ function CCeDialog({
   onClose: () => void;
   editing: (NfeCCe & { nfe_emitidas?: any }) | null;
 }) {
+  // Hooks SEM condição: precisam rodar mesmo com open=false pra ordem ficar
+  // estável (rules of hooks). Mas só fetcham quando o dialog está aberto.
   const isEdit = !!editing;
   const [nfeId, setNfeId] = useState<string>(editing?.nfe_id ?? '');
   const [correctionText, setCorrectionText] = useState(editing?.correction_text ?? '');
-  const { data: nfes = [], isLoading: loadingNfes } = useAuthorizedNfes();
+  // Pausa o fetch enquanto o dialog está fechado pra evitar trabalho desnecessário
+  // e eliminar qualquer trap em embed PostgREST quando o painel ainda não foi visto.
+  const { data: nfes = [], isLoading: loadingNfes } = useAuthorizedNfes(open);
   const { data: nextSeq } = useNextCCeSequence(nfeId || null);
   const save = useSaveCCe();
 

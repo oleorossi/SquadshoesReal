@@ -2084,7 +2084,52 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             </div>
           </div>
 
-          {/* CARD 4 — Fotos */}
+          {/* CARD 4 — Peso & Embalagem (alimenta cálculo automático em NF-e, romaneio, MDF-e e rota) */}
+          <div className="rounded-xl border bg-card shadow-sm">
+            <div className="px-4 py-3 border-b flex items-center gap-2">
+              <Package className="h-4 w-4 text-primary" />
+              <h3 className="text-sm font-bold">Peso &amp; Embalagem</h3>
+              <span className="text-[10px] text-muted-foreground ml-auto">Usado em NF-e, romaneio, MDF-e e rota</span>
+            </div>
+            <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label className="text-xs text-muted-foreground">Peso do par (kg) — produto acabado</Label>
+                <NumberInput
+                  value={form.weight_per_pair_kg ?? ''}
+                  onChange={v => {
+                    if (v !== null && v < 0) { toast.error('Peso não pode ser negativo'); return; }
+                    updateField('weight_per_pair_kg' as any, v);
+                  }}
+                  className="mt-1 h-9 text-sm font-mono"
+                  placeholder="ex: 0,450"
+                  step="0.001"
+                  min={0}
+                />
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Cabedal + forro + solado + ferragens montados. Sem este valor, o PV deste item entra como "peso incompleto" nas telas fiscais.
+                </p>
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Peso da caixinha individual (kg)</Label>
+                <NumberInput
+                  value={form.box_weight_kg ?? ''}
+                  onChange={v => {
+                    if (v !== null && v < 0) { toast.error('Peso não pode ser negativo'); return; }
+                    updateField('box_weight_kg' as any, v);
+                  }}
+                  className="mt-1 h-9 text-sm font-mono"
+                  placeholder="ex: 0,080 (opcional)"
+                  step="0.001"
+                  min={0}
+                />
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Soma ao peso bruto da NF-e. Deixe vazio se a caixinha individual já está embutida no peso do par.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* CARD 5 — Fotos */}
           <div className="rounded-xl border bg-card shadow-sm">
             <div className="px-4 py-3 border-b flex items-center gap-2">
               <History className="h-4 w-4 text-primary" />

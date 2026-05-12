@@ -120,9 +120,10 @@ export function useMarkCCeEmitted() {
   });
 }
 
-export function useAuthorizedNfes() {
+export function useAuthorizedNfes(enabled = true) {
   return useQuery({
     queryKey: ['nfe_authorized_for_cce'],
+    enabled,
     staleTime: 0,
     queryFn: async () => {
       // Embed sale_orders removido — NF sincronizada do GestaoClick não tem
