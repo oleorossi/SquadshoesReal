@@ -2,11 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
-<<<<<<< Updated upstream
-import { Box, PencilSimple as Pencil, FloppyDisk as Save, Ruler } from '@phosphor-icons/react';
-=======
 import { Cube as Box, PencilSimple as Pencil, FloppyDisk as Save, Ruler } from '@phosphor-icons/react';
->>>>>>> Stashed changes
 import { Button } from '@/components/ui/button';
 import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';

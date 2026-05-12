@@ -136,11 +136,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { SignedImage } from '@/components/ui/signed-image';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-<<<<<<< Updated upstream
 import { FileText, Plus, Trash as Trash2, PencilSimple as Pencil, CircleNotch as Loader2, Package, Copy, MagnifyingGlass as Search, Stack as Layers, Scissors, Drop as Droplets, Shield, Cube as Box, Footprints, FloppyDisk as Save, Wrench, Tag, ImageSquare as ImagePlus, Warning as AlertTriangle, ClockCounterClockwise as History, Factory, MagicWand as Wand2, ArrowsClockwise as RefreshCw, Gauge, ArrowLeft, ClipboardText as ClipboardCopy, Lock, Palette, CurrencyDollar as DollarSign } from '@phosphor-icons/react';
-=======
-import { FileText, Plus, Trash as Trash2, PencilSimple as Pencil, CircleNotch as Loader2, Package, Copy, MagnifyingGlass as Search, Stack as Layers, Scissors, Drop as Droplets, Shield, Cube as Box, Footprints, FloppyDisk as Save, Wrench, Tag, ImageSquare as ImagePlus, Warning as AlertTriangle, ClockCounterClockwise as History, Factory, MagicWand as Wand2, ArrowsClockwise as RefreshCw, Gauge, ArrowLeft, ClipboardCopy, Lock, Palette, CurrencyDollar as DollarSign } from '@phosphor-icons/react';
->>>>>>> Stashed changes
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -2947,24 +2943,16 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                     <div key={strap.id || idx} className="p-3 rounded-lg border bg-background space-y-3">
                       <div className="flex items-center gap-4">
                         <Badge variant="outline" className="font-semibold text-xs whitespace-nowrap">{strap.label || `TIRA ${idx + 1}`}</Badge>
-                        <Select
+                        <StrapGroupCombobox
                           value={strap.group_id || ''}
-                          onValueChange={(val) => {
+                          groups={groups || []}
+                          onChange={(val) => {
                             const updated = [...(form.strap_colors || [])];
                             const selectedGroup = groups?.find((g: any) => g.id === val);
                             updated[idx] = { ...updated[idx], group_id: val, group_name: selectedGroup?.name || '' };
                             updateField('strap_colors', updated);
                           }}
-                        >
-                          <SelectTrigger className="w-[200px] h-8 text-xs">
-                            <SelectValue placeholder="Grupo de material..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(groups || []).map((g: any) => (
-                              <SelectItem key={g.id} value={g.id} className="text-xs">{g.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        />
                         <span className="text-xs text-muted-foreground ml-auto">
                           Média: <strong>{safeToFixed(avgConsumption, 1)} cm</strong>/par
                         </span>

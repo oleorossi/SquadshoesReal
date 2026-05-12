@@ -1,11 +1,7 @@
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { HubTabsList } from '@/components/layout/HubTabs';
 import { Card, CardContent } from '@/components/ui/card';
-<<<<<<< Updated upstream
-import { Stack as Layers, Footprints, Info } from '@phosphor-icons/react';
-=======
 import { Stack as Layers, Footprints, Sparkle as Sparkles, Info } from '@phosphor-icons/react';
->>>>>>> Stashed changes
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { SoleTechnicalDetails } from '@/components/technical-sheets/SoleTechnicalDetails';
 import { SoleStandardItemsPanel } from '@/components/technical-sheets/SoleStandardItemsPanel';

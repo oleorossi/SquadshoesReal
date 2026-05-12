@@ -1,9 +1,5 @@
 import { useMemo } from 'react';
-<<<<<<< Updated upstream
-import { Box, Stack as Layers, Link as LinkIcon, WarningCircle as AlertCircle, Package, ArrowRight } from '@phosphor-icons/react';
-=======
 import { Cube as Box, Stack as Layers, Link as LinkIcon, WarningCircle as AlertCircle, Package, ArrowRight } from '@phosphor-icons/react';
->>>>>>> Stashed changes
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { calculateBestPackaging } from '@/utils/packaging-calculator';

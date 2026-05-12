@@ -8,12 +8,7 @@ import { Button } from '@/components/ui/button';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-<<<<<<< Updated upstream
-import { Switch } from '@/components/ui/switch';
-import { FloppyDisk as Save, PencilSimple as Pencil, Gear as Settings2, Stack as Layers, Palette, Link as Link2, Plus, Sneaker as Shoe, Crown } from '@phosphor-icons/react';
-=======
 import { FloppyDisk as Save, PencilSimple as Pencil, Gear as Settings2, Stack as Layers, Palette, Link as Link2, Plus } from '@phosphor-icons/react';
->>>>>>> Stashed changes
 import { toast } from 'sonner';
 import { SoleSizeConjugationsEditor } from '@/components/inventory/SoleSizeConjugationsEditor';
 import { SoleColorConjugationsEditor } from './SoleColorConjugationsEditor';

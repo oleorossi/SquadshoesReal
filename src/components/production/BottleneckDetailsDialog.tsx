@@ -5,11 +5,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-<<<<<<< Updated upstream
-import { Warning as AlertTriangle, Activity, ArrowRight, Gauge, Hash } from '@phosphor-icons/react';
-=======
 import { Warning as AlertTriangle, Pulse as Activity, ArrowRight, Gauge, Hash } from '@phosphor-icons/react';
->>>>>>> Stashed changes
 import type { BottleneckInfo } from '@/lib/sectorBottleneck';
 
 interface Props {

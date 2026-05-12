@@ -24,11 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
-<<<<<<< Updated upstream
 import { ArrowLeft, Buildings as Building2, Users, ShoppingCart, CurrencyDollar as DollarSign, Phone, Note as StickyNote, Paperclip, ClockCounterClockwise as HistoryIcon, Warning as AlertTriangle, Crown, Plus, Trash as Trash2, PencilSimple as Edit3, Upload, ArrowSquareOut as ExternalLink, TrendUp as TrendingUp, Calendar, ShieldWarning as ShieldAlert, CheckCircle as CheckCircle2, FileText, ChatText as MessageSquare, FloppyDisk as Save } from '@phosphor-icons/react';
-=======
-import { ArrowLeft, Buildings as Building2, Users, ShoppingCart, CurrencyDollar as DollarSign, Phone, Note as StickyNote, Paperclip, History as HistoryIcon, Warning as AlertTriangle, Crown, Plus, Trash as Trash2, PencilSimple as Edit3, Upload, ArrowSquareOut as ExternalLink, TrendUp as TrendingUp, Calendar, ShieldWarning as ShieldAlert, CheckCircle as CheckCircle2, FileText, ChatText as MessageSquare, FloppyDisk as Save } from '@phosphor-icons/react';
->>>>>>> Stashed changes
 
 import {
   useEconomicGroupById, useEconomicGroupKpis, useEconomicGroupCredit,

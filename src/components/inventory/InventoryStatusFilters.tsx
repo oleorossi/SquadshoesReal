@@ -1,9 +1,5 @@
 import { useState, useEffect } from "react";
-<<<<<<< Updated upstream
 import { Warning as AlertOctagon, TrendDown as TrendingDown, Gauge, Package } from '@phosphor-icons/react';
-=======
-import { AlertOctagon, TrendDown as TrendingDown, Gauge, Package } from '@phosphor-icons/react';
->>>>>>> Stashed changes
 import { cn } from "@/lib/utils";
 
 type FilterKey = "all" | "critical" | "low" | "overstock";

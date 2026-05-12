@@ -4,11 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-<<<<<<< Updated upstream
-import { CircleNotch as Loader2, Hash, ArrowRight, FastForward, Calendar, DotsSixVertical as GripVertical, CheckSquare, Pin, Warning as AlertTriangle, Funnel as Filter, FileArrowDown as FileDown, FileText, EyeSlash as EyeOff, Clock, Scissors, Stack as Layers, Gem, Printer, Flame, Hammer, Footprints, Hand, Sparkle as Sparkles, Truck } from '@phosphor-icons/react';
-=======
 import { CircleNotch as Loader2, Hash, ArrowRight, FastForward, Calendar, DotsSixVertical as GripVertical, CheckSquare, Pin, Warning as AlertTriangle, Funnel as Filter, FileArrowDown as FileDown, FileText, EyeSlash as EyeOff, Clock, Scissors, Stack as Layers, Diamond as Gem, Printer, Flame, Hammer, Footprints, Hand, Sparkle as Sparkles, Truck } from '@phosphor-icons/react';
->>>>>>> Stashed changes
 import { useQuery } from '@tanstack/react-query';
 import type { BottleneckInfo } from "@/lib/sectorBottleneck";
 import { OrderDetailsModal } from "./OrderDetailsModal";
