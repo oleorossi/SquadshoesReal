@@ -444,6 +444,7 @@ function AddVolumeDialog({
             <Label>Pedido de venda (opcional)</Label>
             <Select value={saleOrderId} onValueChange={(v) => {
               setSaleOrderId(v);
+              setAutoFilled(false);
               const so = saleOrders.find((s: any) => s.id === v);
               if (so) {
                 if (!city && so.delivery_city) setCity(so.delivery_city);
@@ -457,6 +458,34 @@ function AddVolumeDialog({
                 ))}
               </SelectContent>
             </Select>
+            {weightData && (
+              <div className="mt-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 flex items-center gap-2 text-xs">
+                <Package className="h-3.5 w-3.5 text-primary shrink-0" />
+                <span className="flex-1">
+                  PV calculado: <strong>{weightData.totalPairs} pares</strong> ·{' '}
+                  <strong>{weightData.grossWeightKg.toFixed(3)} kg</strong>
+                  {weightData.boxWeightKg > 0 && (
+                    <span className="text-muted-foreground"> (caixinha: {weightData.boxWeightKg.toFixed(3)} kg)</span>
+                  )}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs gap-1"
+                  onClick={applyWeightFromPv}
+                  disabled={autoFilled && totalPairs === weightData.totalPairs && weight === weightData.grossWeightKg}
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  {autoFilled ? 'Aplicado' : 'Aplicar'}
+                </Button>
+              </div>
+            )}
+            {weightData && !weightData.isComplete && (
+              <div className="mt-2">
+                <IncompleteWeightWarning items={weightData.incompleteItems} scope="neste PV" />
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
@@ -476,12 +505,12 @@ function AddVolumeDialog({
               <Input value={ean} onChange={e => setEan(e.target.value)} className="font-mono" />
             </div>
             <div>
-              <Label>Pares</Label>
-              <Input type="number" min={0} value={totalPairs} onChange={e => setTotalPairs(+e.target.value)} />
+              <Label>Pares{autoFilled && <span className="ml-1 text-[9px] text-primary uppercase font-bold">auto</span>}</Label>
+              <Input type="number" min={0} value={totalPairs} onChange={e => { setTotalPairs(+e.target.value); setAutoFilled(false); }} />
             </div>
             <div>
-              <Label>Peso (kg)</Label>
-              <Input type="number" step="0.1" min={0} value={weight} onChange={e => setWeight(+e.target.value)} />
+              <Label>Peso (kg){autoFilled && <span className="ml-1 text-[9px] text-primary uppercase font-bold">auto</span>}</Label>
+              <Input type="number" step="0.001" min={0} value={weight} onChange={e => { setWeight(+e.target.value); setAutoFilled(false); }} />
             </div>
             <div>
               <Label>Cidade destino</Label>

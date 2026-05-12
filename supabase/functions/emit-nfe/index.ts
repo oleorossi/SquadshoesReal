@@ -305,6 +305,47 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ---------- Calcula peso bruto/líquido via RPC ----------
+    // Soma SUM(items.quantity × technical_sheets.weight_per_pair_kg) e
+    // adiciona peso da caixinha individual (box_weight_kg). Itens com
+    // ficha sem peso vão pra `incomplete_items` — não bloqueamos a
+    // emissão, apenas anotamos em informacoes_complementares pra
+    // contabilidade revisar depois.
+    let pesoBrutoStr: string | undefined;
+    let pesoLiquidoStr: string | undefined;
+    let qtdVolumesStr: string | undefined;
+    let weightWarning: string | undefined;
+    try {
+      const { data: weightData, error: weightErr } = await adminClient.rpc(
+        "calculate_sale_order_weight",
+        { p_sale_order_id: sale_order_id },
+      );
+      if (!weightErr && weightData) {
+        const wd: any = weightData;
+        const net = Number(wd.net_weight_kg) || 0;
+        const gross = Number(wd.gross_weight_kg) || 0;
+        const totalPairs = Number(wd.total_pairs) || 0;
+        if (net > 0) pesoLiquidoStr = net.toFixed(3);
+        if (gross > 0) pesoBrutoStr = gross.toFixed(3);
+        // Volume = caixas necessárias. Sem informação de pares por caixa
+        // aqui, usamos 1 volume por PV como mínimo. Refinar se GestaoClick
+        // exigir contagem precisa.
+        if (totalPairs > 0) qtdVolumesStr = "1";
+        if (wd.is_complete === false && Array.isArray(wd.incomplete_items)) {
+          const n = wd.incomplete_items.length;
+          weightWarning = `Peso parcial: ${n} item(s) sem cadastro de peso na ficha técnica.`;
+        }
+      }
+    } catch (_e) {
+      // Cálculo de peso é melhor-esforço — se falhar, segue sem peso
+      // (GestaoClick preenche default). Não bloqueia a emissão.
+    }
+
+    const informacoesComplementares = [
+      order.numero_pv ? `Pedido de Venda: ${order.numero_pv}` : null,
+      weightWarning,
+    ].filter(Boolean).join(" | ") || undefined;
+
     // ---------- Cria a NF-e no GestaoClick (rascunho) ----------
     const nfePayload = {
       tipo_nf: "1",
@@ -315,8 +356,11 @@ Deno.serve(async (req) => {
       serie: fiscal.serie_nfe || "1",
       finalidade_nf: "1",
       consumidor_final: "0",
-      informacoes_complementares: order.numero_pv ? `Pedido de Venda: ${order.numero_pv}` : undefined,
+      informacoes_complementares: informacoesComplementares,
       produtos: produtosGC,
+      ...(pesoBrutoStr ? { peso_bruto: pesoBrutoStr } : {}),
+      ...(pesoLiquidoStr ? { peso_liquido: pesoLiquidoStr } : {}),
+      ...(qtdVolumesStr ? { quantidade_volumes: qtdVolumesStr } : {}),
     };
 
     const createResp = await gcFetch("/notas_fiscais_produtos", {

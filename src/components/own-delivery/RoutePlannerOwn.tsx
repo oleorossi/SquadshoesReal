@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Loader2, MapPin, Truck, User, Fuel, Wrench, Coins, AlertTriangle, Wand2 } from 'lucide-react';
+import { Loader2, MapPin, Truck, User, Fuel, Wrench, Coins, AlertTriangle, Wand2, Weight } from 'lucide-react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,6 +11,8 @@ import { useVehicles, useDrivers, useFuelPrices } from '@/hooks/useFleet';
 import { useCreateDeliveryRoute, type CreateRoutePayload } from '@/hooks/useDeliveryRoutes';
 import { geocodeOne, nearestNeighborOrder, projectRouteCost, type Coord } from '@/lib/own-delivery/routeMath';
 import type { OwnDeliveryOrder } from '@/hooks/useDeliveryRoutes';
+import { useSaleOrdersWeightBatch } from '@/hooks/useSaleOrderWeight';
+import { IncompleteWeightWarning } from '@/components/weight/IncompleteWeightWarning';
 
 interface Props {
   open: boolean;
@@ -76,6 +78,25 @@ export default function RoutePlannerOwn({ open, onOpenChange, orders, onCreated 
     () => stops.reduce((s, x) => s + (x.order.total_pairs ?? 0), 0),
     [stops],
   );
+
+  // Peso da carga: chama RPC pra cada PV em batch e soma. Comparado com
+  // capacity_kg do veículo pra alertar overload.
+  const stopOrderIds = useMemo(() => stops.map((s) => s.order.id), [stops]);
+  const { data: weightsBatch = [] } = useSaleOrdersWeightBatch(stopOrderIds);
+  const weightByOrderId = useMemo(() => {
+    const m = new Map<string, (typeof weightsBatch)[number]>();
+    for (const w of weightsBatch) m.set(w.saleOrderId, w);
+    return m;
+  }, [weightsBatch]);
+  const totalLoadKg = useMemo(
+    () => weightsBatch.reduce((s, w) => s + w.grossWeightKg, 0),
+    [weightsBatch],
+  );
+  const allIncomplete = useMemo(
+    () => weightsBatch.flatMap((w) => w.incompleteItems),
+    [weightsBatch],
+  );
+  const exceedsCapacity = !!selectedVehicle?.capacity_kg && totalLoadKg > selectedVehicle.capacity_kg;
 
   const cost = useMemo(() => {
     if (!selectedVehicle) return null;
@@ -291,7 +312,9 @@ export default function RoutePlannerOwn({ open, onOpenChange, orders, onCreated 
           <div className="rounded-md border border-border">
             <div className="px-3 py-2 border-b bg-muted/30 flex items-center justify-between">
               <span className="text-xs font-bold">Paradas ({stops.length})</span>
-              <span className="text-xs text-muted-foreground">{totalPairs} pares · {totalKm.toFixed(1)} km</span>
+              <span className="text-xs text-muted-foreground">
+                {totalPairs} pares · {totalLoadKg.toFixed(1)} kg · {totalKm.toFixed(1)} km
+              </span>
             </div>
             <ScrollArea className="h-[260px]">
               <ul className="divide-y">
@@ -325,6 +348,12 @@ export default function RoutePlannerOwn({ open, onOpenChange, orders, onCreated 
                     </div>
                     <div className="text-right shrink-0">
                       <div className="text-xs font-mono">{(s.order.total_pairs ?? 0)} prs</div>
+                      {(() => {
+                        const w = weightByOrderId.get(s.order.id);
+                        return w && w.grossWeightKg > 0 ? (
+                          <div className="text-[10px] text-muted-foreground">{w.grossWeightKg.toFixed(2)} kg</div>
+                        ) : null;
+                      })()}
                       {s.distanceFromPreviousKm !== undefined && (
                         <div className="text-[10px] text-muted-foreground">
                           +{s.distanceFromPreviousKm.toFixed(1)} km
@@ -363,6 +392,37 @@ export default function RoutePlannerOwn({ open, onOpenChange, orders, onCreated 
               value={cost ? `${formatBrl(cost.totalCostBrl)}${cost.costPerPair !== null ? ` · ${formatBrl(cost.costPerPair)}/par` : ''}` : '—'}
               highlight
             />
+            <div className={`md:col-span-4 rounded-md border p-2 ${
+              exceedsCapacity
+                ? 'border-destructive/40 bg-destructive/10'
+                : 'border-border bg-muted/20'
+            }`}>
+              <div className="flex items-center gap-2">
+                <Weight className={`h-3.5 w-3.5 ${exceedsCapacity ? 'text-destructive' : 'text-primary'}`} />
+                <span className={`text-[10px] uppercase font-bold tracking-wider ${
+                  exceedsCapacity ? 'text-destructive' : 'text-muted-foreground'
+                }`}>Carga total da rota</span>
+                <span className={`ml-auto font-mono text-sm ${exceedsCapacity ? 'text-destructive font-bold' : 'text-foreground'}`}>
+                  {totalLoadKg.toFixed(2)} kg
+                  {selectedVehicle?.capacity_kg && (
+                    <span className="text-muted-foreground font-normal text-xs ml-1">
+                      / {Number(selectedVehicle.capacity_kg).toFixed(0)} kg
+                    </span>
+                  )}
+                </span>
+              </div>
+              {exceedsCapacity && (
+                <p className="text-[11px] text-destructive mt-1 flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3" />
+                  Excede capacidade do veículo. Escolha um veículo maior ou divida a rota.
+                </p>
+              )}
+            </div>
+            {allIncomplete.length > 0 && (
+              <div className="md:col-span-4">
+                <IncompleteWeightWarning items={allIncomplete} scope="nos PVs desta rota" />
+              </div>
+            )}
           </div>
         </div>
 

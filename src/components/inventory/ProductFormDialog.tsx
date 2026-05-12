@@ -798,15 +798,19 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
               </div>
             </div>
           )}
-           <div className="grid grid-cols-1 gap-6 mt-4">
-             <div className="col-span-1">
+           {/* Reforma 2026-05: grid de 2 colunas. Nome e Nome Técnico ocupam linha
+                inteira (col-span-2) pra acomodar textos longos. SKU/Grupo lado-a-lado;
+                Fornecedor span 2 também. Removidos: "Item Padrão de Solado", "Cor"
+                e "Rendimento Técnico" — viram parte de outros fluxos. */}
+           <div className="grid grid-cols-2 gap-4 mt-4">
+             <div className="col-span-2">
               <Label htmlFor="name" className={attempted && errors.name ? 'text-destructive' : ''}>Nome *</Label>
               <Input
                 id="name"
                 value={form.name}
                 onChange={e => { update('name', e.target.value); setDuplicateConfirmed(false); setDuplicateMatch(null); if (attempted) setErrors(prev => ({ ...prev, name: !e.target.value.trim() })); }}
                 onBlur={handleNameBlur}
-                className={`mt-1 ${attempted && errors.name ? 'border-destructive ring-destructive' : ''}`}
+                className={`mt-1 h-10 text-sm ${attempted && errors.name ? 'border-destructive ring-destructive' : ''}`}
                 placeholder="Ex: NAPA SOFT, LINHA60"
               />
               {attempted && errors.name && <p className="text-xs text-destructive mt-1">Nome é obrigatório</p>}
@@ -866,120 +870,15 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                />
              </div>
 
-             <div className="col-span-2 flex items-center gap-2 py-2">
-               <Switch
-                 id="is_standard_sole_item"
-                 checked={form.is_standard_sole_item || false}
-                 onCheckedChange={v => update('is_standard_sole_item', v)}
-               />
-               <div className="grid gap-1.5 leading-none">
-                 <Label htmlFor="is_standard_sole_item" className="text-sm font-medium leading-none cursor-pointer">
-                   Item Padrão de Solado
-                 </Label>
-                 <p className="text-xs text-muted-foreground">
-                   Se marcado, este item (como cola ou linha) será adicionado automaticamente às fichas técnicas ao selecionar o solado correspondente.
-                 </p>
-               </div>
-             </div>
-            {!hasGrade && (
-              <div className="col-span-2">
-                <Label htmlFor="color">Cor</Label>
-                {isEditing ? (
-                  <Input
-                    id="color"
-                    value={form.color}
-                    onChange={e => update('color', e.target.value)}
-                    className="mt-1"
-                    placeholder="Ex: Preto"
-                  />
-                ) : !multiColorMode ? (
-                  <div className="space-y-2 mt-1">
-                    <div className="flex gap-2">
-                      <Input
-                        id="color"
-                        value={form.color}
-                        onChange={e => update('color', e.target.value)}
-                        className="flex-1"
-                        placeholder="Ex: Preto"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="text-xs whitespace-nowrap"
-                        onClick={() => {
-                          setMultiColorMode(true);
-                          if (form.color.trim()) {
-                            setMultiColors([form.color.trim()]);
-                            update('color', '');
-                          }
-                        }}
-                      >
-                        + Várias cores
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Para cadastrar várias cores do mesmo material, clique em "+ Várias cores"
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-2 mt-1">
-                    <div className="flex gap-2">
-                      <Input
-                        id="color"
-                        value={colorInput}
-                        onChange={e => setColorInput(e.target.value)}
-                        onKeyDown={handleColorKeyDown}
-                        onBlur={handleAddColors}
-                        className="flex-1"
-                        placeholder="Digite uma cor e pressione Enter"
-                      />
-                      <Button type="button" variant="outline" size="sm" onClick={handleAddColors}>
-                        Adicionar
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="text-xs"
-                        onClick={() => {
-                          setMultiColorMode(false);
-                          setMultiColors([]);
-                          setColorInput('');
-                        }}
-                      >
-                        Cancelar
-                      </Button>
-                    </div>
-                    {multiColors.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5">
-                        {multiColors.map(color => (
-                          <Badge key={color} variant="secondary" className="gap-1 pr-1">
-                            {color}
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveColor(color)}
-                              className="hover:bg-muted rounded-full p-0.5"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-                    <p className="text-xs text-muted-foreground">
-                      <span className="font-semibold text-primary">{multiColors.length} material(is)</span> serão criados, um para cada cor
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-            <div>
+            {/* Removidos em 2026-05: "Item Padrão de Solado" (vive em outro
+                fluxo agora) e bloco "Cor" (gerenciado via GroupColorsManager
+                no GroupEditDialog). */}
+            <div className="col-span-1">
               <Label htmlFor="sku" className={attempted && errors.sku ? 'text-destructive' : ''}>Código (SKU) *</Label>
-              <Input id="sku" value={form.sku} onChange={e => { update('sku', e.target.value); if (attempted) setErrors(prev => ({ ...prev, sku: !e.target.value.trim() })); }} className={`mt-1 font-mono ${attempted && errors.sku ? 'border-destructive ring-destructive' : ''}`} placeholder="Ex: CAB-001" />
+              <Input id="sku" value={form.sku} onChange={e => { update('sku', e.target.value); if (attempted) setErrors(prev => ({ ...prev, sku: !e.target.value.trim() })); }} className={`mt-1 h-10 font-mono text-sm ${attempted && errors.sku ? 'border-destructive ring-destructive' : ''}`} placeholder="Ex: CAB-001" />
               {attempted && errors.sku && <p className="text-xs text-destructive mt-1">SKU é obrigatório</p>}
             </div>
-            <div>
+            <div className="col-span-1">
               <Label>Grupo</Label>
               <Select value={form.group_id || 'none'} onValueChange={v => {
                 const gid = v === 'none' ? null : v;
@@ -1005,7 +904,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                   }
                 }
               }}>
-                <SelectTrigger className="mt-1"><SelectValue placeholder="Sem grupo" /></SelectTrigger>
+                <SelectTrigger className="mt-1 h-10"><SelectValue placeholder="Sem grupo" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Sem grupo</SelectItem>
                   {groups.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
@@ -1026,10 +925,10 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
               })()}
             </div>
 
-            <div>
+            <div className="col-span-2">
               <Label>Fornecedor</Label>
               <Select value={form.supplier_id || 'none'} onValueChange={v => update('supplier_id', v === 'none' ? null : v)}>
-                <SelectTrigger className="mt-1"><SelectValue placeholder="Sem fornecedor" /></SelectTrigger>
+                <SelectTrigger className="mt-1 h-10"><SelectValue placeholder="Sem fornecedor" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Sem fornecedor</SelectItem>
                   {suppliers.filter(s => s.active).map(s => (
@@ -1372,51 +1271,8 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
               </div>
             )}
 
-            <div className="col-span-2 p-3 rounded-lg border bg-muted/30 space-y-3">
-              <Label className="text-sm font-semibold flex items-center gap-1.5">
-                <Layers className="h-3.5 w-3.5 text-primary" />
-                Rendimento Técnico (dm²/par por numeração)
-              </Label>
-              <p className="text-[10px] text-muted-foreground -mt-1">
-                Consumo em dm² por par para cada numeração. Usado no cálculo de pares estimados no estoque.
-              </p>
-              <div className={`grid gap-2 ${shoeCategory === 'infantil' ? 'grid-cols-8' : 'grid-cols-7'}`}>
-                {currentSizes.map(size => (
-                  <div key={size} className="text-center">
-                    <span className="text-xs text-muted-foreground font-medium">{size}</span>
-                    <NumberInput
-                      min={0}
-                      step="0.01"
-                      value={yieldPerSize[String(size)] || 0}
-                      onChange={v => setYieldPerSize(prev => ({ ...prev, [String(size)]: v }))}
-                      className="h-8 text-xs text-center px-1"
-                      placeholder="0"
-                    />
-                  </div>
-                ))}
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs text-muted-foreground">Perda / Desperdício (%)</Label>
-                  <NumberInput
-                    value={wastePct}
-                    onChange={setWastePct}
-                    min={0}
-                    step="0.5"
-                    className="mt-1 h-9"
-                    placeholder="8"
-                  />
-                </div>
-                <div className="flex items-end">
-                  {existingSheet
-                    ? <Badge variant="secondary" className="text-[10px]">Ficha existente</Badge>
-                    : Object.values(yieldPerSize).some(v => v > 0)
-                      ? <Badge variant="outline" className="text-[10px] text-primary border-primary/30">Nova ficha será criada</Badge>
-                      : <span className="italic text-xs text-muted-foreground">Sem ficha de componente</span>
-                  }
-                </div>
-              </div>
-            </div>
+            {/* "Rendimento Técnico (dm²/par por numeração)" removido em 2026-05
+                — agora vive em outra tela específica de consumo. */}
 
             <div className="col-span-2 p-3 rounded-lg border bg-muted/30 space-y-3">
               <Label className="text-sm font-semibold">Unidades de Medida</Label>
