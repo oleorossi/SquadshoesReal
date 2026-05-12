@@ -3126,7 +3126,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
              </div>
            </div>
            <ProductionSectorsTab
-             sectors={sheet.production_sectors || ['Corte', 'Corte Forração', 'Silk', 'Colagem', 'Montagem', 'Acabamento', 'Expedição']}
+             sectors={sheet.production_sectors || ['Corte Palmilha', 'Corte Forração', 'Corte Cabedal', 'Costura', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição']}
              onChange={(sectors: string[]) => {
                updateSheet.mutate({ id: sheet.id, data: { production_sectors: sectors } as any });
              }}
@@ -3342,15 +3342,22 @@ function PhotosByColorTab({ sheetId, form, groups, products }: {
 }
 
  const ALL_PRODUCTION_SECTORS = [
-   { name: 'Corte', order: 1 },
+   // Sub-etapas paralelas de Corte (decisão 2026-05-12):
+   //   - Corte Palmilha: sempre (todo sapato tem palmilha)
+   //   - Corte Forração: quando o modelo tem forração na palmilha
+   //   - Corte Cabedal:  quando NÃO has_straps (modelo sem tiras)
+   //   - Costura: junta palmilha + forração + cabedal
+   { name: 'Corte Palmilha', order: 1 },
    { name: 'Corte Forração', order: 2 },
-    { name: 'Aviamento', order: 3 },
-    { name: 'Silk', order: 4 },
-    { name: 'Colagem', order: 5 },
-    { name: 'Montagem', order: 6 },
-    { name: 'Solagem', order: 7 },
-    { name: 'Acabamento', order: 8 },
-    { name: 'Expedição', order: 9 },
+   { name: 'Corte Cabedal',  order: 3 },
+   { name: 'Costura',        order: 4 },
+   { name: 'Aviamento',      order: 5 },
+   { name: 'Silk',           order: 6 },
+   { name: 'Colagem',        order: 7 },
+   { name: 'Montagem',       order: 8 },
+   { name: 'Solagem',        order: 9 },
+   { name: 'Acabamento',     order: 10 },
+   { name: 'Expedição',      order: 11 },
  ];
  
  function ProductionSectorsTab({ sectors, onChange }: { sectors: string[]; onChange: (sectors: string[]) => void }) {

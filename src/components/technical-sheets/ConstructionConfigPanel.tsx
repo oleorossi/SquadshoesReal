@@ -33,17 +33,17 @@ interface ConstructionConfigPanelProps {
 }
 
 // ─── Canonical sector lists ────────────────────────────────────────────────
-// • Cabedal (insole_ready_made=true)   → SEM Corte Forração, SEM Costura
-//   (palmilha vem pronta na cor — sem corte interno nem costura).
-// • Cabedal Forrado (com forração)     → COM Costura (sews palmilha+forração
-//   e cabedal).
-// • Tiras                              → COM Costura (só palmilha+forração;
-//   cabedal não existe).
+// • Cabedal (insole_ready_made=true)   → SEM Corte Forração, SEM Costura.
+//   Cabedal cortado (Corte Cabedal). Palmilha vem pronta na cor.
+// • Cabedal Forrado (com forração)     → COM Corte Cabedal, Corte Forração,
+//   Costura (costura palmilha+forração e cabedal).
+// • Tiras (has_straps=true)            → SEM Corte Cabedal (tira já vem
+//   cortada). COM Costura (só palmilha+forração).
 // Silk fica entre Aviamento/Mesa e Colagem quando ativado.
-const SECTORS_CABEDAL              = ['Corte Palmilha', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
-const SECTORS_CABEDAL_SILK         = ['Corte Palmilha', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
-const SECTORS_CABEDAL_FORRADO      = ['Corte Palmilha', 'Corte Forração', 'Costura', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
-const SECTORS_CABEDAL_FORRADO_SILK = ['Corte Palmilha', 'Corte Forração', 'Costura', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
+const SECTORS_CABEDAL              = ['Corte Palmilha', 'Corte Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
+const SECTORS_CABEDAL_SILK         = ['Corte Palmilha', 'Corte Cabedal', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
+const SECTORS_CABEDAL_FORRADO      = ['Corte Palmilha', 'Corte Forração', 'Corte Cabedal', 'Costura', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
+const SECTORS_CABEDAL_FORRADO_SILK = ['Corte Palmilha', 'Corte Forração', 'Corte Cabedal', 'Costura', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
 const SECTORS_TIRAS                = ['Corte Palmilha', 'Corte Forração', 'Costura', 'Aviamento', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
 const SECTORS_TIRAS_SILK           = ['Corte Palmilha', 'Corte Forração', 'Costura', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
 
@@ -70,6 +70,11 @@ function isCanonicalRouting(current: string[] | null | undefined): boolean {
     SECTORS_CABEDAL, SECTORS_CABEDAL_SILK,
     SECTORS_CABEDAL_FORRADO, SECTORS_CABEDAL_FORRADO_SILK,
     SECTORS_TIRAS, SECTORS_TIRAS_SILK,
+    // Pre-2026-05-12 listas Cabedal (sem 'Corte Cabedal' — englobado em 'Corte Palmilha')
+    ['Corte Palmilha', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
+    ['Corte Palmilha', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
+    ['Corte Palmilha', 'Corte Forração', 'Costura', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
+    ['Corte Palmilha', 'Corte Forração', 'Costura', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
     // Legacy lists (pre-2026-05-06 rename + pre-2026-05-20 Mesa→Aviamento)
     // — treated as non-customised
     ['Corte', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
@@ -180,13 +185,13 @@ function ModelCard({ active, onClick, icon, title, subtitle, routing, children }
 function routingLabel(model: ProductionModel, hasSilk: boolean, requires_sewing: boolean): string {
   const silk = hasSilk ? ' → Silk' : '';
   if (model === 'cabedal') {
-    return `Corte Palmilha${silk} → Colagem → Montagem → Solagem → Acabamento`;
+    return `Corte Palmilha ‖ Corte Cabedal${silk} → Colagem → Montagem → Solagem → Acabamento`;
   }
   if (model === 'cabedal_forrado') {
     const sewing = requires_sewing ? ' (costura inclusa)' : '';
-    return `Corte Palmilha → Corte Forração${sewing}${silk} → Colagem → Montagem → Solagem → Acabamento`;
+    return `Corte Palmilha ‖ Corte Forração ‖ Corte Cabedal${sewing}${silk} → Colagem → Montagem → Solagem → Acabamento`;
   }
-  // tiras
+  // tiras — não tem Corte Cabedal porque a tira já vem cortada
   return `Corte Palmilha → Corte Forração → Mesa${silk} → Colagem → Montagem → Solagem → Acabamento`;
 }
 
