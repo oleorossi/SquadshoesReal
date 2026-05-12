@@ -387,29 +387,28 @@ function PedidosRedirect() {
 // Router configuration using createBrowserRouter
 const RouteErrorFallback = () => {
   const error = useRouteError() as any;
-  // Loga no Console pra ficar inspecionável mesmo quando o usuário só vê a UI.
   console.error('[RouteErrorFallback] error:', error);
+  try { (window as any).__lastError = error; } catch {}
   const message = error?.message || error?.statusText || error?.toString?.() || 'Erro desconhecido';
   const stack = error?.stack || error?.componentStack;
   return (
-    <div className="min-h-[300px] flex items-center justify-center p-8">
-      <div className="text-center space-y-4 max-w-2xl w-full">
-        <ShieldAlert className="h-10 w-10 text-destructive mx-auto" />
+    <div className="min-h-[300px] flex flex-col items-center justify-center p-8 gap-4">
+      <ShieldAlert className="h-10 w-10 text-destructive" />
+      <div className="text-center">
         <h3 className="text-lg font-semibold">Algo deu errado</h3>
-        <p className="text-sm text-muted-foreground">
-          Ocorreu um erro ao carregar esta página.
-        </p>
-        <details className="text-left text-xs bg-muted p-3 rounded">
-          <summary className="cursor-pointer text-destructive font-semibold hover:underline">
-            Ver detalhes do erro
-          </summary>
-          <pre className="mt-2 p-2 bg-background rounded overflow-auto max-h-60 text-xs whitespace-pre-wrap break-words">
-            {message}
-            {stack ? `\n\n${stack}` : ''}
-          </pre>
-        </details>
-        <Button variant="outline" onClick={() => window.location.reload()}>
-          Recarregar página
+        <p className="text-sm text-muted-foreground">Ocorreu um erro ao carregar esta página.</p>
+      </div>
+      <div className="w-full max-w-3xl bg-destructive/5 border border-destructive/30 rounded-lg p-4">
+        <p className="text-sm font-semibold text-destructive mb-2">Erro:</p>
+        <pre className="text-xs bg-background rounded p-3 overflow-auto max-h-80 whitespace-pre-wrap break-words">
+{message}
+{stack ? `\n${stack}` : ''}
+        </pre>
+      </div>
+      <div className="flex gap-2">
+        <Button variant="outline" onClick={() => window.location.reload()}>Recarregar página</Button>
+        <Button variant="outline" onClick={() => (window as any).forceAppUpdate?.()}>
+          Limpar cache e recarregar
         </Button>
       </div>
     </div>
