@@ -398,6 +398,31 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     return mergeAllGroupColors(group);
   };
 
+  // Resolve o group_id da cor principal do item — usado pra "cadastrar cor
+  // na hora" via CreateStrapProductDialog. Prioriza variant de material
+  // explicitamente selecionada; senão usa o primeiro grupo de forração/cabedal
+  // do BOM da ficha técnica. Retorna null quando não consegue inferir (UI
+  // esconde o botão "+ Cadastrar" nesse caso).
+  const mainGroupForNewColor = useMemo<{ id: string; name: string } | null>(() => {
+    if (item.material_variant_id) {
+      const variant = activeMaterialVariants.find(v => v.id === item.material_variant_id);
+      if (variant?.group_id) {
+        return { id: variant.group_id, name: variant.group_name || variant.material_name || '' };
+      }
+    }
+    // Fallback: primeiro material de forração/palmilha no BOM
+    const liningCategories = new Set(['Forração da Palmilha', 'Palmilha']);
+    for (const m of refMaterials as any[]) {
+      const category = (m.products as any)?.category;
+      const groupId = m.group_id || m.product_groups?.id || (m.products as any)?.group_id;
+      const groupName = m.product_groups?.name || (m.products as any)?.name || '';
+      if (groupId && liningCategories.has(category)) {
+        return { id: groupId, name: groupName };
+      }
+    }
+    return null;
+  }, [item.material_variant_id, activeMaterialVariants, refMaterials]);
+
   const availableColors: string[] = useMemo(() => {
     // When a material group is selected and has specific colors defined, use those exclusively.
     // This enforces the Reference → Material → Color flow for multi-material references.
@@ -780,6 +805,16 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                 colors={availableColors}
                 value={item.color}
                 onSelect={(v) => onUpdate(index, 'color', v)}
+                onAddNew={mainGroupForNewColor ? (color) => {
+                  // Reusa o CreateStrapProductDialog pra criar produto na cor
+                  // principal (forração/cabedal). Sentinela index=-1 indica
+                  // "cor principal, não tira" pro callback onCreated.
+                  setPendingStrapGroupId(mainGroupForNewColor.id);
+                  setPendingStrapGroupName(mainGroupForNewColor.name);
+                  setPendingStrapColor(color);
+                  setPendingStrapIndex(-1);
+                  setCreateStrapDialog(true);
+                } : undefined}
               />
               {onSaveStateAndNavigate && activeMaterialVariants.length === 0 && (
                 <Button
@@ -1116,15 +1151,26 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           qc.invalidateQueries({ queryKey: ['products_for_colors'] });
           qc.invalidateQueries({ queryKey: ['group_supplier_materials_for_colors'] });
           qc.invalidateQueries({ queryKey: ['product_groups_colors'] });
-          // Auto-set the color on the strap after creation
-          if (pendingStrapIndex !== null && pendingStrapColor) {
-            const updated = [...(item.strap_colors as any[])];
-            if (updated[pendingStrapIndex]) {
-              updated[pendingStrapIndex] = { ...updated[pendingStrapIndex], color: pendingStrapColor };
-              onUpdate(index, 'strap_colors', updated);
+          qc.invalidateQueries({ queryKey: ['products'] });
+          if (pendingStrapColor) {
+            if (pendingStrapIndex === -1) {
+              // Sentinela: criação foi pra COR PRINCIPAL do item (não tira).
+              // Auto-seleciona a cor recém-criada no item.color e propaga
+              // pras tiras (via auto-sync do useEffect que existe).
+              onUpdate(index, 'color', pendingStrapColor);
+            } else if (pendingStrapIndex !== null) {
+              // Auto-set the color on the strap after creation
+              const updated = [...(item.strap_colors as any[])];
+              if (updated[pendingStrapIndex]) {
+                updated[pendingStrapIndex] = { ...updated[pendingStrapIndex], color: pendingStrapColor };
+                onUpdate(index, 'strap_colors', updated);
+              }
             }
           }
           setPendingStrapIndex(null);
+          setPendingStrapColor('');
+          setPendingStrapGroupId('');
+          setPendingStrapGroupName('');
         }}
       />
 
@@ -1136,11 +1182,21 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
 const SaleOrderItemForm = memo(SaleOrderItemFormInner);
 export default SaleOrderItemForm;
 
-function ColorSearchSelect({ colors, value, onSelect }: { colors: string[]; value: string; onSelect: (color: string) => void }) {
+function ColorSearchSelect({
+  colors, value, onSelect, onAddNew,
+}: {
+  colors: string[];
+  value: string;
+  onSelect: (color: string) => void;
+  /** Quando definido, mostra "+ Cadastrar 'X' no estoque" se a busca n\u00e3o casar nenhuma cor. */
+  onAddNew?: (color: string) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const normalize = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const filtered = colors.filter(c => normalize(c).includes(normalize(search)));
+  const trimmedSearch = search.trim();
+  const showAdd = !!onAddNew && trimmedSearch && !colors.some(c => normalize(c) === normalize(trimmedSearch));
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -1163,7 +1219,7 @@ function ColorSearchSelect({ colors, value, onSelect }: { colors: string[]; valu
             />
           </div>
           <div className="max-h-[250px] overflow-y-auto space-y-0.5">
-            {filtered.length === 0 && (
+            {filtered.length === 0 && !showAdd && (
               <p className="text-xs text-muted-foreground text-center py-4">Nenhuma cor encontrada.</p>
             )}
             {filtered.map(color => (
@@ -1179,6 +1235,19 @@ function ColorSearchSelect({ colors, value, onSelect }: { colors: string[]; valu
                 {value === color && <Check className="h-3.5 w-3.5 text-primary" />}
               </button>
             ))}
+            {showAdd && (
+              <button
+                onClick={() => {
+                  onAddNew!(trimmedSearch);
+                  setOpen(false);
+                  setSearch('');
+                }}
+                className="w-full text-left px-3 py-2 text-xs text-primary font-medium hover:bg-accent rounded-sm flex items-center gap-1.5"
+              >
+                <Plus className="h-3 w-3" />
+                Cadastrar "{trimmedSearch}" no estoque
+              </button>
+            )}
           </div>
         </div>
       </PopoverContent>
