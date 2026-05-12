@@ -164,8 +164,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       min_stock: source.min_stock ?? prev.min_stock,
       max_stock: source.max_stock ?? prev.max_stock,
       unit_price: source.unit_price ?? prev.unit_price,
-      yield_per_meter: source.yield_per_meter ?? prev.yield_per_meter,
-      yield_unit: source.yield_unit || prev.yield_unit,
       dimensions_length: source.dimensions_length || prev.dimensions_length,
       dimensions_width: source.dimensions_width || prev.dimensions_width,
       dimensions_thickness: source.dimensions_thickness || prev.dimensions_thickness,
@@ -1181,27 +1179,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                     className="mt-1"
                   />
                 </div>
-                <div className="col-span-2">
-                  <Label htmlFor="linked_last_id">Vincular com Fôrma</Label>
-                  <Select 
-                    value={form.linked_last_id || 'none'} 
-                    onValueChange={v => update('linked_last_id', v === 'none' ? null : v)}
-                  >
-                    <SelectTrigger className="mt-1">
-                      <SelectValue placeholder="Selecione a fôrma correspondente" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Nenhuma fôrma vinculada</SelectItem>
-                      {allProducts
-                        .filter(p => p.category === 'Fôrma' || p.category === 'Ferramentas' || p.id === form.linked_last_id)
-                        .map(p => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.name} {p.sku ? `(${p.sku})` : ''}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
               </>
             )}
 
@@ -1643,11 +1620,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
               <Label>Estoque de Segurança</Label>
               <NumberInput value={form.safety_stock ?? 0} onChange={v => update('safety_stock', v)} min={0} step="0.01" className="mt-1" placeholder="0" />
               <p className="text-[10px] text-muted-foreground mt-0.5">Estoque mínimo reservado como segurança</p>
-            </div>
-            <div>
-              <Label>Lead Time Interno (dias)</Label>
-              <NumberInput value={form.lead_time_days ?? 7} onChange={v => update('lead_time_days', v)} min={0} step="1" className="mt-1" placeholder="7" />
-              <p className="text-[10px] text-muted-foreground mt-0.5">Prazo interno de processamento</p>
             </div>
             <div>
               <Label>Lead Time Fornecedor (dias)</Label>
