@@ -22,23 +22,69 @@ const printStyles = `
     margin: 8mm;
   }
   @media print {
-    /* BUG ANTIGO: usávamos position:absolute na print-area pra tirar o app
+    /* BUG ANTIGO 1: usávamos position:absolute na print-area pra tirar o app
        chrome (sidebar/header) do caminho. Mas position:absolute remove o
        elemento do fluxo de paginação — o navegador só renderizava a primeira
-       página e ignorava .page-break dos filhos. Resultado: PDF saía com 1
-       página apenas mesmo em arquivo único.
-       FIX: deixar print-area no fluxo natural (sem position) + esconder o
-       chrome do app (aside/header e elementos com .no-print) via display:none
-       para não criar páginas em branco fantasma. */
+       página e ignorava .page-break dos filhos.
+       FIX: deixar print-area no fluxo natural (sem position).
+
+       BUG ANTIGO 2: PDF saía em BRANCO (todas as páginas) mesmo com
+       print-area visível. Causa: AppLayout envolve a página em
+       <main class="flex-1 ... overflow-auto"> dentro de wrappers com
+       min-h-screen. Em print:
+         - main = flex-1 em min-h-screen → altura ≈ viewport
+         - main tem overflow-auto → tudo além da altura computada vai pra
+           área de scroll que NÃO é impressa
+         - AppLayout só ativa print:overflow-visible quando o pai passa
+           printMode={true} (App.tsx:432 não faz)
+       FIX: resetar agressivamente overflow / max-width / max-height /
+       min-height em todos os elementos durante print, e zerar margin/padding
+       /flex/transform nos ancestrais conhecidos. Sem isso só a primeira tela
+       de conteúdo imprime — o resto fica fantasma na área de scroll. */
     html, body {
       margin: 0 !important;
       padding: 0 !important;
       background: white !important;
       height: auto !important;
+      min-height: 0 !important;
+      width: auto !important;
       overflow: visible !important;
     }
-    /* Esconde chrome do app (AppLayout: sidebar como <aside>, topbar como <header>) */
-    aside, header, .no-print { display: none !important; }
+
+    /* Reset universal: nenhum elemento pode clipar ou constrangir dimensões
+       em print. Destrava overflow-auto do <main>, min-h-screen dos wrappers,
+       max-w-[1600px] da main, etc. — sem alterar estrutura da AppLayout. */
+    body * {
+      overflow: visible !important;
+      max-width: none !important;
+      max-height: none !important;
+      min-height: 0 !important;
+    }
+
+    /* Em ancestrais conhecidos da print-area (AppLayout: wrapper externo,
+       main wrapper, main, animate-in), zerar padding/margin/flex/transform
+       pra não empurrar a print-area pra direita/baixo nem aplicar animações
+       que afetam o snapshot do print. */
+    body > div,
+    body > div > div,
+    main,
+    main > div {
+      margin: 0 !important;
+      padding: 0 !important;
+      width: auto !important;
+      height: auto !important;
+      flex: none !important;
+      transform: none !important;
+      animation: none !important;
+      position: static !important;
+    }
+
+    /* Esconde chrome do app. Inclui o breadcrumb sticky do AppLayout que
+       não tem .no-print nem é <header> mas é "hidden md:flex sticky top-0 z-20". */
+    aside, header, .no-print,
+    [class*="sticky"][class*="top-0"][class*="z-20"] {
+      display: none !important;
+    }
 
     /* Esconde o resto via visibility (mantém layout pra não quebrar refs)
        e só re-ativa visibilidade no que está dentro da print-area */
