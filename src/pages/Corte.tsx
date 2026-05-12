@@ -855,17 +855,17 @@ if (totalPairsAll !== palmTotal) {
     
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
-              <Scissors className="h-6 w-6 text-primary" />
+        <div className="flex flex-col xl:flex-row items-start xl:items-center justify-between gap-3">
+          <div className="shrink-0">
+            <h1 className="text-xl font-bold tracking-tight flex items-center gap-2 whitespace-nowrap">
+              <Scissors className="h-6 w-6 text-primary shrink-0" />
               Setor de Corte Palmilha
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
               Demanda de corte por material, cor e numeração
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto">
             <Select value={filterStatus} onValueChange={setFilterStatus}>
               <SelectTrigger className="w-[140px] h-9 text-xs">
                 <Filter className="h-3.5 w-3.5 mr-1" />
