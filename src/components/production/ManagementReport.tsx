@@ -24,6 +24,7 @@ export interface ReportOrder {
     material_cost: number;
     labor_cost: number;
     overhead_cost: number;
+    packaging_cost: number;
     total_cost: number;
     revenue: number;
     margin: number;
@@ -101,6 +102,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
   const totalMaterial = orders.reduce((s, o) => s + (o.cost?.material_cost || 0), 0);
   const totalLabor = orders.reduce((s, o) => s + (o.cost?.labor_cost || 0), 0);
   const totalOverhead = orders.reduce((s, o) => s + (o.cost?.overhead_cost || 0), 0);
+  const totalPackaging = orders.reduce((s, o) => s + (o.cost?.packaging_cost || 0), 0);
   const totalCost = orders.reduce((s, o) => s + (o.cost?.total_cost || 0), 0);
   const totalRevenue = orders.reduce((s, o) => s + (o.cost?.revenue || 0), 0);
   const margin = totalRevenue - totalCost;
@@ -257,6 +259,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
                 <th className="border border-slate-300 py-1 px-2 text-right text-[10px] font-bold">Material</th>
                 <th className="border border-slate-300 py-1 px-2 text-right text-[10px] font-bold">M. Obra</th>
                 <th className="border border-slate-300 py-1 px-2 text-right text-[10px] font-bold">Overhead</th>
+                <th className="border border-slate-300 py-1 px-2 text-right text-[10px] font-bold">Embalagem</th>
                 <th className="border border-slate-300 py-1 px-2 text-right text-[10px] font-bold">Total</th>
                 <th className="border border-slate-300 py-1 px-2 text-right text-[10px] font-bold">Receita</th>
                 <th className="border border-slate-300 py-1 px-2 text-right text-[10px] font-bold">Margem</th>
@@ -270,6 +273,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
                   <td className="border border-slate-300 py-1 px-2 text-right font-mono text-[10px]">{fmtCurrency(o.cost!.material_cost)}</td>
                   <td className="border border-slate-300 py-1 px-2 text-right font-mono text-[10px]">{fmtCurrency(o.cost!.labor_cost)}</td>
                   <td className="border border-slate-300 py-1 px-2 text-right font-mono text-[10px]">{fmtCurrency(o.cost!.overhead_cost)}</td>
+                  <td className="border border-slate-300 py-1 px-2 text-right font-mono text-[10px]">{fmtCurrency(o.cost!.packaging_cost)}</td>
                   <td className="border border-slate-300 py-1 px-2 text-right font-mono font-bold text-[10px]">{fmtCurrency(o.cost!.total_cost)}</td>
                   <td className="border border-slate-300 py-1 px-2 text-right font-mono text-[10px]">{fmtCurrency(o.cost!.revenue)}</td>
                   <td className={`border border-slate-300 py-1 px-2 text-right font-mono font-bold text-[10px] ${o.cost!.margin >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
@@ -284,6 +288,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
                 <td className="border border-slate-400 py-1.5 px-2 text-right font-mono text-[10px]">{fmtCurrency(totalMaterial)}</td>
                 <td className="border border-slate-400 py-1.5 px-2 text-right font-mono text-[10px]">{fmtCurrency(totalLabor)}</td>
                 <td className="border border-slate-400 py-1.5 px-2 text-right font-mono text-[10px]">{fmtCurrency(totalOverhead)}</td>
+                <td className="border border-slate-400 py-1.5 px-2 text-right font-mono text-[10px]">{fmtCurrency(totalPackaging)}</td>
                 <td className="border border-slate-400 py-1.5 px-2 text-right font-mono text-[11px]">{fmtCurrency(totalCost)}</td>
                 <td className="border border-slate-400 py-1.5 px-2 text-right font-mono text-[10px]">{fmtCurrency(totalRevenue)}</td>
                 <td className={`border border-slate-400 py-1.5 px-2 text-right font-mono text-[11px] ${margin >= 0 ? 'text-emerald-800' : 'text-rose-800'}`}>

@@ -147,7 +147,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
       if (saleOrderIdsSet.size === 0) return [];
       const { data, error } = await (supabase as any)
         .from('order_costs')
-        .select('id, sale_order_id, sale_order_item_id, reference_id, color, quantity, material_cost, labor_cost, overhead_cost, total_cost, revenue, margin, margin_pct')
+        .select('id, sale_order_id, sale_order_item_id, reference_id, color, quantity, material_cost, labor_cost, overhead_cost, packaging_cost, total_cost, revenue, margin, margin_pct')
         .in('sale_order_id', Array.from(saleOrderIdsSet));
       if (error) throw error;
       return data || [];
@@ -787,6 +787,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
           material_cost: Number(cost.material_cost) || 0,
           labor_cost: Number(cost.labor_cost) || 0,
           overhead_cost: Number(cost.overhead_cost) || 0,
+          packaging_cost: Number(cost.packaging_cost) || 0,
           total_cost: Number(cost.total_cost) || 0,
           revenue: Number(cost.revenue) || 0,
           margin: Number(cost.margin) || 0,
