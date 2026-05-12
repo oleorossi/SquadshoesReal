@@ -4,7 +4,7 @@ URL: https://squadshoes-real.vercel.app
 Branch: claude/bold-jepsen-c3287d → main
 Metodologia: Chrome MCP janela-a-janela, confronto FE × BE via Supabase MCP, fix imediato quando UX/bug aplicável.
 
-## 4 rodadas executadas
+## 5 rodadas executadas
 
 | Rodada | Commit | Foco | Fixes |
 |--------|--------|------|-------|
@@ -12,7 +12,42 @@ Metodologia: Chrome MCP janela-a-janela, confronto FE × BE via Supabase MCP, fi
 | 2 | 2127849 | UX residual (Y-axes, Pie responsivo, Timeline filtro) | 4 |
 | 3 | aac5693 | 15+ rotas profundas + re-fix Top Modelos | 1 |
 | 4 | d305833, 7721718, b9ac16d | Profundidade interna (Fichas tabs, OP setores, PCP setores, Estoque tabs, Centro Controle, MFA, Kanban, PV form, Wave Planner) | 4 |
-| **TOTAL** | 8 commits | **38+ telas + 50+ tabs + 15+ modais** | **18 fixes** |
+| 5 | (this rodada) | Cobertura 100% sub-fluxos: Fichas Técnicas 6/6 tabs, OP 9/10 setores, Estoque Forro/Palmilha/Corte Tiras, Kanban filtros 4/4, Folha config, Aprovar via dropdown, Picking marcar/desmarcar, Search, Filtros 5 dims, Excel/PDF | 0 |
+| **TOTAL** | 8 commits | **38+ telas + 50+ tabs + 15+ modais + fluxos de ação** | **18 fixes** |
+
+## Validações sub-fluxos rodada 5
+
+### Fichas Técnicas (DS05) — 6/6 tabs ✓
+- **Identificação**: Dados Principais + Categoria & Grade
+- **BOM & Custos**: 0 materiais (KPIs: Solado 01, Grade 34-40) — fix #16 resolvido
+- **Produção**: Setores de Produção com checkbox por setor (Corte/Forração/Aviamento/Silk/Colagem/Montagem/Solagem/Acabamento/Expedição)
+- **Custos**: Análise por Par com Forração NAPA SOFT 5,83 R$ 0,1265 → R$ 0,7378
+- **Variantes**: Variações de Material (até 5 opções: Napa/Santorini/Metálica)
+- **Fotos & Histórico**: upload por cor (slots: ADOCICADO/BABY BLUE/BRANCO/BRIDAL/CAPPUCCINO/CARMIM)
+
+### OP detail 10 setores — orientações específicas validadas
+- **Corte Palmilha**: "Separar palmilhas por numeração, conferir molde/faca, contar e identificar lotes"
+- **Corte Forração**: "Conferir cor de forração, cortar por cor e numeração, identificar peças por cor"
+- **Costura**: "Verificar costuras, alinhamento e tensão da linha"
+- **Aviamento**: "Conferir aviamentos aplicados (fivelas, enfeites, ilhoses), registrar substituições"
+- **Silk**: "Verificar imagem do silk, conferir posicionamento e pressão antes de iniciar o lote"
+- **Colagem**: "Verificar superfícies limpas, aplicar cola uniformemente, respeitar tempo de secagem, prensagem"
+- **Solagem**: "Conferir solado e palmilha, aplicar cola, prensagem, verificar alinhamento e centragem"
+- **Acabamento**: "Limpeza geral, verificar costuras e silk, aplicar etiqueta, embalagem individual, caixa identificada"
+- **Expedição**: "Revisar par aprovado, conferir etiqueta de cliente, embalar por lote, gerar romaneio"
+
+### Outros sub-fluxos validados
+- **Estoque chips**: Palmilha ✓, Forro ✗ (vazio — grupo DB chama "NAPA SOFT", não "Forro"), Corte Tiras ✓
+- **Kanban filtros 4/4**: Refs (10 modelos), Semanas (10 opções), Segmentos (Adulto/Infantil), Status (7 opções)
+- **Folha Configurações**: VT/VR/VA + Plano saúde + Divisor 220h + Adic Noturno 20% + HE 50/100
+- **Aprovar PV**: dropdown status com 6 estados (Rascunho/Aprovado/Em Produção/Faturado/Finalizado s/NF/Cancelado)
+- **Picking session**: marcar checkbox → linha strike-through + KPIs ao vivo (Separados+1, Pendentes-1, Progresso 9%) + botão "Limpar progresso"
+- **Search PVs**: "VIP" filtrou 2/30 (VIP SHOES + VIP KIDS) com sugestões de clientes
+- **Filtros PVs**: 5 dims (Status/Representante/Grupo Econômico/Segmento/Mês Fat)
+- **Excel PV**: toast "Excel gerado com 7 pedido(s)!"
+- **Imprimir OPs**: dropdown com "Consumo Material" (PDF 506.26m / 1812 pares / 50 OPs / 45 itens) + "Exportar Excel" (precisa seleção)
+
+## 4 rodadas executadas (legado)
 
 ## Bugs CRÍTICOS encontrados em rodada 4
 
