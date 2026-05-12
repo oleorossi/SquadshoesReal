@@ -8,10 +8,18 @@ import { Button } from '@/components/ui/button';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { FloppyDisk as Save, PencilSimple as Pencil, Gear as Settings2, Stack as Layers, Palette, Link as Link2, Plus } from '@phosphor-icons/react';
+import { FloppyDisk as Save, PencilSimple as Pencil, Gear as Settings2, Stack as Layers, Palette, Link as Link2, Plus, Shoe } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { SoleSizeConjugationsEditor } from '@/components/inventory/SoleSizeConjugationsEditor';
+import { SoleColorConjugationsEditor } from './SoleColorConjugationsEditor';
 import type { SoleProduct } from './types';
+
+type SoleClassification = 'tradicional' | 'palmilha_pronta' | 'conjugado';
+const SOLE_CLASSIFICATION_LABEL: Record<SoleClassification, string> = {
+  tradicional: 'Tradicional',
+  palmilha_pronta: 'Palmilha Pronta',
+  conjugado: 'Conjugado',
+};
 
 interface Props {
   sole: SoleProduct;
@@ -78,6 +86,52 @@ export default function SolesCadastroTab({ sole }: Props) {
       qc.invalidateQueries({ queryKey: ['soles_hub_products'] });
       qc.invalidateQueries({ queryKey: ['products'] });
       toast.success('Range de numeração atualizado!');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  // Atualiza sole_classification em TODAS as variantes do grupo (mantém consistência).
+  // Se virar palmilha_pronta e ainda não existir regra default de coligação, cria.
+  const updateClassification = useMutation({
+    mutationFn: async (nextClass: SoleClassification) => {
+      if (!groupId) {
+        const { error } = await supabase
+          .from('products')
+          .update({ sole_classification: nextClass } as any)
+          .eq('id', sole.id);
+        if (error) throw error;
+        return;
+      }
+      const { error } = await supabase
+        .from('products')
+        .update({ sole_classification: nextClass } as any)
+        .eq('group_id', groupId);
+      if (error) throw error;
+
+      if (nextClass === 'palmilha_pronta') {
+        const { data: existing } = await (supabase as any)
+          .from('sole_color_conjugations')
+          .select('id')
+          .eq('sole_group_id', groupId)
+          .eq('is_default', true)
+          .limit(1);
+        if (!existing || existing.length === 0) {
+          await (supabase as any)
+            .from('sole_color_conjugations')
+            .insert({
+              sole_group_id: groupId,
+              cabedal_color: '*',
+              palmilha_color: 'Caramelo',
+              is_default: true,
+            });
+        }
+      }
+    },
+    onSuccess: (_data, nextClass) => {
+      qc.invalidateQueries({ queryKey: ['soles_hub_products'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['sole_color_conjugations'] });
+      toast.success(`Tipo alterado pra ${SOLE_CLASSIFICATION_LABEL[nextClass]}`);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -161,6 +215,32 @@ export default function SolesCadastroTab({ sole }: Props) {
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs flex items-center gap-1.5">
+                <Shoe className="h-3 w-3" /> Tipo de solado
+              </Label>
+              <Select
+                value={(sole.sole_classification as SoleClassification | null) || 'tradicional'}
+                onValueChange={(v) => updateClassification.mutate(v as SoleClassification)}
+                disabled={updateClassification.isPending}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="tradicional">Tradicional</SelectItem>
+                  <SelectItem value="palmilha_pronta">Palmilha Pronta</SelectItem>
+                  <SelectItem value="conjugado">Conjugado</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground leading-tight">
+                {sole.sole_classification === 'palmilha_pronta'
+                  ? 'Palmilha já fixada no solado · cor depende do cabedal (ver Coligações)'
+                  : sole.sole_classification === 'conjugado'
+                  ? 'Algumas numerações compartilham estoque (33/34 etc.)'
+                  : 'Cada numeração tem estoque individual'}
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs flex items-center gap-1.5">
                 <Layers className="h-3 w-3" /> Range de numeração
               </Label>
               {(() => {
@@ -203,12 +283,8 @@ export default function SolesCadastroTab({ sole }: Props) {
 
       {/* GroupBindingFallback é declarado abaixo */}
 
-      {/* Conjugações — só aparece se o tipo do solado é 'conjugado'.
-          Pra Tradicional/Palmilha Pronta, a seção seria ruído visual
-          (não tem como ter conjugação se cada número é individual ou
-          se a palmilha vem pronta). O tipo é definido na tela de Dados
-          Técnicos do produto. */}
-      {sole.sole_classification === 'conjugado' ? (
+      {/* Conjugações de numeração (só pra 'conjugado') */}
+      {sole.sole_classification === 'conjugado' && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
@@ -232,20 +308,25 @@ export default function SolesCadastroTab({ sole }: Props) {
             )}
           </CardContent>
         </Card>
-      ) : (
-        /* Hint discreto pra usuário que escolheu o tipo errado ou não definiu */
-        sole.sole_classification && sole.sole_classification !== 'conjugado' && (
-          <div className="rounded-md border border-dashed bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground flex items-center gap-2">
-            <Layers className="h-3.5 w-3.5 shrink-0" />
-            <span>
-              Conjugações de numeração só se aplicam a solados do tipo <strong>Conjugado</strong>. Este solado é do tipo{' '}
-              <strong>
-                {sole.sole_classification === 'tradicional' ? 'Tradicional' : 'Palmilha Pronta'}
-              </strong>.
-              Pra habilitar conjugações, abra "Editar Dados Técnicos" e mude o tipo.
-            </span>
-          </div>
-        )
+      )}
+
+      {/* Coligações de cor (só pra 'palmilha_pronta') */}
+      {sole.sole_classification === 'palmilha_pronta' && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Palette className="h-4 w-4 text-primary" />
+              Coligações de cor (cabedal → palmilha)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {groupId ? (
+              <SoleColorConjugationsEditor soleGroupId={groupId} />
+            ) : (
+              <GroupBindingFallback soleId={sole.id} />
+            )}
+          </CardContent>
+        </Card>
       )}
     </div>
   );
