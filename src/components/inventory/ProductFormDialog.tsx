@@ -1369,18 +1369,11 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
               </div>
             )}
 
-            {/* Estoque Máximo - escondido para solados */}
-            {!hasGrade && (
-              <div>
-                <Label htmlFor="max_stock">Estoque Máximo</Label>
-                <NumberInput id="max_stock" min={0} step="0.0001" value={form.max_stock} onChange={v => update('max_stock', v)} required className="mt-1" />
-              </div>
-            )}
-            {hasGrade && (
-              <div className="col-span-2 text-xs text-muted-foreground italic">
-                Solados utilizam estoque mínimo por numeração. Estoque máximo não se aplica.
-              </div>
-            )}
+            {/* "Estoque Máximo" e "Estoque de Segurança" foram removidos do form
+                em 2026-05 a pedido do usuário — o campo Máximo era pouco usado
+                e Segurança duplicava conceitualmente o Mínimo no olhar do
+                operador. As colunas continuam no DB (default 0) — lógica de
+                MRP/projeção/try_reserve segue funcionando. */}
             {(() => {
               const selectedGroup = groups.find(g => g.name === form.category);
               const hasGroupPrice = selectedGroup && selectedGroup.package_price > 0 && selectedGroup.package_weight_kg > 0;
@@ -1472,11 +1465,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                 </div>
               );
             })()}
-            <div>
-              <Label>Estoque de Segurança</Label>
-              <NumberInput value={form.safety_stock ?? 0} onChange={v => update('safety_stock', v)} min={0} step="0.01" className="mt-1" placeholder="0" />
-              <p className="text-[10px] text-muted-foreground mt-0.5">Estoque mínimo reservado como segurança</p>
-            </div>
             <div>
               <Label>Lead Time Fornecedor (dias)</Label>
               <NumberInput value={form.supplier_lead_time_days ?? 10} onChange={v => update('supplier_lead_time_days', v)} min={0} step="1" className="mt-1" placeholder="10" />
