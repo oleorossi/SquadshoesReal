@@ -784,6 +784,7 @@ const router = createBrowserRouter([
        { path: "manifests",           lazy: () => import("./pages/Manifests").then(m => ({ Component: m.default })) },
        { path: "transporters",        lazy: () => import("./pages/Transporters").then(m => ({ Component: m.default })) },
        { path: "delivery-tracking",   lazy: () => import("./pages/DeliveryTracking").then(m => ({ Component: m.default })) },
+       { path: "entregas",            lazy: () => import("./pages/OwnDeliveriesPage").then(m => ({ Component: m.default })) },
        { path: "lgpd",                lazy: () => import("./pages/LGPD").then(m => ({ Component: m.default })) },
        { path: "security",            lazy: () => import("./pages/Security").then(m => ({ Component: m.default })) },
       // Heavy modules (can be used elsewhere if needed)

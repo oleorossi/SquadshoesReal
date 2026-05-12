@@ -10,6 +10,7 @@ import {
   ListChecks, Boxes, Activity, GanttChartSquare, Clock,
   Calculator, TrendingUp, HeartHandshake, MessageSquare,
   FileSpreadsheet, Lock, Scale, FileCheck2, AlertTriangle, Printer,
+  Route as RouteIcon,
 } from 'lucide-react';
 
 // ════════════════════════════════════════════════════════════════════════
@@ -101,6 +102,7 @@ export const menuGroups = [
       { name: "Conferência",      icon: ClipboardCheck, path: "/conferencia-saida" },
       { name: "Romaneios",        icon: FileCheck2,     path: "/manifests" },
       { name: "Transportadoras",  icon: Truck,          path: "/transporters" },
+      { name: "Entregas",         icon: RouteIcon,      path: "/entregas" },
       { name: "Rastreamento",     icon: Activity,       path: "/delivery-tracking" },
       { name: "Etiquetas",        icon: Tag,            path: "/label-system" },
     ],
