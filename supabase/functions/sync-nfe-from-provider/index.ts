@@ -156,9 +156,13 @@ Deno.serve(async (req) => {
       const protocolo = d?.protocolo || "";
       const numero = d?.numero_nf ? String(d.numero_nf) : (d?.numero ? String(d.numero) : "");
       const serie = d?.serie ? String(d.serie) : "";
-      const valor = Number(d?.valor_total || d?.valor || 0);
+      // GestaoClick devolve `valor_total_nf` no detalhe (string com 2 casas).
+      // Fallback p/ valor_produtos / valor_total / valor caso o schema mude.
+      const valor = Number(
+        d?.valor_total_nf ?? d?.valor_produtos ?? d?.valor_total ?? d?.valor ?? 0,
+      );
       const emissaoTs = parseEmissaoTs(d);
-      const cnpjEmit = digitsOnly(d?.emitente?.cnpj || d?.cnpj_emitente);
+      const cnpjEmit = digitsOnly(d?.cnpj_emitente || d?.emitente?.cnpj);
       const info = d?.informacoes_complementares || d?.observacao || "";
       const pvNum = extractPvNumber(info);
 
