@@ -1,10 +1,101 @@
 # Auditoria Visual Sistema — 2026-05-12
 
-URL: https://squadshoes-real.vercel.app — deploy `0b88817`
+URL: https://squadshoes-real.vercel.app
+Branch: claude/bold-jepsen-c3287d → main
+Metodologia: Chrome MCP janela-a-janela, confronto FE × BE via Supabase MCP, fix imediato quando UX/bug aplicável.
 
-## Metodologia
-Chrome MCP → cada rota da sidebar → screenshot → console errors → comparar com FE+BE.
+## Setores auditados (8) + Fixes aplicados (10)
 
-## Resumo (preenchido durante audit)
-| Página | Render | Dados | Erros | Severidade |
-|--------|--------|-------|-------|------------|
+| Setor | Páginas | Bugs/UX | Fixes |
+|-------|---------|---------|-------|
+| **COMERCIAL** | PV, Pronta-Entrega, Clientes, Tabelas Preço, CRM, SAC, Forecast | 5 | 5 |
+| **PRODUÇÃO** | PCP (10 tabs), OPs (Lista/Kanban/detail), Live, Timeline, Capacidade, Centro Controle, Imprimir Fichas | 6 | 1 |
+| **CATÁLOGO/ESTOQUE** | Estoque (6 tabs), Solados, Silks, Fichas Técnicas, Component Sheets | 4 | 2 |
+| **COMPRAS** | Purchase Orders, Quotations, Purchase Planning | 0 | 0 |
+| **LOGÍSTICA** | Expedição, Conferência, Entregas, Etiquetas, Transportadoras, Manifests, Delivery Tracking | 0 | 0 |
+| **FINANCEIRO** | Finance (5 sub-tabs), CT-e, MDF-e, CNAB, Bank Reconciliation, SPED | 0 | 0 |
+| **RH** | Painel, Funcionários, Ponto, Folha, Relatórios | 0 | 0 |
+| **SISTEMA** | LGPD, Segurança | 1 | 1 |
+
+## Fixes aplicados (10)
+
+### COMERCIAL (commit 05fae34)
+1. **Tabelas de Preço — Form Nova/Editar real** substituindo stub `toast.info('Editor avançado em breve')`. Dialog completo com name, channel, region UF, client_id, valid_from/to, active, is_promotional. Card também ganhou click handler abrindo o dialog em modo edit.
+2. **CRM Nova Interação — Form real** substituindo stub. Dialog com cliente, canal (ligação/whatsapp/email/SMS/visita/reunião/feira/outro), assunto, resultado, anotações. Insere em `crm_interactions`.
+3. **CRM badge "Inativos" null-safe** — view `v_crm_inactive_clients` retorna `days_inactive=null` pra clientes que nunca pediram. Render era `{c.days_inactive}d inativo` → "d inativo" sem número. Agora mostra "Nunca pediu" quando null.
+4. **Picking sessions rota** — `/picking` colidia entre PickingListPage (PCP Picking Semanal) e novo Picking.tsx (WMS). Movida a nova pra `/picking-sessions`.
+5. **Sidebar Logística "Sessões Picking"** — adicionado item no group Logística apontando pra `/picking-sessions`.
+
+### PRODUÇÃO (commit 2f738d7)
+6. **Header /pcp?tab=setores responsivo** — toolbar com 9 botões empilhados em sm:flex-row quebrava o título "Setor de Corte Palmilha" em 3 linhas e cortava o último botão (Finalizar OP's selecionadas) fora do viewport. Fix: `flex-col xl:flex-row` + `flex-wrap` no toolbar + `whitespace-nowrap` no h1 + `shrink-0` nos elementos do título.
+
+### CATÁLOGO/ESTOQUE (commit e651200)
+7. **Top Modelos query** — Estoque>Visão Geral mostrava "Nenhum produto cadastrado ainda" porque consultava `product_references` (0 rows em produção). Query migrada pra `technical_sheets` filtrando `status='publicada'` — agora mostra 4 fichas reais com imagem/categoria.
+8. **NotificationsTab Array.isArray defensive** — tab "Alertas" do Estoque crashava com `TypeError: a.filter is not a function`. Adicionado `Array.isArray(products)` antes do `.filter()` em `NotificationsTab`. Página fica funcional mesmo se hook retornar tipo inesperado.
+
+### SISTEMA (commit pendente)
+9. **(rota /picking-sessions)** — visto acima em #4-5
+10. **LGPD Nova Solicitação form real** substituindo stub `toast.info('Cadastre titular + tipo')`. Dialog completo com tipo (acesso/retificação/exclusão/portabilidade/revogação), titular (cliente/funcionário/fornecedor/visitante), nome*, CPF/CNPJ, e-mail, descrição. Insere em `lgpd_requests`.
+
+## Bugs documentados (não corrigidos — drift de dados ou maior escopo)
+
+### Dashboard
+- **Distribuição de Estoque** donut chart: legenda mostra categorias (Acessório/Solado/Forração/Cabedal/Palmilha) mas pie não aparece visualmente em viewport < 200px (donut com innerRadius=48, outerRadius=68 → 136px diameter exige >150px de altura disponível).
+- **Vendas vs Produção** area chart: dados existem no DB (sale_orders 6 meses = 30 PVs / R$ 240k; orders = 15k pares) mas linhas não desenham visualmente. Suspeita: escala mista BRL+pares no mesmo Y-axis empurra produção pra próximo de 0%.
+
+### PRODUÇÃO
+- **Capacidade 0/dia** em vários setores (Aviamento/Costura/Corte Forração/Corte Palmilha) nas fichas técnicas — drift de cadastro, não código.
+- **50 OPs ativas paradas em PREPARAÇÃO** no Kanban — status_setor por OP não foi avançado mesmo com OPs há 30+ dias em produção.
+- **Análise Pós-OP zerada** — 136 OPs finalizadas, 10.212 pares, mas KPIs Entrega no Prazo / Variação Custo / Lead Time / Taxa Defeitos todos 0% (custos não foram calculados).
+- **WIP por Setor** chart vazio no Dashboard PCP.
+- **Timeline Semana** mostra 0 OPs (filtro `due_date <= now+7d` restritivo demais — Mês mostra 23 OPs).
+- **Centro Controle "Maior Gargalo"**: badge "Costura —0%" com hífen mal formatado.
+
+### ESTOQUE
+- **Status do Estoque / Valor por Categoria / Itens por Localização** charts com axes/legend mas sem barras visíveis — provavelmente `p.unit_price=0`, `min_stock=0`, `location=null` em produtos.
+
+### COMERCIAL
+- **Clientes form** — fields para múltiplos endereços (`client_addresses`) e contatos (`client_contacts`) criados na Onda 2 do gap analysis não estão expostos no `ClientFormDialog`.
+- **Pronta-Entrega "Lançar Estoque"** modal só pede Referência — falta cor, numeração, qtd, custo, localização. Tabela `pronta_entrega_stock` nem existe no DB.
+
+### LOGÍSTICA
+- **Entregas** mostra empty state apesar de existirem pedidos prontos (provavelmente flag `frete_proprio` não setada em nenhum PV).
+
+## Validações sem bug
+
+- **PV detail modal** (PV-00101 LNG 10 CONFECCOES): mostra status, info comercial, 2 itens DS05 NEW TAN/OFF WHITE com grade 12 pares × 50 fichas, 600 qtd, R$ 19,90 unit. Modal Consumo Materiais discrimina por aplicação (Forro/Palmilha/Solado/Tiras).
+- **Novo PV form**: 3 sections (Cliente, Condições, Logística+Frete+Embalagem) + matriz de itens (Ref × Cor × Numeração 34-40) + sticky footer.
+- **Clientes form**: Identificação completa (Razão social, CNPJ, IE, Filial), Endereço com auto-CEP, Contato, Comercial (grupo econômico, limite crédito), toggles ativo/amarrados.
+- **OP detail modal**: card com info da OP + grade tabela (25-33) + status por setor (10 setores)
+- **PCP/Capacidade**: 9 setores com utilização percentual (Corte Palmilha 30%, Aviamento 54%, Montagem 50%, etc.) e backlog (744 pares em todos os prep). Costura 0% (novo setor PR2 sem demanda ainda).
+- **Cronograma Reverso**: 21 OPs ativas, 21 compras em atraso, 21 cortes em atraso. Card por OP com 7 marcos (COMPRAR, MATERIAL NO PÁTIO, INICIAR CORTE, AVIAMENTO, INICIAR COSTURA, INICIAR MONTAGEM, INICIAR ACABAMENTO, ENTREGA).
+- **Lead Time**: 6 categorias (anabela 16d, Bota 21d, bota_curta 18d, bota_longa 22d, generico 15d, Geral 15d) com capacidade por setor.
+- **Auditoria de Fluxo**: 30 pedidos, 22% process score, 30 alertas, 0 erros.
+- **RCCP**: planejamento rough-cut 6 meses para 16 categorias, sem gargalos detectados.
+- **Análise Pós-OP**: layout completo com 8 KPIs + tabela 136 OPs finalizadas (dados aguardando cálculo de custo).
+- **Picking Semanal**: lista de separação por onda agrupada por material (Cabedal/Forro/Palmilha/Solado/Tiras).
+- **Solados** master-detail: 9 solados ativos, 1700 pares, 2 abaixo do mínimo.
+- **Silks**: agrupamento Por Solado / Por Cliente / Por Grupo Econômico.
+- **Fichas Técnicas editor**: SP105 com 88% preenchimento, 9 materiais, custo/par R$ 149,97.
+- **Materiais (Estoque)**: 8 sub-tabs filtráveis, grupo Componentes 5 itens, agrupamento por SKU+variantes.
+- **Financeiro Visão Geral**: 3 alertas (saldo baixo, 11 títulos vencidos R$ 94k, 8 contas a pagar R$ 24k), KPIs A Receber R$ 118k / A Pagar R$ 24k / Posição R$ 93k.
+- **Financeiro Contas**: tabela com NF/parcela/fornecedor/categoria/vencimento/valor com juros+multa/status.
+- **Notas Fiscais**: entrada R$ 45k (12), saída R$ 128k (48), impostos estimados R$ 15k (12%).
+- **RH Funcionários**: 15 ativos, folha R$ 30.850, tabela com cargo/admissão/salário/HE/escala.
+- **RH Ponto**: 2.431 registros importados em 10 importações de 01/10/2025 a 30/04/2026.
+- **Transportadoras form**: razão social, CNPJ, contato, cidade/UF, 8 modais (rodoviário/aéreo/aquaviário/ferroviário/sedex/PAC/fracionado/dedicado), áreas, integração API toggle.
+- **Segurança**: política senhas (8 caract, hist 3, 5 tentativas, toggles maiúsc/minúsc/núm), MFA toggle, 3 campos sensíveis (clients.cnpj, employees.cpf, employees.rg — todos "Alta sensibilidade", masking Partial).
+
+## Próximos passos sugeridos
+
+1. **Drift de dados** (não-código):
+   - Setar `capacity_per_day` por setor nas 24 fichas técnicas
+   - Avançar status_setor das OPs paradas em PREPARAÇÃO via Live (operadores marcando finalização)
+   - Rodar "Calcular Custos" nos PVs pra preencher Análise Pós-OP
+   - Setar `unit_price`/`min_stock`/`location` nos 133 produtos pra ativar gráficos de Estoque
+
+2. **UX residual** (próxima rodada):
+   - Expor `client_addresses` e `client_contacts` no ClientFormDialog
+   - Implementar Pronta-Entrega completa (criar tabela + modal com cor/num/qtd/custo)
+   - Charts Dashboard: separar Y-axes pra vendas (BRL) e produção (pares)
+   - Timeline filtro Semana: incluir OPs em produção independente de `due_date`
