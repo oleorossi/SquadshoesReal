@@ -159,14 +159,18 @@ export function ChartsRow({ period = 'current_month' }: { period?: DashboardPeri
               </defs>
               <CartesianGrid stroke="hsl(var(--border))" vertical={false} strokeDasharray="3 3" />
               <XAxis dataKey="month" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
-              <YAxis tickFormatter={formatK} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
+              {/* Y-axes separados: vendas em BRL (eixo esq) e produção em pares
+                  (eixo dir). Antes compartilhavam o eixo, comprimindo produção
+                  (~5k pares) a uma linha rente ao 0 vs vendas (~200k BRL). */}
+              <YAxis yAxisId="vendas" tickFormatter={formatK} tick={{ fontSize: 10, fill: PRIMARY }} axisLine={false} tickLine={false} />
+              <YAxis yAxisId="producao" orientation="right" tickFormatter={formatK} tick={{ fontSize: 10, fill: CHART_BLUE }} axisLine={false} tickLine={false} />
               <Tooltip
                 formatter={(v: number, name: string) => name === "vendas" ? formatBRL(v) : `${v} pares`}
                 labelFormatter={(l) => `Mês: ${l}`}
                 contentStyle={CARD_TOOLTIP_STYLE}
               />
-              <Area type="monotone" dataKey="vendas"   stroke={PRIMARY}    strokeWidth={2}   fill="url(#gradVendas)" dot={{ r: 3, fill: PRIMARY, strokeWidth: 0 }} activeDot={{ r: 4, strokeWidth: 0 }} />
-              <Area type="monotone" dataKey="producao" stroke={CHART_BLUE} strokeWidth={1.5} strokeDasharray="4 2"  fill="url(#gradProd)"   dot={{ r: 2.5, fill: CHART_BLUE, strokeWidth: 0 }} />
+              <Area yAxisId="vendas"   type="monotone" dataKey="vendas"   stroke={PRIMARY}    strokeWidth={2}   fill="url(#gradVendas)" dot={{ r: 3, fill: PRIMARY, strokeWidth: 0 }} activeDot={{ r: 4, strokeWidth: 0 }} />
+              <Area yAxisId="producao" type="monotone" dataKey="producao" stroke={CHART_BLUE} strokeWidth={1.5} strokeDasharray="4 2"  fill="url(#gradProd)"   dot={{ r: 2.5, fill: CHART_BLUE, strokeWidth: 0 }} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -191,9 +195,9 @@ export function ChartsRow({ period = 'current_month' }: { period?: DashboardPeri
                 <Pie
                   data={donutData}
                   cx="50%"
-                  cy="50%"
-                  innerRadius={48}
-                  outerRadius={68}
+                  cy="42%"
+                  innerRadius="38%"
+                  outerRadius="62%"
                   paddingAngle={3}
                   dataKey="value"
                 >

@@ -381,8 +381,20 @@ export default function ProductionControlCenter() {
             <Card>
               <CardContent className="p-3">
                 <p className="text-[10px] font-bold text-muted-foreground uppercase">Maior gargalo</p>
-                <p className="text-lg font-bold text-amber-600 truncate">{worstCell.sector}</p>
-                <p className="text-[10px] text-muted-foreground">{worstCell.weekLabel} · {Math.round(worstCell.loadPct)}%</p>
+                {worstCell.loadPct === 0 ? (
+                  <>
+                    <p className="text-lg font-bold text-emerald-600 truncate">Sem gargalo</p>
+                    <p className="text-[10px] text-muted-foreground">Capacidade folgada nas próximas semanas</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-lg font-bold text-amber-600 truncate">{worstCell.sector}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {worstCell.weekLabel && worstCell.weekLabel !== '—' ? `${worstCell.weekLabel} · ` : ''}
+                      {Math.round(worstCell.loadPct)}%
+                    </p>
+                  </>
+                )}
               </CardContent>
             </Card>
             <Card>
