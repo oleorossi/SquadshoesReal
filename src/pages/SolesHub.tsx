@@ -226,17 +226,20 @@ export default function SolesHub() {
                       { value: 'historico', label: 'Histórico',  icon: History },
                     ]} />
 
+                    {/* key={selected.id} força remount ao trocar de solado —
+                        sem isso, useState interno dos subcomponentes fica preso
+                        nos valores iniciais do primeiro solado selecionado. */}
                     <TabsContent value="cadastro" className="mt-4">
-                      <SolesCadastroTab sole={selected} />
+                      <SolesCadastroTab key={selected.id} sole={selected} />
                     </TabsContent>
                     <TabsContent value="estoque" className="mt-4">
-                      <SolesEstoqueTab sole={selected} />
+                      <SolesEstoqueTab key={selected.id} sole={selected} />
                     </TabsContent>
                     <TabsContent value="consumos" className="mt-4">
-                      <SolesConsumosTab sole={selected} />
+                      <SolesConsumosTab key={selected.id} sole={selected} />
                     </TabsContent>
                     <TabsContent value="historico" className="mt-4">
-                      <SolesHistoricoTab sole={selected} />
+                      <SolesHistoricoTab key={selected.id} sole={selected} />
                     </TabsContent>
                   </Tabs>
                 </CardContent>
