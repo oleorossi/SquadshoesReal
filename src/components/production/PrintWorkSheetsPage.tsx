@@ -993,10 +993,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
         {/* ── Sole+Color sectors (Silk, Corte Forração, Costura, Aviamento, Montagem, Acabamento) ── */}
         {(() => {
           if (!silkMontageGroups || silkMontageGroups.length === 0) return null;
-          // Em printAll, renderiza os 6 setores em sequência (ordem de fluxo de produção).
+          // Em printAll, renderiza os 7 setores sole+cor em sequência (ordem de fluxo).
+          // 'Corte Cabedal' fica logo após 'Corte Forração' — ambas são sub-etapas
+          // de Corte e podem ser executadas em paralelo.
           // Em modo normal, só o sector selecionado.
           const sectorsToRender: GroupedSector[] = printAll
-            ? ['Corte Forração', 'Silk', 'Costura', 'Aviamento', 'Montagem', 'Acabamento']
+            ? ['Corte Forração', 'Corte Cabedal', 'Silk', 'Costura', 'Aviamento', 'Montagem', 'Acabamento']
             : SOLE_COLOR_GROUPED_SECTORS.includes(selectedSector as GroupedSector)
               ? [selectedSector as GroupedSector]
               : [];
