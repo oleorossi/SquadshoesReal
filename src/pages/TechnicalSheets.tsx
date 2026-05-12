@@ -1960,21 +1960,21 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               <span className="text-[10px] text-muted-foreground ml-auto">Identificação comercial do produto</span>
             </div>
             <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FieldInput label="SKU / Código" value={form.code} onChange={v => updateField('code', v)} placeholder="MON-893767-003" mono />
-              <FieldInput label="Nome do Modelo" value={form.name} onChange={v => updateField('name', v)} placeholder="Sandália MONALISA" />
-              <FieldInput label="Marca" value={form.brand} onChange={v => updateField('brand', v)} placeholder="Ex: Squad Shoes" />
-              <FieldInput label="Modelo" value={form.model} onChange={v => updateField('model', v)} placeholder="Ex: Air Max Style" />
+              <FieldInput label="SKU / Código" value={form.code || ''} onChange={v => updateField('code', v)} placeholder="MON-893767-003" mono />
+              <FieldInput label="Nome do Modelo" value={form.name || ''} onChange={v => updateField('name', v)} placeholder="Sandália MONALISA" />
+              <FieldInput label="Marca" value={form.brand || ''} onChange={v => updateField('brand', v)} placeholder="Ex: Squad Shoes" />
+              <FieldInput label="Modelo" value={form.model || ''} onChange={v => updateField('model', v)} placeholder="Ex: Air Max Style" />
               <div className="md:col-span-2">
                 <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Descrição</Label>
                 <Textarea
-                  value={form.description}
+                  value={form.description || ''}
                   onChange={e => updateField('description', e.target.value)}
                   rows={2}
                   placeholder="Detalhes do modelo, especificações, observações…"
                   className="mt-1"
                 />
               </div>
-              <FieldInput label="Coleção" value={form.collection} onChange={v => updateField('collection', v)} placeholder="Ex: Verão 2026" />
+              <FieldInput label="Coleção" value={form.collection || ''} onChange={v => updateField('collection', v)} placeholder="Ex: Verão 2026" />
             </div>
           </div>
 

@@ -89,7 +89,9 @@ export function useDeleteGroup() {
       // Manually nullify FK references first. Done before DELETE so PostgreSQL can
       // apply the DELETE atomically: if any unhandled FK still blocks it, we fail
       // here rather than after partially corrupting technical_sheets.
-      const cols = ['cor_predominante_id', 'cor_palmilha_id', 'cor_tiras_id', 'cor_solado_id'];
+      // cor_palmilha_id e cor_tiras_id foram dropadas em 2026-05 (dead fields).
+      // Mantém apenas as FKs ainda usadas.
+      const cols = ['cor_predominante_id', 'cor_solado_id'];
       for (const col of cols) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { error: colErr } = await (supabase.from('technical_sheets') as any).update({ [col]: null }).eq(col, id);
