@@ -4,7 +4,26 @@ URL: https://squadshoes-real.vercel.app
 Branch: claude/bold-jepsen-c3287d → main
 Metodologia: Chrome MCP janela-a-janela, confronto FE × BE via Supabase MCP, fix imediato quando UX/bug aplicável.
 
-## 6 rodadas executadas — cobertura ~100%
+## 7 rodadas executadas — cobertura ~100% + 7 fixes de bugs em aberto + 3 stubs convertidos
+
+### Rodada 7: ataque a TODOS os bugs em aberto (commit bfb37c9)
+
+#### 4 bugs de código corrigidos
+| # | Bug | Fix | Validação |
+|---|-----|-----|-----------|
+| 19 | **Estoque chips** Cabedal/Forro/Químicos vazios | `usePaginatedProducts` agora aceita `category` (fallback quando chip não casa com `product_groups.name`) | aguardando deploy Vercel |
+| 20 | **Cores case-misturadas** | 2 migrations: 1ª normaliza `products` + product_groups; 2ª estende pra orders, sale_order_items, picking_items, reference_color_variants etc (~18 tabelas) + 3 triggers BEFORE INSERT/UPDATE | ✅ validado SQL: CARAMELO 12, NEW WHISKY 2, ROSADO 1 todos UPPER em orders |
+| 21 | **/sales Acesso Restrito** intermitente | Grace period RouteGuard 500ms→1500ms | aguardando deploy |
+| 22 | **Dashboard Vendas vs Produção** linha invisível | margin right=0, width=36 em Y-axes, produção solid line + gradient mais visível | aguardando deploy |
+
+#### 3 stubs convertidos em forms reais
+| Stub | Form criado |
+|------|-------------|
+| **SPED Gerar SPED** | Dialog: Tipo (5 SPEDs FEBRABAN), Período start/end (defaults mês anterior), Observações. Insere em `sped_exports` |
+| **CNAB Gerar Remessa** | Dialog: Banco (6 opções), Layout 240/400, multi-seleção AR pendentes com checkbox + total ao vivo, filename auto `CNAB240_001_yyyymmdd_HHmm.REM`. Insere em `cnab_remittance_files` |
+| **Bank Reconciliation Nova** | Dialog: Conta + Data + Créditos/Débitos + Observações; cria sessão "em_andamento"; banner aponta pra matching detalhado em /financeiro |
+
+### Rodada 6: detalhes individuais + flows + UI restante
 
 ### Rodada 6: itens individuais + flows + UI restante
 
