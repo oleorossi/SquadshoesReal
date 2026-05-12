@@ -87,6 +87,9 @@ const SECTOR_THEME: Record<GroupedSector, {
   showFinishingChecklist: boolean;
   /** Mostra info de embalagem individual (Acabamento). */
   showIndividualBox: boolean;
+  /** Mostra checklist específico de Corte de Cabedal (peças do cabedal,
+   *  conferência de cor do couro, etiquetagem por lote). Só em Corte Cabedal. */
+  showCabedalCutChecklist?: boolean;
 }> = {
   'Silk':           { border: 'border-pink-700',    bg: 'bg-pink-600',    bgLight: 'bg-pink-50',    border1: 'border-pink-500',   textColor: 'text-pink-900',    icon: Paintbrush, accentColor: 'pink',    showFrenteTraseiro: false, showSilkImage: true,  showProductImage: true,  showAlerts: false, showMaterials: 'none',  showStitching: false, showFinishingChecklist: false, showIndividualBox: false },
   'Montagem':       { border: 'border-blue-700',    bg: 'bg-blue-600',    bgLight: 'bg-blue-50',    border1: 'border-blue-500',   textColor: 'text-blue-900',    icon: Hammer,     accentColor: 'blue',    showFrenteTraseiro: false, showSilkImage: false, showProductImage: true,  showAlerts: false, showMaterials: 'none',  showStitching: false, showFinishingChecklist: false, showIndividualBox: false },
@@ -94,7 +97,7 @@ const SECTOR_THEME: Record<GroupedSector, {
   // Corte Cabedal — só em modelos has_straps=false. Mostra material do cabedal,
   // sem silk, sem foto do calçado (cortador só vê o cabedal por cor). Amber pra
   // distinguir visualmente dos outros 2 cortes.
-  'Corte Cabedal':  { border: 'border-orange-700',  bg: 'bg-orange-600',  bgLight: 'bg-orange-50',  border1: 'border-orange-500', textColor: 'text-orange-900', icon: Scissors,   accentColor: 'orange',  showFrenteTraseiro: false, showSilkImage: false, showProductImage: false, showAlerts: true,  showMaterials: 'upper', showStitching: false, showFinishingChecklist: false, showIndividualBox: false },
+  'Corte Cabedal':  { border: 'border-orange-700',  bg: 'bg-orange-600',  bgLight: 'bg-orange-50',  border1: 'border-orange-500', textColor: 'text-orange-900', icon: Scissors,   accentColor: 'orange',  showFrenteTraseiro: false, showSilkImage: false, showProductImage: false, showAlerts: true,  showMaterials: 'upper', showStitching: false, showFinishingChecklist: false, showIndividualBox: false, showCabedalCutChecklist: true },
   'Costura':        { border: 'border-violet-700',  bg: 'bg-violet-600',  bgLight: 'bg-violet-50',  border1: 'border-violet-500', textColor: 'text-violet-900',  icon: Pen,        accentColor: 'violet',  showFrenteTraseiro: false, showSilkImage: false, showProductImage: true,  showAlerts: false, showMaterials: 'none',  showStitching: true,  showFinishingChecklist: false, showIndividualBox: false },
   'Aviamento':      { border: 'border-amber-700',   bg: 'bg-amber-600',   bgLight: 'bg-amber-50',   border1: 'border-amber-500',  textColor: 'text-amber-900',   icon: Paperclip,  accentColor: 'amber',   showFrenteTraseiro: true,  showSilkImage: false, showProductImage: true,  showAlerts: true,  showMaterials: 'both',  showStitching: false, showFinishingChecklist: false, showIndividualBox: false },
   'Acabamento':     { border: 'border-emerald-700', bg: 'bg-emerald-600', bgLight: 'bg-emerald-50', border1: 'border-emerald-500',textColor: 'text-emerald-900', icon: Sparkles,   accentColor: 'emerald', showFrenteTraseiro: false, showSilkImage: true,  showProductImage: true,  showAlerts: false, showMaterials: 'none',  showStitching: false, showFinishingChecklist: true,  showIndividualBox: true  },
@@ -321,6 +324,35 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
 
                 {/* Alertas (só renderiza no setor relevante — ex: Aviamento) */}
                 {theme.showAlerts && cg.alerts && cg.alerts.length > 0 && <SectorAlerts alerts={cg.alerts} />}
+
+                {/* Checklist específico de Corte de Cabedal: peças do cabedal +
+                    conferência de cor + etiquetagem. Aparece antes da grade
+                    pra que o cortador siga a checklist do alto pra baixo. */}
+                {theme.showCabedalCutChecklist && (
+                  <div className={`mb-1.5 border-2 ${theme.border1} rounded p-1.5 bg-white keep-together`}>
+                    <p className={`text-[9px] font-black uppercase tracking-wide ${theme.textColor} mb-1`}>
+                      Checklist — Corte do Cabedal ({cg.color})
+                    </p>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+                      {[
+                        `Conferir cor do material (esperado: ${cg.color})`,
+                        cg.upperMaterial ? `Material: ${cg.upperMaterial}` : 'Conferir tipo de material da ficha',
+                        'Molde do cabedal separado por numeração',
+                        'Cortar peças: lateral, peito (língua), traseira',
+                        'Cortar reforços/contraforte se aplicável',
+                        'Separar peças por par (verificar simetria L/R)',
+                        cg.upperConsumptionPerPair
+                          ? `Consumo esperado: ${cg.upperConsumptionPerPair.toFixed(2)} dm²/par`
+                          : 'Identificar lote com cor + numeração + OP',
+                      ].map((item, i) => (
+                        <label key={i} className="flex items-start gap-1.5 text-[10px] leading-tight py-0.5">
+                          <span className="w-3.5 h-3.5 border-2 border-orange-500 rounded-sm shrink-0 inline-block mt-0.5" />
+                          <span>{item}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Grade de números */}
                 <table className="w-full text-center bg-white" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
