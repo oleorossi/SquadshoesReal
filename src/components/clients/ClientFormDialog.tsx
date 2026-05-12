@@ -171,6 +171,25 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
                     <Label className="text-xs">Inscrição Estadual</Label>
                     <Input value={form.inscricao_estadual} onChange={e => setForm(f => ({ ...f, inscricao_estadual: e.target.value }))} className="mt-1 h-9 font-mono" />
                   </div>
+                  <div>
+                    <Label className="text-xs">Código da Filial</Label>
+                    <Input
+                      value={form.branch_code ?? ''}
+                      onChange={e => setForm(f => ({ ...f, branch_code: e.target.value || null }))}
+                      className="mt-1 h-9 font-mono"
+                      placeholder='ex: "L12", "SP-03"'
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-1">Código que o cliente passa pra identificar a unidade dele.</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Nome da Filial</Label>
+                    <Input
+                      value={form.branch_name ?? ''}
+                      onChange={e => setForm(f => ({ ...f, branch_name: e.target.value || null }))}
+                      className="mt-1 h-9"
+                      placeholder='ex: "Loja Botafogo"'
+                    />
+                  </div>
                 </div>
               </div>
 

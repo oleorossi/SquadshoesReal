@@ -35,6 +35,8 @@ const emptyClient: ClientFormData = {
   is_favorite: false,
   accepts_bundled_packaging: true,
   credit_limit: 0,
+  branch_code: null,
+  branch_name: null,
 };
 
 export default function Clients() {

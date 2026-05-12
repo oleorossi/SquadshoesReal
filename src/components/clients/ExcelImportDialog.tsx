@@ -37,6 +37,7 @@ const emptyClient = (): ClientFormData => ({
   contato: '', notes: '', economic_group_id: null, active: true, logo_url: '',
   silk_url: null, is_favorite: false, accepts_bundled_packaging: true,
   credit_limit: 0,
+  branch_code: null, branch_name: null,
 });
 
 function validateClient(client: ClientFormData): string[] {
