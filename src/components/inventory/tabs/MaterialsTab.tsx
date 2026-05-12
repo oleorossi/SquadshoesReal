@@ -116,9 +116,14 @@ function ViewControls() {
 function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGroupName?: string, title?: string }) {
   // Resolve defaultGroupName to a group ID for filtering
   const { data: allGroups = [] } = useGroups();
-  const defaultGroupId = defaultGroupName 
-    ? allGroups.find(g => g.name.toLowerCase().includes(defaultGroupName.toLowerCase()))?.id || 'all'
-    : 'all';
+  const matchedGroup = defaultGroupName
+    ? allGroups.find(g => g.name.toLowerCase().includes(defaultGroupName.toLowerCase()))
+    : null;
+  const defaultGroupId = matchedGroup?.id || 'all';
+  // Se não houver grupo com o nome do chip (ex.: Cabedal, Forro, Químicos), faz
+  // fallback pra filtrar por products.category. Caso contrário, o chip "Cabedal"
+  // ficaria empty mesmo havendo produtos com category="Cabedal".
+  const defaultCategory = defaultGroupName && !matchedGroup ? defaultGroupName : 'all';
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const returnTo = searchParams.get('returnTo');
@@ -219,6 +224,7 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
     groupId: effectiveGroup,
     supplierId: supplierFilter,
     status: statusFilter,
+    category: defaultCategory,
     page,
     limit: 9999,
   });

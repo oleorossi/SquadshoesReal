@@ -271,14 +271,16 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
     return () => clearTimeout(t);
   }, [loading]);
 
-  // Audit visual #10: grace period antes de mostrar "Acesso Restrito".
+  // Audit visual #10 + #21: grace period antes de mostrar "Acesso Restrito".
   // Bug: navegação direta pra rota nova podia retornar canAccess=false
   // brevemente durante refetch dos roles, gerando flash da página de erro.
-  // 500ms de tolerância elimina o flash sem afetar negações reais.
+  // Aumentado pra 1500ms (era 500ms) — eliminava flash em redes rápidas mas
+  // pegava em redes lentas/cancelar form. Negação real continua intacta
+  // depois desse intervalo curto.
   const [showDeniedConfirmed, setShowDeniedConfirmed] = useState(false);
   useEffect(() => {
     if (canAccess) { setShowDeniedConfirmed(false); return; }
-    const t = setTimeout(() => setShowDeniedConfirmed(true), 500);
+    const t = setTimeout(() => setShowDeniedConfirmed(true), 1500);
     return () => clearTimeout(t);
   }, [canAccess, path]);
 

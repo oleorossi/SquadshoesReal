@@ -146,31 +146,34 @@ export function ChartsRow({ period = 'current_month' }: { period?: DashboardPeri
         </div>
         <div className="px-4 pt-3 pb-4">
           <ResponsiveContainer width="100%" height={160}>
-            <AreaChart data={areaData} margin={{ top: 4, right: 4, left: -16, bottom: 0 }}>
+            <AreaChart data={areaData} margin={{ top: 4, right: 0, left: -10, bottom: 0 }}>
               <defs>
                 <linearGradient id="gradVendas" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%"  stopColor={PRIMARY}     stopOpacity={0.2} />
                   <stop offset="95%" stopColor={PRIMARY}     stopOpacity={0} />
                 </linearGradient>
                 <linearGradient id="gradProd" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor={CHART_BLUE}  stopOpacity={0.15} />
+                  <stop offset="5%"  stopColor={CHART_BLUE}  stopOpacity={0.2} />
                   <stop offset="95%" stopColor={CHART_BLUE}  stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid stroke="hsl(var(--border))" vertical={false} strokeDasharray="3 3" />
               <XAxis dataKey="month" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
-              {/* Y-axes separados: vendas em BRL (eixo esq) e produção em pares
-                  (eixo dir). Antes compartilhavam o eixo, comprimindo produção
-                  (~5k pares) a uma linha rente ao 0 vs vendas (~200k BRL). */}
-              <YAxis yAxisId="vendas" tickFormatter={formatK} tick={{ fontSize: 10, fill: PRIMARY }} axisLine={false} tickLine={false} />
-              <YAxis yAxisId="producao" orientation="right" tickFormatter={formatK} tick={{ fontSize: 10, fill: CHART_BLUE }} axisLine={false} tickLine={false} />
+              {/* Fix #22: dois Y-axes separados garantem que cada série mantém
+                  sua própria escala. Antes (sem yAxisId) compartilhavam eixo,
+                  comprimindo produção (~5k pares) a uma linha colada no 0 vs
+                  vendas (~200k BRL). Margin right=0 + width auto deixa
+                  espaço pro eixo direito sem cortar. Solid line (sem
+                  dasharray) facilita ver a linha de produção. */}
+              <YAxis yAxisId="vendas" tickFormatter={formatK} tick={{ fontSize: 10, fill: PRIMARY }} axisLine={false} tickLine={false} width={36} />
+              <YAxis yAxisId="producao" orientation="right" tickFormatter={formatK} tick={{ fontSize: 10, fill: CHART_BLUE }} axisLine={false} tickLine={false} width={36} />
               <Tooltip
                 formatter={(v: number, name: string) => name === "vendas" ? formatBRL(v) : `${v} pares`}
                 labelFormatter={(l) => `Mês: ${l}`}
                 contentStyle={CARD_TOOLTIP_STYLE}
               />
-              <Area yAxisId="vendas"   type="monotone" dataKey="vendas"   stroke={PRIMARY}    strokeWidth={2}   fill="url(#gradVendas)" dot={{ r: 3, fill: PRIMARY, strokeWidth: 0 }} activeDot={{ r: 4, strokeWidth: 0 }} />
-              <Area yAxisId="producao" type="monotone" dataKey="producao" stroke={CHART_BLUE} strokeWidth={1.5} strokeDasharray="4 2"  fill="url(#gradProd)"   dot={{ r: 2.5, fill: CHART_BLUE, strokeWidth: 0 }} />
+              <Area yAxisId="vendas"   type="monotone" dataKey="vendas"   stroke={PRIMARY}    strokeWidth={2} fill="url(#gradVendas)" dot={{ r: 3, fill: PRIMARY, strokeWidth: 0 }} activeDot={{ r: 4, strokeWidth: 0 }} />
+              <Area yAxisId="producao" type="monotone" dataKey="producao" stroke={CHART_BLUE} strokeWidth={2} fill="url(#gradProd)" dot={{ r: 3, fill: CHART_BLUE, strokeWidth: 0 }} activeDot={{ r: 4, strokeWidth: 0 }} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
