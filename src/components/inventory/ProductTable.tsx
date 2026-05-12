@@ -416,14 +416,26 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
    const [soleEditProduct, setSoleEditProduct] = useState<Product | null>(null);
    const [artisanalProducts, setArtisanalProducts] = useState<Product[] | null>(null);
 
-  // Intercept edit clicks: route Solado category to the dedicated technical dialog
+  // Intercept edit clicks: rota Solado pro dialog técnico dedicado, e produtos
+  // que pertencem a um grupo (group_id) abrem o MasterVariantDialog pra gerenciar
+  // variantes de cor (incluir/excluir/editar). Antes só abria edit simples,
+  // sem como acessar as variantes a partir do row.
   const handleEditIntercepted = useCallback((product: Product) => {
     if (product.category === 'Solado' || product.category?.toLowerCase().includes('solado')) {
       setSoleEditProduct(product);
       return;
     }
+    if (product.group_id) {
+      const groupVariants = products.filter(p => p.group_id === product.group_id);
+      if (groupVariants.length > 0) {
+        // Usa o nome base normalizado pra o título do dialog
+        const baseName = (product.name || '').replace(/\s*\([^)]*\)\s*$/, '').trim() || product.name;
+        setMasterVariant({ baseName, products: groupVariants });
+        return;
+      }
+    }
     onEdit(product);
-  }, [onEdit]);
+  }, [onEdit, products]);
   const [editingGroup, setEditingGroup] = useState<ProductGroup | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [masterVariant, setMasterVariant] = useState<{ baseName: string; products: Product[] } | null>(null);
