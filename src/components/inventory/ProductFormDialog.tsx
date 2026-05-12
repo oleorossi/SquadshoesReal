@@ -1631,22 +1631,9 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
               </p>
             </div>
 
-            {form.is_chemical && (
-              <>
-                <div>
-                  <Label htmlFor="lot_number">Nº do Lote</Label>
-                  <Input id="lot_number" value={form.lot_number || ''} onChange={e => update('lot_number', e.target.value || null)} className="mt-1" placeholder="Ex: LOTE-2026-001" />
-                </div>
-                <div>
-                  <Label htmlFor="expiration_date">Data de Validade</Label>
-                  <Input type="date" value={form.expiration_date || ''} onChange={e => update('expiration_date', e.target.value || null)} className="mt-1" />
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Importante para produtos químicos.</p>
-                </div>
-              </>
-            )}
             <div className="flex items-center gap-3 pt-2">
               <Switch id="is_chemical" checked={form.is_chemical ?? false} onCheckedChange={v => update('is_chemical', v)} />
-              <Label htmlFor="is_chemical">Produto Químico / Validade Controlada</Label>
+              <Label htmlFor="is_chemical">Produto Químico</Label>
             </div>
 
             <div>
@@ -1657,10 +1644,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                   {LOCATIONS.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
                 </SelectContent>
               </Select>
-            </div>
-            <div>
-              <Label htmlFor="image_url">URL da Imagem</Label>
-              <Input id="image_url" value={form.image_url} onChange={e => update('image_url', e.target.value)} className="mt-1" placeholder="https://..." />
             </div>
             <div className="flex items-center gap-3 pt-4">
               <Switch id="active" checked={form.active} onCheckedChange={v => update('active', v)} />
