@@ -9,6 +9,8 @@ import { useArtisanalRecipes, useCreateArtisanalRecipe, useUpdateArtisanalRecipe
 import { useContractors } from '@/hooks/useContractors';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { MasterVariantDialog } from '@/components/inventory/MasterVariantDialog';
+import { useDeleteProduct } from '@/hooks/useProducts';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -550,7 +552,9 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
   const [artNotes, setArtNotes] = useState('');
   const [existingRecipeId, setExistingRecipeId] = useState<string | null>(null);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [variantsDialogOpen, setVariantsDialogOpen] = useState(false);
   const queryClient = useQueryClient();
+  const deleteProduct = useDeleteProduct();
 
   const { data: boxTypes = [] } = useQuery({
     queryKey: ['box_types_active'],
@@ -720,7 +724,20 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-5xl max-h-[95vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">Editar grupo de material</DialogTitle>
+            <DialogTitle className="flex items-center justify-between gap-2">
+              <span>Editar grupo de material</span>
+              {products.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 mr-6"
+                  onClick={() => setVariantsDialogOpen(true)}
+                >
+                  <Palette className="h-3.5 w-3.5" />
+                  Gerenciar variantes de cor
+                </Button>
+              )}
+            </DialogTitle>
           </DialogHeader>
 
           <Tabs defaultValue={showYieldTab ? "specs" : "general"} className="mt-2">
@@ -1071,6 +1088,19 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
         groupId={group.id}
         groupName={group.name}
       />
+
+      {/* Gerenciador de variantes de cor — pra incluir/excluir/editar variantes
+          do grupo direto daqui, sem precisar ir até a tabela do estoque. */}
+      {variantsDialogOpen && (
+        <MasterVariantDialog
+          open={variantsDialogOpen}
+          onOpenChange={setVariantsDialogOpen}
+          baseName={group.name}
+          variants={products}
+          onEditVariant={() => { /* no-op: o usuário já está no GroupEditDialog */ }}
+          onDeleteVariant={(id: string) => { deleteProduct.mutate(id); }}
+        />
+      )}
     </>
   );
 }
