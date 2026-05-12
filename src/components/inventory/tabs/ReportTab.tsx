@@ -24,11 +24,11 @@ export function ReportTab() {
      queryKey: ['top-sold-products'],
      queryFn: async () => {
        // Antes lia product_references (vazia em produção). Mudamos pra technical_sheets
-       // que tem os modelos reais com referência + imagem + categoria.
+       // que tem os modelos reais. Sem filtrar por status pq o DB usa 'Ativo' (não
+       // 'publicada' como esperado originalmente). Pega as 4 mais recentes.
        const { data, error } = await (supabase as any)
          .from('technical_sheets')
-         .select('id, name, code, image_url, status')
-         .eq('status', 'publicada')
+         .select('id, name, code, image_url, status, shoe_category')
          .order('updated_at', { ascending: false })
          .limit(4);
        if (error) return [];
@@ -36,7 +36,7 @@ export function ReportTab() {
          id: t.id,
          name: t.name || t.code,
          image_url: t.image_url,
-         shoe_category: t.code,
+         shoe_category: t.shoe_category || t.code,
        }));
      }
    });
