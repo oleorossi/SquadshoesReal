@@ -95,11 +95,13 @@ export default function MarginDialog({ open, onOpenChange, saleOrderId, orderNum
                 };
               } catch (err: any) {
                 errs.push(`${refName} (${it.color || '—'}): ${err.message || 'erro no cálculo'}`);
+                // B4: receita também zerada em itens com erro pra não inflar margem agregada.
+                // A coluna "Margem" da linha mostra "—" (erro) e o tfoot soma só itens válidos.
                 return {
                   itemId: it.id, refName, refCode, color: it.color || '—',
-                  quantity: qty, unitPrice, revenue,
+                  quantity: qty, unitPrice, revenue: 0,
                   materialCost: 0, laborCost: 0, overheadCost: 0, packagingCost: 0,
-                  totalCost: 0, margin: revenue, marginPct: revenue > 0 ? 1 : 0,
+                  totalCost: 0, margin: 0, marginPct: 0,
                   error: err.message,
                 };
               }
