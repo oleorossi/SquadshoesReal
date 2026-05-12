@@ -183,21 +183,27 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
 
       const normalizedColor = color.trim().toLowerCase();
       const normalizedGroup = groupName.trim().toLowerCase();
+      // BUG ANTIGO: buscávamos similares em TODOS os grupos e mostrávamos
+      // produtos de outras famílias (ex: "Verde Lima" em NAPA Sudani
+      // aparecia quando o usuário queria cadastrar "Verde Lima" em
+      // Tira Strass). Se ele clicasse no similar errado, o produto era
+      // RENOMEADO/MOVIDO pra outra família via handleUseExisting:219.
+      // FIX: filtrar similares APENAS dentro do mesmo group_id da tira
+      // selecionada. Se a cor não existe nesse grupo específico, vai
+      // direto pro form de criação (sem desvio).
       const { data: allMatches } = await supabase
         .from('products')
         .select('id, name, color, category, group_id, quantity, unit, sku, unit_price')
-        .eq('active', true);
+        .eq('active', true)
+        .eq('group_id', groupId);
 
       const similar = (allMatches || []).filter((p: any) => {
         const pName = p.name?.trim().toLowerCase() || '';
         const pColor = p.color?.trim().toLowerCase() || '';
-        // Exact group match
-        if (pColor === normalizedColor && pName.includes(normalizedGroup)) return true;
-        // Fuzzy: same color regardless of group
+        // Match exato da cor dentro do MESMO grupo (já filtrado no SQL)
+        if (pColor === normalizedColor) return true;
         if (fuzzyMatch(pColor, color)) return true;
-        // Fuzzy: name contains proposed name tokens
         if (fuzzyMatch(pName, proposedName)) return true;
-        // Color at end of name
         if (pName.endsWith(`: ${normalizedColor}`) || pName.endsWith(` - ${normalizedColor}`) || pName.endsWith(` ${normalizedColor}`)) return true;
         return false;
       });
