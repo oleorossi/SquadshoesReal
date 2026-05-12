@@ -2,7 +2,7 @@
   import {
     Plus, Loader2, Package, Tag, Barcode, Trash2,
     GripVertical, Pencil, Check, X, ToggleLeft, ToggleRight,
-    Hash, ShoppingCart, DollarSign, Info, ChevronsUpDown, Search
+    Hash, ShoppingCart, DollarSign, Info, ChevronsUpDown, Search, Copy
   } from 'lucide-react';
 import { Sparkles } from 'lucide-react';
  import { Button } from '@/components/ui/button';
@@ -21,12 +21,13 @@ import { Sparkles } from 'lucide-react';
    DialogTitle,
    DialogFooter,
  } from '@/components/ui/dialog';
- import { 
-   useReferenceMaterialVariants, 
-   useAddReferenceMaterialVariant, 
-   useUpdateReferenceMaterialVariant, 
+ import {
+   useReferenceMaterialVariants,
+   useAddReferenceMaterialVariant,
+   useUpdateReferenceMaterialVariant,
    useDeleteReferenceMaterialVariant,
    useReorderReferenceMaterialVariants,
+   useDuplicateReferenceMaterialVariant,
    ReferenceMaterialVariant
  } from '@/hooks/useReferenceMaterialVariants';
  import { useProducts } from '@/hooks/useProducts';
@@ -46,9 +47,11 @@ import { supabase } from '@/integrations/supabase/client';
    const updateVariant = useUpdateReferenceMaterialVariant();
    const deleteVariant = useDeleteReferenceMaterialVariant();
    const reorderVariants = useReorderReferenceMaterialVariants();
- 
+   const duplicateVariant = useDuplicateReferenceMaterialVariant();
+
    const [isDialogOpen, setIsDialogOpen] = useState(false);
    const [editingVariant, setEditingVariant] = useState<Partial<ReferenceMaterialVariant> | null>(null);
+   const [duplicatingFromId, setDuplicatingFromId] = useState<string | null>(null);
    
    // Temporary state for the form
     const [formData, setFormData] = useState<Partial<ReferenceMaterialVariant>>({
