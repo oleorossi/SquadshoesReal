@@ -111,16 +111,19 @@ function ViewControls() {
 }
 
 function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGroupName?: string, title?: string }) {
-  // Resolve defaultGroupName to a group ID for filtering
+  // Resolve defaultGroupName: prioridade pra products.category (mais granular
+  // que product_groups). Solados são caso especial — existem múltiplos grupos
+  // (SOLADO/SOLADO 01/SOLADO 204/...) mas todos compartilham products.category='Solado'.
+  // Mesmo pra Cabedal/Forro/Químicos onde não há um grupo único.
   const { data: allGroups = [] } = useGroups();
+  const defaultCategory = defaultGroupName || 'all';
+  // Fallback: se nenhum produto tiver essa category mas existir um grupo
+  // com nome similar, usa groupId. (Cobre legado quando produtos não
+  // estão categorizados mas pertencem a um grupo nomeado.)
   const matchedGroup = defaultGroupName
-    ? allGroups.find(g => g.name.toLowerCase().includes(defaultGroupName.toLowerCase()))
+    ? allGroups.find(g => g.name.toLowerCase() === defaultGroupName.toLowerCase())
     : null;
   const defaultGroupId = matchedGroup?.id || 'all';
-  // Se não houver grupo com o nome do chip (ex.: Cabedal, Forro, Químicos), faz
-  // fallback pra filtrar por products.category. Caso contrário, o chip "Cabedal"
-  // ficaria empty mesmo havendo produtos com category="Cabedal".
-  const defaultCategory = defaultGroupName && !matchedGroup ? defaultGroupName : 'all';
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const returnTo = searchParams.get('returnTo');
