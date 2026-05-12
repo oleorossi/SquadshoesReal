@@ -4,7 +4,45 @@ URL: https://squadshoes-real.vercel.app
 Branch: claude/bold-jepsen-c3287d → main
 Metodologia: Chrome MCP janela-a-janela, confronto FE × BE via Supabase MCP, fix imediato quando UX/bug aplicável.
 
-## 5 rodadas executadas
+## 6 rodadas executadas — cobertura ~100%
+
+### Rodada 6: itens individuais + flows + UI restante
+
+#### Detalhes individuais (master-detail)
+- ✅ **PV-00101 editar**: stepper visual Pendente→Aprovado→Em Produção→Pronto→Faturado + autopreenchimento de Cliente/Representante/Razão/CNPJ
+- ✅ **Cliente edit (A C DE OLIVEIRA)**: 4 tabs (Dados/Endereços/Contatos/Representante) — múltiplos endereços suportados (botão "+ Adicionar endereço")
+- ✅ **Solado individual (01-CARAMELO)**: 4 tabs (Cadastro/Estoque grade 34-40/Consumos com 3 sub-tabs Forração+Itens Padrão+Silk + conjugação numeração / Histórico 7d/30d/90d/180d)
+- ✅ **Silk edit (204)**: form com Solado/Categoria/Nome/Arte com info "Padrão do solado"
+
+#### Forms de criação fiscais e logísticos
+- ✅ **Nova Cotação (RFQ)**: prazo + observações
+- ✅ **Novo Romaneio**: Placa/Origem/Motorista/Telefone/Transportadora/Observações
+- ✅ **Novo CT-e**: Nº/Tipo/Data/Modalidade frete CIF/UF origem-destino/Cidades/Transportadora+CNPJ/Valor/Chaves NF-e
+- ✅ **Novo MDF-e**: Nº/Modal Rodoviário/Data/UF/Placa/RENAVAM/Motorista+CPF/Total pares/Peso/Valor/Chaves
+- ⚠️ **CNAB Gerar Remessa**: stub ("Selecione AR pendentes pra gerar arquivo")
+- ⚠️ **SPED Gerar SPED**: stub ("Selecione tipo FISCAL/CONTRIBUIÇÕES/CONTÁBIL e período")
+- ⚠️ **Bank Reconciliation**: redirect ("Use aba 'Conciliação' em /financeiro pra importar extrato")
+
+#### Fixes validados live
+- ✅ Fix #1 **Tabelas Preço edit**: Nome/Canal/UF/Cliente/Vigência/Ativa/Promocional dialog completo
+- ✅ Fix #2 **CRM Nova Interação**: form com Cliente/Canal/Assunto/Resultado/Anotações
+- ✅ Fix #10 **LGPD Nova Solicitação**: Tipo/Titular/Nome/CPF-CNPJ/E-mail/Descrição
+
+#### Filtros, search, edição inline
+- ✅ **OPs filtros 3/3**: Em Produção (23), Reservado (36), Finalizado (136) com contagens corretas
+- ✅ **Imprimir Fichas**: seleção 2/59 OPs → Ficha Operador consolidada com QR code + grade visual + controle 12 pares (Operador/Conferente/Supervisor)
+- ✅ **Custos Insumos edit inline**: clique no R$ vira input editável com border
+- ✅ **Banco Horas detalhe func (Thais)**: side panel com Saldo +233h18min + Período 93 dias + Carga 8h48min + Lançamentos
+
+#### UI global
+- ✅ **Search global**: digitou "I90" → 2 resultados em 2 categorias (Materiais/Estoque + Modelos/Referências)
+- ✅ **Notificações** badge 10 → side panel com 4 categorias (FINANCEIRO 2 alertas + ESTOQUE 2 + COMPRAS 1 + RH...)
+- ✅ **Tema dark/light toggle**: bg/sidebar/text alternam (preto↔branco)
+- ✅ **Auditoria Fluxo expand**: PV-00101 com 8+ checkpoints (PV/OPs/Reservas⚠️/Goods Issue/Controle WIP/Estágios 0/20/Recebimento PA)
+
+### Rodada 5: cobertura inicial 60%→100% (sem novos bugs)
+
+## 5 rodadas executadas (anteriores)
 
 | Rodada | Commit | Foco | Fixes |
 |--------|--------|------|-------|
