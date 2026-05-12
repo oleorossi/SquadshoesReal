@@ -83,42 +83,103 @@ function addBusinessDaysISO(startISO: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+export interface MaterialShortfall {
+  product_id: string;
+  product_name: string;
+  color: string | null;
+  needed: number;
+  available: number;
+  shortage: number;
+  lead_time_days: number;
+}
+
+export interface MinBillingResult {
+  minDateISO: string;
+  minWeekISO: string;
+  bottleneck: 'capacidade' | 'material' | 'nenhum';
+  capacityReadyDateISO: string;
+  materialReadyDateISO: string;
+  materialShortfalls: MaterialShortfall[];
+}
+
 /**
- * Calcula a data mínima de faturamento para um pedido AINDA NÃO PERSISTIDO,
- * a partir dos itens em memória (referência + quantidade).
+ * Calcula a data mínima de faturamento pra um PV ainda NÃO persistido,
+ * combinando 2 dimensões:
  *
- * Estratégia: itera datas de faturamento candidatas a partir de hoje + lead time
- * mínimo, e retorna a primeira em que `checkSectorCapacity` reporta `hasOverload === false`.
- * Limitado a 60 dias úteis para evitar loop infinito em sistemas saturados.
+ *   1) CAPACIDADE — itera datas candidatas e usa checkSectorCapacity pra
+ *      detectar overload em setores. Resultado: capacityReadyDate.
+ *
+ *   2) MATERIAL — chama RPC compute_material_ready_date que consulta stock
+ *      vs consumo via sheet_materials e soma supplier_lead_time DOS materiais
+ *      com shortage (não soma cego). Resultado: materialReadyDate.
+ *
+ * Data final = MAX(capacity, material), snappada pra próxima janela de pickup
+ * (Terça/Sexta). `bottleneck` indica qual restrição venceu, pra UI explicar
+ * ao usuário ("Material X chega em N dias" vs "Setor Y lotado em semana W").
  */
 export async function computeMinBillingForNewOrder(
   items: CapacityCheckInput[],
-): Promise<{ minDateISO: string; minWeekISO: string } | null> {
+): Promise<MinBillingResult | null> {
   if (!items || items.length === 0) return null;
 
-  // Ponto de partida: hoje + 7 dias úteis (margem mínima de produção)
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  let candidate = addBusinessDaysISO(today.toISOString().slice(0, 10), 7);
+  const todayISO = today.toISOString().slice(0, 10);
 
-  // Limita a 20 tentativas (4 semanas úteis) — suficiente para a maioria dos casos
-  for (let i = 0; i < 20; i++) {
-    try {
-      const result = await checkSectorCapacity(items, candidate);
-      if (!result.hasOverload) {
-        const snapped = snapToNextPickup(candidate);
-        return { minDateISO: snapped, minWeekISO: toISOWeek(snapped) };
+  // ── (1) Material ready date — RPC stock-aware ──────────────────────────
+  let materialReadyDateISO = todayISO;
+  let materialShortfalls: MaterialShortfall[] = [];
+  try {
+    const rpcItems = items
+      .filter(i => i.reference_id && (i.total_pairs ?? 0) > 0)
+      .map(i => ({ reference_id: i.reference_id, quantity: i.total_pairs ?? 0 }));
+    if (rpcItems.length > 0) {
+      const { data, error } = await (supabase as any).rpc('compute_material_ready_date', {
+        p_items: rpcItems,
+      });
+      if (!error && data) {
+        materialReadyDateISO = data.ready_date || todayISO;
+        materialShortfalls = (data.shortfall_materials as MaterialShortfall[]) || [];
       }
-    } catch {
-      const snapped = snapToNextPickup(candidate);
-      return { minDateISO: snapped, minWeekISO: toISOWeek(snapped) };
     }
-    // Avança em saltos de 2 dias úteis para reduzir o número de queries
-    candidate = addBusinessDaysISO(candidate, 2);
+  } catch (err) {
+    console.warn('[computeMinBillingForNewOrder] compute_material_ready_date falhou:', err);
   }
 
-  const snapped = snapToNextPickup(candidate);
-  return { minDateISO: snapped, minWeekISO: toISOWeek(snapped) };
+  // ── (2) Capacity ready date — itera procurando primeira data sem overload
+  let capacityReadyDateISO = addBusinessDaysISO(todayISO, 7);
+  for (let i = 0; i < 20; i++) {
+    try {
+      const result = await checkSectorCapacity(items, capacityReadyDateISO);
+      if (!result.hasOverload) break;
+    } catch {
+      break;
+    }
+    capacityReadyDateISO = addBusinessDaysISO(capacityReadyDateISO, 2);
+  }
+
+  // ── (3) Combina: a data final é o maior entre os dois gargalos ─────────
+  const finalCandidate = capacityReadyDateISO > materialReadyDateISO
+    ? capacityReadyDateISO
+    : materialReadyDateISO;
+
+  const bottleneck: MinBillingResult['bottleneck'] =
+    capacityReadyDateISO === materialReadyDateISO
+      ? 'nenhum'
+      : capacityReadyDateISO > materialReadyDateISO
+        ? 'capacidade'
+        : 'material';
+
+  const snapped = snapToNextPickup(finalCandidate);
+
+  return {
+    minDateISO: snapped,
+    minWeekISO: toISOWeek(snapped),
+    bottleneck,
+    capacityReadyDateISO,
+    materialReadyDateISO,
+    materialShortfalls,
+  };
 }
 
 /**

@@ -24,7 +24,7 @@ import { MaterialPurchaseConfirmDialog } from '@/components/sale-orders/Material
 import { checkSectorCapacity, CapacityCheckResult } from '@/lib/sectorCapacity';
 import { SectorOverloadDialog } from '@/components/sale-orders/SectorOverloadDialog';
 import { createOutsourceOrdersForOverloads } from '@/lib/outsourceOrders';
-import { computeMinBillingForNewOrder, isBeforeMinDate, toISOWeek } from '@/lib/minBillingDate';
+import { computeMinBillingForNewOrder, isBeforeMinDate, toISOWeek, type MinBillingResult } from '@/lib/minBillingDate';
 import { MinBillingDateSuggestionDialog } from '@/components/sale-orders/MinBillingDateSuggestionDialog';
 import { monthWeekToISODate } from '@/lib/billingWeek';
 
@@ -198,7 +198,7 @@ export default function SaleOrderForm() {
   const [capacityResult, setCapacityResult] = useState<CapacityCheckResult | null>(null);
   const [capacityDialogOpen, setCapacityDialogOpen] = useState(false);
   const [minBillingDialogOpen, setMinBillingDialogOpen] = useState(false);
-  const [minBillingSuggestion, setMinBillingSuggestion] = useState<{ minDateISO: string; minWeekISO: string } | null>(null);
+  const [minBillingSuggestion, setMinBillingSuggestion] = useState<MinBillingResult | null>(null);
   const [computingMinBilling, setComputingMinBilling] = useState(false);
 
   // Always-current form ref so setTimeout callbacks don't capture stale closures
@@ -763,6 +763,10 @@ export default function SaleOrderForm() {
         onOpenChange={setMinBillingDialogOpen}
         minDateISO={minBillingSuggestion?.minDateISO || ''}
         minWeekISO={minBillingSuggestion?.minWeekISO || ''}
+        bottleneck={minBillingSuggestion?.bottleneck}
+        capacityReadyDateISO={minBillingSuggestion?.capacityReadyDateISO}
+        materialReadyDateISO={minBillingSuggestion?.materialReadyDateISO}
+        materialShortfalls={minBillingSuggestion?.materialShortfalls}
         onConfirmMin={handleMinBillingConfirm}
         onPickManual={handleMinBillingManual}
       />

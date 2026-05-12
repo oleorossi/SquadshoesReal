@@ -12,8 +12,8 @@ import { Label } from '@/components/ui/label';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Calendar, CheckCircle2, Pencil, Truck } from 'lucide-react';
-import { formatBR } from '@/lib/minBillingDate';
+import { Calendar, CheckCircle2, Pencil, Truck, Package, Factory, Info } from 'lucide-react';
+import { formatBR, type MaterialShortfall } from '@/lib/minBillingDate';
 import { monthWeekToISODate } from '@/lib/billingWeek';
 import { SubmitFlowStepper } from './SubmitFlowStepper';
 
@@ -24,6 +24,14 @@ interface Props {
   minDateISO: string;
   /** Semana ISO correspondente (ex: 2026-W18). */
   minWeekISO: string;
+  /** Gargalo que determinou a data: 'material' (precisa comprar), 'capacidade' (fila cheia) ou 'nenhum'. */
+  bottleneck?: 'capacidade' | 'material' | 'nenhum';
+  /** Data em que a capacidade produtiva libera. */
+  capacityReadyDateISO?: string;
+  /** Data em que o material estaria disponível. */
+  materialReadyDateISO?: string;
+  /** Lista de materiais com shortage (pra exibir detalhes). */
+  materialShortfalls?: MaterialShortfall[];
   /** Quando o usuário aceita a data mínima. */
   onConfirmMin: () => void;
   /** Quando o usuário escolhe uma data diferente — a validação de override é feita pelo caller. */
@@ -39,6 +47,10 @@ export function MinBillingDateSuggestionDialog({
   onOpenChange,
   minDateISO,
   minWeekISO,
+  bottleneck = 'nenhum',
+  capacityReadyDateISO,
+  materialReadyDateISO,
+  materialShortfalls = [],
   onConfirmMin,
   onPickManual,
 }: Props) {
@@ -140,6 +152,69 @@ export function MinBillingDateSuggestionDialog({
             </div>
           );
         })()}
+
+        {/* Detalhamento do gargalo — quando há material faltando ou capacidade
+            saturada, mostra qual restrição determinou a data sugerida. Cliente
+            entende por que a data não pode ser antes (e quando pode adiar
+            comprando material vs. esperando fila de produção). */}
+        {bottleneck !== 'nenhum' && (
+          <div className={`rounded-lg border p-3 my-2 ${
+            bottleneck === 'material'
+              ? 'border-amber-500/40 bg-amber-500/5'
+              : 'border-blue-500/40 bg-blue-500/5'
+          }`}>
+            <div className={`flex items-center gap-1.5 text-xs uppercase tracking-wide font-bold ${
+              bottleneck === 'material' ? 'text-amber-700' : 'text-blue-700'
+            }`}>
+              {bottleneck === 'material' ? <Package className="h-3.5 w-3.5" /> : <Factory className="h-3.5 w-3.5" />}
+              Gargalo: {bottleneck === 'material' ? 'Compra de material' : 'Capacidade produtiva'}
+            </div>
+            <p className="text-xs mt-1 text-foreground">
+              {bottleneck === 'material' ? (
+                <>
+                  Material insuficiente em estoque — precisa comprar.
+                  {capacityReadyDateISO && (
+                    <> Capacidade libera em <strong>{formatBR(capacityReadyDateISO)}</strong>,
+                    mas o material só chega em <strong>{formatBR(materialReadyDateISO || minDateISO)}</strong>.</>
+                  )}
+                </>
+              ) : (
+                <>
+                  Material em estoque, porém fila de produção saturada nas semanas próximas.
+                  {materialReadyDateISO && capacityReadyDateISO && (
+                    <> Material está pronto em <strong>{formatBR(materialReadyDateISO)}</strong>,
+                    mas capacidade só libera em <strong>{formatBR(capacityReadyDateISO)}</strong>.</>
+                  )}
+                </>
+              )}
+            </p>
+            {bottleneck === 'material' && materialShortfalls.length > 0 && (
+              <div className="mt-2 space-y-1">
+                <p className="text-[10px] uppercase font-bold text-amber-700 tracking-wide flex items-center gap-1">
+                  <Info className="h-3 w-3" /> Materiais em falta
+                </p>
+                <ul className="text-[11px] space-y-0.5 max-h-32 overflow-y-auto">
+                  {materialShortfalls.slice(0, 8).map(m => (
+                    <li key={m.product_id} className="flex items-center justify-between gap-2 border-b border-amber-500/20 pb-0.5">
+                      <span className="truncate">
+                        <strong>{m.product_name}</strong>
+                        {m.color && <span className="text-muted-foreground"> · {m.color}</span>}
+                      </span>
+                      <span className="text-muted-foreground whitespace-nowrap font-mono">
+                        falta {m.shortage.toFixed(1)} · lead {m.lead_time_days}d
+                      </span>
+                    </li>
+                  ))}
+                  {materialShortfalls.length > 8 && (
+                    <li className="text-[10px] text-muted-foreground italic">
+                      ... e mais {materialShortfalls.length - 8} item(ns)
+                    </li>
+                  )}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
 
         {editing && (
           <div className="space-y-3">
