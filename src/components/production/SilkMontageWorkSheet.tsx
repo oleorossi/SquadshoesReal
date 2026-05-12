@@ -305,22 +305,58 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                   </div>
                 </div>
 
-                {/* Componentes auxiliares (Aviamento) */}
-                {theme.showMaterials === 'both' && cg.components && cg.components.length > 0 && (
-                  <div className="mb-1.5 border border-amber-300 rounded p-1.5 bg-white">
-                    <p className="text-[9px] font-bold text-amber-700 uppercase mb-1">Componentes</p>
-                    <ul className="text-[10px] space-y-0.5">
-                      {cg.components.map((c, i) => (
-                        <li key={i}>
-                          <span className="font-bold">{c.name}:</span>{' '}
-                          {c.material || '—'}
-                          {c.color && ` (${c.color})`}
-                          {c.qty && ` · ${c.qty}`}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+                {/* Componentes auxiliares (Aviamento). Quando TODOS os items
+                    têm label começando com 'TIRA', renderiza como tabela de
+                    "Sequência de Tiras" — ordem matters pra montagem (mesma
+                    ordem da ficha técnica, ex: TIRA 1 / TIRA 2 / TIRA 3 com
+                    cores diferentes em modelos mix). */}
+                {theme.showMaterials === 'both' && cg.components && cg.components.length > 0 && (() => {
+                  const isAllStraps = cg.components.every(c => /^TIRA(\s|$)/i.test(c.name || ''));
+                  return (
+                    <div className={`mb-1.5 border-2 ${isAllStraps ? 'border-amber-500' : 'border-amber-300'} rounded p-1.5 bg-white keep-together`}>
+                      <p className="text-[9px] font-bold text-amber-700 uppercase mb-1 tracking-wide">
+                        {isAllStraps ? `Sequência de Tiras (ordem da ficha técnica · ${cg.components.length} tiras)` : 'Componentes'}
+                      </p>
+                      {isAllStraps ? (
+                        <table className="w-full text-[10px]" style={{ borderCollapse: 'collapse' }}>
+                          <thead>
+                            <tr className="bg-amber-50">
+                              <th className="border border-amber-200 px-1.5 py-0.5 text-left font-bold w-12">#</th>
+                              <th className="border border-amber-200 px-1.5 py-0.5 text-left font-bold">Tira</th>
+                              <th className="border border-amber-200 px-1.5 py-0.5 text-left font-bold">Cor</th>
+                              <th className="border border-amber-200 px-1.5 py-0.5 text-left font-bold">Material</th>
+                              <th className="border border-amber-200 px-1.5 py-0.5 text-center font-bold w-6">✓</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {cg.components.map((c, i) => (
+                              <tr key={i}>
+                                <td className="border border-amber-200 px-1.5 py-0.5 font-mono font-bold text-amber-800">{i + 1}</td>
+                                <td className="border border-amber-200 px-1.5 py-0.5 font-bold">{c.name}</td>
+                                <td className="border border-amber-200 px-1.5 py-0.5 font-black uppercase">{c.color || '—'}</td>
+                                <td className="border border-amber-200 px-1.5 py-0.5 text-slate-600">{c.material || '—'}</td>
+                                <td className="border border-amber-200 px-1.5 py-0.5 text-center">
+                                  <span className="inline-block w-3 h-3 border-2 border-amber-500 rounded-sm" />
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <ul className="text-[10px] space-y-0.5">
+                          {cg.components.map((c, i) => (
+                            <li key={i}>
+                              <span className="font-bold">{c.name}:</span>{' '}
+                              {c.material || '—'}
+                              {c.color && ` (${c.color})`}
+                              {c.qty && ` · ${c.qty}`}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Alertas (só renderiza no setor relevante — ex: Aviamento) */}
                 {theme.showAlerts && cg.alerts && cg.alerts.length > 0 && <SectorAlerts alerts={cg.alerts} />}

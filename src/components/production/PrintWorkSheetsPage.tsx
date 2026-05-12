@@ -630,6 +630,25 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
         if (liningFlag) {
           alerts.push({ text: 'Modelo com fachete — duplicar corte de forro', variant: 'warning' });
         }
+        // Sequência de tiras na ordem da ficha técnica (TIRA 1, TIRA 2, ...).
+        // Renderizada no Aviamento pra o operador montar na ordem certa.
+        // Stable sort por id (string) pra garantir consistência.
+        const strapColorsRaw = Array.isArray((order as any).strap_colors)
+          ? ((order as any).strap_colors as Array<any>)
+          : [];
+        const strapsOrdered = [...strapColorsRaw].sort((a: any, b: any) => {
+          const ka = parseInt(a?.id, 10);
+          const kb = parseInt(b?.id, 10);
+          if (isFinite(ka) && isFinite(kb)) return ka - kb;
+          return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
+        });
+        const strapsAsComponents = strapsOrdered.map((s: any) => ({
+          name: s?.label || 'TIRA',
+          material: s?.group_name || '',
+          qty: undefined,
+          color: s?.color || '—',
+        }));
+
         colorMap.set(colorName, {
           color: colorName,
           colorHex,
@@ -641,6 +660,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
           alerts: alerts.length > 0 ? alerts : undefined,
           opNumbers: [],
           silk,
+          components: strapsAsComponents.length > 0 ? strapsAsComponents : undefined,
         });
       }
 
@@ -1057,6 +1077,18 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
           };
           const silk = getOrderSilk(representative);
           const { soleColor, insoleColor, insoleHasLining, insoleReadyMade, hasStraps, mesaCapacity } = getOrderColors(representative);
+          // Sequência de tiras (TIRA 1, TIRA 2, ...) na ordem da ficha técnica.
+          // Cada OP do grupo Ref+Cor pode ter tiras diferentes — pra Colagem
+          // basta a do representative (todas as OPs do grupo têm a mesma ref+cor).
+          const strapsRaw = Array.isArray((representative as any).strap_colors)
+            ? ((representative as any).strap_colors as Array<any>)
+            : [];
+          const strapColorsOrdered = [...strapsRaw].sort((a: any, b: any) => {
+            const ka = parseInt(a?.id, 10);
+            const kb = parseInt(b?.id, 10);
+            if (isFinite(ka) && isFinite(kb)) return ka - kb;
+            return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
+          });
           return (
             <div key={`colagem-${representative.reference_id}::${representative.color}`} className="page-break">
               <OperatorWorkSheet
@@ -1068,6 +1100,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
                 insoleHasLining={insoleHasLining}
                 insoleReadyMade={insoleReadyMade}
                 hasStraps={hasStraps}
+                strapColors={strapColorsOrdered}
                 mesaCapacity={mesaCapacity}
                 sectorCapacityPerDay={getSheetSectorCapacity(representative.reference_id, 'Colagem')}
                 opNumbers={group.opNumbers}

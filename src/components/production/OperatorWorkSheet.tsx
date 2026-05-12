@@ -15,6 +15,11 @@ interface Props {
   insoleReadyMade?: boolean;
   /** Model 3 (tiras): no cabedal cut; passes through Mesa sector */
   hasStraps?: boolean;
+  /** Sequência de tiras na ORDEM da ficha técnica (TIRA 1, TIRA 2, ...).
+   *  Renderizada como tabela na ficha de operador quando hasStraps=true
+   *  e o array tem ao menos 1 item. Cada entry: { id?, label, color,
+   *  group_id, group_name }. */
+  strapColors?: Array<{ id?: string; label?: string; color?: string; group_id?: string; group_name?: string }>;
   /** Daily pair capacity at the Mesa sector (tiras model) */
   mesaCapacity?: number;
   /** Daily pair capacity for the current sector (drives the production rate banner) */
@@ -50,6 +55,7 @@ const OperatorWorkSheet = ({
   insoleHasLining,
   insoleReadyMade,
   hasStraps,
+  strapColors,
   mesaCapacity,
   sectorCapacityPerDay = 0,
   opNumbers,
@@ -265,6 +271,43 @@ const OperatorWorkSheet = ({
           )}
         </div>
       </div>
+
+      {/* ── Sequência de Tiras (quando o modelo tem tiras e o PV especificou
+            cores na ordem da ficha técnica). Aparece em todos os setores
+            que recebem strapColors. Importante pra Aviamento/Colagem porque
+            modelos com tiras de cores diferentes precisam montagem na
+            ordem certa (TIRA 1 = frontal, TIRA 2 = traseira, etc). */}
+      {hasStraps && strapColors && strapColors.length > 0 && (
+        <div className="mb-2 border-2 border-amber-500 rounded p-1.5 bg-amber-50 keep-together">
+          <p className="text-[10px] font-bold text-amber-800 uppercase tracking-wide mb-1">
+            Sequência de Tiras (ordem da ficha técnica · {strapColors.length} tira{strapColors.length > 1 ? 's' : ''})
+          </p>
+          <table className="w-full text-[10px]" style={{ borderCollapse: 'collapse' }}>
+            <thead>
+              <tr className="bg-amber-100">
+                <th className="border border-amber-300 px-1.5 py-0.5 text-left font-bold w-10">#</th>
+                <th className="border border-amber-300 px-1.5 py-0.5 text-left font-bold">Tira</th>
+                <th className="border border-amber-300 px-1.5 py-0.5 text-left font-bold">Cor</th>
+                <th className="border border-amber-300 px-1.5 py-0.5 text-left font-bold">Material</th>
+                <th className="border border-amber-300 px-1.5 py-0.5 text-center font-bold w-6">✓</th>
+              </tr>
+            </thead>
+            <tbody>
+              {strapColors.map((s, i) => (
+                <tr key={s.id || i} className="bg-white">
+                  <td className="border border-amber-300 px-1.5 py-0.5 font-mono font-bold text-amber-800">{i + 1}</td>
+                  <td className="border border-amber-300 px-1.5 py-0.5 font-bold">{s.label || `TIRA ${i + 1}`}</td>
+                  <td className="border border-amber-300 px-1.5 py-0.5 font-black uppercase">{s.color || '—'}</td>
+                  <td className="border border-amber-300 px-1.5 py-0.5 text-slate-600">{s.group_name || '—'}</td>
+                  <td className="border border-amber-300 px-1.5 py-0.5 text-center">
+                    <span className="inline-block w-3 h-3 border-2 border-amber-500 rounded-sm" />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* ── Grade de Produção — FULL WIDTH, large numbers ── */}
       <div className="mb-2">

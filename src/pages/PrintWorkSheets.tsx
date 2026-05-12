@@ -21,8 +21,13 @@ interface OrderRow {
   grade: Record<string, number> | null;
   status: string;
   sale_order_id: string | null;
+  sale_order_item_id?: string | null;
   sale_orders?: { order_number: string; client_name: string; delivery_deadline: string | null } | null;
   technical_sheets?: { name: string; code: string | null } | null;
+  /** Sequência de tiras do item de PV (ordem TIRA 1, TIRA 2, ...).
+   *  Trazido via join sale_order_items pra que as fichas de operador
+   *  mostrem cada tira com sua cor na ordem definida na ficha técnica. */
+  sale_order_items?: { strap_colors: Array<{ id?: string; label?: string; color?: string; group_id?: string; group_name?: string }> | null } | null;
 }
 
 // Status REAIS de `orders` (OPs) no backend, conforme auditoria 2026-05:
@@ -49,7 +54,7 @@ export default function PrintWorkSheets() {
         .from('orders')
         // sale_orders!sale_order_id desambigua: orders tem 2 FKs pra sale_orders
         // (sale_order_id e cross_dock_sale_order_id). PostgREST não escolhe sozinho.
-        .select('id, order_number, reference_id, color, quantity, grade, status, sale_order_id, sale_orders!sale_order_id(order_number, client_name, delivery_deadline), technical_sheets:reference_id(name, code)')
+        .select('id, order_number, reference_id, color, quantity, grade, status, sale_order_id, sale_order_item_id, sale_orders!sale_order_id(order_number, client_name, delivery_deadline), technical_sheets:reference_id(name, code), sale_order_items!sale_order_item_id(strap_colors)')
         .order('order_number', { ascending: false })
         .limit(500);
       if (statusFilter === 'em_fluxo') {
@@ -128,6 +133,13 @@ export default function PrintWorkSheets() {
         sale_order_number: r.sale_orders?.order_number ?? '',
         sale_order_id: r.sale_order_id,
         status: r.status,
+        // Sequência de tiras preservando a ordem (TIRA 1, TIRA 2, ...). Vazio
+        // pra modelos sem tiras. As fichas de operador (Aviamento, Colagem)
+        // renderizam essa sequência pra cortador/aviamento saber qual tira
+        // recebe qual cor (relevante quando o cliente pede mix de cores).
+        strap_colors: Array.isArray(r.sale_order_items?.strap_colors)
+          ? r.sale_order_items!.strap_colors
+          : [],
       }));
   }, [rows, selectedIds]);
 
