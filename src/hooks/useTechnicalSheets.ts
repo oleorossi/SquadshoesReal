@@ -71,17 +71,16 @@ export type SheetFormData = {
   // mas sem uso em business logic. Migration drop_gender_column elimina.)
   // Commercial fields (unified from references)
   collection: string;
-  colors: string;
-  cost_price: number;
   sale_price: number;
-  barcode: string;
   has_straps: boolean;
   strap_colors: any[];
-  image_url: string;
-  // Color lookup fields (still in DB; UI may not use all)
+  // (Removidos em 2026-05 — dead fields auditados, sem uso em business logic:
+  //   colors, cost_price, suggested_price, image_url, barcode (do sheet — barcode
+  //   vive em material_variants), assembly_steps, cor_palmilha_id, cor_tiras_id.
+  //   Migration drop_dead_technical_sheets_fields elimina do banco.)
+  // Color lookup fields ainda usados (cor_predominante_id e cor_solado_id
+  // são lidos por ReadyStockPanel + getClientLogo).
   cor_predominante_id: string | null;
-  cor_palmilha_id: string | null;
-  cor_tiras_id: string | null;
   cor_solado_id: string | null;
   box_type_id: string | null;
   status_ficha: string;
@@ -99,9 +98,7 @@ export type SheetFormData = {
   sole_process: string;
   heel_height: string;
   fit_type: string;
-  assembly_steps: any[];
   version_number: string;
-  suggested_price: number;
   images: any[];
   color_images: any[];
   consumption_loss_pct: number;
@@ -139,8 +136,8 @@ export type SheetFormData = {
 export const emptySheetForm: SheetFormData = {
   name: '', brand: '', model: '', description: '', shoe_category: '', sizes: '33-41', status: 'Ativo',
   code: '',
-  collection: '', colors: '', cost_price: 0, sale_price: 0, barcode: '', has_straps: false, strap_colors: [], image_url: '',
-  cor_predominante_id: null, cor_palmilha_id: null, cor_tiras_id: null, cor_solado_id: null, box_type_id: null,
+  collection: '', sale_price: 0, has_straps: false, strap_colors: [],
+  cor_predominante_id: null, cor_solado_id: null, box_type_id: null,
   status_ficha: 'rascunho',
   upper_material: '', upper_thickness: '',
   lining_material: '',
@@ -148,9 +145,7 @@ export const emptySheetForm: SheetFormData = {
   sole_type: '', sole_material: '', sole_color: '', sole_process: '', sole_group_id: null, insole_color: '', insole_plate_product: '',
   heel_height: '',
   fit_type: 'normal',
-  assembly_steps: [],
   version_number: 'v1',
-  suggested_price: 0,
   images: [], color_images: [], consumption_loss_pct: 8, safety_margin_pct: 5, components_accessories: [],
   upper_consumption: 0, lining_consumption: 0, lining_accessories: [], insole_consumption: 0, sole_consumption: 0,
   direct_components: [],
