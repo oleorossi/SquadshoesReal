@@ -93,6 +93,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/manifests': 'expedicao',
   '/transporters': 'expedicao',
   '/delivery-tracking': 'expedicao',
+  '/picking-sessions': 'expedicao',
   '/cte': 'financeiro',
   '/mdfe': 'financeiro',
   '/cnab': 'financeiro',
