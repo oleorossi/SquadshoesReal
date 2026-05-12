@@ -534,6 +534,33 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     }
   }, [item.reference_id, activeMaterialVariants.length]);
 
+  // Auto-sincroniza cor das tiras com a cor principal do item. Regra de negócio
+  // (user em 2026-05): "cor da sandália = cor da forração; em modelos com tiras,
+  // cada cor de forração tem uma tira correspondente". Antes o operador
+  // precisava clicar "Igualar à principal" toda vez ou setar manualmente cor
+  // a cor — fonte recorrente de erro no débito (debit_strap_stock falhava
+  // quando esquecia de igualar).
+  // Só auto-sync quando:
+  //  - item.color foi escolhida (não vazio)
+  //  - tiras existem
+  //  - tira ainda não tem cor OU todas as tiras estão com a mesma cor antiga
+  //    (preserva override manual do operador se ele variou as tiras)
+  useEffect(() => {
+    if (!item.color) return;
+    const straps = (item.strap_colors as any[]) || [];
+    if (straps.length === 0) return;
+
+    const allBlank = straps.every(s => !s?.color);
+    const allSameOldColor = straps.every(s => s?.color && s.color !== item.color &&
+      straps.every(other => other?.color === s.color));
+
+    if (allBlank || allSameOldColor) {
+      const updated = straps.map(s => ({ ...s, color: item.color }));
+      const { index: idx, onUpdate: update } = latestRef.current;
+      update(idx, 'strap_colors', updated);
+    }
+  }, [item.color, (item.strap_colors as any[])?.length]);
+
   useEffect(() => {
     if (totalPairs !== item.quantity) {
       const { index: idx, onUpdate: update } = latestRef.current;
@@ -933,44 +960,82 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         </div>
 
         {/* Straps Section */}
-        {(item.strap_colors as any[])?.length > 0 && (
-          <div className="rounded-lg border border-border/60 overflow-hidden">
-            <div className="bg-muted/30 px-3 py-1.5 border-b flex items-center justify-between">
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Cores das Tiras</span>
-              <Button variant="link" size="sm" className="h-auto p-0 text-[10px]" onClick={() => {
-                const updated = (item.strap_colors as any[]).map((s: any) => ({ ...s, color: item.color }));
-                onUpdate(index, 'strap_colors', updated);
-              }}>Igualar à principal</Button>
-            </div>
-            <div className="p-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-              {(item.strap_colors as any[]).map((strap: any, sIdx: number) => (
-                <div key={strap.id || sIdx} className="space-y-1">
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase truncate">{strap.label || `Tira ${sIdx + 1}`}</span>
-                    {strap.group_name && <span className="text-[9px] text-muted-foreground opacity-70 truncate max-w-[80px]">({strap.group_name})</span>}
-                  </div>
-                  <ColorPickerDropdown
-                    value={strap.color || ''}
-                    colors={strap.group_id ? getColorsFromGroupId(strap.group_id) : availableColors}
-                    onChange={(v) => {
-                      const updated = [...(item.strap_colors as any[])];
-                      updated[sIdx] = { ...updated[sIdx], color: v };
-                      onUpdate(index, 'strap_colors', updated);
-                    }}
-                    disabled={!item.reference_id}
-                    onAddNew={strap.group_id ? (color) => {
-                      setPendingStrapGroupId(strap.group_id);
-                      setPendingStrapGroupName(strap.group_name || '');
-                      setPendingStrapColor(color);
-                      setPendingStrapIndex(sIdx);
-                      setCreateStrapDialog(true);
-                    } : undefined}
-                  />
+        {(item.strap_colors as any[])?.length > 0 && (() => {
+          const straps = item.strap_colors as any[];
+          // Detecta tiras com cor escolhida mas SEM produto no estoque (group_id + color)
+          // Antes o operador só descobria isso quando OP entrava em produção e
+          // debit_strap_stock falhava. Agora alertamos no momento da escolha.
+          const missing = straps
+            .map((s: any, idx: number) => {
+              if (!s?.color || !s?.group_id) return null;
+              const targetColor = s.color.trim().toLowerCase();
+              const hasProduct = (allProducts as any[]).some(
+                (p: any) => p.group_id === s.group_id &&
+                  (p.color || '').trim().toLowerCase() === targetColor &&
+                  p.active !== false,
+              );
+              return hasProduct ? null : { idx, color: s.color, group_name: s.group_name };
+            })
+            .filter(Boolean) as Array<{ idx: number; color: string; group_name: string }>;
+          const hasMissing = missing.length > 0;
+
+          return (
+            <div className={`rounded-lg border overflow-hidden ${hasMissing ? 'border-amber-500/50' : 'border-border/60'}`}>
+              <div className={`px-3 py-1.5 border-b flex items-center justify-between ${hasMissing ? 'bg-amber-500/10' : 'bg-muted/30'}`}>
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                  Cores das Tiras{hasMissing && <span className="text-amber-700 ml-1">⚠ {missing.length} sem estoque</span>}
+                </span>
+                <Button variant="link" size="sm" className="h-auto p-0 text-[10px]" onClick={() => {
+                  const updated = straps.map((s: any) => ({ ...s, color: item.color }));
+                  onUpdate(index, 'strap_colors', updated);
+                }}>Igualar à principal</Button>
+              </div>
+
+              {hasMissing && (
+                <div className="px-3 py-2 bg-amber-500/5 border-b border-amber-500/30 text-xs text-amber-800">
+                  <strong>Atenção:</strong> {missing.length === 1
+                    ? `A tira "${missing[0].group_name || 'Tira'}" cor "${missing[0].color}" não tem produto cadastrado no estoque. O débito vai falhar quando a OP entrar em produção.`
+                    : `${missing.length} tiras não têm produto cadastrado no estoque. Cadastre os produtos faltantes antes de aprovar o PV.`}
+                  {' '}Use o atalho <span className="font-mono">Estoque → Cadastro rápido com cores</span>.
                 </div>
-              ))}
+              )}
+
+              <div className="p-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                {straps.map((strap: any, sIdx: number) => {
+                  const isMissing = missing.some(m => m.idx === sIdx);
+                  return (
+                    <div key={strap.id || sIdx} className="space-y-1">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase truncate">{strap.label || `Tira ${sIdx + 1}`}</span>
+                        {strap.group_name && <span className="text-[9px] text-muted-foreground opacity-70 truncate max-w-[80px]">({strap.group_name})</span>}
+                      </div>
+                      <ColorPickerDropdown
+                        value={strap.color || ''}
+                        colors={strap.group_id ? getColorsFromGroupId(strap.group_id) : availableColors}
+                        onChange={(v) => {
+                          const updated = [...straps];
+                          updated[sIdx] = { ...updated[sIdx], color: v };
+                          onUpdate(index, 'strap_colors', updated);
+                        }}
+                        disabled={!item.reference_id}
+                        onAddNew={strap.group_id ? (color) => {
+                          setPendingStrapGroupId(strap.group_id);
+                          setPendingStrapGroupName(strap.group_name || '');
+                          setPendingStrapColor(color);
+                          setPendingStrapIndex(sIdx);
+                          setCreateStrapDialog(true);
+                        } : undefined}
+                      />
+                      {isMissing && (
+                        <p className="text-[10px] text-amber-700 leading-tight">sem produto no estoque</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Observation */}
         <div>
