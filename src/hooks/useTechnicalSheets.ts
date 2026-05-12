@@ -131,6 +131,10 @@ export type SheetFormData = {
    insole_ready_made: boolean;
    /** Daily production capacity at the Mesa sector (pairs/day). Required for tiras model. */
    mesa_daily_capacity: number;
+   /** Peso do par do produto acabado em kg. Usado em NF-e, romaneio, MDF-e e rota. */
+   weight_per_pair_kg: number | null;
+   /** Peso da caixinha individual de 1 par em kg. Soma ao peso bruto. */
+   box_weight_kg: number | null;
 };
 
 export const emptySheetForm: SheetFormData = {
@@ -166,6 +170,8 @@ export const emptySheetForm: SheetFormData = {
    insole_has_lining: true,
    insole_ready_made: false,
    mesa_daily_capacity: 0,
+   weight_per_pair_kg: null,
+   box_weight_kg: null,
 };
 
 export type SheetMaterialFormData = {

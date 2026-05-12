@@ -84,6 +84,7 @@
     "read-excel-file": "^7.0.2",
     "recharts": "^2.15.4",
     "sonner": "^1.7.4",
+    "source-map": "0.7.4",
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
     "use-debounce": "^10.1.1",
