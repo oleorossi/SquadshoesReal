@@ -298,10 +298,13 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
       }
 
       const finalSku = await resolveUniqueSku(sku, groupName, trimmedColor);
+      // Defesa: category é NOT NULL no DB. Se o state ficou vazio (sem
+      // produto anterior no grupo pra pré-preencher), deriva do groupName.
+      const safeCategory = (category && category.trim()) || deriveCategoryFromGroup(groupName);
       const productData = sanitizeUuidFields({
         name: trimmedName,
         sku: finalSku,
-        category,
+        category: safeCategory,
         color: trimmedColor,
         unit,
         unit_price: unitPrice,
