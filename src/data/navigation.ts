@@ -59,6 +59,7 @@ export const menuGroups = [
       { name: "Capacidade",       icon: BarChart3,         path: "/capacity-planning" },
       { name: "Centro Controle",  icon: AlertTriangle,     path: "/centro-controle" },
       { name: "Imprimir Fichas",  icon: Printer,           path: "/imprimir-fichas" },
+      { name: "Picking",          icon: ClipboardCheck,    path: "/picking" },
       { name: "Qualidade",        icon: ShieldCheck,       path: "/quality" },
     ],
   },
@@ -98,7 +99,6 @@ export const menuGroups = [
     icon: Truck,
     items: [
       { name: "Expedição",        icon: PackageOpen,    path: "/expedicao" },
-      { name: "Picking",          icon: ClipboardCheck, path: "/picking" },
       { name: "Conferência",      icon: ClipboardCheck, path: "/conferencia-saida" },
       { name: "Romaneios",        icon: FileCheck2,     path: "/manifests" },
       { name: "Transportadoras",  icon: Truck,          path: "/transporters" },
