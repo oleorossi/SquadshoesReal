@@ -84,6 +84,20 @@ export default function MarginDialog({ open, onOpenChange, saleOrderId, orderNum
                 const totalCost = Number(cost.total_cost) || 0;
                 const margin = revenue - totalCost;
                 const marginPct = revenue > 0 ? margin / revenue : 0;
+                // D10: surface warnings vindos do SQL (B3 conversion_warning + B8 no_active_cost_policy)
+                const sqlWarnings: string[] = Array.isArray((cost as any).warnings) ? (cost as any).warnings : [];
+                const conversionIssues = (cost.breakdown?.materials ?? [])
+                  .filter((m: any) => m.conversion_warning)
+                  .map((m: any) => `${m.product_name} (${m.consumption_unit} → ${m.product_unit})`);
+                if (sqlWarnings.length > 0 || conversionIssues.length > 0) {
+                  const tag = `${refName} (${it.color || '—'})`;
+                  if (sqlWarnings.includes('no_active_cost_policy')) {
+                    errs.push(`${tag}: sem cost_policies ativa — overhead/embalagem zerados`);
+                  }
+                  if (conversionIssues.length > 0) {
+                    errs.push(`${tag}: unidade incompatível em ${conversionIssues.join(', ')}`);
+                  }
+                }
                 return {
                   itemId: it.id, refName, refCode, color: it.color || '—',
                   quantity: qty, unitPrice, revenue,
