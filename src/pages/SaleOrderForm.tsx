@@ -599,6 +599,21 @@ export default function SaleOrderForm() {
     setTimeout(() => doSubmit(), 100);
   };
 
+  // Admin override: pula a criação automática de OS terceirizada e salva o PV
+  // assumindo que o admin já resolveu por fora (terceirizado próprio, material
+  // emprestado, hora extra). Motivo do override é registrado em notes do PV.
+  const handleCapacityAdminOverride = (reason: string) => {
+    setCapacityDialogOpen(false);
+    const existingNotes = (formLatestRef.current as any).notes || '';
+    const overrideNote = `[OVERRIDE CAPACIDADE ${new Date().toLocaleDateString('pt-BR')}] ${reason}`;
+    setForm((f) => ({
+      ...f,
+      notes: existingNotes ? `${existingNotes}\n${overrideNote}` : overrideNote,
+    } as any));
+    toast.warning('Override aplicado — pedido salvo sob sua responsabilidade.');
+    setTimeout(() => doSubmit(), 100);
+  };
+
   const handleSoleConfirm = (_generatedPO: boolean) => {
     setSoleDialogOpen(false);
     if (soleResult?.minBillingDateISO && !form.delivery_deadline) {
@@ -756,6 +771,7 @@ export default function SaleOrderForm() {
         result={capacityResult}
         onKeepDateAndOutsource={handleCapacityKeepDate}
         onPostponeDate={handleCapacityPostpone}
+        onAdminOverride={handleCapacityAdminOverride}
       />
 
       <MinBillingDateSuggestionDialog

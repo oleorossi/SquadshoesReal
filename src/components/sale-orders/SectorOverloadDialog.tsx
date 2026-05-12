@@ -1,10 +1,14 @@
+import { useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Warning as AlertTriangle, Calendar, Scissors, Hammer, Stack as Layers, GridFour as LayoutGrid, Pen, PaintBrush as Paintbrush, Wind, Footprints, Package, Truck } from '@phosphor-icons/react';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Warning as AlertTriangle, Calendar, Scissors, Hammer, Stack as Layers, GridFour as LayoutGrid, Pen, PaintBrush as Paintbrush, Wind, Footprints, Package, Truck, ShieldCheck } from '@phosphor-icons/react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { CapacityCheckResult, SECTOR_LABELS, SectorKey } from '@/lib/sectorCapacity';
 import { SubmitFlowStepper } from './SubmitFlowStepper';
+import { useAccessControl } from '@/hooks/useAccessControl';
 
 const SECTOR_ICONS: Record<SectorKey, React.ComponentType<any>> = {
   corte_palmilha: Scissors,
@@ -26,9 +30,15 @@ interface Props {
   result: CapacityCheckResult | null;
   onKeepDateAndOutsource: () => void;
   onPostponeDate: (newISO: string) => void;
+  /** Admin override — pula criação automática de OS, segue direto pra salvar.
+   *  Usado quando admin já tem solução por fora (terceirizado próprio, hora extra etc). */
+  onAdminOverride?: (reason: string) => void;
 }
 
-export function SectorOverloadDialog({ open, onOpenChange, result, onKeepDateAndOutsource, onPostponeDate }: Props) {
+export function SectorOverloadDialog({ open, onOpenChange, result, onKeepDateAndOutsource, onPostponeDate, onAdminOverride }: Props) {
+  const { isAdmin } = useAccessControl();
+  const [overrideMode, setOverrideMode] = useState(false);
+  const [overrideReason, setOverrideReason] = useState('');
   if (!result) return null;
 
   // Sugere nova data: maior dias necessários extras dentre os setores em sobrecarga
@@ -105,19 +115,85 @@ export function SectorOverloadDialog({ open, onOpenChange, result, onKeepDateAnd
               <strong>Adiar para {new Date(suggestedISO).toLocaleDateString('pt-BR')}:</strong> ajusta a data de
               faturamento para uma janela viável internamente.
             </p>
+            {isAdmin && onAdminOverride && (
+              <p className="pt-1 border-t border-border/60">
+                <strong className="text-amber-700 dark:text-amber-400">Override admin:</strong> pula a criação automática de OS
+                e salva o pedido. Use só se você já resolveu a capacidade por fora (terceirizado próprio, material emprestado, hora extra).
+              </p>
+            )}
           </AlertDescription>
         </Alert>
 
+        {overrideMode && (
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 space-y-2">
+            <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+              <ShieldCheck className="h-4 w-4" />
+              <span className="text-xs font-bold uppercase tracking-wide">Confirmar override</span>
+            </div>
+            <p className="text-xs text-foreground">
+              Você está assumindo responsabilidade por entregar este pedido em <strong>{new Date(result.billingDateISO).toLocaleDateString('pt-BR')}</strong>,
+              mesmo com capacidade interna insuficiente. O pedido será marcado como override manual.
+            </p>
+            <div className="space-y-1.5">
+              <Label htmlFor="override-reason" className="text-[10px] uppercase font-bold text-muted-foreground">
+                Motivo (obrigatório)
+              </Label>
+              <Textarea
+                id="override-reason"
+                value={overrideReason}
+                onChange={e => setOverrideReason(e.target.value)}
+                placeholder="Ex: terceirizado próprio cobrindo costura / material emprestado pelo fornecedor X / hora extra autorizada"
+                rows={2}
+                className="text-sm"
+              />
+            </div>
+          </div>
+        )}
+
         <DialogFooter className="gap-2 sm:gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancelar
-          </Button>
-          <Button variant="secondary" onClick={() => onPostponeDate(suggestedISO)}>
-            Adiar para {new Date(suggestedISO).toLocaleDateString('pt-BR')}
-          </Button>
-          <Button onClick={onKeepDateAndOutsource}>
-            Manter data e gerar OS terceirizada
-          </Button>
+          {overrideMode ? (
+            <>
+              <Button variant="ghost" onClick={() => { setOverrideMode(false); setOverrideReason(''); }}>
+                Voltar
+              </Button>
+              <Button
+                variant="default"
+                disabled={!overrideReason.trim()}
+                onClick={() => {
+                  if (!onAdminOverride) return;
+                  onAdminOverride(overrideReason.trim());
+                  setOverrideMode(false);
+                  setOverrideReason('');
+                }}
+                className="bg-amber-600 hover:bg-amber-700 text-white"
+              >
+                <ShieldCheck className="h-4 w-4 mr-1.5" />
+                Confirmar override
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
+                Cancelar
+              </Button>
+              <Button variant="secondary" onClick={() => onPostponeDate(suggestedISO)}>
+                Adiar para {new Date(suggestedISO).toLocaleDateString('pt-BR')}
+              </Button>
+              {isAdmin && onAdminOverride && (
+                <Button
+                  variant="outline"
+                  onClick={() => setOverrideMode(true)}
+                  className="border-amber-500/40 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10"
+                >
+                  <ShieldCheck className="h-4 w-4 mr-1.5" />
+                  Override (admin)
+                </Button>
+              )}
+              <Button onClick={onKeepDateAndOutsource}>
+                Manter data e gerar OS terceirizada
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
