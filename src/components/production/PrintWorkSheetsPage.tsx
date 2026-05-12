@@ -50,9 +50,9 @@ const printStyles = `
       padding: 0;
     }
 
-    /* Cada ficha tem `w-[210mm] p-[8mm]` no <div> raiz (tamanho real pra
+    /* Cada ficha tem w-[210mm] p-[8mm] no <div> raiz (tamanho real pra
        preview em tela). Em print, o ajuste pra área imprimível é feito via
-       `print:w-full print:p-0` direto no className de cada componente
+       print:w-full print:p-0 direto no className de cada componente
        (PalmilhaWorkSheet, SilkMontageWorkSheet, SolagemWorkSheet,
        ExpedicaoWorkSheet, ManagementReport, OperatorWorkSheet). Tentamos
        um override CSS global aqui antes (.print-area .page-break > div) mas
