@@ -42,6 +42,7 @@ const Settings = lazy(() => import("./pages/Settings"));
 const Suppliers = lazy(() => import("./pages/Suppliers"));
 const Finance = lazy(() => import("./pages/Finance"));
 const Clients = lazy(() => import("./pages/Clients"));
+const EconomicGroupDetail = lazy(() => import("./pages/EconomicGroupDetail"));
 const Contractors = lazy(() => import("./pages/Contractors"));
 // Employees/Timesheet agora são abas dentro do hub /rh (RHHub).
 // Rotas legadas (/employees, /timesheet) redirecionam para /rh?tab=...
@@ -603,6 +604,10 @@ const router = createBrowserRouter([
       {
         path: "clients",
         element: <Clients />,
+      },
+      {
+        path: "grupos-economicos/:id",
+        element: <EconomicGroupDetail />,
       },
       {
         path: "finance",

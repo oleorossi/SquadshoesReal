@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { SaleOrderFormData, SaleOrderItemFormData, PACKAGING_MODE_LABELS, type PackagingMode } from '@/hooks/useSaleOrders';
 import { useAccessControl } from '@/hooks/useAccessControl';
+import { useClientCommercialDefaults } from '@/hooks/useEconomicGroup360';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import SaleOrderItemForm from './SaleOrderItemForm';
 import { OrderStatusStepper } from '@/components/ui/order-status-stepper';
@@ -364,6 +365,22 @@ export default function SaleOrderFormPanel({
   const selectedRep = representatives.find(r => r.id === form.representative);
   const selectedClient = clients.find(c => c.id === selectedClientId);
 
+  // Defaults comerciais do cliente OU do grupo econômico (precedência cliente > grupo).
+  // Pré-popula campos vazios quando o cliente é selecionado pela primeira vez.
+  const { data: commercialDefaults } = useClientCommercialDefaults(selectedClientId);
+  const defaultsApplied = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selectedClientId || !commercialDefaults) return;
+    if (defaultsApplied.current === selectedClientId) return;
+    defaultsApplied.current = selectedClientId;
+    setForm(f => ({
+      ...f,
+      // Só preenche se o campo estiver vazio — preserva o que o user já mexeu
+      payment_condition: f.payment_condition || commercialDefaults.payment_condition || '',
+      factoring_config_id: f.factoring_config_id || commercialDefaults.factoring_config_id || '',
+    }));
+  }, [selectedClientId, commercialDefaults, setForm]);
+
   // Credit exposure: sum of open AR for selected client
   const { data: creditExposure } = useQuery({
     queryKey: ['client_credit_exposure', selectedClientId],
@@ -647,6 +664,20 @@ export default function SaleOrderFormPanel({
                         Crédito: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(creditExposure)} em aberto
                         {' '}/ limite {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(selectedClient.credit_limit)}
                       </span>
+                    </div>
+                  )}
+                  {commercialDefaults?.block_new_orders && (
+                    <div className="mt-1.5 flex items-center gap-1.5 text-xs rounded px-2 py-1 bg-destructive/10 text-destructive">
+                      <AlertTriangle className="h-3 w-3 shrink-0" />
+                      <span>
+                        <strong>Bloqueado:</strong> {commercialDefaults.block_reason || 'Cliente ou grupo econômico bloqueado pra novos pedidos'}
+                      </span>
+                    </div>
+                  )}
+                  {commercialDefaults && commercialDefaults.inherited_from === 'grupo econômico' && (
+                    <div className="mt-1.5 flex items-center gap-1.5 text-[10px] rounded px-2 py-1 bg-primary/5 text-primary border border-primary/20">
+                      <Info className="h-3 w-3 shrink-0" />
+                      <span>Condições herdadas do grupo econômico (pgto, factoring, desconto)</span>
                     </div>
                   )}
                 </div>
