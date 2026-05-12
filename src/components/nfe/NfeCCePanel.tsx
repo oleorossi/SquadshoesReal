@@ -107,7 +107,8 @@ function CCeDialog({
                 <SelectContent>
                   {nfes.map((n: any) => (
                     <SelectItem key={n.id} value={n.id}>
-                      NF {n.numero}/{n.serie} — {n.sale_orders?.order_number} · {n.sale_orders?.client_name}
+                      NF {n.numero}/{n.serie}
+                      {n.data_emissao ? ` · ${new Date(n.data_emissao).toLocaleDateString('pt-BR')}` : ''}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -251,7 +252,6 @@ function CCeRow({
   onMarkEmitted: (c: NfeCCe) => void;
   onDelete: (id: string) => void;
 }) {
-  const order = cce.nfe_emitidas?.sale_orders;
   return (
     <div className="flex items-center gap-3 py-3 border-b border-border/50 last:border-0">
       <div className="flex-1 min-w-0">
@@ -260,9 +260,6 @@ function CCeRow({
             NF {cce.nfe_number} #CCe{cce.sequencia}
           </span>
           <CCeStatusBadge status={cce.status} />
-          {order?.order_number && (
-            <span className="text-xs text-muted-foreground">{order.order_number}</span>
-          )}
         </div>
         <p className="text-sm text-foreground/80 line-clamp-2 mt-0.5" title={cce.correction_text}>
           {cce.correction_text}
