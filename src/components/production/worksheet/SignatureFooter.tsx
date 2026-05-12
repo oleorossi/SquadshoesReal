@@ -16,19 +16,19 @@ export const SignatureFooter = ({
   showTime = true,
 }: Props) => {
   return (
-    <div className="mt-auto pt-2 border-t border-slate-200">
+    <div className="mt-auto pt-1.5 border-t border-slate-200">
       {showTime && (
-        <div className="flex items-center justify-between mb-2 text-[10px] text-slate-600">
+        <div className="flex items-center justify-between mb-1 text-[10px] text-slate-600">
           <span><strong>Operador:</strong> ____________________</span>
           <span><strong>Início:</strong> __:__</span>
           <span><strong>Fim:</strong> __:__</span>
           <span><strong>Data:</strong> __/__/____</span>
         </div>
       )}
-      <div className="flex items-end justify-between gap-3">
+      <div className="flex items-end justify-between gap-2">
         {labels.map(label => (
           <div key={label} className="text-center flex-1">
-            <div className="border-t border-slate-400 mt-6 pt-0.5">
+            <div className="border-t border-slate-400 mt-4 pt-0.5">
               <p className="text-[9px] text-slate-500 uppercase font-bold">{label}</p>
             </div>
           </div>

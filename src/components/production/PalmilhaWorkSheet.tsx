@@ -59,7 +59,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
           Nenhuma palmilha para cortar neste lote.
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {groups.map((group, idx) => {
             const cards = Math.max(1, Math.ceil(group.totalPairs / pairsPerCard));
             const alerts: SectorAlert[] = [];
@@ -125,15 +125,15 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
             );
           })}
 
-          <div className="border-t-2 border-slate-900 pt-2 flex justify-end">
-            <div className="bg-slate-900 text-white px-4 py-1.5 rounded font-black text-sm">
+          <div className="border-t-2 border-slate-900 pt-1.5 flex justify-end">
+            <div className="bg-slate-900 text-white px-3 py-1 rounded font-black text-sm">
               Total geral: {grandTotal} pares
             </div>
           </div>
         </div>
       )}
 
-      <div className="mt-4">
+      <div className="mt-2">
         <SignatureFooter labels={['Operador(a)', 'Conferente', 'Supervisor(a)']} />
       </div>
     </div>

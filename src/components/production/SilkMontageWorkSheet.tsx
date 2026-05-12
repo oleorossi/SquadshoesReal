@@ -155,8 +155,8 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
 
       {/* Silks em destaque — uma por solado, multiple se cliente/grupo tem silk própria */}
       {theme.showSilkImage && uniqueSilks.length > 0 && (
-        <div className={`mb-2 border-2 ${theme.border1} rounded-lg p-2 ${theme.bgLight} keep-together`}>
-          <div className="flex items-center justify-between mb-2">
+        <div className={`mb-1.5 border-2 ${theme.border1} rounded-lg p-1.5 ${theme.bgLight} keep-together`}>
+          <div className="flex items-center justify-between mb-1">
             <p className={`text-[10px] font-bold uppercase tracking-wide ${theme.textColor}`}>
               Silk{uniqueSilks.length > 1 ? 's' : ''} pra forração — solado {group.soleName}
             </p>
@@ -164,11 +164,11 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
               {uniqueSilks.length} arte{uniqueSilks.length > 1 ? 's' : ''} · verificar antes de iniciar
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-1.5">
             {uniqueSilks.map((silk, idx) => (
-              <div key={`${silk.silk_url}-${idx}`} className="flex items-center gap-2 bg-white border border-slate-200 rounded p-1.5">
+              <div key={`${silk.silk_url}-${idx}`} className="flex items-center gap-2 bg-white border border-slate-200 rounded p-1">
                 {silk.silk_url ? (
-                  <div className="w-20 h-20 border border-slate-300 bg-white rounded overflow-hidden shrink-0 flex items-center justify-center">
+                  <div className="w-16 h-16 border border-slate-300 bg-white rounded overflow-hidden shrink-0 flex items-center justify-center">
                     <img
                       src={silk.silk_url}
                       alt={silk.silk_name}
@@ -184,7 +184,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                     />
                   </div>
                 ) : (
-                  <div className="w-20 h-20 bg-amber-50 border border-amber-300 rounded shrink-0 flex items-center justify-center">
+                  <div className="w-16 h-16 bg-amber-50 border border-amber-300 rounded shrink-0 flex items-center justify-center">
                     <span className="text-[8px] text-amber-700 text-center px-1 font-bold">Sem imagem</span>
                   </div>
                 )}
@@ -203,7 +203,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
       )}
 
       {/* Per-color blocks */}
-      <div className="flex-1 space-y-3">
+      <div className="flex-1 space-y-2">
         {group.colorGroups.map((cg, idx) => {
           const activeSizes = Object.keys(cg.combinedGrid)
             .filter(s => (cg.combinedGrid[s] ?? 0) > 0)
@@ -234,9 +234,9 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                 </div>
               </div>
 
-              <div className={`p-2 ${theme.bgLight}`}>
+              <div className={`p-1.5 ${theme.bgLight}`}>
                 {/* Linha superior: foto (quando aplicável ao setor) + info setor-específica */}
-                <div className="flex gap-2 mb-2">
+                <div className="flex gap-2 mb-1.5">
                   {theme.showProductImage && (
                     <ProductImageBlock
                       variantImageUrl={cg.variantImageUrl}
@@ -299,7 +299,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
 
                 {/* Componentes auxiliares (Aviamento) */}
                 {theme.showMaterials === 'both' && cg.components && cg.components.length > 0 && (
-                  <div className="mb-2 border border-amber-300 rounded p-2 bg-white">
+                  <div className="mb-1.5 border border-amber-300 rounded p-1.5 bg-white">
                     <p className="text-[9px] font-bold text-amber-700 uppercase mb-1">Componentes</p>
                     <ul className="text-[10px] space-y-0.5">
                       {cg.components.map((c, i) => (
@@ -373,7 +373,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
 
                 {/* Checklist Acabamento */}
                 {theme.showFinishingChecklist && (
-                  <div className="mt-2 border border-emerald-300 rounded p-2 bg-white">
+                  <div className="mt-1.5 border border-emerald-300 rounded p-1.5 bg-white">
                     <p className="text-[9px] font-bold text-emerald-700 uppercase mb-1">Checklist por ficha</p>
                     <div className="flex items-center justify-between text-[10px]">
                       <label className="flex items-center gap-1">
@@ -397,7 +397,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                 )}
 
                 {/* Tally Box */}
-                <div className="mt-2">
+                <div className="mt-1.5">
                   <TallyBox count={cards} pairsPerCard={pairsPerCard} accentColor={theme.accentColor} />
                 </div>
               </div>
@@ -406,7 +406,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
         })}
       </div>
 
-      <div className="mt-3">
+      <div className="mt-2">
         <SignatureFooter />
       </div>
     </div>

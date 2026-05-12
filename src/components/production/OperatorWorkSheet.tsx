@@ -116,14 +116,14 @@ const OperatorWorkSheet = ({
       style={{ boxSizing: 'border-box', fontFamily: "'Helvetica Neue', Arial, sans-serif" }}
     >
       {/* ── Header bar ── */}
-      <div className={`flex items-stretch gap-0 mb-3 rounded-lg overflow-hidden border-2 ${meta.border}`}>
+      <div className={`flex items-stretch gap-0 mb-2 rounded-lg overflow-hidden border-2 ${meta.border}`}>
         {/* Sector label */}
-        <div className={`${meta.bg} text-white flex items-center gap-2 px-4 py-2.5 shrink-0`}>
+        <div className={`${meta.bg} text-white flex items-center gap-2 px-3 py-1.5 shrink-0`}>
           {meta.icon}
-          <span className="text-base font-black uppercase tracking-tight">Ficha de {sector}</span>
+          <span className="text-sm font-black uppercase tracking-tight">Ficha de {sector}</span>
         </div>
         {/* OP + date info */}
-        <div className="flex-1 flex items-center gap-6 px-4 bg-slate-50 flex-wrap">
+        <div className="flex-1 flex items-center gap-5 px-3 bg-slate-50 flex-wrap">
           <div>
             <p className="text-[9px] font-bold text-slate-400 uppercase leading-none">
               {opNumbers && opNumbers.length > 1 ? `OPs (${opNumbers.length})` : 'OP'}
@@ -162,36 +162,36 @@ const OperatorWorkSheet = ({
           )}
         </div>
         {/* QR placeholder */}
-        <div className="flex flex-col items-center justify-center px-3 bg-white border-l border-slate-200">
-          <QrCode className="h-12 w-12 text-slate-700" />
+        <div className="flex flex-col items-center justify-center px-2 bg-white border-l border-slate-200">
+          <QrCode className="h-9 w-9 text-slate-700" />
           <span className="text-[8px] font-mono text-slate-400 mt-0.5">{order.id?.split('-')[0] || order.op_number || '—'}</span>
         </div>
       </div>
 
       {/* ── Produção diária / tempo estimado ── */}
       {effectiveCapacity > 0 && (
-        <div className="flex items-center gap-0 mb-3 rounded-lg overflow-hidden border border-amber-300">
-          <div className="flex-1 flex items-center justify-center flex-col py-1.5 px-3 bg-amber-500 text-white">
+        <div className="flex items-center gap-0 mb-2 rounded-lg overflow-hidden border border-amber-300">
+          <div className="flex-1 flex items-center justify-center flex-col py-1 px-2.5 bg-amber-500 text-white">
             <p className="text-[8px] font-bold uppercase tracking-wide opacity-90 leading-none mb-0.5">Produção Diária</p>
-            <p className="text-lg font-black leading-none">{effectiveCapacity} pares/dia</p>
+            <p className="text-base font-black leading-none">{effectiveCapacity} pares/dia</p>
           </div>
-          <div className="flex-1 flex items-center justify-center flex-col py-1.5 px-3 bg-amber-50 border-l border-amber-200">
+          <div className="flex-1 flex items-center justify-center flex-col py-1 px-2.5 bg-amber-50 border-l border-amber-200">
             <p className="text-[8px] font-bold uppercase tracking-wide text-amber-700 leading-none mb-0.5">Tempo Estimado</p>
-            <p className="text-lg font-black text-amber-900 leading-none">{estimatedDays} dia{estimatedDays !== 1 ? 's' : ''}</p>
+            <p className="text-base font-black text-amber-900 leading-none">{estimatedDays} dia{estimatedDays !== 1 ? 's' : ''}</p>
           </div>
-          <div className="flex-1 flex items-center justify-center flex-col py-1.5 px-3 bg-amber-50 border-l border-amber-200">
+          <div className="flex-1 flex items-center justify-center flex-col py-1 px-2.5 bg-amber-50 border-l border-amber-200">
             <p className="text-[8px] font-bold uppercase tracking-wide text-amber-700 leading-none mb-0.5">Total desta Ficha</p>
-            <p className="text-lg font-black text-amber-900 leading-none">{totalPairs} pares</p>
+            <p className="text-base font-black text-amber-900 leading-none">{totalPairs} pares</p>
           </div>
         </div>
       )}
 
       {/* ── Product info row ── */}
-      {/* Foto AMPLIADA pra operador verificar defeitos vs produto original.
-          Antes: w-24 h-24 (96px). Agora: w-44 h-44 (176px) — mais que dobra a área. */}
-      <div className="flex gap-3 mb-3">
-        {/* Image (lado esquerdo, ampliada) */}
-        <div className="w-44 h-44 border border-slate-200 rounded bg-slate-50 overflow-hidden shrink-0 relative">
+      {/* Foto compacta pra operador verificar referência. Reduzida de 176px
+          (w-44 h-44) pra 128px (w-32 h-32) — economiza ~48px vertical. */}
+      <div className="flex gap-2 mb-2">
+        {/* Image (lado esquerdo, compacta) */}
+        <div className="w-32 h-32 border border-slate-200 rounded bg-slate-50 overflow-hidden shrink-0 relative">
           {!order.variant.variant_image_url && (
             <span className="absolute top-0.5 left-0.5 bg-yellow-400 text-yellow-900 text-[8px] font-bold px-1 py-0.5 rounded leading-none z-10">
               REF.
@@ -201,7 +201,7 @@ const OperatorWorkSheet = ({
         </div>
 
         {/* Product details */}
-        <div className="flex-1 grid grid-cols-2 gap-x-4 gap-y-1.5 content-start">
+        <div className="flex-1 grid grid-cols-2 gap-x-3 gap-y-1 content-start">
           <div>
             <p className="text-[8px] font-bold text-slate-400 uppercase">Modelo</p>
             <p className="text-sm font-bold text-slate-900 leading-tight">{order.master.name}</p>
@@ -267,7 +267,7 @@ const OperatorWorkSheet = ({
       </div>
 
       {/* ── Grade de Produção — FULL WIDTH, large numbers ── */}
-      <div className="mb-3">
+      <div className="mb-2">
         <div className={`${meta.bg} text-white text-center text-[10px] font-black py-1 rounded-t uppercase tracking-widest`}>
           Grade de Produção — Pares a Produzir
         </div>
@@ -302,14 +302,14 @@ const OperatorWorkSheet = ({
                 )}
                 {/* TOTAL row — LARGE numbers */}
                 <tr className="bg-white">
-                  <td className="border border-slate-300 py-2 text-[8px] font-black text-slate-700 bg-slate-100 leading-tight uppercase">
+                  <td className="border border-slate-300 py-1.5 text-[8px] font-black text-slate-700 bg-slate-100 leading-tight uppercase">
                     {fichas > 1 ? `×${fichas}` : 'Total'}
                   </td>
                   {chunk.map(s => (
-                    <td key={s} className="border border-slate-300 py-2 font-mono font-black text-2xl text-slate-900">{scaledGrade[s] || 0}</td>
+                    <td key={s} className="border border-slate-300 py-1.5 font-mono font-black text-xl text-slate-900">{scaledGrade[s] || 0}</td>
                   ))}
                   {ci === sizeChunks.length - 1 && (
-                    <td className={`border border-slate-300 py-2 font-mono font-black text-2xl ${meta.color} bg-slate-50`}>{totalPairs}</td>
+                    <td className={`border border-slate-300 py-1.5 font-mono font-black text-xl ${meta.color} bg-slate-50`}>{totalPairs}</td>
                   )}
                 </tr>
               </tbody>
@@ -320,13 +320,13 @@ const OperatorWorkSheet = ({
 
       {/* ── Lista de OPs agrupadas (não-Acabamento com múltiplas OPs) ── */}
       {opNumbers && opNumbers.length > 1 && (
-        <div className="mb-3 border border-slate-200 rounded bg-slate-50 px-3 py-2">
-          <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+        <div className="mb-2 border border-slate-200 rounded bg-slate-50 px-2 py-1.5">
+          <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mb-1">
             Ordens de Produção agrupadas nesta ficha ({opNumbers.length})
           </p>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-1">
             {opNumbers.map(op => (
-              <span key={op} className="font-mono text-[10px] font-bold bg-white border border-slate-300 rounded px-2 py-0.5 text-slate-700">
+              <span key={op} className="font-mono text-[10px] font-bold bg-white border border-slate-300 rounded px-1.5 py-0.5 text-slate-700">
                 {op}
               </span>
             ))}
@@ -335,7 +335,7 @@ const OperatorWorkSheet = ({
       )}
 
       {/* ── Sector-specific content ── */}
-      <div className="flex-1 grid grid-cols-2 gap-3">
+      <div className="flex-1 grid grid-cols-2 gap-2">
 
         {/* Palmilha pronta na cor: sector not applicable */}
         {isInsoleSkippedSector && (
@@ -350,7 +350,7 @@ const OperatorWorkSheet = ({
         {/* CORTE PALMILHA */}
         {isCortePalmilha && !isInsoleSkippedSector && (
           <>
-            <div className="border border-orange-200 rounded p-2.5 bg-orange-50 space-y-1">
+            <div className="border border-orange-200 rounded p-2 bg-orange-50 space-y-1">
               <p className="text-[9px] font-black uppercase tracking-wide text-orange-700 mb-1.5">Checklist — Corte Palmilha</p>
               {[
                 'Palmilha base separada por numeração',
@@ -365,7 +365,7 @@ const OperatorWorkSheet = ({
                 </div>
               ))}
             </div>
-            <div className="border border-orange-200 rounded p-2.5 bg-slate-50 space-y-2">
+            <div className="border border-orange-200 rounded p-2 bg-slate-50 space-y-2">
               <p className="text-[9px] font-black uppercase tracking-wide text-slate-600">Informações</p>
               <div className="text-xs space-y-1">
                 <div className="flex justify-between">
@@ -383,7 +383,7 @@ const OperatorWorkSheet = ({
         {/* CORTE FORRAÇÃO */}
         {isCorteForração && !isInsoleSkippedSector && (
           <>
-            <div className="border border-teal-200 rounded p-2.5 bg-teal-50 space-y-1">
+            <div className="border border-teal-200 rounded p-2 bg-teal-50 space-y-1">
               <p className="text-[9px] font-black uppercase tracking-wide text-teal-700 mb-1.5">Checklist — Corte Forração</p>
               {[
                 `Palmilha ${resolvedInsoleColor} recebida`,
@@ -398,7 +398,7 @@ const OperatorWorkSheet = ({
                 </div>
               ))}
             </div>
-            <div className="border-2 border-teal-500 rounded p-2.5 bg-teal-50 space-y-2">
+            <div className="border-2 border-teal-500 rounded p-2 bg-teal-50 space-y-2">
               <p className="text-[9px] font-black uppercase tracking-wide text-teal-800">Cor de Forração</p>
               <div className="space-y-1.5 text-xs">
                 <div className="p-1.5 bg-white border border-teal-200 rounded">
@@ -417,7 +417,7 @@ const OperatorWorkSheet = ({
         {/* AVIAMENTO: tiras assembly + artisanal upper work (ex-Mesa) */}
         {isAviamento && (
           <>
-            <div className="border border-purple-200 rounded p-2.5 bg-purple-50 space-y-1">
+            <div className="border border-purple-200 rounded p-2 bg-purple-50 space-y-1">
               <p className="text-[9px] font-black uppercase tracking-wide text-purple-700 mb-1.5">
                 Checklist — Aviamento{hasStraps ? ' (Tiras)' : ' (Cabedal)'}
               </p>
@@ -442,7 +442,7 @@ const OperatorWorkSheet = ({
                 </div>
               ))}
             </div>
-            <div className="border border-purple-200 rounded p-2.5 bg-slate-50 space-y-2">
+            <div className="border border-purple-200 rounded p-2 bg-slate-50 space-y-2">
               <p className="text-[9px] font-black uppercase tracking-wide text-slate-600">Controle Aviamento</p>
               {hasStraps && (
                 <div className="text-xs mb-1">
@@ -500,7 +500,7 @@ const OperatorWorkSheet = ({
         {/* COLAGEM: adhesive checklist */}
         {isColagem && (
           <>
-            <div className="border border-amber-200 rounded p-2.5 bg-amber-50 space-y-1">
+            <div className="border border-amber-200 rounded p-2 bg-amber-50 space-y-1">
               <p className="text-[9px] font-black uppercase tracking-wide text-amber-700 mb-1.5">Checklist — Colagem</p>
               {[
                 'Superfícies limpas e secas',
@@ -515,7 +515,7 @@ const OperatorWorkSheet = ({
                 </div>
               ))}
             </div>
-            <div className="border-2 border-amber-500 rounded p-2.5 bg-amber-50">
+            <div className="border-2 border-amber-500 rounded p-2 bg-amber-50">
               <p className="text-[9px] font-black uppercase tracking-wide text-amber-700 mb-1.5">Materiais de Base</p>
               <div className="space-y-1.5 text-xs">
                 <div className="flex items-center justify-between">
@@ -535,7 +535,7 @@ const OperatorWorkSheet = ({
         {/* MONTAGEM: assembly instruction + materials */}
         {isMontagem && (
           <>
-            <div className="border border-blue-200 rounded p-2.5 bg-blue-50 space-y-1">
+            <div className="border border-blue-200 rounded p-2 bg-blue-50 space-y-1">
               <p className="text-[9px] font-black uppercase tracking-wide text-blue-700 mb-1.5">Checklist — Montagem</p>
               {[
                 `Solado ${resolvedSoleColor} conferido`,
@@ -550,7 +550,7 @@ const OperatorWorkSheet = ({
                 </div>
               ))}
             </div>
-            <div className="border-2 border-blue-500 rounded p-2.5 bg-blue-50 space-y-2">
+            <div className="border-2 border-blue-500 rounded p-2 bg-blue-50 space-y-2">
               <p className="text-[9px] font-black uppercase tracking-wide text-blue-700">Materiais de Base</p>
               <div className="space-y-1.5 text-xs">
                 <div className="flex items-center justify-between">
@@ -579,7 +579,7 @@ const OperatorWorkSheet = ({
         {/* SOLAGEM: sole grade breakdown */}
         {isSolagem && (
           <>
-            <div className="border-2 border-lime-600 rounded p-2.5 bg-lime-50 space-y-1">
+            <div className="border-2 border-lime-600 rounded p-2 bg-lime-50 space-y-1">
               <p className="text-[9px] font-black uppercase tracking-wide text-lime-800 mb-1.5">Checklist — Solagem</p>
               {[
                 `Solado ${resolvedSoleColor} conferido`,
@@ -594,7 +594,7 @@ const OperatorWorkSheet = ({
                 </div>
               ))}
             </div>
-            <div className="border-2 border-lime-600 rounded p-2.5 bg-lime-50 space-y-2">
+            <div className="border-2 border-lime-600 rounded p-2 bg-lime-50 space-y-2">
               <p className="text-[9px] font-black uppercase tracking-wide text-lime-800">Materiais</p>
               <div className="space-y-2">
                 <div className="p-1.5 bg-white border border-lime-200 rounded">
@@ -617,7 +617,7 @@ const OperatorWorkSheet = ({
         {/* ACABAMENTO: checklist + resumo de materiais + boxes */}
         {isAcabamento && (
           <>
-            <div className="border border-emerald-200 rounded p-2.5 bg-emerald-50 space-y-1">
+            <div className="border border-emerald-200 rounded p-2 bg-emerald-50 space-y-1">
               <p className="text-[9px] font-black uppercase tracking-wide text-emerald-700 mb-1.5">Checklist — Acabamento</p>
               {[
                 'Limpeza geral do par',
@@ -633,7 +633,7 @@ const OperatorWorkSheet = ({
                 </div>
               ))}
             </div>
-            <div className="border border-slate-200 rounded p-2.5 bg-slate-50 space-y-2">
+            <div className="border border-slate-200 rounded p-2 bg-slate-50 space-y-2">
               <p className="text-[9px] font-black uppercase tracking-wide text-slate-600 mb-1.5">
                 Resumo de Materiais
               </p>
@@ -674,7 +674,7 @@ const OperatorWorkSheet = ({
         {/* EXPEDIÇÃO: dispatch checklist + client summary */}
         {isExpedicao && (
           <>
-            <div className="border border-indigo-200 rounded p-2.5 bg-indigo-50 space-y-1">
+            <div className="border border-indigo-200 rounded p-2 bg-indigo-50 space-y-1">
               <p className="text-[9px] font-black uppercase tracking-wide text-indigo-700 mb-1.5">Checklist — Expedição</p>
               {[
                 'Par revisado e aprovado',
@@ -690,7 +690,7 @@ const OperatorWorkSheet = ({
                 </div>
               ))}
             </div>
-            <div className="border-2 border-indigo-400 rounded p-2.5 bg-indigo-50 space-y-2">
+            <div className="border-2 border-indigo-400 rounded p-2 bg-indigo-50 space-y-2">
               <p className="text-[9px] font-black uppercase tracking-wide text-indigo-700 mb-1">Resumo do Pedido</p>
               <div className="space-y-1 text-xs">
                 <div className="flex justify-between">
@@ -720,8 +720,8 @@ const OperatorWorkSheet = ({
       </div>
 
       {/* ── Footer: obs + signatures ── */}
-      <div className="mt-auto pt-2 border-t border-slate-200">
-        <div className="flex items-start justify-between gap-2 mb-1.5">
+      <div className="mt-auto pt-1.5 border-t border-slate-200">
+        <div className="flex items-start justify-between gap-2 mb-1">
           <div className="flex-1">
             {order.notes && (
               <p className="text-[9px] text-slate-500"><strong>Obs.:</strong> {order.notes}</p>
@@ -734,19 +734,19 @@ const OperatorWorkSheet = ({
             ))}
           </div>
         </div>
-        <div className="flex items-end justify-between gap-3">
+        <div className="flex items-end justify-between gap-2">
           <div className="text-center flex-1">
-            <div className="border-t border-slate-400 mt-6 pt-1">
+            <div className="border-t border-slate-400 mt-4 pt-0.5">
               <p className="text-[9px] text-slate-500 uppercase font-bold">Operador(a)</p>
             </div>
           </div>
           <div className="text-center flex-1">
-            <div className="border-t border-slate-400 mt-6 pt-1">
+            <div className="border-t border-slate-400 mt-4 pt-0.5">
               <p className="text-[9px] text-slate-500 uppercase font-bold">Conferente</p>
             </div>
           </div>
           <div className="text-center flex-1">
-            <div className="border-t border-slate-400 mt-6 pt-1">
+            <div className="border-t border-slate-400 mt-4 pt-0.5">
               <p className="text-[9px] text-slate-500 uppercase font-bold">Supervisor(a)</p>
             </div>
           </div>

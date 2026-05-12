@@ -38,28 +38,28 @@ export const WorksheetHeader = ({
 }: Props) => {
   return (
     <div>
-      <div className={cn('flex items-stretch gap-0 rounded-lg overflow-hidden border-2 mb-2', borderColor)}>
+      <div className={cn('flex items-stretch gap-0 rounded-lg overflow-hidden border-2 mb-1.5', borderColor)}>
         {/* Sector strip */}
-        <div className={cn('text-white flex flex-col items-center justify-center gap-1 px-3 py-2 shrink-0', bgColor)}>
-          <Icon className="h-5 w-5" />
-          <span className="text-[10px] font-black uppercase tracking-tight text-center leading-tight">{sector}</span>
+        <div className={cn('text-white flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 shrink-0', bgColor)}>
+          <Icon className="h-4 w-4" />
+          <span className="text-[9px] font-black uppercase tracking-tight text-center leading-tight">{sector}</span>
         </div>
 
         {/* Image */}
         {imageSlot && (
-          <div className="flex items-center justify-center px-2 bg-white border-l border-r border-slate-200 shrink-0">
+          <div className="flex items-center justify-center px-1.5 bg-white border-l border-r border-slate-200 shrink-0">
             {imageSlot}
           </div>
         )}
 
         {/* Identification */}
-        <div className="flex-1 flex flex-col justify-center gap-0.5 px-3 py-2 bg-slate-50 min-w-0">
+        <div className="flex-1 flex flex-col justify-center gap-0 px-2.5 py-1.5 bg-slate-50 min-w-0">
           {identification}
         </div>
 
         {/* QR */}
-        <div className="flex flex-col items-center justify-center px-2 bg-white border-l border-slate-200 shrink-0">
-          <QrCode className="h-9 w-9 text-slate-700" />
+        <div className="flex flex-col items-center justify-center px-1.5 bg-white border-l border-slate-200 shrink-0">
+          <QrCode className="h-7 w-7 text-slate-700" />
           {qrLabel && <span className="text-[7px] font-mono text-slate-400 mt-0.5">{qrLabel}</span>}
           {date && <span className="text-[7px] text-slate-500 mt-0.5">{date}</span>}
         </div>
