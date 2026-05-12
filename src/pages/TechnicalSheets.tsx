@@ -2680,29 +2680,33 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Box className="h-3.5 w-3.5 text-green-600" />
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Componentes (un)</span>
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Componentes</span>
               </div>
               <p className="text-xs text-muted-foreground">
-                Componentes avulsos medidos por unidade (ex: ABS, fivelas, ilhós).
+                Componentes avulsos (ABS, fivelas, ilhós, elástico…). A unidade vem do cadastro do produto (un, m, cm, kg…).
               </p>
-              {(form.direct_components || []).map((comp: any, idx: number) => (
+              {(form.direct_components || []).map((comp: any, idx: number) => {
+                const unit = (comp.unit || 'un').toString().trim() || 'un';
+                return (
                 <div key={idx} className="grid grid-cols-3 gap-4 items-end border-l-2 border-green-400/30 pl-3">
                   <DirectComponentSelect
                     label={`Componente ${idx + 1}`}
                     value={comp.product_id || ''}
-                    onChange={(pid, pname, price) => {
+                    onChange={(pid, pname, price, prodUnit) => {
                       const arr = [...(form.direct_components || [])];
-                      arr[idx] = { ...arr[idx], product_id: pid, product_name: pname, unit_price: price };
+                      arr[idx] = { ...arr[idx], product_id: pid, product_name: pname, unit_price: price, unit: prodUnit };
                       updateField('direct_components', arr);
                     }}
                   />
                   <div>
-                    <Label className="text-xs text-muted-foreground">Qtd por par (un)</Label>
+                    <Label className="text-xs text-muted-foreground">
+                      Qtd por par <span className="font-mono">({unit})</span>
+                    </Label>
                     <NumberInput value={comp.quantity || 0} onChange={v => {
                       const arr = [...(form.direct_components || [])];
                       arr[idx] = { ...arr[idx], quantity: v };
                       updateField('direct_components', arr);
-                    }} className="mt-1 h-9 text-sm" placeholder="0" step="1" />
+                    }} className="mt-1 h-9 text-sm" placeholder="0" step={unit === 'un' ? '1' : '0.01'} />
                   </div>
                   <div className="flex items-end gap-2">
                     {comp.unit_price > 0 && comp.quantity > 0 && (
@@ -2719,9 +2723,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                     </Button>
                   </div>
                 </div>
-              ))}
+              );})}
               <Button variant="outline" size="sm" className="gap-1.5" onClick={() => {
-                updateField('direct_components', [...(form.direct_components || []), { product_id: '', product_name: '', quantity: 1, unit_price: 0 }]);
+                updateField('direct_components', [...(form.direct_components || []), { product_id: '', product_name: '', quantity: 1, unit_price: 0, unit: 'un' }]);
               }}>
                 <Plus className="h-3.5 w-3.5" /> Adicionar Componente
               </Button>
@@ -4576,7 +4580,7 @@ function SoleProductSelect({ label, value, onChange }: { label: string; value: s
 }
 
 /* ===== Direct Component Select (products from "Componentes" group) ===== */
-function DirectComponentSelect({ label, value, onChange }: { label: string; value: string; onChange: (productId: string, productName: string, unitPrice: number) => void }) {
+function DirectComponentSelect({ label, value, onChange }: { label: string; value: string; onChange: (productId: string, productName: string, unitPrice: number, unit: string) => void }) {
   const { data: products = [] } = useQuery({
     queryKey: ['products_componentes_group'],
     queryFn: async () => {
@@ -4584,7 +4588,10 @@ function DirectComponentSelect({ label, value, onChange }: { label: string; valu
       const { data: groups } = await supabase.from('product_groups').select('id').ilike('name', 'componentes').limit(1);
       if (!groups || groups.length === 0) return [];
       const groupId = groups[0].id;
-      const { data, error } = await supabase.from('products').select('id, name, sku, unit_price, color').eq('group_id', groupId).eq('active', true).order('name');
+      // BUG ANTIGO: select não incluía 'unit' — bottom callback assumia
+      // sempre 'un'. Resultado: elástico em metro era cadastrado como
+      // unidade no BOM, inflando custos por 100×.
+      const { data, error } = await supabase.from('products').select('id, name, sku, unit_price, unit, color').eq('group_id', groupId).eq('active', true).order('name');
       if (error) throw error;
       return data || [];
     },
@@ -4617,10 +4624,13 @@ function DirectComponentSelect({ label, value, onChange }: { label: string; valu
               <CommandEmpty>Nenhum componente encontrado. Verifique se existe um grupo "Componentes" com produtos.</CommandEmpty>
               <CommandGroup heading={`Componentes (${filtered.length})`}>
                 {filtered.map((p: any) => (
-                  <CommandItem key={p.id} value={p.id} onSelect={() => { onChange(p.id, p.name, Number(p.unit_price || 0)); setOpen(false); setSearch(''); }}>
+                  <CommandItem key={p.id} value={p.id} onSelect={() => { onChange(p.id, p.name, Number(p.unit_price || 0), (p.unit || 'un').toString().trim() || 'un'); setOpen(false); setSearch(''); }}>
                     <Check className={cn("mr-2 h-4 w-4", value === p.id ? "opacity-100" : "opacity-0")} />
                     <div className="flex flex-col">
-                      <span className="text-sm">{p.name} {p.color ? `(${p.color})` : ''}</span>
+                      <span className="text-sm">
+                        {p.name} {p.color ? `(${p.color})` : ''}
+                        <span className="text-[10px] text-muted-foreground font-mono ml-1">[{p.unit || 'un'}]</span>
+                      </span>
                       {p.sku && <span className="text-[10px] text-muted-foreground font-mono">{p.sku}</span>}
                     </div>
                   </CommandItem>
@@ -5712,7 +5722,7 @@ function CostsTab({ sheetId, form, groups }: {
     // Direct components (unit-based)
     (form.direct_components || []).forEach((comp: any, idx: number) => {
       if (comp.product_id && comp.quantity > 0 && comp.unit_price > 0) {
-        items.push({ label: comp.product_name || `Componente ${idx + 1}`, material: 'un', consumption: comp.quantity, pricePerUnit: comp.unit_price, cost: comp.quantity * comp.unit_price });
+        items.push({ label: comp.product_name || `Componente ${idx + 1}`, material: (comp.unit || 'un').toString().trim() || 'un', consumption: comp.quantity, pricePerUnit: comp.unit_price, cost: comp.quantity * comp.unit_price });
       }
     });
     return items;
