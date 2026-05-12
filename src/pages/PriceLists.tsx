@@ -11,15 +11,24 @@ export default function PriceLists() {
   const { data: lists = [], isLoading } = useQuery({
     queryKey: ['price_lists'],
     queryFn: async () => {
+      // Sem embed de clients pra evitar 300 do PostgREST quando o relacionamento
+      // ainda não foi exposto. Fazemos lookup do nome do cliente em fetch separado
+      // se houver client_id.
       const { data, error } = await (supabase as any)
         .from('price_lists')
-        // FK explícita: price_lists.client_id → clients.id. Sem nomear a
-        // constraint, PostgREST falha com "more than one relationship" pq
-        // existe a FK reversa clients.price_list_id → price_lists.id.
-        .select('*, clients!price_lists_client_id_fkey(razao_social)')
+        .select('*')
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return data || [];
+
+      const clientIds = [...new Set((data || []).map((p: any) => p.client_id).filter(Boolean))];
+      if (clientIds.length === 0) return (data || []).map((p: any) => ({ ...p, client_name: null }));
+
+      const { data: clients } = await (supabase as any)
+        .from('clients')
+        .select('id, razao_social')
+        .in('id', clientIds);
+      const clientMap = new Map((clients || []).map((c: any) => [c.id, c.razao_social]));
+      return (data || []).map((p: any) => ({ ...p, client_name: clientMap.get(p.client_id) ?? null }));
     },
   });
 
@@ -73,10 +82,10 @@ export default function PriceLists() {
                   <span className="font-mono font-semibold">{pl.region_uf}</span>
                 </div>
               )}
-              {pl.clients?.razao_social && (
+              {pl.client_name && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Cliente</span>
-                  <span className="font-semibold truncate ml-2">{pl.clients.razao_social}</span>
+                  <span className="font-semibold truncate ml-2">{pl.client_name}</span>
                 </div>
               )}
               <div className="flex justify-between">
