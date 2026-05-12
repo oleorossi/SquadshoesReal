@@ -416,7 +416,7 @@ import { supabase } from '@/integrations/supabase/client';
                         aria-expanded={materialSearchOpen}
                         className="w-full justify-between font-normal text-xs h-9"
                       >
-                        {formData.material_name || "Selecionar material do estoque..."}
+                        {formData.material_name || "Selecionar material de cabedal..."}
                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                       </Button>
                     </PopoverTrigger>
@@ -427,7 +427,7 @@ import { supabase } from '@/integrations/supabase/client';
                           <CommandEmpty>Nenhum material encontrado.</CommandEmpty>
                           <CommandGroup>
                             {products
-                              .filter(p => p.active)
+                              .filter(p => p.active && (p.category || '').toLowerCase() === 'cabedal')
                               .map((product) => (
                                 <CommandItem
                                   key={product.id}
