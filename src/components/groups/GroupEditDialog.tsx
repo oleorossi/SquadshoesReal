@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Pencil, Palette, Save, Package, Plus, Search, Footprints, Ruler, Loader2, Box as BoxIcon, Layers, FlaskConical } from 'lucide-react';
+import { Pencil, Palette, Save, Package, Plus, Search, Footprints, Ruler, Loader2, Box as BoxIcon, FlaskConical } from 'lucide-react';
 import { ProductGroup, useUpdateGroup } from '@/hooks/useGroups';
 import { useProducts } from '@/hooks/useProducts';
 import GroupColorsManager from '@/components/groups/GroupColorsManager';
@@ -614,33 +614,6 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
     }
   }, [group.id, group.name, recipes, allProducts]);
 
-  const handleSilkUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      toast.error('Selecione uma imagem.');
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('Imagem deve ter no máximo 5MB.');
-      return;
-    }
-    setUploadingSilk(true);
-    try {
-      const ext = file.name.split('.').pop();
-      const path = `group-${group.id}/silk.${ext}`;
-      const { error } = await supabase.storage.from('client-logos').upload(path, file, { upsert: true });
-      if (error) throw error;
-      const { data: { publicUrl } } = supabase.storage.from('client-logos').getPublicUrl(path);
-      setSilkUrl(publicUrl);
-      toast.success('Silk enviada!');
-    } catch (err: any) {
-      toast.error(`Erro: ${err.message}`);
-    } finally {
-      setUploadingSilk(false);
-    }
-  };
-
   const handleSave = async () => {
     if (!name.trim()) {
       toast.error('Nome do grupo é obrigatório');
@@ -660,22 +633,18 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
           box_type_id: boxTypeId === '__none__' ? null : boxTypeId,
           box_type_master_id: boxTypeMasterId === '__none__' ? null : boxTypeMasterId,
           box_type_colmeia_id: boxTypeColmeiaId === '__none__' ? null : boxTypeColmeiaId,
-          shared_specs: sharedSpecs,
           consumption_unit: finalUnit,
-          silk_url: silkUrl || null,
-          unit_weight_kg: unitWeightKg,
         } as any,
       });
 
       // Propaga a unidade de consumo e outras specs para todos os itens do grupo
       const prevUnit = group.consumption_unit ?? null;
       const unitChanged = finalUnit !== prevUnit;
-      
+
       if (products.length > 0) {
         const updateData: any = {};
-        if (unitChanged || sharedSpecs) updateData.consumption_unit = finalUnit;
-        if (sharedSpecs && finalUnit) updateData.unit = finalUnit;
-        
+        if (unitChanged) updateData.consumption_unit = finalUnit;
+
         // Mass update price and location if provided
         if (unitPrice > 0) updateData.unit_price = unitPrice;
         if (location.trim()) updateData.location = location.trim();
@@ -776,49 +745,30 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                 <Switch checked={isBomColorSource} onCheckedChange={setIsBomColorSource} />
               </div>
 
-              {/* Especificações Compartilhadas */}
-              <div className="rounded-lg border-2 border-primary/20 p-4 bg-primary/5 space-y-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    <Layers className="h-5 w-5 text-primary mt-0.5 shrink-0" />
-                    <div>
-                      <p className="text-sm font-medium">Itens com mesmas especificações técnicas</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Quando ativado, todos os itens do grupo compartilham a mesma unidade de consumo, valor e dimensões — útil para grupos como <strong>"Napa Soft"</strong> em que todas as cores têm o mesmo comportamento técnico.
-                        <br />
-                        Mantenha desativado quando o grupo contém variantes diferentes (ex.: <strong>"Cola"</strong>, em que cada cola tem composição, valor e consumo próprios).
-                      </p>
-                    </div>
-                  </div>
-                  <Switch checked={sharedSpecs} onCheckedChange={setSharedSpecs} />
-                </div>
-
-                <div>
-                  <Label className="text-xs">Unidade de Medida de Consumo</Label>
-                  <Select value={consumptionUnit} onValueChange={setConsumptionUnit}>
-                    <SelectTrigger className="mt-1 h-9">
-                      <SelectValue placeholder="Selecionar unidade..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">Nenhuma (definida por item)</SelectItem>
-                      {Object.entries(CONSUMPTION_UNITS_BY_GROUP).map(([groupName, units]) => (
-                        <React.Fragment key={groupName}>
-                          <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground bg-muted/50">
-                            {groupName}
-                          </div>
-                          {units.map(u => (
-                            <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>
-                          ))}
-                        </React.Fragment>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    {sharedSpecs
-                      ? 'Esta unidade será aplicada a TODOS os itens deste grupo ao salvar (inclusive estoque).'
-                      : 'Ao alterar esta unidade, ela será aplicada a todos os itens do grupo para padronização.'}
-                  </p>
-                </div>
+              {/* Unidade de consumo (propaga pra todos os itens ao salvar se mudada) */}
+              <div className="rounded-lg border p-4 bg-muted/30 space-y-2">
+                <Label className="text-xs">Unidade de Medida de Consumo</Label>
+                <Select value={consumptionUnit} onValueChange={setConsumptionUnit}>
+                  <SelectTrigger className="mt-1 h-9">
+                    <SelectValue placeholder="Selecionar unidade..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Nenhuma (definida por item)</SelectItem>
+                    {Object.entries(CONSUMPTION_UNITS_BY_GROUP).map(([groupName, units]) => (
+                      <React.Fragment key={groupName}>
+                        <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground bg-muted/50">
+                          {groupName}
+                        </div>
+                        {units.map(u => (
+                          <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>
+                        ))}
+                      </React.Fragment>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Ao alterar, a unidade é propagada como consumption_unit a todos os itens do grupo.
+                </p>
               </div>
 
               {/* Artesanal */}
@@ -922,27 +872,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                   <Label htmlFor="edit-group-desc">Descrição</Label>
                   <Textarea id="edit-group-desc" value={description} onChange={e => setDescription(e.target.value)} className="mt-1" rows={2} />
                 </div>
-                <div>
-                  <Label htmlFor="edit-group-weight">Peso Unitário (kg)</Label>
-                  <Input 
-                    id="edit-group-weight" 
-                    type="number" 
-                    step="0.001"
-                    value={unitWeightKg || ''} 
-                    onChange={e => setUnitWeightKg(parseFloat(e.target.value) || 0)} 
-                    className="mt-1" 
-                    placeholder="Ex: 0.250"
-                  />
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    Peso de uma unidade (par de solados, um cabedal ou uma caixa) usado para cálculo do peso total de despacho.
-                  </p>
-                </div>
                 <GroupColorsManager groupId={group.id} groupName={group.name} />
-
-                {/* Silk padrão removida em 2026-06: silk agora é gerenciada
-                    centralmente em /silks (Engenharia → Silks → Por Solado).
-                    A coluna product_groups.silk_url ainda existe pra compat,
-                    mas o campo de UI foi movido pra evitar duplicidade. */}
 
                 {/* Box Types */}
                 <Card className="border-dashed">

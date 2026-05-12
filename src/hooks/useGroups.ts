@@ -41,8 +41,16 @@ export function useGroups() {
 export function useAddGroup() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (form: { name: string; description: string; auto_component_sheet?: boolean }) => {
-      const { data, error } = await supabase.from('product_groups').insert(form).select().single();
+    mutationFn: async (form: {
+      name: string;
+      description: string;
+      auto_component_sheet?: boolean;
+      pairs_per_box_individual?: number | null;
+      pairs_per_box_master?: number | null;
+      pairs_per_box_colmeia?: number | null;
+      pairs_per_box_fitilho?: number | null;
+    }) => {
+      const { data, error } = await supabase.from('product_groups').insert(form as any).select().single();
       if (error) throw error;
       return data;
     },
