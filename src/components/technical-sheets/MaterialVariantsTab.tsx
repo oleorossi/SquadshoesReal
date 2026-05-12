@@ -342,8 +342,8 @@ import { supabase } from '@/integrations/supabase/client';
                      </div>
                    </TableCell>
                    <TableCell>
-                     {v.unit_price_override ? (
-                       <span className="text-sm font-semibold text-green-600">R$ {v.unit_price_override.toFixed(2)}</span>
+                     {v.unit_price_override != null && v.unit_price_override !== '' ? (
+                       <span className="text-sm font-semibold text-green-600">R$ {Number(v.unit_price_override).toFixed(2)}</span>
                      ) : (
                        <span className="text-xs text-muted-foreground italic">Padrão da ficha</span>
                      )}
