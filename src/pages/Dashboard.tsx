@@ -133,7 +133,7 @@ export default function Dashboard() {
 
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2">
-            <CalendarRange className="h-4 w-4 text-muted-foreground" />
+            <CalendarBlank as CalendarRange className="h-4 w-4 text-muted-foreground" />
             <Select value={period} onValueChange={v => setPeriod(v as DashboardPeriod)}>
               <SelectTrigger className="h-9 w-44 text-sm">
                 <SelectValue />

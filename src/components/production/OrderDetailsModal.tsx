@@ -1,7 +1,11 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+<<<<<<< Updated upstream
 import { Box, User, Hash, Palette, Image as ImageIcon, Activity, CircleNotch as Loader2 } from '@phosphor-icons/react';
+=======
+import { Cube as Box, User, Hash, Palette, Image as ImageIcon, Pulse as Activity, CircleNotch as Loader2 } from '@phosphor-icons/react';
+>>>>>>> Stashed changes
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 

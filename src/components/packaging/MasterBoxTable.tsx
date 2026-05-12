@@ -2,7 +2,11 @@ import { useBoxTypes } from '@/hooks/useTransport';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+<<<<<<< Updated upstream
 import { Plus, Box } from '@phosphor-icons/react';
+=======
+import { Plus, Cube as Box } from '@phosphor-icons/react';
+>>>>>>> Stashed changes
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 

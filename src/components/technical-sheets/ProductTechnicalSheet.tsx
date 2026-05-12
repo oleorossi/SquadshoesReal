@@ -1,4 +1,8 @@
+<<<<<<< Updated upstream
 import { Stack as Layers, Scissors, Box, Info } from '@phosphor-icons/react';
+=======
+import { Stack as Layers, Scissors, Cube as Box, Info } from '@phosphor-icons/react';
+>>>>>>> Stashed changes
 import { Card } from '@/components/ui/card';
 import { InlineEdit } from '../ui/InlineEdit';
 import { parseSafeNumber, safeToFixed } from '@/lib/utils';

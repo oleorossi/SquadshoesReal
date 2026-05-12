@@ -1,6 +1,10 @@
 // AppLayout import removed since it was unused
 import { useState, useMemo, useEffect } from 'react';
+<<<<<<< Updated upstream
 import { Stack as Layers, Plus, Trash as Trash2, CircleNotch as Loader2, FloppyDisk as Save, PencilSimple as Pencil, MagnifyingGlass as Search, Ruler, Percent, Package, ChartBar as BarChart3, CaretRight as ChevronRight, X, Image as ImageIcon, Folder as FolderEdit, Palette, Footprints, Check } from '@phosphor-icons/react';
+=======
+import { Stack as Layers, Plus, Trash as Trash2, CircleNotch as Loader2, FloppyDisk as Save, PencilSimple as Pencil, MagnifyingGlass as Search, Ruler, Percent, Package, ChartBar as BarChart3, CaretRight as ChevronRight, X, Image as ImageIcon, FolderEdit, Palette, Footprints, Check } from '@phosphor-icons/react';
+>>>>>>> Stashed changes
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';

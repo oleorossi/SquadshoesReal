@@ -1,5 +1,9 @@
 import React from 'react';
+<<<<<<< Updated upstream
 import { PaintBrush as Paintbrush, Hammer, Pen, Paperclip, Sparkle as Sparkles, Cloud, Scissors } from '@phosphor-icons/react';
+=======
+import { PaintBrush as Paintbrush, Hammer, Pen, Paperclip, Sparkle as Sparkles, Cloud } from '@phosphor-icons/react';
+>>>>>>> Stashed changes
 import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { ProductImageBlock } from './worksheet/ProductImageBlock';

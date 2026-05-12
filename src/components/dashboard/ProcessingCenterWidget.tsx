@@ -1,4 +1,8 @@
+<<<<<<< Updated upstream
  import { Activity } from '@phosphor-icons/react';
+=======
+ import { Pulse as Activity } from '@phosphor-icons/react';
+>>>>>>> Stashed changes
  import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
  import { cn } from '@/lib/utils';
  
