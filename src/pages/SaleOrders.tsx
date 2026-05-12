@@ -910,12 +910,7 @@ export default function SaleOrders() {
             if (debitError) { errors.push(`${order.order_number}: Estoque - ${debitError.message}`); opHadCriticalFailure = true; }
 
             if (!opHadCriticalFailure) {
-              const { error: stockOutErr } = await supabase.rpc('process_order_stock_out', {
-                p_order_id: createdOp.id,
-                p_product_id: item.reference_id,
-                p_quantity: item.quantity
-              });
-              if (stockOutErr) errors.push(`${order.order_number}: BOM stock out - ${stockOutErr.message}`);
+              // FIX A3: process_order_stock_out removido — hybrid_debit_stock_for_order já cobre o BOM.
 
               // Debit sole stock by grade — capture error and attempt auto-PO
               if (Object.keys(scaledGrade).length > 0) {
