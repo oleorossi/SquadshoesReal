@@ -18,6 +18,7 @@ import CompaniesPanel from '@/components/nfe/CompaniesPanel';
 import TaxConfigPanel from '@/components/nfe/TaxConfigPanel';
 import NfeDiagnosticPanel from '@/components/nfe/NfeDiagnosticPanel';
 import NfeCCePanel from '@/components/nfe/NfeCCePanel';
+import { NfeBillingHealthCard } from '@/components/nfe/NfeBillingHealthCard';
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
@@ -347,6 +348,9 @@ export default function NfePage() {
           </Card>
         ))}
       </div>
+
+      {/* M2: PVs com inconsistência fiscal (Faturado sem NF, NF sem Faturado, etc.) */}
+      <NfeBillingHealthCard />
 
       <Tabs defaultValue="nfes">
         <TabsList>
