@@ -315,7 +315,7 @@ export function LabelProductionTab() {
         .from('sale_orders')
         .select(`
           *,
-          clients(id, razao_social, cnpj, endereco, bairro, cidade, estado, cep, economic_group_id, economic_groups(name)),
+          clients(id, razao_social, cnpj, endereco, bairro, cidade, estado, cep, branch_code, branch_name, economic_group_id, economic_groups(name)),
           transport_companies:transport_company_id(nome)
         `);
       if (error) throw error;
@@ -349,7 +349,7 @@ export function LabelProductionTab() {
     queryFn: async () => {
       const { data } = await supabase
         .from('clients')
-        .select('id, razao_social, cnpj, endereco, bairro, cidade, estado, cep');
+        .select('id, razao_social, cnpj, endereco, bairro, cidade, estado, cep, branch_code, branch_name');
       const map = new Map<string, any>();
       for (const c of data || []) {
         if (c.cnpj) map.set((c.cnpj as string).replace(/\D/g, ''), c);
@@ -878,11 +878,14 @@ export function LabelProductionTab() {
             const cnpjDigits = String(so.client_cnpj).replace(/\D/g, '');
             client = clientsByCnpj.get(cnpjDigits) || null;
           }
-          const recipientAddress = client
-            ? [client.endereco, client.bairro].filter(Boolean).join(', ') || undefined
-            : undefined;
+          const recipientAddress = client?.endereco || undefined;
+          const recipientNeighborhood = client?.bairro || undefined;
           const recipientCity = client?.cidade || undefined;
           const recipientUf = client?.estado || undefined;
+          const recipientCep = client?.cep || undefined;
+          const recipientRazaoSocial = client?.razao_social || so?.client_name || undefined;
+          const recipientBranchCode = client?.branch_code || undefined;
+          const recipientBranchName = client?.branch_name || undefined;
           const recipientCode = client?.cnpj
             ? client.cnpj.replace(/\D/g, '').slice(-5)
             : (so?.client_cnpj ? String(so.client_cnpj).replace(/\D/g, '').slice(-5) : undefined);
@@ -896,11 +899,16 @@ export function LabelProductionTab() {
               senderName: 'SQUAD SHOES IND. E COM. DE CALÇADOS LTDA', senderCnpj: '62.406.033/0001-93',
               senderAddress: companyAddress || undefined,
               recipientName: so?.client_name || '',
+              recipientRazaoSocial,
               recipientCnpj: so?.client_cnpj || '',
               recipientCode,
               recipientAddress,
+              recipientNeighborhood,
               recipientCity,
               recipientUf,
+              recipientCep,
+              recipientBranchCode,
+              recipientBranchName,
               transporter,
               clientOrderNumber: so?.client_order_number || '',
               shoeCategory: refData?.shoe_category || '',
