@@ -381,10 +381,11 @@ export default function NfeCCePanel() {
               icon={FileEdit}
               title="Nenhuma carta de correção"
               description="Crie uma CCe pra corrigir erros pontuais em NF-e já autorizada."
-              action={{
-                label: 'Nova CCe',
-                onClick: () => setCreating(true),
-              }}
+              action={
+                <Button onClick={() => setCreating(true)} className="gap-2">
+                  <Plus className="h-4 w-4" /> Nova CCe
+                </Button>
+              }
             />
           ) : (
             <div className="divide-y divide-border/50">
