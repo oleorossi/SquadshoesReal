@@ -169,17 +169,31 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
               <div key={`${silk.silk_url}-${idx}`} className="flex items-center gap-2 bg-white border border-slate-200 rounded p-1.5">
                 {silk.silk_url ? (
                   <div className="w-20 h-20 border border-slate-300 bg-white rounded overflow-hidden shrink-0 flex items-center justify-center">
-                    <img src={silk.silk_url} alt={silk.silk_name} className="w-full h-full object-contain" />
+                    <img
+                      src={silk.silk_url}
+                      alt={silk.silk_name}
+                      className="w-full h-full object-contain"
+                      onError={(e) => {
+                        // URL quebrada (ex: projeto antigo deletado) → esconde o img.
+                        // O irmão do parent vai mostrar placeholder via JS.
+                        const img = e.currentTarget;
+                        img.style.display = 'none';
+                        const parent = img.parentElement;
+                        if (parent) parent.classList.add('bg-amber-50', 'border-amber-300');
+                      }}
+                    />
                   </div>
                 ) : (
-                  <div className="w-20 h-20 bg-slate-100 border border-slate-200 rounded shrink-0" />
+                  <div className="w-20 h-20 bg-amber-50 border border-amber-300 rounded shrink-0 flex items-center justify-center">
+                    <span className="text-[8px] text-amber-700 text-center px-1 font-bold">Sem imagem</span>
+                  </div>
                 )}
                 <div className="min-w-0">
                   <p className={`text-base font-black leading-tight truncate ${theme.textColor}`} title={silk.silk_name}>
                     {silk.silk_name}
                   </p>
                   {!silk.silk_url && (
-                    <p className="text-[9px] text-amber-600 mt-0.5">Imagem não cadastrada</p>
+                    <p className="text-[9px] text-amber-600 mt-0.5">Re-upload em /silks</p>
                   )}
                 </div>
               </div>

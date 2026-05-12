@@ -207,7 +207,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('sale_orders')
-        .select('id, transport_company_id, transport_companies:transport_company_id(name)')
+        .select('id, transport_company_id, transport_companies:transport_company_id(nome)')
         .in('id', saleOrderIds);
       if (error) throw error;
       return data || [];
@@ -637,7 +637,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
     }
     const transportByOrder = new Map<string, string | null>();
     for (const t of saleOrdersTransport as any[]) {
-      transportByOrder.set(t.id, (t.transport_companies as any)?.name || null);
+      transportByOrder.set(t.id, (t.transport_companies as any)?.nome || null);
     }
 
     // Agrupa por client_id (fallback: sale_order_id pra avulsos)

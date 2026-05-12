@@ -187,11 +187,13 @@ const OperatorWorkSheet = ({
       )}
 
       {/* ── Product info row ── */}
+      {/* Foto AMPLIADA pra operador verificar defeitos vs produto original.
+          Antes: w-24 h-24 (96px). Agora: w-44 h-44 (176px) — mais que dobra a área. */}
       <div className="flex gap-3 mb-3">
-        {/* Image */}
-        <div className="w-24 h-24 border border-slate-200 rounded bg-slate-50 overflow-hidden shrink-0 relative">
+        {/* Image (lado esquerdo, ampliada) */}
+        <div className="w-44 h-44 border border-slate-200 rounded bg-slate-50 overflow-hidden shrink-0 relative">
           {!order.variant.variant_image_url && (
-            <span className="absolute top-0.5 left-0.5 bg-yellow-400 text-yellow-900 text-[7px] font-bold px-1 py-0.5 rounded leading-none z-10">
+            <span className="absolute top-0.5 left-0.5 bg-yellow-400 text-yellow-900 text-[8px] font-bold px-1 py-0.5 rounded leading-none z-10">
               REF.
             </span>
           )}
@@ -199,10 +201,16 @@ const OperatorWorkSheet = ({
         </div>
 
         {/* Product details */}
-        <div className="flex-1 grid grid-cols-2 gap-x-4 gap-y-1 content-start">
+        <div className="flex-1 grid grid-cols-2 gap-x-4 gap-y-1.5 content-start">
           <div>
             <p className="text-[8px] font-bold text-slate-400 uppercase">Modelo</p>
             <p className="text-sm font-bold text-slate-900 leading-tight">{order.master.name}</p>
+          </div>
+          <div>
+            <p className="text-[8px] font-bold text-slate-400 uppercase">Referência</p>
+            <p className="text-sm font-mono font-bold text-slate-900 leading-tight">
+              {(order.master as any).code || order.master.reference_code || (order as any).reference_code || '—'}
+            </p>
           </div>
           <div>
             <p className="text-[8px] font-bold text-slate-400 uppercase">{hasStraps ? 'Cor Tiras' : 'Cor Cabedal'}</p>
@@ -212,6 +220,10 @@ const OperatorWorkSheet = ({
                 {order.variant.color_name}
               </span>
             </div>
+          </div>
+          <div>
+            <p className="text-[8px] font-bold text-slate-400 uppercase">OP</p>
+            <p className="text-sm font-mono font-bold text-slate-900 leading-tight">{order.op_number || '—'}</p>
           </div>
 
           {/* Silk info inline */}
