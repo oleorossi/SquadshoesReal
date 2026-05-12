@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import ScrollRestorationComponent from "@/components/ScrollRestoration";
 import { GlobalErrorBoundary } from "@/components/GlobalErrorBoundary";
  import AppLayout from "@/components/layout/AppLayout";
+import { TabsProvider } from "@/contexts/TabsContext";
 import { VersionChecker, manualVersionCheck } from "@/components/VersionChecker";
 import PageSkeleton from "@/components/layout/PageSkeleton";
 
@@ -431,14 +432,16 @@ const router = createBrowserRouter([
     path: "/",
     element: (
       <ProtectedRoute>
-        <AppLayout>
-          <ScrollRestorationComponent />
-          <Suspense fallback={<InlinePageLoader />}>
-            <RouteGuard>
-              <Outlet />
-            </RouteGuard>
-          </Suspense>
-        </AppLayout>
+        <TabsProvider>
+          <AppLayout>
+            <ScrollRestorationComponent />
+            <Suspense fallback={<InlinePageLoader />}>
+              <RouteGuard>
+                <Outlet />
+              </RouteGuard>
+            </Suspense>
+          </AppLayout>
+        </TabsProvider>
       </ProtectedRoute>
     ),
     errorElement: <RouteErrorFallback />,
