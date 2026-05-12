@@ -992,11 +992,38 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               </div>
 
               {hasMissing && (
-                <div className="px-3 py-2 bg-amber-500/5 border-b border-amber-500/30 text-xs text-amber-800">
-                  <strong>Atenção:</strong> {missing.length === 1
-                    ? `A tira "${missing[0].group_name || 'Tira'}" cor "${missing[0].color}" não tem produto cadastrado no estoque. O débito vai falhar quando a OP entrar em produção.`
-                    : `${missing.length} tiras não têm produto cadastrado no estoque. Cadastre os produtos faltantes antes de aprovar o PV.`}
-                  {' '}Use o atalho <span className="font-mono">Estoque → Cadastro rápido com cores</span>.
+                <div className="px-3 py-2 bg-amber-500/5 border-b border-amber-500/30 text-xs text-amber-800 space-y-2">
+                  <p>
+                    <strong>Atenção:</strong> {missing.length === 1
+                      ? `Cor "${missing[0].color}" não tem produto no estoque do grupo "${missing[0].group_name || 'tira'}".`
+                      : `${missing.length} tiras com cor sem produto no estoque.`}
+                    {' '}O débito vai falhar quando a OP entrar em produção. Cadastre agora pra continuar:
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {missing.map(m => {
+                      const strap = straps[m.idx];
+                      return (
+                        <Button
+                          key={m.idx}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-[11px] gap-1 border-amber-500/40 bg-white hover:bg-amber-50 text-amber-800"
+                          onClick={() => {
+                            setPendingStrapGroupId(strap.group_id);
+                            setPendingStrapGroupName(strap.group_name || '');
+                            setPendingStrapColor(strap.color);
+                            setPendingStrapIndex(m.idx);
+                            setCreateStrapDialog(true);
+                          }}
+                          title={`Cadastrar produto "${m.group_name} - ${m.color}" no estoque`}
+                        >
+                          <Plus className="h-3 w-3" />
+                          Cadastrar "{m.color}"
+                        </Button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
