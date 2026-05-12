@@ -1,8 +1,8 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Scissors, Footprints, Sparkles, Wrench, Paperclip, Palette, Package, Flame, Cloud, Pen } from 'lucide-react';
-import { Loader2 } from 'lucide-react';
+import { Scissors, Footprints, Sparkle as Sparkles, Wrench, Paperclip, Palette, Package, Flame, Cloud, Pen } from '@phosphor-icons/react';
+import { CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 
 const Corte = lazy(() => import('./Corte'));

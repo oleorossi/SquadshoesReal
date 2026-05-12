@@ -11,7 +11,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ArrowLeft, Loader2, CheckCircle2, Scissors, Footprints, Sparkles, Package, ExternalLink, ClipboardList, Calendar, Factory, User, Paintbrush, Flame, Wrench, ImageIcon, Truck } from 'lucide-react';
+import { ArrowLeft, CircleNotch as Loader2, CheckCircle as CheckCircle2, Scissors, Footprints, Sparkle as Sparkles, Package, ArrowSquareOut as ExternalLink, ClipboardText as ClipboardList, Calendar, Factory, User, PaintBrush as Paintbrush, Flame, Wrench, Image as ImageIcon, Truck } from '@phosphor-icons/react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { OrderTransportCalculator } from '@/components/transport/OrderTransportCalculator';
 import { ProductionPipeline } from '@/components/production/ProductionPipeline';

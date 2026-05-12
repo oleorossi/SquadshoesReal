@@ -1,4 +1,4 @@
-import { Package, Truck, BarChart3 } from 'lucide-react';
+import { Package, Truck, ChartBar as BarChart3 } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,

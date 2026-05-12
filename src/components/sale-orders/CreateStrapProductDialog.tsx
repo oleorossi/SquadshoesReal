@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { NumberInput } from '@/components/ui/number-input';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Package, AlertTriangle, Check, Pencil } from 'lucide-react';
+import { CircleNotch as Loader2, Package, Warning as AlertTriangle, Check, PencilSimple as Pencil } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { sanitizeUuidFields } from '@/lib/utils';
 import { toast } from 'sonner';

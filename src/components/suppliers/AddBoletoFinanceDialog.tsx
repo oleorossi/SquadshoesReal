@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CreditCard, Plus, Trash2, CalendarIcon } from 'lucide-react';
+import { CreditCard, Plus, Trash as Trash2, CalendarBlank as CalendarIcon } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';

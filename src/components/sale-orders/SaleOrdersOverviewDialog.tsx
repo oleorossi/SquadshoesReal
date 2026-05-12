@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader2, ShoppingCart, Package, DollarSign, Users, Calendar, AlertTriangle, CheckCircle2, Save, RefreshCw } from 'lucide-react';
+import { CircleNotch as Loader2, ShoppingCart, Package, CurrencyDollar as DollarSign, Users, Calendar, Warning as AlertTriangle, CheckCircle as CheckCircle2, FloppyDisk as Save, ArrowsClockwise as RefreshCw } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';

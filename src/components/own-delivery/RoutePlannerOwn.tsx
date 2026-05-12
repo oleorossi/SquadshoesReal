@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Loader2, MapPin, Truck, User, Fuel, Wrench, Coins, AlertTriangle, Wand2, Weight } from 'lucide-react';
+import { CircleNotch as Loader2, MapPin, Truck, User, GasPump as Fuel, Wrench, Coins, Warning as AlertTriangle, MagicWand as Wand2, Scales as Weight } from '@phosphor-icons/react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

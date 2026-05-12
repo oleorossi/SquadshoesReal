@@ -1,7 +1,5 @@
 import { useState, useMemo } from 'react';
-import {
-  Shield, Loader2, CheckCircle2, AlertTriangle, XCircle, ListChecks, Search
-} from 'lucide-react';
+import { Shield, CircleNotch as Loader2, CheckCircle as CheckCircle2, Warning as AlertTriangle, XCircle, ListChecks, MagnifyingGlass as Search } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';

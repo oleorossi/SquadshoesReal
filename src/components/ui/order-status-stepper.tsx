@@ -1,4 +1,4 @@
-import { Check, Clock, CheckCircle2, Factory, Truck, FileText, FileX } from 'lucide-react';
+import { Check, Clock, CheckCircle as CheckCircle2, Factory, Truck, FileText, FileX } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 
 const STAGES = [

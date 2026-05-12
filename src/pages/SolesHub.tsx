@@ -9,10 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import {
-  Loader2, Package, Search, Settings2, Boxes, History,
-  AlertTriangle, ChevronRight, ListPlus,
-} from 'lucide-react';
+import { CircleNotch as Loader2, Package, MagnifyingGlass as Search, Gear as Settings2, Stack as Boxes, ClockCounterClockwise as History, Warning as AlertTriangle, CaretRight as ChevronRight, ListPlus } from '@phosphor-icons/react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { cn } from '@/lib/utils';
 import SolesCadastroTab from '@/components/soles-hub/SolesCadastroTab';

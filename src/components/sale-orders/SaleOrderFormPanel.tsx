@@ -1,5 +1,5 @@
  import { useMemo, useEffect, useRef, useState, useCallback } from 'react';
-import { Plus, Loader2, User, Truck, ClipboardList, Info, Percent, ChevronsUpDown, Check, History, AlertTriangle, CheckCircle2, Calculator, Banknote } from 'lucide-react';
+import { Plus, CircleNotch as Loader2, User, Truck, ClipboardText as ClipboardList, Info, Percent, CaretUpDown as ChevronsUpDown, Check, ClockCounterClockwise as History, Warning as AlertTriangle, CheckCircle as CheckCircle2, Calculator, Money as Banknote } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';

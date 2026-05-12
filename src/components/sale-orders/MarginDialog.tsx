@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, TrendingUp, TrendingDown, Minus, AlertTriangle } from 'lucide-react';
+import { CircleNotch as Loader2, TrendUp as TrendingUp, TrendDown as TrendingDown, Minus, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { calculateOrderCost, type OrderCostResult } from '@/services/costingService';
 import { cn } from '@/lib/utils';

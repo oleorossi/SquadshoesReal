@@ -1,5 +1,5 @@
 import { Fragment, useState } from 'react';
-import { FileUp, FileText, Trash2, ChevronDown, ChevronUp, PackagePlus, CheckCircle2 } from 'lucide-react';
+import { FileArrowUp as FileUp, FileText, Trash as Trash2, CaretDown as ChevronDown, CaretUp as ChevronUp, Package as PackagePlus, CheckCircle as CheckCircle2 } from '@phosphor-icons/react';
 import { format, parseISO } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';

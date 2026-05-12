@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Calendar, CheckCircle2, Pencil, Truck, Package, Factory, Info } from 'lucide-react';
+import { Calendar, CheckCircle as CheckCircle2, PencilSimple as Pencil, Truck, Package, Factory, Info } from '@phosphor-icons/react';
 import { formatBR, type MaterialShortfall } from '@/lib/minBillingDate';
 import { monthWeekToISODate } from '@/lib/billingWeek';
 import { SubmitFlowStepper } from './SubmitFlowStepper';

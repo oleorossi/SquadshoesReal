@@ -1,10 +1,5 @@
  import { useState, useMemo } from 'react';
-  import {
-    Plus, Loader2, Package, Tag, Barcode, Trash2,
-    GripVertical, Pencil, Check, X, ToggleLeft, ToggleRight,
-    Hash, ShoppingCart, DollarSign, Info, ChevronsUpDown, Search, Copy,
-    ChevronUp, ChevronDown, Sparkles
-  } from 'lucide-react';
+  import { Plus, CircleNotch as Loader2, Package, Tag, Barcode, Trash as Trash2, DotsSixVertical as GripVertical, PencilSimple as Pencil, Check, X, ToggleLeft, ToggleRight, Hash, ShoppingCart, CurrencyDollar as DollarSign, Info, CaretUpDown as ChevronsUpDown, MagnifyingGlass as Search, Copy, CaretUp as ChevronUp, CaretDown as ChevronDown, Sparkle as Sparkles } from '@phosphor-icons/react';
  import { Button } from '@/components/ui/button';
  import { Input } from '@/components/ui/input';
  import { Label } from '@/components/ui/label';

@@ -1,10 +1,7 @@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import {
-  AlertTriangle, Calendar, Scissors, Hammer,
-  Layers, LayoutGrid, Pen, Paintbrush, Wind, Footprints, Package, Truck,
-} from 'lucide-react';
+import { Warning as AlertTriangle, Calendar, Scissors, Hammer, Stack as Layers, GridFour as LayoutGrid, Pen, PaintBrush as Paintbrush, Wind, Footprints, Package, Truck } from '@phosphor-icons/react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { CapacityCheckResult, SECTOR_LABELS, SectorKey } from '@/lib/sectorCapacity';
 import { SubmitFlowStepper } from './SubmitFlowStepper';

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Loader2, Search, Building2, MapPin, Phone, DollarSign } from 'lucide-react';
+import { CircleNotch as Loader2, MagnifyingGlass as Search, Buildings as Building2, MapPin, Phone, CurrencyDollar as DollarSign } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';

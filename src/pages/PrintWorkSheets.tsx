@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Printer, Search, Loader2, FileText, Filter, FileStack } from 'lucide-react';
+import { Printer, MagnifyingGlass as Search, CircleNotch as Loader2, FileText, Funnel as Filter, Files as FileStack } from '@phosphor-icons/react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 

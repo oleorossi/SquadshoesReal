@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { format, parseISO, differenceInDays, startOfDay } from "date-fns";
-import { AlertTriangle, Loader2, ShoppingCart } from "lucide-react";
+import { Warning as AlertTriangle, CircleNotch as Loader2, ShoppingCart } from '@phosphor-icons/react';
 
 export function MrpNeedsTable() {
   const { data = [], isLoading } = useMrpNeeds();

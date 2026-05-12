@@ -1,10 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  Plus, Play, Package, Search, Filter, Layers, CalendarDays, Users,
-  AlertTriangle, ChevronDown, ChevronRight, XCircle, Eye, Truck,
-  ClipboardList, Factory, CheckCircle2, Clock, GanttChart,
-} from 'lucide-react';
+import { Plus, Play, Package, MagnifyingGlass as Search, Funnel as Filter, Stack as Layers, CalendarBlank as CalendarDays, Users, Warning as AlertTriangle, CaretDown as ChevronDown, CaretRight as ChevronRight, XCircle, Eye, Truck, ClipboardText as ClipboardList, Factory, CheckCircle as CheckCircle2, Clock, ChartLine as GanttChart } from '@phosphor-icons/react';
 import { getISOWeekFromString, fmtDayMonthBR } from '@/lib/isoWeek';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

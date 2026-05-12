@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { AlertTriangle, Settings as SettingsIcon, X, ListFilter } from 'lucide-react';
+import { Warning as AlertTriangle, Gear as SettingsIcon, X, FunnelSimple as ListFilter } from '@phosphor-icons/react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   runNavigationAuditOnce,

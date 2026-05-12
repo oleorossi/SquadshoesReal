@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Pencil, Loader2, Clock, Wrench, DollarSign, Gauge, Calendar, TrendingUp, Factory } from 'lucide-react';
+import { Plus, PencilSimple as Pencil, CircleNotch as Loader2, Clock, Wrench, CurrencyDollar as DollarSign, Gauge, Calendar, TrendUp as TrendingUp, Factory } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';

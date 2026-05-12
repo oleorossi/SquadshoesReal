@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, Package, ChevronDown, ChevronUp, Truck, FileText } from 'lucide-react';
+import { Plus, PencilSimple as Pencil, Trash as Trash2, Package, CaretDown as ChevronDown, CaretUp as ChevronUp, Truck, FileText } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';

@@ -1,17 +1,4 @@
-import {
-  Package, ShoppingCart, Settings, Truck,
-  Factory, Kanban, LayoutDashboard, Wallet,
-  FileText, Users, UserCheck, Briefcase,
-  Ruler, PackageOpen, ShieldCheck, Zap,
-  ShoppingBag, Monitor, Cpu,
-  BarChart2, BarChart3, Receipt,
-  Footprints, Sparkles, Tag, ClipboardCheck,
-  DollarSign, Calendar, Box, History,
-  ListChecks, Boxes, Activity, GanttChartSquare, Clock,
-  Calculator, TrendingUp, HeartHandshake, MessageSquare,
-  FileSpreadsheet, Lock, Scale, FileCheck2, AlertTriangle, Printer,
-  Route as RouteIcon,
-} from 'lucide-react';
+import { Package, ShoppingCart, Gear as Settings, Truck, Factory, Kanban, SquaresFour as LayoutDashboard, Wallet, FileText, Users, UserCheck, Briefcase, Ruler, Package as PackageOpen, ShieldCheck, Lightning as Zap, ShoppingBag, Monitor, Cpu, ChartBar as BarChart2, ChartBar as BarChart3, Receipt, Footprints, Sparkle as Sparkles, Tag, ClipboardText as ClipboardCheck, CurrencyDollar as DollarSign, Calendar, Cube as Box, ClockCounterClockwise as History, ListChecks, Stack as Boxes, Pulse as Activity, ChartLine as GanttChartSquare, Clock, Calculator, TrendUp as TrendingUp, HandHeart as HeartHandshake, ChatText as MessageSquare, FileXls as FileSpreadsheet, Lock, Scales as Scale, FileText as FileCheck2, Warning as AlertTriangle, Printer, Path as RouteIcon } from '@phosphor-icons/react';
 
 // ════════════════════════════════════════════════════════════════════════
 // SQUAD SHOES — Sidebar

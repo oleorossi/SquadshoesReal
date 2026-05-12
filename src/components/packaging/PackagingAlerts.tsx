@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { AlertTriangle, Package } from 'lucide-react';
+import { Warning as AlertTriangle, Package } from '@phosphor-icons/react';
 import { usePackagingAlerts } from '@/hooks/usePackaging';
 import { Skeleton } from '@/components/ui/skeleton';
 

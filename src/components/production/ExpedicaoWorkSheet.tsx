@@ -1,5 +1,5 @@
 import React from 'react';
-import { Truck, Package, MapPin, Phone, Receipt } from 'lucide-react';
+import { Truck, Package, MapPin, Phone, Receipt } from '@phosphor-icons/react';
 import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { SignatureFooter } from './worksheet/SignatureFooter';

@@ -2,10 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useDebounce } from 'use-debounce';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { toast } from 'sonner';
-import { 
-  Plus, Loader2, Barcode, ChevronLeft, ChevronRight, Search, FileUp, Layers, ArrowUpDown, X, MoreHorizontal,
-  Rows3, Rows2, Eye
-} from 'lucide-react';
+import { Plus, CircleNotch as Loader2, Barcode, CaretLeft as ChevronLeft, CaretRight as ChevronRight, MagnifyingGlass as Search, FileArrowUp as FileUp, Stack as Layers, ArrowsDownUp as ArrowUpDown, X, DotsThree as MoreHorizontal, Rows as Rows3, Rows as Rows2, Eye } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';

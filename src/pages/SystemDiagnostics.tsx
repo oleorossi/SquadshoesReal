@@ -7,10 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  CheckCircle2, XCircle, RefreshCw, Database, Stethoscope,
-  Copy, AlertTriangle, HardDrive, Wifi, FileCode, Loader2,
-} from 'lucide-react';
+import { CheckCircle as CheckCircle2, XCircle, ArrowsClockwise as RefreshCw, Database, Stethoscope, Copy, Warning as AlertTriangle, HardDrive, WifiHigh as Wifi, FileCode, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { manualVersionCheck } from '@/components/VersionChecker';

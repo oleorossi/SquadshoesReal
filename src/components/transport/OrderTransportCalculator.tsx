@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Truck, Package, Box, Settings2, ChevronDown, Lightbulb, TrendingUp, Leaf, Weight, Ruler, Building2, MapPin } from 'lucide-react';
+import { Truck, Package, Cube as Box, Gear as Settings2, CaretDown as ChevronDown, Lightbulb, TrendUp as TrendingUp, Leaf, Scales as Weight, Ruler, Buildings as Building2, MapPin } from '@phosphor-icons/react';
 import { useBaus, useBoxTypes, useTransportCompanies, useTransportCompanyRates } from '@/hooks/useTransport';
 import { calculatePacking } from '@/lib/packingCalculator';
 import { PRODUCT_VOLUMES } from '@/lib/logistics/CubageEngine';

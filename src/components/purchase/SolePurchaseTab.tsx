@@ -2,7 +2,7 @@
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
- import { Loader2, ShoppingCart, Package, Layers, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
+ import { CircleNotch as Loader2, ShoppingCart, Package, Stack as Layers, Warning as AlertTriangle, CheckCircle as CheckCircle2, XCircle } from '@phosphor-icons/react';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
 import { useOrders } from '@/hooks/useOrders';
 import { checkSoleAvailability } from '@/lib/soleAvailability';

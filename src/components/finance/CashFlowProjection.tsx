@@ -9,7 +9,7 @@ import {
 } from 'recharts';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { TrendingUp, TrendingDown, AlertTriangle, Calendar } from 'lucide-react';
+import { TrendUp as TrendingUp, TrendDown as TrendingDown, Warning as AlertTriangle, Calendar } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });

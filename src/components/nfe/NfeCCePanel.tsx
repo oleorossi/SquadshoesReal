@@ -17,10 +17,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { EmptyState } from '@/components/ui/empty-state';
-import {
-  FileEdit, Plus, Trash2, CheckCircle, AlertCircle, Send,
-  Loader2, Search,
-} from 'lucide-react';
+import { FileText as FileEdit, Plus, Trash as Trash2, CheckCircle, WarningCircle as AlertCircle, PaperPlaneRight as Send, CircleNotch as Loader2, MagnifyingGlass as Search } from '@phosphor-icons/react';
 
 const STATUS_META: Record<NfeCCeStatus, { label: string; className: string; icon: React.ReactNode }> = {
   rascunho:  { label: 'Rascunho',  className: 'bg-muted text-muted-foreground border-border',           icon: <FileEdit className="h-3 w-3" /> },

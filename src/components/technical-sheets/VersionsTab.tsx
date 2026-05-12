@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { History, Plus, CheckCircle2, Clock, XCircle, Loader2, Eye } from 'lucide-react';
+import { ClockCounterClockwise as History, Plus, CheckCircle as CheckCircle2, Clock, XCircle, CircleNotch as Loader2, Eye } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';

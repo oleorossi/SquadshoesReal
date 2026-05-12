@@ -9,10 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
-import {
-  CheckCircle2, ArrowRight, ArrowLeft, Search,
-  TrendingUp, Package, Truck, Calendar, DollarSign, ShoppingCart, Sparkles, CalendarDays
-} from 'lucide-react';
+import { CheckCircle as CheckCircle2, ArrowRight, ArrowLeft, MagnifyingGlass as Search, TrendUp as TrendingUp, Package, Truck, Calendar, CurrencyDollar as DollarSign, ShoppingCart, Sparkle as Sparkles, CalendarBlank as CalendarDays } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format, addDays, startOfWeek, endOfWeek, isAfter, isBefore, addWeeks } from 'date-fns';

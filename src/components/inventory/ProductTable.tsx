@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { Pencil, AlertTriangle, FolderOpen, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown, Layers, PackageMinus, Grid3X3, Settings2, Package, ImageIcon, X, FlaskConical } from 'lucide-react';
+import { PencilSimple as Pencil, Warning as AlertTriangle, FolderOpen, CaretDown as ChevronDown, ArrowsDownUp as ArrowUpDown, ArrowUp, ArrowDown, Stack as Layers, Package as PackageMinus, GridFour as Grid3X3, Gear as Settings2, Package, Image as ImageIcon, X, Flask as FlaskConical } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { cn, getSoleModelName, stripColorFromName } from '@/lib/utils';
 import { useGroups, ProductGroup } from '@/hooks/useGroups';

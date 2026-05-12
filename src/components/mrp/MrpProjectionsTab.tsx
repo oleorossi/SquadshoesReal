@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
-import { AlertTriangle, TrendingDown, TrendingUp, Calendar, Package } from 'lucide-react';
+import { Warning as AlertTriangle, TrendDown as TrendingDown, TrendUp as TrendingUp, Calendar, Package } from '@phosphor-icons/react';
 import { useProducts } from '@/hooks/useProducts';
 import { useGroups, type ProductGroup } from '@/hooks/useGroups';
 

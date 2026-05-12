@@ -1,7 +1,7 @@
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { HubTabsList } from '@/components/layout/HubTabs';
 import { Card, CardContent } from '@/components/ui/card';
-import { Layers, Footprints, Sparkles, Info } from 'lucide-react';
+import { Stack as Layers, Footprints, Sparkle as Sparkles, Info } from '@phosphor-icons/react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { SoleTechnicalDetails } from '@/components/technical-sheets/SoleTechnicalDetails';
 import { SoleStandardItemsPanel } from '@/components/technical-sheets/SoleStandardItemsPanel';

@@ -11,11 +11,8 @@ import { format, differenceInHours, isWithinInterval, startOfDay, endOfDay, subM
 import { ptBR } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import {
-  FileBarChart, Search, TrendingUp, TrendingDown, Minus,
-  Clock, DollarSign, AlertTriangle, CheckCircle2, Factory, Layers,
-} from "lucide-react";
-import { Download, FileText } from "lucide-react";
+import { FileText as FileBarChart, MagnifyingGlass as Search, TrendUp as TrendingUp, TrendDown as TrendingDown, Minus, Clock, CurrencyDollar as DollarSign, Warning as AlertTriangle, CheckCircle as CheckCircle2, Factory, Stack as Layers } from '@phosphor-icons/react';
+import { Download, FileText } from '@phosphor-icons/react';
 import { exportCSV, exportPDF } from "@/lib/exportUtils";
 
 interface FinishedOP {

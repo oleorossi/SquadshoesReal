@@ -9,10 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import {
-  FileCheck2, Plus, ArrowLeft, Loader2, ChevronRight, Trash2,
-  Truck, Package, MapPin, Lock, RotateCcw,
-} from 'lucide-react';
+import { FileText as FileCheck2, Plus, ArrowLeft, CircleNotch as Loader2, CaretRight as ChevronRight, Trash as Trash2, Truck, Package, MapPin, Lock, ArrowCounterClockwise as RotateCcw } from '@phosphor-icons/react';
 import { format } from 'date-fns';
 import { useSaleOrderWeight } from '@/hooks/useSaleOrderWeight';
 import { IncompleteWeightWarning } from '@/components/weight/IncompleteWeightWarning';

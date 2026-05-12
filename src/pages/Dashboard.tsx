@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, TrendingUp, Gauge, ClipboardList, Clock, AlertTriangle, ShoppingBag, TrendingDown, DollarSign, CalendarRange } from "lucide-react";
+import { Plus, TrendUp as TrendingUp, Gauge, ClipboardText as ClipboardList, Clock, Warning as AlertTriangle, ShoppingBag, TrendDown as TrendingDown, CurrencyDollar as DollarSign, CalendarBlank as CalendarRange } from '@phosphor-icons/react';
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";

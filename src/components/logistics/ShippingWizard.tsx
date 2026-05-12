@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Truck, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Truck, WarningCircle as AlertCircle, CheckCircle as CheckCircle2 } from '@phosphor-icons/react';
 
 interface Vehicle {
   id: string;

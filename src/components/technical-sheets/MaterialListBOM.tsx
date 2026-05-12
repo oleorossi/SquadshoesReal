@@ -1,4 +1,4 @@
-import { Plus, Trash2, Calculator } from 'lucide-react';
+import { Plus, Trash as Trash2, Calculator } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 

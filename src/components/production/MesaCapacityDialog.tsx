@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { CalendarDays, TrendingUp } from 'lucide-react';
+import { CalendarBlank as CalendarDays, TrendUp as TrendingUp } from '@phosphor-icons/react';
 import { useUpdateMesaCapacity } from '@/hooks/useProductionWaves';
 import { format, addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';

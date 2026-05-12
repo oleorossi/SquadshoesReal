@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button';
-import { PackageCheck, ShoppingCart, Info } from 'lucide-react';
+import { Package as PackageCheck, ShoppingCart, Info } from '@phosphor-icons/react';
 import { ExplodedMaterial } from '@/hooks/useMaterialExplosion';
 
 interface StockValidationResult {

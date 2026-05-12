@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Bell, AlertTriangle, Loader2 } from 'lucide-react';
+import { Bell, Warning as AlertTriangle, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { apiService } from '@/lib/apiService';

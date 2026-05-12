@@ -1,5 +1,5 @@
 import AppLayout from "@/components/layout/AppLayout";
- import { Loader2, ArrowDownRight, ArrowUpRight, Filter, Search, User, RefreshCw, Layers, AlertTriangle } from 'lucide-react';
+ import { CircleNotch as Loader2, ArrowDownRight, ArrowUpRight, Funnel as Filter, MagnifyingGlass as Search, User, ArrowsClockwise as RefreshCw, Stack as Layers, Warning as AlertTriangle } from '@phosphor-icons/react';
  import { TableCell, TableHead } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
  import { useStockMovements, StockMovementWithProduct } from '@/hooks/useOrders';

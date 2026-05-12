@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertTriangle, CheckCircle2, RefreshCw, Database, Info } from 'lucide-react';
+import { Warning as AlertTriangle, CheckCircle as CheckCircle2, ArrowsClockwise as RefreshCw, Database, Info } from '@phosphor-icons/react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 interface ExampleRow {

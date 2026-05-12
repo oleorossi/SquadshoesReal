@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Loader2, Camera, X, User } from 'lucide-react';
+import { CircleNotch as Loader2, Camera, X, User } from '@phosphor-icons/react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

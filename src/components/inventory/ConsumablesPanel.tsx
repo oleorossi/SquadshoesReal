@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, Trash2, Minus, Loader2, Search, CheckSquare, Package } from 'lucide-react';
+import { Plus, Trash as Trash2, Minus, CircleNotch as Loader2, MagnifyingGlass as Search, CheckSquare, Package } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';

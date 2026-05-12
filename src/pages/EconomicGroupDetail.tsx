@@ -24,11 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
-import {
-  ArrowLeft, Building2, Users, ShoppingCart, DollarSign, Phone, StickyNote, Paperclip,
-  History as HistoryIcon, AlertTriangle, Crown, Plus, Trash2, Edit3, Upload, ExternalLink,
-  TrendingUp, Calendar, ShieldAlert, CheckCircle2, FileText, MessageSquare, Save,
-} from 'lucide-react';
+import { ArrowLeft, Buildings as Building2, Users, ShoppingCart, CurrencyDollar as DollarSign, Phone, Note as StickyNote, Paperclip, ClockCounterClockwise as HistoryIcon, Warning as AlertTriangle, Crown, Plus, Trash as Trash2, PencilSimple as Edit3, Upload, ArrowSquareOut as ExternalLink, TrendUp as TrendingUp, Calendar, ShieldWarning as ShieldAlert, CheckCircle as CheckCircle2, FileText, ChatText as MessageSquare, FloppyDisk as Save } from '@phosphor-icons/react';
 
 import {
   useEconomicGroupById, useEconomicGroupKpis, useEconomicGroupCredit,

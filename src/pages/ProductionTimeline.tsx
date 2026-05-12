@@ -13,7 +13,7 @@
  * Header tem 3 botões: Hoje · Semana · Mês (escopo de filtro de OPs)
  */
 import { useMemo, useState } from 'react';
-import { Loader2, ClipboardList } from 'lucide-react';
+import { CircleNotch as Loader2, ClipboardText as ClipboardList } from '@phosphor-icons/react';
 import AppLayout from '@/components/layout/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';

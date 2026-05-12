@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Paintbrush, Footprints, User, Users as UsersIcon } from 'lucide-react';
+import { PaintBrush as Paintbrush, Footprints, User, Users as UsersIcon } from '@phosphor-icons/react';
 import { SilkGlobalPanel } from '@/components/technical-sheets/SilkGlobalPanel';
 import { cn } from '@/lib/utils';
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Plus, Pencil, Trash2, Loader2, Phone, MessageCircle, DollarSign, Users2, Search, CheckCircle2, UserCheck, UserX, Building2, CalendarDays, AlertTriangle } from 'lucide-react';
+import { Plus, PencilSimple as Pencil, Trash as Trash2, CircleNotch as Loader2, Phone, ChatCircle as MessageCircle, CurrencyDollar as DollarSign, Users as Users2, MagnifyingGlass as Search, CheckCircle as CheckCircle2, UserCheck, UserMinus as UserX, Buildings as Building2, CalendarBlank as CalendarDays, Warning as AlertTriangle } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

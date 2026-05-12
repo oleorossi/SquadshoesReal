@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Scissors, Layers, Hammer, Sparkles, AlertTriangle, TrendingUp, Hand, Pen, Printer, Flame, Footprints, Package } from 'lucide-react';
+import { Scissors, Stack as Layers, Hammer, Sparkle as Sparkles, Warning as AlertTriangle, TrendUp as TrendingUp, Hand, Pen, Printer, Flame, Footprints, Package } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';

@@ -1,4 +1,4 @@
-import { LucideIcon } from 'lucide-react';
+import { Icon as LucideIcon } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 
 interface StatusCardProps {

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { AlertCircle, ChevronDown, ChevronRight, Clock, Search, Users2 } from 'lucide-react';
+import { WarningCircle as AlertCircle, CaretDown as ChevronDown, CaretRight as ChevronRight, Clock, MagnifyingGlass as Search, Users as Users2 } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';

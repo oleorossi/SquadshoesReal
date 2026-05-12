@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Truck, Plus, Edit2, Power, Loader2, Phone, Mail, MapPin } from 'lucide-react';
+import { Truck, Plus, PencilSimple as Edit2, Power, CircleNotch as Loader2, Phone, Envelope as Mail, MapPin } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 
 const SERVICE_MODES = ['rodoviario', 'aereo', 'aquaviario', 'ferroviario', 'sedex', 'pac', 'fracionado', 'dedicado'];

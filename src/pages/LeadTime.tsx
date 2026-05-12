@@ -20,7 +20,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
- import { Clock, Plus, Pencil, Trash2, Loader2, Info, Zap, BarChart2 } from 'lucide-react';
+ import { Clock, Plus, PencilSimple as Pencil, Trash as Trash2, CircleNotch as Loader2, Info, Lightning as Zap, ChartBar as BarChart2 } from '@phosphor-icons/react';
 import { SHOE_CATEGORIES } from '@/lib/shoeCategories';
  import { useCapacityDrivenLeadTimes } from '@/hooks/usePurchaseOrders';
 

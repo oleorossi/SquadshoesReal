@@ -1,6 +1,6 @@
  import { useInventoryStats } from '@/hooks/useInventoryStats';
  import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
- import { DollarSign, Package, AlertCircle, ArrowUpRight, TrendingUp } from 'lucide-react';
+ import { CurrencyDollar as DollarSign, Package, WarningCircle as AlertCircle, ArrowUpRight, TrendUp as TrendingUp } from '@phosphor-icons/react';
  import { Button } from '@/components/ui/button';
  import { useNavigate } from 'react-router-dom';
 import { StockCharts } from '@/components/inventory/StockCharts';

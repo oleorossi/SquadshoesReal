@@ -1,7 +1,7 @@
 import React from 'react';
 import { CalculoCusto } from '@/services/planejamento';
 import { Badge } from '@/components/ui/badge';
-import { AlertCircle } from 'lucide-react';
+import { WarningCircle as AlertCircle } from '@phosphor-icons/react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 const CATEGORIA_LABEL = { ok: 'Disponível', baixo: 'Baixo Estoque', critico: 'Crítico' } as const;

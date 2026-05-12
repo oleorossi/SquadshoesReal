@@ -2,7 +2,7 @@
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import { SignedImage } from '@/components/ui/signed-image';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Scissors, Printer, Filter, CheckCircle2, Layers } from 'lucide-react';
+import { Scissors, Printer, Funnel as Filter, CheckCircle as CheckCircle2, Stack as Layers } from '@phosphor-icons/react';
 import { WorkSheetSettingsButton } from '@/components/production/WorkSheetSettingsDialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useQuery, useQueryClient } from '@tanstack/react-query';

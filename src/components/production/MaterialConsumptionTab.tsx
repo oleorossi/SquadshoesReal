@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
-import { Package, TrendingUp, Layers, Filter, Palette } from 'lucide-react';
+import { Package, TrendUp as TrendingUp, Stack as Layers, Funnel as Filter, Palette } from '@phosphor-icons/react';
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, format, parseISO, isWithinInterval, isValid } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { parseSizes } from '@/lib/labelUtils';

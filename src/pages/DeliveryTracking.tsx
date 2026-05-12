@@ -1,6 +1,6 @@
 import { DataListPage } from '@/components/ui/data-list-page';
 import { Badge } from '@/components/ui/badge';
-import { Activity } from 'lucide-react';
+import { Pulse as Activity } from '@phosphor-icons/react';
 import { format } from 'date-fns';
 
 const STATUS: Record<string, string> = {

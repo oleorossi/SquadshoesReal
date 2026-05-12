@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Landmark, Upload, CheckCircle2, AlertTriangle, X, RefreshCw } from 'lucide-react';
+import { Bank as Landmark, Upload, CheckCircle as CheckCircle2, Warning as AlertTriangle, X, ArrowsClockwise as RefreshCw } from '@phosphor-icons/react';
 import { useAccountsPayable, useAccountsReceivable } from '@/hooks/useFinance';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';

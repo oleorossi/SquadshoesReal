@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FileText, FileUp, FileDown, Search, Filter } from 'lucide-react';
+import { FileText, FileArrowUp as FileUp, FileArrowDown as FileDown, MagnifyingGlass as Search, Funnel as Filter } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

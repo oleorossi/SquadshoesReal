@@ -1,4 +1,4 @@
-import { CheckCircle, Info, Zap } from 'lucide-react';
+import { CheckCircle, Info, Lightning as Zap } from '@phosphor-icons/react';
 
 interface Recommendation {
   status: 'SUCESSO' | 'EXCESSO';

@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Loader2, FileSpreadsheet, AlertTriangle, CheckCircle2, XCircle, Eye, History, RefreshCw, Download } from 'lucide-react';
+import { CircleNotch as Loader2, FileXls as FileSpreadsheet, Warning as AlertTriangle, CheckCircle as CheckCircle2, XCircle, Eye, ClockCounterClockwise as History, ArrowsClockwise as RefreshCw, Download } from '@phosphor-icons/react';
 import { useTimeImportLogs, useDeleteTimeImportLog, getImportFileUrl, TimeImportLog } from '@/hooks/useTimeImportLogs';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { EmptyState } from '@/components/ui/EmptyState';

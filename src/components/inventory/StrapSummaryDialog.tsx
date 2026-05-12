@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { BarChart3, TrendingDown, Package, CalendarDays, ArrowRight } from 'lucide-react';
+import { ChartBar as BarChart3, TrendDown as TrendingDown, Package, CalendarBlank as CalendarDays, ArrowRight } from '@phosphor-icons/react';
 
 type Movement = {
   id: string;

@@ -19,7 +19,7 @@ import { useProducts } from '@/hooks/useProducts';
 import { useComponentSheets, useAddComponentSheet, useUpdateComponentSheet } from '@/hooks/useComponentSheets';
 import { NumberInput } from '@/components/ui/number-input';
 import { toast } from 'sonner';
-import { X, Layers, ArrowRightLeft, Footprints, Box, Loader2 } from 'lucide-react';
+import { X, Stack as Layers, ArrowsLeftRight as ArrowRightLeft, Footprints, Cube as Box, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import React from 'react';
 import { SoleSizeConjugationsEditor } from './SoleSizeConjugationsEditor';

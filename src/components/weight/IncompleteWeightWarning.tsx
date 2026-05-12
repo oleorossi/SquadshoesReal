@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
+import { Warning as AlertTriangle, CaretDown as ChevronDown, CaretRight as ChevronRight, ArrowSquareOut as ExternalLink } from '@phosphor-icons/react';
 import { Link } from 'react-router-dom';
 import type { IncompleteWeightItem } from '@/hooks/useSaleOrderWeight';
 

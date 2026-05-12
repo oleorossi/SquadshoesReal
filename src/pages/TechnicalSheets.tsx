@@ -6,7 +6,7 @@
    return null;
  }
  
- import { ArrowRight, ChevronRight, Calculator, CheckCircle, HelpCircle } from 'lucide-react';
+ import { ArrowRight, CaretRight as ChevronRight, Calculator, CheckCircle, Question as HelpCircle } from '@phosphor-icons/react';
  function GuidedPathSelector({ sheets, products, onSelect }: { sheets: any[], products: any[], onSelect: (id: string) => void }) {
    const [selectedRef, setSelectedRef] = useState<string | null>(null);
    const [selectedMaterial, setSelectedMaterial] = useState<string | null>(null);
@@ -136,12 +136,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { SignedImage } from '@/components/ui/signed-image';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import {
-  FileText, Plus, Trash2, Pencil, Loader2, Package, Copy, Search,
-   Layers, Scissors, Droplets, Shield, Box, Footprints, Save, Wrench, Tag,
-    ImagePlus, AlertTriangle, History, Factory, Wand2, RefreshCw, Gauge, ArrowLeft, ClipboardCopy, Lock, Palette,
-    DollarSign
-} from 'lucide-react';
+import { FileText, Plus, Trash as Trash2, PencilSimple as Pencil, CircleNotch as Loader2, Package, Copy, MagnifyingGlass as Search, Stack as Layers, Scissors, Drop as Droplets, Shield, Cube as Box, Footprints, FloppyDisk as Save, Wrench, Tag, ImageSquare as ImagePlus, Warning as AlertTriangle, ClockCounterClockwise as History, Factory, MagicWand as Wand2, ArrowsClockwise as RefreshCw, Gauge, ArrowLeft, ClipboardText as ClipboardCopy, Lock, Palette, CurrencyDollar as DollarSign } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -185,7 +180,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Check, ChevronsUpDown } from 'lucide-react';
+import { Check, CaretUpDown as ChevronsUpDown } from '@phosphor-icons/react';
 import { cn, getSoleModelName, parseSafeNumber, formatCurrency as globalFormatCurrency, safeToFixed } from '@/lib/utils';
 import { getShoeSizeMappings } from '@/utils/shoeUtils';
 

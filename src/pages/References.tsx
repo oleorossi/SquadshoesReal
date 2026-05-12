@@ -1,7 +1,7 @@
 import AppLayout from "@/components/layout/AppLayout";
 import { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { SignedImage } from '@/components/ui/signed-image';
-import { BookOpen, Plus, Trash2, Pencil, Loader2, ChevronDown, ChevronUp, Package, Info, Upload, ImageIcon, Copy, Clock, Layers, Scissors, Droplets, Shield, Box, Footprints, FileText, Link, Wand2, Download, AlertTriangle } from 'lucide-react';
+import { BookOpen, Plus, Trash as Trash2, PencilSimple as Pencil, CircleNotch as Loader2, CaretDown as ChevronDown, CaretUp as ChevronUp, Package, Info, Upload, Image as ImageIcon, Copy, Clock, Stack as Layers, Scissors, Drop as Droplets, Shield, Cube as Box, Footprints, FileText, Link, MagicWand as Wand2, Download, Warning as AlertTriangle } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

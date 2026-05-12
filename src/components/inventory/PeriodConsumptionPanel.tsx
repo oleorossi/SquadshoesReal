@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { StatsCard } from '@/components/inventory/StatsCard';
-import { TrendingDown, Package, AlertTriangle, DollarSign, Loader2, AlertCircle, CheckCircle2, ShoppingCart } from 'lucide-react';
+import { TrendDown as TrendingDown, Package, Warning as AlertTriangle, CurrencyDollar as DollarSign, CircleNotch as Loader2, WarningCircle as AlertCircle, CheckCircle as CheckCircle2, ShoppingCart } from '@phosphor-icons/react';
 import { Product } from '@/types/inventory';
 
 interface ConsumedMaterial {

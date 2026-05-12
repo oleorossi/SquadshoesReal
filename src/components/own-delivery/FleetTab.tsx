@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Pencil, Trash2, Fuel, Truck, User } from 'lucide-react';
+import { Plus, PencilSimple as Pencil, Trash as Trash2, GasPump as Fuel, Truck, User } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, FileText, RefreshCw, XCircle, Download, Search, Building2, Plus, CheckCircle, AlertCircle, Clock, Calculator, Activity, FileEdit } from 'lucide-react';
+import { CircleNotch as Loader2, FileText, ArrowsClockwise as RefreshCw, XCircle, Download, MagnifyingGlass as Search, Buildings as Building2, Plus, CheckCircle, WarningCircle as AlertCircle, Clock, Calculator, Pulse as Activity, FileText as FileEdit } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';

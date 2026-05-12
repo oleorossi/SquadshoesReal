@@ -1,7 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { HubTabsList } from '@/components/layout/HubTabs';
-import { DollarSign, Hourglass, Wallet, Loader2 } from 'lucide-react';
+import { CurrencyDollar as DollarSign, Hourglass, Wallet, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 
 const Payroll = lazy(() => import('@/pages/Payroll'));

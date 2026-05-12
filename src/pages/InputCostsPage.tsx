@@ -18,10 +18,7 @@ import {
 import {
   Tooltip, TooltipContent, TooltipTrigger,
 } from '@/components/ui/tooltip';
-import {
-  TrendingUp, TrendingDown, Minus, Search, Loader2,
-  AlertTriangle, RefreshCw, PackageSearch,
-} from 'lucide-react';
+import { TrendUp as TrendingUp, TrendDown as TrendingDown, Minus, MagnifyingGlass as Search, CircleNotch as Loader2, Warning as AlertTriangle, ArrowsClockwise as RefreshCw, Package as PackageSearch } from '@phosphor-icons/react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 

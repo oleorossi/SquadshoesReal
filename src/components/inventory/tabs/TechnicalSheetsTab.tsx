@@ -1,6 +1,6 @@
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { FileText, Info, ExternalLink } from 'lucide-react';
+import { FileText, Info, ArrowSquareOut as ExternalLink } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 

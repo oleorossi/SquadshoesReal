@@ -1,4 +1,4 @@
-import { Box, Layers, PackageCheck, AlertCircle, Package } from 'lucide-react';
+import { Cube as Box, Stack as Layers, Package as PackageCheck, WarningCircle as AlertCircle, Package } from '@phosphor-icons/react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';

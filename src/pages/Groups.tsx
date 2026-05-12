@@ -1,6 +1,6 @@
 import AppLayout from "@/components/layout/AppLayout";
 import { useState } from 'react';
-import { Loader2, Plus, Pencil, Trash2, FolderOpen, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react';
+import { CircleNotch as Loader2, Plus, PencilSimple as Pencil, Trash as Trash2, FolderOpen, CaretDown as ChevronDown, CaretUp as ChevronUp, Warning as AlertTriangle } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Home, Kanban, Package, ShoppingCart, MoreHorizontal, X } from 'lucide-react';
+import { House as Home, Kanban, Package, ShoppingCart, DotsThree as MoreHorizontal, X } from '@phosphor-icons/react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { menuGroups } from '@/data/navigation';

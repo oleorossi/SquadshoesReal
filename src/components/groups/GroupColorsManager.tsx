@@ -16,7 +16,7 @@
  * 1 produto naquela cor automaticamente.
  */
 import { useState, useMemo } from 'react';
-import { Palette, Plus, X, Check, Search, Sparkles, AlertCircle, PackagePlus } from 'lucide-react';
+import { Palette, Plus, X, Check, MagnifyingGlass as Search, Sparkle as Sparkles, WarningCircle as AlertCircle, Package as PackagePlus } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

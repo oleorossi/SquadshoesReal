@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, RotateCcw, AlertTriangle } from 'lucide-react';
+import { CircleNotch as Loader2, ArrowCounterClockwise as RotateCcw, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { useEmitNfeDevolucao, useNfeDevolucoes } from '@/hooks/useNfe';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';

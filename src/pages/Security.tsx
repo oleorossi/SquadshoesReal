@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ShieldCheck, Lock, Eye, KeyRound, RefreshCcw } from 'lucide-react';
+import { ShieldCheck, Lock, Eye, Key as KeyRound, ArrowsClockwise as RefreshCcw } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
 

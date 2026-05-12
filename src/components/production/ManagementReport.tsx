@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, QrCode, Calendar, MapPin, Building2, TrendingUp, AlertTriangle } from 'lucide-react';
+import { FileText, QrCode, Calendar, MapPin, Buildings as Building2, TrendUp as TrendingUp, Warning as AlertTriangle } from '@phosphor-icons/react';
 
 export interface ReportStage {
   stage_name: string;

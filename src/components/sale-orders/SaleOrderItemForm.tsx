@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Trash2, Lock, ChevronsUpDown, Check, Package, ExternalLink, Search, Command, Palette, Plus, X, MessageSquare } from 'lucide-react';
+import { Trash as Trash2, Lock, CaretUpDown as ChevronsUpDown, Check, Package, ArrowSquareOut as ExternalLink, MagnifyingGlass as Search, Command, Palette, Plus, X, ChatText as MessageSquare } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { SaleOrderItemFormData } from '@/hooks/useSaleOrders';

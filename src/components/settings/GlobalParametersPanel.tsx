@@ -3,7 +3,7 @@
  import { Button } from '@/components/ui/button';
  import { Input } from '@/components/ui/input';
  import { Label } from '@/components/ui/label';
- import { Loader2, Save, Percent, Calculator, Settings2, Package } from 'lucide-react';
+ import { CircleNotch as Loader2, FloppyDisk as Save, Percent, Calculator, Gear as Settings2, Package } from '@phosphor-icons/react';
  import { useCostParameters, useUpdateCostParameter } from '@/hooks/useGlobalSettings';
  
  export default function GlobalParametersPanel() {

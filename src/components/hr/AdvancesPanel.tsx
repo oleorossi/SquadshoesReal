@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Loader2, Plus, Wallet, Search, AlertTriangle } from 'lucide-react';
+import { CircleNotch as Loader2, Plus, Wallet, MagnifyingGlass as Search, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import {
   useEmployees, useEmployeeAdvances, useAddAdvance, useDeleteAdvance,

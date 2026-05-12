@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { DollarSign, TrendingUp, TrendingDown, Package } from 'lucide-react';
+import { CurrencyDollar as DollarSign, TrendUp as TrendingUp, TrendDown as TrendingDown, Package } from '@phosphor-icons/react';
 import { usePurchaseOrders } from '@/hooks/usePurchaseOrders';
 import { useCogsEntries } from '@/hooks/useCogsEntries';
 import { useCostVarianceReports } from '@/hooks/useCostVariance';

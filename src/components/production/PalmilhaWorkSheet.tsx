@@ -1,5 +1,5 @@
 import React from 'react';
-import { Scissors } from 'lucide-react';
+import { Scissors } from '@phosphor-icons/react';
 import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';

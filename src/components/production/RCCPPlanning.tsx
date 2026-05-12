@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format, addMonths, startOfMonth, endOfMonth, eachDayOfInterval } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { BarChart3, AlertTriangle, CheckCircle2, Info, Gauge, Filter } from "lucide-react";
+import { ChartBar as BarChart3, Warning as AlertTriangle, CheckCircle as CheckCircle2, Info, Gauge, Funnel as Filter } from '@phosphor-icons/react';
 import { Button } from "@/components/ui/button";
 import { useHolidays } from "@/hooks/useTimesheet";
 

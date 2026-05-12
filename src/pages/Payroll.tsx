@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Loader2, DollarSign, Calculator, Settings, FileDown, CheckCircle2, Receipt } from 'lucide-react';
+import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Calculator, Gear as Settings, FileArrowDown as FileDown, CheckCircle as CheckCircle2, Receipt } from '@phosphor-icons/react';
 import { useEmployees } from '@/hooks/useEmployees';
 import {
   useBenefitsConfig, useSaveBenefitsConfig,

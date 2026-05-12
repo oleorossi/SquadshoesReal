@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { CheckCircle, AlertTriangle, Link2, Info, Baby, User } from 'lucide-react';
+import { CheckCircle, Warning as AlertTriangle, Link as Link2, Info, Baby, User } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import {
   getAvailableToPromise,

@@ -8,10 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import {
-  Loader2, ChevronLeft, ChevronRight, CalendarDays,
-  BarChart3, Info, RefreshCw,
-} from 'lucide-react';
+import { CircleNotch as Loader2, CaretLeft as ChevronLeft, CaretRight as ChevronRight, CalendarBlank as CalendarDays, ChartBar as BarChart3, Info, ArrowsClockwise as RefreshCw } from '@phosphor-icons/react';
 import {
   format, startOfWeek, addDays, addWeeks,
 } from 'date-fns';

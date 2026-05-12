@@ -10,12 +10,7 @@ import TimeValidationPanel from '@/components/timeControl/TimeValidationPanel';
 import ReportsPanel from '@/components/timeControl/ReportsPanel';
 import { OvertimeResolutionPanel } from '@/components/timesheet/OvertimeResolutionPanel';
 import { useState, useRef, useMemo, useEffect } from 'react';
-import {
-  Clock, Upload, Plus, Trash2, Loader2, Calendar, Settings2, AlertTriangle,
-  FileSpreadsheet, ChevronDown, Sun, Moon, Coffee, CheckCircle2, XCircle, MinusCircle,
-  Printer, Users2, DollarSign, Link2, Unlink2, Shield, FileText, ClipboardEdit, AlarmClock,
-  History, Wallet,
-} from 'lucide-react';
+import { Clock, Upload, Plus, Trash as Trash2, CircleNotch as Loader2, Calendar, Gear as Settings2, Warning as AlertTriangle, FileXls as FileSpreadsheet, CaretDown as ChevronDown, Sun, Moon, Coffee, CheckCircle as CheckCircle2, XCircle, MinusCircle, Printer, Users as Users2, CurrencyDollar as DollarSign, Link as Link2, Unlink2, Shield, FileText, Clipboard as ClipboardEdit, Alarm as AlarmClock, ClockCounterClockwise as History, Wallet } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

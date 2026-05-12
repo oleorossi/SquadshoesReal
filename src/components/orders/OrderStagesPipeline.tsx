@@ -1,5 +1,5 @@
-import { CheckCircle2, Clock, Circle, Scissors, Layers, Gem, Printer, Flame, Hammer, Footprints, Hand, Sparkles, Box, ScanSearch, PenLine, ClipboardList } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+import { CheckCircle as CheckCircle2, Clock, Circle, Scissors, Stack as Layers, Diamond as Gem, Printer, Flame, Hammer, Footprints, Hand, Sparkle as Sparkles, Cube as Box, MagnifyingGlass as ScanSearch, PencilLine as PenLine, ClipboardText as ClipboardList } from '@phosphor-icons/react';
+import type { Icon as LucideIcon } from '@phosphor-icons/react';
 import { OrderStage } from '@/hooks/useOrderStages';
 
 interface Props {

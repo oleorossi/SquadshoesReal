@@ -20,7 +20,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { Box, Pencil, Search, Plus, Filter, Copy, Trash2 } from 'lucide-react';
+import { Cube as Box, PencilSimple as Pencil, MagnifyingGlass as Search, Plus, Funnel as Filter, Copy, Trash as Trash2 } from '@phosphor-icons/react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDeleteIndividualPackaging, useDuplicateIndividualPackaging } from '@/hooks/usePackaging';
 

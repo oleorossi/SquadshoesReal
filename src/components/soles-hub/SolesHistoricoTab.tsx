@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, History, ArrowDown, ArrowUp, RefreshCw, ShoppingBag } from 'lucide-react';
+import { CircleNotch as Loader2, ClockCounterClockwise as History, ArrowDown, ArrowUp, ArrowsClockwise as RefreshCw, ShoppingBag } from '@phosphor-icons/react';
 import type { SoleProduct } from './types';
 
 interface Props {

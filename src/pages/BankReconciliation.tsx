@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { DataListPage } from '@/components/ui/data-list-page';
 import { Badge } from '@/components/ui/badge';
-import { Scale, Info, Upload } from 'lucide-react';
+import { Scales as Scale, Info, Upload } from '@phosphor-icons/react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';

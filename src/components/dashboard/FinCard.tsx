@@ -1,4 +1,4 @@
-import { LucideIcon, ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react';
+import { Icon as LucideIcon, ArrowUpRight, ArrowDownRight, Minus } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 
 interface FinCardProps {

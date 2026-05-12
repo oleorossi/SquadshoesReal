@@ -1,5 +1,5 @@
 import React from 'react';
-import { Footprints } from 'lucide-react';
+import { Footprints } from '@phosphor-icons/react';
 import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { SignatureFooter } from './worksheet/SignatureFooter';

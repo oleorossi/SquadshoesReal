@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Sparkles, Plus, Pencil, Trash2, Search, Loader2, Calculator, ArrowRight, Users, AlertTriangle } from 'lucide-react';
+import { Sparkle as Sparkles, Plus, PencilSimple as Pencil, Trash as Trash2, MagnifyingGlass as Search, CircleNotch as Loader2, Calculator, ArrowRight, Users, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';

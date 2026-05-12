@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Search, Edit, Package } from 'lucide-react';
+import { Plus, MagnifyingGlass as Search, PencilSimple as Edit, Package } from '@phosphor-icons/react';
 import type { IndividualPackaging } from '@/types/packaging';
 import PackagingForm from './PackagingForm';
 import { Skeleton } from '@/components/ui/skeleton';

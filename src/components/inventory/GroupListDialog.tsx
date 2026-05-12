@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Search, Package, FolderOpen, Pencil, Trash2, Wand2, Loader2, GripVertical, Palette, FileBox } from 'lucide-react';
+import { MagnifyingGlass as Search, Package, FolderOpen, PencilSimple as Pencil, Trash as Trash2, MagicWand as Wand2, CircleNotch as Loader2, DotsSixVertical as GripVertical, Palette, FileText as FileBox } from '@phosphor-icons/react';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { useGroups, useAddGroup, useUpdateGroup, useDeleteGroup, ProductGroup } from '@/hooks/useGroups';
 import { useProducts, useUpdateProduct } from '@/hooks/useProducts';

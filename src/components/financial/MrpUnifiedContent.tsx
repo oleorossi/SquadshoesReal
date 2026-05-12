@@ -1,12 +1,12 @@
 import { useState, useMemo, lazy, Suspense } from 'react';
-import { AlertTriangle, Package, ShoppingCart, Clock } from 'lucide-react';
+import { Warning as AlertTriangle, Package, ShoppingCart, Clock } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Loader2 } from 'lucide-react';
+import { CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { useMrpSuggestions, useUpdateMrpSuggestion } from '@/hooks/useMrpSuggestions';
 import { useOrders } from '@/hooks/useOrders';
 import { useProducts } from '@/hooks/useProducts';

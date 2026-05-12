@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Pencil, Palette, Save, Package, Plus, Search, Footprints, Ruler, Loader2, Box as BoxIcon, FlaskConical } from 'lucide-react';
+import { PencilSimple as Pencil, Palette, FloppyDisk as Save, Package, Plus, MagnifyingGlass as Search, Footprints, Ruler, CircleNotch as Loader2, Cube as BoxIcon, Flask as FlaskConical } from '@phosphor-icons/react';
 import { ProductGroup, useUpdateGroup } from '@/hooks/useGroups';
 import { useProducts } from '@/hooks/useProducts';
 import GroupColorsManager from '@/components/groups/GroupColorsManager';

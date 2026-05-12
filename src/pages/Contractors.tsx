@@ -3,7 +3,7 @@ import { escapeHtml } from '@/lib/htmlUtils';
 import { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Loader2, Plus, Search, Pencil, Trash2, FileText, Handshake, Printer, X, Check, ChevronsUpDown, Upload, CheckCircle2, Circle, Filter, ClipboardList, DollarSign, Clock, Users, Sparkles, ArrowRight, Package, FlaskConical, Scissors, AlertTriangle } from 'lucide-react';
+import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, Funnel as Filter, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, Sparkle as Sparkles, ArrowRight, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';

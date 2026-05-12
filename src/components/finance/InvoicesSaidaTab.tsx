@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FileText, RefreshCw, Download, Loader2, CheckCircle, XCircle, Clock, AlertCircle } from 'lucide-react';
+import { FileText, ArrowsClockwise as RefreshCw, Download, CircleNotch as Loader2, CheckCircle, XCircle, Clock, WarningCircle as AlertCircle } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';

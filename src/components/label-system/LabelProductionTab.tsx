@@ -13,11 +13,7 @@
  */
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  Tag, Search, Barcode, Settings2, BoxIcon, Package,
-  RotateCcw, Factory, ScanLine, CalendarDays,
-  Building2, Loader2, Layers, CheckCircle2, Pencil, Download
-} from 'lucide-react';
+import { Tag, MagnifyingGlass as Search, Barcode, Gear as Settings2, Package as BoxIcon, Package, ArrowCounterClockwise as RotateCcw, Factory, Scan as ScanLine, CalendarBlank as CalendarDays, Buildings as Building2, CircleNotch as Loader2, Stack as Layers, CheckCircle as CheckCircle2, PencilSimple as Pencil, Download } from '@phosphor-icons/react';
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, parseISO } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

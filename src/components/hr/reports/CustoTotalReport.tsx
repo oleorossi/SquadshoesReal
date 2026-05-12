@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, DollarSign, Download, Info } from 'lucide-react';
+import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Download, Info } from '@phosphor-icons/react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useEmployees, useEmployeeAdvances } from '@/hooks/useEmployees';
 import { useBenefitsConfig, usePayrollRuns, useBankHoursMovements } from '@/hooks/useRH';

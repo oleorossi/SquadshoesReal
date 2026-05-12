@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CurrencyInput } from '@/components/ui/currency-input';
-import { Plus, Pencil, Trash2, Landmark, Building2, Wallet } from 'lucide-react';
+import { Plus, PencilSimple as Pencil, Trash as Trash2, Bank as Landmark, Buildings as Building2, Wallet } from '@phosphor-icons/react';
 import {
   useChartOfAccounts, useCreateChartAccount, useUpdateChartAccount, useDeleteChartAccount,
   useCostCenters, useCreateCostCenter, useUpdateCostCenter, useDeleteCostCenter,

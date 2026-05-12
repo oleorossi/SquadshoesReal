@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useDebounce } from 'use-debounce';
-import { Search, X, Tag, Hash, Layers } from 'lucide-react';
+import { MagnifyingGlass as Search, X, Tag, Hash, Stack as Layers } from '@phosphor-icons/react';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';

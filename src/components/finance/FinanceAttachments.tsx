@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { Paperclip, Trash2, Download, FileText, Image, Loader2 } from 'lucide-react';
+import { Paperclip, Trash as Trash2, Download, FileText, Image, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { useFinanceAttachments, useUploadFinanceAttachment, useDeleteFinanceAttachment, type FinanceAttachment } from '@/hooks/useFinanceAttachments';
 import { supabase } from '@/integrations/supabase/client';

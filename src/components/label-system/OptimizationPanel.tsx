@@ -3,10 +3,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import {
-  Sparkles, RefreshCw, Zap, CheckCircle2, AlertTriangle, Info, Loader2,
-  Layout, Gauge, DollarSign, ShieldCheck
-} from 'lucide-react';
+import { Sparkle as Sparkles, ArrowsClockwise as RefreshCw, Lightning as Zap, CheckCircle as CheckCircle2, Warning as AlertTriangle, Info, CircleNotch as Loader2, Layout, Gauge, CurrencyDollar as DollarSign, ShieldCheck } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import type { LabelTemplate } from '@/types/label-system';
 import { analyzeTemplate, autoOptimize, type OptimizationResult, type OptimizationSuggestion } from '@/services/label-optimization';

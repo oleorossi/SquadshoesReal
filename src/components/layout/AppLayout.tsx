@@ -1,5 +1,5 @@
 import React, { useState, createContext, useContext } from 'react';
-import { LogOut, Menu, X, ChevronDown, PanelLeftClose, PanelLeftOpen, Settings, ArrowLeft, Plus, ShoppingCart, Package, Star, Home } from 'lucide-react';
+import { SignOut as LogOut, List as Menu, X, CaretDown as ChevronDown, SidebarSimple as PanelLeftClose, SidebarSimple as PanelLeftOpen, Gear as Settings, ArrowLeft, Plus, ShoppingCart, Package, Star, House as Home } from '@phosphor-icons/react';
 import { menuGroups, systemItems, topItem } from '@/data/navigation';
 import logoImg from '@/assets/logo-squad-shoes.jpg';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';

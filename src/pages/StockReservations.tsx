@@ -11,10 +11,7 @@ import { Label } from '@/components/ui/label';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import {
-  Loader2, Package, Lock, Factory, CheckCircle2,
-  ArrowUp, ArrowDown, ArrowUpDown, Eye, RefreshCw, AlertTriangle,
-} from 'lucide-react';
+import { CircleNotch as Loader2, Package, Lock, Factory, CheckCircle as CheckCircle2, ArrowUp, ArrowDown, ArrowsDownUp as ArrowUpDown, Eye, ArrowsClockwise as RefreshCw, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ProductReservationDetailsDialog from '@/components/inventory/ProductReservationDetailsDialog';
 import { SmartSearch, SmartSearchSuggestion } from '@/components/ui/smart-search';

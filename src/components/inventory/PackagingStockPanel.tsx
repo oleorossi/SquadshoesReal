@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
-import { Box, Pencil, Save, Ruler } from 'lucide-react';
+import { Box, PencilSimple as Pencil, FloppyDisk as Save, Ruler } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';

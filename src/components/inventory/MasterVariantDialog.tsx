@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
- import { Plus, Pencil, Save, Loader2, X, Image as ImageIcon, Package, Layers, Settings as SettingsIcon, ArrowRightLeft } from 'lucide-react';
+ import { Plus, PencilSimple as Pencil, FloppyDisk as Save, CircleNotch as Loader2, X, Image as ImageIcon, Package, Stack as Layers, Gear as SettingsIcon, ArrowsLeftRight as ArrowRightLeft } from '@phosphor-icons/react';
 import { Product, ProductFormData, CATEGORIES, UNITS, LOCATIONS } from '@/types/inventory';
 import { useAddProduct } from '@/hooks/useProducts';
 import { useGroups } from '@/hooks/useGroups';

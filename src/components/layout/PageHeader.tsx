@@ -1,5 +1,5 @@
 import { useLocation, Link } from 'react-router-dom';
-import { ChevronRight, Home } from 'lucide-react';
+import { CaretRight as ChevronRight, House as Home } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 
 const routeLabels: Record<string, string> = {

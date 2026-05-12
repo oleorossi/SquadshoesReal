@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, DollarSign, Calendar, Tag, Pencil } from 'lucide-react';
+import { Plus, CurrencyDollar as DollarSign, Calendar, Tag, PencilSimple as Pencil } from '@phosphor-icons/react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 

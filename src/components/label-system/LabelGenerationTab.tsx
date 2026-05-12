@@ -10,10 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
-import {
-  Loader2, Printer, Search, Tag, Download, Package, Layers,
-  FileText, Clock, CheckCircle2, AlertTriangle, Users, Filter
-} from 'lucide-react';
+import { CircleNotch as Loader2, Printer, MagnifyingGlass as Search, Tag, Download, Package, Stack as Layers, FileText, Clock, CheckCircle as CheckCircle2, Warning as AlertTriangle, Users, Funnel as Filter } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';

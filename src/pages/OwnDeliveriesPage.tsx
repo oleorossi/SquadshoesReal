@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Truck, Route as RouteIcon, ListChecks, Plus, MapPin, Coins, Fuel, Wrench, Calendar, AlertCircle, Trash2 } from 'lucide-react';
+import { Truck, Path as RouteIcon, ListChecks, Plus, MapPin, Coins, GasPump as Fuel, Wrench, Calendar, WarningCircle as AlertCircle, Trash as Trash2 } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';

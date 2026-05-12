@@ -5,7 +5,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { AlertTriangle, Activity, ArrowRight, Gauge, Hash } from 'lucide-react';
+import { Warning as AlertTriangle, Activity, ArrowRight, Gauge, Hash } from '@phosphor-icons/react';
 import type { BottleneckInfo } from '@/lib/sectorBottleneck';
 
 interface Props {

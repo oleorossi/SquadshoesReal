@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQueries } from '@tanstack/react-query';
 import { useDebounce } from 'use-debounce';
 import { useNavigate } from 'react-router-dom';
- import { Search, ClipboardList, Users, Package, FileText, X, ArrowRight, Home } from 'lucide-react';
+ import { MagnifyingGlass as Search, ClipboardText as ClipboardList, Users, Package, FileText, X, ArrowRight, House as Home } from '@phosphor-icons/react';
  import { menuGroups } from '@/data/navigation';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@/components/ui/command';

@@ -3,11 +3,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import {
-  DollarSign, TrendingUp, TrendingDown, AlertTriangle, Plus, Pencil, Trash2,
-  CheckCircle, Clock, Loader2, FileText, Building2, BarChart3, Calculator,
-   Landmark, FileUp, FileDown, UserCheck, Search, Percent, X,
-} from 'lucide-react';
+import { CurrencyDollar as DollarSign, TrendUp as TrendingUp, TrendDown as TrendingDown, Warning as AlertTriangle, Plus, PencilSimple as Pencil, Trash as Trash2, CheckCircle, Clock, CircleNotch as Loader2, FileText, Buildings as Building2, ChartBar as BarChart3, Calculator, Bank as Landmark, FileArrowUp as FileUp, FileArrowDown as FileDown, UserCheck, MagnifyingGlass as Search, Percent, X } from '@phosphor-icons/react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { format, parseISO, isAfter, isBefore, addDays, startOfMonth, endOfMonth, eachDayOfInterval, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';

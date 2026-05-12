@@ -2,10 +2,7 @@
  import { supabase } from "@/integrations/supabase/client";
  import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
  import { Badge } from "@/components/ui/badge";
- import { 
-   Loader2, AlertTriangle, Clock, TrendingUp, 
-   Scissors, PenLine, Hammer, Sparkles, Hand
- } from "lucide-react";
+ import { CircleNotch as Loader2, Warning as AlertTriangle, Clock, TrendUp as TrendingUp, Scissors, PencilLine as PenLine, Hammer, Sparkle as Sparkles, Hand } from '@phosphor-icons/react';
  import { Progress } from "@/components/ui/progress";
  import { cn } from "@/lib/utils";
  import { 

@@ -1,4 +1,4 @@
-import { Layers } from 'lucide-react';
+import { Stack as Layers } from '@phosphor-icons/react';
 import { SilkGlobalPanel } from '@/components/technical-sheets/SilkGlobalPanel';
 
 export default function SilkRegistrations() {

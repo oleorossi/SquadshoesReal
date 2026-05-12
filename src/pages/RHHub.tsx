@@ -1,9 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  LayoutDashboard, Users, AlarmClock, DollarSign, FileText, Loader2,
-} from 'lucide-react';
+import { SquaresFour as LayoutDashboard, Users, Alarm as AlarmClock, CurrencyDollar as DollarSign, FileText, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 
 const PainelRH         = lazy(() => import('@/components/hr/PainelRH'));

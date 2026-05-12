@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Calendar, Truck, AlertTriangle, ShoppingCart, Loader2, Save } from 'lucide-react';
+import { Calendar, Truck, Warning as AlertTriangle, ShoppingCart, CircleNotch as Loader2, FloppyDisk as Save } from '@phosphor-icons/react';
 import { MaterialAvailabilityResult } from '@/lib/materialAvailability';
 import { SubmitFlowStepper } from './SubmitFlowStepper';
  import { useUpsertOpenPurchaseOrder } from '@/hooks/usePurchaseOrders';

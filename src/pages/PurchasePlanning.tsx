@@ -1,9 +1,9 @@
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { HubTabsList } from '@/components/layout/HubTabs';
-import { ShoppingCart, BarChart3, Calculator, CalendarDays, AlertTriangle, CalendarClock, Workflow, Info, TrendingUp } from 'lucide-react';
+import { ShoppingCart, ChartBar as BarChart3, Calculator, CalendarBlank as CalendarDays, Warning as AlertTriangle, CalendarBlank as CalendarClock, FlowArrow as Workflow, Info, TrendUp as TrendingUp } from '@phosphor-icons/react';
 import { lazy, Suspense } from 'react';
-import { Loader2 } from 'lucide-react';
+import { CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { useSearchParams } from 'react-router-dom';
 
 const PurchasePlanningWizard = lazy(() => import('@/components/financial/PurchasePlanningWizard'));

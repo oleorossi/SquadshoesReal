@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Hash, ArrowRight, FastForward, Calendar, GripVertical, CheckSquare, Pin, AlertTriangle, Filter, FileDown, FileText, EyeOff, Clock, Scissors, Layers, Gem, Printer, Flame, Hammer, Footprints, Hand, Sparkles, Truck } from "lucide-react";
+import { CircleNotch as Loader2, Hash, ArrowRight, FastForward, Calendar, DotsSixVertical as GripVertical, CheckSquare, Pin, Warning as AlertTriangle, Funnel as Filter, FileArrowDown as FileDown, FileText, EyeSlash as EyeOff, Clock, Scissors, Stack as Layers, Gem, Printer, Flame, Hammer, Footprints, Hand, Sparkle as Sparkles, Truck } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
 import type { BottleneckInfo } from "@/lib/sectorBottleneck";
 import { OrderDetailsModal } from "./OrderDetailsModal";

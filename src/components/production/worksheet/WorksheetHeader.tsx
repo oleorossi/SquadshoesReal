@@ -1,5 +1,5 @@
 import React from 'react';
-import { QrCode } from 'lucide-react';
+import { QrCode } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 
 interface Props {

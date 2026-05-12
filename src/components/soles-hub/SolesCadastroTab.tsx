@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Save, Pencil, Settings2, Layers, Palette, Link2, Plus } from 'lucide-react';
+import { FloppyDisk as Save, PencilSimple as Pencil, Gear as Settings2, Stack as Layers, Palette, Link as Link2, Plus } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { SoleSizeConjugationsEditor } from '@/components/inventory/SoleSizeConjugationsEditor';
 import type { SoleProduct } from './types';

@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useProducaoKPIs, PeriodFilter } from '@/hooks/useProducaoKPIs';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
-import { TrendingUp, TrendingDown, Target, Clock, AlertTriangle, BarChart3, Package, RotateCw, ShieldCheck, Wrench, Bug } from 'lucide-react';
+import { TrendUp as TrendingUp, TrendDown as TrendingDown, Target, Clock, Warning as AlertTriangle, ChartBar as BarChart3, Package, ArrowClockwise as RotateCw, ShieldCheck, Wrench, Bug } from '@phosphor-icons/react';
 
 const PERIOD_OPTIONS: { value: PeriodFilter; label: string }[] = [
   { value: '7d', label: 'Últimos 7 dias' },

@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { QrCode, Scissors, Hammer, Footprints, Package, Layers, Wind, Paintbrush, LayoutGrid, Pen, Truck } from 'lucide-react';
+import { QrCode, Scissors, Hammer, Footprints, Package, Stack as Layers, Wind, PaintBrush as Paintbrush, GridFour as LayoutGrid, Pen, Truck } from '@phosphor-icons/react';
 import { getProductImage } from '@/utils/productUtils';
 import { ProductionOrder } from '@/types/inventory';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';

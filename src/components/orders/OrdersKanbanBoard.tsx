@@ -15,7 +15,7 @@
  */
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Filter, Plus, AlertTriangle } from 'lucide-react';
+import { Funnel as Filter, Plus, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { OrderStage } from '@/hooks/useOrderStages';

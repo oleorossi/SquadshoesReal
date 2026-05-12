@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { NumberInput } from '@/components/ui/number-input';
 import { Badge } from '@/components/ui/badge';
-import { X, Plus } from 'lucide-react';
+import { X, Plus } from '@phosphor-icons/react';
 import { ProductFormData, UNITS, LOCATIONS } from '@/types/inventory';
 import { deriveCategoryFromGroup } from '@/lib/categoryFromGroup';
 import { useGroups } from '@/hooks/useGroups';

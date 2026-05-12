@@ -19,7 +19,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { NumberInput } from '@/components/ui/number-input';
-import { Layers, Plus, X, Loader2, Sparkles } from 'lucide-react';
+import { Stack as Layers, Plus, X, CircleNotch as Loader2, Sparkle as Sparkles } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useGroups } from '@/hooks/useGroups';

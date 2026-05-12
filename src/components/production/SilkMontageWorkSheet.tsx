@@ -1,5 +1,5 @@
 import React from 'react';
-import { Paintbrush, Hammer, Pen, Paperclip, Sparkles, Cloud } from 'lucide-react';
+import { PaintBrush as Paintbrush, Hammer, Pen, Paperclip, Sparkle as Sparkles, Cloud } from '@phosphor-icons/react';
 import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { ProductImageBlock } from './worksheet/ProductImageBlock';

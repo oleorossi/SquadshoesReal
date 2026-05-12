@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
  import { Switch } from '@/components/ui/switch';
- import { Calculator, Info } from 'lucide-react';
+ import { Calculator, Info } from '@phosphor-icons/react';
  import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import type { GroupSupplierMaterial } from '@/hooks/useGroupSuppliers';
 import { CONSUMPTION_UNITS_BY_GROUP } from '@/lib/measurementUnits';

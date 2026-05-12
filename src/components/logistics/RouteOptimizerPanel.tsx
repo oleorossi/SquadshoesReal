@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
-import { Truck, Trash2, Loader2, Navigation, Search, Check, Store, RotateCcw, ClipboardList, AlertTriangle, Eraser } from 'lucide-react';
+import { Truck, Trash as Trash2, CircleNotch as Loader2, NavigationArrow as Navigation, MagnifyingGlass as Search, Check, Storefront as Store, ArrowCounterClockwise as RotateCcw, ClipboardText as ClipboardList, Warning as AlertTriangle, Eraser } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';

@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight } from '@phosphor-icons/react';
 import { cn } from "@/lib/utils";
 import { getDashboardPeriodRange, type DashboardPeriod } from "@/lib/dashboardPeriod";
 

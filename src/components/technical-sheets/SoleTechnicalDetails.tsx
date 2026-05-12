@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Footprints, Save, Loader2, RefreshCw, Layers, Shield, Plus, X, Copy, Info, Search, Link2, AlertTriangle, ChevronDown, Calculator } from "lucide-react";
+import { Footprints, FloppyDisk as Save, CircleNotch as Loader2, ArrowsClockwise as RefreshCw, Stack as Layers, Shield, Plus, X, Copy, Info, MagnifyingGlass as Search, Link as Link2, Warning as AlertTriangle, CaretDown as ChevronDown, Calculator } from '@phosphor-icons/react';
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { SoleConjugationPanel } from "@/components/inventory/SoleConjugationPanel";

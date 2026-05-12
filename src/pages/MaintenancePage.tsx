@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Wrench, Plus, AlertTriangle, CheckCircle2, Clock, Settings2, History, ClipboardList, Download, FileText } from "lucide-react";
+import { Wrench, Plus, Warning as AlertTriangle, CheckCircle as CheckCircle2, Clock, Gear as Settings2, ClockCounterClockwise as History, ClipboardText as ClipboardList, Download, FileText } from '@phosphor-icons/react';
 import { format, differenceInDays, isPast, isWithinInterval, startOfDay, endOfDay, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {

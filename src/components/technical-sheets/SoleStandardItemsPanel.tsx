@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
- import { Plus, Trash2, Save, Loader2, Layers, Wand2, Sparkles, Search, X } from 'lucide-react';
+ import { Plus, Trash as Trash2, FloppyDisk as Save, CircleNotch as Loader2, Stack as Layers, MagicWand as Wand2, Sparkle as Sparkles, MagnifyingGlass as Search, X } from '@phosphor-icons/react';
  import { Button } from '@/components/ui/button';
  import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';

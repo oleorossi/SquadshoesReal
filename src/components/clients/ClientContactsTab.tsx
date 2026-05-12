@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { User, Plus, Loader2, Star, Edit2, Trash2, X, Mail, Phone, MessageCircle } from 'lucide-react';
+import { User, Plus, CircleNotch as Loader2, Star, PencilSimple as Edit2, Trash as Trash2, X, Envelope as Mail, Phone, ChatCircle as MessageCircle } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 
 type ContactForm = {

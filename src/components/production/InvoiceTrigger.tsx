@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { FileCheck, Loader2 } from 'lucide-react';
+import { FileText as FileCheck, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { ProductionOrder } from '@/types/inventory';
 

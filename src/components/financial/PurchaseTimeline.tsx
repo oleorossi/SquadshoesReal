@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { CalendarClock, AlertTriangle, Truck, Clock, ShoppingCart, Loader2, Package, CheckCircle2 } from 'lucide-react';
+import { CalendarBlank as CalendarClock, Warning as AlertTriangle, Truck, Clock, ShoppingCart, CircleNotch as Loader2, Package, CheckCircle as CheckCircle2 } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';

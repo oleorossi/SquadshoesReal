@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { PackageCheck, AlertTriangle, Loader2 } from 'lucide-react';
+import { Package as PackageCheck, Warning as AlertTriangle, CircleNotch as Loader2 } from '@phosphor-icons/react';
 
 interface Props {
   referenceId: string;

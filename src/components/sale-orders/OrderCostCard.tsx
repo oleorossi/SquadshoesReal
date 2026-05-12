@@ -1,7 +1,7 @@
 import { useOrderCost } from "@/hooks/useOrderCost";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2 } from "lucide-react";
+import { CircleNotch as Loader2 } from '@phosphor-icons/react';
 
 const BRL = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });

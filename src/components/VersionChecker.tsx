@@ -1,6 +1,6 @@
  import { useEffect, useState, useCallback } from "react";
  import { toast } from "sonner";
- import { RefreshCw, X, AlertCircle, Keyboard } from "lucide-react";
+ import { ArrowsClockwise as RefreshCw, X, WarningCircle as AlertCircle, Keyboard } from '@phosphor-icons/react';
  
  const RELOAD_COOLDOWN_MS = 15_000;
  const POLL_INTERVAL_MS = 5 * 60 * 1000;

@@ -1,6 +1,6 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { AlertTriangle, CheckCircle, ShoppingCart } from 'lucide-react';
+import { Warning as AlertTriangle, CheckCircle, ShoppingCart } from '@phosphor-icons/react';
 import {
   getAvailableToPromise,
   validateMaterialAvailability,

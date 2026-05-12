@@ -1,10 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import {
-  Plus, Pencil, Loader2, Search, Image as ImageIcon,
-  User, Users as UsersIcon, Save, Upload, X, Footprints,
-} from 'lucide-react';
+import { Plus, PencilSimple as Pencil, CircleNotch as Loader2, MagnifyingGlass as Search, Image as ImageIcon, User, Users as UsersIcon, FloppyDisk as Save, Upload, X, Footprints } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';

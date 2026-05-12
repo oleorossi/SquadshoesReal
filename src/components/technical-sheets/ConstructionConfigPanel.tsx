@@ -2,7 +2,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { NumberInput } from '@/components/ui/number-input';
 import { Badge } from '@/components/ui/badge';
-import { Scissors, Sparkles, Info, Package, Layers, Printer } from 'lucide-react';
+import { Scissors, Sparkle as Sparkles, Info, Package, Stack as Layers, Printer } from '@phosphor-icons/react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
 

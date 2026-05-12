@@ -7,7 +7,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Lock, Factory } from 'lucide-react';
+import { CircleNotch as Loader2, Lock, Factory } from '@phosphor-icons/react';
 
 interface Props {
   productId: string | null;

@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Warning as AlertTriangle, CheckCircle as CheckCircle2 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
 

@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Factory, Package, AlertTriangle, ClipboardList, TrendingDown, Layers, CheckCircle2, ArrowDownCircle, ArrowUpCircle, BarChart3, Loader2 } from 'lucide-react';
+import { Factory, Package, Warning as AlertTriangle, ClipboardText as ClipboardList, TrendDown as TrendingDown, Stack as Layers, CheckCircle as CheckCircle2, ArrowCircleDown as ArrowDownCircle, ArrowCircleUp as ArrowUpCircle, ChartBar as BarChart3, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { StockHistoryTab } from '@/components/production/StockHistoryTab';
 import ProducaoKPIsTab from '@/components/production/ProducaoKPIsTab';
 

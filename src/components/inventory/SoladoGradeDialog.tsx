@@ -15,7 +15,7 @@ import { useProducts } from '@/hooks/useProducts';
 import { useSoleConjugations } from '@/hooks/useSoleConjugations';
 import { getSoleModelName } from '@/lib/utils';
 import { toast } from 'sonner';
-import { Search, Plus, Package, Palette, Info, Link2, Check } from 'lucide-react';
+import { MagnifyingGlass as Search, Plus, Package, Palette, Info, Link as Link2, Check } from '@phosphor-icons/react';
 
 interface SoladoGradeDialogProps {
   open: boolean;

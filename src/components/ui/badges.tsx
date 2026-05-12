@@ -1,8 +1,5 @@
 import * as React from 'react';
-import {
-  CheckCircle2, AlertTriangle, XCircle,
-  TrendingUp, TrendingDown, ArrowUp, ArrowDown,
-} from 'lucide-react';
+import { CheckCircle as CheckCircle2, Warning as AlertTriangle, XCircle, TrendUp as TrendingUp, TrendDown as TrendingDown, ArrowUp, ArrowDown } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 
 // ─── Color palettes (semantic — exempt from design-token rule per CLAUDE.md) ───

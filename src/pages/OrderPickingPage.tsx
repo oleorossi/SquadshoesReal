@@ -8,10 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  PackageCheck, Search, ChevronDown, ChevronRight,
-  Truck, AlertTriangle, Clock, XCircle, CheckCircle2, CalendarDays,
-} from 'lucide-react';
+import { Package as PackageCheck, MagnifyingGlass as Search, CaretDown as ChevronDown, CaretRight as ChevronRight, Truck, Warning as AlertTriangle, Clock, XCircle, CheckCircle as CheckCircle2, CalendarBlank as CalendarDays } from '@phosphor-icons/react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';

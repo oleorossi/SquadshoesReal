@@ -21,7 +21,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { NumberInput } from '@/components/ui/number-input';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
- import { ArrowLeft, Save, Trash2, Package, Loader2, ImageIcon, X, Layers, Footprints, History, PlusCircle, MinusCircle, AlertTriangle } from 'lucide-react';
+ import { ArrowLeft, FloppyDisk as Save, Trash as Trash2, Package, CircleNotch as Loader2, Image as ImageIcon, X, Stack as Layers, Footprints, ClockCounterClockwise as History, PlusCircle, MinusCircle, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { cn, stripColorFromName } from '@/lib/utils';
 import { toast } from 'sonner';
 import { z } from 'zod';

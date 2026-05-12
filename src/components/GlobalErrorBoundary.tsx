@@ -1,5 +1,5 @@
 import React, { ReactNode } from 'react';
-import { AlertCircle, RefreshCw } from 'lucide-react';
+import { WarningCircle as AlertCircle, ArrowsClockwise as RefreshCw } from '@phosphor-icons/react';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { clearStalePwaArtifacts } from '@/utils/pwa-utils';

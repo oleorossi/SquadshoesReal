@@ -2,7 +2,7 @@ import { useBoxTypes } from '@/hooks/useTransport';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Box } from 'lucide-react';
+import { Plus, Box } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 

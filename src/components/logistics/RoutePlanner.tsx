@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Map, MapPin, Truck, ExternalLink } from 'lucide-react';
+import { MapTrifold as Map, MapPin, Truck, ArrowSquareOut as ExternalLink } from '@phosphor-icons/react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';

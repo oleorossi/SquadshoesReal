@@ -8,10 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
-import {
-  Type, Barcode, QrCode, Image, Hash, Calendar, ArrowLeft,
-  ZoomIn, ZoomOut, Grid3X3, Eye, Save, Trash2, Copy, Layers, GripVertical, MousePointer
-} from 'lucide-react';
+import { TextT as Type, Barcode, QrCode, Image, Hash, Calendar, ArrowLeft, MagnifyingGlassPlus as ZoomIn, MagnifyingGlassMinus as ZoomOut, GridFour as Grid3X3, Eye, FloppyDisk as Save, Trash as Trash2, Copy, Stack as Layers, DotsSixVertical as GripVertical, Cursor as MousePointer } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import type { LabelTemplate, LabelField } from '@/types/label-system';
 

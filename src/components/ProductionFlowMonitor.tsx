@@ -2,7 +2,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
-import { Scissors, Hammer, PackageCheck, ChevronRight, LucideIcon } from 'lucide-react';
+import { Scissors, Hammer, Package as PackageCheck, CaretRight as ChevronRight, Icon as LucideIcon } from '@phosphor-icons/react';
 
 interface SectorStatus {
   name: string;

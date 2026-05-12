@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, Scissors, Hammer, Sparkles, ShoppingCart, Warehouse, CalendarCheck, Search, AlertTriangle, PenLine, FileText, Hand, Clock, FileDown, Layers, Workflow, CheckCircle2, Calendar } from 'lucide-react';
+import { CircleNotch as Loader2, Scissors, Hammer, Sparkle as Sparkles, ShoppingCart, Warehouse, CalendarCheck, MagnifyingGlass as Search, Warning as AlertTriangle, PencilLine as PenLine, FileText, Hand, Clock, FileArrowDown as FileDown, Stack as Layers, FlowArrow as Workflow, CheckCircle as CheckCircle2, Calendar } from '@phosphor-icons/react';
 import { format, parseISO, isBefore, isToday, differenceInCalendarDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import * as XLSX from 'xlsx';

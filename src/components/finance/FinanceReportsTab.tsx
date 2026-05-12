@@ -10,10 +10,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
 } from 'recharts';
-import {
-  TrendingUp, Users, Clock, AlertTriangle, Printer,
-  BarChart3, ArrowUpDown, DollarSign, Building2,
-} from 'lucide-react';
+import { TrendUp as TrendingUp, Users, Clock, Warning as AlertTriangle, Printer, ChartBar as BarChart3, ArrowsDownUp as ArrowUpDown, CurrencyDollar as DollarSign, Buildings as Building2 } from '@phosphor-icons/react';
 import { differenceInDays, parseISO, format, startOfMonth, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useAccountsPayable, useAccountsReceivable } from '@/hooks/useFinance';

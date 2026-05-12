@@ -1,6 +1,6 @@
 import { useEffect, useState, lazy, Suspense } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Package, LayoutGrid, Bell, Minus, History, Ribbon } from 'lucide-react';
+import { Package, GridFour as LayoutGrid, Bell, Minus, ClockCounterClockwise as History, Medal as Ribbon } from '@phosphor-icons/react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useIsAdmin } from '@/hooks/useUserManagement';
 import { Button } from '@/components/ui/button';

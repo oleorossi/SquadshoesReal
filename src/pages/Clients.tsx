@@ -1,7 +1,7 @@
 import AppLayout from "@/components/layout/AppLayout";
 import { useState, useMemo } from 'react';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Users, Plus, Loader2, Pencil, Trash2, Search, Building2, ChevronDown, FileUp, Store, Check, Star, RefreshCw, ExternalLink } from 'lucide-react';
+import { Users, Plus, CircleNotch as Loader2, PencilSimple as Pencil, Trash as Trash2, MagnifyingGlass as Search, Buildings as Building2, CaretDown as ChevronDown, FileArrowUp as FileUp, Storefront as Store, Check, Star, ArrowsClockwise as RefreshCw, ArrowSquareOut as ExternalLink } from '@phosphor-icons/react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

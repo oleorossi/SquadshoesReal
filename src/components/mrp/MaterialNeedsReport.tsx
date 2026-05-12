@@ -1,4 +1,4 @@
-import { ShoppingCart, AlertCircle, ArrowDownToLine } from 'lucide-react';
+import { ShoppingCart, WarningCircle as AlertCircle, ArrowLineDown as ArrowDownToLine } from '@phosphor-icons/react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';

@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Info, Lock, Unlock, Layers } from 'lucide-react';
+import { Info, Lock, LockOpen as Unlock, Stack as Layers } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 

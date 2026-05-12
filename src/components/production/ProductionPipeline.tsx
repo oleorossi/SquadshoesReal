@@ -1,4 +1,4 @@
-import { Scissors, Layers, LayoutGrid, Pen, Paintbrush, Wind, Hammer, Footprints, Package, Truck } from "lucide-react";
+import { Scissors, Stack as Layers, GridFour as LayoutGrid, Pen, PaintBrush as Paintbrush, Wind, Hammer, Footprints, Package, Truck } from '@phosphor-icons/react';
 
 // Ordem canônica pós PR1-PR3: prep (Palmilha‖Forração‖Aviamento) → Costura → restantes.
 const STEPS = [

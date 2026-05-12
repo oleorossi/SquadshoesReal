@@ -7,7 +7,7 @@ import {
   TableHeader, 
   TableRow 
 } from "@/components/ui/table";
-import { ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { ArrowUp, ArrowDown, ArrowsDownUp as ArrowUpDown } from '@phosphor-icons/react';
 import { cn } from "@/lib/utils";
 
 export interface Column {

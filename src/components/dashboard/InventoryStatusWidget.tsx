@@ -1,4 +1,4 @@
- import { Package, Palette, Ruler, CheckCircle2 } from 'lucide-react';
+ import { Package, Palette, Ruler, CheckCircle as CheckCircle2 } from '@phosphor-icons/react';
  import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
  import { Badge } from '@/components/ui/badge';
  import { cn } from '@/lib/utils';

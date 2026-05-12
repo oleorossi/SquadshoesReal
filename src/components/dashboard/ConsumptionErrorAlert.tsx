@@ -5,7 +5,7 @@
  * (issues + payload bruto recebido) para diagnóstico/suporte.
  */
 import { useState } from 'react';
-import { AlertTriangle, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { Warning as AlertTriangle, Copy, Check, CaretDown as ChevronDown, CaretUp as ChevronUp } from '@phosphor-icons/react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';

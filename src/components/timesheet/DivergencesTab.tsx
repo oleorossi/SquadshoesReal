@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { AlertTriangle, Plus, Users2, User, Clock, Search } from 'lucide-react';
+import { Warning as AlertTriangle, Plus, Users as Users2, User, Clock, MagnifyingGlass as Search } from '@phosphor-icons/react';
 import { getBatchDateRange } from '@/lib/timeControlFilters';
 
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];

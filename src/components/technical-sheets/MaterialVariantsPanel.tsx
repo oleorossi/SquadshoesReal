@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, Layers, FileText, Tag, X, Palette } from 'lucide-react';
+import { Plus, PencilSimple as Pencil, Trash as Trash2, Stack as Layers, FileText, Tag, X, Palette } from '@phosphor-icons/react';
 import {
   useReferenceMaterialVariants,
   useUpsertReferenceMaterialVariant,

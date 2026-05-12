@@ -2,11 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-   AlertTriangle, TrendingUp, TrendingDown, DollarSign, Wallet,
-   ArrowUpRight, ArrowDownRight, AlertCircle, Info, Sparkles, ChevronRight,
-   CheckCircle, Loader2,
-} from 'lucide-react';
+import { Warning as AlertTriangle, TrendUp as TrendingUp, TrendDown as TrendingDown, CurrencyDollar as DollarSign, Wallet, ArrowUpRight, ArrowDownRight, WarningCircle as AlertCircle, Info, Sparkle as Sparkles, CaretRight as ChevronRight, CheckCircle, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { useFinanceAlerts, useFinanceKPIs, useCashFlowProjection } from '@/hooks/useFinanceIntelligence';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart, ReferenceLine } from 'recharts';
 import { format, parseISO } from 'date-fns';

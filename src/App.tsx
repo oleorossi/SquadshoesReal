@@ -8,7 +8,7 @@ import { createBrowserRouter, RouterProvider, Navigate, Outlet, useLocation, use
 import { useAuth } from "@/hooks/useAuth";
 import { useCurrentProfile } from "@/hooks/useUserManagement";
 import { useAccessControl } from "@/hooks/useAccessControl";
-import { Loader2, ShieldAlert, RefreshCw, LogIn } from "lucide-react";
+import { CircleNotch as Loader2, ShieldWarning as ShieldAlert, ArrowsClockwise as RefreshCw, SignIn as LogIn } from '@phosphor-icons/react';
 import { Button } from "@/components/ui/button";
  import { lazy, Suspense, useState, useEffect } from "react";
 import ScrollRestorationComponent from "@/components/ScrollRestoration";

@@ -1,5 +1,5 @@
 import CreatePurchaseOrderDialog from "@/components/purchase/CreatePurchaseOrderDialog";
-import { Plus } from 'lucide-react';
+import { Plus } from '@phosphor-icons/react';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
 import { useState, useMemo, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { ShoppingCart, Eye, Trash2, CheckCircle2, XCircle, Send, Zap, Search, ClipboardList, FileText, AlertTriangle, CalendarClock, Loader2, Footprints, FileDown } from 'lucide-react';
+import { ShoppingCart, Eye, Trash as Trash2, CheckCircle as CheckCircle2, XCircle, PaperPlaneRight as Send, Lightning as Zap, MagnifyingGlass as Search, ClipboardText as ClipboardList, FileText, Warning as AlertTriangle, CalendarBlank as CalendarClock, CircleNotch as Loader2, Footprints, FileArrowDown as FileDown } from '@phosphor-icons/react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import SolePurchaseTab from '@/components/purchase/SolePurchaseTab';
 import { printPurchaseOrderGrouped, printSupplierPOs } from '@/lib/printPurchaseOrder';
