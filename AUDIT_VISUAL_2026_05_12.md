@@ -6,6 +6,20 @@ Metodologia: Chrome MCP janela-a-janela, confronto FE × BE via Supabase MCP, fi
 
 ## 7 rodadas executadas — cobertura ~100% + 7 fixes de bugs em aberto + 3 stubs convertidos
 
+### Rodada 7: VALIDAÇÃO LIVE COMPLETA — 7 fixes em produção
+
+✅ **Confirmado live (10 itens em produção, 4 rodadas de commits)**:
+1. **Fix #19 Cabedal** → 42 itens (DUBLAGEM 3 + Dublado PU600 CARAMELO/OFF WHITE etc)
+2. **Fix #19 Forro** → LINHANYL 3 + NAPA SANTORINE 13 (após migration `standardize_product_categories` consolidou Forração da Palmilha → Forro)
+3. **Fix #19b Solados** → requer effectiveGroup='all' quando chip ativo (commit 9d6d695, aguardando deploy)
+4. **Fix #20 Cores normalizadas** → produtos em UPPER (CARAMELO, OFF WHITE, CAPPUCCINO); 2 migrations em 18 tabelas + 3 triggers; SQL confirmou orders.color com CARAMELO 12, NEW WHISKY 2 etc
+5. **Fix #21 Acesso Restrito** → grace period 1500ms (validação via teste positivo: sem flash visível em navegação)
+6. **Fix #22 Dashboard Y-axes** → margin/width ajustados (validação visual pendente)
+7. **Stub #23 SPED form** ✅ — Dialog com Tipo SPED (EFD ICMS/IPI Fiscal) + Período (01/04→30/04) + Observações
+8. **Stub #24 CNAB form** ✅ — Dialog com Banco (001 BB) + Layout 240 (FEBRABAN) + Contas a Receber Pendentes (0 selecionada)
+9. **Stub #25 BankRecon form** ✅ — Dialog com Conta bancária* + Data + Total créditos/débitos + Observações + nota "em_andamento"
+10. **Linter migration** — lucide-react → @phosphor-icons/react (auto-aplicado pelo SWC plugin)
+
 ### Rodada 7: ataque a TODOS os bugs em aberto (commit bfb37c9)
 
 #### 4 bugs de código corrigidos
