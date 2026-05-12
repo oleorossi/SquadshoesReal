@@ -320,7 +320,12 @@ Deno.serve(async (req) => {
         "calculate_sale_order_weight",
         { p_sale_order_id: sale_order_id },
       );
-      if (!weightErr && weightData) {
+      if (weightErr) {
+        console.warn(
+          "[emit-nfe] calculate_sale_order_weight falhou — NF-e seguirá sem peso (provedor preencherá default):",
+          weightErr.message,
+        );
+      } else if (weightData) {
         const wd: any = weightData;
         const net = Number(wd.net_weight_kg) || 0;
         const gross = Number(wd.gross_weight_kg) || 0;
@@ -334,11 +339,16 @@ Deno.serve(async (req) => {
         if (wd.is_complete === false && Array.isArray(wd.incomplete_items)) {
           const n = wd.incomplete_items.length;
           weightWarning = `Peso parcial: ${n} item(s) sem cadastro de peso na ficha técnica.`;
+          console.warn(
+            `[emit-nfe] PV ${sale_order_id} com peso parcial — ${n} ficha(s) sem cadastro.`,
+          );
         }
       }
-    } catch (_e) {
-      // Cálculo de peso é melhor-esforço — se falhar, segue sem peso
-      // (GestaoClick preenche default). Não bloqueia a emissão.
+    } catch (e) {
+      console.warn(
+        "[emit-nfe] Exceção ao calcular peso — NF-e seguirá sem peso:",
+        e instanceof Error ? e.message : String(e),
+      );
     }
 
     const informacoesComplementares = [

@@ -132,7 +132,8 @@
    );
  }
  
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { SignedImage } from '@/components/ui/signed-image';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -285,6 +286,20 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
   const [cloneNewName, setCloneNewName] = useState<string>('');
   const [cloneSearchTerm, setCloneSearchTerm] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Deep-link via ?ref=<id> (usado pelo IncompleteWeightWarning em outras
+  // telas pra pular direto pra ficha que precisa cadastrar peso).
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const refFromUrl = searchParams.get('ref');
+    if (refFromUrl && refFromUrl !== expandedId) {
+      setExpandedId(refFromUrl);
+      // Remove o param da URL pra não re-disparar em outras navegações
+      const next = new URLSearchParams(searchParams);
+      next.delete('ref');
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
   const [imageDialogSheet, setImageDialogSheet] = useState<any>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [soleFilter, setSoleFilter] = useState<string>('all');

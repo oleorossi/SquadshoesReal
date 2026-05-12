@@ -259,12 +259,19 @@ function MdfeEditorDialog({
     const totalPairs = weightsBatch.reduce((s, w) => s + w.totalPairs, 0);
     const totalWeight = weightsBatch.reduce((s, w) => s + w.grossWeightKg, 0);
     const allIncomplete = weightsBatch.flatMap(w => w.incompleteItems);
+    // NF-es que existem em nfe_emitidas mas têm sale_order_id NULL
+    // (NF-es legadas/avulsas sem PV vinculado). Sem isso, peso some do
+    // totalizador silenciosamente — operador pensa que somou, mas faltou.
+    const chavesSemPv = nfeRows
+      .filter((r) => !r.sale_order_id)
+      .map((r) => r.chave_acesso);
     return {
       totalPairs,
       totalWeightKg: Math.round(totalWeight * 1000) / 1000,
       incompleteItems: allIncomplete,
       hasMissingChaves: parsedChaves.length > nfeRows.length,
       missingChaves: parsedChaves.filter(c => !nfeRows.some(r => r.chave_acesso === c)),
+      chavesSemPv,
     };
   }, [weightsBatch, parsedChaves, nfeRows]);
 
@@ -435,6 +442,11 @@ function MdfeEditorDialog({
                 {aggregated.hasMissingChaves && (
                   <div className="rounded-md border border-amber-300 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
                     <strong>{aggregated.missingChaves.length}</strong> chave(s) não encontrada(s) em nfe_emitidas — ignoradas no cálculo.
+                  </div>
+                )}
+                {aggregated.chavesSemPv.length > 0 && (
+                  <div className="rounded-md border border-amber-300 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+                    <strong>{aggregated.chavesSemPv.length}</strong> NF-e(s) sem PV vinculado — peso não pôde ser somado. Vincule o PV em /nfe ou edite peso manualmente.
                   </div>
                 )}
                 {aggregated.incompleteItems.length > 0 && (

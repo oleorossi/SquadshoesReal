@@ -79,7 +79,13 @@ export function useSaleOrdersWeightBatch(saleOrderIds: string[]) {
             'calculate_sale_order_weight',
             { p_sale_order_id: id },
           );
-          if (error) return null;
+          if (error) {
+            // Log explícito pra operador notar quando peso de algum PV
+            // não entrou no totalizador (antes era silenciado e o user
+            // via peso parcial sem aviso).
+            console.warn('[useSaleOrdersWeightBatch] calculate_sale_order_weight falhou para PV:', id, error);
+            return null;
+          }
           const r = data as RawResult;
           return {
             saleOrderId: r.sale_order_id,
