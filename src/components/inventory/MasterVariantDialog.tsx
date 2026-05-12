@@ -221,14 +221,9 @@ function VariantDetailSheet({ open, onOpenChange, product, otherVariants }: {
                 <Label className="text-xs">Estoque mínimo</Label>
                 <Input type="number" min={0} value={form.min_stock ?? 0} onChange={e => update('min_stock', Number(e.target.value))} className="mt-1 h-9 font-mono" />
               </div>
-              <div>
-                <Label className="text-xs">Estoque máximo</Label>
-                <Input type="number" min={0} value={form.max_stock ?? 0} onChange={e => update('max_stock', Number(e.target.value))} className="mt-1 h-9 font-mono" />
-              </div>
-              <div>
-                <Label className="text-xs">Estoque de segurança</Label>
-                <Input type="number" min={0} value={form.safety_stock ?? 0} onChange={e => update('safety_stock', Number(e.target.value))} className="mt-1 h-9 font-mono" />
-              </div>
+              {/* Removidos em 2026-05 a pedido do usuário:
+                  - "Estoque máximo": nunca usado em business logic
+                  - "Estoque de segurança": duplicava conceitualmente o mínimo */}
               <div>
                 <Label className="text-xs">Reservado</Label>
                 <Input type="number" min={0} value={form.reserved_stock ?? 0} onChange={e => update('reserved_stock', Number(e.target.value))} className="mt-1 h-9 font-mono" />

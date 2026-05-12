@@ -546,10 +546,9 @@ export default function ProductDetail() {
                   <NumberInput min={0} step="0.0001" value={form.quantity} onChange={v => update('quantity', v)} className="mt-1" />
                 </div>
               )}
-              <div>
-                <Label>Estoque Máximo</Label>
-                <NumberInput min={0} step="0.0001" value={form.max_stock} onChange={v => update('max_stock', v)} className="mt-1" />
-              </div>
+              {/* "Estoque Máximo" e "Estoque de Segurança" removidos em 2026-05 a
+                  pedido do usuário — máximo não tinha uso e segurança duplicava
+                  conceitualmente o mínimo. Colunas seguem no DB com default 0. */}
               <div>
                 <Label>Custo Unitário (R$)</Label>
                 <CurrencyInput value={form.unit_price} onChange={v => update('unit_price', v)} className="mt-1" />
@@ -564,10 +563,6 @@ export default function ProductDetail() {
                     <SelectItem value="unit">Por Unidade (un/par/pc)</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-              <div>
-                <Label>Estoque de Segurança</Label>
-                <NumberInput value={form.safety_stock ?? 0} onChange={v => update('safety_stock', v)} min={0} step="0.01" className="mt-1" />
               </div>
               <div>
                 <Label>Lead Time (dias)</Label>

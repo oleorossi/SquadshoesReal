@@ -100,7 +100,18 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
   const [duplicateMatch, setDuplicateMatch] = useState<Product | null>(null);
   const [duplicateConfirmed, setDuplicateConfirmed] = useState(false);
   const [groupConflict, setGroupConflict] = useState<Product | null>(null);
-  const { data: groups = [] } = useGroups();
+  const { data: allGroups = [] } = useGroups();
+  // Filtra grupos de solado quando o usuário está cadastrando MATERIAL comum.
+  // Solados têm sua aba/ferramenta própria (SoleTechnicalDetails); poluir o
+  // select de família com SOLADO 01/204/etc. confunde quem só quer cadastrar
+  // tira/cabedal/etc. Detecta pelo nome (case-insensitive) começando com SOLADO.
+  const groups = useMemo(
+    () => allGroups.filter(g => {
+      const n = (g.name || '').trim().toUpperCase();
+      return n !== 'SOLADO' && !n.startsWith('SOLADO ');
+    }),
+    [allGroups],
+  );
   const queryClient = useQueryClient();
   const { data: suppliers = [] } = useSuppliers();
   const { data: allProducts = [] } = useProducts();
@@ -879,7 +890,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
               {attempted && errors.sku && <p className="text-xs text-destructive mt-1">SKU é obrigatório</p>}
             </div>
             <div className="col-span-1">
-              <Label>Grupo</Label>
+              <Label>Família</Label>
               <Select value={form.group_id || 'none'} onValueChange={v => {
                 const gid = v === 'none' ? null : v;
                 update('group_id', gid);
