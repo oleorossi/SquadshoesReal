@@ -25,6 +25,7 @@ import { toast } from 'sonner';
 import { useGroups } from '@/hooks/useGroups';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { useQueryClient } from '@tanstack/react-query';
+import { deriveCategoryFromGroup } from '@/lib/categoryFromGroup';
 
 interface Props {
   open: boolean;
@@ -132,10 +133,15 @@ export function QuickFamilyDialog({ open, onOpenChange, defaultGroupId }: Props)
 
       // 2) Cria 1 produto por cor
       const prefix = (skuPrefix || slugForSku(familyName)).toUpperCase();
+      // products.category é NOT NULL no DB. Derivamos do nome da família/grupo
+      // (Solado/Cabedal/Palmilha/Forração/Cola/etc). Sem isso o insert falha
+      // com '23502 null value in column "category"'.
+      const category = deriveCategoryFromGroup(familyName);
       const rows = colors.map(color => ({
         name: `${familyName.trim()} - ${color}`,
         sku: `${prefix}-${slugForSku(color)}`,
         color,
+        category,
         group_id: groupId,
         unit,
         unit_price: unitPrice,
