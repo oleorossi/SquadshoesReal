@@ -4,14 +4,42 @@ URL: https://squadshoes-real.vercel.app
 Branch: claude/bold-jepsen-c3287d → main
 Metodologia: Chrome MCP janela-a-janela, confronto FE × BE via Supabase MCP, fix imediato quando UX/bug aplicável.
 
-## 3 rodadas executadas
+## 4 rodadas executadas
 
 | Rodada | Commit | Foco | Fixes |
 |--------|--------|------|-------|
-| 1 | 05fae34, 2f738d7, e651200, 1cab9be | 8 setores principais (COMERCIAL, PRODUÇÃO, CATÁLOGO, COMPRAS, LOGÍSTICA, FIN, RH, SISTEMA) | 9 |
-| 2 | 2127849 | UX residual + cache propagation validation | 4 |
+| 1 | 05fae34, 2f738d7, e651200, 1cab9be | 8 setores principais | 9 |
+| 2 | 2127849 | UX residual (Y-axes, Pie responsivo, Timeline filtro) | 4 |
 | 3 | aac5693 | 15+ rotas profundas + re-fix Top Modelos | 1 |
-| **TOTAL** | 5 commits | **23 telas únicas + 10 aliases** | **14 fixes** |
+| 4 | d305833, 7721718, b9ac16d | Profundidade interna (Fichas tabs, OP setores, PCP setores, Estoque tabs, Centro Controle, MFA, Kanban, PV form, Wave Planner) | 4 |
+| **TOTAL** | 8 commits | **38+ telas + 50+ tabs + 15+ modais** | **18 fixes** |
+
+## Bugs CRÍTICOS encontrados em rodada 4
+
+| # | Componente | Bug | Fix |
+|---|------------|-----|-----|
+| 16 | TechnicalSheets.tsx | `useMutation is not defined` ao clicar tab BOM & Custos (faltava import) | `d305833` |
+| 17a | Colagem.tsx | `SECTOR_NAME = 'Aviamento'` (copy-paste bug) — tab Colagem mostrava conteúdo Aviamento | `7721718` |
+| 17b | Silk.tsx | KPI label "OPs p/ Solagem" no setor Silk (era pra ser "OPs p/ Silk") | `7721718` |
+| 18 | useStockMovements | Embed `products(...)` em stock_movements sem FK → tab Histórico crashava | `b9ac16d` |
+
+## Bugs documentados (não corrigidos por escopo)
+
+- **Estoque > Materiais chips** Cabedal/Forro/Químicos/Solados: filtro busca em `product_groups.name` mas categoria está em `products.category` (drift de modelagem)
+- **Filtro Cores Kanban**: case misturado (ADOCICADO/Caramelo/NAPA SOFT DALIA)
+- **/sales "Acesso Restrito"** intermitente após cancelar form (race em useAccessControl)
+
+## Validações sem bug em rodada 4
+
+- ✅ OP-00804 10 setores: cada um com modal próprio + orientações contextuais + bloqueio sequencial
+- ✅ PCP > Setores 9 sub-tabs (cada um com layout próprio adequado ao workflow)
+- ✅ Centro Controle: 3 tabs + Config WhatsApp E.164 + webhook Z-API + carga 105/130%
+- ✅ MFA flow: toggle + TOTP/SMS/email + telefone/email recuperação + 8 códigos backup XXXX-XXXX + copy clipboard
+- ✅ Kanban OPs: 5 colunas com cards + filtros (cores/refs/semanas/segmentos/status)
+- ✅ Novo PV: combobox Recentes+Todos + auto-fill Razão/CNPJ + matriz auto-adapta grade por ficha + tiras 1/2/3
+- ✅ Wave Planner: modal date picker semana + search PVs + verificar materiais
+
+## 4 rodadas executadas (legado)
 
 ## Rotas verificadas como aliases (redirect)
 
