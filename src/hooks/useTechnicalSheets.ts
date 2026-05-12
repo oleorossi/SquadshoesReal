@@ -225,6 +225,26 @@ export function useAddSheet() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (form: Partial<SheetFormData>) => {
+      // Defesa: code duplicado entre fichas com NOMES DIFERENTES quebra o
+      // dropdown do PV (dedup mantém só uma). Avisa o usuário, mas não bloqueia
+      // (pode ser intencional em versionamento da mesma ref).
+      const code = (form as any).code?.toString().trim();
+      const name = (form as any).name?.toString().trim();
+      if (code) {
+        const { data: existing } = await supabase
+          .from('technical_sheets')
+          .select('id, name, code')
+          .ilike('code', code);
+        const dup = (existing || []).find(
+          (s: any) => (s.name?.trim().toLowerCase() || '') !== (name?.toLowerCase() || '')
+        );
+        if (dup) {
+          toast.warning(
+            `⚠ Código "${code}" já é usado pela ficha "${dup.name}". Ambas vão aparecer no PV (fix 2026-05-12), mas considere usar códigos únicos.`,
+            { duration: 8000 },
+          );
+        }
+      }
       const { data, error } = await supabase
         .from('technical_sheets')
         .insert(sanitizeUuidFields(form as any) as any)
