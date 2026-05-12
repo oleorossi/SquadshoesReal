@@ -534,14 +534,10 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
   const [boxTypeId, setBoxTypeId] = useState<string>((group as any).box_type_id || '__none__');
   const [boxTypeMasterId, setBoxTypeMasterId] = useState<string>((group as any).box_type_master_id || '__none__');
   const [boxTypeColmeiaId, setBoxTypeColmeiaId] = useState<string>((group as any).box_type_colmeia_id || '__none__');
-  const [sharedSpecs, setSharedSpecs] = useState<boolean>(group.shared_specs ?? false);
   const [consumptionUnit, setConsumptionUnit] = useState<string>(group.consumption_unit || '__none__');
-  const [silkUrl, setSilkUrl] = useState<string>((group as any).silk_url || '');
-  const [unitWeightKg, setUnitWeightKg] = useState<number>((group as any).unit_weight_kg || 0);
   const [unitPrice, setUnitPrice] = useState<number>(0);
   const [location, setLocation] = useState<string>('');
   const [saving, setSaving] = useState(false);
-  const [uploadingSilk, setUploadingSilk] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [editProductName, setEditProductName] = useState('');
 
@@ -578,10 +574,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
     setBoxTypeId((group as any).box_type_id || '__none__');
     setBoxTypeMasterId((group as any).box_type_master_id || '__none__');
     setBoxTypeColmeiaId((group as any).box_type_colmeia_id || '__none__');
-    setSharedSpecs(group.shared_specs ?? false);
     setConsumptionUnit(group.consumption_unit || '__none__');
-    setSilkUrl((group as any).silk_url || '');
-    setUnitWeightKg((group as any).unit_weight_kg || 0);
 
     // If all products in group share the same price/location, set them as defaults
     if (products.length > 0) {
