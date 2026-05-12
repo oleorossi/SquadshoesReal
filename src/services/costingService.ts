@@ -16,8 +16,16 @@ export interface OrderCostResult {
       product_name: string;
       component: string;
       required: number;
+      /** Quantidade convertida pra unidade do produto. Pode estar ausente se SQL
+       *  retornou NULL por unit mismatch (linha pulada com conversion_warning). */
+      required_in_product_unit?: number;
+      consumption_unit?: string;
+      product_unit?: string;
       unit_price: number;
       subtotal: number;
+      /** B3: marcado pelo SQL quando convert_to_product_unit retornou NULL
+       *  por unidades incompatíveis (ex: kg → un). UI pode renderizar alerta. */
+      conversion_warning?: string;
     }>;
     labor: Array<{
       operation: string;
@@ -25,9 +33,17 @@ export interface OrderCostResult {
       minutes_per_unit: number;
       subtotal: number;
     }>;
-    overhead_pct: number;
+    /** B6: campo emitido pelo SQL desde Round 11. Antes a interface declarava
+     *  overhead_pct (que não existia) e omitia este. */
+    overhead_per_pair: number;
     packaging_per_pair: number;
+    used_grade: boolean;
   };
+  /** Quando p_sale_order_item_id=NULL e p_sale_order_id dado, o SQL retorna
+   *  agregado com array de itens. Presença indica modo PV inteiro. */
+  items?: OrderCostResult[];
+  item_count?: number;
+  total_quantity?: number;
 }
 
 export async function calculateOrderCost(

@@ -16,15 +16,22 @@ import { z } from 'zod';
 /** Modos de débito permitidos no motor de consumo. */
 export const DEBIT_MODES = ['hard', 'soft'] as const;
 
-/** Fontes válidas reportadas pela hierarquia per-size → sole_spec → escalar. */
+/** Fontes válidas reportadas pela hierarquia per-size → sole_spec → escalar.
+ *  D12 fix: adicionados 'sole_standard_per_size' (emitido por
+ *  calculate_order_consumption ao iterar sole_standard_items) e
+ *  'direct_components' (emitido em casos sem sheet_materials), ambos
+ *  presentes nas migrations 20260426120000+ mas ausentes deste whitelist. */
 export const CONSUMPTION_SOURCES = [
   'sheet_per_size',
   'sole_spec',
   'sheet_materials',
   'primary_sole',
+  'sole_standard_per_size',
+  'direct_components',
   // valores legados/auxiliares que o SQL pode emitir em casos antigos
   'fallback_default',
   'sole_driven_default',
+  'fallback_average',
 ] as const;
 
 export const ConsumptionLineSchema = z
