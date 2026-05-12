@@ -96,6 +96,10 @@ CREATE TABLE IF NOT EXISTS delivery_route_stops (
 CREATE INDEX IF NOT EXISTS idx_delivery_route_stops_route_order ON delivery_route_stops(route_id, stop_order);
 CREATE INDEX IF NOT EXISTS idx_delivery_route_stops_sale_order ON delivery_route_stops(sale_order_id);
 CREATE INDEX IF NOT EXISTS idx_delivery_routes_date_status ON delivery_routes(scheduled_date, status);
+-- FK covering indexes (apontados pelo advisor de performance)
+CREATE INDEX IF NOT EXISTS idx_delivery_routes_driver_id ON delivery_routes(driver_id);
+CREATE INDEX IF NOT EXISTS idx_delivery_routes_vehicle_id ON delivery_routes(vehicle_id);
+CREATE INDEX IF NOT EXISTS idx_vehicles_default_driver_id ON vehicles(default_driver_id);
 
 CREATE OR REPLACE FUNCTION recalc_delivery_route_costs(p_route_id uuid)
 RETURNS void
@@ -154,6 +158,10 @@ BEGIN
     updated_at        = now()
   WHERE id = p_route_id;
 END $$;
+
+-- Hardening: RPC SECURITY DEFINER deve estar restrita a authenticated/service_role
+REVOKE EXECUTE ON FUNCTION recalc_delivery_route_costs(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION recalc_delivery_route_costs(uuid) TO authenticated, service_role;
 
 CREATE OR REPLACE FUNCTION tg_set_updated_at()
 RETURNS trigger LANGUAGE plpgsql AS $$
