@@ -4443,6 +4443,48 @@ function SoleClassificationBadge({ groupId, soleMaterial, process, products }: {
 }
 
 /* ===== Sole Product Select (products from Solado groups — color-independent) ===== */
+function StrapGroupCombobox({ value, groups, onChange }: {
+  value: string;
+  groups: any[];
+  onChange: (groupId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const selected = groups.find((g: any) => g.id === value);
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return groups;
+    return groups.filter((g: any) => (g.name || '').toLowerCase().includes(q));
+  }, [groups, search]);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" role="combobox" aria-expanded={open}
+          className="w-[200px] h-8 px-2 text-xs font-normal justify-between">
+          <span className="truncate">{selected?.name || 'Grupo de material...'}</span>
+          <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[300px] p-0" align="start">
+        <Command shouldFilter={false}>
+          <CommandInput placeholder="Buscar tira/material..." value={search} onValueChange={setSearch} className="h-9 text-xs" />
+          <CommandList>
+            <CommandEmpty>Nenhum grupo encontrado.</CommandEmpty>
+            <CommandGroup>
+              {filtered.map((g: any) => (
+                <CommandItem key={g.id} value={g.id} onSelect={() => { onChange(g.id); setOpen(false); setSearch(''); }} className="text-xs">
+                  <Check className={cn('mr-2 h-3.5 w-3.5', value === g.id ? 'opacity-100' : 'opacity-0')} />
+                  {g.name}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function SoleProductSelect({ label, value, onChange }: { label: string; value: string; onChange: (productName: string, groupId: string | null, productId?: string) => void }) {
   const { data: soleModels = [] } = useQuery({
     queryKey: ['products_solado_groups_unified'],
