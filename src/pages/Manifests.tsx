@@ -427,6 +427,7 @@ function AddVolumeDialog({
       onSaved();
       toast.success('Volume adicionado.');
       setSaleOrderId(''); setTotalPairs(0); setWeight(0); setCity(''); setUf(''); setEan('');
+      setAutoFilled(false);
       onClose();
     },
     onError: (e: Error) => toast.error(e.message),
