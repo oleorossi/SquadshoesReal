@@ -559,6 +559,10 @@ export type SaleOrderFormData = {
   /** Quando false, pedido é informal: não emite NF-e, não gera AR/financial.
    *  Default true (mantém comportamento existente). */
   nfe_required?: boolean;
+  /** Quando true, este PV entra no planejamento de rota em /entregas com
+   *  cálculo de combustível e desgaste do veículo da frota própria. Default
+   *  false — pedido segue fluxo normal de transportadora. */
+  own_delivery?: boolean;
 };
 
 export type SaleOrderItemFormData = {

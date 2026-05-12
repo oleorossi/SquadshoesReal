@@ -76,16 +76,24 @@ export function useNfeEmitidas(saleOrderId?: string) {
 export function useAllNfeEmitidas(filters?: { status?: string; search?: string; company_id?: string }) {
   return useQuery({
     queryKey: ['nfe_emitidas_all', filters],
+    // staleTime=0 garante refetch ao montar — evita cache vencido depois de sync.
+    staleTime: 0,
+    refetchOnMount: 'always',
     queryFn: async () => {
       let query = supabase
         .from('nfe_emitidas')
-        .select('*, sale_orders(order_number, client_name, total)')
+        .select('*, sale_orders!nfe_emitidas_sale_order_id_fkey(order_number, client_name, total)')
         .order('created_at', { ascending: false });
       if (filters?.status) query = query.eq('status', filters.status);
       if (filters?.company_id) query = query.eq('company_id', filters.company_id);
       query = query.limit(500);
       const { data, error } = await query;
-      if (error) throw error;
+      if (error) {
+        // Log com detalhes pra DevTools — facilita debug quando lista fica vazia.
+        console.error('[useAllNfeEmitidas] error:', error);
+        throw error;
+      }
+      console.info(`[useAllNfeEmitidas] ${data?.length ?? 0} NF-es carregadas`);
       return data || [];
     },
   });

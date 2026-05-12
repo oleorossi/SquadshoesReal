@@ -16,6 +16,7 @@ import { OrderStatusStepper } from '@/components/ui/order-status-stepper';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { useFactoringConfigs } from '@/components/finance/FactoringTab';
 import { useAllActiveReferenceMaterialVariants } from '@/hooks/useReferenceMaterialVariants';
 import {
@@ -901,6 +902,27 @@ export default function SaleOrderFormPanel({
                     <div className="h-9 mt-1 flex items-center px-3 rounded-md border border-primary/40 bg-primary/5 font-mono font-bold text-foreground text-sm">
                       {formatCurrency(estimatedShippingCost)}
                     </div>
+                  </div>
+                </div>
+
+                {/* Frete próprio: opt-in que joga este PV no planejamento de
+                    rota em /entregas com cálculo de combustível e desgaste. */}
+                <div className="flex items-start gap-3 pt-3 border-t border-border/60">
+                  <Switch
+                    id="own-delivery-switch"
+                    checked={!!form.own_delivery}
+                    onCheckedChange={(v) => setForm(f => ({ ...f, own_delivery: v }))}
+                  />
+                  <div className="flex-1 -mt-0.5">
+                    <Label htmlFor="own-delivery-switch" className="text-xs font-bold cursor-pointer flex items-center gap-1.5">
+                      <Truck className="h-3.5 w-3.5 text-primary" />
+                      Frete próprio (entregar com nossa frota)
+                    </Label>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {form.own_delivery
+                        ? 'Este pedido entrará no planejamento de rota em Entregas, com projeção de combustível e desgaste do veículo.'
+                        : 'Quando ativo, o pedido aparece em Entregas para montar rota, escolher veículo/motorista e ver custo estimado por viagem.'}
+                    </p>
                   </div>
                 </div>
               </div>
