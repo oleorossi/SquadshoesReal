@@ -1363,7 +1363,7 @@ export function buildIndividualLabelsHtml(items: LabelData[]): string {
       .page-break{page-break-after:always;break-after:page;}
       .label-cell{
         border:1.5px solid #000;
-        padding:6px 10px;
+        padding:4px 8px;
         display:flex;
         flex-direction:column;
         justify-content:center;

@@ -23,7 +23,7 @@ export function printStockPurchaseOrder({ orderNumber, customerName, materials }
 
   const rows = materials.map(m => `
     <tr>
-      <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;">
+      <td style="padding:4px 8px;border-bottom:1px solid #e2e8f0;">
         <p style="font-weight:900;font-size:14px;text-transform:uppercase;margin:0;">${escapeHtml(m.name)}</p>
         ${m.sku ? `<p style="font-size:9px;color:#94a3b8;font-family:monospace;margin:2px 0 0;">SKU: ${escapeHtml(m.sku)}</p>` : ''}
       </td>
@@ -67,11 +67,11 @@ export function printStockPurchaseOrder({ orderNumber, customerName, materials }
 
   <!-- Rastreabilidade -->
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
-    <div style="padding:8px 12px;background:#f1f5f9;border-radius:6px;">
+    <div style="padding:5px 8px;background:#f1f5f9;border-radius:6px;">
       <p style="font-size:9px;font-weight:900;color:#94a3b8;text-transform:uppercase;margin:0;">Vinculado ao Pedido</p>
       <p style="font-size:13px;font-weight:700;margin:2px 0 0;">#${escapeHtml(orderNumber)}</p>
     </div>
-    <div style="padding:8px 12px;background:#f1f5f9;border-radius:6px;">
+    <div style="padding:5px 8px;background:#f1f5f9;border-radius:6px;">
       <p style="font-size:9px;font-weight:900;color:#94a3b8;text-transform:uppercase;margin:0;">Cliente do Pedido</p>
       <p style="font-size:13px;font-weight:700;text-transform:uppercase;margin:2px 0 0;">${escapeHtml(customerName || 'Venda Interna')}</p>
     </div>
@@ -81,10 +81,10 @@ export function printStockPurchaseOrder({ orderNumber, customerName, materials }
   <table style="border:2px solid #0f172a;margin-bottom:16px;">
     <thead>
       <tr style="background:#0f172a;color:white;font-size:10px;text-transform:uppercase;">
-        <th style="padding:6px 10px;text-align:left;border-right:1px solid rgba(255,255,255,0.2);">Insumo / Referência</th>
-        <th style="padding:6px 10px;text-align:center;border-right:1px solid rgba(255,255,255,0.2);">Unidade</th>
-        <th style="padding:6px 10px;text-align:right;border-right:1px solid rgba(255,255,255,0.2);">Estoque Atual</th>
-        <th style="padding:6px 10px;text-align:right;">Qtd. Necessária</th>
+        <th style="padding:4px 8px;text-align:left;border-right:1px solid rgba(255,255,255,0.2);">Insumo / Referência</th>
+        <th style="padding:4px 8px;text-align:center;border-right:1px solid rgba(255,255,255,0.2);">Unidade</th>
+        <th style="padding:4px 8px;text-align:right;border-right:1px solid rgba(255,255,255,0.2);">Estoque Atual</th>
+        <th style="padding:4px 8px;text-align:right;">Qtd. Necessária</th>
       </tr>
     </thead>
     <tbody>
@@ -93,7 +93,7 @@ export function printStockPurchaseOrder({ orderNumber, customerName, materials }
   </table>
 
   <!-- Instrução -->
-  <div style="padding:8px 10px;border-left:3px solid #0f172a;background:#f8fafc;font-size:10px;line-height:1.5;margin-bottom:16px;">
+  <div style="padding:5px 8px;border-left:3px solid #0f172a;background:#f8fafc;font-size:10px;line-height:1.5;margin-bottom:16px;">
     <strong>INSTRUÇÃO DE ENTREGA:</strong> Favor identificar a NF de remessa com o número do
     pedido <strong>#${escapeHtml(orderNumber)}</strong> para agilizar a conferência e entrada no setor de Corte.
   </div>

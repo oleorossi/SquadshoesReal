@@ -95,7 +95,7 @@ export function buildSolagemSectionHtml(
   let rowsHtml = '';
   soleData.forEach(row => {
     rowsHtml += `<tr>
-      <td style="border:1px solid #a7f3d0;padding:5px 8px;font-weight:700;font-size:11px;background:#f0fdf4;">${escapeHtml(row.color)}</td>`;
+      <td style="border:1px solid #a7f3d0;padding:4px 6px;font-weight:700;font-size:11px;background:#f0fdf4;">${escapeHtml(row.color)}</td>`;
     activeSizes.forEach(s => {
       const qty = row.sizes[s] || 0;
       sizeTotals[s] += qty;
@@ -126,7 +126,7 @@ export function buildSolagemSectionHtml(
   ).join('');
 
   return `
-  <div style="margin-bottom:6px;padding:6px 12px;background:#f0fdf4;border:2px solid #16a34a;border-radius:6px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+  <div style="margin-bottom:4px;padding:6px 12px;background:#f0fdf4;border:2px solid #16a34a;border-radius:6px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
     <div>
       <h1 style="font-size:17px;font-weight:900;color:#14532d;">🦶 Solagem</h1>
       <p style="font-size:9px;color:#16a34a;">Solagem e fixação do solado</p>
@@ -145,7 +145,7 @@ export function buildSolagemSectionHtml(
   </div>
 
   <h2 style="font-size:12px;margin:6px 0 4px;border-bottom:1px solid #a7f3d0;padding-bottom:2px;color:#14532d;">Grade Consolidada por Cor de Solado</h2>
-  <table style="width:100%;border-collapse:collapse;margin-bottom:10px;">
+  <table style="width:100%;border-collapse:collapse;margin-bottom:4px;">
     <thead><tr>
       <th style="border:1px solid #a7f3d0;padding:4px 8px;text-align:left;font-size:10px;background:#d1fae5;color:#064e3b;">Cor Solado</th>
       ${headerCells}
@@ -207,8 +207,8 @@ export function printCombinedSectorReport(
     </style>
 
     <div style="padding:20mm 16mm;background:#0f172a;min-height:180mm;display:flex;flex-direction:column;justify-content:center;border-radius:4px;">
-      <p style="color:#94a3b8;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;">Relatório de Produção</p>
-      <h1 style="color:#f8fafc;font-size:36px;font-weight:900;line-height:1.1;margin-bottom:8px;">Relatório Completo<br>de Produção</h1>
+      <p style="color:#94a3b8;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px;">Relatório de Produção</p>
+      <h1 style="color:#f8fafc;font-size:36px;font-weight:900;line-height:1.1;margin-bottom:5px;">Relatório Completo<br>de Produção</h1>
       <p style="color:#64748b;font-size:12px;margin-bottom:20px;">Gerado em ${new Date().toLocaleString('pt-BR')}</p>
       <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px;">
         <div style="background:#1e293b;border-radius:8px;padding:10px 18px;text-align:center;">

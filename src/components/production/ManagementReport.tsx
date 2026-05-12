@@ -340,9 +340,9 @@ function KpiCard({ label, value, color }: { label: string; value: string | numbe
     rose:    'bg-rose-50 border-rose-300 text-rose-900',
   };
   return (
-    <div className={`border-2 rounded-lg px-3 py-2 ${bg[color] || bg.indigo}`}>
+    <div className={`border-2 rounded-lg px-2.5 py-1.5 ${bg[color] || bg.indigo}`}>
       <p className="text-[9px] font-bold uppercase opacity-70">{label}</p>
-      <p className="text-lg font-black font-mono leading-tight">{value}</p>
+      <p className="text-base font-black font-mono leading-tight">{value}</p>
     </div>
   );
 }

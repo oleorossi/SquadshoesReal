@@ -131,7 +131,7 @@ function buildDualGradeTable(baseGrade: Record<string, number>, scaledGrade: Rec
   const totalValueFontSize = denseLayout ? 13 : 15;
 
   return `
-    <table style="width:100%;border-collapse:collapse;margin-top:6px;table-layout:fixed;">
+    <table style="width:100%;border-collapse:collapse;margin-top:4px;table-layout:fixed;">
       <colgroup>
         <col style="width:${firstColumnWidth}px;" />
         ${activeSizes.map(() => '<col />').join('')}
@@ -166,7 +166,7 @@ function buildGroupedGradeTable(totalBySize: Record<string, number>, activeSizes
   const totalValueFontSize = denseLayout ? 13 : 15;
 
   return `
-    <table style="width:100%;border-collapse:collapse;margin-top:6px;table-layout:fixed;">
+    <table style="width:100%;border-collapse:collapse;margin-top:4px;table-layout:fixed;">
       <colgroup>
         <col style="width:${firstColumnWidth}px;" />
         ${activeSizes.map(() => '<col />').join('')}
@@ -355,7 +355,7 @@ type RenderCaches = {
        ? `<span style="font-size:9px;font-weight:700;background:#fef3c7;border:1px solid #d4a017;border-radius:3px;padding:1px 5px;margin-left:6px;color:#7c2d12;">SOMA TOTAL</span>`
        : `<span style="font-size:9px;font-weight:700;background:#fff;border:1px solid #999;border-radius:3px;padding:1px 5px;margin-left:6px;color:#666;">Soma total</span>`;
    return `
-     <div style="margin-top:6px;border:1px solid ${borderColor};border-radius:4px;background:${bgColor};padding:5px 6px;">
+     <div style="margin-top:4px;border:1px solid ${borderColor};border-radius:4px;background:${bgColor};padding:5px 6px;">
        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
          <span style="font-size:11px;font-weight:800;color:#222;">${emoji} ${label}</span>
          <span style="display:flex;align-items:center;gap:4px;">
@@ -473,7 +473,7 @@ type RenderCaches = {
         </div>`;
 
         if (importantInfo) {
-          importantInfoHtml = `<div style="margin-top:6px;padding:6px 10px;background:#fff5f5;border:1px solid #feb2b2;border-radius:4px;font-size:11px;color:#c53030;">
+          importantInfoHtml = `<div style="margin-top:4px;padding:4px 8px;background:#fff5f5;border:1px solid #feb2b2;border-radius:4px;font-size:11px;color:#c53030;">
             <span style="font-weight:900;text-transform:uppercase;font-size:9px;display:block;margin-bottom:2px;color:#9b2c2c;">⚠️ INFO GRUPO / LOJA:</span>
             ${escapeHtml(importantInfo).replace(/\n/g, '<br/>')}
           </div>`;
@@ -486,14 +486,14 @@ type RenderCaches = {
   if (sectorName === 'Solagem') {
     const soleInfo = [effectiveSoleColor ? `Cor: ${escapeHtml(effectiveSoleColor)}` : '', effectiveSoleReferenceName ? `Ref: ${escapeHtml(effectiveSoleReferenceName)}` : ''].filter(Boolean).join(' — ');
     if (soleInfo) {
-      sectorSpecific = `<div style="margin-top:6px;padding:6px 10px;background:#f0f7f4;border:1px solid #c2d6ce;border-radius:4px;">
+      sectorSpecific = `<div style="margin-top:4px;padding:4px 8px;background:#f0f7f4;border:1px solid #c2d6ce;border-radius:4px;">
       <span style="font-size:11px;font-weight:700;">🦶 Solado: <span style="font-size:13px;color:#1F513B;">${soleInfo}</span></span>
     </div>`;
     }
   }
   if (settings.showChecklist) {
     if (sectorName === 'Montagem') {
-      sectorSpecific = `<div style="margin-top:8px;border:1px solid #ccc;border-radius:4px;padding:8px;">
+      sectorSpecific = `<div style="margin-top:5px;border:1px solid #ccc;border-radius:4px;padding:5px;">
         <p style="font-size:9px;font-weight:700;color:#666;margin-bottom:4px;">CHECKLIST MONTAGEM</p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:10px;">
           <label style="display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:14px;height:14px;border:2px solid #333;border-radius:2px;"></span> Cabedal conformado</label>
@@ -513,7 +513,7 @@ type RenderCaches = {
       const currentGrade = isGrouped ? groupData!.totalBySize : (singleGradeData?.scaledGrade || {});
       const cabedalBlock = showCabedal
         ? buildMiniGradeRow('FICHA CABEDAL', '👟', '#fff8e1', '#d4a017', true, activeSizes, currentGrade, totalPairs, false, corteColor)
-        : `<div style="margin-top:6px;border:1px dashed #bbb;border-radius:4px;padding:5px 8px;background:#f9f9f9;font-size:10px;color:#888;text-align:center;">
+        : `<div style="margin-top:4px;border:1px dashed #bbb;border-radius:4px;padding:4px 6px;background:#f9f9f9;font-size:10px;color:#888;text-align:center;">
              ⚠️ Cabedal pré-montado (modelo com tiras) — não há corte de cabedal nesta OP
            </div>`;
       const forracaoBlock = buildMiniGradeRow('FICHA FORRAÇÃO', '🧵', '#e0f2fe', '#0369a1', true, activeSizes, currentGrade, totalPairs, false, corteColor);
@@ -522,7 +522,7 @@ type RenderCaches = {
       const palmilhaBlock = '';
 
       sectorSpecific = `
-        <div style="margin-top:8px;">
+        <div style="margin-top:5px;">
           <p style="font-size:10px;font-weight:800;color:#444;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:2px;">✂️ Subdivisão de Corte</p>
           ${cabedalBlock}
           ${forracaoBlock}
@@ -530,7 +530,7 @@ type RenderCaches = {
         </div>`;
     }
     if (sectorName === 'Aviamento') {
-      sectorSpecific = `<div style="margin-top:8px;border:1px solid #ccc;border-radius:4px;padding:8px;">
+      sectorSpecific = `<div style="margin-top:5px;border:1px solid #ccc;border-radius:4px;padding:5px;">
         <p style="font-size:9px;font-weight:700;color:#666;margin-bottom:4px;">CHECKLIST AVIAMENTO</p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:10px;">
           <label style="display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:14px;height:14px;border:2px solid #333;border-radius:2px;"></span> Ilhós / Rebites</label>
@@ -541,7 +541,7 @@ type RenderCaches = {
       </div>`;
     }
     if (sectorName === 'Costura') {
-      sectorSpecific = `<div style="margin-top:8px;border:1px solid #ccc;border-radius:4px;padding:8px;">
+      sectorSpecific = `<div style="margin-top:5px;border:1px solid #ccc;border-radius:4px;padding:5px;">
         <p style="font-size:9px;font-weight:700;color:#666;margin-bottom:4px;">CHECKLIST COSTURA</p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:10px;">
           <label style="display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:14px;height:14px;border:2px solid #333;border-radius:2px;"></span> Costuras superiores</label>
@@ -554,7 +554,7 @@ type RenderCaches = {
     if (sectorName === 'Mesa') {
       // Fallback legacy: setor "Mesa" pre-PR1, hoje "Aviamento". Mantido pra OPs
       // antigas; conteúdo é o checklist de preparação de kit (separar materiais).
-      sectorSpecific = `<div style="margin-top:8px;border:1px solid #ccc;border-radius:4px;padding:8px;">
+      sectorSpecific = `<div style="margin-top:5px;border:1px solid #ccc;border-radius:4px;padding:5px;">
         <p style="font-size:9px;font-weight:700;color:#666;margin-bottom:4px;">CHECKLIST AVIAMENTO (LEGACY: Mesa)</p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:10px;">
           <label style="display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:14px;height:14px;border:2px solid #333;border-radius:2px;"></span> Materiais separados</label>
@@ -565,7 +565,7 @@ type RenderCaches = {
       </div>`;
     }
     if (sectorName === 'Acabamento') {
-      sectorSpecific = `<div style="margin-top:8px;border:1px solid #ccc;border-radius:4px;padding:8px;">
+      sectorSpecific = `<div style="margin-top:5px;border:1px solid #ccc;border-radius:4px;padding:5px;">
         <p style="font-size:9px;font-weight:700;color:#666;margin-bottom:4px;">CHECKLIST ACABAMENTO</p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:10px;">
           <label style="display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:14px;height:14px;border:2px solid #333;border-radius:2px;"></span> Limpeza</label>
@@ -589,13 +589,13 @@ type RenderCaches = {
   const soHtml = settings.showSaleOrderInfo
     ? (isGrouped
       ? `
-        <div style="margin-top:6px;font-size:${Math.round(10 * fontScale)}px;display:grid;grid-template-columns:1fr;gap:2px 12px;">
+        <div style="margin-top:4px;font-size:${Math.round(10 * fontScale)}px;display:grid;grid-template-columns:1fr;gap:2px 12px;">
           ${groupData!.saleOrderNumbers.length > 0 ? `<div><strong>PVs:</strong> ${escapeHtml(groupData!.saleOrderNumbers.join(', '))}</div>` : ''}
           ${groupData!.clientNames.length > 0 ? `<div><strong>Cliente:</strong> ${escapeHtml(groupData!.clientNames.join(', '))}</div>` : ''}
           ${groupData!.clientOrderNumbers.length > 0 ? `<div><strong>Ped. Cliente:</strong> ${escapeHtml(groupData!.clientOrderNumbers.join(', '))}</div>` : ''}
         </div>`
       : `
-        <div style="margin-top:6px;font-size:${Math.round(10 * fontScale)}px;display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;">
+        <div style="margin-top:4px;font-size:${Math.round(10 * fontScale)}px;display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;">
           ${so?.order_number ? `<div><strong>PV:</strong> ${escapeHtml(so.order_number)}</div>` : ''}
           ${so?.client_name ? `<div><strong>Cliente:</strong> ${so.client_number ? `<span style="font-weight:800;color:#1a56db;">${escapeHtml(so.client_number)}</span> — ` : ''}${escapeHtml(so.client_name)}</div>` : ''}
           ${so?.client_order_number ? `<div><strong>Ped. Cliente:</strong> ${escapeHtml(so.client_order_number)}</div>` : ''}
@@ -603,7 +603,7 @@ type RenderCaches = {
     : '';
 
   const signatureHtml = settings.showSignature ? `
-    <div style="margin-top:10px;padding-top:6px;border-top:1px solid #ccc;display:flex;justify-content:space-between;font-size:${Math.round(9 * fontScale)}px;color:#666;">
+    <div style="margin-top:4px;padding-top:6px;border-top:1px solid #ccc;display:flex;justify-content:space-between;font-size:${Math.round(9 * fontScale)}px;color:#666;">
       <span>Operador: ________________________</span>
       <span>Data: ____/____/________</span>
       <span>Hora Início: ________ Fim: ________</span>
@@ -709,7 +709,7 @@ function buildSolagemGroupCard(
         <span style="font-size:14px;font-weight:900;background:${borderColor};color:#fff;padding:2px 8px;border-radius:4px;">${totalPairs} PARES</span>
       </div>
       <div style="margin-top:4px;">${gradeBlock}</div>
-      <div style="margin-top:10px;padding-top:6px;border-top:1px solid ${borderColor};display:flex;justify-content:space-between;font-size:9px;color:${titleColor};">
+      <div style="margin-top:4px;padding-top:6px;border-top:1px solid ${borderColor};display:flex;justify-content:space-between;font-size:9px;color:${titleColor};">
         <span>Operador: ________________________</span>
         <span>Data: ____/____/________</span>
       </div>
@@ -909,7 +909,7 @@ async function buildSectorWorkSheetsHtml(
        <div style="margin-top:4px;">
          ${palmilhaBlock}
        </div>
-       <div style="margin-top:10px;padding-top:6px;border-top:1px solid #16a34a;display:flex;justify-content:space-between;font-size:9px;color:#16a34a;">
+       <div style="margin-top:4px;padding-top:6px;border-top:1px solid #16a34a;display:flex;justify-content:space-between;font-size:9px;color:#16a34a;">
          <span>Operador: ________________________</span>
          <span>Data: ____/____/________</span>
        </div>
@@ -985,7 +985,7 @@ export async function printAllSectorsWorkSheets(
     const isFirst = sectorBlocks.length === 0;
     sectorBlocks.push(
       `<div class="sector-block" style="${isFirst ? '' : 'page-break-before: always;'}">
-        <div class="sector-divider" style="text-align:center;font-size:14px;font-weight:700;padding:6px 0 8px;border-bottom:2px solid #111;margin-bottom:8px;color:#111;letter-spacing:0.5px;">
+        <div class="sector-divider" style="text-align:center;font-size:14px;font-weight:700;padding:6px 0 8px;border-bottom:2px solid #111;margin-bottom:5px;color:#111;letter-spacing:0.5px;">
           ${emoji} ${name.toUpperCase()} — ${cardCount} ficha(s)
         </div>
         ${html}

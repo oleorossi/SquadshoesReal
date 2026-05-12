@@ -1,32 +1,33 @@
 @media print {
   @page {
     size: A4 landscape;
-    margin: 5mm 6mm;
+    margin: 4mm 5mm;
   }
 
   @page portrait {
     size: A4 portrait;
-    margin: 5mm 6mm;
+    margin: 4mm 5mm;
   }
 
   body {
     background: white !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
-    font-size: 10pt;
+    font-size: 9.5pt;
+    line-height: 1.25;
   }
 
   .print-a4-page {
-    width: 279mm;
-    max-width: 279mm;
+    width: 282mm;
+    max-width: 282mm;
     margin: 0 auto;
     padding: 0;
   }
 
   .print-a4-portrait {
     page: portrait;
-    width: 190mm;
-    max-width: 190mm;
+    width: 195mm;
+    max-width: 195mm;
     margin: 0 auto;
     padding: 0;
   }
@@ -35,34 +36,34 @@
   .print-a4-portrait .print-card {
     break-inside: avoid;
     page-break-inside: avoid;
-    margin-bottom: 4mm;
+    margin-bottom: 2.5mm;
   }
 
   .print-a4-page .print-table,
   .print-a4-portrait .print-table {
-    font-size: 8pt;
+    font-size: 7.5pt;
   }
 
   .print-a4-page .print-img,
   .print-a4-portrait .print-img {
-    width: 100px !important;
-    height: 100px !important;
+    width: 80px !important;
+    height: 80px !important;
   }
 
   .print-a4-page .print-stats,
   .print-a4-portrait .print-stats {
-    gap: 2mm;
+    gap: 1.5mm;
   }
 
   .print-a4-page .print-stats > *,
   .print-a4-portrait .print-stats > * {
-    padding: 2mm;
+    padding: 1.5mm;
   }
 
   .print-a4-page .print-box,
   .print-a4-portrait .print-box {
-    width: 24px !important;
-    height: 24px !important;
-    font-size: 8pt;
+    width: 20px !important;
+    height: 20px !important;
+    font-size: 7.5pt;
   }
 }
