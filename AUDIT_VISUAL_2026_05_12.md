@@ -4,7 +4,31 @@ URL: https://squadshoes-real.vercel.app
 Branch: claude/bold-jepsen-c3287d → main
 Metodologia: Chrome MCP janela-a-janela, confronto FE × BE via Supabase MCP, fix imediato quando UX/bug aplicável.
 
-## Setores auditados (8) + Fixes aplicados (10)
+## 3 rodadas executadas
+
+| Rodada | Commit | Foco | Fixes |
+|--------|--------|------|-------|
+| 1 | 05fae34, 2f738d7, e651200, 1cab9be | 8 setores principais (COMERCIAL, PRODUÇÃO, CATÁLOGO, COMPRAS, LOGÍSTICA, FIN, RH, SISTEMA) | 9 |
+| 2 | 2127849 | UX residual + cache propagation validation | 4 |
+| 3 | aac5693 | 15+ rotas profundas + re-fix Top Modelos | 1 |
+| **TOTAL** | 5 commits | **23 telas únicas + 10 aliases** | **14 fixes** |
+
+## Rotas verificadas como aliases (redirect)
+
+| Rota acessada | Redireciona pra | Conteúdo |
+|---------------|------------------|----------|
+| /shop-floor, /wip-control, /cycle-count | /pcp | Gestão PCP |
+| /imagens-cores | /fichas-tecnicas | Fichas técnicas |
+| /silk-registrations | /silks | Silks por solado/cliente/grupo |
+| /time-control | /rh?tab=ponto | Controle de Ponto |
+| /modules/quality, /modules/production | /producao | Resumo Produção |
+| /modules/reports | /comercial | Resumo Comercial |
+| /mrp | /purchase-planning?tab=mrp | MRP & Alertas |
+| /sales-report | /comercial | Resumo Comercial |
+| /weekly-purchasing-plan | /purchase-planning?tab=weekly | Plano Semanal |
+| /audit-log | 404 | Apenas via tab admin de /estoque |
+
+## Setores auditados (8) + Fixes aplicados (14)
 
 | Setor | Páginas | Bugs/UX | Fixes |
 |-------|---------|---------|-------|
