@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useAllNfeEmitidas, useEmitNfe, useCheckNfeStatus, useCancelNfe, useCompanies, NfeEmitida } from '@/hooks/useNfe';
+import { useAllNfeEmitidas, useEmitNfe, useCheckNfeStatus, useCancelNfe, useCompanies, useSyncNfeFromProvider, NfeEmitida } from '@/hooks/useNfe';
 import { useAccessControl } from '@/hooks/useAccessControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -291,6 +291,7 @@ export default function NfePage() {
   const { data: companies = [] } = useCompanies();
   const { isAdmin, roles } = useAccessControl();
   const canEmitNfe = isAdmin || roles.includes('gerente') || roles.includes('nfe_operator');
+  const syncFromProvider = useSyncNfeFromProvider();
 
   const { data: allNfe = [], isLoading } = useAllNfeEmitidas({
     status: statusFilter || undefined,
@@ -326,9 +327,23 @@ export default function NfePage() {
           </p>
         </div>
         {canEmitNfe && (
-          <Button onClick={() => setEmitOpen(true)} className="gap-2">
-            <Plus className="h-4 w-4" /> Emitir NF-e
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => syncFromProvider.mutate()}
+              disabled={syncFromProvider.isPending}
+              className="gap-2"
+              title="Importa NF-es emitidas direto no painel da GestaoClick"
+            >
+              {syncFromProvider.isPending
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <RefreshCw className="h-4 w-4" />}
+              Sincronizar com GestaoClick
+            </Button>
+            <Button onClick={() => setEmitOpen(true)} className="gap-2">
+              <Plus className="h-4 w-4" /> Emitir NF-e
+            </Button>
+          </div>
         )}
       </div>
 

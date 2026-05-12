@@ -272,6 +272,38 @@ export function useCheckNfeStatus() {
   });
 }
 
+// Importa NF-es emitidas direto no painel da GestaoClick pro nosso DB. Necessário
+// quando a NF foi gerada fora do nosso sistema (painel web do provedor) — sem
+// isso, ela não aparece na aba "NF-es Emitidas" e bloqueia CC-e por aqui.
+export function useSyncNfeFromProvider() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('sync-nfe-from-provider', { body: {} });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data as {
+        success: boolean;
+        pages_fetched: number;
+        total_seen: number;
+        created: number;
+        updated: number;
+        errors: Array<{ provider_id: string | null; error: string }>;
+      };
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['nfe_emitidas'] });
+      qc.invalidateQueries({ queryKey: ['nfe_emitidas_all'] });
+      const errCount = data.errors?.length || 0;
+      const msg = `${data.created} importada(s), ${data.updated} atualizada(s)`
+        + (errCount > 0 ? ` · ${errCount} erro(s)` : '');
+      if (errCount > 0) toast.warning(msg);
+      else toast.success(`Sincronização concluída: ${msg}`);
+    },
+    onError: (err: Error) => toast.error(`Erro na sincronização: ${err.message}`),
+  });
+}
+
 // Prazo legal SEFAZ para cancelamento gratuito de NF-e: 24h após autorização.
 // Após esse prazo, o cancelamento normal é rejeitado e exige carta de correção.
 export const NFE_CANCEL_DEADLINE_HOURS = 24;
