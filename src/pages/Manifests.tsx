@@ -11,9 +11,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   FileCheck2, Plus, ArrowLeft, Loader2, ChevronRight, Trash2,
-  Truck, Package, MapPin, Lock,
+  Truck, Package, MapPin, Lock, RotateCcw,
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { useSaleOrderWeight } from '@/hooks/useSaleOrderWeight';
+import { IncompleteWeightWarning } from '@/components/weight/IncompleteWeightWarning';
 import { toast } from 'sonner';
 
 type ManifestStatus = 'em_montagem' | 'liberado' | 'em_transito' | 'entregue' | 'cancelado';
@@ -376,6 +378,17 @@ function AddVolumeDialog({
   const [city, setCity] = useState('');
   const [uf, setUf] = useState('');
   const [ean, setEan] = useState('');
+  /** Marca se peso/pares foram preenchidos pela RPC; se user editar, vira false. */
+  const [autoFilled, setAutoFilled] = useState(false);
+
+  const { data: weightData } = useSaleOrderWeight(saleOrderId || null);
+
+  const applyWeightFromPv = () => {
+    if (!weightData) return;
+    setTotalPairs(weightData.totalPairs);
+    setWeight(weightData.grossWeightKg);
+    setAutoFilled(true);
+  };
 
   const { data: saleOrders = [] } = useQuery({
     queryKey: ['sale_orders_for_manifest'],
