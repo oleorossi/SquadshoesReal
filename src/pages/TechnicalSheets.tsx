@@ -135,7 +135,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { SignedImage } from '@/components/ui/signed-image';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import {
   FileText, Plus, Trash2, Pencil, Loader2, Package, Copy, Search,
    Layers, Scissors, Droplets, Shield, Box, Footprints, Save, Wrench, Tag,
