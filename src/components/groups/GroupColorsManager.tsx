@@ -18,6 +18,7 @@
 import { useState, useMemo } from 'react';
 import { Palette, Plus, X, Check, MagnifyingGlass as Search, Sparkle as Sparkles, WarningCircle as AlertCircle, Package as PackagePlus } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
+import { deriveCategoryFromGroup } from '@/lib/categoryFromGroup';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -153,11 +154,16 @@ export default function GroupColorsManager({ groupId, groupName }: GroupColorsMa
     setCreatingFor(row.name);
     try {
       const sku = `${slugSku(groupName)}-${slugSku(row.name)}`;
+      // products.category é NOT NULL no DB. Antes faltava esse campo aqui
+      // e a inserção falhava com '23502 null value in column "category"'.
+      // Derivamos category do nome do grupo (Solado/Cabedal/Palmilha/etc).
+      const category = deriveCategoryFromGroup(groupName);
       const { error } = await (supabase as any).from('products').insert({
         name: `${groupName} - ${row.name}`,
         sku,
         color: row.name,
         group_id: groupId,
+        category,
         quantity: 0,
         active: true,
         unit: 'un',
