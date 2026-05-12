@@ -40,14 +40,42 @@ export function SoleDriverPicker({
   const { data: soles = [] } = useQuery<SoleProduct[]>({
     queryKey: ['products-soles'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('products')
-        .select('id, name, color, quantity, sku, category, product_groups!left(name)')
-        .eq('active', true)
-        .or('category.ilike.%solado%,product_groups.name.ilike.%solado%')
-        .order('name');
-      if (error) throw error;
-      return (data ?? []) as unknown as SoleProduct[];
+      // BUG ANTIGO: usávamos .or('category.ilike.%solado%,product_groups.name.ilike.%solado%')
+      // mas PostgREST falha (PGRST100) quando o filtro embedded (product_groups.name)
+      // está dentro do .or() top-level. Resultado: query falhava silenciosa e solados
+      // sumiam (ex: "Saltinho Bloco" tem category='Solado' mas group_name='SALTINHO BLOCO'
+      // — não casa com %solado% no group).
+      // FIX: dois queries paralelos + merge no client. Cobre AMBOS os cenários
+      // (category preenchida OR grupo com 'solado' no nome) sem usar embedded OR.
+      const [byCategory, soleGroups] = await Promise.all([
+        supabase
+          .from('products')
+          .select('id, name, color, quantity, sku, category, group_id')
+          .eq('active', true)
+          .ilike('category', '%solado%'),
+        supabase
+          .from('product_groups')
+          .select('id')
+          .ilike('name', '%solado%'),
+      ]);
+      if (byCategory.error) throw byCategory.error;
+      if (soleGroups.error) throw soleGroups.error;
+
+      const soleGroupIds = (soleGroups.data ?? []).map((g: any) => g.id);
+      const fromGroupsRes = soleGroupIds.length > 0
+        ? await supabase
+            .from('products')
+            .select('id, name, color, quantity, sku, category, group_id')
+            .eq('active', true)
+            .in('group_id', soleGroupIds)
+        : { data: [], error: null };
+      if (fromGroupsRes.error) throw fromGroupsRes.error;
+
+      // Merge dedup por id
+      const map = new Map<string, SoleProduct>();
+      for (const p of (byCategory.data ?? [])) map.set(p.id, p as any);
+      for (const p of (fromGroupsRes.data ?? [])) map.set(p.id, p as any);
+      return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
     },
   });
 

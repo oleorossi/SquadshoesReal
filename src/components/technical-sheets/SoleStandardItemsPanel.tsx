@@ -487,8 +487,15 @@ export function SoleStandardItemsPanel({ soleProductId }: Props) {
                     </TableHeader>
                     <TableBody>
                       <TableRow>
-                        <TableCell className="text-[11px] text-muted-foreground font-mono">
-                          {draft.unit}/par
+                        <TableCell
+                          className="text-[11px] text-muted-foreground font-mono"
+                          title={
+                            draft.unit === 'par'
+                              ? 'Pares de solado consumidos por par de sapato (1:1 para solados normais)'
+                              : `Quantidade em ${draft.unit} consumida por par de sapato`
+                          }
+                        >
+                          {draft.unit === 'par' ? 'par/par sap.' : `${draft.unit}/par`}
                         </TableCell>
                         {sizes.map((s) => (
                           <TableCell key={s} className="p-1 text-center">
