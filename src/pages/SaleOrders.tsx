@@ -45,25 +45,36 @@ import logoImg from '@/assets/logo-squad-shoes.jpg';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { getValidNextStatuses } from '@/lib/saleOrderStateMachine';
 
-const STATUS_OPTIONS = ['Rascunho', 'Aprovado', 'Em Produção', 'Faturado', 'Finalizado s/ NF', 'Cancelado'] as const;
+// TODOS os status canônicos do sale_orders (saleOrderStateMachine.ts).
+// Antes faltavam 'Pendente', 'Expedido' e 'Concluído' — PVs nesses status
+// não conseguiam ver options válidas no dropdown porque o filtro de
+// transições removia tudo do STATUS_OPTIONS. Resultado: usuário via só
+// "Cancelado" porque era a única transição comum em vários estados.
+const STATUS_OPTIONS = ['Rascunho', 'Pendente', 'Aprovado', 'Em Produção', 'Faturado', 'Expedido', 'Concluído', 'Finalizado s/ NF', 'Cancelado'] as const;
 
 // Audit visual: cores anteriores text-{color}-400 em dark caíam abaixo do
 // ratio WCAG AA (4.5:1) sobre o fundo /15. text-{color}-300 dá contraste
 // adequado mantendo a paleta semântica original.
 const STATUS_COLORS: Record<string, string> = {
   'Rascunho': 'bg-muted text-muted-foreground border-border',
+  'Pendente': 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-300 border-yellow-500/30',
   'Aprovado': 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
   'Em Produção': 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30',
   'Faturado': 'bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/30',
+  'Expedido': 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-cyan-500/30',
+  'Concluído': 'bg-green-500/15 text-green-700 dark:text-green-300 border-green-500/30',
   'Finalizado s/ NF': 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30',
   'Cancelado': 'bg-destructive/15 text-destructive border-destructive/30',
 };
 
 const STATUS_DOT: Record<string, string> = {
   'Rascunho': 'bg-muted-foreground',
+  'Pendente': 'bg-yellow-500',
   'Aprovado': 'bg-emerald-500',
   'Em Produção': 'bg-blue-500',
   'Faturado': 'bg-violet-500',
+  'Expedido': 'bg-cyan-500',
+  'Concluído': 'bg-green-500',
   'Finalizado s/ NF': 'bg-amber-500',
   'Cancelado': 'bg-destructive',
 };
