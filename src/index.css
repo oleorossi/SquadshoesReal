@@ -1187,3 +1187,80 @@ a:focus-visible {
     color: hsl(var(--muted-foreground));
   }
 }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   PRINT OVERRIDES — força tamanhos fixos em pt para imprimir A4 portrait
+   sem depender de vw (que em print = largura da página = comportamento
+   imprevisível dependendo do browser). Aplicado APENAS dentro de .print-area
+   pra não afetar telas web.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@media print {
+  /* Tipografia fluida vira fixa em pt — viewport units não funcionam bem
+     em paged media. Os valores correspondem ao mid-tier do clamp web. */
+  .print-area .text-display-xl,
+  .print-area .text-display-lg {
+    font-size: 28pt !important;
+    line-height: 0.95 !important;
+    letter-spacing: -0.02em !important;
+  }
+
+  /* Hero numbers (ex.: ManagementReport "PV ##") podem ser maiores */
+  .print-area .text-fluid-kpi {
+    font-size: 18pt !important;
+    line-height: 1 !important;
+  }
+  .print-area .text-fluid-section-title {
+    font-size: 14pt !important;
+    line-height: 1 !important;
+  }
+
+  /* Section labels em pt fixo (10px → 7pt fica legível em A4) */
+  .print-area .section-label {
+    font-size: 7pt !important;
+    letter-spacing: 0.16em !important;
+  }
+
+  /* Numeração editorial lateral (01/02/03 em Anton) */
+  .print-area .font-display {
+    /* só ajustar se for um número grande — Anton em texto pequeno fica esquisito.
+       Não tocamos em font-display geral pra preservar uso em textos. */
+  }
+
+  /* Rule lines em print: garantir contraste preto puro mesmo se token
+     for cinza muito claro. Linha fina pra economia de tinta. */
+  .print-area .rule-line {
+    background-color: #000 !important;
+    height: 0.5pt !important;
+  }
+  .print-area .rule-line-thick {
+    background-color: #000 !important;
+    height: 1.5pt !important;
+  }
+  .print-area .rule-line-double {
+    border-top: 0.5pt solid #000 !important;
+    border-bottom: 0.5pt solid #000 !important;
+    height: 2pt !important;
+  }
+
+  /* Editorial container não deve limitar largura em print —
+     a margem do @page já controla a área. */
+  .print-area .editorial-container {
+    max-width: none !important;
+    margin: 0 !important;
+  }
+
+  /* Fluid KPI grid: em print, força grid 4-col pra A4 portrait (cabe bem) */
+  .print-area .grid-kpi-fluid {
+    grid-template-columns: repeat(4, 1fr) !important;
+  }
+
+  /* Editorial-stagger off em print (já está, mas reforça) */
+  .print-area .editorial-stagger > *,
+  .print-area .editorial-rise,
+  .print-area .editorial-fade {
+    opacity: 1 !important;
+    transform: none !important;
+    animation: none !important;
+  }
+}
