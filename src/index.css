@@ -1355,3 +1355,24 @@ a:focus-visible {
     margin: 0;
   }
 }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   MARQUEE SELECTION — prevenção de text-select durante drag
+   Quando useMarqueeSelection está com drag ativo, body ganha .marquee-active
+   pra desabilitar text selection (seleção de texto natural conflita com
+   o retângulo de seleção).
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* Container que tem marquee ativo desabilita user-select nos descendentes
+   enquanto o drag rola. Usar via data-marquee-container quando o hook tá
+   ativo (opcional — só liga se quiser explicitamente). */
+[data-marquee-container]:has([data-marquee-dragging="true"]) *,
+.marquee-dragging * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+/* Cursor crosshair em containers selecionáveis (espaço vazio só) */
+[data-marquee-container] {
+  cursor: default;
+}
