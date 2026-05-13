@@ -1264,3 +1264,45 @@ a:focus-visible {
     animation: none !important;
   }
 }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   PRINT — ETIQUETAS térmicas/individuais via componente React
+   Quando uma página renderiza .etiqueta-100x30mm (EtiquetaProduto.tsx) e o
+   usuário imprime via browser direto (sem buildThermalLabelsHtml popup),
+   esta regra garante @page correto + reset de containers ancestrais.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@media print {
+  /* Reset universal — evita que containers ancestrais clipem a etiqueta */
+  body:has(.etiqueta-100x30mm) {
+    background: #fff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  body:has(.etiqueta-100x30mm) * {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  /* Etiqueta 100x30mm: tamanhos fixos + bordas sólidas pretas (sem cinza) */
+  .etiqueta-100x30mm {
+    width: 100mm !important;
+    height: 30mm !important;
+    border-left-color: #000 !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .etiqueta-100x30mm img {
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+  }
+  .etiqueta-100x30mm .section-label {
+    color: rgba(0, 0, 0, 0.6) !important;
+    font-size: 6pt !important;
+  }
+
+  /* Quando há SÓ etiquetas na página, força @page no tamanho da etiqueta */
+  @page :first {
+    margin: 0;
+  }
+}
