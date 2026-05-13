@@ -13,6 +13,7 @@ import {
   useEmployees, useEmployeeAdvances, useAddAdvance, useDeleteAdvance,
 } from '@/hooks/useEmployees';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
+import { todayISO } from '@/lib/date';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -27,7 +28,7 @@ export default function AdvancesPanel() {
   const [form, setForm] = useState({
     employee_id: '',
     amount: 0,
-    advance_date: new Date().toISOString().slice(0, 10),
+    advance_date: todayISO(),
     time: new Date().toTimeString().split(' ')[0],
     description: '',
     receipt_url: '',

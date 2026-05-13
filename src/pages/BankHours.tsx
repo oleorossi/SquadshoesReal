@@ -23,6 +23,7 @@ import {
   Search, Loader2, ChevronRight, Plus, Trash2,
 } from 'lucide-react';
 import AppLayout from '@/components/layout/AppLayout';
+import { todayISO } from '@/lib/date';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -190,7 +191,7 @@ export default function BankHours() {
 
   const [form, setForm] = useState({
     employee_id: '',
-    movement_date: new Date().toISOString().slice(0, 10),
+    movement_date: todayISO(),
     movement_type: 'credit' as 'credit' | 'debit' | 'adjustment' | 'compensation',
     hoursStr: '',
     minutesSign: 1 as 1 | -1,

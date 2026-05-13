@@ -18,7 +18,7 @@ import {
   usePayrollRuns, useUpsertPayrollRun, useUpdatePayrollStatus,
   useAbsences,
 } from '@/hooks/useRH';
-import { calculatePayroll, type BenefitsConfig, type PayrollDayInput } from '@/lib/payrollCalc';
+import { calculatePayroll, PAYROLL_TAX_YEAR, type BenefitsConfig, type PayrollDayInput } from '@/lib/payrollCalc';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -226,6 +226,25 @@ export default function Payroll() {
           </Button>
         </div>
       </div>
+
+      {/* Alerta de ano da tabela INSS/IRRF */}
+      {(() => {
+        const periodYear = Number(period.split('-')[0] || 0);
+        if (periodYear && periodYear !== PAYROLL_TAX_YEAR) {
+          return (
+            <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 flex items-start gap-2 text-sm">
+              <AlertTriangle className="h-4 w-4 mt-0.5 text-amber-600 shrink-0" />
+              <div className="text-amber-800">
+                <strong>Tabela INSS/IRRF de {PAYROLL_TAX_YEAR}</strong> está sendo aplicada em folha de <strong>{periodYear}</strong>.
+                Atualize <code className="font-mono text-xs bg-amber-500/10 px-1 rounded">src/lib/payrollCalc.ts</code>
+                {' '}(constantes <code className="font-mono text-xs bg-amber-500/10 px-1 rounded">INSS_BANDS / IRRF_BANDS</code>) com os valores oficiais publicados pelo governo
+                {' '}antes de aprovar esta folha — caso contrário descontos podem estar incorretos.
+              </div>
+            </div>
+          );
+        }
+        return null;
+      })()}
 
       {/* Totais */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">

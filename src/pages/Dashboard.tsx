@@ -2,6 +2,7 @@
  import { useNavigate } from "react-router-dom";
  import { useQuery } from "@tanstack/react-query";
  import { supabase } from "@/integrations/supabase/client";
+ import { todayISO } from "@/lib/date";
 import { KPICard } from "@/components/dashboard/KPICard";
 import { FinCard } from "@/components/dashboard/FinCard";
 import { ChartsRow } from "@/components/dashboard/ChartsRow";
@@ -53,7 +54,7 @@ import { ConsumptionErrorAlert } from "@/components/dashboard/ConsumptionErrorAl
      queryKey: ['dashboard-financial-stats'],
       staleTime: 2 * 60 * 1000,
      queryFn: async () => {
-       const todayIso = new Date().toISOString().slice(0, 10);
+       const todayIso = todayISO();
        const [
          { data: salesData },
          { data: receivableRows },

@@ -11,6 +11,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { format, parseISO, isAfter, isBefore, addDays, startOfMonth, endOfMonth, eachDayOfInterval, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { todayISO, safeFormatBR } from '@/lib/date';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { HubTabsList } from '@/components/layout/HubTabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -928,7 +929,7 @@ export default function Finance() {
     const header = 'Descrição;Fornecedor;CNPJ;Vencimento;Valor;Código de Barras;Nº Boleto;Forma Pagamento;Banco;Parcela;Status';
     const rows = pending.map(p => [
       csvField(p.description), csvField(p.suppliers?.name || ''), csvField(p.suppliers?.cnpj || ''),
-      format(parseISO(p.due_date), 'dd/MM/yyyy'),
+      safeFormatBR(p.due_date),
       p.amount.toFixed(2).replace('.', ','), csvField(p.barcode || ''), csvField(p.boleto_number || ''),
       csvField(p.payment_method || ''), csvField(p.bank_name || ''),
       `${p.installment_number}/${p.total_installments}`, p.status,

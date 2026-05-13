@@ -38,6 +38,7 @@ import { printAllSectorsForSaleOrder } from '@/lib/printSaleOrderOPs';
 import { autoCreateSolePO } from '@/lib/soleAutoPO';
 import { buildThermalLabelsHtml } from '@/lib/printLabels';
 import { openPrintWindow, writeRawPrintWindow } from '@/lib/printOrder';
+import { todayISO, todayPlusDaysISO } from '@/lib/date';
 import logoImg from '@/assets/logo-squad-shoes.jpg';
 
 const STATUS_OPTIONS = ['Rascunho', 'Aprovado', 'Em Produção', 'Faturado', 'Finalizado s/ NF', 'Cancelado'] as const;
@@ -884,7 +885,7 @@ export default function SaleOrders() {
           .neq('status', 'cancelled')
           .limit(1);
         if (!existingBulkAR || existingBulkAR.length === 0) {
-          const { error: arError } = await supabase.from('accounts_receivable').insert({ description: `PV ${order.order_number} - ${order.client_name}`, client_name: order.client_name, client_cnpj: order.client_cnpj || '', sale_order_id: order.id, category: 'venda', due_date: order.delivery_deadline || new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10), amount: Number(order.total), amount_received: 0, status: 'pending', notes: order.payment_condition ? `Condição: ${order.payment_condition}` : '' } as any);
+          const { error: arError } = await supabase.from('accounts_receivable').insert({ description: `PV ${order.order_number} - ${order.client_name}`, client_name: order.client_name, client_cnpj: order.client_cnpj || '', sale_order_id: order.id, category: 'venda', due_date: order.delivery_deadline || todayPlusDaysISO(30), amount: Number(order.total), amount_received: 0, status: 'pending', notes: order.payment_condition ? `Condição: ${order.payment_condition}` : '' } as any);
           if (arError) { errors.push(`${order.order_number}: ${arError.message}`); continue; }
         }
         const { data: pvItems } = await supabase.from('sale_order_items').select('*').eq('sale_order_id', order.id);
