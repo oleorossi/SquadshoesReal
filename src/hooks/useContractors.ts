@@ -56,6 +56,14 @@ export interface ServiceOrder {
   artisanal_for_stock_meters?: number;
   artisanal_base_color?: string | null;
   artisanal_stock_entry_done?: boolean;
+  // Fluxo de gargalos → OS terceirizada (migration 20260513210000):
+  // pending_quote = OS criada do /gargalos, aguardando contratada responder.
+  // quoted = prazo confirmado, OP desbloqueia pra Montagem.
+  target_sector?: string | null;
+  bottleneck_week?: string | null;
+  order_id?: string | null;
+  quoted_at?: string | null;
+  quoted_deadline?: string | null;
   created_at: string;
   updated_at: string;
   contractors?: Contractor;

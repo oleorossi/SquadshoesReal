@@ -63,7 +63,9 @@ export function useActiveBottlenecks() {
   return { ...all, data };
 }
 
-// Criar OS terceirizada a partir de um gargalo específico
+// Criar OS terceirizada a partir de um gargalo específico.
+// Diferente do fluxo legacy: o prazo é cadastrado JÁ NA CRIAÇÃO. A OP fica
+// bloqueada de avançar pra Montagem até a OS ser marcada como recebida.
 export interface CreateServiceOrderForBottleneckInput {
   contractor_id: string;
   order_id: string;
@@ -72,6 +74,7 @@ export interface CreateServiceOrderForBottleneckInput {
   bottleneck_week: string; // ISO date
   quantity: number;
   unit_price: number;
+  quoted_deadline: string; // ISO date — prazo combinado com a contratada
   description?: string;
   notes?: string;
 }
@@ -81,7 +84,6 @@ export function useCreateServiceOrderForBottleneck() {
   return useMutation({
     mutationFn: async (input: CreateServiceOrderForBottleneckInput) => {
       const total = (input.quantity || 0) * (input.unit_price || 0);
-      // service_date provisório = hoje; quoted_deadline ainda não definido (vem na resposta da costureira)
       const today = new Date().toISOString().slice(0, 10);
       const { data, error } = await (supabase as any)
         .from('service_orders')
@@ -95,7 +97,11 @@ export function useCreateServiceOrderForBottleneck() {
           unit_price: input.unit_price,
           total_value: total,
           service_date: today,
-          status: 'pending_quote',
+          // Prazo já combinado → status 'quoted'. OP destrava só quando OS for
+          // marcada como 'received' (peças entregues), não no cadastro do prazo.
+          status: 'quoted',
+          quoted_at: new Date().toISOString(),
+          quoted_deadline: input.quoted_deadline,
           description: input.description || `Cobertura de gargalo em ${SECTOR_LABEL[input.target_sector]} — semana ${input.bottleneck_week}`,
           notes: input.notes ?? null,
           order_number: `OS-GARG-${Date.now()}`,
@@ -108,7 +114,7 @@ export function useCreateServiceOrderForBottleneck() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['service_orders'] });
       qc.invalidateQueries({ queryKey: ['v_sector_bottlenecks'] });
-      toast.success('Ordem de serviço criada. Aguardando confirmação de prazo pela contratada.');
+      toast.success('OS criada com prazo. A OP fica bloqueada pra Montagem até as peças serem recebidas.');
     },
     onError: (err: any) => {
       toast.error(`Falha ao criar OS: ${err.message || 'erro desconhecido'}`);
@@ -116,35 +122,124 @@ export function useCreateServiceOrderForBottleneck() {
   });
 }
 
-// Confirmar prazo prometido pela contratada → destrava OP pra Montagem
-export function useConfirmServiceOrderQuote() {
+// OS ativas (não recebidas / não canceladas) pra um determinado gargalo
+// (sector + week_start). Permite ao usuário ver se já encaminhou demanda
+// e sugerir o mesmo terceirizado para a próxima.
+export function useActiveOSForBottleneck(sector: SectorKey | null, weekStart: string | null) {
+  return useQuery({
+    queryKey: ['service_orders_active_bottleneck', sector, weekStart],
+    enabled: !!sector && !!weekStart,
+    queryFn: async () => {
+      const FINALIZED = ['received', 'Concluído', 'concluido', 'finalizado', 'Finalizado', 'Cancelado', 'cancelled', 'cancelado'];
+      const { data, error } = await (supabase as any)
+        .from('service_orders')
+        .select('id, order_number, contractor_id, quantity, unit_price, total_value, status, quoted_deadline, order_id, contractors:contractor_id(id, name, payment_days)')
+        .eq('target_sector', sector)
+        .eq('bottleneck_week', weekStart)
+        .not('status', 'in', `(${FINALIZED.map(s => `"${s}"`).join(',')})`);
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+    staleTime: 30_000,
+  });
+}
+
+// Bulk: cria N service_orders (uma por OP) com o mesmo contratado/prazo/valor.
+// Idempotente por order_id: se OP já tem OS ativa pra esse gargalo, pula.
+export interface BulkAssignInput {
+  contractor_id: string;
+  target_sector: SectorKey;
+  bottleneck_week: string;
+  unit_price: number;
+  quoted_deadline: string;
+  contributing_orders: Array<{
+    order_id: string;
+    sale_order_id: string | null;
+    quantity: number;
+    order_number: string;
+  }>;
+}
+
+export function useBulkAssignServiceOrders() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ service_order_id, quoted_deadline, unit_price }: {
-      service_order_id: string;
-      quoted_deadline: string;
-      unit_price?: number;
-    }) => {
-      const patch: any = {
+    mutationFn: async (input: BulkAssignInput) => {
+      // Buscar OPs que JÁ TÊM OS ativa pra esse gargalo (evita duplicar)
+      const FINALIZED = ['received', 'Concluído', 'concluido', 'finalizado', 'Finalizado', 'Cancelado', 'cancelled', 'cancelado'];
+      const orderIds = input.contributing_orders.map(o => o.order_id);
+      const { data: existing } = await (supabase as any)
+        .from('service_orders')
+        .select('order_id')
+        .in('order_id', orderIds)
+        .eq('target_sector', input.target_sector)
+        .eq('bottleneck_week', input.bottleneck_week)
+        .not('status', 'in', `(${FINALIZED.map(s => `"${s}"`).join(',')})`);
+      const skippedOrderIds = new Set((existing || []).map((r: any) => r.order_id));
+
+      const toCreate = input.contributing_orders.filter(o => !skippedOrderIds.has(o.order_id));
+      if (toCreate.length === 0) {
+        return { created: 0, skipped: skippedOrderIds.size };
+      }
+
+      const today = new Date().toISOString().slice(0, 10);
+      const rows = toCreate.map((o, i) => ({
+        contractor_id: input.contractor_id,
+        order_id: o.order_id,
+        sale_order_id: o.sale_order_id,
+        target_sector: input.target_sector,
+        bottleneck_week: input.bottleneck_week,
+        quantity: o.quantity,
+        unit_price: input.unit_price,
+        total_value: o.quantity * input.unit_price,
+        service_date: today,
         status: 'quoted',
         quoted_at: new Date().toISOString(),
-        quoted_deadline,
-      };
-      if (typeof unit_price === 'number') {
-        patch.unit_price = unit_price;
-      }
+        quoted_deadline: input.quoted_deadline,
+        description: `Cobertura de gargalo ${SECTOR_LABEL[input.target_sector]} (lote) — OP ${o.order_number}`,
+        order_number: `OS-GARG-${Date.now()}-${i}`,
+      }));
+
+      const { error } = await (supabase as any).from('service_orders').insert(rows);
+      if (error) throw error;
+      return { created: rows.length, skipped: skippedOrderIds.size };
+    },
+    onSuccess: ({ created, skipped }) => {
+      qc.invalidateQueries({ queryKey: ['service_orders'] });
+      qc.invalidateQueries({ queryKey: ['service_orders_active_bottleneck'] });
+      qc.invalidateQueries({ queryKey: ['v_sector_bottlenecks'] });
+      let msg = `${created} OS criada(s).`;
+      if (skipped > 0) msg += ` ${skipped} OP(s) já tinham OS ativa — puladas.`;
+      toast.success(msg);
+    },
+    onError: (err: any) => {
+      toast.error(`Falha no encaminhamento em lote: ${err.message || 'erro desconhecido'}`);
+    },
+  });
+}
+
+// Marcar peças como recebidas (status → 'received'). Destrava OP pra Montagem.
+export function useReceiveServiceOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ service_order_id, received_notes }: {
+      service_order_id: string;
+      received_notes?: string;
+    }) => {
       const { error } = await (supabase as any)
         .from('service_orders')
-        .update(patch)
+        .update({
+          status: 'received',
+          notes: received_notes ?? undefined,
+        })
         .eq('id', service_order_id);
       if (error) throw error;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['service_orders'] });
-      toast.success('Prazo confirmado. A OP pode avançar pra Montagem.');
+      toast.success('Peças recebidas. A OP foi destravada pra Montagem.');
     },
     onError: (err: any) => {
-      toast.error(`Falha ao confirmar prazo: ${err.message}`);
+      toast.error(`Falha ao marcar como recebida: ${err.message}`);
     },
   });
 }

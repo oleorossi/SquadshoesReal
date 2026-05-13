@@ -13,6 +13,7 @@ import {
   type SectorBottleneck, type ContributingOrder,
 } from '@/hooks/useSectorBottlenecks';
 import { GenerateServiceOrderDialog } from '@/components/bottlenecks/GenerateServiceOrderDialog';
+import { BulkAssignServiceOrderDialog } from '@/components/bottlenecks/BulkAssignServiceOrderDialog';
 import { cn } from '@/lib/utils';
 
 const SECTOR_ICON: Record<SectorKey, React.ElementType> = {
@@ -56,12 +57,19 @@ export default function BottlenecksPage() {
   const [selectedOrder, setSelectedOrder] = useState<ContributingOrder | null>(null);
   const [selectedSector, setSelectedSector] = useState<SectorKey>('costura');
   const [selectedWeek, setSelectedWeek] = useState<string>('');
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkBottleneck, setBulkBottleneck] = useState<SectorBottleneck | null>(null);
 
   const openDialog = (b: SectorBottleneck, order: ContributingOrder) => {
     setSelectedOrder(order);
     setSelectedSector(b.sector);
     setSelectedWeek(b.week_start);
     setDialogOpen(true);
+  };
+
+  const openBulkDialog = (b: SectorBottleneck) => {
+    setBulkBottleneck(b);
+    setBulkOpen(true);
   };
 
   // KPI da página: gargalos críticos vs warnings
@@ -161,9 +169,20 @@ export default function BottlenecksPage() {
                         </p>
                       </div>
                     </div>
-                    <Badge variant="outline" className={cn(style.badge, 'text-[11px]')}>
-                      {b.utilization_pct}% utilizado
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className={cn(style.badge, 'text-[11px]')}>
+                        {b.utilization_pct}% utilizado
+                      </Badge>
+                      <Button
+                        size="sm"
+                        variant="default"
+                        className="h-7 text-[11px] gap-1"
+                        onClick={() => openBulkDialog(b)}
+                      >
+                        <Buildings className="h-3 w-3" />
+                        Encaminhar todas
+                      </Button>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -262,6 +281,16 @@ export default function BottlenecksPage() {
         sector={selectedSector}
         weekStart={selectedWeek}
       />
+
+      {bulkBottleneck && (
+        <BulkAssignServiceOrderDialog
+          open={bulkOpen}
+          onOpenChange={setBulkOpen}
+          sector={bulkBottleneck.sector}
+          weekStart={bulkBottleneck.week_start}
+          contributingOrders={bulkBottleneck.contributing_orders}
+        />
+      )}
     </div>
   );
 }

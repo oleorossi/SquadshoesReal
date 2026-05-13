@@ -10,6 +10,7 @@ import { NumberInput } from '@/components/ui/number-input';
 import { useContractors } from '@/hooks/useContractors';
 import {
   useCreateServiceOrderForBottleneck,
+  useActiveOSForBottleneck,
   ContributingOrder,
   SectorKey,
   SECTOR_LABEL,
@@ -25,12 +26,25 @@ interface Props {
 
 export function GenerateServiceOrderDialog({ open, onOpenChange, contributingOrder, sector, weekStart }: Props) {
   const { data: contractors = [] } = useContractors();
+  const { data: activeOS = [] } = useActiveOSForBottleneck(sector, weekStart);
   const create = useCreateServiceOrderForBottleneck();
 
   const [contractorId, setContractorId] = useState<string>('');
   const [unitPrice, setUnitPrice] = useState<number>(0);
   const [quantity, setQuantity] = useState<number>(contributingOrder?.quantity || 0);
+  const [quotedDeadline, setQuotedDeadline] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
+
+  const selectedContractor = contractors.find((c: any) => c.id === contractorId);
+  const paymentDays = Number((selectedContractor as any)?.payment_days ?? 30) || 30;
+  // Data prevista da ordem de pagamento (AP): prazo de entrega + payment_days
+  const previewPaymentDate = quotedDeadline
+    ? (() => {
+        const base = new Date(quotedDeadline + 'T00:00:00');
+        base.setDate(base.getDate() + paymentDays);
+        return base.toLocaleDateString('pt-BR');
+      })()
+    : null;
 
   // Reset state quando abre com outro pedido
   if (open && contributingOrder && quantity === 0) {
@@ -38,6 +52,13 @@ export function GenerateServiceOrderDialog({ open, onOpenChange, contributingOrd
   }
   if (!open && quantity > 0 && !contributingOrder) {
     setQuantity(0);
+  }
+  // Sugerir contratado que já está cobrindo o gargalo (se houver)
+  if (open && activeOS.length > 0 && !contractorId) {
+    const counts = new Map<string, number>();
+    activeOS.forEach((os: any) => counts.set(os.contractor_id, (counts.get(os.contractor_id) || 0) + 1));
+    const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+    if (top) setContractorId(top[0]);
   }
 
   if (!contributingOrder) return null;
@@ -48,7 +69,7 @@ export function GenerateServiceOrderDialog({ open, onOpenChange, contributingOrd
   const eligibleContractors = contractors;
 
   const handleConfirm = async () => {
-    if (!contractorId) return;
+    if (!contractorId || !quotedDeadline) return;
     await create.mutateAsync({
       contractor_id: contractorId,
       order_id: contributingOrder.order_id,
@@ -57,6 +78,7 @@ export function GenerateServiceOrderDialog({ open, onOpenChange, contributingOrd
       bottleneck_week: weekStart,
       quantity,
       unit_price: unitPrice,
+      quoted_deadline: quotedDeadline,
       notes: notes.trim() || undefined,
     });
     onOpenChange(false);
@@ -64,8 +86,11 @@ export function GenerateServiceOrderDialog({ open, onOpenChange, contributingOrd
     setContractorId('');
     setUnitPrice(0);
     setQuantity(0);
+    setQuotedDeadline('');
     setNotes('');
   };
+
+  const today = new Date().toISOString().slice(0, 10);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -137,11 +162,38 @@ export function GenerateServiceOrderDialog({ open, onOpenChange, contributingOrd
             </div>
           </div>
 
-          <div className="flex items-center justify-between rounded-md bg-primary/5 px-3 py-2 text-sm">
-            <span className="text-muted-foreground">Total estimado:</span>
-            <span className="font-mono font-semibold">
-              {total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-            </span>
+          <div>
+            <Label className="text-xs">Prazo de entrega prometido *</Label>
+            <Input
+              type="date"
+              value={quotedDeadline}
+              min={today}
+              onChange={e => setQuotedDeadline(e.target.value)}
+              className="mt-1 h-9 text-sm"
+            />
+            <p className="text-[11px] text-muted-foreground mt-1">
+              Data que a contratada se compromete a devolver as peças prontas.
+              A OP fica bloqueada de avançar pra Montagem até você marcar as peças como recebidas.
+            </p>
+          </div>
+
+          <div className="rounded-md bg-primary/5 px-3 py-2 text-sm space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">
+                Cálculo: {quantity} pares × {unitPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </span>
+              <span className="font-mono font-semibold text-base">
+                {total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </span>
+            </div>
+            {previewPaymentDate && (
+              <div className="flex items-center justify-between text-[11px] text-muted-foreground border-t border-border/40 pt-1 mt-1">
+                <span>
+                  Pagamento previsto ({paymentDays}d {selectedContractor ? `· ${(selectedContractor as any).name}` : ''}):
+                </span>
+                <span className="font-medium text-foreground">{previewPaymentDate}</span>
+              </div>
+            )}
           </div>
 
           <div>
@@ -156,12 +208,13 @@ export function GenerateServiceOrderDialog({ open, onOpenChange, contributingOrd
           </div>
 
           <div className="rounded-md border border-amber-500/40 bg-amber-50 dark:bg-amber-950/30 p-3 text-xs space-y-1">
-            <p className="font-medium text-amber-700 dark:text-amber-400">⚠ Próximos passos após criar a OS:</p>
+            <p className="font-medium text-amber-700 dark:text-amber-400">⚠ Fluxo após criar a OS:</p>
             <ol className="list-decimal list-inside text-amber-800 dark:text-amber-300 space-y-0.5">
-              <li>OS fica em status <Badge variant="outline" className="text-[10px]">pending_quote</Badge></li>
-              <li>A OP fica bloqueada de avançar pra Montagem até receber o prazo</li>
-              <li>Quando a contratada responder, confirme o prazo em /terceirizados</li>
-              <li>OP destrava e segue para Montagem</li>
+              <li>OS fica em status <Badge variant="outline" className="text-[10px]">quoted</Badge> com prazo já registrado</li>
+              <li>Ordem de pagamento (AP) gerada automaticamente baseada nos dias da contratada</li>
+              <li>A OP fica <strong>bloqueada</strong> de avançar pra Montagem</li>
+              <li>Quando as peças voltarem, vá em /terceirizados e marque "Peças recebidas"</li>
+              <li>OP destrava e segue pra Montagem</li>
             </ol>
           </div>
         </div>
@@ -172,7 +225,7 @@ export function GenerateServiceOrderDialog({ open, onOpenChange, contributingOrd
           </Button>
           <Button
             onClick={handleConfirm}
-            disabled={!contractorId || quantity <= 0 || unitPrice <= 0 || create.isPending}
+            disabled={!contractorId || quantity <= 0 || unitPrice <= 0 || !quotedDeadline || create.isPending}
           >
             {create.isPending ? 'Criando...' : 'Criar OS Terceirizada'}
           </Button>
