@@ -67,7 +67,7 @@ export function OrderDetailsModal({ order, isOpen, onClose }: OrderDetailsModalP
   const currentSectors: string[] = activeStages.length > 0
     ? activeStages.map((s: any) => s.stage_name)
     : allDone
-      ? ['Pronto']
+      ? ['Finalizado']
       : pendingStages.length > 0
         ? [pendingStages[0].stage_name]
         : ['Pendente'];

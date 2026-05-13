@@ -624,7 +624,10 @@ function NewSessionDialog({
       const { data } = await (supabase as any)
         .from('sale_orders')
         .select('id, order_number, client_name, status')
-        .in('status', ['Em Produção', 'em_producao', 'Pronto', 'pronto'])
+        // sale_orders canonical statuses (saleOrderStateMachine): só 'Em Produção'
+        // é elegível pra picking. 'em_producao'/'Pronto'/'pronto' eram lixo legacy
+        // que nunca casavam — removidos.
+        .in('status', ['Em Produção', 'Aprovado'])
         .order('created_at', { ascending: false })
         .limit(200);
       return data || [];

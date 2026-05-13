@@ -1,12 +1,15 @@
 import { Check, Clock, CheckCircle as CheckCircle2, Factory, Truck, FileText, FileX } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 
+// Stages refletem o fluxo canônico de sale_orders (saleOrderStateMachine.ts).
+// Antes tinha 'Pronto' que não é status válido — substituído por 'Expedido'
+// (que é o next real depois de Faturado).
 const STAGES = [
   { key: 'Pendente', label: 'Pendente', icon: Clock },
   { key: 'Aprovado', label: 'Aprovado', icon: CheckCircle2 },
   { key: 'Em Produção', label: 'Em Produção', icon: Factory },
-  { key: 'Pronto', label: 'Pronto', icon: Truck },
   { key: 'Faturado', label: 'Faturado', icon: FileText },
+  { key: 'Expedido', label: 'Expedido', icon: Truck },
 ] as const;
 
 // Fluxo paralelo pra PVs informais (nfe_required=false): pula Faturado e termina

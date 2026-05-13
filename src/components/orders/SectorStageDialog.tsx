@@ -155,13 +155,16 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
         actual_time_minutes: form.actual_time_minutes,
       });
 
-      // If completing Acabamento, advance order status to "Pronto" only when currently
-      // "Em Produção" — prevents overwriting terminal statuses (Cancelada, Finalizado).
+      // Ao completar Acabamento, avança orders.status pra "Finalizado" só quando
+      // está em "Em Produção" — protege contra sobrescrita de status terminais
+      // (Cancelada). Antes setava 'Pronto' que NÃO é status válido em orders
+      // (orders só tem Reservado, Em Produção, Finalizado) — UPDATE silencioso
+      // gerava state inconsistente.
       if (stage.stage_name === 'Acabamento') {
         const now = new Date().toISOString();
         await supabase
           .from('orders')
-          .update({ status: 'Pronto', updated_at: now })
+          .update({ status: 'Finalizado', updated_at: now })
           .eq('id', stage.order_id)
           .eq('status', 'Em Produção');
         queryClient.invalidateQueries({ queryKey: ['orders'] });

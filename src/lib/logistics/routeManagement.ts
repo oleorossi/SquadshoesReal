@@ -2,30 +2,18 @@
  * Constantes de status e lógica de resolução pedido↔loja para o módulo de rotas.
  */
 
-// Status que indicam pedido em produção (usado no filtro "Buscar em Pedidos")
+// Status canônicos sale_orders (saleOrderStateMachine). Antes tinha variantes
+// lowercase/i18n (em_producao, aprovado, approved, Pronto, pronto, ready,
+// finalizado, finished) que NUNCA casavam com nada no DB — removidas pra
+// evitar falso-positivo em filtros.
 export const PRODUCTION_STATUSES = [
   'Em Produção',
-  'Em produção',
-  'em_producao',
-  'producao',
-  'in_production',
 ] as const;
 
-// Status que indicam pedido pendente de expedição (usado no hub de expedição)
 export const EXPEDITION_STATUSES = [
   ...PRODUCTION_STATUSES,
   'Aprovado',
-  'aprovado',
-  'approved',
-  'Confirmado',
-  'confirmado',
-  'confirmed',
-  'Pronto',
-  'pronto',
-  'ready',
-  'Finalizado',
-  'finalizado',
-  'finished',
+  'Faturado',
   'Pendente',
 ] as const;
 
@@ -150,14 +138,12 @@ export function resolveOrdersToClients<T extends RouteClientRecord>(
 
   return { readyClients, blockedClients, unresolvedOrders };
 }
-// Statuses que indicam que o pedido esta pronto pra ser despachado.
-// Usado por hooks de expedicao e picking pra filtrar a queue de envio.
+// Statuses que indicam que o pedido está pronto pra ser despachado.
+// Usado por hooks de expedição e picking pra filtrar a queue de envio.
+// 'Faturado' é o status canônico depois que a NF foi emitida — daí o pedido
+// fica aguardando expedição até virar 'Expedido'. Antes a lista incluía
+// 'Pronto'/'aguardando_expedicao'/'ready' (i18n fantasma) — removidos.
 export const READY_TO_SHIP_STATUSES = [
-  'Pronto',
-  'pronto',
-  'Aguardando expedição',
-  'aguardando_expedicao',
-  'Aguardando expedicao',
-  'ready',
-  'ready_to_ship',
+  'Faturado',
+  'Finalizado s/ NF',
 ] as const;
