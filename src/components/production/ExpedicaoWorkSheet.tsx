@@ -94,52 +94,56 @@ export const ExpedicaoWorkSheet = ({ group, date }: Props) => {
 
   return (
     <div
-      className="w-[210mm] p-[8mm] print:w-full print:p-0 bg-white border border-slate-300 shadow-none print:shadow-none print:border-0 m-auto flex flex-col gap-0"
-      style={{ boxSizing: 'border-box', fontFamily: "'Helvetica Neue', Arial, sans-serif" }}
+      className="w-[210mm] p-[8mm] print:w-full print:p-0 bg-white shadow-none print:shadow-none m-auto flex flex-col gap-0"
+      style={{ boxSizing: 'border-box', fontFamily: "'Inter Tight', sans-serif", color: '#000' }}
     >
       <WorksheetHeader
         sector="Expedição"
         icon={Truck}
-        bgColor="bg-emerald-600"
-        borderColor="border-emerald-700"
         identification={
           <>
-            <p className="text-lg font-black text-emerald-900 leading-tight truncate">{group.client_name}</p>
-            <div className="flex items-baseline gap-3 flex-wrap text-[10px] text-slate-700">
-              {group.client_cnpj && <span className="font-mono">CNPJ {group.client_cnpj}</span>}
-              {group.client_ie && <span className="font-mono">IE {group.client_ie}</span>}
+            <span className="section-label block" style={{ color: '#000' }}>Cliente</span>
+            <p
+              className="text-black uppercase leading-none mt-0.5 truncate"
+              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '30px', letterSpacing: '-0.025em' }}
+            >
+              {group.client_name}
+            </p>
+            <div className="flex items-baseline gap-3 flex-wrap text-[10px] mt-1 font-mono text-black tracking-widest uppercase">
+              {group.client_cnpj && <span>CNPJ {group.client_cnpj}</span>}
+              {group.client_ie && <span>IE {group.client_ie}</span>}
               {group.client_telefone && (
-                <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{group.client_telefone}</span>
+                <span className="flex items-center gap-1"><Phone className="h-3 w-3" weight="bold" />{group.client_telefone}</span>
               )}
             </div>
             {(enderecoLinha1 || enderecoLinha2) && (
-              <div className="text-[10px] text-slate-600 leading-tight mt-0.5">
-                <MapPin className="h-3 w-3 inline mr-1 text-emerald-600" />
-                {enderecoLinha1 && <span className="font-semibold">{enderecoLinha1}</span>}
-                {enderecoLinha2 && <span className="ml-1">· {enderecoLinha2}</span>}
+              <div className="text-[10px] text-black leading-tight mt-0.5 font-mono tracking-wider">
+                <MapPin className="h-3 w-3 inline mr-1 text-black" weight="bold" />
+                {enderecoLinha1 && <span className="font-bold uppercase">{enderecoLinha1}</span>}
+                {enderecoLinha2 && <span className="ml-1 uppercase">· {enderecoLinha2}</span>}
               </div>
             )}
-            <div className="flex items-center gap-3 mt-0.5 flex-wrap text-[10px]">
+            <div className="flex items-center gap-3 mt-1 flex-wrap text-[10px] font-mono tracking-widest uppercase">
               {group.sale_order_number && (
-                <span className="text-slate-700">
-                  PV <span className="font-mono font-black">{group.sale_order_number}</span>
+                <span className="text-black">
+                  PV <span className="font-bold">{group.sale_order_number}</span>
                 </span>
               )}
               {group.nfe_numero && (
-                <span className="text-emerald-700 flex items-center gap-1">
-                  <Receipt className="h-3 w-3" />
-                  NF-e <span className="font-mono font-black">{group.nfe_numero}</span>
-                  {group.nfe_chave && <span className="text-slate-500">…{group.nfe_chave.slice(-6)}</span>}
+                <span className="text-black flex items-center gap-1">
+                  <Receipt className="h-3 w-3" weight="bold" />
+                  NF-e <span className="font-bold">{group.nfe_numero}</span>
+                  {group.nfe_chave && <span>…{group.nfe_chave.slice(-6)}</span>}
                 </span>
               )}
               {group.transport_name && (
-                <span className="text-slate-700">
-                  Transp. <span className="font-semibold">{group.transport_name}</span>
+                <span className="text-black">
+                  Transp. <span className="font-bold">{group.transport_name}</span>
                 </span>
               )}
-              <span className="text-slate-700">
+              <span className="text-black">
                 {group.orders.length} ite{group.orders.length === 1 ? 'm' : 'ns'} ·{' '}
-                <span className="font-mono font-black text-emerald-700">{totalPairs} pares</span>
+                <span className="font-bold">{totalPairs} pares</span>
               </span>
             </div>
           </>
@@ -149,39 +153,49 @@ export const ExpedicaoWorkSheet = ({ group, date }: Props) => {
       />
 
       {/* Resumo embalagem */}
-      <div className="keep-together mb-1.5 border-2 border-emerald-300 rounded-lg p-1.5 bg-emerald-50">
-        <div className="flex items-center justify-between gap-3 mb-1.5">
+      <div className="keep-together mb-2">
+        <div className="flex items-baseline justify-between mb-1">
           <div className="flex items-center gap-2">
-            <Package className="h-4 w-4 text-emerald-700" />
-            <span className="text-xs font-black text-emerald-900 uppercase tracking-wide">Embalagem (caixas coletivas)</span>
+            <Package className="h-4 w-4 text-black" weight="bold" />
+            <span className="section-label" style={{ color: '#000' }}>02 / Embalagem · Caixas Coletivas</span>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-stretch gap-4 shrink-0">
             <div className="text-right">
-              <p className="text-[9px] font-bold text-emerald-700 uppercase leading-none">Caixas</p>
-              <p className="text-2xl font-black font-mono text-emerald-900 leading-tight">{totalBoxes}</p>
+              <span className="section-label block" style={{ color: '#000' }}>Caixas</span>
+              <span
+                className="text-black leading-none block mt-0.5"
+                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.02em' }}
+              >
+                {totalBoxes}
+              </span>
             </div>
-            <div className="text-right">
-              <p className="text-[9px] font-bold text-emerald-700 uppercase leading-none">Pares</p>
-              <p className="text-2xl font-black font-mono text-emerald-900 leading-tight">{totalPairs}</p>
+            <div className="text-right border-l border-black pl-3">
+              <span className="section-label block" style={{ color: '#000' }}>Pares</span>
+              <span
+                className="text-black leading-none block mt-0.5"
+                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.02em' }}
+              >
+                {totalPairs}
+              </span>
             </div>
           </div>
         </div>
-        <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
+        <table className="w-full text-xs" style={{ borderCollapse: 'collapse', border: '1px solid #000' }}>
           <thead>
-            <tr className="bg-emerald-100">
-              <th className="border border-emerald-200 py-1 px-2 text-left text-[10px] font-bold text-emerald-800">Solado</th>
-              <th className="border border-emerald-200 py-1 px-2 text-right text-[10px] font-bold text-emerald-800">Pares</th>
-              <th className="border border-emerald-200 py-1 px-2 text-right text-[10px] font-bold text-emerald-800">Pares/Caixa</th>
-              <th className="border border-emerald-200 py-1 px-2 text-right text-[10px] font-bold text-emerald-800">Caixas</th>
+            <tr style={{ borderBottom: '1.5px solid #000' }}>
+              <th className="section-label py-1 px-2 text-left" style={{ color: '#000' }}>Solado</th>
+              <th className="section-label py-1 px-2 text-right" style={{ color: '#000' }}>Pares</th>
+              <th className="section-label py-1 px-2 text-right" style={{ color: '#000' }}>Pares / Caixa</th>
+              <th className="section-label py-1 px-2 text-right" style={{ color: '#000' }}>Caixas</th>
             </tr>
           </thead>
           <tbody>
             {Array.from(boxesBySole.values()).map((b, i) => (
-              <tr key={i}>
-                <td className="border border-emerald-200 py-1 px-2 font-medium">{b.soleName}</td>
-                <td className="border border-emerald-200 py-1 px-2 text-right font-mono">{b.pairs}</td>
-                <td className="border border-emerald-200 py-1 px-2 text-right font-mono text-slate-500">{b.pairsPerBox}</td>
-                <td className="border border-emerald-200 py-1 px-2 text-right font-mono font-black">{b.boxes}</td>
+              <tr key={i} style={{ borderBottom: '1px solid #000' }}>
+                <td className="py-1 px-2 font-bold text-black uppercase">{b.soleName}</td>
+                <td className="py-1 px-2 text-right font-mono text-black">{b.pairs}</td>
+                <td className="py-1 px-2 text-right font-mono text-black">{b.pairsPerBox}</td>
+                <td className="py-1 px-2 text-right font-mono font-bold text-black">{b.boxes}</td>
               </tr>
             ))}
           </tbody>
@@ -189,99 +203,116 @@ export const ExpedicaoWorkSheet = ({ group, date }: Props) => {
       </div>
 
       {/* Tally de caixas conferidas */}
-      <TallyBox count={totalBoxes} pairsPerCard={1} title="Caixas conferidas (marcar cada caixa coletiva)" accentColor="emerald" />
+      <TallyBox count={totalBoxes} pairsPerCard={1} title="Caixas conferidas · marcar cada caixa coletiva" />
 
       {/* Itens conferência */}
-      <div className="flex-1 mt-1">
-        <div className="bg-slate-100 px-3 py-1 mb-1 rounded-t-lg border border-slate-300 border-b-0">
-          <p className="text-xs font-black text-slate-700 uppercase tracking-wide">Itens · Conferência</p>
+      <div className="flex-1 mt-2">
+        <div className="flex items-baseline justify-between mb-1">
+          <span className="section-label" style={{ color: '#000' }}>03 / Itens · Conferência</span>
+          <span className="font-mono text-[10px] text-black tracking-widest uppercase">
+            {group.orders.length} item{group.orders.length !== 1 ? 'ns' : ''}
+          </span>
         </div>
-        <table className="w-full text-xs" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+        <table className="w-full text-xs" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', border: '1px solid #000' }}>
           <thead>
-            <tr className="bg-slate-100">
-              <th className="border border-slate-300 py-1 px-1 text-center text-[10px] font-bold" style={{ width: 40 }}>Foto</th>
-              <th className="border border-slate-300 py-1 px-1 text-left text-[10px] font-bold" style={{ width: 60 }}>OP</th>
-              <th className="border border-slate-300 py-1 px-1 text-left text-[10px] font-bold">Referência</th>
-              <th className="border border-slate-300 py-1 px-1 text-left text-[10px] font-bold" style={{ width: 70 }}>Cor</th>
-              <th className="border border-slate-300 py-1 px-1 text-left text-[10px] font-bold" style={{ width: 90 }}>Solado</th>
+            <tr style={{ borderBottom: '1.5px solid #000' }}>
+              <th className="section-label py-1.5 px-1 text-center" style={{ color: '#000', width: 40, borderRight: '1px solid #000' }}>Foto</th>
+              <th className="section-label py-1.5 px-1 text-left" style={{ color: '#000', width: 60, borderRight: '1px solid #000' }}>OP</th>
+              <th className="section-label py-1.5 px-1 text-left" style={{ color: '#000', borderRight: '1px solid #000' }}>Referência</th>
+              <th className="section-label py-1.5 px-1 text-left" style={{ color: '#000', width: 70, borderRight: '1px solid #000' }}>Cor</th>
+              <th className="section-label py-1.5 px-1 text-left" style={{ color: '#000', width: 90, borderRight: '1px solid #000' }}>Solado</th>
               {allSizes.map(s => (
-                <th key={s} className="border border-slate-300 py-1 text-[9px] font-bold" style={{ width: 26 }}>{s}</th>
+                <th
+                  key={s}
+                  className="py-1.5 text-black font-bold"
+                  style={{ width: 26, fontSize: '11px', fontFamily: "'JetBrains Mono', monospace", borderRight: '1px solid #000' }}
+                >
+                  {s}
+                </th>
               ))}
-              <th className="border border-slate-300 py-1 px-1 text-right text-[10px] font-bold bg-slate-200" style={{ width: 50 }}>Total</th>
-              <th className="border border-slate-300 py-1 text-center text-[10px] font-bold" style={{ width: 24 }}>✓</th>
+              <th className="section-label py-1.5 px-1 text-right" style={{ color: '#000', width: 50, borderRight: '1px solid #000' }}>Total</th>
+              <th className="section-label py-1.5 text-center" style={{ color: '#000', width: 24 }}>OK</th>
             </tr>
           </thead>
           <tbody>
             {group.orders.map(o => (
-              <tr key={o.id}>
-                <td className="border border-slate-300 p-1 text-center">
+              <tr key={o.id} style={{ borderBottom: '1px solid #000' }}>
+                <td className="p-1 text-center" style={{ borderRight: '1px solid #000' }}>
                   {o.image_url ? (
                     <img src={o.image_url} alt={o.reference_code || ''} className="w-9 h-9 object-contain mix-blend-multiply bg-white inline-block" />
                   ) : (
-                    <div className="w-9 h-9 bg-slate-100 inline-block rounded" />
+                    <div className="w-9 h-9 bg-white inline-block" style={{ border: '1px solid #000' }} />
                   )}
                 </td>
-                <td className="border border-slate-300 py-1 px-1 font-mono text-[10px] text-slate-600">{o.op_number || '—'}</td>
-                <td className="border border-slate-300 py-1 px-1 text-[11px]">
-                  {o.reference_code ? <span className="font-bold">{o.reference_code}</span> : null}
-                  {o.reference_name ? <span className="text-slate-500"> {o.reference_name}</span> : null}
+                <td className="py-1 px-1 font-mono text-[10px] text-black" style={{ borderRight: '1px solid #000' }}>{o.op_number || '—'}</td>
+                <td className="py-1 px-1 text-[11px] text-black" style={{ borderRight: '1px solid #000' }}>
+                  {o.reference_code ? <span className="font-bold uppercase">{o.reference_code}</span> : null}
+                  {o.reference_name ? <span className="ml-1">{o.reference_name}</span> : null}
                 </td>
-                <td className="border border-slate-300 py-1 px-1 text-[10px]">{o.color || '—'}</td>
-                <td className="border border-slate-300 py-1 px-1 text-[10px] text-slate-600">{o.sole_name || '—'}</td>
+                <td className="py-1 px-1 text-[11px] text-black uppercase font-semibold" style={{ borderRight: '1px solid #000' }}>{o.color || '—'}</td>
+                <td className="py-1 px-1 text-[10px] text-black" style={{ borderRight: '1px solid #000' }}>{o.sole_name || '—'}</td>
                 {allSizes.map(s => (
-                  <td key={s} className="border border-slate-300 py-1 text-center font-mono text-[10px]">
+                  <td
+                    key={s}
+                    className="py-1 text-center font-mono text-[11px] font-bold text-black"
+                    style={{ borderRight: '1px solid #000' }}
+                  >
                     {o.grid?.[s] || ''}
                   </td>
                 ))}
-                <td className="border border-slate-300 py-1 px-1 text-right font-mono font-black text-[11px] bg-slate-50">
+                <td
+                  className="py-1 px-1 text-right font-mono font-bold text-black"
+                  style={{ fontSize: '13px', borderRight: '1px solid #000' }}
+                >
                   {o.total_pairs || 0}
                 </td>
-                <td className="border border-slate-300 py-1 text-center">
-                  <span className="inline-block w-4 h-4 border-2 border-slate-400 rounded-sm" />
+                <td className="py-1 text-center">
+                  <span className="inline-block w-4 h-4" style={{ border: '1.5px solid #000' }} />
                 </td>
               </tr>
             ))}
           </tbody>
           <tfoot>
-            <tr className="bg-emerald-100 font-black">
-              <td colSpan={5 + allSizes.length} className="border border-emerald-300 py-1.5 px-2 text-right text-[10px] uppercase text-emerald-800">
+            <tr style={{ borderTop: '1.5px solid #000' }}>
+              <td
+                colSpan={5 + allSizes.length}
+                className="py-2 px-2 text-right section-label"
+                style={{ color: '#000', borderRight: '1px solid #000' }}
+              >
                 Total da Loja
               </td>
-              <td className="border border-emerald-300 py-1.5 px-1 text-right font-mono text-base text-emerald-900">
+              <td
+                className="py-2 px-1 text-right text-black"
+                style={{
+                  fontFamily: "'Anton', Impact, sans-serif",
+                  fontSize: '20px',
+                  letterSpacing: '-0.02em',
+                  lineHeight: '1',
+                  borderRight: '1px solid #000',
+                }}
+              >
                 {totalPairs}
               </td>
-              <td className="border border-emerald-300" />
+              <td />
             </tr>
           </tfoot>
         </table>
       </div>
 
       {/* Checklist final de expedição */}
-      <div className="mt-1.5 border border-emerald-300 rounded p-1.5 bg-emerald-50">
-        <p className="text-[9px] font-bold text-emerald-700 uppercase mb-1">Checklist final</p>
-        <div className="flex items-center justify-between text-[10px] flex-wrap gap-2">
-          <label className="flex items-center gap-1">
-            <span className="inline-block w-4 h-4 border-2 border-emerald-500 rounded" />
-            NF-e impressa
-          </label>
-          <label className="flex items-center gap-1">
-            <span className="inline-block w-4 h-4 border-2 border-emerald-500 rounded" />
-            Etiqueta do cliente
-          </label>
-          <label className="flex items-center gap-1">
-            <span className="inline-block w-4 h-4 border-2 border-emerald-500 rounded" />
-            Romaneio assinado
-          </label>
-          <label className="flex items-center gap-1">
-            <span className="inline-block w-4 h-4 border-2 border-emerald-500 rounded" />
-            Conferência por par
-          </label>
+      <div className="mt-2">
+        <span className="section-label block mb-1" style={{ color: '#000' }}>04 / Checklist Final</span>
+        <div className="border-t border-black pt-2 grid grid-cols-4 gap-3">
+          {['NF-e impressa', 'Etiqueta do cliente', 'Romaneio assinado', 'Conferência por par'].map(item => (
+            <label key={item} className="flex items-center gap-2 text-[11px] text-black">
+              <span className="inline-block w-4 h-4 shrink-0" style={{ border: '1.5px solid #000' }} />
+              <span className="leading-tight">{item}</span>
+            </label>
+          ))}
         </div>
       </div>
 
-      <div className="mt-2">
-        <SignatureFooter labels={['Conferente', 'Embalagem', 'Transportadora']} showTime={false} />
-      </div>
+      <SignatureFooter labels={['Conferente', 'Embalagem', 'Transportadora']} showTime={false} />
     </div>
   );
 };

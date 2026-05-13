@@ -186,6 +186,7 @@ import { getShoeSizeMappings } from '@/utils/shoeUtils';
 
 import { SHOE_CATEGORIES } from '@/lib/shoeCategories';
 import { AppErrorBoundary } from '@/components/ErrorBoundary';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 const STATUSES = ['Ativo', 'Em desenvolvimento', 'Descontinuado'] as const;
 const STATUS_FICHA = ['rascunho', 'em_revisao', 'validada', 'publicada'] as const;
 const STATUS_FICHA_LABELS: Record<string, string> = { rascunho: 'Rascunho', em_revisao: 'Em Revisão', validada: 'Validada', publicada: 'Publicada' };
@@ -434,36 +435,36 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
 
   return (
     <>
-      <div className="space-y-5 page-enter">
+      <div className="space-y-5 page-enter editorial-stagger">
         <NonFiniteDevWatcher />
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-             <h1 className="text-xl font-bold tracking-tight">Fichas Técnicas</h1>
-             <p className="text-sm text-muted-foreground">Materiais, consumos e custos</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <SheetsAuditButton onJumpToSheet={(id) => setExpandedId(id)} />
-            <Button
-              variant="outline"
-              onClick={handleBulkApplySoleSettings}
-              disabled={bulkSoleApplying || filteredSheets.length === 0}
-              className="gap-2"
-              title="Aplica consumo, processo e grupo do solado em todas as fichas listadas, baseado em outras fichas que usam o mesmo solado"
-            >
-              {bulkSoleApplying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-              <span className="hidden sm:inline">Aplicar Solado em Massa</span>
-            </Button>
-            <Button variant="outline" onClick={() => { setCloneSourceId(''); setCloneNewName(''); setCloneSearchTerm(''); setCloneDialogOpen(true); }} className="gap-2">
-              <ClipboardCopy className="h-4 w-4" />
-              <span className="hidden sm:inline">Copiar</span>
-            </Button>
-            <Button onClick={() => setDialogOpen(true)} className="gap-2">
-              <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">Nova Ficha</span>
-            </Button>
-          </div>
-        </div>
+        <EditorialPageHeader
+          sectionLabel="ENGENHARIA · FICHAS"
+          title="Fichas Técnicas"
+          description="Materiais, consumos e custos"
+          actions={
+            <>
+              <SheetsAuditButton onJumpToSheet={(id) => setExpandedId(id)} />
+              <Button
+                variant="outline"
+                onClick={handleBulkApplySoleSettings}
+                disabled={bulkSoleApplying || filteredSheets.length === 0}
+                className="gap-2"
+                title="Aplica consumo, processo e grupo do solado em todas as fichas listadas, baseado em outras fichas que usam o mesmo solado"
+              >
+                {bulkSoleApplying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                <span className="hidden sm:inline">Aplicar Solado em Massa</span>
+              </Button>
+              <Button variant="outline" onClick={() => { setCloneSourceId(''); setCloneNewName(''); setCloneSearchTerm(''); setCloneDialogOpen(true); }} className="gap-2">
+                <ClipboardCopy className="h-4 w-4" />
+                <span className="hidden sm:inline">Copiar</span>
+              </Button>
+              <Button onClick={() => setDialogOpen(true)} className="gap-2">
+                <Plus className="h-4 w-4" />
+                <span className="hidden sm:inline">Nova Ficha</span>
+              </Button>
+            </>
+          }
+        />
 
          {!expandedId && (
            <GuidedPathSelector 

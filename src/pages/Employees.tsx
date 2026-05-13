@@ -23,6 +23,7 @@ import { useWorkSchedules } from '@/hooks/useTimesheet';
 import { useBenefitsConfig } from '@/hooks/useRH';
 import { toast } from 'sonner';
 import AppLayout from '@/components/layout/AppLayout';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 const emptyEmployee = {
   name: '', external_id: '', role: '', department: '', salary: 0, overtime_hourly_rate: null as number | null,
@@ -116,21 +117,22 @@ export default function Employees() {
 
   return (
     <AppLayout>
-      <div className="space-y-5 page-enter">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold tracking-tight">Funcionários</h1>
-            <p className="text-sm text-muted-foreground">Gestão de equipe e adiantamentos</p>
-          </div>
-          <div className="flex gap-2">
-            <Button onClick={() => { setForm(emptyEmployee); setEditing(null); setDialogOpen(true); }} className="gap-2">
-              <Plus className="h-4 w-4" /> Novo Funcionário
-            </Button>
-            <Button onClick={() => setAdvanceDialogOpen(true)} variant="outline" className="gap-2">
-              <DollarSign className="h-4 w-4" /> Novo Adiantamento
-            </Button>
-          </div>
-        </div>
+      <div className="space-y-5 page-enter editorial-stagger">
+        <EditorialPageHeader
+          sectionLabel="RH · COLABORADORES"
+          title="Funcionários"
+          description="Gestão de equipe e adiantamentos"
+          actions={
+            <>
+              <Button onClick={() => { setForm(emptyEmployee); setEditing(null); setDialogOpen(true); }} className="gap-2">
+                <Plus className="h-4 w-4" /> Novo Funcionário
+              </Button>
+              <Button onClick={() => setAdvanceDialogOpen(true)} variant="outline" className="gap-2">
+                <DollarSign className="h-4 w-4" /> Novo Adiantamento
+              </Button>
+            </>
+          }
+        />
 
         {/* KPI Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

@@ -7,10 +7,11 @@ interface Props {
   sector: string;
   /** Ícone do setor (Lucide). */
   icon: React.ComponentType<{ className?: string }>;
-  /** Cor de fundo do header (Tailwind). Ex: 'bg-blue-600'. */
-  bgColor: string;
-  /** Cor da borda. Ex: 'border-blue-700'. */
-  borderColor: string;
+  /** [LEGACY] Cor de fundo do header. Mantido pra compat com chamadores, mas ignorado
+   *  no design "Industrial Editorial Minimalist" (header é sempre b/w). */
+  bgColor?: string;
+  /** [LEGACY] Cor da borda. Mantido pra compat — agora o header usa border-black. */
+  borderColor?: string;
   /** Slot pra imagem do produto à esquerda. */
   imageSlot?: React.ReactNode;
   /** Slot principal com identificação (ref/cor/PV/etc). */
@@ -20,51 +21,79 @@ interface Props {
   /** Slot extra abaixo do header (alertas). */
   alerts?: React.ReactNode;
   date?: string;
+  /** Index editorial pré-formatado (ex: "01 / SILK"). Se omitido, é derivado de `sector`. */
+  index?: string;
 }
 
 /**
- * Header padronizado pra todas as fichas de operador.
+ * Header padronizado pra todas as fichas de operador — design Industrial Editorial Minimalist.
  *
  * Layout:
- *   [FOTO] [IDENTIFICAÇÃO]      [QR + LABEL]
+ *   [01 / SETOR]      [FOTO] [IDENTIFICAÇÃO]              [QR]
+ *   ──── rule line ────
  *   [ALERTAS opcionais]
  *
- * Foto + identificação ocupam mesma altura. Header sempre compacto pra
- * não desperdiçar espaço vertical em A4.
+ * Tipografia ANTON gigante no setor, hairline 1px black como divisor, sem
+ * blocos pretos preenchidos. Branco dominante — economia de tinta + leitura
+ * a 50cm na fábrica.
  */
 export const WorksheetHeader = ({
-  sector, icon: Icon, bgColor, borderColor,
-  imageSlot, identification, qrLabel, alerts, date,
+  sector, icon: Icon,
+  imageSlot, identification, qrLabel, alerts, date, index,
 }: Props) => {
+  const editorialIndex = index || `01 / ${sector.toUpperCase()}`;
   return (
-    <div>
-      <div className={cn('flex items-stretch gap-0 rounded-lg overflow-hidden border-2 mb-1.5', borderColor)}>
-        {/* Sector strip */}
-        <div className={cn('text-white flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 shrink-0', bgColor)}>
-          <Icon className="h-4 w-4" />
-          <span className="text-[9px] font-black uppercase tracking-tight text-center leading-tight">{sector}</span>
+    <div className="mb-2 text-black">
+      {/* Editorial index strip */}
+      <div className="flex items-baseline justify-between mb-1">
+        <span className="section-label" style={{ color: '#000', fontFamily: "'Inter Tight', sans-serif" }}>
+          {editorialIndex}
+        </span>
+        {date && (
+          <span className="font-mono text-[10px] text-black tracking-widest uppercase">{date}</span>
+        )}
+      </div>
+
+      {/* Hero row — top hairline rules, no fills */}
+      <div className="flex items-stretch gap-4 border-t-2 border-b border-black py-3">
+        {/* Sector identity — big Anton */}
+        <div className="flex flex-col justify-center shrink-0 min-w-[120px]">
+          <div className="flex items-center gap-2">
+            <Icon className="h-5 w-5 text-black" weight="bold" />
+            <span className="section-label" style={{ color: '#000', fontFamily: "'Inter Tight', sans-serif" }}>
+              Setor
+            </span>
+          </div>
+          <span
+            className="text-black uppercase leading-none mt-1"
+            style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '40px', letterSpacing: '-0.025em' }}
+          >
+            {sector}
+          </span>
         </div>
 
         {/* Image */}
         {imageSlot && (
-          <div className="flex items-center justify-center px-1.5 bg-white border-l border-r border-slate-200 shrink-0">
+          <div className="flex items-center justify-center shrink-0 border-l border-black pl-4">
             {imageSlot}
           </div>
         )}
 
         {/* Identification */}
-        <div className="flex-1 flex flex-col justify-center gap-0 px-2.5 py-1.5 bg-slate-50 min-w-0">
+        <div className="flex-1 flex flex-col justify-center gap-0.5 min-w-0 border-l border-black pl-4 text-black">
           {identification}
         </div>
 
         {/* QR */}
-        <div className="flex flex-col items-center justify-center px-1.5 bg-white border-l border-slate-200 shrink-0">
-          <QrCode className="h-7 w-7 text-slate-700" />
-          {qrLabel && <span className="text-[7px] font-mono text-slate-400 mt-0.5">{qrLabel}</span>}
-          {date && <span className="text-[7px] text-slate-500 mt-0.5">{date}</span>}
+        <div className="flex flex-col items-center justify-center shrink-0 border-l border-black pl-4">
+          <QrCode className="h-11 w-11 text-black" weight="thin" />
+          {qrLabel && (
+            <span className="text-[8px] font-mono text-black mt-1 tracking-[0.2em] uppercase">{qrLabel}</span>
+          )}
         </div>
       </div>
-      {alerts}
+
+      {alerts && <div className="mt-2">{alerts}</div>}
     </div>
   );
 };

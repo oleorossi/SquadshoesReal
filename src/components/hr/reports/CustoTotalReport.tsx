@@ -1,10 +1,8 @@
 import { useMemo, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Download, Info } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, Download, Info } from '@phosphor-icons/react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useEmployees, useEmployeeAdvances } from '@/hooks/useEmployees';
 import { useBenefitsConfig, usePayrollRuns, useBankHoursMovements } from '@/hooks/useRH';
@@ -163,114 +161,142 @@ export default function CustoTotalReport() {
 
   return (
     <TooltipProvider>
-      <div className="space-y-5 page-enter">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
-              <DollarSign className="h-5 w-5 text-primary" />
-              Custo Total por Funcionário
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Quanto cada funcionário custou de fato no mês (salário + HE + benefícios + encargos).
-            </p>
+      <div className="editorial-stagger space-y-8 page-enter">
+        {/* ─────────── MASTHEAD ─────────── */}
+        <div>
+          <div className="flex items-baseline justify-between gap-4 mb-3">
+            <span className="section-label text-foreground">RH · Relatório</span>
+            <span className="section-label">{period}</span>
           </div>
-          <div className="flex gap-2 items-center">
-            <Input type="month" value={period} onChange={e => setPeriod(e.target.value)} className="w-40" />
-            <Button variant="outline" size="sm" onClick={() => setIncludeEncargos(v => !v)}>
-              {includeEncargos ? '✓' : '✗'} Encargos
-            </Button>
-            <Button size="sm" onClick={exportCsv} className="gap-1.5"><Download className="h-3.5 w-3.5" /> CSV</Button>
+          <div className="rule-line mb-4" />
+          <div className="flex items-end justify-between gap-6 flex-wrap">
+            <div className="flex-1 min-w-[260px]">
+              <p className="section-label mb-2">Custo Total · Mensal</p>
+              <h1 className="text-display-lg leading-none">
+                Custo por
+                <span className="text-primary"> Funcionário</span>
+              </h1>
+              <p className="text-sm text-muted-foreground mt-3 max-w-xl leading-relaxed">
+                Quanto cada funcionário custou de fato no mês — salário, horas extras, benefícios e encargos consolidados.
+              </p>
+            </div>
+            <div className="flex gap-2 items-center">
+              <Input type="month" value={period} onChange={e => setPeriod(e.target.value)} className="w-40 h-9" />
+              <Button variant="outline" size="sm" className="h-9" onClick={() => setIncludeEncargos(v => !v)}>
+                {includeEncargos ? '✓' : '✗'} Encargos
+              </Button>
+              <Button size="sm" className="h-9 gap-1.5" onClick={exportCsv}>
+                <Download className="h-3.5 w-3.5" /> CSV
+              </Button>
+            </div>
           </div>
+          <div className="rule-line-double mt-5" />
         </div>
 
         {calculadosCount < rows.length && (
-          <Card className="border-amber-300/60 bg-amber-50/50 dark:bg-amber-950/20">
-            <CardContent className="py-3 text-sm text-amber-800 dark:text-amber-300 flex items-start gap-2">
-              <Info className="h-4 w-4 mt-0.5 shrink-0" />
-              <p>
-                Apenas <strong>{calculadosCount}</strong> de {rows.length} funcionários têm folha calculada para {period}.
-                Os demais aparecem como <em>estimativa</em> (apenas salário base + benefícios da config + encargos).
-                Calcule a folha em <strong>Folha &gt; Folha do Mês</strong> para valores precisos.
+          <div className="border-l-2 border-primary pl-4 py-2 flex items-start gap-2">
+            <Info className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
+            <div>
+              <p className="section-label mb-1 text-primary">Atenção · Folha Parcial</p>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Apenas <span className="font-mono font-bold text-foreground">{calculadosCount}</span> de <span className="font-mono text-foreground">{rows.length}</span> funcionários têm folha calculada para {period}.
+                Os demais aparecem como <em>estimativa</em> (salário base + benefícios + encargos).
+                Calcule a folha em <strong className="text-foreground">Folha &gt; Folha do Mês</strong> para valores precisos.
               </p>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         )}
 
-        {/* KPIs */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <Card><CardContent className="p-4">
-            <p className="text-xs text-muted-foreground uppercase">Folha base</p>
-            <p className="text-lg font-bold font-mono">{fmt(totals.base)}</p>
-          </CardContent></Card>
-          <Card><CardContent className="p-4">
-            <p className="text-xs text-muted-foreground uppercase">Horas extras</p>
-            <p className="text-lg font-bold font-mono text-amber-600">{fmt(totals.he)}</p>
-          </CardContent></Card>
-          <Card><CardContent className="p-4">
-            <p className="text-xs text-muted-foreground uppercase">Benefícios</p>
-            <p className="text-lg font-bold font-mono text-emerald-600">{fmt(totals.benef)}</p>
-          </CardContent></Card>
-          <Card><CardContent className="p-4">
-            <div className="flex items-center gap-1">
-              <p className="text-xs text-muted-foreground uppercase">Encargos est.</p>
-              <Tooltip>
-                <TooltipTrigger><Info className="h-3 w-3 text-muted-foreground" /></TooltipTrigger>
-                <TooltipContent className="max-w-xs">FGTS 8% + INSS patronal + SAT + Sistema-S ≈ 34.8% sobre proventos. Estimativa.</TooltipContent>
-              </Tooltip>
-            </div>
-            <p className="text-lg font-bold font-mono text-rose-600">{fmt(totals.encargos)}</p>
-          </CardContent></Card>
-          <Card className="border-primary/40">
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground uppercase">Custo total mês</p>
-              <p className="text-xl font-bold font-mono text-primary">{fmt(totals.total)}</p>
-            </CardContent>
-          </Card>
-        </div>
+        {/* ─────────── 01 / INDICADORES ─────────── */}
+        <section>
+          <div className="flex items-baseline gap-3 mb-5">
+            <span className="font-display text-2xl leading-none">01</span>
+            <span className="section-label text-foreground">Indicadores do Período</span>
+            <div className="flex-1 h-px bg-border" />
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-5 border-y border-border">
+            <KpiCell label="Folha base" value={fmt(totals.base)} />
+            <KpiCell label="Horas extras" value={fmt(totals.he)} bordered />
+            <KpiCell label="Benefícios" value={fmt(totals.benef)} bordered />
+            <KpiCell
+              label="Encargos est."
+              value={fmt(totals.encargos)}
+              bordered
+              hint="FGTS 8% + INSS patronal + SAT + Sistema-S ≈ 34.8% sobre proventos. Estimativa."
+            />
+            <KpiCell label="Custo total mês" value={fmt(totals.total)} bordered accent />
+          </div>
+        </section>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Custo por funcionário</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Funcionário</TableHead>
-                  <TableHead>Setor</TableHead>
-                  <TableHead className="text-right">Base</TableHead>
-                  <TableHead className="text-right">HE</TableHead>
-                  <TableHead className="text-right">Benefícios</TableHead>
-                  <TableHead className="text-right">Encargos</TableHead>
-                  <TableHead className="text-right font-bold">Custo Total</TableHead>
-                  <TableHead className="text-center">BH</TableHead>
+        {/* ─────────── 02 / DETALHE ─────────── */}
+        <section>
+          <div className="flex items-baseline gap-3 mb-5">
+            <span className="font-display text-2xl leading-none">02</span>
+            <span className="section-label text-foreground">Custo por Funcionário</span>
+            <div className="flex-1 h-px bg-border" />
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow className="border-b-2 border-foreground hover:bg-transparent">
+                <TableHead className="section-label text-foreground">Funcionário</TableHead>
+                <TableHead className="section-label text-foreground">Setor</TableHead>
+                <TableHead className="section-label text-foreground text-right">Base</TableHead>
+                <TableHead className="section-label text-foreground text-right">HE</TableHead>
+                <TableHead className="section-label text-foreground text-right">Benefícios</TableHead>
+                <TableHead className="section-label text-foreground text-right">Encargos</TableHead>
+                <TableHead className="section-label text-foreground text-right">Custo Total</TableHead>
+                <TableHead className="section-label text-foreground text-center">BH</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.length === 0 ? (
+                <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-12">Nenhum funcionário ativo.</TableCell></TableRow>
+              ) : rows.map(r => (
+                <TableRow key={r.id} className={`border-b border-border/60 ${r.hasRun ? '' : 'opacity-60'}`}>
+                  <TableCell className="font-medium">{r.name}{!r.hasRun && <span className="ml-2 text-[10px] uppercase tracking-wider text-muted-foreground">est.</span>}</TableCell>
+                  <TableCell className="text-muted-foreground text-xs">{r.department}</TableCell>
+                  <TableCell className="text-right font-mono text-xs">{fmt(r.baseSalary)}</TableCell>
+                  <TableCell className="text-right font-mono text-xs text-amber-600">{r.heValue > 0 ? fmt(r.heValue) : '—'}</TableCell>
+                  <TableCell className="text-right font-mono text-xs text-emerald-600">{fmt(r.beneficios)}</TableCell>
+                  <TableCell className="text-right font-mono text-xs text-rose-600">{fmt(r.encargos)}</TableCell>
+                  <TableCell className="text-right font-mono font-bold">{fmt(r.custoTotal)}</TableCell>
+                  <TableCell className="text-center text-[10px] font-mono">
+                    {r.bhCreditoMin > 0 && <span className="text-emerald-600">+{Math.round(r.bhCreditoMin / 60 * 10) / 10}h</span>}
+                    {r.bhCreditoMin > 0 && r.bhDebitoMin > 0 && ' / '}
+                    {r.bhDebitoMin > 0 && <span className="text-rose-600">-{Math.round(r.bhDebitoMin / 60 * 10) / 10}h</span>}
+                    {r.bhCreditoMin === 0 && r.bhDebitoMin === 0 && <span className="text-muted-foreground">—</span>}
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.length === 0 ? (
-                  <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">Nenhum funcionário ativo.</TableCell></TableRow>
-                ) : rows.map(r => (
-                  <TableRow key={r.id} className={r.hasRun ? '' : 'opacity-70'}>
-                    <TableCell className="font-medium">{r.name}{!r.hasRun && <span className="ml-2 text-[10px] uppercase tracking-wider text-muted-foreground">est.</span>}</TableCell>
-                    <TableCell className="text-muted-foreground text-xs">{r.department}</TableCell>
-                    <TableCell className="text-right font-mono text-xs">{fmt(r.baseSalary)}</TableCell>
-                    <TableCell className="text-right font-mono text-xs text-amber-600">{r.heValue > 0 ? fmt(r.heValue) : '—'}</TableCell>
-                    <TableCell className="text-right font-mono text-xs text-emerald-600">{fmt(r.beneficios)}</TableCell>
-                    <TableCell className="text-right font-mono text-xs text-rose-600">{fmt(r.encargos)}</TableCell>
-                    <TableCell className="text-right font-mono font-bold">{fmt(r.custoTotal)}</TableCell>
-                    <TableCell className="text-center text-[10px] font-mono">
-                      {r.bhCreditoMin > 0 && <span className="text-emerald-600">+{Math.round(r.bhCreditoMin / 60 * 10) / 10}h</span>}
-                      {r.bhCreditoMin > 0 && r.bhDebitoMin > 0 && ' / '}
-                      {r.bhDebitoMin > 0 && <span className="text-rose-600">-{Math.round(r.bhDebitoMin / 60 * 10) / 10}h</span>}
-                      {r.bhCreditoMin === 0 && r.bhDebitoMin === 0 && <span className="text-muted-foreground">—</span>}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+              ))}
+            </TableBody>
+          </Table>
+        </section>
       </div>
     </TooltipProvider>
+  );
+}
+
+function KpiCell({ label, value, bordered, accent, hint }: {
+  label: string;
+  value: string;
+  bordered?: boolean;
+  accent?: boolean;
+  hint?: string;
+}) {
+  return (
+    <div className={`px-4 py-5 ${bordered ? 'border-l border-border' : ''}`}>
+      <div className="flex items-center gap-1 mb-2">
+        <p className="section-label">{label}</p>
+        {hint && (
+          <Tooltip>
+            <TooltipTrigger><Info className="h-3 w-3 text-muted-foreground" /></TooltipTrigger>
+            <TooltipContent className="max-w-xs">{hint}</TooltipContent>
+          </Tooltip>
+        )}
+      </div>
+      <p className={`font-mono font-bold leading-none tracking-tight text-2xl ${accent ? 'text-primary' : 'text-foreground'}`}>
+        {value}
+      </p>
+    </div>
   );
 }

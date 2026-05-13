@@ -52,6 +52,7 @@ import BankReconciliationTab from '@/components/finance/BankReconciliationTab';
 import FinanceAttachments from '@/components/finance/FinanceAttachments';
 import { FinanceReportsTab } from '@/components/finance/FinanceReportsTab';
 import { SmartDashboard } from '@/components/finance/SmartDashboard';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 const fmt = (v: number | null | undefined) => {
   const n = Number(v);
@@ -1041,27 +1042,20 @@ export default function Finance() {
 
   return (
     <>
-      <div className="space-y-5 page-enter">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
-            <DollarSign className="h-6 w-6" /> Módulo Financeiro
-          </h1>
-          {/* F15 (audit): breadcrumb mostra qual aba está ativa. Antes: usuário
-              perdia contexto entre abas (Contas/Notas/Operacional/Relatórios)
-              ao voltar pra Visão Geral, sem indicação clara de onde estava. */}
-          <p className="text-sm text-muted-foreground">
-            Financeiro
-            <span className="mx-1.5 text-muted-foreground/50">›</span>
-            <span className="text-foreground font-medium">
-              {financeTab === 'dashboard' ? 'Visão Geral'
-                : financeTab === 'accounts' ? 'Contas a Pagar / Receber'
-                : financeTab === 'invoices' ? 'Notas Fiscais'
-                : financeTab === 'operational' ? 'Operacional'
-                : financeTab === 'reports' ? 'Relatórios analíticos'
-                : 'Visão Geral'}
-            </span>
-          </p>
-        </div>
+      <div className="space-y-5 page-enter editorial-stagger">
+        <EditorialPageHeader
+          sectionLabel="FINANCEIRO · CENTRAL"
+          title="Financeiro"
+          description={
+            // F15 (audit): breadcrumb mostra qual aba está ativa.
+            financeTab === 'dashboard' ? 'Visão Geral'
+              : financeTab === 'accounts' ? 'Contas a Pagar / Receber'
+              : financeTab === 'invoices' ? 'Notas Fiscais'
+              : financeTab === 'operational' ? 'Operacional'
+              : financeTab === 'reports' ? 'Relatórios analíticos'
+              : 'Visão Geral'
+          }
+        />
 
         {loading ? (
           /* F14 (audit): skeleton em vez de spinner — usuário vê o esqueleto

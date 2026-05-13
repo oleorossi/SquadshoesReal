@@ -118,157 +118,227 @@ const OperatorWorkSheet = ({
 
   return (
     <div
-      className="w-[210mm] p-[8mm] print:w-full print:p-0 bg-white border border-slate-300 shadow-none print:shadow-none print:border-0 m-auto flex flex-col gap-0"
-      style={{ boxSizing: 'border-box', fontFamily: "'Helvetica Neue', Arial, sans-serif" }}
+      className="w-[210mm] p-[8mm] print:w-full print:p-0 bg-white shadow-none print:shadow-none m-auto flex flex-col gap-0"
+      style={{ boxSizing: 'border-box', fontFamily: "'Inter Tight', sans-serif", color: '#000' }}
     >
-      {/* ── Header bar ── */}
-      <div className={`flex items-stretch gap-0 mb-2 rounded-lg overflow-hidden border-2 ${meta.border}`}>
-        {/* Sector label */}
-        <div className={`${meta.bg} text-white flex items-center gap-2 px-3 py-1.5 shrink-0`}>
-          {meta.icon}
-          <span className="text-sm font-black uppercase tracking-tight">Ficha de {sector}</span>
+      {/* ── Header — Industrial Editorial ── */}
+      <div className="flex items-baseline justify-between mb-1">
+        <span className="section-label" style={{ color: '#000' }}>
+          01 / {sector.toUpperCase()} · Ficha de Operador
+        </span>
+        <span className="font-mono text-[10px] text-black tracking-widest uppercase">{today}</span>
+      </div>
+
+      <div className="border-t-2 border-b border-black py-3 mb-2 flex items-stretch gap-4">
+        {/* Sector identity — Anton massive */}
+        <div className="flex flex-col justify-center shrink-0 min-w-[140px]">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="text-black">{meta.icon}</div>
+            <span className="section-label" style={{ color: '#000' }}>Setor</span>
+          </div>
+          <span
+            className="text-black uppercase leading-none"
+            style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '44px', letterSpacing: '-0.025em' }}
+          >
+            {sector}
+          </span>
         </div>
-        {/* OP + date info */}
-        <div className="flex-1 flex items-center gap-5 px-3 bg-slate-50 flex-wrap">
-          <div>
-            <p className="text-[9px] font-bold text-slate-400 uppercase leading-none">
-              {opNumbers && opNumbers.length > 1 ? `OPs (${opNumbers.length})` : 'OP'}
-            </p>
-            <p className="text-base font-black font-mono text-slate-900 leading-tight">
-              {opNumbers && opNumbers.length > 1 ? opNumbers[0] + '…' : order.op_number}
-            </p>
+
+        {/* OP/Pares heroes */}
+        <div className="flex-1 flex items-stretch gap-4 border-l border-black pl-4 min-w-0 flex-wrap">
+          <div className="flex flex-col justify-center">
+            <span className="section-label" style={{ color: '#000' }}>
+              {opNumbers && opNumbers.length > 1 ? `OP × ${opNumbers.length}` : 'OP'}
+            </span>
+            <span
+              className="text-black font-mono leading-none mt-1"
+              style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '30px', fontWeight: 700, letterSpacing: '-0.02em' }}
+            >
+              {opNumbers && opNumbers.length > 1 ? `${opNumbers[0]}+` : order.op_number}
+            </span>
           </div>
-          <div>
-            <p className="text-[9px] font-bold text-slate-400 uppercase leading-none">Entrega</p>
-            <p className="text-sm font-bold text-slate-800 leading-tight">{order.due_date ? new Date(order.due_date).toLocaleDateString('pt-BR') : '—'}</p>
+          <div className="border-l border-black pl-4 flex flex-col justify-center">
+            <span className="section-label" style={{ color: '#000' }}>Pares</span>
+            <span
+              className="text-black leading-none mt-1"
+              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '48px', fontWeight: 400, letterSpacing: '-0.03em' }}
+            >
+              {totalPairs}
+            </span>
           </div>
-          <div>
-            <p className="text-[9px] font-bold text-slate-400 uppercase leading-none">Data</p>
-            <p className="text-sm font-bold text-slate-800 leading-tight">{today}</p>
+          <div className="border-l border-black pl-4 flex flex-col justify-center">
+            <span className="section-label" style={{ color: '#000' }}>Entrega</span>
+            <span className="text-black font-mono text-base leading-tight mt-1 tracking-wider">
+              {order.due_date ? new Date(order.due_date).toLocaleDateString('pt-BR') : '—'}
+            </span>
+            {fichas > 1 && (
+              <span className="font-mono text-[10px] text-black mt-1 tracking-wider">
+                {fichas}× ficha · {gradeSum}p
+              </span>
+            )}
           </div>
-          <div>
-            <p className="text-[9px] font-bold text-slate-400 uppercase leading-none">Pares</p>
-            <p className="text-sm font-black font-mono text-slate-900 leading-tight">{totalPairs}</p>
-          </div>
-          {fichas > 1 && (
-            <div>
-              <p className="text-[9px] font-bold text-slate-400 uppercase leading-none">Fichas</p>
-              <p className="text-sm font-bold text-slate-700 leading-tight">{fichas}×{gradeSum}p</p>
-            </div>
-          )}
-          {/* Acabamento: client/store banner */}
           {clientInfo && (
-            <div className="ml-auto bg-emerald-700 text-white rounded px-3 py-1.5 text-right shrink-0">
-              <p className="text-[8px] font-bold uppercase opacity-80 leading-none">Loja / Cliente</p>
-              <p className="text-sm font-black leading-tight">{clientInfo.name}</p>
+            <div className="ml-auto border-l border-black pl-4 text-right flex flex-col justify-center">
+              <span className="section-label block" style={{ color: '#000' }}>Loja</span>
+              <p
+                className="text-black uppercase leading-tight mt-1"
+                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '22px', letterSpacing: '-0.01em' }}
+              >
+                {clientInfo.name}
+              </p>
               {clientInfo.orderNumber && (
-                <p className="text-[9px] opacity-80 font-mono">{clientInfo.orderNumber}</p>
+                <p className="text-[10px] font-mono text-black tracking-widest uppercase mt-0.5">{clientInfo.orderNumber}</p>
               )}
             </div>
           )}
         </div>
-        {/* QR placeholder */}
-        <div className="flex flex-col items-center justify-center px-2 bg-white border-l border-slate-200">
-          <QrCode className="h-9 w-9 text-slate-700" />
-          <span className="text-[8px] font-mono text-slate-400 mt-0.5">{order.id?.split('-')[0] || order.op_number || '—'}</span>
+
+        {/* QR */}
+        <div className="flex flex-col items-center justify-center border-l border-black pl-4 shrink-0">
+          <QrCode className="h-12 w-12 text-black" weight="thin" />
+          <span className="text-[8px] font-mono text-black mt-1 tracking-[0.2em] uppercase font-bold">
+            {order.id?.split('-')[0] || order.op_number || '—'}
+          </span>
         </div>
       </div>
 
-      {/* ── Produção diária / tempo estimado ── */}
+      {/* ── Produção diária / tempo estimado — KPI band ── */}
       {effectiveCapacity > 0 && (
-        <div className="flex items-center gap-0 mb-2 rounded-lg overflow-hidden border border-amber-300">
-          <div className="flex-1 flex items-center justify-center flex-col py-1 px-2.5 bg-amber-500 text-white">
-            <p className="text-[8px] font-bold uppercase tracking-wide opacity-90 leading-none mb-0.5">Produção Diária</p>
-            <p className="text-base font-black leading-none">{effectiveCapacity} pares/dia</p>
+        <div className="grid grid-cols-3 gap-0 mb-2 border-y border-black">
+          <div className="py-2 px-3">
+            <span className="section-label block" style={{ color: '#000' }}>Produção / Dia</span>
+            <span
+              className="text-black leading-none mt-1 block"
+              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.02em' }}
+            >
+              {effectiveCapacity} <span className="text-[10px] font-mono tracking-widest uppercase">pares</span>
+            </span>
           </div>
-          <div className="flex-1 flex items-center justify-center flex-col py-1 px-2.5 bg-amber-50 border-l border-amber-200">
-            <p className="text-[8px] font-bold uppercase tracking-wide text-amber-700 leading-none mb-0.5">Tempo Estimado</p>
-            <p className="text-base font-black text-amber-900 leading-none">{estimatedDays} dia{estimatedDays !== 1 ? 's' : ''}</p>
+          <div className="py-2 px-3 border-l border-black">
+            <span className="section-label block" style={{ color: '#000' }}>Tempo Estimado</span>
+            <span
+              className="text-black leading-none mt-1 block"
+              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.02em' }}
+            >
+              {estimatedDays} <span className="text-[10px] font-mono tracking-widest uppercase">dia{estimatedDays !== 1 ? 's' : ''}</span>
+            </span>
           </div>
-          <div className="flex-1 flex items-center justify-center flex-col py-1 px-2.5 bg-amber-50 border-l border-amber-200">
-            <p className="text-[8px] font-bold uppercase tracking-wide text-amber-700 leading-none mb-0.5">Total desta Ficha</p>
-            <p className="text-base font-black text-amber-900 leading-none">{totalPairs} pares</p>
+          <div className="py-2 px-3 border-l border-black">
+            <span className="section-label block" style={{ color: '#000' }}>Total da Ficha</span>
+            <span
+              className="text-black leading-none mt-1 block"
+              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.02em' }}
+            >
+              {totalPairs} <span className="text-[10px] font-mono tracking-widest uppercase">pares</span>
+            </span>
           </div>
         </div>
       )}
 
-      {/* ── Product info row ── */}
-      {/* Foto compacta pra operador verificar referência. Reduzida de 176px
-          (w-44 h-44) pra 128px (w-32 h-32) — economiza ~48px vertical. */}
-      <div className="flex gap-2 mb-2">
-        {/* Image (lado esquerdo, compacta) */}
-        <div className="w-32 h-32 border border-slate-200 rounded bg-slate-50 overflow-hidden shrink-0 relative">
+      {/* ── Product info row — editorial card with hero REF ── */}
+      <div className="flex gap-3 mb-2 border-b border-black pb-2">
+        {/* Image — hairline framed */}
+        <div className="w-32 h-32 bg-white overflow-hidden shrink-0 relative" style={{ border: '1.5px solid #000' }}>
           {!order.variant.variant_image_url && (
-            <span className="absolute top-0.5 left-0.5 bg-yellow-400 text-yellow-900 text-[8px] font-bold px-1 py-0.5 rounded leading-none z-10">
-              REF.
+            <span
+              className="absolute top-0 left-0 bg-white text-black text-[8px] font-mono font-bold px-1 py-0.5 uppercase tracking-[0.18em] leading-none z-10"
+              style={{ borderRight: '1.5px solid #000', borderBottom: '1.5px solid #000' }}
+            >
+              Ref.
             </span>
           )}
           <img src={displayImage} alt="Referência" className="w-full h-full object-contain mix-blend-multiply" />
         </div>
 
-        {/* Product details */}
-        <div className="flex-1 grid grid-cols-2 gap-x-3 gap-y-1 content-start">
-          <div>
-            <p className="text-[8px] font-bold text-slate-400 uppercase">Modelo</p>
-            <p className="text-sm font-bold text-slate-900 leading-tight">{order.master.name}</p>
-          </div>
-          <div>
-            <p className="text-[8px] font-bold text-slate-400 uppercase">Referência</p>
-            <p className="text-sm font-mono font-bold text-slate-900 leading-tight">
-              {(order.master as any).code || order.master.reference_code || (order as any).reference_code || '—'}
-            </p>
-          </div>
-          <div>
-            <p className="text-[8px] font-bold text-slate-400 uppercase">{hasStraps ? 'Cor Tiras' : 'Cor Cabedal'}</p>
-            <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 rounded-full border border-slate-300 shrink-0" style={{ backgroundColor: order.variant.color_hex }} />
-              <span className="text-sm font-black uppercase" style={{ color: order.variant.color_hex && order.variant.color_hex !== '#ffffff' ? '#1e293b' : '#1e293b' }}>
-                {order.variant.color_name}
-              </span>
+        {/* Product details — Anton hero for ref */}
+        <div className="flex-1 flex flex-col gap-2 min-w-0">
+          {/* Hero: REFERÊNCIA */}
+          <div className="flex items-baseline justify-between gap-3 border-b border-black pb-1">
+            <div className="min-w-0 flex-1">
+              <span className="section-label block" style={{ color: '#000' }}>Referência</span>
+              <p
+                className="text-black uppercase leading-none mt-0.5 truncate"
+                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em' }}
+              >
+                {(order.master as any).code || order.master.reference_code || (order as any).reference_code || '—'}
+              </p>
+            </div>
+            <div className="text-right shrink-0">
+              <span className="section-label block" style={{ color: '#000' }}>Modelo</span>
+              <p className="text-sm font-bold text-black leading-tight mt-0.5 max-w-[180px] truncate">{order.master.name}</p>
             </div>
           </div>
-          <div>
-            <p className="text-[8px] font-bold text-slate-400 uppercase">OP</p>
-            <p className="text-sm font-mono font-bold text-slate-900 leading-tight">{order.op_number || '—'}</p>
-          </div>
 
-          {/* Silk info inline */}
-          {silk && (
-            <div className="col-span-2">
-              <p className="text-[8px] font-bold text-slate-400 uppercase">Silk / Estampa</p>
-              <div className="flex items-center gap-2">
-                {silk.silk_url && (
-                  <img src={silk.silk_url} alt="Silk" className="h-6 w-6 object-contain border rounded bg-white" />
-                )}
-                <span className="text-sm font-black text-stone-800">{silk.silk_name}</span>
+          {/* Details grid */}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 content-start">
+            <div>
+              <span className="section-label block" style={{ color: '#000' }}>{hasStraps ? 'Cor Tiras' : 'Cor Cabedal'}</span>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <div className="w-3 h-3 shrink-0" style={{ backgroundColor: order.variant.color_hex || '#fff', border: '1px solid #000' }} />
+                <span
+                  className="text-black uppercase leading-none"
+                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.01em' }}
+                >
+                  {order.variant.color_name}
+                </span>
               </div>
             </div>
-          )}
 
-          {/* Sole + insole for relevant sectors */}
-          {(isMontagem || isSolagem || isColagem) && (
-            <>
+            {/* Sole + insole for relevant sectors */}
+            {(isMontagem || isSolagem || isColagem) ? (
               <div>
-                <p className="text-[8px] font-bold text-slate-400 uppercase">Solado</p>
-                <p className="text-sm font-black text-slate-800">{resolvedSoleColor}</p>
+                <span className="section-label block" style={{ color: '#000' }}>Solado</span>
+                <span
+                  className="text-black uppercase leading-none block mt-0.5"
+                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.01em' }}
+                >
+                  {resolvedSoleColor}
+                </span>
               </div>
+            ) : (
               <div>
-                <p className="text-[8px] font-bold text-slate-400 uppercase">Palmilha</p>
-                <p className="text-sm font-black text-blue-700">{resolvedInsoleColor}</p>
+                <span className="section-label block" style={{ color: '#000' }}>OP</span>
+                <p className="text-sm font-mono font-bold text-black leading-tight mt-0.5">{order.op_number || '—'}</p>
+              </div>
+            )}
+
+            {/* Palmilha for relevant sectors */}
+            {(isMontagem || isSolagem || isColagem) && (
+              <div>
+                <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
+                <span
+                  className="text-black uppercase leading-none block mt-0.5"
+                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.01em' }}
+                >
+                  {resolvedInsoleColor}
+                </span>
                 {insoleReadyMade && (
-                  <p className="text-[8px] text-blue-600 italic">Pronta na cor</p>
+                  <p className="text-[9px] font-mono text-black tracking-widest uppercase mt-0.5">Pronta na cor</p>
                 )}
               </div>
-            </>
-          )}
+            )}
 
-          {/* Cutting notes for cut sectors */}
-          {(isCortePalmilha || isCorteForração) && order.master.technical_notes && (
-            <div className="col-span-2">
-              <p className="text-[8px] font-bold text-slate-400 uppercase">Obs. de Corte</p>
-              <p className="text-xs text-red-800 font-semibold">{order.master.technical_notes}</p>
-            </div>
-          )}
+            {/* Silk info inline */}
+            {silk && (
+              <div className="col-span-2">
+                <span className="section-label block" style={{ color: '#000' }}>Silk / Estampa</span>
+                <div className="flex items-center gap-2 mt-0.5">
+                  {silk.silk_url && (
+                    <img src={silk.silk_url} alt="Silk" className="h-7 w-7 object-contain bg-white" style={{ border: '1px solid #000' }} />
+                  )}
+                  <span className="text-base font-bold text-black uppercase tracking-tight">{silk.silk_name}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Cutting notes for cut sectors */}
+            {(isCortePalmilha || isCorteForração) && order.master.technical_notes && (
+              <div className="col-span-2">
+                <span className="section-label block" style={{ color: '#000' }}>Obs. de Corte</span>
+                <p className="text-xs text-black font-semibold leading-tight mt-0.5">{order.master.technical_notes}</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -278,29 +348,36 @@ const OperatorWorkSheet = ({
             modelos com tiras de cores diferentes precisam montagem na
             ordem certa (TIRA 1 = frontal, TIRA 2 = traseira, etc). */}
       {hasStraps && strapColors && strapColors.length > 0 && (
-        <div className="mb-2 border-2 border-amber-500 rounded p-1.5 bg-amber-50 keep-together">
-          <p className="text-[10px] font-bold text-amber-800 uppercase tracking-wide mb-1">
-            Sequência de Tiras (ordem da ficha técnica · {strapColors.length} tira{strapColors.length > 1 ? 's' : ''})
-          </p>
-          <table className="w-full text-[10px]" style={{ borderCollapse: 'collapse' }}>
+        <div className="mb-2 keep-together">
+          <div className="flex items-baseline justify-between mb-1">
+            <span className="section-label" style={{ color: '#000' }}>
+              02 / Sequência de Tiras
+            </span>
+            <span className="font-mono text-[10px] text-black tracking-widest uppercase">
+              {strapColors.length} tira{strapColors.length > 1 ? 's' : ''} · ordem da ficha técnica
+            </span>
+          </div>
+          <table className="w-full text-[11px]" style={{ borderCollapse: 'collapse', border: '1px solid #000' }}>
             <thead>
-              <tr className="bg-amber-100">
-                <th className="border border-amber-300 px-1.5 py-0.5 text-left font-bold w-10">#</th>
-                <th className="border border-amber-300 px-1.5 py-0.5 text-left font-bold">Tira</th>
-                <th className="border border-amber-300 px-1.5 py-0.5 text-left font-bold">Cor</th>
-                <th className="border border-amber-300 px-1.5 py-0.5 text-left font-bold">Material</th>
-                <th className="border border-amber-300 px-1.5 py-0.5 text-center font-bold w-6">✓</th>
+              <tr style={{ borderBottom: '1.5px solid #000' }}>
+                <th className="section-label px-2 py-1 text-left" style={{ color: '#000', width: 36 }}>#</th>
+                <th className="section-label px-2 py-1 text-left" style={{ color: '#000' }}>Tira</th>
+                <th className="section-label px-2 py-1 text-left" style={{ color: '#000' }}>Cor</th>
+                <th className="section-label px-2 py-1 text-left" style={{ color: '#000' }}>Material</th>
+                <th className="section-label px-2 py-1 text-center" style={{ color: '#000', width: 32 }}>OK</th>
               </tr>
             </thead>
             <tbody>
               {strapColors.map((s, i) => (
-                <tr key={s.id || i} className="bg-white">
-                  <td className="border border-amber-300 px-1.5 py-0.5 font-mono font-bold text-amber-800">{i + 1}</td>
-                  <td className="border border-amber-300 px-1.5 py-0.5 font-bold">{s.label || `TIRA ${i + 1}`}</td>
-                  <td className="border border-amber-300 px-1.5 py-0.5 font-black uppercase">{s.color || '—'}</td>
-                  <td className="border border-amber-300 px-1.5 py-0.5 text-slate-600">{s.group_name || '—'}</td>
-                  <td className="border border-amber-300 px-1.5 py-0.5 text-center">
-                    <span className="inline-block w-3 h-3 border-2 border-amber-500 rounded-sm" />
+                <tr key={s.id || i} style={{ borderBottom: '1px solid #000' }} className="bg-white">
+                  <td className="px-2 py-1 font-mono font-bold text-black">{i + 1}</td>
+                  <td className="px-2 py-1 font-bold text-black uppercase">{s.label || `TIRA ${i + 1}`}</td>
+                  <td className="px-2 py-1 text-black uppercase" style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '16px', letterSpacing: '-0.01em' }}>
+                    {s.color || '—'}
+                  </td>
+                  <td className="px-2 py-1 text-black">{s.group_name || '—'}</td>
+                  <td className="px-2 py-1 text-center">
+                    <span className="inline-block w-4 h-4" style={{ border: '1.5px solid #000' }} />
                   </td>
                 </tr>
               ))}
@@ -309,50 +386,93 @@ const OperatorWorkSheet = ({
         </div>
       )}
 
-      {/* ── Grade de Produção — FULL WIDTH, large numbers ── */}
+      {/* ── Grade de Produção — FULL WIDTH, hairline editorial ── */}
       <div className="mb-2">
-        <div className={`${meta.bg} text-white text-center text-[10px] font-black py-1 rounded-t uppercase tracking-widest`}>
-          Grade de Produção — Pares a Produzir
+        <div className="flex items-baseline justify-between mb-1">
+          <span className="section-label" style={{ color: '#000' }}>
+            03 / Grade de Produção
+          </span>
+          <span className="font-mono text-[10px] text-black tracking-widest uppercase">
+            Pares a produzir
+          </span>
         </div>
-        <div className="border-2 border-slate-800 rounded-b overflow-hidden">
+        <div style={{ border: '1.5px solid #000' }}>
           {sizeChunks.map((chunk, ci) => (
             <table key={ci} className="w-full text-center" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
               <thead>
-                <tr className="bg-slate-800 text-white">
-                  <th className="border border-slate-600 py-1 text-[9px] font-bold" style={{ width: 48 }}>Nº</th>
-                  {chunk.map(s => (
-                    <th key={s} className="border border-slate-600 py-1 text-[10px] font-bold">{s}</th>
+                <tr style={{ borderBottom: '1.5px solid #000' }}>
+                  <th className="section-label py-1.5" style={{ color: '#000', width: 56, borderRight: '1px solid #000' }}>Nº</th>
+                  {chunk.map((s, i) => (
+                    <th
+                      key={s}
+                      className="py-1.5 text-black font-bold"
+                      style={{
+                        fontSize: '14px',
+                        fontFamily: "'JetBrains Mono', monospace",
+                        borderRight: i < chunk.length - 1 ? '1px solid #000' : (ci === sizeChunks.length - 1 ? '1px solid #000' : 'none'),
+                      }}
+                    >
+                      {s}
+                    </th>
                   ))}
                   {ci === sizeChunks.length - 1 && (
-                    <th className="border border-slate-600 py-1 text-[9px] font-bold bg-slate-700" style={{ width: 44 }}>TOT.</th>
+                    <th className="section-label py-1.5" style={{ color: '#000', width: 56 }}>Total</th>
                   )}
                 </tr>
               </thead>
               <tbody>
                 {/* Base row (per ficha) — show only if multiplier != 1 */}
                 {fichas > 1 && (
-                  <tr className="bg-slate-50">
-                    <td className="border border-slate-200 py-1 text-[8px] font-bold text-slate-400 leading-tight">
+                  <tr style={{ borderBottom: '1px solid #000' }}>
+                    <td className="py-1 text-[9px] font-mono text-black leading-tight uppercase tracking-wider" style={{ borderRight: '1px solid #000' }}>
                       /ficha<br />({gradeSum}p)
                     </td>
-                    {chunk.map(s => (
-                      <td key={s} className="border border-slate-200 py-1 font-mono text-sm text-slate-400 font-medium">{baseGrade[s] || '—'}</td>
+                    {chunk.map((s, i) => (
+                      <td
+                        key={s}
+                        className="py-1 font-mono text-sm text-black"
+                        style={{ borderRight: i < chunk.length - 1 ? '1px solid #000' : (ci === sizeChunks.length - 1 ? '1px solid #000' : 'none') }}
+                      >
+                        {baseGrade[s] || '—'}
+                      </td>
                     ))}
                     {ci === sizeChunks.length - 1 && (
-                      <td className="border border-slate-200 py-1 font-mono text-sm text-slate-400 font-medium bg-slate-100">{gradeSum}</td>
+                      <td className="py-1 font-mono text-sm font-bold text-black">{gradeSum}</td>
                     )}
                   </tr>
                 )}
-                {/* TOTAL row — LARGE numbers */}
-                <tr className="bg-white">
-                  <td className="border border-slate-300 py-1.5 text-[8px] font-black text-slate-700 bg-slate-100 leading-tight uppercase">
-                    {fichas > 1 ? `×${fichas}` : 'Total'}
+                {/* TOTAL row — GIANT Anton numbers */}
+                <tr>
+                  <td className="py-2 text-[10px] font-mono font-bold text-black uppercase tracking-wider" style={{ borderRight: '1px solid #000' }}>
+                    {fichas > 1 ? `× ${fichas}` : 'Total'}
                   </td>
-                  {chunk.map(s => (
-                    <td key={s} className="border border-slate-300 py-1.5 font-mono font-black text-xl text-slate-900">{scaledGrade[s] || 0}</td>
+                  {chunk.map((s, i) => (
+                    <td
+                      key={s}
+                      className="py-2 text-black"
+                      style={{
+                        fontFamily: "'Anton', Impact, sans-serif",
+                        fontSize: '28px',
+                        letterSpacing: '-0.02em',
+                        lineHeight: '1',
+                        borderRight: i < chunk.length - 1 ? '1px solid #000' : (ci === sizeChunks.length - 1 ? '1px solid #000' : 'none'),
+                      }}
+                    >
+                      {scaledGrade[s] || 0}
+                    </td>
                   ))}
                   {ci === sizeChunks.length - 1 && (
-                    <td className={`border border-slate-300 py-1.5 font-mono font-black text-xl ${meta.color} bg-slate-50`}>{totalPairs}</td>
+                    <td
+                      className="py-2 text-black"
+                      style={{
+                        fontFamily: "'Anton', Impact, sans-serif",
+                        fontSize: '28px',
+                        letterSpacing: '-0.02em',
+                        lineHeight: '1',
+                      }}
+                    >
+                      {totalPairs}
+                    </td>
                   )}
                 </tr>
               </tbody>
@@ -363,13 +483,22 @@ const OperatorWorkSheet = ({
 
       {/* ── Lista de OPs agrupadas (não-Acabamento com múltiplas OPs) ── */}
       {opNumbers && opNumbers.length > 1 && (
-        <div className="mb-2 border border-slate-200 rounded bg-slate-50 px-2 py-1.5">
-          <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-            Ordens de Produção agrupadas nesta ficha ({opNumbers.length})
-          </p>
-          <div className="flex flex-wrap gap-1">
+        <div className="mb-2 keep-together">
+          <div className="flex items-baseline justify-between mb-1">
+            <span className="section-label" style={{ color: '#000' }}>
+              Ordens Agrupadas
+            </span>
+            <span className="font-mono text-[10px] text-black tracking-widest uppercase">
+              {opNumbers.length} OPs
+            </span>
+          </div>
+          <div className="border-t border-black pt-1.5 flex flex-wrap gap-1.5">
             {opNumbers.map(op => (
-              <span key={op} className="font-mono text-[10px] font-bold bg-white border border-slate-300 rounded px-1.5 py-0.5 text-slate-700">
+              <span
+                key={op}
+                className="font-mono text-[11px] font-bold bg-white text-black px-2 py-0.5"
+                style={{ border: '1px solid #000' }}
+              >
                 {op}
               </span>
             ))}
@@ -377,14 +506,29 @@ const OperatorWorkSheet = ({
         </div>
       )}
 
-      {/* ── Sector-specific content ── */}
-      <div className="flex-1 grid grid-cols-2 gap-2">
+      {/* ── Sector-specific content — editorial B/W blocks ── */}
+      <div className="flex-1">
+        <div className="flex items-baseline justify-between mb-1">
+          <span className="section-label" style={{ color: '#000' }}>
+            04 / Operação · {sector}
+          </span>
+          <span className="font-mono text-[10px] text-black tracking-widest uppercase">
+            Checklist + materiais
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
 
         {/* Palmilha pronta na cor: sector not applicable */}
         {isInsoleSkippedSector && (
-          <div className="col-span-2 bg-blue-50 border-2 border-blue-400 p-3 rounded">
-            <p className="text-xs font-black text-blue-800 uppercase tracking-wide mb-0.5">Palmilha Pronta na Cor</p>
-            <p className="text-[10px] text-blue-700">
+          <div className="col-span-2 bg-white p-3" style={{ border: '1.5px solid #000' }}>
+            <span className="section-label block mb-1" style={{ color: '#000' }}>Aviso · Palmilha Pronta</span>
+            <p
+              className="text-black uppercase leading-none mb-1"
+              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em' }}
+            >
+              Pronta na Cor
+            </p>
+            <p className="text-[11px] text-black leading-tight">
               Este modelo usa palmilha pronta. Não há corte/costura de palmilha neste setor.
             </p>
           </div>
@@ -393,30 +537,32 @@ const OperatorWorkSheet = ({
         {/* CORTE PALMILHA */}
         {isCortePalmilha && !isInsoleSkippedSector && (
           <>
-            <div className="border border-orange-200 rounded p-2 bg-orange-50 space-y-1">
-              <p className="text-[9px] font-black uppercase tracking-wide text-orange-700 mb-1.5">Checklist — Corte Palmilha</p>
-              {[
-                'Palmilha base separada por numeração',
-                'Molde/faca de palmilha conferida',
-                'Corte executado por numeração',
-                'Pares contados e agrupados por numeração',
-                'Identificação de lote aplicada',
-              ].map((item, i) => (
-                <div key={i} className="flex items-center gap-2 text-xs py-0.5">
-                  <span className="w-4 h-4 border-2 border-orange-600 rounded-sm shrink-0 inline-block" />
-                  {item}
-                </div>
-              ))}
+            <div className="bg-white p-2.5 space-y-1" style={{ border: '1px solid #000' }}>
+              <span className="section-label block mb-1.5" style={{ color: '#000' }}>Checklist · Corte Palmilha</span>
+              <div className="border-t border-black pt-1.5 space-y-1">
+                {[
+                  'Palmilha base separada por numeração',
+                  'Molde/faca de palmilha conferida',
+                  'Corte executado por numeração',
+                  'Pares contados e agrupados por numeração',
+                  'Identificação de lote aplicada',
+                ].map((item, i) => (
+                  <div key={i} className="flex items-start gap-2 text-[12px] py-0.5 text-black">
+                    <span className="w-4 h-4 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
+                    <span className="leading-tight">{item}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="border border-orange-200 rounded p-2 bg-slate-50 space-y-2">
-              <p className="text-[9px] font-black uppercase tracking-wide text-slate-600">Informações</p>
-              <div className="text-xs space-y-1">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Segmento:</span>
-                  <span className="font-bold">{(order.master as any).shoe_category || '—'}</span>
+            <div className="bg-white p-2.5 space-y-1" style={{ border: '1px solid #000' }}>
+              <span className="section-label block mb-1.5" style={{ color: '#000' }}>Informações</span>
+              <div className="border-t border-black pt-1.5 text-xs space-y-1.5">
+                <div className="flex justify-between items-baseline">
+                  <span className="section-label" style={{ color: '#000' }}>Segmento</span>
+                  <span className="font-bold text-black uppercase">{(order.master as any).shoe_category || '—'}</span>
                 </div>
-                <p className="text-[8px] text-orange-600 italic font-semibold mt-1">
-                  Agrupamento por solado — cor não interfere no corte da palmilha.
+                <p className="text-[10px] text-black border-t border-black pt-1.5 font-mono uppercase tracking-wider leading-tight">
+                  Agrupamento por solado · cor não interfere no corte.
                 </p>
               </div>
             </div>
@@ -426,32 +572,36 @@ const OperatorWorkSheet = ({
         {/* CORTE FORRAÇÃO */}
         {isCorteForração && !isInsoleSkippedSector && (
           <>
-            <div className="border border-teal-200 rounded p-2 bg-teal-50 space-y-1">
-              <p className="text-[9px] font-black uppercase tracking-wide text-teal-700 mb-1.5">Checklist — Corte Forração</p>
-              {[
-                `Palmilha ${resolvedInsoleColor} recebida`,
-                'Material de forração separado',
-                'Molde de forração conferido',
-                'Corte por cor e numeração',
-                'Peças contadas e identificadas por cor',
-              ].map((item, i) => (
-                <div key={i} className="flex items-center gap-2 text-xs py-0.5">
-                  <span className="w-4 h-4 border-2 border-teal-600 rounded-sm shrink-0 inline-block" />
-                  {item}
-                </div>
-              ))}
-            </div>
-            <div className="border-2 border-teal-500 rounded p-2 bg-teal-50 space-y-2">
-              <p className="text-[9px] font-black uppercase tracking-wide text-teal-800">Cor de Forração</p>
-              <div className="space-y-1.5 text-xs">
-                <div className="p-1.5 bg-white border border-teal-200 rounded">
-                  <p className="text-[8px] font-bold text-teal-700 uppercase">Cor da Palmilha</p>
-                  <p className="text-base font-black text-slate-900">{resolvedInsoleColor}</p>
-                </div>
-                {!insoleHasLining && (
-                  <p className="text-[8px] text-teal-600 italic font-semibold">Palmilha sem forração — apenas revestimento externo</p>
-                )}
+            <div className="bg-white p-2.5 space-y-1" style={{ border: '1px solid #000' }}>
+              <span className="section-label block mb-1.5" style={{ color: '#000' }}>Checklist · Corte Forração</span>
+              <div className="border-t border-black pt-1.5 space-y-1">
+                {[
+                  `Palmilha ${resolvedInsoleColor} recebida`,
+                  'Material de forração separado',
+                  'Molde de forração conferido',
+                  'Corte por cor e numeração',
+                  'Peças contadas e identificadas por cor',
+                ].map((item, i) => (
+                  <div key={i} className="flex items-start gap-2 text-[12px] py-0.5 text-black">
+                    <span className="w-4 h-4 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
+                    <span className="leading-tight">{item}</span>
+                  </div>
+                ))}
               </div>
+            </div>
+            <div className="bg-white p-2.5 space-y-1" style={{ border: '1.5px solid #000' }}>
+              <span className="section-label block mb-1" style={{ color: '#000' }}>Cor de Forração</span>
+              <span
+                className="text-black uppercase leading-none block"
+                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '36px', letterSpacing: '-0.025em' }}
+              >
+                {resolvedInsoleColor}
+              </span>
+              {!insoleHasLining && (
+                <p className="text-[10px] text-black border-t border-black pt-1.5 mt-1.5 font-mono uppercase tracking-wider leading-tight">
+                  Palmilha sem forração · apenas revestimento externo
+                </p>
+              )}
             </div>
           </>
         )}
@@ -460,57 +610,57 @@ const OperatorWorkSheet = ({
         {/* AVIAMENTO: tiras assembly + artisanal upper work (ex-Mesa) */}
         {isAviamento && (
           <>
-            <div className="border border-purple-200 rounded p-2 bg-purple-50 space-y-1">
-              <p className="text-[9px] font-black uppercase tracking-wide text-purple-700 mb-1.5">
-                Checklist — Aviamento{hasStraps ? ' (Tiras)' : ' (Cabedal)'}
-              </p>
-              {hasStraps ? [
-                'Tiras conferidas (qtd + cor)',
-                'Fivelas/ilhoses/aviamentos conferidos',
-                'Palmilha forrada recebida',
-                'Montagem das tiras na palmilha',
-                'Alinhamento e espaçamento verificados',
-                'Par completo identificado',
-              ] : [
-                'Cabedal recebido do setor anterior',
-                'Aviamentos separados por cor',
-                'Palmilha forrada disponível',
-                'Montagem inicial cabedal + palmilha',
-                'Verificar alinhamento das peças',
-                'Lote identificado e encaminhado',
-              ].map((item, i) => (
-                <div key={i} className="flex items-center gap-2 text-xs py-0.5">
-                  <span className="w-4 h-4 border-2 border-purple-600 rounded-sm shrink-0 inline-block" />
-                  {item}
-                </div>
-              ))}
-            </div>
-            <div className="border border-purple-200 rounded p-2 bg-slate-50 space-y-2">
-              <p className="text-[9px] font-black uppercase tracking-wide text-slate-600">Controle Aviamento</p>
-              {hasStraps && (
-                <div className="text-xs mb-1">
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Cor das Tiras:</span>
-                    <span className="font-black text-slate-900">{order.variant.color_name}</span>
-                  </div>
-                </div>
-              )}
-              {/* Frente / Traseiro fillable fields */}
-              <div className="grid grid-cols-2 gap-2 mb-1">
-                {['Frente', 'Traseiro'].map(part => (
-                  <div key={part} className="border border-purple-300 rounded p-1.5 bg-purple-50">
-                    <p className="text-[8px] font-bold text-purple-700 uppercase mb-1">{part}</p>
-                    <div className="border-b-2 border-purple-400 h-5" />
-                    <p className="text-[7px] text-purple-400 mt-0.5 text-center">pares</p>
+            <div className="bg-white p-2.5 space-y-1" style={{ border: '1px solid #000' }}>
+              <span className="section-label block mb-1.5" style={{ color: '#000' }}>
+                Checklist · Aviamento {hasStraps ? '(Tiras)' : '(Cabedal)'}
+              </span>
+              <div className="border-t border-black pt-1.5 space-y-1">
+                {(hasStraps ? [
+                  'Tiras conferidas (qtd + cor)',
+                  'Fivelas/ilhoses/aviamentos conferidos',
+                  'Palmilha forrada recebida',
+                  'Montagem das tiras na palmilha',
+                  'Alinhamento e espaçamento verificados',
+                  'Par completo identificado',
+                ] : [
+                  'Cabedal recebido do setor anterior',
+                  'Aviamentos separados por cor',
+                  'Palmilha forrada disponível',
+                  'Montagem inicial cabedal + palmilha',
+                  'Verificar alinhamento das peças',
+                  'Lote identificado e encaminhado',
+                ]).map((item, i) => (
+                  <div key={i} className="flex items-start gap-2 text-[12px] py-0.5 text-black">
+                    <span className="w-4 h-4 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
+                    <span className="leading-tight">{item}</span>
                   </div>
                 ))}
               </div>
-              <div className="space-y-1">
+            </div>
+            <div className="bg-white p-2.5 space-y-2" style={{ border: '1px solid #000' }}>
+              <span className="section-label block" style={{ color: '#000' }}>Controle Aviamento</span>
+              {hasStraps && (
+                <div className="border-t border-black pt-1.5 flex justify-between items-baseline">
+                  <span className="section-label" style={{ color: '#000' }}>Cor das Tiras</span>
+                  <span className="font-bold text-black uppercase text-sm">{order.variant.color_name}</span>
+                </div>
+              )}
+              {/* Frente / Traseiro fillable fields */}
+              <div className="grid grid-cols-2 gap-2 border-t border-black pt-2">
+                {['Frente', 'Traseiro'].map(part => (
+                  <div key={part} className="bg-white p-1.5" style={{ border: '1px solid #000' }}>
+                    <span className="section-label block mb-1" style={{ color: '#000' }}>{part}</span>
+                    <div className="border-b-2 border-black h-5" />
+                    <p className="text-[8px] font-mono text-black mt-0.5 text-center tracking-widest uppercase">pares</p>
+                  </div>
+                ))}
+              </div>
+              <div className="space-y-0.5 border-t border-black pt-1.5">
                 {['Seg', 'Ter', 'Qua', 'Qui', 'Sex'].map(d => (
                   <div key={d} className="flex items-center gap-2 text-xs">
-                    <span className="text-slate-500 w-8">{d}:</span>
-                    <span className="font-mono border-b border-slate-300 flex-1 text-center text-slate-400">____</span>
-                    <span className="text-[8px] text-slate-400">pares</span>
+                    <span className="section-label w-9" style={{ color: '#000' }}>{d}</span>
+                    <span className="font-mono border-b border-black flex-1 text-center text-black">____</span>
+                    <span className="text-[8px] font-mono text-black tracking-widest uppercase">pares</span>
                   </div>
                 ))}
               </div>
@@ -520,22 +670,27 @@ const OperatorWorkSheet = ({
 
         {/* SILK: silk type */}
         {isSilk && (
-          <div className="col-span-2 border border-pink-200 rounded p-3 bg-pink-50 space-y-2">
-            <p className="text-[9px] font-black uppercase tracking-wide text-pink-700 mb-2">Informações de Silk</p>
+          <div className="col-span-2 bg-white p-3" style={{ border: '1.5px solid #000' }}>
+            <span className="section-label block mb-2" style={{ color: '#000' }}>Arte do Silk</span>
             {silk ? (
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 border-t border-black pt-2">
                 {silk.silk_url && (
-                  <div className="w-16 h-16 border bg-white rounded overflow-hidden shrink-0">
+                  <div className="w-20 h-20 bg-white overflow-hidden shrink-0" style={{ border: '1.5px solid #000' }}>
                     <img src={silk.silk_url} alt="Silk" className="w-full h-full object-contain" />
                   </div>
                 )}
-                <div>
-                  <p className="text-sm font-black text-pink-900">{silk.silk_name}</p>
-                  <p className="text-[10px] text-pink-700 mt-1">Verificar posicionamento e pressão antes de iniciar.</p>
+                <div className="flex-1">
+                  <p
+                    className="text-black uppercase leading-none"
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em' }}
+                  >
+                    {silk.silk_name}
+                  </p>
+                  <p className="text-[11px] text-black mt-1.5 leading-tight">Verificar posicionamento e pressão antes de iniciar.</p>
                 </div>
               </div>
             ) : (
-              <p className="text-xs text-slate-400 italic">Sem silk registrado para esta referência/cor.</p>
+              <p className="text-xs text-black italic">Sem silk registrado para esta referência/cor.</p>
             )}
           </div>
         )}
@@ -543,173 +698,215 @@ const OperatorWorkSheet = ({
         {/* COLAGEM: adhesive checklist */}
         {isColagem && (
           <>
-            <div className="border border-amber-200 rounded p-2 bg-amber-50 space-y-1">
-              <p className="text-[9px] font-black uppercase tracking-wide text-amber-700 mb-1.5">Checklist — Colagem</p>
-              {[
-                'Superfícies limpas e secas',
-                `Solado ${resolvedSoleColor} separado`,
-                'Cola aplicada uniformemente',
-                'Tempo de secagem respeitado',
-                'Prensagem aplicada',
-              ].map((item, i) => (
-                <div key={i} className="flex items-center gap-2 text-xs py-0.5">
-                  <span className="w-4 h-4 border-2 border-amber-600 rounded-sm shrink-0 inline-block" />
-                  {item}
-                </div>
-              ))}
+            <div className="bg-white p-2.5 space-y-1" style={{ border: '1px solid #000' }}>
+              <span className="section-label block mb-1.5" style={{ color: '#000' }}>Checklist · Colagem</span>
+              <div className="border-t border-black pt-1.5 space-y-1">
+                {[
+                  'Superfícies limpas e secas',
+                  `Solado ${resolvedSoleColor} separado`,
+                  'Cola aplicada uniformemente',
+                  'Tempo de secagem respeitado',
+                  'Prensagem aplicada',
+                ].map((item, i) => (
+                  <div key={i} className="flex items-start gap-2 text-[12px] py-0.5 text-black">
+                    <span className="w-4 h-4 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
+                    <span className="leading-tight">{item}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="border-2 border-amber-500 rounded p-2 bg-amber-50">
-              <p className="text-[9px] font-black uppercase tracking-wide text-amber-700 mb-1.5">Materiais de Base</p>
-              <div className="space-y-1.5 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-600 font-semibold">Solado:</span>
-                  <span className="font-black text-amber-900 text-sm">{resolvedSoleColor}</span>
+            <div className="bg-white p-2.5 space-y-2" style={{ border: '1.5px solid #000' }}>
+              <span className="section-label block" style={{ color: '#000' }}>Materiais de Base</span>
+              <div className="border-t border-black pt-2 space-y-2">
+                <div>
+                  <span className="section-label block" style={{ color: '#000' }}>Solado</span>
+                  <span
+                    className="text-black uppercase leading-none block mt-0.5"
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em' }}
+                  >
+                    {resolvedSoleColor}
+                  </span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-600 font-semibold">Palmilha:</span>
-                  <span className="font-black text-blue-800 text-sm">{resolvedInsoleColor}</span>
+                <div>
+                  <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
+                  <span
+                    className="text-black uppercase leading-none block mt-0.5"
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em' }}
+                  >
+                    {resolvedInsoleColor}
+                  </span>
                 </div>
               </div>
             </div>
-            <TallyBox count={Math.max(1, Math.ceil(totalPairs / 12))} pairsPerCard={12} accentColor="amber" />
+            <div className="col-span-2">
+              <TallyBox count={Math.max(1, Math.ceil(totalPairs / 12))} pairsPerCard={12} />
+            </div>
           </>
         )}
 
         {/* MONTAGEM: assembly instruction + materials */}
         {isMontagem && (
           <>
-            <div className="border border-blue-200 rounded p-2 bg-blue-50 space-y-1">
-              <p className="text-[9px] font-black uppercase tracking-wide text-blue-700 mb-1.5">Checklist — Montagem</p>
-              {[
-                `Solado ${resolvedSoleColor} conferido`,
-                `Palmilha ${resolvedInsoleColor} conferida`,
-                'Casco alinhado e montado',
-                'Verificação visual do par',
-                'Par limpo antes de embalar',
-              ].map((item, i) => (
-                <div key={i} className="flex items-center gap-2 text-xs py-0.5">
-                  <span className="w-4 h-4 border-2 border-blue-600 rounded-sm shrink-0 inline-block" />
-                  {item}
-                </div>
-              ))}
+            <div className="bg-white p-2.5 space-y-1" style={{ border: '1px solid #000' }}>
+              <span className="section-label block mb-1.5" style={{ color: '#000' }}>Checklist · Montagem</span>
+              <div className="border-t border-black pt-1.5 space-y-1">
+                {[
+                  `Solado ${resolvedSoleColor} conferido`,
+                  `Palmilha ${resolvedInsoleColor} conferida`,
+                  'Casco alinhado e montado',
+                  'Verificação visual do par',
+                  'Par limpo antes de embalar',
+                ].map((item, i) => (
+                  <div key={i} className="flex items-start gap-2 text-[12px] py-0.5 text-black">
+                    <span className="w-4 h-4 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
+                    <span className="leading-tight">{item}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="border-2 border-blue-500 rounded p-2 bg-blue-50 space-y-2">
-              <p className="text-[9px] font-black uppercase tracking-wide text-blue-700">Materiais de Base</p>
-              <div className="space-y-1.5 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-600 font-semibold">Solado:</span>
-                  <span className="font-black text-blue-900 text-sm">{resolvedSoleColor}</span>
+            <div className="bg-white p-2.5 space-y-2" style={{ border: '1.5px solid #000' }}>
+              <span className="section-label block" style={{ color: '#000' }}>Materiais de Base</span>
+              <div className="border-t border-black pt-2 space-y-2">
+                <div>
+                  <span className="section-label block" style={{ color: '#000' }}>Solado</span>
+                  <span
+                    className="text-black uppercase leading-none block mt-0.5"
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em' }}
+                  >
+                    {resolvedSoleColor}
+                  </span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-600 font-semibold">Palmilha:</span>
-                  <span className="font-black text-blue-800 text-sm">{resolvedInsoleColor}</span>
+                <div>
+                  <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
+                  <span
+                    className="text-black uppercase leading-none block mt-0.5"
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em' }}
+                  >
+                    {resolvedInsoleColor}
+                  </span>
+                  {insoleReadyMade && (
+                    <p className="text-[9px] font-mono text-black tracking-widest uppercase mt-0.5">Pronta na cor</p>
+                  )}
                 </div>
-                {insoleReadyMade && (
-                  <p className="text-[8px] text-blue-600 italic font-semibold">Palmilha pronta na cor</p>
-                )}
               </div>
               {(order.master as any).assembly_instructions && (
-                <div className="border-t border-blue-200 pt-2 mt-1">
-                  <p className="text-[8px] font-bold text-blue-600 uppercase mb-1">Instrução de Montagem</p>
-                  <p className="text-[10px] text-blue-900">{(order.master as any).assembly_instructions}</p>
+                <div className="border-t border-black pt-2">
+                  <span className="section-label block mb-1" style={{ color: '#000' }}>Instrução de Montagem</span>
+                  <p className="text-[11px] text-black leading-tight">{(order.master as any).assembly_instructions}</p>
                 </div>
               )}
             </div>
-            <TallyBox count={Math.max(1, Math.ceil(totalPairs / 12))} pairsPerCard={12} accentColor="blue" />
+            <div className="col-span-2">
+              <TallyBox count={Math.max(1, Math.ceil(totalPairs / 12))} pairsPerCard={12} />
+            </div>
           </>
         )}
 
         {/* SOLAGEM: sole grade breakdown */}
         {isSolagem && (
           <>
-            <div className="border-2 border-lime-600 rounded p-2 bg-lime-50 space-y-1">
-              <p className="text-[9px] font-black uppercase tracking-wide text-lime-800 mb-1.5">Checklist — Solagem</p>
-              {[
-                `Solado ${resolvedSoleColor} conferido`,
-                `Palmilha ${resolvedInsoleColor} conferida`,
-                'Cola aplicada uniformemente',
-                'Prensa aplicada — cura respeitada',
-                'Solado centrado e alinhado',
-              ].map((item, i) => (
-                <div key={i} className="flex items-center gap-2 text-xs py-0.5">
-                  <span className="w-4 h-4 border-2 border-lime-700 rounded-sm shrink-0 inline-block" />
-                  {item}
-                </div>
-              ))}
+            <div className="bg-white p-2.5 space-y-1" style={{ border: '1px solid #000' }}>
+              <span className="section-label block mb-1.5" style={{ color: '#000' }}>Checklist · Solagem</span>
+              <div className="border-t border-black pt-1.5 space-y-1">
+                {[
+                  `Solado ${resolvedSoleColor} conferido`,
+                  `Palmilha ${resolvedInsoleColor} conferida`,
+                  'Cola aplicada uniformemente',
+                  'Prensa aplicada · cura respeitada',
+                  'Solado centrado e alinhado',
+                ].map((item, i) => (
+                  <div key={i} className="flex items-start gap-2 text-[12px] py-0.5 text-black">
+                    <span className="w-4 h-4 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
+                    <span className="leading-tight">{item}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="border-2 border-lime-600 rounded p-2 bg-lime-50 space-y-2">
-              <p className="text-[9px] font-black uppercase tracking-wide text-lime-800">Materiais</p>
-              <div className="space-y-2">
-                <div className="p-1.5 bg-white border border-lime-200 rounded">
-                  <p className="text-[8px] font-bold text-lime-700 uppercase">Solado</p>
-                  <p className="text-base font-black text-slate-900">{resolvedSoleColor}</p>
+            <div className="bg-white p-2.5 space-y-2" style={{ border: '1.5px solid #000' }}>
+              <span className="section-label block" style={{ color: '#000' }}>Materiais</span>
+              <div className="border-t border-black pt-2 space-y-2">
+                <div>
+                  <span className="section-label block" style={{ color: '#000' }}>Solado</span>
+                  <span
+                    className="text-black uppercase leading-none block mt-0.5"
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.02em' }}
+                  >
+                    {resolvedSoleColor}
+                  </span>
                 </div>
-                <div className="p-1.5 bg-white border border-lime-200 rounded">
-                  <p className="text-[8px] font-bold text-blue-600 uppercase">Palmilha</p>
-                  <p className="text-base font-black text-blue-800">{resolvedInsoleColor}</p>
+                <div>
+                  <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
+                  <span
+                    className="text-black uppercase leading-none block mt-0.5"
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.02em' }}
+                  >
+                    {resolvedInsoleColor}
+                  </span>
                   {insoleReadyMade && (
-                    <p className="text-[8px] text-blue-500 italic">Pronta na cor</p>
+                    <p className="text-[9px] font-mono text-black tracking-widest uppercase mt-0.5">Pronta na cor</p>
                   )}
                 </div>
               </div>
             </div>
-            <TallyBox count={Math.max(1, Math.ceil(totalPairs / 12))} pairsPerCard={12} accentColor="lime" />
+            <div className="col-span-2">
+              <TallyBox count={Math.max(1, Math.ceil(totalPairs / 12))} pairsPerCard={12} />
+            </div>
           </>
         )}
 
         {/* ACABAMENTO: checklist + resumo de materiais + boxes */}
         {isAcabamento && (
           <>
-            <div className="border border-emerald-200 rounded p-2 bg-emerald-50 space-y-1">
-              <p className="text-[9px] font-black uppercase tracking-wide text-emerald-700 mb-1.5">Checklist — Acabamento</p>
-              {[
-                'Limpeza geral do par',
-                'Verificação de costuras e silk',
-                'Amarração / fivelas conferidas',
-                'Etiqueta de tamanho aplicada',
-                'Embalagem individual',
-                'Caixa identificada com OP',
-              ].map((item, i) => (
-                <div key={i} className="flex items-center gap-2 text-xs py-0.5">
-                  <span className="w-4 h-4 border-2 border-emerald-600 rounded-sm shrink-0 inline-block" />
-                  {item}
-                </div>
-              ))}
+            <div className="bg-white p-2.5 space-y-1" style={{ border: '1px solid #000' }}>
+              <span className="section-label block mb-1.5" style={{ color: '#000' }}>Checklist · Acabamento</span>
+              <div className="border-t border-black pt-1.5 space-y-1">
+                {[
+                  'Limpeza geral do par',
+                  'Verificação de costuras e silk',
+                  'Amarração / fivelas conferidas',
+                  'Etiqueta de tamanho aplicada',
+                  'Embalagem individual',
+                  'Caixa identificada com OP',
+                ].map((item, i) => (
+                  <div key={i} className="flex items-start gap-2 text-[12px] py-0.5 text-black">
+                    <span className="w-4 h-4 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
+                    <span className="leading-tight">{item}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="border border-slate-200 rounded p-2 bg-slate-50 space-y-2">
-              <p className="text-[9px] font-black uppercase tracking-wide text-slate-600 mb-1.5">
-                Resumo de Materiais
-              </p>
-              <div className="space-y-1 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">{hasStraps ? 'Tiras:' : 'Cabedal:'}</span>
-                  <span className="font-black">{order.variant.color_name}</span>
+            <div className="bg-white p-2.5 space-y-2" style={{ border: '1px solid #000' }}>
+              <span className="section-label block" style={{ color: '#000' }}>Resumo de Materiais</span>
+              <div className="border-t border-black pt-1.5 space-y-1 text-xs">
+                <div className="flex justify-between items-baseline">
+                  <span className="section-label" style={{ color: '#000' }}>{hasStraps ? 'Tiras' : 'Cabedal'}</span>
+                  <span className="font-bold text-black uppercase">{order.variant.color_name}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Solado:</span>
-                  <span className="font-black text-lime-800">{resolvedSoleColor}</span>
+                <div className="flex justify-between items-baseline">
+                  <span className="section-label" style={{ color: '#000' }}>Solado</span>
+                  <span className="font-bold text-black uppercase">{resolvedSoleColor}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Palmilha:</span>
-                  <span className="font-black text-blue-800">
-                    {resolvedInsoleColor}{insoleReadyMade ? ' (pronta)' : ''}
+                <div className="flex justify-between items-baseline">
+                  <span className="section-label" style={{ color: '#000' }}>Palmilha</span>
+                  <span className="font-bold text-black uppercase">
+                    {resolvedInsoleColor}{insoleReadyMade ? ' · pronta' : ''}
                   </span>
                 </div>
                 {silk && (
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Silk:</span>
-                    <span className="font-black text-pink-800">{silk.silk_name}</span>
+                  <div className="flex justify-between items-baseline">
+                    <span className="section-label" style={{ color: '#000' }}>Silk</span>
+                    <span className="font-bold text-black uppercase">{silk.silk_name}</span>
                   </div>
                 )}
               </div>
-              <div className="border-t border-slate-200 pt-1.5">
-                <TallyBox count={boxes} pairsPerCard={12} accentColor="emerald" title={`Caixas — ${boxes} × 12 pares (marcar cada ficha concluída)`} />
-              </div>
               {(order.master as any).packaging_notes && (
-                <p className="text-[10px] text-slate-600 border-t border-slate-200 pt-1">
+                <p className="text-[10px] text-black border-t border-black pt-1.5 leading-tight">
                   {(order.master as any).packaging_notes}
                 </p>
               )}
+            </div>
+            <div className="col-span-2">
+              <TallyBox count={boxes} pairsPerCard={12} title={`Caixas · ${boxes} × 12 pares`} />
             </div>
           </>
         )}
@@ -717,82 +914,105 @@ const OperatorWorkSheet = ({
         {/* EXPEDIÇÃO: dispatch checklist + client summary */}
         {isExpedicao && (
           <>
-            <div className="border border-indigo-200 rounded p-2 bg-indigo-50 space-y-1">
-              <p className="text-[9px] font-black uppercase tracking-wide text-indigo-700 mb-1.5">Checklist — Expedição</p>
-              {[
-                'Par revisado e aprovado',
-                'Etiqueta de cliente/loja conferida',
-                'Embalagem individual + caixa mestre',
-                'Quantidade confere com OP',
-                'Romaneio de entrega gerado',
-                'Lote separado por cliente',
-              ].map((item, i) => (
-                <div key={i} className="flex items-center gap-2 text-xs py-0.5">
-                  <span className="w-4 h-4 border-2 border-indigo-600 rounded-sm shrink-0 inline-block" />
-                  {item}
-                </div>
-              ))}
+            <div className="bg-white p-2.5 space-y-1" style={{ border: '1px solid #000' }}>
+              <span className="section-label block mb-1.5" style={{ color: '#000' }}>Checklist · Expedição</span>
+              <div className="border-t border-black pt-1.5 space-y-1">
+                {[
+                  'Par revisado e aprovado',
+                  'Etiqueta de cliente/loja conferida',
+                  'Embalagem individual + caixa mestre',
+                  'Quantidade confere com OP',
+                  'Romaneio de entrega gerado',
+                  'Lote separado por cliente',
+                ].map((item, i) => (
+                  <div key={i} className="flex items-start gap-2 text-[12px] py-0.5 text-black">
+                    <span className="w-4 h-4 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
+                    <span className="leading-tight">{item}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="border-2 border-indigo-400 rounded p-2 bg-indigo-50 space-y-2">
-              <p className="text-[9px] font-black uppercase tracking-wide text-indigo-700 mb-1">Resumo do Pedido</p>
-              <div className="space-y-1 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Modelo:</span>
-                  <span className="font-black">{order.master.name}</span>
+            <div className="bg-white p-2.5 space-y-2" style={{ border: '1.5px solid #000' }}>
+              <span className="section-label block" style={{ color: '#000' }}>Resumo do Pedido</span>
+              <div className="border-t border-black pt-1.5 space-y-1 text-xs">
+                <div className="flex justify-between items-baseline">
+                  <span className="section-label" style={{ color: '#000' }}>Modelo</span>
+                  <span className="font-bold text-black uppercase">{order.master.name}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Cor:</span>
-                  <span className="font-black">{order.variant.color_name}</span>
+                <div className="flex justify-between items-baseline">
+                  <span className="section-label" style={{ color: '#000' }}>Cor</span>
+                  <span className="font-bold text-black uppercase">{order.variant.color_name}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Solado:</span>
-                  <span className="font-black text-lime-800">{resolvedSoleColor}</span>
+                <div className="flex justify-between items-baseline">
+                  <span className="section-label" style={{ color: '#000' }}>Solado</span>
+                  <span className="font-bold text-black uppercase">{resolvedSoleColor}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Total:</span>
-                  <span className="font-black text-indigo-900 text-sm">{totalPairs} pares</span>
+                <div className="flex justify-between items-baseline border-t border-black pt-1.5 mt-1">
+                  <span className="section-label" style={{ color: '#000' }}>Total</span>
+                  <span
+                    className="text-black uppercase leading-none"
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em' }}
+                  >
+                    {totalPairs} <span className="text-[10px] font-mono tracking-widest">pares</span>
+                  </span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Entrega:</span>
-                  <span className="font-bold">{order.due_date ? new Date(order.due_date).toLocaleDateString('pt-BR') : '—'}</span>
+                <div className="flex justify-between items-baseline">
+                  <span className="section-label" style={{ color: '#000' }}>Entrega</span>
+                  <span className="font-bold text-black font-mono">{order.due_date ? new Date(order.due_date).toLocaleDateString('pt-BR') : '—'}</span>
                 </div>
               </div>
             </div>
           </>
         )}
+        </div>
       </div>
 
-      {/* ── Footer: obs + signatures ── */}
-      <div className="mt-auto pt-1.5 border-t border-slate-200">
-        <div className="flex items-start justify-between gap-2 mb-1">
-          <div className="flex-1">
-            {order.notes && (
-              <p className="text-[9px] text-slate-500"><strong>Obs.:</strong> {order.notes}</p>
-            )}
+      {/* ── Footer: obs + signatures — editorial close ── */}
+      <div className="mt-3 pt-2">
+        {(order.notes) && (
+          <div className="mb-2 border-t border-black pt-1.5">
+            <span className="section-label block mb-0.5" style={{ color: '#000' }}>Observações</span>
+            <p className="text-[11px] text-black leading-tight">{order.notes}</p>
           </div>
-          <div className="flex items-center gap-1 text-[9px] text-slate-500 shrink-0">
-            <span className="font-bold">Turno:</span>
-            {['M', 'T', 'N'].map(t => (
-              <span key={t} className="w-5 h-5 border border-slate-400 rounded-sm flex items-center justify-center font-bold">{t}</span>
-            ))}
+        )}
+        <div
+          className="w-full mb-3"
+          style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000', height: '4px' }}
+        />
+        <div className="grid grid-cols-4 gap-3 mb-5">
+          <div>
+            <span className="section-label block mb-0.5" style={{ color: '#000' }}>Início</span>
+            <span className="font-mono text-sm text-black tracking-wider">__ : __</span>
+          </div>
+          <div>
+            <span className="section-label block mb-0.5" style={{ color: '#000' }}>Fim</span>
+            <span className="font-mono text-sm text-black tracking-wider">__ : __</span>
+          </div>
+          <div>
+            <span className="section-label block mb-0.5" style={{ color: '#000' }}>Data</span>
+            <span className="font-mono text-sm text-black tracking-wider">__ / __ / ____</span>
+          </div>
+          <div>
+            <span className="section-label block mb-0.5" style={{ color: '#000' }}>Turno</span>
+            <div className="flex items-center gap-2 mt-0.5">
+              {['M', 'T', 'N'].map(t => (
+                <span key={t} className="w-5 h-5 flex items-center justify-center font-bold font-mono text-[11px] text-black" style={{ border: '1.5px solid #000' }}>
+                  {t}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
-        <div className="flex items-end justify-between gap-2">
-          <div className="text-center flex-1">
-            <div className="border-t border-slate-400 mt-4 pt-0.5">
-              <p className="text-[9px] text-slate-500 uppercase font-bold">Operador(a)</p>
+        <div className="flex items-end justify-between gap-6">
+          {['Operador(a)', 'Conferente', 'Supervisor(a)'].map(label => (
+            <div key={label} className="flex-1">
+              <div className="border-t border-black pt-1.5 mt-8">
+                <p className="section-label" style={{ color: '#000' }}>
+                  Assinatura · {label}
+                </p>
+              </div>
             </div>
-          </div>
-          <div className="text-center flex-1">
-            <div className="border-t border-slate-400 mt-4 pt-0.5">
-              <p className="text-[9px] text-slate-500 uppercase font-bold">Conferente</p>
-            </div>
-          </div>
-          <div className="text-center flex-1">
-            <div className="border-t border-slate-400 mt-4 pt-0.5">
-              <p className="text-[9px] text-slate-500 uppercase font-bold">Supervisor(a)</p>
-            </div>
-          </div>
+          ))}
         </div>
       </div>
     </div>

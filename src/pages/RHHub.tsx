@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SquaresFour as LayoutDashboard, Users, Alarm as AlarmClock, CurrencyDollar as DollarSign, FileText, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 const PainelRH         = lazy(() => import('@/components/hr/PainelRH'));
 const Employees        = lazy(() => import('./Employees'));
@@ -61,7 +62,12 @@ export default function RHHub() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 editorial-stagger">
+      <EditorialPageHeader
+        sectionLabel="RH · CENTRAL"
+        title="Recursos Humanos"
+        description="Painel, funcionários, ponto, folha e relatórios"
+      />
       <Tabs value={activeTab} onValueChange={handleNavigateTab} className="w-full">
         <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 pb-2">
           <TabsList className="inline-flex w-max h-auto gap-1 bg-muted/50 p-1 rounded-lg">

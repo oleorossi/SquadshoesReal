@@ -79,15 +79,18 @@ export default function Index() {
   }, [requestedTab]);
 
   return (
-    <div className="space-y-5">
-      {/* Page Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Estoque</h1>
-          <p className="text-sm text-muted-foreground">
-            Materiais, consumos, alertas e visão geral do inventário
-          </p>
+    <div className="space-y-6 editorial-stagger">
+      {/* Editorial header */}
+      <div className="space-y-2 pb-2">
+        <div className="section-label flex items-baseline gap-3">
+          <span className="font-display text-xl text-muted-foreground tabular-nums leading-none">01</span>
+          <span>Inventário Squad</span>
         </div>
+        <h1 className="text-display-lg !text-foreground">Estoque</h1>
+        <p className="text-sm text-muted-foreground max-w-md">
+          Materiais, consumos, alertas e visão geral do inventário
+        </p>
+        <div className="rule-line !bg-foreground" aria-hidden="true" />
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as MainTab)}>

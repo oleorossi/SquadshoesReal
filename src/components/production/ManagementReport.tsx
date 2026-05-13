@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, QrCode, Calendar, MapPin, Buildings as Building2, TrendUp as TrendingUp, Warning as AlertTriangle } from '@phosphor-icons/react';
+import { Warning as AlertTriangle } from '@phosphor-icons/react';
 
 export interface ReportStage {
   stage_name: string;
@@ -66,12 +66,6 @@ function normalizeStageName(name: string): string {
   return name;
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  concluido: 'bg-emerald-100 text-emerald-800 border-emerald-300',
-  em_andamento: 'bg-amber-100 text-amber-800 border-amber-300',
-  pendente: 'bg-slate-100 text-slate-600 border-slate-300',
-};
-
 function fmtCurrency(v?: number | null): string {
   if (v == null) return '—';
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -96,6 +90,9 @@ function fmtPct(v?: number | null): string {
  * acompanhamento gerencial (cliente, deadline, status por OP, status por
  * setor, custos, margem). Não substitui a ficha do operador (essa é
  * minimalista pra execução); este é o "olho de gestor" sobre o pedido.
+ *
+ * Design language: Print Editorial (FT/WSJ-style). White-dominant,
+ * hairlines, big display type pra hierarquia, números em mono.
  */
 export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
   const totalPairs = orders.reduce((s, o) => s + (o.total_pairs || 0), 0);
@@ -124,82 +121,158 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
 
   return (
     <div
-      className="w-[210mm] p-[8mm] print:w-full print:p-0 bg-white border border-slate-300 shadow-none print:shadow-none print:border-0 m-auto flex flex-col gap-0"
-      style={{ boxSizing: 'border-box', fontFamily: "'Helvetica Neue', Arial, sans-serif" }}
+      className="w-[210mm] p-[12mm] print:w-full print:p-[10mm] bg-white text-black m-auto editorial-stagger"
+      style={{
+        boxSizing: 'border-box',
+        fontFamily: "'Inter Tight', 'Inter', system-ui, sans-serif",
+        fontSize: '10pt',
+      }}
     >
-      {/* ── Header: PV + cliente ── */}
-      <div className="flex items-stretch gap-0 mb-2 rounded-lg overflow-hidden border-2 border-indigo-700">
-        <div className="bg-indigo-600 text-white flex items-center gap-2 px-3 py-1.5 shrink-0">
-          <FileText className="h-4 w-4" />
-          <span className="text-sm font-black uppercase tracking-tight">Relatório Gerencial</span>
+      {/* ─────────────────────────────── 01 / MASTHEAD ─────────────────────────────── */}
+      <header className="mb-6">
+        <div className="flex items-baseline justify-between gap-4 mb-3">
+          <span className="section-label" style={{ color: '#000' }}>
+            Squad Shoes · Relatório Gerencial
+          </span>
+          <span className="section-label" style={{ color: '#000' }}>
+            {date || new Date().toLocaleDateString('pt-BR')}
+          </span>
         </div>
-        <div className="flex-1 flex flex-col justify-center px-3 bg-slate-50">
-          <div className="flex items-baseline gap-3 flex-wrap">
-            <p className="text-lg font-black text-indigo-900 leading-tight">
-              PV {saleOrder.order_number || '—'}
+
+        <div className="rule-line-thick mb-4" style={{ backgroundColor: '#000' }} />
+
+        <div className="grid grid-cols-12 gap-4 items-end">
+          <div className="col-span-8">
+            <p className="section-label mb-2" style={{ color: '#000' }}>
+              Pedido de Venda
             </p>
+            <h1
+              className="font-display leading-none tracking-tight"
+              style={{
+                fontFamily: "'Anton', Impact, sans-serif",
+                fontSize: '78pt',
+                lineHeight: 0.82,
+                letterSpacing: '-0.025em',
+                color: '#000',
+                textTransform: 'uppercase',
+              }}
+            >
+              PV {saleOrder.order_number || '—'}
+            </h1>
             {saleOrder.client_order_number && (
-              <p className="text-xs text-slate-600">
-                Pedido cliente: <span className="font-bold">{saleOrder.client_order_number}</span>
+              <p className="mt-3 text-[9pt] text-black">
+                <span className="section-label" style={{ color: '#666' }}>Pedido cliente</span>{' '}
+                <span className="font-mono font-semibold ml-1">{saleOrder.client_order_number}</span>
               </p>
             )}
-            {saleOrder.status && (
-              <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-indigo-100 text-indigo-800">
-                {saleOrder.status}
-              </span>
-            )}
           </div>
-          <div className="flex items-center gap-4 mt-0.5 flex-wrap text-xs text-slate-600">
-            <span className="flex items-center gap-1">
-              <Building2 className="h-3 w-3" />
-              <span className="font-bold text-slate-800">{saleOrder.client_name || 'Sem cliente'}</span>
-            </span>
+
+          <div className="col-span-4 border-l border-black pl-4 space-y-2">
+            <div>
+              <p className="section-label" style={{ color: '#666' }}>Cliente</p>
+              <p className="font-semibold text-[10pt] text-black leading-tight mt-0.5">
+                {saleOrder.client_name || 'Sem cliente'}
+              </p>
+            </div>
             {saleOrder.client_cnpj && (
-              <span className="font-mono text-slate-500">CNPJ {saleOrder.client_cnpj}</span>
+              <div>
+                <p className="section-label" style={{ color: '#666' }}>CNPJ</p>
+                <p className="font-mono text-[9pt] text-black mt-0.5">{saleOrder.client_cnpj}</p>
+              </div>
             )}
             {saleOrder.client_city && (
-              <span className="flex items-center gap-1">
-                <MapPin className="h-3 w-3" />
-                {saleOrder.client_city}
-              </span>
+              <div>
+                <p className="section-label" style={{ color: '#666' }}>Praça</p>
+                <p className="text-[9pt] text-black mt-0.5">{saleOrder.client_city}</p>
+              </div>
             )}
             {saleOrder.delivery_deadline && (
-              <span className="flex items-center gap-1">
-                <Calendar className="h-3 w-3" />
-                Faturar até <span className="font-bold text-slate-800">{fmtDate(saleOrder.delivery_deadline)}</span>
-              </span>
+              <div>
+                <p className="section-label" style={{ color: '#666' }}>Faturar até</p>
+                <p className="font-mono font-semibold text-[10pt] text-black mt-0.5">
+                  {fmtDate(saleOrder.delivery_deadline)}
+                </p>
+              </div>
+            )}
+            {saleOrder.status && (
+              <div>
+                <p className="section-label" style={{ color: '#666' }}>Status</p>
+                <p className="text-[9pt] font-semibold text-black mt-0.5 uppercase tracking-wider">
+                  {saleOrder.status}
+                </p>
+              </div>
             )}
           </div>
         </div>
-        <div className="flex flex-col items-center justify-center px-2 bg-white border-l border-slate-200">
-          <QrCode className="h-8 w-8 text-slate-700" />
-          <span className="text-[7px] font-mono text-slate-400 mt-0.5">RELATÓRIO</span>
-          {date && <span className="text-[8px] text-slate-500 mt-0.5">{date}</span>}
-        </div>
-      </div>
+      </header>
 
-      {/* ── KPIs ── */}
-      <div className="keep-together grid grid-cols-4 gap-1.5 mb-2">
-        <KpiCard label="OPs" value={orders.length} color="indigo" />
-        <KpiCard label="Pares" value={totalPairs} color="indigo" />
-        <KpiCard label="Receita" value={fmtCurrency(totalRevenue)} color="emerald" />
-        <KpiCard label="Margem" value={`${fmtCurrency(margin)} · ${fmtPct(marginPct)}`} color={margin >= 0 ? 'emerald' : 'rose'} />
-      </div>
+      <div className="rule-line-double mb-6" style={{ borderColor: '#000' }} />
 
-      {/* ── Tabela de OPs com status por setor ── */}
-      <div className="keep-together mb-2">
-        <div className="bg-slate-100 px-3 py-1.5 rounded-t-lg border border-slate-300 border-b-0">
-          <p className="text-xs font-black text-slate-700 uppercase tracking-wide">Ordens de Produção · Status por setor</p>
+      {/* ─────────────────────────────── 02 / INDICADORES ─────────────────────────────── */}
+      <section className="keep-together mb-6">
+        <div className="flex items-baseline gap-3 mb-4">
+          <span
+            className="font-display"
+            style={{
+              fontFamily: "'Anton', Impact, sans-serif",
+              fontSize: '14pt',
+              color: '#000',
+            }}
+          >
+            01
+          </span>
+          <span className="section-label" style={{ color: '#000' }}>
+            Indicadores do Pedido
+          </span>
+          <div className="flex-1 h-px bg-black" />
         </div>
-        <table className="w-full text-xs" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+
+        <div className="grid grid-cols-4 gap-0 border-t border-b border-black">
+          <KpiBlock label="OPs" value={String(orders.length)} />
+          <KpiBlock label="Pares" value={totalPairs.toLocaleString('pt-BR')} bordered />
+          <KpiBlock label="Receita" value={fmtCurrency(totalRevenue)} bordered />
+          <KpiBlock
+            label="Margem"
+            value={fmtCurrency(margin)}
+            sub={fmtPct(marginPct)}
+            bordered
+            accent={margin >= 0 ? undefined : 'negative'}
+          />
+        </div>
+      </section>
+
+      {/* ─────────────────────────────── 03 / STATUS POR SETOR ─────────────────────────────── */}
+      <section className="keep-together mb-6">
+        <div className="flex items-baseline gap-3 mb-4">
+          <span
+            className="font-display"
+            style={{
+              fontFamily: "'Anton', Impact, sans-serif",
+              fontSize: '14pt',
+              color: '#000',
+            }}
+          >
+            02
+          </span>
+          <span className="section-label" style={{ color: '#000' }}>
+            Ordens de Produção · Status por Setor
+          </span>
+          <div className="flex-1 h-px bg-black" />
+        </div>
+
+        <table className="w-full" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: '8.5pt' }}>
           <thead>
-            <tr className="bg-slate-100">
-              <th className="border border-slate-300 py-1 px-1 text-left text-[10px] font-bold" style={{ width: 60 }}>OP</th>
-              <th className="border border-slate-300 py-1 px-1 text-left text-[10px] font-bold">Ref / Cor</th>
-              <th className="border border-slate-300 py-1 px-1 text-left text-[10px] font-bold" style={{ width: 80 }}>Solado</th>
-              <th className="border border-slate-300 py-1 px-1 text-right text-[10px] font-bold" style={{ width: 44 }}>Pares</th>
+            <tr style={{ borderBottom: '1.5px solid #000' }}>
+              <th className="text-left py-2 pr-2 section-label" style={{ width: 56, color: '#000' }}>OP</th>
+              <th className="text-left py-2 pr-2 section-label" style={{ color: '#000' }}>Ref · Cor</th>
+              <th className="text-left py-2 pr-2 section-label" style={{ width: 90, color: '#000' }}>Solado</th>
+              <th className="text-right py-2 pr-2 section-label" style={{ width: 44, color: '#000' }}>Pares</th>
               {sectorsOrdered.map(s => (
-                <th key={s} className="border border-slate-300 py-1 text-[8px] font-bold" style={{ width: 36 }}>
+                <th
+                  key={s}
+                  className="py-2 section-label"
+                  style={{ width: 32, color: '#000', textAlign: 'center' }}
+                >
                   {s.replace('Corte ', 'C.').replace('Aviamento','Aviam.').replace('Acabamento','Acab.').replace('Expedição','Exped.')}
                 </th>
               ))}
@@ -214,23 +287,28 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
                 (o.stages || []).map(s => [normalizeStageName(s.stage_name), s])
               );
               return (
-                <tr key={o.id}>
-                  <td className="border border-slate-300 py-1 px-1 font-mono text-[10px]">{o.op_number || '—'}</td>
-                  <td className="border border-slate-300 py-1 px-1 text-[10px]">
-                    {o.reference_code && <span className="font-bold">{o.reference_code} </span>}
-                    <span className="text-slate-500">{o.reference_name || ''}</span>
-                    {o.color && <span className="text-slate-700"> · {o.color}</span>}
+                <tr key={o.id} style={{ borderBottom: '0.5px solid #d4d4d4' }}>
+                  <td className="py-2 pr-2 font-mono text-[9pt] text-black">{o.op_number || '—'}</td>
+                  <td className="py-2 pr-2 text-[9pt] text-black">
+                    {o.reference_code && <span className="font-semibold">{o.reference_code}</span>}
+                    {o.reference_name && <span className="text-neutral-500 ml-1">{o.reference_name}</span>}
+                    {o.color && <span className="text-black"> · {o.color}</span>}
                   </td>
-                  <td className="border border-slate-300 py-1 px-1 text-[10px] text-slate-600">{o.sole_name || '—'}</td>
-                  <td className="border border-slate-300 py-1 px-1 text-right font-mono font-black text-[11px]">{o.total_pairs}</td>
+                  <td className="py-2 pr-2 text-[9pt] text-neutral-700">{o.sole_name || '—'}</td>
+                  <td className="py-2 pr-2 text-right font-mono font-bold text-[10pt] text-black">{o.total_pairs}</td>
                   {sectorsOrdered.map(s => {
                     // s já é canônico (Aviamento/Costura/etc). Mapa usa chaves normalizadas.
                     const stage = stageByName.get(s) || null;
                     const status = stage?.status || 'pendente';
-                    const cls = STATUS_COLOR[status] || STATUS_COLOR.pendente;
+                    const symbol = status === 'concluido' ? '●' : status === 'em_andamento' ? '◐' : '○';
+                    const color = status === 'concluido' ? '#000' : status === 'em_andamento' ? '#E11D2E' : '#bababa';
                     return (
-                      <td key={s} className={`border border-slate-300 py-1 text-center text-[8px] font-bold ${cls}`}>
-                        {status === 'concluido' ? '✓' : status === 'em_andamento' ? '●' : '○'}
+                      <td
+                        key={s}
+                        className="py-2 text-center font-mono"
+                        style={{ color, fontSize: '11pt', lineHeight: 1 }}
+                      >
+                        {symbol}
                       </td>
                     );
                   })}
@@ -239,110 +317,189 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
             })}
           </tbody>
         </table>
-        <div className="text-[9px] text-slate-500 mt-1 px-1">
-          ✓ concluído · ● em andamento · ○ pendente
-        </div>
-      </div>
 
-      {/* ── Custos ── */}
+        <div className="mt-3 flex items-center gap-4 text-[8pt] text-neutral-600">
+          <span className="flex items-center gap-1.5">
+            <span className="font-mono text-black" style={{ fontSize: '11pt' }}>●</span> concluído
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="font-mono" style={{ fontSize: '11pt', color: '#E11D2E' }}>◐</span> em andamento
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="font-mono text-neutral-400" style={{ fontSize: '11pt' }}>○</span> pendente
+          </span>
+        </div>
+      </section>
+
+      {/* ─────────────────────────────── 04 / CUSTOS ─────────────────────────────── */}
       {totalCost > 0 && (
-        <div className="keep-together mb-2 border-2 border-slate-300 rounded-lg overflow-hidden">
-          <div className="bg-slate-700 text-white px-3 py-1.5 flex items-center gap-2">
-            <TrendingUp className="h-4 w-4" />
-            <span className="text-xs font-black uppercase tracking-wide">Custos</span>
+        <section className="keep-together mb-6">
+          <div className="flex items-baseline gap-3 mb-4">
+            <span
+              className="font-display"
+              style={{
+                fontFamily: "'Anton', Impact, sans-serif",
+                fontSize: '14pt',
+                color: '#000',
+              }}
+            >
+              03
+            </span>
+            <span className="section-label" style={{ color: '#000' }}>
+              Custos & Margem
+            </span>
+            <div className="flex-1 h-px bg-black" />
           </div>
-          <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
+
+          <table className="w-full" style={{ borderCollapse: 'collapse', fontSize: '8.5pt' }}>
             <thead>
-              <tr className="bg-slate-50">
-                <th className="border border-slate-300 py-1 px-2 text-left text-[10px] font-bold" style={{ width: 50 }}>OP</th>
-                <th className="border border-slate-300 py-1 px-2 text-left text-[10px] font-bold">Ref</th>
-                <th className="border border-slate-300 py-1 px-2 text-right text-[10px] font-bold">Material</th>
-                <th className="border border-slate-300 py-1 px-2 text-right text-[10px] font-bold">M. Obra</th>
-                <th className="border border-slate-300 py-1 px-2 text-right text-[10px] font-bold">Overhead</th>
-                <th className="border border-slate-300 py-1 px-2 text-right text-[10px] font-bold">Embalagem</th>
-                <th className="border border-slate-300 py-1 px-2 text-right text-[10px] font-bold">Total</th>
-                <th className="border border-slate-300 py-1 px-2 text-right text-[10px] font-bold">Receita</th>
-                <th className="border border-slate-300 py-1 px-2 text-right text-[10px] font-bold">Margem</th>
+              <tr style={{ borderBottom: '1.5px solid #000' }}>
+                <th className="text-left py-2 pr-2 section-label" style={{ width: 50, color: '#000' }}>OP</th>
+                <th className="text-left py-2 pr-2 section-label" style={{ color: '#000' }}>Ref</th>
+                <th className="text-right py-2 pr-2 section-label" style={{ color: '#000' }}>Material</th>
+                <th className="text-right py-2 pr-2 section-label" style={{ color: '#000' }}>M.Obra</th>
+                <th className="text-right py-2 pr-2 section-label" style={{ color: '#000' }}>Overhead</th>
+                <th className="text-right py-2 pr-2 section-label" style={{ color: '#000' }}>Embal.</th>
+                <th className="text-right py-2 pr-2 section-label" style={{ color: '#000' }}>Total</th>
+                <th className="text-right py-2 pr-2 section-label" style={{ color: '#000' }}>Receita</th>
+                <th className="text-right py-2 pr-2 section-label" style={{ color: '#000' }}>Margem</th>
               </tr>
             </thead>
             <tbody>
               {orders.filter(o => o.cost).map(o => (
-                <tr key={o.id}>
-                  <td className="border border-slate-300 py-1 px-2 font-mono text-[10px]">{o.op_number || '—'}</td>
-                  <td className="border border-slate-300 py-1 px-2 text-[10px]">{o.reference_code || ''}</td>
-                  <td className="border border-slate-300 py-1 px-2 text-right font-mono text-[10px]">{fmtCurrency(o.cost!.material_cost)}</td>
-                  <td className="border border-slate-300 py-1 px-2 text-right font-mono text-[10px]">{fmtCurrency(o.cost!.labor_cost)}</td>
-                  <td className="border border-slate-300 py-1 px-2 text-right font-mono text-[10px]">{fmtCurrency(o.cost!.overhead_cost)}</td>
-                  <td className="border border-slate-300 py-1 px-2 text-right font-mono text-[10px]">{fmtCurrency(o.cost!.packaging_cost)}</td>
-                  <td className="border border-slate-300 py-1 px-2 text-right font-mono font-bold text-[10px]">{fmtCurrency(o.cost!.total_cost)}</td>
-                  <td className="border border-slate-300 py-1 px-2 text-right font-mono text-[10px]">{fmtCurrency(o.cost!.revenue)}</td>
-                  <td className={`border border-slate-300 py-1 px-2 text-right font-mono font-bold text-[10px] ${o.cost!.margin >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                    {fmtCurrency(o.cost!.margin)} · {fmtPct(o.cost!.margin_pct)}
+                <tr key={o.id} style={{ borderBottom: '0.5px solid #d4d4d4' }}>
+                  <td className="py-2 pr-2 font-mono text-[9pt] text-black">{o.op_number || '—'}</td>
+                  <td className="py-2 pr-2 text-[9pt] text-black font-semibold">{o.reference_code || ''}</td>
+                  <td className="py-2 pr-2 text-right font-mono text-[9pt] text-black">{fmtCurrency(o.cost!.material_cost)}</td>
+                  <td className="py-2 pr-2 text-right font-mono text-[9pt] text-black">{fmtCurrency(o.cost!.labor_cost)}</td>
+                  <td className="py-2 pr-2 text-right font-mono text-[9pt] text-black">{fmtCurrency(o.cost!.overhead_cost)}</td>
+                  <td className="py-2 pr-2 text-right font-mono text-[9pt] text-black">{fmtCurrency(o.cost!.packaging_cost)}</td>
+                  <td className="py-2 pr-2 text-right font-mono font-bold text-[9pt] text-black">{fmtCurrency(o.cost!.total_cost)}</td>
+                  <td className="py-2 pr-2 text-right font-mono text-[9pt] text-black">{fmtCurrency(o.cost!.revenue)}</td>
+                  <td
+                    className="py-2 pr-2 text-right font-mono font-bold text-[9pt]"
+                    style={{ color: o.cost!.margin >= 0 ? '#000' : '#E11D2E' }}
+                  >
+                    {fmtCurrency(o.cost!.margin)}
+                    <span className="ml-1 font-normal opacity-60">{fmtPct(o.cost!.margin_pct)}</span>
                   </td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
-              <tr className="bg-slate-200 font-black">
-                <td colSpan={2} className="border border-slate-400 py-1.5 px-2 text-right text-[10px] uppercase">Total</td>
-                <td className="border border-slate-400 py-1.5 px-2 text-right font-mono text-[10px]">{fmtCurrency(totalMaterial)}</td>
-                <td className="border border-slate-400 py-1.5 px-2 text-right font-mono text-[10px]">{fmtCurrency(totalLabor)}</td>
-                <td className="border border-slate-400 py-1.5 px-2 text-right font-mono text-[10px]">{fmtCurrency(totalOverhead)}</td>
-                <td className="border border-slate-400 py-1.5 px-2 text-right font-mono text-[10px]">{fmtCurrency(totalPackaging)}</td>
-                <td className="border border-slate-400 py-1.5 px-2 text-right font-mono text-[11px]">{fmtCurrency(totalCost)}</td>
-                <td className="border border-slate-400 py-1.5 px-2 text-right font-mono text-[10px]">{fmtCurrency(totalRevenue)}</td>
-                <td className={`border border-slate-400 py-1.5 px-2 text-right font-mono text-[11px] ${margin >= 0 ? 'text-emerald-800' : 'text-rose-800'}`}>
-                  {fmtCurrency(margin)} · {fmtPct(marginPct)}
+              <tr style={{ borderTop: '1.5px solid #000', borderBottom: '1.5px solid #000' }}>
+                <td colSpan={2} className="py-2.5 pr-2 section-label" style={{ color: '#000', textAlign: 'right' }}>
+                  Total
+                </td>
+                <td className="py-2.5 pr-2 text-right font-mono font-bold text-[9pt] text-black">{fmtCurrency(totalMaterial)}</td>
+                <td className="py-2.5 pr-2 text-right font-mono font-bold text-[9pt] text-black">{fmtCurrency(totalLabor)}</td>
+                <td className="py-2.5 pr-2 text-right font-mono font-bold text-[9pt] text-black">{fmtCurrency(totalOverhead)}</td>
+                <td className="py-2.5 pr-2 text-right font-mono font-bold text-[9pt] text-black">{fmtCurrency(totalPackaging)}</td>
+                <td className="py-2.5 pr-2 text-right font-mono font-bold text-[10pt] text-black">{fmtCurrency(totalCost)}</td>
+                <td className="py-2.5 pr-2 text-right font-mono font-bold text-[9pt] text-black">{fmtCurrency(totalRevenue)}</td>
+                <td
+                  className="py-2.5 pr-2 text-right font-mono font-bold text-[10pt]"
+                  style={{ color: margin >= 0 ? '#000' : '#E11D2E' }}
+                >
+                  {fmtCurrency(margin)}
+                  <span className="ml-1 text-[9pt] opacity-60">{fmtPct(marginPct)}</span>
                 </td>
               </tr>
             </tfoot>
           </table>
-        </div>
-      )}
-      {totalCost === 0 && (
-        <div className="keep-together mb-2 border border-amber-300 rounded p-1.5 bg-amber-50 flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4 text-amber-600" />
-          <p className="text-xs text-amber-800">
-            Sem custos calculados ainda — calcule via "Calcular Custos" no PV pra ver material/mão de obra/margem aqui.
-          </p>
-        </div>
-      )}
-      {isPartialReport && (
-        <div className="keep-together mb-2 border border-amber-300 rounded p-1.5 bg-amber-50 flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4 text-amber-600" />
-          <p className="text-xs text-amber-800">
-            <strong>Receita/Margem PARCIAIS:</strong> {opsWithCost} de {orders.length} OPs com custo
-            carregado. {opsWithoutCost} OP(s) sem custo — execute "Calcular Custos" pra atualizar.
-          </p>
-        </div>
+        </section>
       )}
 
-      {/* ── Footer: assinaturas ── */}
-      <div className="mt-auto pt-1.5 border-t border-slate-200">
-        <div className="flex items-end justify-between gap-2">
+      {totalCost === 0 && (
+        <section className="keep-together mb-6 border-l-2 border-black pl-3 py-2">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" style={{ color: '#E11D2E' }} />
+            <div>
+              <p className="section-label mb-1" style={{ color: '#E11D2E' }}>Custos pendentes</p>
+              <p className="text-[9pt] text-black leading-snug">
+                Sem custos calculados ainda — execute "Calcular Custos" no PV pra ver material/mão de obra/margem.
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {isPartialReport && (
+        <section className="keep-together mb-6 border-l-2 pl-3 py-2" style={{ borderColor: '#E11D2E' }}>
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" style={{ color: '#E11D2E' }} />
+            <div>
+              <p className="section-label mb-1" style={{ color: '#E11D2E' }}>Receita & margem parciais</p>
+              <p className="text-[9pt] text-black leading-snug">
+                <span className="font-mono font-bold">{opsWithCost}</span> de <span className="font-mono font-bold">{orders.length}</span> OPs com custo carregado.
+                {' '}<span className="font-mono font-bold">{opsWithoutCost}</span> OP(s) sem custo — execute "Calcular Custos" pra atualizar.
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ─────────────────────────────── FOOTER · ASSINATURAS ─────────────────────────────── */}
+      <footer className="mt-auto pt-8">
+        <div className="rule-line mb-6" style={{ backgroundColor: '#000' }} />
+        <div className="grid grid-cols-3 gap-8">
           {['PCP', 'Comercial', 'Financeiro'].map(label => (
-            <div key={label} className="text-center flex-1">
-              <div className="border-t border-slate-400 mt-4 pt-0.5">
-                <p className="text-[9px] text-slate-500 uppercase font-bold">{label}</p>
+            <div key={label} className="text-center">
+              <div className="border-t border-black pt-2">
+                <p className="section-label" style={{ color: '#000' }}>{label}</p>
               </div>
             </div>
           ))}
         </div>
-      </div>
+        <div className="mt-6 flex items-baseline justify-between text-[7pt] text-neutral-500">
+          <span className="section-label" style={{ color: '#999' }}>Squad Shoes · Sistema de Gestão</span>
+          <span className="font-mono">PV {saleOrder.order_number || '—'} · {date || new Date().toLocaleDateString('pt-BR')}</span>
+        </div>
+      </footer>
     </div>
   );
 };
 
-function KpiCard({ label, value, color }: { label: string; value: string | number; color: string }) {
-  const bg: Record<string, string> = {
-    indigo:  'bg-indigo-50 border-indigo-300 text-indigo-900',
-    emerald: 'bg-emerald-50 border-emerald-300 text-emerald-900',
-    rose:    'bg-rose-50 border-rose-300 text-rose-900',
-  };
+function KpiBlock({
+  label,
+  value,
+  sub,
+  bordered,
+  accent,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  bordered?: boolean;
+  accent?: 'negative';
+}) {
   return (
-    <div className={`border-2 rounded-lg px-2.5 py-1.5 ${bg[color] || bg.indigo}`}>
-      <p className="text-[9px] font-bold uppercase opacity-70">{label}</p>
-      <p className="text-base font-black font-mono leading-tight">{value}</p>
+    <div
+      className="px-3 py-4"
+      style={{
+        borderLeft: bordered ? '1px solid #000' : 'none',
+      }}
+    >
+      <p className="section-label mb-2" style={{ color: '#000' }}>{label}</p>
+      <p
+        className="font-mono font-bold leading-none"
+        style={{
+          fontFamily: "'JetBrains Mono', monospace",
+          fontSize: '22pt',
+          letterSpacing: '-0.03em',
+          color: accent === 'negative' ? '#E11D2E' : '#000',
+        }}
+      >
+        {value}
+      </p>
+      {sub && (
+        <p
+          className="font-mono mt-1 text-[9pt] opacity-60"
+          style={{ color: accent === 'negative' ? '#E11D2E' : '#000' }}
+        >
+          {sub}
+        </p>
+      )}
     </div>
   );
 }

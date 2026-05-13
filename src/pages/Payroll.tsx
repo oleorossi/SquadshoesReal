@@ -23,6 +23,7 @@ import {
 import { calculatePayroll, PAYROLL_TAX_YEAR, type BenefitsConfig, type PayrollDayInput } from '@/lib/payrollCalc';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -229,38 +230,37 @@ export default function Payroll() {
   }
 
   return (
-    <div className="space-y-5 page-enter">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
-            <DollarSign className="h-5 w-5 text-primary" />
-            Folha de Pagamento
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Cálculo mensal: salário base + HE 50/100 + adic. noturno + DSR + benefícios − INSS/IRRF.
-          </p>
-        </div>
-        <div className="flex gap-2 items-center">
-          <Input
-            type="month"
-            value={period}
-            onChange={e => setPeriod(e.target.value)}
-            className="w-40"
-          />
-          <BenefitsConfigDialog open={configOpen} onOpenChange={setConfigOpen} />
-          <Button variant="outline" onClick={() => setConfigOpen(true)}>
-            <Settings className="h-4 w-4 mr-2" />Configurações
-          </Button>
-          <Button variant="outline" onClick={() => navigate('/timesheet?tab=overtime')}>
-            <Clock className="h-4 w-4 mr-2" />
-            Resolver HE
-          </Button>
-          <Button onClick={calculateAll} disabled={calcRunning}>
-            {calcRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Calculator className="h-4 w-4 mr-2" />}
-            Calcular folha
-          </Button>
-        </div>
-      </div>
+    <div className="space-y-5 page-enter editorial-stagger">
+      <EditorialPageHeader
+        sectionNumber="03"
+        sectionLabel="RH · FOLHA"
+        title="Folha de Pagamento"
+        description="Cálculo mensal: salário base + HE 50/100 + adic. noturno + DSR + benefícios − INSS/IRRF."
+        actions={
+          <>
+            <Input
+              type="month"
+              value={period}
+              onChange={e => setPeriod(e.target.value)}
+              className="w-40"
+            />
+            <BenefitsConfigDialog open={configOpen} onOpenChange={setConfigOpen} />
+            <Button variant="outline" onClick={() => setConfigOpen(true)}>
+              <Settings className="h-4 w-4 mr-2" />Configurações
+            </Button>
+            <Button variant="outline" onClick={() => navigate('/timesheet?tab=overtime')}>
+              <Clock className="h-4 w-4 mr-2" />
+              Resolver HE
+            </Button>
+            <Button onClick={calculateAll} disabled={calcRunning}>
+              {calcRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Calculator className="h-4 w-4 mr-2" />}
+              Calcular folha
+            </Button>
+          </>
+        }
+      />
+
+      <PayrollPendingInputsAlert period={period} />
 
       <PayrollPendingInputsAlert period={period} />
 

@@ -22,6 +22,7 @@ import {
 } from '@/hooks/useClients';
 import ClientFormDialog from '@/components/clients/ClientFormDialog';
 import ExcelImportDialog from '@/components/clients/ExcelImportDialog';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import ClientLogoTab from '@/components/clients/ClientLogoTab';
 import RepresentativeTab from '@/components/clients/RepresentativeTab';
 import { toast } from 'sonner';
@@ -245,13 +246,12 @@ export default function Clients() {
 
   return (
     <AppLayout>
-      <div className="space-y-5 page-enter">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold tracking-tight">Clientes</h1>
-            <p className="text-sm text-muted-foreground">Cadastro de lojistas e grupos econômicos</p>
-          </div>
-        </div>
+      <div className="space-y-5 page-enter editorial-stagger">
+        <EditorialPageHeader
+          sectionLabel="COMERCIAL · CLIENTES"
+          title="Clientes"
+          description="Cadastro de lojistas e grupos econômicos"
+        />
 
         <Tabs defaultValue="clients">
           <TabsList>

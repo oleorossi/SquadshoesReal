@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { lazy, Suspense } from "react";
 import { CircleNotch as Loader2, SquaresFour as LayoutDashboard, ClipboardText as ClipboardList, Factory, ChartBar as BarChart3, Stack as Boxes, ClockCounterClockwise as History, Waves, FlowArrow as Workflow, Clock } from '@phosphor-icons/react';
 import { Gauge, FileText as FileBarChart } from '@phosphor-icons/react';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 const Orders = lazy(() => import("./Orders"));
 const ProductionScheduleTimeline = lazy(() => import("@/components/financial/ProductionScheduleTimeline").then(m => ({ default: m.ProductionScheduleTimeline })));
@@ -53,15 +54,12 @@ export default function PCPHub() {
   };
 
   return (
-    <div className="space-y-5 page-enter">
-      <div>
-        <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
-          <ClipboardList className="h-6 w-6" /> Gestão PCP
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Planejamento, controle e produção da fábrica
-        </p>
-      </div>
+    <div className="space-y-5 page-enter editorial-stagger">
+      <EditorialPageHeader
+        sectionLabel="PCP · CENTRAL"
+        title="Planejamento"
+        description="Planejamento, controle e produção da fábrica"
+      />
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 pb-2">
           <TabsList className="inline-flex w-max h-auto gap-1 bg-muted/50 p-1 rounded-lg">

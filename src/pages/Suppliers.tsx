@@ -26,6 +26,7 @@ import SupplierFormDialog from '@/components/suppliers/SupplierFormDialog';
 import XmlImportDialog from '@/components/suppliers/XmlImportDialog';
 import AddToStockDialog from '@/components/suppliers/AddToStockDialog';
 import AddBoletoFinanceDialog from '@/components/suppliers/AddBoletoFinanceDialog';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 
 function InvoiceItemsRow({ invoice, supplierName }: { invoice: Invoice; supplierName: string }) {
@@ -378,23 +379,24 @@ export default function Suppliers() {
 
   return (
     <AppLayout>
-      <div className="space-y-5 page-enter">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-bold tracking-tight">Fornecedores</h1>
-            <p className="text-sm text-muted-foreground">Cadastro de fornecedores e importação de notas fiscais</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" className="gap-2" onClick={() => setXmlDialogOpen(true)}>
-              <FileUp className="h-4 w-4" />
-              <span className="hidden sm:inline">Importar XML</span>
-            </Button>
-            <Button onClick={openAdd} className="gap-2">
-              <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">Novo Fornecedor</span>
-            </Button>
-          </div>
-        </div>
+      <div className="space-y-5 page-enter editorial-stagger">
+        <EditorialPageHeader
+          sectionLabel="COMPRAS · FORNECEDORES"
+          title="Fornecedores"
+          description="Cadastro de fornecedores e importação de notas fiscais"
+          actions={
+            <>
+              <Button variant="outline" className="gap-2" onClick={() => setXmlDialogOpen(true)}>
+                <FileUp className="h-4 w-4" />
+                <span className="hidden sm:inline">Importar XML</span>
+              </Button>
+              <Button onClick={openAdd} className="gap-2">
+                <Plus className="h-4 w-4" />
+                <span className="hidden sm:inline">Novo Fornecedor</span>
+              </Button>
+            </>
+          }
+        />
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <Card><CardContent className="p-4 text-center">

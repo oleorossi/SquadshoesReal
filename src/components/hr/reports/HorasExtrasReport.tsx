@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -110,63 +109,74 @@ export default function HorasExtrasReport() {
   }
 
   return (
-    <div className="space-y-5 page-enter">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
-            <AlarmClock className="h-5 w-5 text-primary" />
-            Relatório de Horas Extras
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            HE 50%, HE 100% (domingos/feriados) e adicional noturno do período. Dados vêm da folha calculada.
-          </p>
+    <div className="editorial-stagger space-y-8 page-enter">
+      {/* ─────────── MASTHEAD ─────────── */}
+      <div>
+        <div className="flex items-baseline justify-between gap-4 mb-3">
+          <span className="section-label text-foreground">RH · Relatório</span>
+          <span className="section-label">{period}</span>
         </div>
-        <div className="flex gap-2 items-center">
-          <Input type="month" value={period} onChange={e => setPeriod(e.target.value)} className="w-40" />
-          <Button size="sm" onClick={exportCsv} className="gap-1.5"><Download className="h-3.5 w-3.5" /> CSV</Button>
+        <div className="rule-line mb-4" />
+        <div className="flex items-end justify-between gap-6 flex-wrap">
+          <div className="flex-1 min-w-[260px]">
+            <p className="section-label mb-2">Horas Extras · Mensal</p>
+            <h1 className="text-display-lg leading-none">
+              Horas
+              <span className="text-primary"> Extras</span>
+            </h1>
+            <p className="text-sm text-muted-foreground mt-3 max-w-xl leading-relaxed">
+              HE 50%, HE 100% (domingos/feriados) e adicional noturno do período. Dados vêm da folha calculada.
+            </p>
+          </div>
+          <div className="flex gap-2 items-center">
+            <Input type="month" value={period} onChange={e => setPeriod(e.target.value)} className="w-40 h-9" />
+            <Button size="sm" className="h-9 gap-1.5" onClick={exportCsv}><Download className="h-3.5 w-3.5" /> CSV</Button>
+          </div>
         </div>
+        <div className="rule-line-double mt-5" />
       </div>
 
       {rows.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            <AlarmClock className="h-10 w-10 mx-auto mb-3 opacity-30" />
-            <p>Nenhuma folha calculada para {period}.</p>
-            <p className="text-xs mt-1">Calcule a folha em <strong>Folha &gt; Folha do Mês</strong> primeiro.</p>
-          </CardContent>
-        </Card>
+        <div className="py-16 text-center border-y border-border">
+          <AlarmClock className="h-10 w-10 mx-auto mb-3 opacity-30" />
+          <p className="section-label mb-1">Sem dados</p>
+          <p className="text-sm text-muted-foreground">Nenhuma folha calculada para {period}.</p>
+          <p className="text-xs text-muted-foreground mt-1">Calcule a folha em <strong className="text-foreground">Folha &gt; Folha do Mês</strong> primeiro.</p>
+        </div>
       ) : (
         <>
-          {/* KPIs */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Card><CardContent className="p-4">
-              <p className="text-xs text-muted-foreground uppercase">HE 50%</p>
-              <p className="text-xl font-bold font-mono">{fmtMin(totals.ot50Min)}</p>
-              <p className="text-[10px] text-muted-foreground">{Math.round(totals.ot50Min / 60)}h</p>
-            </CardContent></Card>
-            <Card><CardContent className="p-4">
-              <p className="text-xs text-muted-foreground uppercase">HE 100%</p>
-              <p className="text-xl font-bold font-mono text-amber-600">{fmtMin(totals.ot100Min)}</p>
-              <p className="text-[10px] text-muted-foreground">Domingos/feriados</p>
-            </CardContent></Card>
-            <Card><CardContent className="p-4">
-              <p className="text-xs text-muted-foreground uppercase">Adic. Noturno</p>
-              <p className="text-xl font-bold font-mono text-indigo-600">{fmtMin(totals.nightMin)}</p>
-              <p className="text-[10px] text-muted-foreground">22h–5h</p>
-            </CardContent></Card>
-            <Card className="border-primary/40"><CardContent className="p-4">
-              <p className="text-xs text-muted-foreground uppercase">Custo total HE</p>
-              <p className="text-xl font-bold font-mono text-primary">{fmt(totals.totalValue)}</p>
-              <p className="text-[10px] text-muted-foreground">{totals.countWithOT} funcionário{totals.countWithOT !== 1 ? 's' : ''} com HE</p>
-            </CardContent></Card>
-          </div>
+          {/* ─────────── 01 / INDICADORES ─────────── */}
+          <section>
+            <div className="flex items-baseline gap-3 mb-5">
+              <span className="font-display text-2xl leading-none">01</span>
+              <span className="section-label text-foreground">Indicadores do Período</span>
+              <div className="flex-1 h-px bg-border" />
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 border-y border-border">
+              <KpiCell label="HE 50%" value={fmtMin(totals.ot50Min)} sub={`${Math.round(totals.ot50Min / 60)}h`} />
+              <KpiCell label="HE 100%" value={fmtMin(totals.ot100Min)} sub="Domingos/feriados" bordered />
+              <KpiCell label="Adic. Noturno" value={fmtMin(totals.nightMin)} sub="22h–5h" bordered />
+              <KpiCell
+                label="Custo total HE"
+                value={fmt(totals.totalValue)}
+                sub={`${totals.countWithOT} funcionário${totals.countWithOT !== 1 ? 's' : ''} com HE`}
+                bordered
+                accent
+              />
+            </div>
+          </section>
 
-          {/* Top 10 */}
-          <div className="grid lg:grid-cols-2 gap-4">
-            <Card>
-              <CardHeader><CardTitle className="text-sm">Top 10 — Funcionários com mais HE</CardTitle></CardHeader>
-              <CardContent>
-                <div className="h-72">
+          {/* ─────────── 02 / DISTRIBUIÇÃO ─────────── */}
+          <section>
+            <div className="flex items-baseline gap-3 mb-5">
+              <span className="font-display text-2xl leading-none">02</span>
+              <span className="section-label text-foreground">Distribuição · Top 10 & Setores</span>
+              <div className="flex-1 h-px bg-border" />
+            </div>
+            <div className="grid lg:grid-cols-2 gap-6">
+              <div>
+                <p className="section-label mb-3">Top 10 · Funcionários com mais HE</p>
+                <div className="h-72 border-t border-border pt-3">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={top10} layout="vertical" margin={{ top: 4, right: 12, left: 60, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.4)" />
@@ -180,26 +190,24 @@ export default function HorasExtrasReport() {
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
 
-            <Card>
-              <CardHeader><CardTitle className="text-sm">Por setor</CardTitle></CardHeader>
-              <CardContent className="p-0">
+              <div>
+                <p className="section-label mb-3">Por Setor</p>
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead>Setor</TableHead>
-                      <TableHead className="text-right">Funcionários c/ HE</TableHead>
-                      <TableHead className="text-right">Total horas</TableHead>
-                      <TableHead className="text-right">Custo</TableHead>
+                    <TableRow className="border-b-2 border-foreground hover:bg-transparent">
+                      <TableHead className="section-label text-foreground">Setor</TableHead>
+                      <TableHead className="section-label text-foreground text-right">Func. c/ HE</TableHead>
+                      <TableHead className="section-label text-foreground text-right">Total horas</TableHead>
+                      <TableHead className="section-label text-foreground text-right">Custo</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {byDept.length === 0 ? (
                       <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-6">Nenhum dado.</TableCell></TableRow>
                     ) : byDept.map(d => (
-                      <TableRow key={d.dept}>
+                      <TableRow key={d.dept} className="border-b border-border/60">
                         <TableCell>{d.dept}</TableCell>
                         <TableCell className="text-right font-mono">{d.count}</TableCell>
                         <TableCell className="text-right font-mono">{fmtMin(d.minutes)}</TableCell>
@@ -208,44 +216,64 @@ export default function HorasExtrasReport() {
                     ))}
                   </TableBody>
                 </Table>
-              </CardContent>
-            </Card>
-          </div>
+              </div>
+            </div>
+          </section>
 
-          {/* Detalhe por funcionário */}
-          <Card>
-            <CardHeader><CardTitle className="text-sm">Detalhe por funcionário</CardTitle></CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Funcionário</TableHead>
-                    <TableHead>Setor</TableHead>
-                    <TableHead className="text-right">HE 50%</TableHead>
-                    <TableHead className="text-right">HE 100%</TableHead>
-                    <TableHead className="text-right">Noturno</TableHead>
-                    <TableHead className="text-right">DSR</TableHead>
-                    <TableHead className="text-right font-bold">Total R$</TableHead>
+          {/* ─────────── 03 / DETALHE ─────────── */}
+          <section>
+            <div className="flex items-baseline gap-3 mb-5">
+              <span className="font-display text-2xl leading-none">03</span>
+              <span className="section-label text-foreground">Detalhe por Funcionário</span>
+              <div className="flex-1 h-px bg-border" />
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow className="border-b-2 border-foreground hover:bg-transparent">
+                  <TableHead className="section-label text-foreground">Funcionário</TableHead>
+                  <TableHead className="section-label text-foreground">Setor</TableHead>
+                  <TableHead className="section-label text-foreground text-right">HE 50%</TableHead>
+                  <TableHead className="section-label text-foreground text-right">HE 100%</TableHead>
+                  <TableHead className="section-label text-foreground text-right">Noturno</TableHead>
+                  <TableHead className="section-label text-foreground text-right">DSR</TableHead>
+                  <TableHead className="section-label text-foreground text-right">Total R$</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map(r => (
+                  <TableRow key={r.id} className={`border-b border-border/60 ${r.totalMin === 0 ? 'opacity-50' : ''}`}>
+                    <TableCell className="font-medium">{r.name}</TableCell>
+                    <TableCell className="text-muted-foreground text-xs">{r.department}</TableCell>
+                    <TableCell className="text-right font-mono text-xs">{r.ot50Min > 0 ? `${fmtMin(r.ot50Min)} · ${fmt(r.ot50Value)}` : '—'}</TableCell>
+                    <TableCell className="text-right font-mono text-xs">{r.ot100Min > 0 ? `${fmtMin(r.ot100Min)} · ${fmt(r.ot100Value)}` : '—'}</TableCell>
+                    <TableCell className="text-right font-mono text-xs">{r.nightMin > 0 ? `${fmtMin(r.nightMin)} · ${fmt(r.nightValue)}` : '—'}</TableCell>
+                    <TableCell className="text-right font-mono text-xs">{r.dsr > 0 ? fmt(r.dsr) : '—'}</TableCell>
+                    <TableCell className="text-right font-mono font-bold">{r.totalValue > 0 ? fmt(r.totalValue) : '—'}</TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rows.map(r => (
-                    <TableRow key={r.id} className={r.totalMin === 0 ? 'opacity-50' : ''}>
-                      <TableCell className="font-medium">{r.name}</TableCell>
-                      <TableCell className="text-muted-foreground text-xs">{r.department}</TableCell>
-                      <TableCell className="text-right font-mono text-xs">{r.ot50Min > 0 ? `${fmtMin(r.ot50Min)} · ${fmt(r.ot50Value)}` : '—'}</TableCell>
-                      <TableCell className="text-right font-mono text-xs">{r.ot100Min > 0 ? `${fmtMin(r.ot100Min)} · ${fmt(r.ot100Value)}` : '—'}</TableCell>
-                      <TableCell className="text-right font-mono text-xs">{r.nightMin > 0 ? `${fmtMin(r.nightMin)} · ${fmt(r.nightValue)}` : '—'}</TableCell>
-                      <TableCell className="text-right font-mono text-xs">{r.dsr > 0 ? fmt(r.dsr) : '—'}</TableCell>
-                      <TableCell className="text-right font-mono font-bold">{r.totalValue > 0 ? fmt(r.totalValue) : '—'}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+                ))}
+              </TableBody>
+            </Table>
+          </section>
         </>
       )}
+    </div>
+  );
+}
+
+function KpiCell({ label, value, sub, bordered, accent }: {
+  label: string;
+  value: string;
+  sub?: string;
+  bordered?: boolean;
+  accent?: boolean;
+}) {
+  return (
+    <div className={`px-4 py-5 ${bordered ? 'border-l border-border' : ''}`}>
+      <p className="section-label mb-2">{label}</p>
+      <p className={`font-mono font-bold leading-none tracking-tight text-2xl ${accent ? 'text-primary' : 'text-foreground'}`}>
+        {value}
+      </p>
+      {sub && <p className="text-[10px] text-muted-foreground mt-1">{sub}</p>}
     </div>
   );
 }

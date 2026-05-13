@@ -18,12 +18,30 @@ export default function FolhaConsolidada() {
   const [tab, setTab] = usePersistedState<string>('rh-folha-tab', 'folha');
 
   return (
-    <div className="space-y-4">
+    <div className="editorial-stagger space-y-6">
+      {/* Editorial masthead */}
       <div>
-        <h2 className="text-lg font-bold tracking-tight">Folha & Adiantamentos</h2>
-        <p className="text-sm text-muted-foreground">
-          Cálculo da folha, banco de horas e adiantamentos consolidados.
-        </p>
+        <div className="flex items-baseline justify-between gap-4 mb-3">
+          <span className="section-label text-foreground">RH · Recursos Humanos</span>
+          <span className="section-label">Módulo 04</span>
+        </div>
+        <div className="rule-line mb-4" />
+        <div className="grid grid-cols-12 gap-4 items-end">
+          <div className="col-span-12 md:col-span-8">
+            <p className="section-label mb-2">Consolidação Mensal</p>
+            <h1 className="text-display-lg leading-none">
+              Folha
+              <span className="text-primary"> & </span>
+              Adiantamentos
+            </h1>
+          </div>
+          <div className="col-span-12 md:col-span-4 border-l border-border pl-4">
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Cálculo da folha, banco de horas e adiantamentos consolidados em um único hub.
+            </p>
+          </div>
+        </div>
+        <div className="rule-line-double mt-4" />
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="w-full">

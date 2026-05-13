@@ -1,4 +1,5 @@
 import AppLayout from "@/components/layout/AppLayout";
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -78,12 +79,14 @@ export default function ProducaoDashboard() {
   if (!data) return null;
 
   return (
-    
-      <div className="space-y-5 page-enter">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Resumo Produção</h1>
-          <p className="text-sm text-muted-foreground">Ordens de produção, estoque e materiais</p>
-        </div>
+
+      <div className="editorial-container editorial-stagger space-y-6 page-enter">
+        <EditorialPageHeader
+          sectionNumber="03"
+          sectionLabel="PRODUÇÃO · VISÃO GERAL"
+          title="Produção"
+          description="Ordens de produção, estoque e materiais — fluxo da fábrica em tempo real."
+        />
 
         <Tabs defaultValue="overview" className="space-y-4">
           <TabsList className="flex flex-wrap h-auto gap-1">
@@ -94,8 +97,14 @@ export default function ProducaoDashboard() {
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
+            {/* Section header: KPIs */}
+            <div className="flex items-baseline gap-3 pt-2">
+              <span className="font-display text-2xl text-muted-foreground tabular-nums">01</span>
+              <span className="section-label">Indicadores</span>
+            </div>
+
             {/* KPIs */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <Card>
                 <CardContent className="pt-5 pb-4">
                   <div className="flex items-center gap-3">
@@ -142,7 +151,13 @@ export default function ProducaoDashboard() {
               </Card>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-6">
+            {/* Section header: OPs */}
+            <div className="flex items-baseline gap-3 pt-2">
+              <span className="font-display text-2xl text-muted-foreground tabular-nums">02</span>
+              <span className="section-label">Ordens & Estoque</span>
+            </div>
+
+            <div className="grid sm:grid-cols-1 md:grid-cols-2 gap-6">
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base flex items-center gap-2"><ClipboardList className="h-4 w-4 text-primary" /> Ordens em Andamento</CardTitle>
@@ -200,7 +215,7 @@ export default function ProducaoDashboard() {
                   <CardTitle className="text-base flex items-center gap-2"><Layers className="h-4 w-4 text-primary" /> Distribuição de OPs</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-4">
                     {Object.entries(data.statusCount).map(([status, count]) => (
                       <div key={status} className="rounded-lg border p-3 text-center">
                         <p className="text-2xl font-bold">{count}</p>

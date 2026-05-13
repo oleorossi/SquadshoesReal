@@ -10,6 +10,7 @@ import { useExpedicaoStats, PendingOrderItem } from '@/hooks/useExpedicaoStats';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 export default function ExpedicaoHub() {
   const navigate = useNavigate();
@@ -79,19 +80,12 @@ export default function ExpedicaoHub() {
   ];
 
   return (
-    <div className="space-y-5 page-enter">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="p-2.5 rounded-xl bg-primary/10">
-          <Truck className="h-6 w-6 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Expedição</h1>
-          <p className="text-muted-foreground text-sm">
-            Centro integrado — embalagens, transporte e entrega
-          </p>
-        </div>
-      </div>
+    <div className="space-y-5 page-enter editorial-stagger">
+      <EditorialPageHeader
+        sectionLabel="LOGÍSTICA · CENTRAL"
+        title="Expedição"
+        description="Centro integrado — embalagens, transporte e entrega"
+      />
 
       {/* Summary KPI strip */}
       {isLoading ? (

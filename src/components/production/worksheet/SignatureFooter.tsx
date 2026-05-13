@@ -8,28 +8,54 @@ interface Props {
 }
 
 /**
- * Rodapé com linhas de assinatura. Aparece em todas as fichas de operador
- * pra registrar quem produziu, conferiu e supervisionou.
+ * Rodapé com linhas de assinatura — design Industrial Editorial Minimalist.
+ *
+ * Layout:
+ *   ═══ rule line double (fim da ficha) ═══
+ *   [OPERADOR] [INICIO] [FIM] [DATA]    mono small
+ *   ─────────  ─────────  ─────────     hairlines pretas
+ *   ASSINATURA ASSINATURA ASSINATURA    section-label
  */
 export const SignatureFooter = ({
   labels = ['Operador(a)', 'Conferente', 'Supervisor(a)'],
   showTime = true,
 }: Props) => {
   return (
-    <div className="mt-auto pt-1.5 border-t border-slate-200">
+    <div className="mt-auto pt-3 text-black">
+      <div
+        className="w-full mb-3"
+        style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000', height: '4px' }}
+      />
       {showTime && (
-        <div className="flex items-center justify-between mb-1 text-[10px] text-slate-600">
-          <span><strong>Operador:</strong> ____________________</span>
-          <span><strong>Início:</strong> __:__</span>
-          <span><strong>Fim:</strong> __:__</span>
-          <span><strong>Data:</strong> __/__/____</span>
+        <div className="grid grid-cols-4 gap-3 mb-5">
+          {[
+            { label: 'Início', value: '__ : __' },
+            { label: 'Fim',    value: '__ : __' },
+            { label: 'Data',   value: '__ / __ / ____' },
+            { label: 'Turno',  value: '☐ M  ☐ T  ☐ N' },
+          ].map(item => (
+            <div key={item.label}>
+              <span
+                className="section-label block mb-0.5"
+                style={{ color: '#000', fontFamily: "'Inter Tight', sans-serif" }}
+              >
+                {item.label}
+              </span>
+              <span className="font-mono text-sm text-black tracking-wider">{item.value}</span>
+            </div>
+          ))}
         </div>
       )}
-      <div className="flex items-end justify-between gap-2">
+      <div className="flex items-end justify-between gap-6">
         {labels.map(label => (
-          <div key={label} className="text-center flex-1">
-            <div className="border-t border-slate-400 mt-4 pt-0.5">
-              <p className="text-[9px] text-slate-500 uppercase font-bold">{label}</p>
+          <div key={label} className="flex-1">
+            <div className="border-t border-black pt-1.5 mt-8">
+              <p
+                className="section-label"
+                style={{ color: '#000', fontFamily: "'Inter Tight', sans-serif" }}
+              >
+                Assinatura · {label}
+              </p>
             </div>
           </div>
         ))}

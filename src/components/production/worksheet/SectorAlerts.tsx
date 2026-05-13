@@ -14,29 +14,49 @@ interface Props {
 }
 
 /**
- * Banner âmbar/azul com alertas específicos do setor (palmilha pronta na cor,
- * solado conjugado, modelo fachetado, etc). Posicionado abaixo do header.
+ * Alertas específicos do setor (palmilha pronta na cor, solado conjugado,
+ * modelo fachetado, etc). Design Industrial Editorial Minimalist:
+ *   - border-black 1.5px à esquerda, fundo branco
+ *   - section-label "AVISO" / "INFO" no início
+ *   - texto preto em peso editorial bold
  */
 export const SectorAlerts = ({ alerts }: Props) => {
   if (!alerts || alerts.length === 0) return null;
 
   return (
-    <div className="keep-together mb-2 space-y-1">
+    <div className="keep-together mb-2 space-y-1.5">
       {alerts.map((a, i) => {
         const variant = a.variant || 'warning';
         const Icon = variant === 'warning' ? AlertTriangle : Info;
+        const label = variant === 'warning' ? 'Aviso' : 'Info';
         return (
           <div
             key={i}
-            className={cn(
-              'flex items-start gap-2 px-3 py-1.5 rounded border-2 text-xs leading-tight',
-              variant === 'warning'
-                ? 'border-amber-500/60 bg-amber-50 text-amber-900'
-                : 'border-blue-500/60 bg-blue-50 text-blue-900',
-            )}
+            className="flex items-stretch gap-0 bg-white"
+            style={{ border: '1px solid #000' }}
           >
-            <Icon className={cn('h-4 w-4 mt-0.5 shrink-0', variant === 'warning' ? 'text-amber-600' : 'text-blue-600')} />
-            <span className="font-bold">{a.text}</span>
+            <div
+              className="flex items-center justify-center px-2 py-2 shrink-0"
+              style={{ borderRight: '1.5px solid #000', minWidth: '90px' }}
+            >
+              <div className="flex flex-col items-center gap-1">
+                <Icon className="h-4 w-4 text-black" weight="bold" />
+                <span
+                  className="section-label"
+                  style={{ color: '#000', fontFamily: "'Inter Tight', sans-serif" }}
+                >
+                  {label}
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center px-3 py-2 flex-1">
+              <span
+                className="text-[13px] text-black leading-tight"
+                style={{ fontWeight: 600, fontFamily: "'Inter Tight', sans-serif" }}
+              >
+                {a.text}
+              </span>
+            </div>
           </div>
         );
       })}

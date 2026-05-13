@@ -21,6 +21,7 @@ import NfeCCePanel from '@/components/nfe/NfeCCePanel';
 import StandaloneNfePanel from '@/components/nfe/StandaloneNfePanel';
 import { NfeBillingHealthCard } from '@/components/nfe/NfeBillingHealthCard';
 import { AppErrorBoundary } from '@/components/ErrorBoundary';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
@@ -320,16 +321,13 @@ export default function NfePage() {
   };
 
   return (
-    <div className="space-y-6 page-enter">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Nota Fiscal Eletrônica</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">
-            Centro fiscal — emissão, empresas, tributação e diagnóstico em um só lugar
-          </p>
-        </div>
-        {canEmitNfe && (
-          <div className="flex gap-2">
+    <div className="space-y-6 page-enter editorial-stagger">
+      <EditorialPageHeader
+        sectionLabel="FISCAL · NF-e"
+        title="Notas Fiscais"
+        description="Centro fiscal — emissão, empresas, tributação e diagnóstico em um só lugar"
+        actions={canEmitNfe ? (
+          <>
             <Button
               variant="outline"
               onClick={() => syncFromProvider.mutate()}
@@ -345,9 +343,9 @@ export default function NfePage() {
             <Button onClick={() => setEmitOpen(true)} className="gap-2">
               <Plus className="h-4 w-4" /> Emitir NF-e
             </Button>
-          </div>
-        )}
-      </div>
+          </>
+        ) : undefined}
+      />
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

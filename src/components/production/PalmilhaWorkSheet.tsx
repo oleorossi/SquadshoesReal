@@ -31,23 +31,29 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
 
   return (
     <div
-      className="w-[210mm] p-[8mm] print:w-full print:p-0 bg-white border border-slate-300 shadow-none print:shadow-none print:border-0 m-auto flex flex-col gap-0"
-      style={{ boxSizing: 'border-box', fontFamily: "'Helvetica Neue', Arial, sans-serif" }}
+      className="w-[210mm] p-[8mm] print:w-full print:p-0 bg-white shadow-none print:shadow-none m-auto flex flex-col gap-0"
+      style={{ boxSizing: 'border-box', fontFamily: "'Inter Tight', sans-serif", color: '#000' }}
     >
       <WorksheetHeader
         sector="Corte Palmilha"
         icon={Scissors}
-        bgColor="bg-slate-700"
-        borderColor="border-slate-700"
         identification={
           <>
-            <div className="flex items-baseline gap-3 flex-wrap">
-              <p className="text-base font-black text-slate-900 leading-tight">{groups.length} grupo{groups.length !== 1 ? 's' : ''}</p>
-              <p className="text-xs text-slate-600">
-                Total: <span className="font-mono font-black text-slate-900">{grandTotal} pares</span>
-              </p>
+            <span className="section-label block" style={{ color: '#000' }}>Resumo</span>
+            <p
+              className="text-black uppercase leading-none mt-0.5"
+              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em' }}
+            >
+              {grandTotal} <span className="text-sm font-mono tracking-widest">pares</span>
+            </p>
+            <div className="flex items-baseline gap-3 mt-1 flex-wrap">
+              <span className="font-mono text-[11px] text-black tracking-widest uppercase">
+                {groups.length} grupo{groups.length !== 1 ? 's' : ''}
+              </span>
+              <span className="font-mono text-[10px] text-black tracking-widest uppercase">
+                Corte por solado + cor · cor do cabedal indiferente
+              </span>
             </div>
-            <p className="text-[10px] text-slate-500">Corte por solado + cor da palmilha (cor do cabedal é indiferente)</p>
           </>
         }
         qrLabel="PALMILHA"
@@ -55,11 +61,11 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
       />
 
       {groups.length === 0 ? (
-        <div className="text-center py-10 text-slate-400 italic text-sm">
+        <div className="text-center py-10 text-black italic text-sm">
           Nenhuma palmilha para cortar neste lote.
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {groups.map((group, idx) => {
             const cards = Math.max(1, Math.ceil(group.totalPairs / pairsPerCard));
             const alerts: SectorAlert[] = [];
@@ -67,21 +73,42 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
               alerts.push({ text: 'Palmilha PRONTA NA COR — não cortar, separar da ficha técnica.', variant: 'info' });
             }
             return (
-              <div key={idx} className="keep-together border-2 border-slate-800 rounded overflow-hidden">
-                <div className="bg-slate-800 text-white px-3 py-1.5 flex items-center justify-between">
-                  <span className="font-black text-sm uppercase tracking-wide">
-                    {group.soleName}
-                  </span>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-semibold bg-white/20 px-2 py-0.5 rounded">
-                      Palmilha: {group.insoleColor}
+              <div key={idx} className="keep-together bg-white" style={{ border: '1.5px solid #000' }}>
+                <div className="px-3 py-2 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
+                  <div className="min-w-0 flex-1">
+                    <span className="section-label block" style={{ color: '#000' }}>Solado</span>
+                    <span
+                      className="text-black uppercase leading-none block mt-0.5 truncate"
+                      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em' }}
+                    >
+                      {group.soleName}
                     </span>
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded ${group.readyMade ? 'bg-blue-400/30' : 'bg-amber-400/30'}`}>
-                      {group.readyMade ? 'Pronta na cor' : 'Cortar'}
-                    </span>
-                    <span className="text-sm font-black">
-                      {group.totalPairs} pares
-                    </span>
+                  </div>
+                  <div className="flex items-stretch gap-3 shrink-0">
+                    <div className="border-l border-black pl-3">
+                      <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
+                      <span
+                        className="text-black uppercase leading-none block mt-0.5"
+                        style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.02em' }}
+                      >
+                        {group.insoleColor}
+                      </span>
+                    </div>
+                    <div className="border-l border-black pl-3">
+                      <span className="section-label block" style={{ color: '#000' }}>Ação</span>
+                      <span className="font-mono text-[11px] font-bold text-black uppercase tracking-widest mt-1 block">
+                        {group.readyMade ? 'Pronta' : 'Cortar'}
+                      </span>
+                    </div>
+                    <div className="border-l border-black pl-3 text-right">
+                      <span className="section-label block" style={{ color: '#000' }}>Pares</span>
+                      <span
+                        className="text-black leading-none block mt-0.5"
+                        style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.02em' }}
+                      >
+                        {group.totalPairs}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -93,23 +120,51 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
 
                 <table className="w-full text-center" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                   <thead>
-                    <tr className="bg-slate-100">
-                      <th className="border border-slate-300 py-1 text-[9px] font-bold text-slate-600" style={{ width: 54 }}>Nº</th>
-                      {allSizes.map(s => (
-                        <th key={s} className="border border-slate-300 py-1 text-[10px] font-bold">{s}</th>
+                    <tr style={{ borderBottom: '1.5px solid #000' }}>
+                      <th className="section-label py-1.5" style={{ color: '#000', width: 54, borderRight: '1px solid #000' }}>Nº</th>
+                      {allSizes.map((s, i) => (
+                        <th
+                          key={s}
+                          className="py-1.5 text-black font-bold"
+                          style={{
+                            fontSize: '13px',
+                            fontFamily: "'JetBrains Mono', monospace",
+                            borderRight: '1px solid #000',
+                          }}
+                        >
+                          {s}
+                        </th>
                       ))}
-                      <th className="border border-slate-300 py-1 text-[9px] font-bold bg-slate-200" style={{ width: 50 }}>TOTAL</th>
+                      <th className="section-label py-1.5" style={{ color: '#000', width: 54 }}>Total</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr>
-                      <td className="border border-slate-300 py-1.5 text-[8px] font-bold text-slate-500">Pares</td>
+                      <td className="py-2 text-[10px] font-mono font-bold text-black uppercase tracking-wider" style={{ borderRight: '1px solid #000' }}>Pares</td>
                       {allSizes.map(s => (
-                        <td key={s} className="border border-slate-300 py-1.5 font-mono text-lg font-black">
+                        <td
+                          key={s}
+                          className="py-2 text-black"
+                          style={{
+                            fontFamily: "'Anton', Impact, sans-serif",
+                            fontSize: '24px',
+                            letterSpacing: '-0.02em',
+                            lineHeight: '1',
+                            borderRight: '1px solid #000',
+                          }}
+                        >
                           {group.grade[s] || 0}
                         </td>
                       ))}
-                      <td className="border border-slate-300 py-1.5 font-mono text-lg font-black text-slate-900 bg-slate-100">
+                      <td
+                        className="py-2 text-black"
+                        style={{
+                          fontFamily: "'Anton', Impact, sans-serif",
+                          fontSize: '24px',
+                          letterSpacing: '-0.02em',
+                          lineHeight: '1',
+                        }}
+                      >
                         {group.totalPairs}
                       </td>
                     </tr>
@@ -117,25 +172,27 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
                 </table>
 
                 {!group.readyMade && (
-                  <div className="px-2 pb-2 pt-2">
-                    <TallyBox count={cards} pairsPerCard={pairsPerCard} accentColor="slate" />
+                  <div className="px-2 pb-2 pt-2 border-t border-black">
+                    <TallyBox count={cards} pairsPerCard={pairsPerCard} />
                   </div>
                 )}
               </div>
             );
           })}
 
-          <div className="border-t-2 border-slate-900 pt-1.5 flex justify-end">
-            <div className="bg-slate-900 text-white px-3 py-1 rounded font-black text-sm">
-              Total geral: {grandTotal} pares
-            </div>
+          <div className="flex justify-between items-baseline mt-2 pt-2" style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
+            <span className="section-label py-1" style={{ color: '#000' }}>Total Geral</span>
+            <span
+              className="text-black uppercase leading-none py-1"
+              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '36px', letterSpacing: '-0.025em' }}
+            >
+              {grandTotal} <span className="text-sm font-mono tracking-widest">pares</span>
+            </span>
           </div>
         </div>
       )}
 
-      <div className="mt-2">
-        <SignatureFooter labels={['Operador(a)', 'Conferente', 'Supervisor(a)']} />
-      </div>
+      <SignatureFooter labels={['Operador(a)', 'Conferente', 'Supervisor(a)']} />
     </div>
   );
 };
