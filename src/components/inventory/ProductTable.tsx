@@ -262,7 +262,9 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
                  }
 
                  const inProd = Number((product as any).in_production_quantity) || 0;
+                 const reserved = Number((product as any).reserved_stock) || 0;
                  const totalQty = freeQty + inProd;
+                 const available = Math.max(0, freeQty - reserved);
 
                  // Aproximação em unidade de compra (ex: ≈ 5 placas) quando há conversão configurada
                  const purchaseUnit = (product as any).purchase_unit;
@@ -291,14 +293,19 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
                          ≈ {approxInPurchase.qty.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} {approxInPurchase.unit}
                        </div>
                      )}
-                     {inProd > 0 && (
-                       <div className="text-[10px] text-amber-600 font-medium whitespace-nowrap">
-                         Em prod.: {inProd.toLocaleString('pt-BR')} {product.unit}
+                     {reserved > 0 && (
+                       <div className="text-[10px] text-primary/80 font-medium whitespace-nowrap" title="Reservado por OPs aguardando picking">
+                         Reservado: {reserved.toLocaleString('pt-BR')} {product.unit}
+                       </div>
+                     )}
+                     {(reserved > 0 || inProd > 0) && (
+                       <div className="text-[10px] text-emerald-700 font-semibold whitespace-nowrap" title="Estoque livre para alocação">
+                         Disp.: {available.toLocaleString('pt-BR')} {product.unit}
                        </div>
                      )}
                      {inProd > 0 && (
-                       <div className="text-[10px] text-muted-foreground whitespace-nowrap font-semibold">
-                         Disp.: {freeQty.toLocaleString('pt-BR')} {product.unit}
+                       <div className="text-[10px] text-amber-600 font-medium whitespace-nowrap">
+                         Em prod.: {inProd.toLocaleString('pt-BR')} {product.unit}
                        </div>
                      )}
                    </div>

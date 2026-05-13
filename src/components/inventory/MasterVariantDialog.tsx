@@ -205,9 +205,16 @@ function VariantDetailSheet({ open, onOpenChange, product, otherVariants }: {
           {/* Estoque */}
           <section className="space-y-3">
             <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">Estoque</h4>
+            {form.unit && form.unit !== (product?.unit || 'un') && (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-2 text-[11px] text-amber-700 dark:text-amber-400">
+                ⚠ Você mudou a unidade de <strong>{product?.unit}</strong> para <strong>{form.unit}</strong>.
+                Os valores numéricos abaixo NÃO são convertidos automaticamente — confira se Quantidade,
+                Custo e Estoque mínimo precisam ser reescritos pra nova unidade.
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs">Quantidade atual</Label>
+                <Label className="text-xs">Quantidade atual <span className="text-muted-foreground font-mono">({form.unit ?? 'un'})</span></Label>
                 <Input type="number" min={0} value={form.quantity ?? 0} onChange={e => update('quantity', Number(e.target.value))} className="mt-1 h-9 font-mono" />
               </div>
               <div>
@@ -218,14 +225,14 @@ function VariantDetailSheet({ open, onOpenChange, product, otherVariants }: {
                 </Select>
               </div>
               <div>
-                <Label className="text-xs">Estoque mínimo</Label>
+                <Label className="text-xs">Estoque mínimo <span className="text-muted-foreground font-mono">({form.unit ?? 'un'})</span></Label>
                 <Input type="number" min={0} value={form.min_stock ?? 0} onChange={e => update('min_stock', Number(e.target.value))} className="mt-1 h-9 font-mono" />
               </div>
               {/* Removidos em 2026-05 a pedido do usuário:
                   - "Estoque máximo": nunca usado em business logic
                   - "Estoque de segurança": duplicava conceitualmente o mínimo */}
               <div>
-                <Label className="text-xs">Reservado</Label>
+                <Label className="text-xs">Reservado <span className="text-muted-foreground font-mono">({form.unit ?? 'un'})</span></Label>
                 <Input type="number" min={0} value={form.reserved_stock ?? 0} onChange={e => update('reserved_stock', Number(e.target.value))} className="mt-1 h-9 font-mono" />
               </div>
             </div>

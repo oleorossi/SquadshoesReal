@@ -668,6 +668,19 @@ function getWeekOptions() {
   };
   const handleManualStatusChange = async (order: any, newStatus: string) => {
     const prevStatus = order.status as string;
+    // Reserve→Debit: Reservado → Em Produção apenas consome as reservas (já criadas)
+    if (newStatus === 'Em Produção' && prevStatus === 'Reservado') {
+      const { error: consumeErr } = await (supabase.rpc as any)('consume_all_reservations_for_order', {
+        p_order_id: order.id,
+      });
+      if (consumeErr) {
+        toast.error(`Erro ao confirmar picking: ${consumeErr.message}`);
+        return;
+      }
+      toast.success('Picking confirmado — material debitado.');
+      updateStatus.mutate({ id: order.id, status: newStatus });
+      return;
+    }
     if (newStatus === 'Em Produção' && prevStatus === 'Rascunho') {
       try {
         // Atomic claim: prevent double-debit when two tabs/clicks race on the same OP.
@@ -693,16 +706,18 @@ function getWeekOptions() {
           return;
         }
         const grade = order.grade && Object.keys(order.grade).length > 0 ? order.grade : null;
+        // Reserve→Debit (Phase 1): cria reservas soft primeiro
         const { error: debitErr } = await supabase.rpc('hybrid_debit_stock_for_order', {
           p_reference_id: order.reference_id,
           p_order_quantity: order.quantity,
           p_color: order.color || '',
           p_order_id: order.id,
           p_order_grade: grade,
+          p_force_soft: true,
         } as any);
         if (debitErr) {
           await supabase.from('orders').update({ status: 'Rascunho', updated_at: new Date().toISOString() }).eq('id', order.id);
-          toast.error(`Erro ao debitar estoque: ${debitErr.message}`);
+          toast.error(`Erro ao reservar estoque: ${debitErr.message}`);
           return;
         }
         const { error: soleErr } = await supabase.rpc('debit_sole_stock_by_grade', {
@@ -710,6 +725,7 @@ function getWeekOptions() {
           p_order_id: order.id,
           p_color: order.color || '',
           p_order_grade: grade || {},
+          p_force_soft: true,
         } as any);
         if (soleErr) {
           // Roll back in canonical order: release reservations → sole grade → product stocks
@@ -732,6 +748,16 @@ function getWeekOptions() {
           } else {
             toast.error(`Estoque de solado insuficiente: ${soleErr.message}`);
           }
+          return;
+        }
+        // Reserve→Debit (Phase 1): aplica o débito real (consome reservas, decrementa stock)
+        const { error: consumeErr } = await (supabase.rpc as any)('consume_all_reservations_for_order', {
+          p_order_id: order.id,
+        });
+        if (consumeErr) {
+          await (supabase.rpc as any)('release_order_reservations', { p_order_id: order.id });
+          await supabase.from('orders').update({ status: 'Rascunho', updated_at: new Date().toISOString() }).eq('id', order.id);
+          toast.error(`Erro ao consumir reservas: ${consumeErr.message}`);
           return;
         }
       } catch (err: any) {

@@ -54,3 +54,29 @@ export function useConfirmPicking() {
     onError: (err: Error) => toast.error(`Erro no picking: ${err.message}`),
   });
 }
+
+// Confirma picking de TODAS as reservas de uma OP de uma vez. Usado pelo
+// fluxo Reserve→Debit (Phase 1): aprovar PV cria reservas soft; confirmar
+// picking aplica débito real (incl. solado por grade, tiras, embalagem).
+export function useConfirmAllPicking() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ orderId, pickedBy }: { orderId: string; pickedBy?: string }) => {
+      const { data, error } = await supabase.rpc('consume_all_reservations_for_order' as any, {
+        p_order_id: orderId,
+        p_picked_by: pickedBy || '',
+      });
+      if (error) throw error;
+      return data as { order_id: string; consumed_count: number; skipped_count: number; reservations: any[]; packaging?: any };
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['material_reservations'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['stock_movements'] });
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      const n = data?.consumed_count ?? 0;
+      toast.success(`Picking confirmado — ${n} ${n === 1 ? 'material debitado' : 'materiais debitados'}.`);
+    },
+    onError: (err: Error) => toast.error(`Erro no picking: ${err.message}`),
+  });
+}

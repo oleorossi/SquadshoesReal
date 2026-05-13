@@ -98,6 +98,7 @@ export function useCreateOrder() {
           p_color: form.color || '',
           p_order_id: data.id,
           p_order_grade: form.grade && Object.keys(form.grade).length > 0 ? form.grade : null,
+          p_force_soft: true,
         } as any);
         if (rpcError) await cleanupOrphan(`Débito de estoque falhou: ${rpcError.message}`);
 
@@ -108,6 +109,7 @@ export function useCreateOrder() {
             p_order_id: data.id,
             p_color: form.color || '',
             p_order_grade: form.grade,
+            p_force_soft: true,
           } as any);
           if (soleError) {
             // hybrid debit already committed — restore it before cleanup.

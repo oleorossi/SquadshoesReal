@@ -1078,6 +1078,7 @@ export function useUpdateSaleOrderStatus() {
                   p_color: item.color || '',
                   p_order_id: createdOp.id,
                   p_order_grade: Object.keys(scaledGrade).length > 0 ? scaledGrade : (grade || null),
+                  p_force_soft: true,
                 } as any);
                 if (debitErr) {
                   console.error('Erro ao debitar estoque (Em Produção):', debitErr.message);
@@ -1100,6 +1101,7 @@ export function useUpdateSaleOrderStatus() {
                       p_order_id: createdOp.id,
                       p_color: item.color || '',
                       p_order_grade: scaledGrade,
+                      p_force_soft: true,
                     } as any);
                     if (soleErr) {
                       console.error('Erro ao debitar solado (Em Produção):', soleErr.message);
@@ -1139,6 +1141,7 @@ export function useUpdateSaleOrderStatus() {
                       p_order_quantity: item.quantity,
                       p_order_id: createdOp.id,
                       p_order_grade: (item as any).grade || null,
+                      p_force_soft: true,
                     } as any);
                     if (strapErr) {
                       console.error('Erro ao debitar tiras (Em Produção):', strapErr.message);
@@ -1152,6 +1155,7 @@ export function useUpdateSaleOrderStatus() {
                     p_reference_id: item.reference_id,
                     p_order_quantity: item.quantity,
                     p_packaging_mode: pkgMode2,
+                    p_force_soft: true,
                   } as any);
                   if (pkgErr) {
                     console.error('Erro embalagem:', pkgErr.message);
@@ -1330,6 +1334,7 @@ export function useUpdateSaleOrderStatus() {
                 p_color: item.color || '',
                 p_order_id: createdOp.id,
                 p_order_grade: effectiveGrade,
+                p_force_soft: true,
               } as any);
               if (debitErrAprov) {
                 console.error('Erro ao debitar estoque (Aprovado):', debitErrAprov.message);
@@ -1353,6 +1358,7 @@ export function useUpdateSaleOrderStatus() {
                   p_order_id: createdOp.id,
                   p_color: item.color || '',
                   p_order_grade: scaledGrade,
+                  p_force_soft: true,
                 } as any);
                 if (soleErrAprov) {
                   console.error('Erro ao debitar solado (Aprovado):', soleErrAprov.message);
@@ -1389,6 +1395,7 @@ export function useUpdateSaleOrderStatus() {
                   p_order_quantity: item.quantity,
                   p_order_id: createdOp.id,
                   p_order_grade: (item as any).grade || null,
+                  p_force_soft: true,
                 } as any);
                 if (strapErrAprov) {
                   console.error('Erro ao debitar tiras (Aprovado):', strapErrAprov.message);
@@ -1403,6 +1410,7 @@ export function useUpdateSaleOrderStatus() {
                 p_reference_id: item.reference_id,
                 p_order_quantity: item.quantity,
                 p_packaging_mode: pkgMode,
+                p_force_soft: true,
               } as any);
               if (pkgErrAprov) {
                 console.error('Erro ao debitar embalagem (Aprovado):', pkgErrAprov.message);
@@ -1907,6 +1915,7 @@ export function useUpdateSaleOrder() {
             p_color: item.color || '',
             p_order_id: newOp?.id || null,
             p_order_grade: Object.keys(scaledGrade).length > 0 ? scaledGrade : null,
+            p_force_soft: true,
           } as any);
           if (debitError) {
             if (mrpReservedForOp && newOp?.id) {
@@ -1922,6 +1931,7 @@ export function useUpdateSaleOrder() {
               p_order_id: newOp.id,
               p_color: item.color || '',
               p_order_grade: scaledGrade,
+              p_force_soft: true,
             } as any);
             if (soleError) {
               console.error('Erro ao debitar solado:', soleError.message);
@@ -1949,6 +1959,7 @@ export function useUpdateSaleOrder() {
               p_order_quantity: item.quantity,
               p_order_id: newOp?.id || null,
               p_order_grade: item.grade || null,
+              p_force_soft: true,
             } as any);
             if (strapError) {
               console.error('Erro ao debitar tiras:', strapError.message);
@@ -1967,6 +1978,7 @@ export function useUpdateSaleOrder() {
               p_reference_id: item.reference_id,
               p_order_quantity: item.quantity,
               p_packaging_mode: pkgModeUpd,
+              p_force_soft: true,
             });
             if (pkgUpdErr) console.error('Erro ao debitar embalagem (update PV):', pkgUpdErr.message);
           }
@@ -2135,6 +2147,7 @@ export function useResyncOPsFromSheets() {
                 p_color: op.color || '',
                 p_order_id: op.id,
                 p_order_grade: Object.keys(opGrade).length > 0 ? opGrade : null,
+                p_force_soft: true,
               } as any);
               if (debitError) {
                 console.error('Erro ao re-debitar estoque OP:', op.id, debitError.message);
@@ -2148,6 +2161,7 @@ export function useResyncOPsFromSheets() {
                   p_order_id: op.id,
                   p_color: op.color || '',
                   p_order_grade: grade,
+                  p_force_soft: true,
                 } as any);
                 if (soleError) {
                   console.error('Erro ao re-debitar solado:', op.id, soleError.message);
@@ -2174,6 +2188,7 @@ export function useResyncOPsFromSheets() {
                   p_order_quantity: op.quantity,
                   p_order_id: op.id,
                   p_order_grade: (matchingItem as any).grade || (op as any).grade || null,
+                  p_force_soft: true,
                 } as any);
                 if (strapError) {
                   console.error('Erro ao re-debitar tiras:', op.id, strapError.message);
@@ -2449,6 +2464,7 @@ export function useResyncOPsFromPV() {
           p_color: item.color || '',
           p_order_id: newOp.id,
           p_order_grade: Object.keys(scaledGrade).length > 0 ? scaledGrade : null,
+          p_force_soft: true,
         } as any);
         if (debitErr) {
           const opNum = (newOp as any).order_number || newOp.id;
@@ -2462,6 +2478,7 @@ export function useResyncOPsFromPV() {
             p_order_id: newOp.id,
             p_color: item.color || '',
             p_order_grade: scaledGrade,
+            p_force_soft: true,
           } as any);
           if (soleDebitErr) {
             const opNum = (newOp as any).order_number || newOp.id;
@@ -2489,6 +2506,7 @@ export function useResyncOPsFromPV() {
             p_order_quantity: item.quantity,
             p_order_id: newOp.id,
             p_order_grade: grade || null,
+            p_force_soft: true,
           } as any);
           if (strapErr) {
             console.error('Erro ao debitar tiras (resync):', strapErr.message);
@@ -2503,6 +2521,7 @@ export function useResyncOPsFromPV() {
           p_reference_id: item.reference_id,
           p_order_quantity: item.quantity,
           p_packaging_mode: so.packaging_mode || 'individual_amarrado',
+          p_force_soft: true,
         });
         if (pkgErr) console.error('Erro embalagem (resync):', pkgErr.message);
 
