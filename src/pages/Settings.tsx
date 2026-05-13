@@ -370,8 +370,13 @@ export default function SettingsPage() {
     setDeletingUserId(pendingDeleteUserId);
     setPendingDeleteUserId(null);
     try {
+      // Idem CreateUserDialog: passa Bearer explícito pra evitar 401 quando
+      // o invoke não auto-injeta o token (sessão recém-recarregada).
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Sessão expirada. Faça login novamente.');
       const res = await supabase.functions.invoke('delete-user', {
         body: { user_id: pendingDeleteUserId },
+        headers: { Authorization: `Bearer ${session.access_token}` },
       });
       if (res.error) throw new Error(res.error.message);
       if (res.data?.error) throw new Error(res.data.error);

@@ -25,9 +25,15 @@ export default function CreateUserDialog({ open, onOpenChange }: CreateUserDialo
     setLoading(true);
 
     try {
+      // Edge function exige Authorization: Bearer <jwt>. Antes contava só com
+      // o auto-injection de supabase.functions.invoke, que falhava em sessões
+      // recém-recarregadas (token ainda não propagado) — gerava 401 "Não
+      // autorizado". Passa o token explicitamente pra eliminar a flakiness.
       const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Sessão expirada. Faça login novamente.');
       const res = await supabase.functions.invoke('create-user', {
         body: { email, password, full_name: fullName },
+        headers: { Authorization: `Bearer ${session.access_token}` },
       });
 
       if (res.error) throw new Error(res.error.message);
