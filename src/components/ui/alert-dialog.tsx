@@ -25,10 +25,38 @@ const AlertDialogOverlay = React.forwardRef<
 ));
 AlertDialogOverlay.displayName = AlertDialogPrimitive.Overlay.displayName;
 
+/**
+ * Quando AlertDialog está aberto, Enter equivale a clicar no botão de Ação
+ * (Sim/Confirmar/Aprovar). Atalho UX padrão de confirmação. Ignora Enter
+ * dentro de <textarea> (newline) e respeita modificadores (Shift/Ctrl/Alt/Meta
+ * são reservados pra outros atalhos).
+ *
+ * Como Radix renderiza AlertDialogAction com data-radix-collection-item NÃO
+ * único, marcamos via data-alert-dialog-action="true" no AlertDialogAction
+ * abaixo. Esse atributo é o seletor canônico.
+ */
+function handleAlertDialogEnter(e: React.KeyboardEvent<HTMLDivElement>) {
+  if (e.key !== "Enter") return;
+  if (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+  const target = e.target as HTMLElement;
+  // Enter em textarea = nova linha (não deve confirmar)
+  if (target.tagName === "TEXTAREA") return;
+  // Se o foco já está no botão Cancel, Enter clica nele (comportamento padrão)
+  if (target.closest('[data-alert-dialog-cancel="true"]')) return;
+  // Procura o action button dentro do dialog
+  const action = e.currentTarget.querySelector<HTMLButtonElement>(
+    '[data-alert-dialog-action="true"]',
+  );
+  if (action) {
+    e.preventDefault();
+    action.click();
+  }
+}
+
 const AlertDialogContent = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Content>
->(({ className, ...props }, ref) => (
+>(({ className, onKeyDown, ...props }, ref) => (
   <AlertDialogPortal>
     <AlertDialogOverlay />
     <AlertDialogPrimitive.Content
@@ -37,6 +65,10 @@ const AlertDialogContent = React.forwardRef<
         "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
         className,
       )}
+      onKeyDown={(e) => {
+        handleAlertDialogEnter(e);
+        onKeyDown?.(e);
+      }}
       {...props}
     />
   </AlertDialogPortal>
@@ -73,7 +105,12 @@ const AlertDialogAction = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Action>,
   React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Action>
 >(({ className, ...props }, ref) => (
-  <AlertDialogPrimitive.Action ref={ref} className={cn(buttonVariants(), className)} {...props} />
+  <AlertDialogPrimitive.Action
+    ref={ref}
+    data-alert-dialog-action="true"
+    className={cn(buttonVariants(), className)}
+    {...props}
+  />
 ));
 AlertDialogAction.displayName = AlertDialogPrimitive.Action.displayName;
 
@@ -83,6 +120,7 @@ const AlertDialogCancel = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Cancel
     ref={ref}
+    data-alert-dialog-cancel="true"
     className={cn(buttonVariants({ variant: "outline" }), "mt-2 sm:mt-0", className)}
     {...props}
   />

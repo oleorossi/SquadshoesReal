@@ -27,10 +27,41 @@ const DialogOverlay = React.forwardRef<
 ));
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
+/**
+ * Quando Dialog está aberto, Enter aciona o botão primário declarado:
+ *   - <button type="submit"> (forms já fazem isso nativamente, mas alguns
+ *     Dialogs põem o submit-equivalent sem form wrapping)
+ *   - Elemento com data-dialog-primary="true" (atribua explicitamente no
+ *     botão "Salvar"/"Confirmar"/"Adicionar" pra ativar)
+ *
+ * Ignora:
+ *   - Enter em <textarea> (newline)
+ *   - Enter com Shift/Ctrl/Alt/Meta (atalhos reservados)
+ *   - Dialog que já tem <form> com submit listener (deixa o form nativo agir)
+ */
+function handleDialogEnter(e: React.KeyboardEvent<HTMLDivElement>) {
+  if (e.key !== "Enter") return;
+  if (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+  const target = e.target as HTMLElement;
+  if (target.tagName === "TEXTAREA") return;
+  // Se está dentro de form, deixa o submit nativo agir (não interfere)
+  if (target.closest("form")) return;
+  // Procura botão primário explícito
+  const primary =
+    e.currentTarget.querySelector<HTMLButtonElement>(
+      '[data-dialog-primary="true"]',
+    ) ||
+    e.currentTarget.querySelector<HTMLButtonElement>('button[type="submit"]');
+  if (primary && !primary.disabled) {
+    e.preventDefault();
+    primary.click();
+  }
+}
+
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+>(({ className, children, onKeyDown, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
@@ -39,6 +70,10 @@ const DialogContent = React.forwardRef<
         "fixed left-[50%] top-[50%] z-50 grid w-[95vw] max-w-3xl translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 max-h-[90vh] overflow-y-auto data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
         className,
       )}
+      onKeyDown={(e) => {
+        handleDialogEnter(e);
+        onKeyDown?.(e);
+      }}
       {...props}
     >
       {children}
