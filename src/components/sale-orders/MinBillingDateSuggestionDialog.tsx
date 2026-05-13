@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Calendar, CheckCircle as CheckCircle2, PencilSimple as Pencil, Truck, Package, Factory, Info } from '@phosphor-icons/react';
+import { Calendar, CheckCircle as CheckCircle2, PencilSimple as Pencil, Truck, Package, Factory, Info, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { formatBR, type MaterialShortfall } from '@/lib/minBillingDate';
 import { monthWeekToISODate } from '@/lib/billingWeek';
 import { SubmitFlowStepper } from './SubmitFlowStepper';
@@ -137,6 +137,10 @@ export function MinBillingDateSuggestionDialog({
           const isTue = dow === 2;
           const isFri = dow === 5;
           const windowLabel = isTue ? 'Terça' : isFri ? 'Sexta' : null;
+          const materialShortage = bottleneck === 'material';
+          const supplierLeadDays = materialShortfalls.length > 0
+            ? Math.max(...materialShortfalls.map(m => m.lead_time_days || 0))
+            : 0;
           return (
             <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 my-2">
               <div className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground font-bold">
@@ -153,7 +157,7 @@ export function MinBillingDateSuggestionDialog({
                 <div className="mt-2 flex items-start gap-1.5 text-[11px] text-amber-700">
                   <AlertTriangle className="h-3.5 w-3.5 mt-px shrink-0" />
                   <span>
-                    Material precisa ser comprado — somados <strong>{supplierLeadDays} dias úteis</strong> de lead time do fornecedor.
+                    Material precisa ser comprado{supplierLeadDays > 0 ? <> — somados <strong>{supplierLeadDays} dias úteis</strong> de lead time do fornecedor.</> : '.'}
                   </span>
                 </div>
               ) : (
