@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { SaleOrderFormData, SaleOrderItemFormData, PACKAGING_MODE_LABELS, type PackagingMode } from '@/hooks/useSaleOrders';
+import { SaleOrderFormData, SaleOrderItemFormData, PACKAGING_MODE_LABELS, PACKAGING_MODE_CANONICAL, type PackagingMode } from '@/hooks/useSaleOrders';
 import { useAccessControl } from '@/hooks/useAccessControl';
 import { useClientCommercialDefaults } from '@/hooks/useEconomicGroup360';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
