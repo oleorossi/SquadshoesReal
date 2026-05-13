@@ -130,11 +130,15 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
   const [name, setName] = useState('');
   const [sku, setSku] = useState('');
   const [category, setCategory] = useState('');
-  const [unit, setUnit] = useState('un');
+  // Default 'm' pra grupos de tira/elástico (são sempre vendidos por metro).
+  // Antes default 'un' deixava o débito por metros divergente do estoque.
+  const isStrapLikeGroup = /tira|elastic|tranç/i.test(groupName || '');
+  const [unit, setUnit] = useState(isStrapLikeGroup ? 'm' : 'un');
   const [unitPrice, setUnitPrice] = useState(0);
   const [location, setLocation] = useState('');
   const [minStock, setMinStock] = useState(0);
   const [maxStock, setMaxStock] = useState(0);
+  const [initialStock, setInitialStock] = useState(0);
   const [yieldPerMeter, setYieldPerMeter] = useState<number | null>(null);
   const [yieldUnit, setYieldUnit] = useState('dm²');
   const [dimLength, setDimLength] = useState(0);
@@ -160,7 +164,9 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
 
       if (lastProduct) {
         setCategory(lastProduct.category || '');
-        setUnit(lastProduct.unit || 'un');
+        // Se o grupo é tira/elástico, força 'm' independente do produto anterior
+        // (que pode estar com unit errado — bug conhecido em alguns cadastros).
+        setUnit(isStrapLikeGroup ? 'm' : (lastProduct.unit || 'un'));
         setUnitPrice(lastProduct.unit_price || 0);
         setLocation(lastProduct.location || '');
         setMinStock(lastProduct.min_stock || 0);
@@ -177,6 +183,7 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
       } else {
         setSku(buildFallbackSku(groupName, color));
       }
+      setInitialStock(0);
 
       const proposedName = `${groupName}: ${color}`;
       setName(proposedName);
@@ -317,7 +324,7 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
         location,
         min_stock: minStock,
         max_stock: maxStock,
-        quantity: 1,
+        quantity: Math.max(0, Number(initialStock) || 0),
         group_id: groupId,
         active: true,
         image_url: '',
@@ -527,6 +534,14 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
                         {LOCATIONS.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
                       </SelectContent>
                     </Select>
+                  </div>
+
+                  <div className="col-span-2">
+                    <Label className="text-xs">Estoque Inicial ({unit})</Label>
+                    <NumberInput value={initialStock} onChange={setInitialStock} min={0} step="0.01" className="h-9 text-sm" />
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      Quantidade que entra no estoque agora (deixe 0 se for ajustar depois).
+                    </p>
                   </div>
 
                   <div>
