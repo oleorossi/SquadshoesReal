@@ -41,12 +41,10 @@ export function FinCard({
         <div className="absolute inset-0 bg-gradient-to-br from-primary to-primary/80" />
         <div className="relative px-4 py-4 flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <span className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-primary-foreground/70">
-              {label}
-            </span>
+            <span className="eyebrow text-primary-foreground/70">{label}</span>
             {TrendIcon && <TrendIcon className="w-3.5 h-3.5 text-primary-foreground/60" />}
           </div>
-          <div className="text-[24px] font-extrabold font-mono leading-none tracking-tight tabular-nums text-primary-foreground">
+          <div className="display text-[30px] tabular-nums text-primary-foreground">
             {value}
           </div>
           {sub && (
@@ -59,17 +57,15 @@ export function FinCard({
 
   return (
     <div className={cn(
-      'bg-card border border-border rounded-xl overflow-hidden select-none',
+      'bg-card border border-border rounded-xl overflow-hidden select-none slash-top',
       'shadow-card hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200',
     )}>
       <div className="px-4 py-4 flex flex-col gap-2">
         <div className="flex items-center justify-between">
-          <span className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
-            {label}
-          </span>
+          <span className="eyebrow">{label}</span>
           {TrendIcon && <TrendIcon className={cn('w-3.5 h-3.5', subCls)} />}
         </div>
-        <div className="text-[24px] font-extrabold font-mono leading-none tracking-tight tabular-nums text-foreground">
+        <div className="display text-[30px] tabular-nums text-foreground">
           {value}
         </div>
         {sub && (

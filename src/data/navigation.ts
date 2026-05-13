@@ -56,6 +56,7 @@ export const menuGroups = [
     items: [
       { name: "PCP",              icon: Kanban,            path: "/pcp" },
       { name: "Ordens (OPs)",     icon: ListChecks,        path: "/orders" },
+      { name: "Fluxo",            icon: Kanban,            path: "/producao/fluxo" },
       { name: "Live",             icon: Activity,          path: "/producao/live" },
       { name: "Timeline",         icon: GanttChartSquare,  path: "/producao/timeline" },
       { name: "Capacidade",       icon: BarChart3,         path: "/capacity-planning" },
@@ -79,7 +80,7 @@ export const menuGroups = [
     label: "Estoque",
     icon: Package,
     items: [
-      { name: "Posição",          icon: Package,      path: "/estoque" },
+      { name: "Estoque",          icon: Package,      path: "/estoque" },
       { name: "Ajustes",          icon: Boxes,        path: "/ajuste-estoque" },
       { name: "Histórico",        icon: History,      path: "/estoque/historico" },
       { name: "MRP",              icon: Boxes,        path: "/mrp" },
@@ -139,7 +140,7 @@ export const menuGroups = [
 export const systemItems = [
   { to: '/settings',           icon: Settings,  label: 'Configurações' },
   { to: '/automations',        icon: Zap,       label: 'Automações' },
-  { to: '/reports',            icon: BarChart2, label: 'Relatórios' },
+  { to: '/relatorios',         icon: BarChart2, label: 'Relatórios' },
   { to: '/audit-logs',         icon: FileText,  label: 'Auditoria' },
   { to: '/lgpd',               icon: Lock,      label: 'LGPD' },
   { to: '/security',           icon: ShieldCheck, label: 'Segurança' },

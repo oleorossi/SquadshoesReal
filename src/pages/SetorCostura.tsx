@@ -111,7 +111,7 @@ export default function SetorCostura() {
     <div className="space-y-5 page-enter">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="display text-xl tracking-tight flex items-center gap-2">
             {SECTOR_EMOJI} Setor de {SECTOR_NAME}
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
@@ -145,13 +145,13 @@ export default function SetorCostura() {
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-primary">{costuraOrders.length}</p>
+            <p className="display text-2xl tabular-nums text-primary">{costuraOrders.length}</p>
             <p className="text-xs text-muted-foreground">OPs p/ {SECTOR_NAME}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-foreground">{totalPairs}</p>
+            <p className="display text-2xl tabular-nums text-foreground">{totalPairs}</p>
             <p className="text-xs text-muted-foreground">Total de Pares</p>
           </CardContent>
         </Card>

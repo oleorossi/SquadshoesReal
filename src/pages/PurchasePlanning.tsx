@@ -32,7 +32,7 @@ export default function PurchasePlanning() {
   return (
     <div className="space-y-5 page-enter">
       <div>
-        <h1 className="text-xl font-bold tracking-tight">Planejamento de Compras</h1>
+        <h1 className="display text-xl tracking-tight">Planejamento de Compras</h1>
         <p className="text-muted-foreground">Análise de demanda, plano semanal, projeções MRP e analytics de custos — tudo em um só lugar</p>
       </div>
 

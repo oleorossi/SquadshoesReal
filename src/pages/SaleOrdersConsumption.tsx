@@ -22,7 +22,7 @@ export default function SaleOrdersConsumption() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-xl font-bold tracking-tight">Consumo Consolidado</h1>
+            <h1 className="display text-xl tracking-tight">Consumo Consolidado</h1>
             <p className="text-sm text-muted-foreground">
               {saleOrderIds.length} pedido(s) selecionado(s)
             </p>

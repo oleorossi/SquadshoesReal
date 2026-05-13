@@ -226,8 +226,8 @@ export function NetMarginChart() {
                   <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }} />
                   <Bar yAxisId="money" dataKey="revenue" name="Receita" fill="hsl(var(--primary))" opacity={0.85} radius={[3, 3, 0, 0]} />
                   <Bar yAxisId="money" dataKey="cost" name="Custo" fill="hsl(var(--muted-foreground))" opacity={0.6} radius={[3, 3, 0, 0]} />
-                  <Line yAxisId="money" type="monotone" dataKey="margin" name="Margem (R$)" stroke="hsl(142 71% 45%)" strokeWidth={2} dot={{ r: 3 }} />
-                  <Line yAxisId="pct" type="monotone" dataKey="marginPct" name="Margem %" stroke="hsl(38 92% 50%)" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3 }} />
+                  <Line yAxisId="money" type="monotone" dataKey="margin" name="Margem (R$)" stroke="hsl(var(--success))" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line yAxisId="pct" type="monotone" dataKey="marginPct" name="Margem %" stroke="hsl(var(--warning))" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3 }} />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>

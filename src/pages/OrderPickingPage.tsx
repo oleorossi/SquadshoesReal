@@ -266,7 +266,7 @@ export default function OrderPickingPage() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="display text-xl tracking-tight flex items-center gap-2">
             <PackageCheck className="w-6 h-6 text-primary" />
             Conferência de Saída
           </h1>

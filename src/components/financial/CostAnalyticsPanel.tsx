@@ -152,7 +152,7 @@ export default function CostAnalyticsPanel() {
               <DollarSign className="h-4 w-4 text-primary" />
               <p className="text-xs text-muted-foreground">Total Compras</p>
             </div>
-            <p className="text-xl font-bold">{fmt(totalSpending)}</p>
+            <p className="display text-xl tabular-nums">{fmt(totalSpending)}</p>
           </CardContent>
         </Card>
         <Card>
@@ -161,7 +161,7 @@ export default function CostAnalyticsPanel() {
               <Package className="h-4 w-4 text-orange-500" />
               <p className="text-xs text-muted-foreground">CPV (COGS)</p>
             </div>
-            <p className="text-xl font-bold">{fmt(totalCogs)}</p>
+            <p className="display text-xl tabular-nums">{fmt(totalCogs)}</p>
           </CardContent>
         </Card>
         <Card>
@@ -170,7 +170,7 @@ export default function CostAnalyticsPanel() {
               <TrendingUp className="h-4 w-4 text-green-500" />
               <p className="text-xs text-muted-foreground">Receita</p>
             </div>
-            <p className="text-xl font-bold">{fmt(totalRevenue)}</p>
+            <p className="display text-xl tabular-nums">{fmt(totalRevenue)}</p>
           </CardContent>
         </Card>
         <Card>
@@ -179,7 +179,7 @@ export default function CostAnalyticsPanel() {
               {marginPct >= 0 ? <TrendingUp className="h-4 w-4 text-green-500" /> : <TrendingDown className="h-4 w-4 text-destructive" />}
               <p className="text-xs text-muted-foreground">Margem Bruta</p>
             </div>
-            <p className={`text-xl font-bold ${marginPct >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+            <p className={`display text-xl tabular-nums ${marginPct >= 0 ? 'text-green-600' : 'text-destructive'}`}>
               {marginPct.toFixed(1)}%
             </p>
           </CardContent>

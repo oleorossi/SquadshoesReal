@@ -54,7 +54,7 @@ const ProductionLive = lazy(() => import("./pages/ProductionLive"));
 const ProductionTimeline = lazy(() => import("./pages/ProductionTimeline"));
 const BankHours = lazy(() => import("./pages/BankHours"));
 // ProductionDashboardPage removido — funcionalidade unificada em /producao (ProducaoDashboard).
-const FinanceiroDashboard = lazy(() => import("./pages/FinanceiroDashboard"));
+// FinanceiroDashboard removido — /financeiro agora renderiza o Finance.tsx unificado (mai/2026).
 const RHHub = lazy(() => import("./pages/RHHub"));
 // Labels page removed — unified into LabelSystem
 const Transport = lazy(() => import("./pages/Transport"));
@@ -629,7 +629,7 @@ const router = createBrowserRouter([
       },
       {
         path: "finance",
-        element: <Finance />,
+        element: <Navigate to="/financeiro" replace />,
       },
       {
         path: "custos-insumos",
@@ -700,7 +700,7 @@ const router = createBrowserRouter([
       },
       {
         path: "financeiro",
-        element: <FinanceiroDashboard />,
+        element: <Finance />,
       },
       {
         path: "rh",
@@ -770,6 +770,46 @@ const router = createBrowserRouter([
       {
         path: "reports",
         lazy: () => import("./pages/Reports").then(m => ({ Component: m.default })),
+      },
+      {
+        // Hub de Relatórios A4 (Novidade) — index com 6 cards
+        path: "relatorios",
+        lazy: () => import("./pages/RelatoriosHub").then(m => ({ Component: m.default })),
+      },
+      {
+        // Editor de cost_policies (defaults fiscais + overhead + embalagem)
+        path: "cost-policies",
+        lazy: () => import("./pages/CostPolicies").then(m => ({ Component: m.default })),
+      },
+      {
+        // Novidade A4 — relatório diário de produção (template do redesign)
+        path: "relatorios/diario-producao",
+        lazy: () => import("./pages/RelDiarioA4").then(m => ({ Component: m.default })),
+      },
+      {
+        path: "relatorios/op",
+        lazy: () => import("./pages/RelOpA4").then(m => ({ Component: m.default })),
+      },
+      {
+        path: "relatorios/oee",
+        lazy: () => import("./pages/RelOeeA4").then(m => ({ Component: m.default })),
+      },
+      {
+        path: "relatorios/qualidade",
+        lazy: () => import("./pages/RelQualidadeA4").then(m => ({ Component: m.default })),
+      },
+      {
+        path: "relatorios/refugo",
+        lazy: () => import("./pages/RelRefugoA4").then(m => ({ Component: m.default })),
+      },
+      {
+        path: "relatorios/semanal",
+        lazy: () => import("./pages/RelSemanalA4").then(m => ({ Component: m.default })),
+      },
+      {
+        // Novidade — quadro tipo kanban CORTE→COSTURA→MONTAGEM→ACABAMENTO→EMBALAGEM
+        path: "producao/fluxo",
+        lazy: () => import("./pages/ProductionFlow").then(m => ({ Component: m.default })),
       },
       {
         path: "automations",

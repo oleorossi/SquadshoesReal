@@ -142,7 +142,7 @@ export default function References({ embedded }: { embedded?: boolean } = {}) {
       <div className="space-y-5 page-enter">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold tracking-tight">Referências de Calçados</h2>
+            <h2 className="display text-xl tracking-tight">Referências de Calçados</h2>
             <p className="text-sm text-muted-foreground">Modelos, fichas técnicas e custos de produção</p>
           </div>
           <Button onClick={openAdd} className="gap-2">

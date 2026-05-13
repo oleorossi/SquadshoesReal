@@ -155,7 +155,7 @@ export default function StrapSummaryDialog({ open, onOpenChange, movements }: Pr
                 <CardTitle className="text-xs text-muted-foreground font-normal">Consumo Semana</CardTitle>
               </CardHeader>
               <CardContent className="px-3 pb-3">
-                <p className="text-xl font-bold text-destructive">{fmt(stats.totalConsumedWeek)}</p>
+                <p className="display text-xl tabular-nums text-destructive">{fmt(stats.totalConsumedWeek)}</p>
               </CardContent>
             </Card>
             <Card>
@@ -163,7 +163,7 @@ export default function StrapSummaryDialog({ open, onOpenChange, movements }: Pr
                 <CardTitle className="text-xs text-muted-foreground font-normal">Estornos Semana</CardTitle>
               </CardHeader>
               <CardContent className="px-3 pb-3">
-                <p className="text-xl font-bold text-emerald-600">{fmt(stats.totalReturnsWeek)}</p>
+                <p className="display text-xl tabular-nums text-emerald-600">{fmt(stats.totalReturnsWeek)}</p>
               </CardContent>
             </Card>
             <Card>
@@ -171,7 +171,7 @@ export default function StrapSummaryDialog({ open, onOpenChange, movements }: Pr
                 <CardTitle className="text-xs text-muted-foreground font-normal">Movimentações</CardTitle>
               </CardHeader>
               <CardContent className="px-3 pb-3">
-                <p className="text-xl font-bold">{stats.weekMovements}</p>
+                <p className="display text-xl tabular-nums">{stats.weekMovements}</p>
               </CardContent>
             </Card>
             <Card>
@@ -179,7 +179,7 @@ export default function StrapSummaryDialog({ open, onOpenChange, movements }: Pr
                 <CardTitle className="text-xs text-muted-foreground font-normal">Estoque Atual (Tiras)</CardTitle>
               </CardHeader>
               <CardContent className="px-3 pb-3">
-                <p className="text-xl font-bold">{fmt(projections.totalStrapStock)}</p>
+                <p className="display text-xl tabular-nums">{fmt(projections.totalStrapStock)}</p>
               </CardContent>
             </Card>
           </div>
@@ -227,7 +227,7 @@ export default function StrapSummaryDialog({ open, onOpenChange, movements }: Pr
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="px-3 pb-3 flex items-baseline gap-2">
-                  <p className="text-xl font-bold">{fmt(projections.nextWeekDemand)} m</p>
+                  <p className="display text-xl tabular-nums">{fmt(projections.nextWeekDemand)} m</p>
                   <span className="text-xs text-muted-foreground">demanda projetada</span>
                   {projections.nextWeekDemand > projections.totalStrapStock && (
                     <Badge variant="destructive" className="text-[10px] ml-auto">Estoque insuficiente</Badge>
@@ -242,7 +242,7 @@ export default function StrapSummaryDialog({ open, onOpenChange, movements }: Pr
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="px-3 pb-3 flex items-baseline gap-2">
-                  <p className="text-xl font-bold">{fmt(projections.nextMonthDemand)} m</p>
+                  <p className="display text-xl tabular-nums">{fmt(projections.nextMonthDemand)} m</p>
                   <span className="text-xs text-muted-foreground">demanda projetada</span>
                   {projections.nextMonthDemand > projections.totalStrapStock && (
                     <Badge variant="destructive" className="text-[10px] ml-auto">Estoque insuficiente</Badge>

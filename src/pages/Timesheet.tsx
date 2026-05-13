@@ -1399,7 +1399,7 @@ function TimesheetRecordsTab() {
                         )}
                         <div className="sm:col-span-3 border-t pt-2 mt-1">
                           <span className="text-muted-foreground text-xs">Saldo Líquido</span>
-                          <p className={`text-xl font-bold font-mono ${netValue >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                          <p className={`display text-xl tabular-nums font-mono ${netValue >= 0 ? 'text-green-600' : 'text-destructive'}`}>
                             {netValue >= 0 ? '+' : ''}{formatCurrency(netValue)}
                           </p>
                         </div>

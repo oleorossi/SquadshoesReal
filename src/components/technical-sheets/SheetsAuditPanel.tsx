@@ -320,24 +320,24 @@ function SheetsAuditTab({
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="rounded-lg border bg-muted/30 p-3">
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Total de fichas</p>
-              <p className="text-xl font-bold tabular-nums mt-1">{summary.total_fichas}</p>
+              <p className="display text-xl tabular-nums mt-1">{summary.total_fichas}</p>
             </div>
             <div className="rounded-lg border bg-emerald-500/10 border-emerald-500/40 p-3">
               <p className="text-[10px] uppercase tracking-wider text-emerald-700 font-semibold">100% completas</p>
-              <p className="text-xl font-bold tabular-nums mt-1 text-emerald-700">
+              <p className="display text-xl tabular-nums mt-1 text-emerald-700">
                 {summary.fichas_100_completas} / {summary.total_fichas}
               </p>
             </div>
             <div className="rounded-lg border bg-red-500/10 border-red-500/40 p-3">
               <p className="text-[10px] uppercase tracking-wider text-red-700 font-semibold">Sem cabedal</p>
-              <p className="text-xl font-bold tabular-nums mt-1 text-red-700">
+              <p className="display text-xl tabular-nums mt-1 text-red-700">
                 {summary.sem_consumo_cabedal}
               </p>
               <p className="text-[10px] text-muted-foreground">consumo / {summary.sem_grupo_cabedal} grupo</p>
             </div>
             <div className="rounded-lg border bg-red-500/10 border-red-500/40 p-3">
               <p className="text-[10px] uppercase tracking-wider text-red-700 font-semibold">Sem MOD</p>
-              <p className="text-xl font-bold tabular-nums mt-1 text-red-700">
+              <p className="display text-xl tabular-nums mt-1 text-red-700">
                 {summary.sem_mod_cadastrado}
               </p>
               <p className="text-[10px] text-muted-foreground">não tem operação cadastrada</p>

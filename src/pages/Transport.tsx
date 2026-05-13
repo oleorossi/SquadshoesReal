@@ -37,7 +37,7 @@ export default function Transport() {
     
       <div className="space-y-5 page-enter">
         <div>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="display text-xl tracking-tight flex items-center gap-2">
             <Truck className="h-6 w-6 text-primary" />
             Logística e Transporte
           </h1>
@@ -400,7 +400,7 @@ function CapacityTab() {
                 </div>
                 <div className="p-3 rounded-md bg-primary/10">
                   <p className="text-xs text-muted-foreground">Taxa de Ocupação</p>
-                  <p className="text-xl font-bold text-primary">{packingResult.ocupacao_total_pct}%</p>
+                  <p className="display text-xl tabular-nums text-primary">{packingResult.ocupacao_total_pct}%</p>
                 </div>
                 <div className="p-3 rounded-md bg-muted">
                   <p className="text-xs text-muted-foreground">Volume Residual</p>

@@ -771,7 +771,7 @@ export default function SaleOrderForm() {
             </Button>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-xl font-bold tracking-tight">
+                <h2 className="display text-xl tracking-tight">
                   {isEdit ? 'Editar Pedido' : 'Novo Pedido'}
                 </h2>
                 {/* Audit visual #16: mostra order_number (PV-2026-XXXXX) em vez

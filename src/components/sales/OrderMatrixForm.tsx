@@ -165,7 +165,7 @@ export function OrderMatrixForm({
           </div>
         )}
         <div>
-          <h2 className="text-xl font-bold text-foreground">{variantName}</h2>
+          <h2 className="display text-xl text-foreground">{variantName}</h2>
           <p className="text-sm text-muted-foreground uppercase tracking-wider">{colorName}</p>
         </div>
       </div>

@@ -152,7 +152,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
   const navItemClass = (isActive: boolean) => cn(
     "group flex items-center justify-between px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-150 relative",
     isActive
-      ? "bg-sidebar-primary/15 text-sidebar-primary font-semibold border-l-[3px] border-sidebar-primary"
+      ? "bg-sidebar-primary/15 text-sidebar-primary font-semibold border-l-2 border-sidebar-primary"
       : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
   );
 
@@ -525,10 +525,10 @@ export default function AppLayout({ children, printMode = false }: { children: R
             {sidebarContent(true)}
           </aside>
 
-          {/* Desktop sidebar */}
+          {/* Desktop sidebar — dimensões do handoff: 232px expandida / 68px colapsada */}
           <aside className={cn(
             'hidden md:flex shrink-0 border-r border-sidebar-border flex-col sticky top-0 h-screen transition-all duration-200 ease-in-out overflow-hidden',
-            sidebarCollapsed ? 'w-16' : 'w-[248px]',
+            sidebarCollapsed ? 'w-[68px]' : 'w-[232px]',
             printMode && 'print:hidden'
           )}>
             {sidebarContent(false)}

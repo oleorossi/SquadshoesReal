@@ -190,7 +190,7 @@ export default function LeadTime() {
               <Clock className="h-6 w-6 text-primary" />
             </div>
             <div>
-              <h2 className="text-xl font-bold">Configuração de Lead Times Padrão</h2>
+              <h2 className="display text-xl">Configuração de Lead Times Padrão</h2>
               <p className="text-sm text-muted-foreground">
                 Tempos de produção por categoria, usados como fallback quando a Ficha Técnica não possui tempos definidos.
               </p>

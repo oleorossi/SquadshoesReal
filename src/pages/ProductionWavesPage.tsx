@@ -438,7 +438,7 @@ export default function ProductionWavesPage() {
         <Card>
           <CardContent className="p-3">
             <div className="text-[10px] uppercase text-muted-foreground font-bold">Total</div>
-            <div className="text-2xl font-bold tabular-nums">{metrics.total}</div>
+            <div className="display text-2xl tabular-nums">{metrics.total}</div>
           </CardContent>
         </Card>
         <Card className="border-amber-500/30">
@@ -446,7 +446,7 @@ export default function ProductionWavesPage() {
             <div className="text-[10px] uppercase text-amber-600 font-bold flex items-center gap-1">
               <Clock className="w-3 h-3" /> Planejadas
             </div>
-            <div className="text-2xl font-bold tabular-nums">{metrics.planning}</div>
+            <div className="display text-2xl tabular-nums">{metrics.planning}</div>
           </CardContent>
         </Card>
         <Card className="border-primary/30">
@@ -454,7 +454,7 @@ export default function ProductionWavesPage() {
             <div className="text-[10px] uppercase text-primary font-bold flex items-center gap-1">
               <Factory className="w-3 h-3" /> Em produção
             </div>
-            <div className="text-2xl font-bold tabular-nums">{metrics.running}</div>
+            <div className="display text-2xl tabular-nums">{metrics.running}</div>
           </CardContent>
         </Card>
         <Card className="border-green-500/30">
@@ -462,7 +462,7 @@ export default function ProductionWavesPage() {
             <div className="text-[10px] uppercase text-green-600 font-bold flex items-center gap-1">
               <CheckCircle2 className="w-3 h-3" /> Finalizadas
             </div>
-            <div className="text-2xl font-bold tabular-nums">{metrics.finished}</div>
+            <div className="display text-2xl tabular-nums">{metrics.finished}</div>
           </CardContent>
         </Card>
         <Card>
@@ -470,7 +470,7 @@ export default function ProductionWavesPage() {
             <div className="text-[10px] uppercase text-muted-foreground font-bold flex items-center gap-1">
               <Layers className="w-3 h-3" /> Pares totais
             </div>
-            <div className="text-2xl font-bold tabular-nums">
+            <div className="display text-2xl tabular-nums">
               {metrics.totalPairs.toLocaleString('pt-BR')}
             </div>
           </CardContent>

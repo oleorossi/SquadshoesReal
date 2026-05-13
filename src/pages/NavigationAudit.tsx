@@ -51,7 +51,7 @@ export default function NavigationAuditPage() {
               </Link>
             </Button>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight">Auditoria de Navegação</h1>
+          <h1 className="display text-3xl tracking-tight">Auditoria de Navegação</h1>
           <p className="text-muted-foreground">
             Verificação de consistência entre itens do menu lateral e regras de permissões.
           </p>
@@ -76,12 +76,12 @@ export default function NavigationAuditPage() {
               {issues.length === 0 ? (
                 <>
                   <ShieldCheck className="h-5 w-5 text-green-500" />
-                  <span className="text-2xl font-bold">Saudável</span>
+                  <span className="display text-2xl tabular-nums">Saudável</span>
                 </>
               ) : (
                 <>
                   <AlertTriangle className="h-5 w-5 text-destructive" />
-                  <span className="text-2xl font-bold text-destructive">{issues.length} Issues</span>
+                  <span className="display text-2xl tabular-nums text-destructive">{issues.length} Issues</span>
                 </>
               )}
             </div>

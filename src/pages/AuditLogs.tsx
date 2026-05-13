@@ -62,7 +62,7 @@ export default function AuditLogs() {
       <div className="space-y-6 page-enter">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+            <h1 className="display text-2xl tracking-tight flex items-center gap-2">
               <History className="h-6 w-6 text-primary" /> Auditoria do Sistema
             </h1>
             <p className="text-sm text-muted-foreground">

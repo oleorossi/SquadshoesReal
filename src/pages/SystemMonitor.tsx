@@ -117,7 +117,7 @@ export default function SystemMonitor() {
     <div className="space-y-5 page-enter">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="display text-xl tracking-tight flex items-center gap-2">
             <Activity className="h-6 w-6 text-primary" />Monitor do Sistema
           </h1>
           <p className="text-sm text-muted-foreground">Performance, segurança e auditoria em tempo real</p>
@@ -148,7 +148,7 @@ export default function SystemMonitor() {
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Tempo Resposta</p>
-                    <p className="text-2xl font-bold font-mono mt-1">{perfMetrics.responseTime.toFixed(0)}ms</p>
+                    <p className="display text-2xl tabular-nums font-mono mt-1">{perfMetrics.responseTime.toFixed(0)}ms</p>
                   </div>
                   <div className="bg-success/10 rounded-xl p-2.5"><Zap className="h-5 w-5 text-success" /></div>
                 </div>
@@ -159,7 +159,7 @@ export default function SystemMonitor() {
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Uptime</p>
-                    <p className="text-2xl font-bold font-mono mt-1">{perfMetrics.uptime}%</p>
+                    <p className="display text-2xl tabular-nums font-mono mt-1">{perfMetrics.uptime}%</p>
                   </div>
                   <div className="bg-success/10 rounded-xl p-2.5"><Wifi className="h-5 w-5 text-success" /></div>
                 </div>
@@ -170,7 +170,7 @@ export default function SystemMonitor() {
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Taxa de Erro</p>
-                    <p className="text-2xl font-bold font-mono mt-1">{perfMetrics.errorRate.toFixed(2)}%</p>
+                    <p className="display text-2xl tabular-nums font-mono mt-1">{perfMetrics.errorRate.toFixed(2)}%</p>
                   </div>
                   <div className="bg-warning/10 rounded-xl p-2.5"><AlertTriangle className="h-5 w-5 text-warning" /></div>
                 </div>
@@ -181,7 +181,7 @@ export default function SystemMonitor() {
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Usuários Ativos</p>
-                    <p className="text-2xl font-bold font-mono mt-1">{perfMetrics.activeUsers}</p>
+                    <p className="display text-2xl tabular-nums font-mono mt-1">{perfMetrics.activeUsers}</p>
                   </div>
                   <div className="bg-primary/10 rounded-xl p-2.5"><Users className="h-5 w-5 text-primary" /></div>
                 </div>
@@ -203,8 +203,8 @@ export default function SystemMonitor() {
                     <XAxis dataKey="name" tick={{ fontSize: 10 }} />
                     <YAxis tick={{ fontSize: 10 }} />
                     <Tooltip content={<CustomTooltip />} />
-                    <Area type="monotone" dataKey="requests" stroke="#0EA5E9" fill="#0EA5E9" fillOpacity={0.1} name="Requisições" />
-                    <Area type="monotone" dataKey="errors" stroke="#EF4444" fill="#EF4444" fillOpacity={0.15} name="Erros" />
+                    <Area type="monotone" dataKey="requests" stroke="hsl(var(--stage-cut-fg))" fill="hsl(var(--stage-cut-fg))" fillOpacity={0.1} name="Requisições" />
+                    <Area type="monotone" dataKey="errors" stroke="hsl(var(--destructive))" fill="hsl(var(--destructive))" fillOpacity={0.15} name="Erros" />
                   </AreaChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -223,7 +223,7 @@ export default function SystemMonitor() {
                     <XAxis dataKey="name" tick={{ fontSize: 10 }} />
                     <YAxis tick={{ fontSize: 10 }} />
                     <Tooltip content={<CustomTooltip />} />
-                    <Bar dataKey="latency" fill="#F59E0B" radius={[3, 3, 0, 0]} name="Latência" />
+                    <Bar dataKey="latency" fill="hsl(var(--warning))" radius={[3, 3, 0, 0]} name="Latência" />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -237,19 +237,19 @@ export default function SystemMonitor() {
           <div className="grid grid-cols-3 gap-3">
             <Card>
               <CardContent className="p-4 text-center">
-                <p className="text-2xl font-bold font-mono">{auditStats.total}</p>
+                <p className="display text-2xl tabular-nums font-mono">{auditStats.total}</p>
                 <p className="text-xs text-muted-foreground">Eventos totais</p>
               </CardContent>
             </Card>
             <Card className="border-success/30 bg-success/5">
               <CardContent className="p-4 text-center">
-                <p className="text-2xl font-bold font-mono text-success">{auditStats.successful}</p>
+                <p className="display text-2xl tabular-nums font-mono text-success">{auditStats.successful}</p>
                 <p className="text-xs text-muted-foreground">Bem-sucedidos</p>
               </CardContent>
             </Card>
             <Card className={auditStats.failed > 0 ? 'border-destructive/30 bg-destructive/5' : ''}>
               <CardContent className="p-4 text-center">
-                <p className="text-2xl font-bold font-mono text-destructive">{auditStats.failed}</p>
+                <p className="display text-2xl tabular-nums font-mono text-destructive">{auditStats.failed}</p>
                 <p className="text-xs text-muted-foreground">Falhas</p>
               </CardContent>
             </Card>
@@ -295,7 +295,7 @@ export default function SystemMonitor() {
                       <XAxis type="number" tick={{ fontSize: 10 }} />
                       <YAxis type="category" dataKey="name" tick={{ fontSize: 9 }} width={80} />
                       <Tooltip content={<CustomTooltip />} />
-                      <Bar dataKey="value" fill="#8B5CF6" radius={[0, 3, 3, 0]} name="Eventos" />
+                      <Bar dataKey="value" fill="hsl(var(--stage-sew-fg))" radius={[0, 3, 3, 0]} name="Eventos" />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
@@ -390,21 +390,21 @@ export default function SystemMonitor() {
             <Card>
               <CardContent className="p-4">
                 <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Entradas</p>
-                <p className="text-2xl font-bold font-mono mt-1">{perfMetrics.cache.entries}</p>
+                <p className="display text-2xl tabular-nums font-mono mt-1">{perfMetrics.cache.entries}</p>
                 <p className="text-[11px] text-muted-foreground">de {perfMetrics.cache.maxEntries} máx</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
                 <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Cache Hits</p>
-                <p className="text-2xl font-bold font-mono mt-1">{perfMetrics.cache.totalHits}</p>
+                <p className="display text-2xl tabular-nums font-mono mt-1">{perfMetrics.cache.totalHits}</p>
                 <p className="text-[11px] text-muted-foreground">total acumulado</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
                 <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Inflight</p>
-                <p className="text-2xl font-bold font-mono mt-1">{perfMetrics.cache.inflight}</p>
+                <p className="display text-2xl tabular-nums font-mono mt-1">{perfMetrics.cache.inflight}</p>
                 <p className="text-[11px] text-muted-foreground">requisições ativas</p>
               </CardContent>
             </Card>

@@ -97,19 +97,19 @@ export default function SolesHistoricoTab({ sole }: Props) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card><CardContent className="p-3">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Movimentações</p>
-          <p className="text-xl font-bold">{stats.count}</p>
+          <p className="display text-xl tabular-nums">{stats.count}</p>
         </CardContent></Card>
         <Card><CardContent className="p-3">
           <p className="text-[10px] uppercase tracking-wider text-emerald-600">Entradas</p>
-          <p className="text-xl font-bold font-mono text-emerald-600">+{stats.entradas}</p>
+          <p className="display text-xl tabular-nums text-emerald-600">+{stats.entradas}</p>
         </CardContent></Card>
         <Card><CardContent className="p-3">
           <p className="text-[10px] uppercase tracking-wider text-rose-600">Saídas (PVs)</p>
-          <p className="text-xl font-bold font-mono text-rose-600">-{stats.saidas}</p>
+          <p className="display text-xl tabular-nums text-rose-600">-{stats.saidas}</p>
         </CardContent></Card>
         <Card><CardContent className="p-3">
           <p className="text-[10px] uppercase tracking-wider text-amber-600">Ajustes</p>
-          <p className="text-xl font-bold font-mono text-amber-600">{stats.ajustes}</p>
+          <p className="display text-xl tabular-nums text-amber-600">{stats.ajustes}</p>
         </CardContent></Card>
       </div>
 

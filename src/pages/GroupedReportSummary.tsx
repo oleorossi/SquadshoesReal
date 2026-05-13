@@ -43,7 +43,7 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
     <Card className="print:shadow-none print:border-border">
       <CardContent className="p-4 text-center">
         <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
-        <p className="mt-2 text-2xl font-bold text-primary font-mono">{value}</p>
+        <p className="mt-2 display text-2xl tabular-nums text-primary font-mono">{value}</p>
       </CardContent>
     </Card>
   );
@@ -187,7 +187,7 @@ ${styles}
             <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
               <Layers className="h-10 w-10 text-muted-foreground" />
               <div className="space-y-1">
-                <h1 className="text-xl font-bold tracking-tight">Resumo agrupado inválido</h1>
+                <h1 className="display text-xl tracking-tight">Resumo agrupado inválido</h1>
                 <p className="text-muted-foreground">O setor informado não é válido.</p>
               </div>
               <Button onClick={() => navigate('/dashboard')}>Voltar</Button>
@@ -232,7 +232,7 @@ ${styles}
             <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
               <Layers className="h-10 w-10 text-muted-foreground" />
               <div className="space-y-1">
-                <h1 className="text-xl font-bold tracking-tight">Nenhuma OP selecionada</h1>
+                <h1 className="display text-xl tracking-tight">Nenhuma OP selecionada</h1>
                 <p className="text-muted-foreground">Selecione as OPs no setor e clique em Agrupar novamente.</p>
               </div>
               <Button onClick={() => navigate(sector.backPath)}>Voltar para {sector.label}</Button>
@@ -252,7 +252,7 @@ ${styles}
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div>
-              <h1 className="text-xl font-bold tracking-tight">
+              <h1 className="display text-xl tracking-tight">
                 {sector.emoji} Resumo Agrupado — {sector.label}
               </h1>
               <p className="text-sm text-muted-foreground">
@@ -268,7 +268,7 @@ ${styles}
         </div>
 
         <div className="hidden print:block border-b border-border pb-4">
-          <h1 className="text-xl font-bold tracking-tight">
+          <h1 className="display text-xl tracking-tight">
             {sector.emoji} Resumo Agrupado — {sector.label}
           </h1>
           <p className="text-sm text-muted-foreground">
@@ -429,7 +429,7 @@ ${styles}
               <section key={soleType} className="space-y-4">
                 <div className={`flex flex-col gap-2 border-b-2 pb-3 md:flex-row md:items-end md:justify-between ${soleType === 'Solado Preto' ? 'border-foreground' : 'border-amber-500'}`}>
                   <div>
-                    <h2 className="text-xl font-bold tracking-tight">{soleType === 'Solado Preto' ? '⬛' : '🟨'} {soleType}</h2>
+                    <h2 className="display text-xl tracking-tight">{soleType === 'Solado Preto' ? '⬛' : '🟨'} {soleType}</h2>
                     <p className="text-sm text-muted-foreground">
                       {cats.reduce((s, c) => s + c.items.length, 0)} grupo(s) • {soleTotal} pares
                     </p>
@@ -465,7 +465,7 @@ ${styles}
                         <div className="space-y-4">
                           <div className="space-y-2">
                             <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="text-xl font-bold">
+                              <h3 className="display text-xl tabular-nums">
                                 {item.refCode} — {item.refName}
                               </h3>
                                <Badge variant="outline">{item.color}</Badge>

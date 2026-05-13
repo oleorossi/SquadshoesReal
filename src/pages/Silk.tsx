@@ -414,7 +414,7 @@ export default function Silk() {
       <div className="space-y-5 page-enter">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div>
-            <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+            <h1 className="display text-xl tracking-tight flex items-center gap-2">
               <span className="text-2xl">{SECTOR_EMOJI}</span>
               Setor de Silk
             </h1>
@@ -575,7 +575,7 @@ export default function Silk() {
           {soleData.map(row => (
               <Card key={row.color}>
                 <CardContent className="p-4 text-center">
-                  <p className="text-2xl font-bold text-foreground">{row.total}</p>
+                  <p className="display text-2xl tabular-nums text-foreground">{row.total}</p>
                   <p className="text-xs text-muted-foreground">{row.color} (pares)</p>
                 </CardContent>
               </Card>

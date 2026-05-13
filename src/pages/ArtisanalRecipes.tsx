@@ -122,7 +122,7 @@ export default function ArtisanalRecipes() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+          <h2 className="display text-2xl tracking-tight flex items-center gap-2">
             <Sparkles className="h-6 w-6 text-primary" /> Produtos Artesanais
           </h2>
           <p className="text-sm text-muted-foreground">

@@ -166,22 +166,22 @@ export default function AdvancesPanel() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Total no período</p>
-          <p className="text-xl font-bold font-mono">{fmt(stats.total)}</p>
+          <p className="display text-xl tabular-nums">{fmt(stats.total)}</p>
           <p className="text-[10px] text-muted-foreground">{stats.count} vale{stats.count !== 1 ? 's' : ''}</p>
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Pendentes (período)</p>
-          <p className="text-xl font-bold font-mono text-amber-600">{fmt(stats.pendingValue)}</p>
+          <p className="display text-xl tabular-nums text-amber-600">{fmt(stats.pendingValue)}</p>
           <p className="text-[10px] text-muted-foreground">{stats.pendingCount} vale{stats.pendingCount !== 1 ? 's' : ''}</p>
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Saldo aberto total</p>
-          <p className="text-xl font-bold font-mono text-rose-600">{fmt(stats.allPendingValue)}</p>
+          <p className="display text-xl tabular-nums text-rose-600">{fmt(stats.allPendingValue)}</p>
           <p className="text-[10px] text-muted-foreground">A abater em folha</p>
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Funcionários afetados</p>
-          <p className="text-xl font-bold">{balancesByEmp.filter(b => b.pending > 0).length}</p>
+          <p className="display text-xl tabular-nums">{balancesByEmp.filter(b => b.pending > 0).length}</p>
           <p className="text-[10px] text-muted-foreground">Com saldo aberto</p>
         </CardContent></Card>
       </div>

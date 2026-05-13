@@ -104,7 +104,7 @@ import { useTableSelection } from '@/hooks/useTableSelection';
      <div className="space-y-5 page-enter">
        {!hideHeader && (
          <div>
-           <h2 className="text-xl font-bold tracking-tight">Histórico de Movimentações</h2>
+           <h2 className="display text-xl tracking-tight">Histórico de Movimentações</h2>
            <p className="text-sm text-muted-foreground">Registro de todas as entradas e saídas de estoque</p>
          </div>
        )}

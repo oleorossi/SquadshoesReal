@@ -34,7 +34,7 @@ function KpiCard({ icon: Icon, title, value, sub, variant = 'default' }: { icon:
         </div>
         <div className="min-w-0">
           <p className="text-xs text-muted-foreground">{title}</p>
-          <p className="text-xl font-bold tabular-nums">{value}</p>
+          <p className="display text-xl tabular-nums">{value}</p>
           {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
         </div>
       </div>
@@ -76,7 +76,7 @@ export default function Quality() {
     <AppLayout>
       <div className="space-y-5 page-enter">
         <div>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="display text-xl tracking-tight flex items-center gap-2">
             <ShieldCheck className="h-5 w-5 text-primary" /> Qualidade & Auditorias
           </h1>
           <p className="text-sm text-muted-foreground">Defeitos registrados por setor — rastreamento por OP e plano de ação</p>

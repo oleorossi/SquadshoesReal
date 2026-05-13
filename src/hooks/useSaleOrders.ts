@@ -524,13 +524,24 @@ async function generateAutoPurchaseOrders(saleOrderNumber: string, systemOrderNu
   }
 }
 
-export type PackagingMode = 'individual_amarrado' | 'individual_master' | 'colmeia';
+// 3 modos canônicos pro usuário + 1 legacy ('individual_amarrado' = só individual,
+// sem agrupamento). Mantido pra compat com PVs antigos. Não aparece na UI nova.
+export type PackagingMode = 'individual_master' | 'colmeia' | 'individual_fitilho' | 'individual_amarrado';
 
 export const PACKAGING_MODE_LABELS: Record<PackagingMode, string> = {
-  individual_amarrado: 'Caixa Individual + Amarrado',
-  individual_master: 'Caixa Individual + Caixa Master',
+  individual_master: 'Tradicional (Individual + Master)',
   colmeia: 'Caixa Colméia',
+  individual_fitilho: 'Amarrado (Individual + Fitilho)',
+  individual_amarrado: 'Apenas Individual (legado)',
 };
+
+// Os 3 modos exibidos na UI nova. 'individual_amarrado' é legado e só aparece
+// se o PV já tiver sido criado com esse valor.
+export const PACKAGING_MODE_CANONICAL: PackagingMode[] = [
+  'individual_master',
+  'colmeia',
+  'individual_fitilho',
+];
 
 export type SaleOrderFormData = {
   /** FK pra clients.id — antes só guardávamos o nome/CNPJ como texto, o

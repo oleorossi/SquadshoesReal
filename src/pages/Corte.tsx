@@ -1279,13 +1279,13 @@ if (totalPairsAll !== palmTotal) {
         <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
           <Card>
             <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-primary">{cuttingOrders.length}</p>
+              <p className="display text-2xl tabular-nums text-primary">{cuttingOrders.length}</p>
               <p className="text-xs text-muted-foreground">OPs p/ Corte Palmilha</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-primary">
+              <p className="display text-2xl tabular-nums text-primary">
                 {cuttingOrders.reduce((sum, order) => sum + getOrderTotalPairs(order), 0)}
               </p>
               <p className="text-xs text-muted-foreground">Total do setor (pares)</p>
@@ -1293,19 +1293,19 @@ if (totalPairsAll !== palmTotal) {
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-warning">{consolidatedCabedal.reduce((s, r) => s + r.total, 0)}</p>
+              <p className="display text-2xl tabular-nums text-warning">{consolidatedCabedal.reduce((s, r) => s + r.total, 0)}</p>
               <p className="text-xs text-muted-foreground">Cabedal (demanda)</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-accent-foreground">{consolidatedPalmilha.reduce((s, r) => s + r.total, 0)}</p>
+              <p className="display text-2xl tabular-nums text-accent-foreground">{consolidatedPalmilha.reduce((s, r) => s + r.total, 0)}</p>
               <p className="text-xs text-muted-foreground">Palmilha (demanda)</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-success">{consolidatedForro.reduce((s, r) => s + r.total, 0)}</p>
+              <p className="display text-2xl tabular-nums text-success">{consolidatedForro.reduce((s, r) => s + r.total, 0)}</p>
               <p className="text-xs text-muted-foreground">Forro (demanda)</p>
             </CardContent>
           </Card>

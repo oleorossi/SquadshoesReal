@@ -33,7 +33,7 @@ const ProductionFlowMonitor = () => {
             <sector.icon className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{sector.daysAhead} Dias</div>
+            <div className="display text-2xl tabular-nums">{sector.daysAhead} Dias</div>
             <p className="text-xs text-muted-foreground">de frente na produção</p>
             
             <div className="mt-4 space-y-2">

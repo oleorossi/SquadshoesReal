@@ -272,7 +272,7 @@ export default function ProdutividadeReport() {
                   <XAxis dataKey="sector" tick={{ fontSize: 10 }} angle={-30} textAnchor="end" height={60} />
                   <YAxis tick={{ fontSize: 10 }} />
                   <Tooltip formatter={(v: number) => fmt(v)} />
-                  <Bar dataKey="costPerPair" name="R$/par" fill="#f59e0b" />
+                  <Bar dataKey="costPerPair" name="R$/par" fill="hsl(var(--warning))" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
