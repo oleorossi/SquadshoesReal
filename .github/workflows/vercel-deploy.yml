@@ -15,22 +15,15 @@ name: Vercel Production Deploy
 #    - VERCEL_PROJECT_ID = projectId do project.json
 
 on:
-  # AUTO-PUSH desabilitado: o webhook GitHub→Vercel direto está funcionando
-  # como mecanismo principal de deploy. Esse Action é apenas BACKUP — só roda
-  # manualmente via Actions tab quando o webhook estiver indisponível.
-  #
-  # Pra reativar o gatilho automático: descomente o bloco `push:` abaixo
-  # E garanta que os secrets estão configurados:
-  #   VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID
-  #   (https://github.com/oleorossi/SquadshoesReal/settings/secrets/actions)
-  #
-  # push:
-  #   branches: [main]
-  #   paths-ignore:
-  #     - 'supabase/migrations/**'
-  #     - '**.md'
-  #     - '.github/**'
+  push:
+    branches: [main]
+    # Ignora pushes que mexem só em migrations/docs — não precisam de novo deploy
+    paths-ignore:
+      - 'supabase/migrations/**'
+      - '**.md'
+      - '.github/**'
 
+  # Permite disparar manualmente em Actions tab
   workflow_dispatch:
 
 # Evita 2 deploys paralelos se vários pushes chegarem em sequência
