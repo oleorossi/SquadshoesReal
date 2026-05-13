@@ -2216,6 +2216,23 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                    updateField('sole_material', productName);
                    updateField('sole_group_id', groupId);
                    autoFillSole(productName);
+                   // Auto-fill NCM da última ficha cadastrada para esse solado.
+                   // Trigger DB `tg_autofill_ncm_from_sole` aplica essa mesma
+                   // regra no INSERT/UPDATE — chamamos aqui pra dar feedback
+                   // visual imediato no formulário (sem precisar salvar).
+                   if (!form.ncm || !/^\d{8}$/.test(form.ncm)) {
+                     supabase.rpc('suggest_ncm_for_sheet', {
+                       p_sole_group_id: groupId || null,
+                       p_primary_sole_id: productId || null,
+                       p_shoe_category: form.shoe_category || null,
+                     }).then(({ data: suggested }) => {
+                       if (suggested && /^\d{8}$/.test(String(suggested))) {
+                         updateField('ncm', String(suggested));
+                         flashField('ncm');
+                         toast.success(`NCM ${suggested} preenchido com base no solado`);
+                       }
+                     });
+                   }
                    // Auto-sync ficha.sizes a partir do range agregado (MIN/MAX)
                    // das variantes do solado — mesma lógica do trigger DB
                    // tg_sync_ficha_sizes_from_sole. Regra de produto:
@@ -2271,6 +2288,53 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 <NumberInput value={form.sole_consumption || 0} onChange={v => updateField('sole_consumption', v)} className="mt-1 h-9 text-sm" placeholder="1" step="1" />
               </div>
             </div>
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end pt-2 border-t border-border/40">
+              <div>
+                <Label className="text-xs text-muted-foreground flex items-center gap-2">
+                  NCM da ficha
+                  {form.ncm && /^\d{8}$/.test(form.ncm) ? (
+                    <Badge variant="outline" className="h-4 text-[9px] font-mono">válido</Badge>
+                  ) : form.ncm ? (
+                    <Badge variant="outline" className="h-4 text-[9px] bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800">precisa 8 dígitos</Badge>
+                  ) : (
+                    <Badge variant="outline" className="h-4 text-[9px] bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800">obrigatório p/ NF-e</Badge>
+                  )}
+                </Label>
+                <Input
+                  value={form.ncm || ''}
+                  onChange={e => updateField('ncm', e.target.value.replace(/\D/g, '').slice(0, 8))}
+                  placeholder="8 dígitos — ex: 64022000"
+                  className="mt-1 h-9 text-sm font-mono"
+                  maxLength={8}
+                />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9"
+                disabled={!form.sole_group_id && !form.shoe_category}
+                onClick={async () => {
+                  const { data: suggested } = await supabase.rpc('suggest_ncm_for_sheet', {
+                    p_sole_group_id: form.sole_group_id || null,
+                    p_primary_sole_id: null,
+                    p_shoe_category: form.shoe_category || null,
+                  });
+                  if (suggested && /^\d{8}$/.test(String(suggested))) {
+                    updateField('ncm', String(suggested));
+                    flashField('ncm');
+                    toast.success(`NCM ${suggested} preenchido com base no solado/categoria`);
+                  } else {
+                    toast.warning('Nenhuma sugestão de NCM encontrada — solado sem histórico e categoria desconhecida.');
+                  }
+                }}
+              >
+                Sugerir do solado
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground -mt-2">
+              O NCM é definido principalmente pelo solado. Quando você troca o solado acima, o campo é preenchido automaticamente com o NCM da última ficha cadastrada para esse solado.
+            </p>
             {form.sole_material && (
               <SoleClassificationBadge
                 groupId={form.sole_group_id || ''}
