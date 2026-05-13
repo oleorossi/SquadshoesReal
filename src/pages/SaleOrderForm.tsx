@@ -217,8 +217,11 @@ export default function SaleOrderForm() {
     }
   }, [form.delivery_month, form.delivery_week]);
 
-  // Prevents the min-billing dialog from re-opening on the second handleSubmit pass
-  const skipMinBillingCheckRef = useRef(false);
+  // Min-billing dialog re-entry: handleMinBillingConfirm/Manual chamam
+  // submitInternal({ skipMinBillingCheck: true }) pra evitar reabrir o dialog
+  // que o usuário acabou de confirmar. Substitui o antigo skipMinBillingCheckRef
+  // (useRef + setTimeout) por passagem explícita de parâmetro — mais previsível
+  // em duplo-click / re-render.
 
   const handleSaveStateAndNavigate = () => {
     const draft = {
@@ -394,7 +397,10 @@ export default function SaleOrderForm() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (
+    e: React.FormEvent,
+    opts: { skipMinBillingCheck?: boolean } = {},
+  ) => {
     e.preventDefault();
     const f = formLatestRef.current;
     const validItems = items.filter(i => i.reference_id).map(normalizeItemReference);
@@ -407,12 +413,52 @@ export default function SaleOrderForm() {
       return;
     }
 
+    // 0) Em pedidos NOVOS com cliente cadastrado, valida limite de crédito.
+    //    Permite seguir mediante confirmação, mas avisa explicitamente.
+    if (!isEdit && selectedClientId) {
+      try {
+        const { data: client } = await supabase
+          .from('clients')
+          .select('credit_limit, name')
+          .eq('id', selectedClientId)
+          .maybeSingle() as any;
+        const limit = Number(client?.credit_limit || 0);
+        if (limit > 0) {
+          const { data: arRows } = await (supabase.from('accounts_receivable') as any)
+            .select('amount, amount_received, status')
+            .eq('client_id', selectedClientId)
+            .not('status', 'in', '("received","cancelled")');
+          const exposure = (arRows || []).reduce(
+            (s: number, r: any) => s + (Number(r.amount) - (Number(r.amount_received) || 0)),
+            0,
+          );
+          const orderTotal = validItems.reduce(
+            (s, i) => s + (Number(i.unit_price) || 0) * (Number(i.quantity) || 0),
+            0,
+          );
+          const projected = exposure + orderTotal;
+          if (projected > limit) {
+            const ok = window.confirm(
+              `Limite de crédito do cliente "${client.name}" será ULTRAPASSADO:\n\n` +
+              `  • Em aberto: ${exposure.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n` +
+              `  • Este PV:   ${orderTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n` +
+              `  • Total:     ${projected.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n` +
+              `  • Limite:    ${limit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n\n` +
+              `Deseja PROSSEGUIR mesmo assim?`,
+            );
+            if (!ok) return;
+          }
+        }
+      } catch (err) {
+        console.warn('[handleSubmit] credit limit check falhou (ignorando):', err);
+      }
+    }
+
     // 1) Em pedidos NOVOS, sugere a semana mínima de faturamento antes dos checks de estoque.
     //    Se a data estiver vazia OU for anterior ao mínimo calculado, abre o diálogo.
-    //    skipMinBillingCheckRef is set by handleMinBillingConfirm/handleMinBillingManual to
-    //    prevent re-opening the dialog on the second pass (after the user already confirmed).
-    const doMinBillingCheck = !isEdit && validItems.length > 0 && !skipMinBillingCheckRef.current;
-    skipMinBillingCheckRef.current = false;
+    //    opts.skipMinBillingCheck=true vem de handleMinBillingConfirm/handleMinBillingManual
+    //    pra evitar reabrir o dialog após o usuário já ter confirmado.
+    const doMinBillingCheck = !isEdit && validItems.length > 0 && !opts.skipMinBillingCheck;
     if (doMinBillingCheck) {
       setComputingMinBilling(true);
       try {
@@ -521,10 +567,9 @@ export default function SaleOrderForm() {
     setForm((f) => ({ ...f, delivery_deadline: newISO, delivery_week: newWeek }));
     setMinBillingDialogOpen(false);
     toast.success(`Faturamento ajustado para ${new Date(newISO).toLocaleDateString('pt-BR')} (${newWeek}).`);
-    skipMinBillingCheckRef.current = true;
     setTimeout(() => {
       const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
-      handleSubmit(fakeEvent);
+      handleSubmit(fakeEvent, { skipMinBillingCheck: true });
     }, 50);
   };
 
@@ -534,10 +579,30 @@ export default function SaleOrderForm() {
       return;
     }
     const isOverride = isBeforeMinDate(newISO, minBillingSuggestion.minDateISO);
+    let reason: string | null = null;
+    if (isOverride) {
+      // Captura motivo do override pra audit trail. Cancelar = não persiste o override.
+      reason = window.prompt(
+        `Você está escolhendo uma data ANTERIOR à mínima calculada (${minBillingSuggestion.minDateISO}). ` +
+        `Por que está antecipando? (será registrado no log de auditoria)`,
+        '',
+      );
+      if (reason === null) {
+        // Usuário cancelou — não fecha o dialog
+        return;
+      }
+      if (!reason.trim()) {
+        toast.error('Motivo do override é obrigatório para datas abaixo da mínima.');
+        return;
+      }
+    }
     setForm((f) => ({
       ...f,
       delivery_deadline: newISO,
       delivery_week: toISOWeek(newISO),
+      manual_billing_override: isOverride,
+      original_min_billing_date: isOverride ? minBillingSuggestion.minDateISO : null,
+      manual_override_reason: isOverride ? reason : null,
     }));
     setMinBillingDialogOpen(false);
     if (isOverride) {
@@ -545,10 +610,9 @@ export default function SaleOrderForm() {
         `Data anterior ao mínimo. O pedido será marcado como override manual.`,
       );
     }
-    skipMinBillingCheckRef.current = true;
     setTimeout(() => {
       const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
-      handleSubmit(fakeEvent);
+      handleSubmit(fakeEvent, { skipMinBillingCheck: true });
     }, 50);
   };
 

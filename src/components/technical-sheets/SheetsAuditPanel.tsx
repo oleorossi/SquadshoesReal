@@ -30,6 +30,7 @@ type AuditRow = {
   straps_without_group: boolean;
   missing_mod: boolean;
   upper_per_size_partial_no_fallback: boolean;
+  missing_production_sectors: boolean;
 };
 
 type SoleAuditRow = {
@@ -67,6 +68,7 @@ type AuditSummary = {
   tiras_sem_cores: number;
   tiras_sem_grupo: number;
   sem_mod_cadastrado: number;
+  sem_setores_producao: number;
 };
 
 const GAP_LABELS: { key: keyof AuditRow; label: string; severity: 'critical' | 'warn' }[] = [
@@ -85,6 +87,7 @@ const GAP_LABELS: { key: keyof AuditRow; label: string; severity: 'critical' | '
   { key: 'straps_without_group', label: 'Tiras sem grupo', severity: 'warn' },
   { key: 'missing_mod', label: 'MOD (mão-de-obra)', severity: 'warn' },
   { key: 'upper_per_size_partial_no_fallback', label: 'Cabedal per-size parcial', severity: 'warn' },
+  { key: 'missing_production_sectors', label: 'Setores de produção não configurados', severity: 'critical' },
 ];
 
 function useSheetsAudit() {

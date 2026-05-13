@@ -20,6 +20,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Clock, TrendUp as TrendingUp, TrendDown as TrendingDown, Scales as Scale, Users, Buildings as Building2, MagnifyingGlass as Search, CircleNotch as Loader2, CaretRight as ChevronRight, Plus, Trash as Trash2 } from '@phosphor-icons/react';
 import AppLayout from '@/components/layout/AppLayout';
+import { todayISO } from '@/lib/date';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -187,7 +188,7 @@ export default function BankHours() {
 
   const [form, setForm] = useState({
     employee_id: '',
-    movement_date: new Date().toISOString().slice(0, 10),
+    movement_date: todayISO(),
     movement_type: 'credit' as 'credit' | 'debit' | 'adjustment' | 'compensation',
     hoursStr: '',
     minutesSign: 1 as 1 | -1,

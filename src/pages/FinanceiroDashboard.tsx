@@ -18,6 +18,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
+import { todayISO, todayPlusDaysISO } from '@/lib/date';
 import { TrendUp as TrendingUp, TrendDown as TrendingDown, WarningCircle as AlertCircle, CreditCard, Receipt, ArrowUpRight, ArrowDownRight, CurrencyDollar as DollarSign, Wallet, FileXls as FileSpreadsheet, CaretRight as ChevronRight, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import AppLayout from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,8 +38,8 @@ function useFinancialOverview() {
     queryKey: ['financeiro_overview'],
     staleTime: 60_000,
     queryFn: async () => {
-      const today = new Date().toISOString().slice(0, 10);
-      const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+      const today = todayISO();
+      const nextWeek = todayPlusDaysISO(7);
 
       const [payRes, recRes, bankRes] = await Promise.all([
         supabase.from('accounts_payable').select('id, due_date, amount, amount_paid, status, description').neq('status', 'cancelled'),

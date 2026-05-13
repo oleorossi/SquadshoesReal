@@ -5,6 +5,7 @@ import { autoCreateSolePO } from '@/lib/soleAutoPO';
 import { autoCreateMaterialPO } from '@/lib/materialAutoPO';
 import { calculateFactoringDiscount } from '@/lib/factoringCalc';
 import { isValidStatusTransition } from '@/lib/saleOrderStateMachine';
+import { logAuditEvent } from '@/services/auditService';
 
 const DEFAULT_OP_STAGES = [
   { name: 'Corte Palmilha', order: 1 },
@@ -559,6 +560,13 @@ export type SaleOrderFormData = {
   /** Quando false, pedido é informal: não emite NF-e, não gera AR/financial.
    *  Default true (mantém comportamento existente). */
   nfe_required?: boolean;
+  /** TRUE quando o usuário escolheu uma delivery_deadline ANTERIOR à mínima
+   *  calculada pelo sistema (compute_min_billing_date). */
+  manual_billing_override?: boolean;
+  /** Data mínima vigente quando o override foi feito (preservada pra audit). */
+  original_min_billing_date?: string | null;
+  /** Motivo do override informado pelo usuário (livre). */
+  manual_override_reason?: string | null;
   /** Quando true, este PV entra no planejamento de rota em /entregas com
    *  cálculo de combustível e desgaste do veículo da frota própria. Default
    *  false — pedido segue fluxo normal de transportadora. */
@@ -706,6 +714,24 @@ export function useCreateSaleOrder() {
 
       // Auto-sync financial records
       await syncFinancialRecords(data.id);
+
+      // Audit trail: registra override manual de data de faturamento
+      if (order.manual_billing_override) {
+        await logAuditEvent({
+          userId: null,
+          action: 'manual_billing_override_create',
+          resource: 'sale_order',
+          resourceId: data.id,
+          newData: {
+            delivery_deadline: order.delivery_deadline,
+            original_min_billing_date: order.original_min_billing_date,
+            reason: order.manual_override_reason,
+          },
+          ipAddress: null,
+          userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
+          success: true,
+        });
+      }
 
       return data;
     },

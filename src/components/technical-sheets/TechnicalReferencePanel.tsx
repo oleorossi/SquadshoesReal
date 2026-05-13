@@ -433,12 +433,20 @@ function MaterialsSection({ refId, products }: { refId: string; products: any[] 
 
   const handleAddFromCatalog = (product: any) => {
     const nextSeq = materials.length > 0 ? Math.max(...materials.map((m: any) => m.sequence)) + 1 : 1;
+    // Prefere consumption_unit (canônica de BOM, ex: m²/dm²) sobre unit (estoque,
+    // ex: "rolo"). Fallback final pra group.consumption_unit caso o produto não
+    // tenha override próprio.
+    const consumptionUnit =
+      (product.consumption_unit || '').toString().trim() ||
+      (product.product_groups?.consumption_unit || '').toString().trim() ||
+      (product.unit || '').toString().trim() ||
+      'un';
     addMat.mutate({
       technical_reference_id: refId,
       product_id: product.id,
       sequence: nextSeq,
       quantity_needed: 1,
-      unit: product.unit || 'un',
+      unit: consumptionUnit,
       waste_factor: getDefaultWaste(product.category),
       is_critical: false,
     } as any);

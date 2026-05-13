@@ -18,6 +18,7 @@ import CompaniesPanel from '@/components/nfe/CompaniesPanel';
 import TaxConfigPanel from '@/components/nfe/TaxConfigPanel';
 import NfeDiagnosticPanel from '@/components/nfe/NfeDiagnosticPanel';
 import NfeCCePanel from '@/components/nfe/NfeCCePanel';
+import StandaloneNfePanel from '@/components/nfe/StandaloneNfePanel';
 import { NfeBillingHealthCard } from '@/components/nfe/NfeBillingHealthCard';
 import { AppErrorBoundary } from '@/components/ErrorBoundary';
 
@@ -373,6 +374,9 @@ export default function NfePage() {
           <TabsTrigger value="nfes" className="gap-2">
             <FileText className="h-4 w-4" /> NF-es Emitidas
           </TabsTrigger>
+          <TabsTrigger value="avulsa" className="gap-2">
+            <Plus className="h-4 w-4" /> NF Avulsa
+          </TabsTrigger>
           <TabsTrigger value="empresas" className="gap-2">
             <Building2 className="h-4 w-4" /> Empresas / CNPJs
           </TabsTrigger>
@@ -451,6 +455,10 @@ export default function NfePage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="avulsa" className="mt-4">
+          <StandaloneNfePanel />
         </TabsContent>
 
         <TabsContent value="empresas" className="mt-4">

@@ -231,6 +231,7 @@ export function useUpdateOrderStage() {
       started_at?: string | null;
       completed_at?: string | null;
       completed_by?: string | null;
+      operator_employee_id?: string | null;
       quantity_processed?: number;
       observations?: string;
       defects?: string;

@@ -109,7 +109,7 @@ Deno.serve(async (req) => {
 
     const { data: items } = await adminClient
       .from("sale_order_items")
-      .select("*, technical_sheets(id, name, code, ncm, gestaoclick_id), reference_material_variants(sku, ncm, description_override, active, unit_price_override)")
+      .select("*, technical_sheets(id, name, code, ncm, gestaoclick_id), reference_material_variants(sku, ncm, description_override, active, unit_price_override), products(id, name, sku, ncm, gestaoclick_id, unit)")
       .eq("sale_order_id", sale_order_id)
       .order("created_at", { ascending: true })
       .order("id", { ascending: true });
@@ -181,14 +181,16 @@ Deno.serve(async (req) => {
 
     const itemsMissingNcm: string[] = [];
     for (const it of billableItems) {
-      const ncm = (it._variant?.ncm || it.technical_sheets?.ncm || "").trim();
+      // NF avulsa (product_id): usa NCM do produto direto.
+      // NF normal (reference_id): usa NCM da variant/ficha.
+      const ncm = (it._variant?.ncm || it.technical_sheets?.ncm || it.products?.ncm || "").trim();
       if (!ncm || ncm.length !== 8 || !/^\d{8}$/.test(ncm)) {
-        const ref = it.technical_sheets?.code || it.reference_id;
+        const ref = it.technical_sheets?.code || it.products?.sku || it.reference_id || it.product_id;
         itemsMissingNcm.push(`${ref} (NCM atual: "${ncm || "vazio"}")`);
       }
     }
     if (itemsMissingNcm.length > 0) {
-      return new Response(JSON.stringify({ error: `NCM ausente ou inválido (precisa 8 dígitos) nas referências: ${itemsMissingNcm.join("; ")}. Atualize a ficha técnica ou variação de material antes de emitir.` }), { status: 400, headers: corsHeaders });
+      return new Response(JSON.stringify({ error: `NCM ausente ou inválido (precisa 8 dígitos) nas referências: ${itemsMissingNcm.join("; ")}. Atualize a ficha técnica, variação de material ou produto antes de emitir.` }), { status: 400, headers: corsHeaders });
     }
 
     const effectivePrice = (it: any) => Number(it._variant?.unit_price_override ?? it.unit_price ?? 0);
@@ -263,14 +265,17 @@ Deno.serve(async (req) => {
     const produtosGC: any[] = [];
     for (const it of billableItems) {
       const ts = it.technical_sheets;
+      const prod = it.products; // NF avulsa: dados vêm de products
       const variant = it._variant;
-      const ncm = (variant?.ncm || ts?.ncm || "").trim();
+      const isStandalone = !ts && !!prod;
+      const ncm = (variant?.ncm || ts?.ncm || prod?.ncm || "").trim();
       const price = effectivePrice(it);
-      const baseName = ts?.name || "Produto";
+      const baseName = ts?.name || prod?.name || "Produto";
       const desc = (variant?.description_override || (it.color ? `${baseName} - ${it.color}` : baseName)).trim();
-      const codigo = variant?.sku || ts?.code || `ITEM-${ts?.id || it.reference_id}`;
+      const codigo = variant?.sku || ts?.code || prod?.sku || `ITEM-${ts?.id || prod?.id || it.reference_id}`;
+      const unidade = (prod?.unit || "PAR").toUpperCase();
 
-      let gcProductId = ts?.gestaoclick_id || null;
+      let gcProductId = ts?.gestaoclick_id || prod?.gestaoclick_id || null;
       if (!gcProductId) {
         const r = await gcFetch("/produtos", {
           method: "POST",
@@ -278,7 +283,7 @@ Deno.serve(async (req) => {
             nome: desc.slice(0, 120),
             codigo,
             valor_venda: price.toFixed(2),
-            unidade: "PAR",
+            unidade: isStandalone ? unidade : "PAR",
             ncm,
             tipo: "P",
           }),
@@ -291,6 +296,8 @@ Deno.serve(async (req) => {
         gcProductId = String(r.json?.data?.id);
         if (ts?.id) {
           await adminClient.from("technical_sheets").update({ gestaoclick_id: gcProductId }).eq("id", ts.id);
+        } else if (prod?.id) {
+          await adminClient.from("products").update({ gestaoclick_id: gcProductId }).eq("id", prod.id);
         }
       }
 
@@ -299,7 +306,7 @@ Deno.serve(async (req) => {
         quantidade: Number(it.quantity).toFixed(2),
         valor_venda: (Number(it.quantity) * price).toFixed(2),
         cfop: resolvedCfop,
-        unidade: "PAR",
+        unidade: isStandalone ? unidade : "PAR",
         NCM: ncm,
         tipo: "P",
       });

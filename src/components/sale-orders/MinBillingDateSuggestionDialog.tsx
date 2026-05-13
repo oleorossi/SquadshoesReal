@@ -149,6 +149,19 @@ export function MinBillingDateSuggestionDialog({
               <div className="text-sm text-muted-foreground mt-0.5">
                 a partir de <strong className="text-foreground">{formatBR(minDateISO)}</strong>
               </div>
+              {materialShortage ? (
+                <div className="mt-2 flex items-start gap-1.5 text-[11px] text-amber-700">
+                  <AlertTriangle className="h-3.5 w-3.5 mt-px shrink-0" />
+                  <span>
+                    Material precisa ser comprado — somados <strong>{supplierLeadDays} dias úteis</strong> de lead time do fornecedor.
+                  </span>
+                </div>
+              ) : (
+                <div className="mt-2 flex items-start gap-1.5 text-[11px] text-emerald-700">
+                  <Package className="h-3.5 w-3.5 mt-px shrink-0" />
+                  <span>Material disponível em estoque — sem espera por compra.</span>
+                </div>
+              )}
             </div>
           );
         })()}

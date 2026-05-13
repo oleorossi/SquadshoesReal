@@ -83,18 +83,24 @@ export interface PayrollResult {
   total_liquido: number;
 }
 
-// ── Tabelas INSS/IRRF (valores 2024/2025; usar config.notes para registrar versão) ──
-// INSS: alíquota incide sobre cada faixa (progressiva)
-const INSS_2026 = [
+// ── Tabelas INSS/IRRF ───────────────────────────────────────────────────────
+// ATENÇÃO: estas tabelas são publicadas pelo governo e mudam normalmente em
+// JANEIRO de cada ano. Quando mudar, atualizar AQUI e bumpar PAYROLL_TAX_YEAR.
+// O frontend exibe alerta âmbar em /payroll quando o ano da folha calculada
+// não bate com PAYROLL_TAX_YEAR.
+export const PAYROLL_TAX_YEAR = 2026;
+
+// INSS: alíquota incide sobre cada faixa (progressiva). Em ordem crescente.
+export const INSS_BANDS = [
   { upTo: 1412.00, rate: 0.075 },
   { upTo: 2666.68, rate: 0.09 },
   { upTo: 4000.03, rate: 0.12 },
   { upTo: 7786.02, rate: 0.14 },
 ];
-const INSS_CEILING_VALUE = 908.86; // INSS máximo (teto)
+export const INSS_CEILING_VALUE = 908.86; // INSS máximo (teto)
 
 // IRRF: alíquota progressiva com dedução
-const IRRF_2026 = [
+export const IRRF_BANDS = [
   { upTo: 2259.20, rate: 0,     deduction: 0 },
   { upTo: 2826.65, rate: 0.075, deduction: 169.44 },
   { upTo: 3751.05, rate: 0.15,  deduction: 381.44 },
@@ -106,7 +112,7 @@ export function calculateINSS(grossSalary: number): number {
   if (grossSalary <= 0) return 0;
   let total = 0;
   let prev = 0;
-  for (const band of INSS_2026) {
+  for (const band of INSS_BANDS) {
     if (grossSalary <= band.upTo) {
       total += (grossSalary - prev) * band.rate;
       return Number(total.toFixed(2));
@@ -120,7 +126,7 @@ export function calculateINSS(grossSalary: number): number {
 
 export function calculateIRRF(baseAfterINSS: number): number {
   if (baseAfterINSS <= 0) return 0;
-  for (const band of IRRF_2026) {
+  for (const band of IRRF_BANDS) {
     if (baseAfterINSS <= band.upTo) {
       const tax = baseAfterINSS * band.rate - band.deduction;
       return Math.max(0, Number(tax.toFixed(2)));

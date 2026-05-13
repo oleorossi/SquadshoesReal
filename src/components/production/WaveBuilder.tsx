@@ -10,6 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent } from '@/components/ui/card';
+import { todayISO } from '@/lib/date';
 import { CalendarBlank as CalendarDays, Package, Warning as AlertTriangle, Users, CaretDown as ChevronDown, CaretRight as ChevronRight, CheckCircle, XCircle, Clock, ShoppingBag, ArrowRight, Scissors, CircleNotch as Loader2, Wrench, MagnifyingGlass as Search, Hand, Pen, Printer, Flame, Hammer, Footprints, Sparkle as Sparkles, Truck } from '@phosphor-icons/react';
 import { snapToMonday } from '@/lib/isoWeek';
 import { useCreateWave } from '@/hooks/useProductionWaves';
@@ -77,7 +78,7 @@ function TimelinePanel({ tl }: { tl: WaveTimeline }) {
     { label: 'Entrega',        date: tl.earliest_deadline,           icon: CalendarDays,className: 'text-green-600 bg-green-500/10 border-green-500/20' },
   ].filter(Boolean) as { label: string; date: string; icon: React.ElementType; className: string }[];
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayISO();
 
   return (
     <div className="space-y-2">
@@ -505,7 +506,7 @@ export function WaveBuilder({
                                     <td className="px-2 py-2 text-center">
                                       {o.delivery_deadline && (
                                         <Badge variant="outline" className={cn('text-[10px] font-mono py-0',
-                                          o.delivery_deadline < new Date().toISOString().slice(0, 10) ? 'border-destructive/50 text-destructive' : '')}>
+                                          o.delivery_deadline < todayISO() ? 'border-destructive/50 text-destructive' : '')}>
                                           Entrega {fmtDate(o.delivery_deadline)}
                                         </Badge>
                                       )}

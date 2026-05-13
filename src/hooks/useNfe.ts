@@ -226,6 +226,96 @@ export function useSetPrimaryCompany() {
 
 // ─── Emit / Status / Cancel ──────────────────────────────────────────────────
 
+export interface StandaloneNfeItem {
+  product_id: string;
+  color: string;
+  quantity: number;
+  unit_price: number;
+  grade: Record<string, number>;
+}
+
+export interface StandaloneNfePayload {
+  clientId: string;
+  companyId?: string;
+  items: StandaloneNfeItem[];
+  notes?: string;
+}
+
+// Cria PV is_standalone_nfe=true com items via product_id e dispara emit-nfe.
+// emit-nfe edge function já foi adaptada (commit b8b1...): lê de products
+// quando reference_id é NULL.
+export function useEmitStandaloneNfe() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: StandaloneNfePayload) => {
+      if (!payload.clientId) throw new Error('Selecione um cliente');
+      if (payload.items.length === 0) throw new Error('Adicione ao menos um item');
+      if (payload.items.some(i => !i.product_id || i.quantity <= 0 || i.unit_price <= 0)) {
+        throw new Error('Itens devem ter produto, quantidade e preço > 0');
+      }
+
+      const { data: clientRow, error: clientErr } = await supabase
+        .from('clients')
+        .select('id, razao_social, cnpj')
+        .eq('id', payload.clientId)
+        .maybeSingle();
+      if (clientErr || !clientRow) throw new Error('Cliente não encontrado');
+
+      const total = payload.items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
+      const orderNumber = `NF-${new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)}`;
+
+      const { data: so, error: soErr } = await supabase
+        .from('sale_orders')
+        .insert({
+          order_number: orderNumber,
+          client_order_number: orderNumber,
+          client_id: clientRow.id,
+          client_name: clientRow.razao_social,
+          client_cnpj: clientRow.cnpj,
+          status: 'Faturado',
+          total,
+          is_standalone_nfe: true,
+          nfe_required: true,
+          notes: payload.notes || 'NF Avulsa — emitida diretamente sem PV de produção.',
+        } as any)
+        .select('id')
+        .single();
+      if (soErr || !so) throw new Error(`Erro ao criar PV avulso: ${soErr?.message}`);
+
+      const itemRows = payload.items.map(i => ({
+        sale_order_id: so.id,
+        product_id: i.product_id,
+        color: i.color || null,
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+        grade: i.grade,
+        fichas: i.quantity,
+      }));
+      const { error: itemsErr } = await supabase.from('sale_order_items').insert(itemRows as any);
+      if (itemsErr) {
+        await supabase.from('sale_orders').delete().eq('id', so.id);
+        throw new Error(`Erro ao criar itens: ${itemsErr.message}`);
+      }
+
+      const { data: nfeData, error: nfeErr } = await supabase.functions.invoke('emit-nfe', {
+        body: { sale_order_id: so.id, company_id: payload.companyId },
+      });
+      if (nfeErr) throw nfeErr;
+      if (nfeData?.error) throw new Error(nfeData.error);
+      return { sale_order_id: so.id, ...nfeData };
+    },
+    onSuccess: () => {
+      toast.success('NF Avulsa enviada para processamento!');
+    },
+    onError: (err: Error) => toast.error(`Erro ao emitir NF Avulsa: ${err.message}`),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['nfe_emitidas'] });
+      qc.invalidateQueries({ queryKey: ['nfe_emitidas_all'] });
+      qc.invalidateQueries({ queryKey: ['sale_orders'] });
+    },
+  });
+}
+
 export function useEmitNfe() {
   const qc = useQueryClient();
   return useMutation({

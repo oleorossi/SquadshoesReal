@@ -20,6 +20,7 @@ import {
   Employee, EmployeeAdvance,
 } from '@/hooks/useEmployees';
 import { useWorkSchedules } from '@/hooks/useTimesheet';
+import { useBenefitsConfig } from '@/hooks/useRH';
 import { toast } from 'sonner';
 import AppLayout from '@/components/layout/AppLayout';
 
@@ -45,6 +46,8 @@ export default function Employees() {
   const { data: employees = [], isLoading, isError } = useEmployees();
   const { data: advances = [] } = useEmployeeAdvances(null);
   const { data: schedules = [] } = useWorkSchedules();
+  const { data: benefitsConfig } = useBenefitsConfig();
+  const monthlyHours = benefitsConfig?.monthly_hours || 220;
   const addEmployee = useAddEmployee();
   const updateEmployee = useUpdateEmployee();
   const deleteEmployee = useDeleteEmployee();
@@ -234,7 +237,7 @@ export default function Employees() {
                     </TableRow>
                   )}
                   {filteredEmployees.map(e => {
-                    const hourlyCLT = e.salary > 0 ? e.salary / 220 : null;
+                    const hourlyCLT = e.salary > 0 ? e.salary / monthlyHours : null;
                     const schedule = schedules.find(s => s.id === e.work_schedule_id);
                     const defaultSchedule = schedules.find(s => s.is_default);
                     const effectiveSchedule = schedule || defaultSchedule;

@@ -287,6 +287,9 @@ export default function PainelRH({ onNavigateTab }: Props) {
         </Card>
       )}
 
+      {/* Provisões CLT — 13º, Férias, FGTS */}
+      <CltProvisionsCard />
+
       {/* Headcount evolução */}
       <Card>
         <CardHeader className="pb-2">
@@ -473,5 +476,83 @@ function BankHoursAlertList({
         )}
       </div>
     </div>
+  );
+}
+
+// ── Provisões CLT (13º, Férias, FGTS) ──────────────────────────────────────
+function CltProvisionsCard() {
+  const { data: summary, isLoading } = useQuery({
+    queryKey: ['clt_provisions_summary'],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('v_clt_provisions_summary')
+        .select('*')
+        .maybeSingle();
+      if (error) throw error;
+      return data as {
+        period: string;
+        active_employees: number;
+        provisao_13o_mes_atual: number;
+        provisao_13o_acumulada: number;
+        provisao_ferias_total: number;
+        fgts_mes_atual: number;
+        fgts_ano_atual: number;
+      } | null;
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  if (isLoading) return null;
+  if (!summary) return null;
+
+  return (
+    <Card className="border-amber-300/40 bg-amber-50/20 dark:bg-amber-950/10">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <FileText className="h-4 w-4 text-amber-600" /> Provisões CLT — {summary.period}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="rounded-lg border border-amber-300/40 bg-card p-3">
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
+              13º salário acumulado
+            </p>
+            <p className="text-xl font-bold text-amber-700 font-mono">
+              {fmt(summary.provisao_13o_acumulada)}
+            </p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              + {fmt(summary.provisao_13o_mes_atual)} este mês ({summary.active_employees} func.)
+            </p>
+          </div>
+          <div className="rounded-lg border border-amber-300/40 bg-card p-3">
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
+              Férias (incl. 1/3 constitucional)
+            </p>
+            <p className="text-xl font-bold text-amber-700 font-mono">
+              {fmt(summary.provisao_ferias_total)}
+            </p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              Adquiridas + período em curso
+            </p>
+          </div>
+          <div className="rounded-lg border border-amber-300/40 bg-card p-3">
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
+              FGTS 8% do mês
+            </p>
+            <p className="text-xl font-bold text-amber-700 font-mono">
+              {fmt(summary.fgts_mes_atual)}
+            </p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              {fmt(summary.fgts_ano_atual)} no ano · depositar até dia 7
+            </p>
+          </div>
+        </div>
+        <p className="text-[11px] text-muted-foreground mt-2 italic">
+          Provisões calculadas em tempo real. Lance manualmente em Financeiro → Despesa
+          quando fizer o fechamento contábil mensal.
+        </p>
+      </CardContent>
+    </Card>
   );
 }

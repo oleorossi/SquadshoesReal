@@ -67,6 +67,21 @@ interface CategoryDefaultsRow {
   lead_time_acabamento_dias?: number | null;
 }
 
+// HISTÓRICO IMPORTANTE — nomes de colunas vs. setores atuais:
+//
+// Antes do PR 1-3 (rename de setores em 20260506120000+), a fábrica tinha:
+//   - "Corte" (palmilha) ↔ usava `sewing_capacity_per_day`
+//   - "Costura" (forração) ↔ usava `cutting_capacity_per_day`
+//
+// Depois do rename, "Costura" foi DIVIDIDO em dois setores físicos:
+//   - "Corte Palmilha" — herda a coluna legacy `sewing_capacity_per_day`
+//   - "Corte Forração" — herda a coluna legacy `cutting_capacity_per_day`
+//   - "Costura" (novo, PR 2) — coluna nova `costura_capacity_per_day`
+//
+// Manter os mapeamentos legados (sewing→palmilha, cutting→forração) evita
+// migração destrutiva de dados em fichas técnicas existentes. Os nomes de
+// coluna parecem invertidos mas refletem a evolução do schema. Não renomear
+// sem migração de dados.
 const SECTOR_CONFIG: Record<SectorKey, {
   capField: keyof SheetCapacityRow;
   ltField: keyof SheetCapacityRow;
