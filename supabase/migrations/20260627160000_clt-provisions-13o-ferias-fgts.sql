@@ -54,7 +54,7 @@ SELECT
   CASE
     WHEN e.admission_date > DATE(params.current_year || '-' || LPAD(params.current_month::text, 2, '0') || '-01')
       THEN ROUND(e.salary * (
-        (DATE(params.current_year || '-' || LPAD(params.current_month::text, 2, '0') || '-01') + INTERVAL '1 month' - 1 - e.admission_date)::int
+        ((DATE(params.current_year || '-' || LPAD(params.current_month::text, 2, '0') || '-01') + INTERVAL '1 month' - INTERVAL '1 day')::date - e.admission_date)
         / 30.0
       ) / 12.0, 2)
     ELSE ROUND(e.salary / 12.0, 2)
@@ -116,29 +116,18 @@ COMMENT ON VIEW public.v_employee_vacation_balance IS
 
 
 -- ─── 3. View v_employee_fgts_provision (8% mensal) ──────────────────────────
--- FGTS = 8% sobre proventos brutos do mês (base = salário + HE + adic.noturno
--- + DSR + 13º). Aqui só sobre payroll_runs já calculados — provisão precisa
--- de folha rodada no mês.
+-- FGTS = 8% sobre proventos brutos do mês. Schema atual de payroll_runs tem
+-- base_salary + overtime_amount apenas (não há colunas separadas pra adic.
+-- noturno/DSR). Quando essas colunas forem adicionadas, recriar a view.
 CREATE OR REPLACE VIEW public.v_employee_fgts_provision AS
 SELECT
   pr.employee_id,
   e.name AS employee_name,
   pr.period,
   pr.base_salary,
-  pr.overtime_50_value,
-  pr.overtime_100_value,
-  pr.night_bonus_value,
-  pr.dsr_value,
-  pr.total_proventos,
-  -- Base FGTS: total de proventos (sem benefícios — VR/VA não compõem base)
-  ROUND(
-    (pr.base_salary + pr.overtime_50_value + pr.overtime_100_value
-      + pr.night_bonus_value + pr.dsr_value), 2
-  ) AS fgts_base,
-  ROUND(
-    (pr.base_salary + pr.overtime_50_value + pr.overtime_100_value
-      + pr.night_bonus_value + pr.dsr_value) * 0.08, 2
-  ) AS fgts_valor,
+  pr.overtime_amount,
+  ROUND((pr.base_salary + COALESCE(pr.overtime_amount, 0)), 2) AS fgts_base,
+  ROUND((pr.base_salary + COALESCE(pr.overtime_amount, 0)) * 0.08, 2) AS fgts_valor,
   pr.status AS payroll_status
 FROM public.payroll_runs pr
 JOIN public.employees e ON e.id = pr.employee_id
@@ -147,10 +136,9 @@ WHERE pr.status IN ('aprovado', 'pago');
 GRANT SELECT ON public.v_employee_fgts_provision TO authenticated;
 
 COMMENT ON VIEW public.v_employee_fgts_provision IS
-  'Provisão FGTS 8% sobre proventos do mês. Base = salário + HE + adic.noturno '
-  '+ DSR. VR/VA NÃO compõem base FGTS. Patrão deposita em conta vinculada CEF '
-  'até dia 7 do mês seguinte. Operador deve lançar em financial_entries '
-  '(reference_type=payroll_fgts).';
+  'Provisão FGTS 8% sobre proventos do mês. Base = base_salary + overtime_amount '
+  'do payroll_runs. Patrão deposita em conta vinculada CEF até dia 7 do mês '
+  'seguinte. Operador deve lançar em financial_entries (reference_type=payroll_fgts).';
 
 
 -- ─── 4. View v_clt_provisions_summary (agregado por mês) ────────────────────
