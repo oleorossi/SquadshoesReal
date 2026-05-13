@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import {
   Warning as AlertTriangle, Pen, Hand, Scissors, Stack as Layers,
-  ArrowRight, Calendar, Buildings, Package as Boxes,
+  Calendar, Buildings, Package as Boxes,
 } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -10,9 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { EmptyState } from '@/components/ui/empty-state';
 import {
   useSectorBottlenecks, useActiveBottlenecks, SECTOR_LABEL, SectorKey,
-  type SectorBottleneck, type ContributingOrder,
+  type SectorBottleneck,
 } from '@/hooks/useSectorBottlenecks';
-import { GenerateServiceOrderDialog } from '@/components/bottlenecks/GenerateServiceOrderDialog';
 import { BulkAssignServiceOrderDialog } from '@/components/bottlenecks/BulkAssignServiceOrderDialog';
 import { cn } from '@/lib/utils';
 
@@ -53,19 +52,8 @@ export default function BottlenecksPage() {
   const { data: all = [], isLoading } = useSectorBottlenecks();
   const { data: active = [] } = useActiveBottlenecks();
 
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [selectedOrder, setSelectedOrder] = useState<ContributingOrder | null>(null);
-  const [selectedSector, setSelectedSector] = useState<SectorKey>('costura');
-  const [selectedWeek, setSelectedWeek] = useState<string>('');
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkBottleneck, setBulkBottleneck] = useState<SectorBottleneck | null>(null);
-
-  const openDialog = (b: SectorBottleneck, order: ContributingOrder) => {
-    setSelectedOrder(order);
-    setSelectedSector(b.sector);
-    setSelectedWeek(b.week_start);
-    setDialogOpen(true);
-  };
 
   const openBulkDialog = (b: SectorBottleneck) => {
     setBulkBottleneck(b);
@@ -194,7 +182,6 @@ export default function BottlenecksPage() {
                         <TableHead className="text-right">Pares</TableHead>
                         <TableHead className="text-right">Pares/dia</TableHead>
                         <TableHead>Entrega</TableHead>
-                        <TableHead className="text-right">Ação</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -210,18 +197,6 @@ export default function BottlenecksPage() {
                           <TableCell className="text-xs text-muted-foreground">
                             <Calendar className="inline h-3 w-3 mr-1" />
                             {new Date(o.planned_delivery + 'T00:00:00').toLocaleDateString('pt-BR')}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-[11px]"
-                              onClick={() => openDialog(b, o)}
-                            >
-                              <Buildings className="h-3 w-3 mr-1" />
-                              Gerar OS
-                              <ArrowRight className="h-3 w-3 ml-1" />
-                            </Button>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -273,14 +248,6 @@ export default function BottlenecksPage() {
           </CardContent>
         </Card>
       )}
-
-      <GenerateServiceOrderDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        contributingOrder={selectedOrder}
-        sector={selectedSector}
-        weekStart={selectedWeek}
-      />
 
       {bulkBottleneck && (
         <BulkAssignServiceOrderDialog

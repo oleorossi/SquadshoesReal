@@ -63,65 +63,6 @@ export function useActiveBottlenecks() {
   return { ...all, data };
 }
 
-// Criar OS terceirizada a partir de um gargalo específico.
-// Diferente do fluxo legacy: o prazo é cadastrado JÁ NA CRIAÇÃO. A OP fica
-// bloqueada de avançar pra Montagem até a OS ser marcada como recebida.
-export interface CreateServiceOrderForBottleneckInput {
-  contractor_id: string;
-  order_id: string;
-  sale_order_id: string | null;
-  target_sector: SectorKey;
-  bottleneck_week: string; // ISO date
-  quantity: number;
-  unit_price: number;
-  quoted_deadline: string; // ISO date — prazo combinado com a contratada
-  description?: string;
-  notes?: string;
-}
-
-export function useCreateServiceOrderForBottleneck() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: CreateServiceOrderForBottleneckInput) => {
-      const total = (input.quantity || 0) * (input.unit_price || 0);
-      const today = new Date().toISOString().slice(0, 10);
-      const { data, error } = await (supabase as any)
-        .from('service_orders')
-        .insert({
-          contractor_id: input.contractor_id,
-          order_id: input.order_id,
-          sale_order_id: input.sale_order_id,
-          target_sector: input.target_sector,
-          bottleneck_week: input.bottleneck_week,
-          quantity: input.quantity,
-          unit_price: input.unit_price,
-          total_value: total,
-          service_date: today,
-          // Prazo já combinado → status 'quoted'. OP destrava só quando OS for
-          // marcada como 'received' (peças entregues), não no cadastro do prazo.
-          status: 'quoted',
-          quoted_at: new Date().toISOString(),
-          quoted_deadline: input.quoted_deadline,
-          description: input.description || `Cobertura de gargalo em ${SECTOR_LABEL[input.target_sector]} — semana ${input.bottleneck_week}`,
-          notes: input.notes ?? null,
-          order_number: `OS-GARG-${Date.now()}`,
-        })
-        .select('*')
-        .single();
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['service_orders'] });
-      qc.invalidateQueries({ queryKey: ['v_sector_bottlenecks'] });
-      toast.success('OS criada com prazo. A OP fica bloqueada pra Montagem até as peças serem recebidas.');
-    },
-    onError: (err: any) => {
-      toast.error(`Falha ao criar OS: ${err.message || 'erro desconhecido'}`);
-    },
-  });
-}
-
 // OS ativas (não recebidas / não canceladas) pra um determinado gargalo
 // (sector + week_start). Permite ao usuário ver se já encaminhou demanda
 // e sugerir o mesmo terceirizado para a próxima.
@@ -182,6 +123,15 @@ export function useBulkAssignServiceOrders() {
       }
 
       const today = new Date().toISOString().slice(0, 10);
+      // Lista completa de OPs que originaram a demanda — repetida em cada
+      // OS pra dar contexto à contratada de qual lote ela está cobrindo.
+      const allOpNumbers = input.contributing_orders.map(o => o.order_number).join(', ');
+      const totalPairsInBatch = input.contributing_orders.reduce((s, o) => s + o.quantity, 0);
+      const notesPrefix =
+        `Demanda agregada do gargalo ${SECTOR_LABEL[input.target_sector]} ` +
+        `(semana de ${input.bottleneck_week}).\n` +
+        `OPs cobertas neste lote (${input.contributing_orders.length}): ${allOpNumbers}.\n` +
+        `Total agregado do lote: ${totalPairsInBatch} pares.`;
       const rows = toCreate.map((o, i) => ({
         contractor_id: input.contractor_id,
         order_id: o.order_id,
@@ -196,6 +146,7 @@ export function useBulkAssignServiceOrders() {
         quoted_at: new Date().toISOString(),
         quoted_deadline: input.quoted_deadline,
         description: `Cobertura de gargalo ${SECTOR_LABEL[input.target_sector]} (lote) — OP ${o.order_number}`,
+        notes: notesPrefix,
         order_number: `OS-GARG-${Date.now()}-${i}`,
       }));
 
