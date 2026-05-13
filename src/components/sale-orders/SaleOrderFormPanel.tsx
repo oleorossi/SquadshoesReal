@@ -1131,7 +1131,14 @@ export default function SaleOrderFormPanel({
                 <div className="hidden sm:block h-8 w-px bg-border" />
                 <div className="flex flex-col">
                   <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Valor Total</span>
-                  <span className="font-mono font-bold text-base sm:text-xl text-primary tracking-tight leading-none">{formatCurrency(totalValue)}</span>
+                  <span className="font-mono font-bold text-base sm:text-xl text-primary tracking-tight leading-none">
+                    {formatCurrency(totalValue + estimatedShippingCost)}
+                  </span>
+                  {estimatedShippingCost > 0 && (
+                    <span className="text-[10px] text-muted-foreground font-mono mt-0.5">
+                      mercadoria {formatCurrency(totalValue)} + frete {formatCurrency(estimatedShippingCost)}
+                    </span>
+                  )}
                 </div>
               </div>
 
