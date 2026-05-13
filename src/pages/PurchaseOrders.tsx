@@ -21,6 +21,7 @@ import { printPurchaseOrderGrouped, printSupplierPOs } from '@/lib/printPurchase
 import { format } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 const STATUS_MAP: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
   pending: { label: 'Pendente', variant: 'outline' },
@@ -150,28 +151,24 @@ export default function PurchaseOrders() {
   };
 
   return (
-    <div className="w-full space-y-6 page-enter">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
-              <ShoppingCart className="h-6 w-6 text-primary" />
-              Ordens de Compra
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Gestão de compras e reposição de estoque
-            </p>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            {overdueCount > 0 && (
-               <Badge variant="destructive" className="gap-1 text-sm px-3 py-1">
-                 <AlertTriangle className="h-3.5 w-3.5" /> {overdueCount} em atraso
-               </Badge>
-             )}
-             <Button onClick={() => setCreateDialogOpen(true)} className="gap-2">
-               <Plus className="h-4 w-4" /> Nova OC
-             </Button>
-           </div>
-         </div>
+    <div className="w-full space-y-6 page-enter editorial-stagger">
+        <EditorialPageHeader
+          sectionLabel="COMPRAS · ORDENS"
+          title="Ordens de Compra"
+          description="Gestão de compras e reposição de estoque"
+          actions={
+            <>
+              {overdueCount > 0 && (
+                <Badge variant="destructive" className="gap-1 text-sm px-3 py-1">
+                  <AlertTriangle className="h-3.5 w-3.5" /> {overdueCount} em atraso
+                </Badge>
+              )}
+              <Button onClick={() => setCreateDialogOpen(true)} className="gap-2">
+                <Plus className="h-4 w-4" /> Nova OC
+              </Button>
+            </>
+          }
+        />
 
         <Tabs defaultValue="all" className="space-y-6">
           <TabsList>

@@ -28,6 +28,7 @@ import {
   STAGE_LABEL, STAGE_ORDER, WAVE_STATUS_LABEL,
   type ProductionWave, type WaveStatus,
 } from '@/types/production-waves';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 type StatusFilter = 'all' | WaveStatus;
 
@@ -411,32 +412,26 @@ export default function ProductionWavesPage() {
   }, [filtered]);
 
   return (
-    <div className="p-6 space-y-5 page-enter">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
-            <Package className="w-6 h-6 text-primary" />
-            Ondas de Produção
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Gerencie ondas semanais: pedidos agrupados por solado → referência → cor,
-            fluindo em sequência pelos setores produtivos.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button asChild variant="outline" size="sm">
-            <Link to="/pcp">
-              <Truck className="w-4 h-4 mr-1" />
-              Painel PCP
-            </Link>
-          </Button>
-          <Button onClick={() => setBuilderOpen(true)}>
-            <Plus className="w-4 h-4 mr-1" />
-            Nova onda
-          </Button>
-        </div>
-      </div>
+    <div className="p-6 space-y-5 page-enter editorial-stagger">
+      <EditorialPageHeader
+        sectionLabel="PCP · ONDAS"
+        title="Ondas de Produção"
+        description="Gerencie ondas semanais: pedidos agrupados por solado → referência → cor, fluindo em sequência pelos setores produtivos."
+        actions={
+          <>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/pcp">
+                <Truck className="w-4 h-4 mr-1" />
+                Painel PCP
+              </Link>
+            </Button>
+            <Button onClick={() => setBuilderOpen(true)}>
+              <Plus className="w-4 h-4 mr-1" />
+              Nova onda
+            </Button>
+          </>
+        }
+      />
 
       {/* Métricas */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
