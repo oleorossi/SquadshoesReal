@@ -43,6 +43,7 @@ import { openPrintWindow, writeRawPrintWindow } from '@/lib/printOrder';
 import { todayISO, todayPlusDaysISO } from '@/lib/date';
 import logoImg from '@/assets/logo-squad-shoes.jpg';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { getValidNextStatuses } from '@/lib/saleOrderStateMachine';
 
 const STATUS_OPTIONS = ['Rascunho', 'Aprovado', 'Em Produção', 'Faturado', 'Finalizado s/ NF', 'Cancelado'] as const;
 
@@ -1699,14 +1700,19 @@ export default function SaleOrders() {
                             </Badge>
                           </SelectTrigger>
                           <SelectContent>
-                            {STATUS_OPTIONS.map(s => (
-                              <SelectItem key={s} value={s}>
-                                <span className="flex items-center gap-2">
-                                  <span className={`h-2 w-2 rounded-full ${STATUS_DOT[s]}`} />
-                                  {s}
-                                </span>
-                              </SelectItem>
-                            ))}
+                            {(() => {
+                              // Mostra apenas transições válidas pela state machine
+                              // (+ o status atual, pra que a Select tenha um valor selecionável).
+                              const allowed = new Set([order.status, ...getValidNextStatuses(order.status)]);
+                              return STATUS_OPTIONS.filter(s => allowed.has(s)).map(s => (
+                                <SelectItem key={s} value={s}>
+                                  <span className="flex items-center gap-2">
+                                    <span className={`h-2 w-2 rounded-full ${STATUS_DOT[s]}`} />
+                                    {s}
+                                  </span>
+                                </SelectItem>
+                              ));
+                            })()}
                           </SelectContent>
                         </Select>
                       </TableCell>
