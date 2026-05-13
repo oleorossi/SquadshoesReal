@@ -23,7 +23,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Filter, Plus } from 'lucide-react';
+import { Funnel as Filter, Plus } from '@phosphor-icons/react';
 import { Corte, Costura, Montagem, Acabamento, Embalagem } from '@/components/icons/SectorIcons';
 import { Button } from '@/components/ui/button';
 

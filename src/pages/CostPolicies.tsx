@@ -17,7 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Save, RefreshCw, Calculator, Box, Truck, Receipt, Percent, AlertCircle } from 'lucide-react';
+import { FloppyDisk as Save, ArrowsClockwise as RefreshCw, Calculator, Cube as Box, Truck, Receipt, Percent, WarningCircle as AlertCircle } from '@phosphor-icons/react';
 
 function fmt(v: number) {
   return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

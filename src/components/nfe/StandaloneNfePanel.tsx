@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Loader2, Plus, Trash2, FileText, Search } from 'lucide-react';
+import { CircleNotch as Loader2, Plus, Trash as Trash2, FileText, MagnifyingGlass as Search } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';

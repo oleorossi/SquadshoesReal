@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowRightLeft, AlertTriangle, CheckCircle2, Info, BookOpen, Search } from 'lucide-react';
+import { ArrowsLeftRight as ArrowRightLeft, Warning as AlertTriangle, CheckCircle as CheckCircle2, Info, BookOpen, MagnifyingGlass as Search } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 
 type ProductRow = {

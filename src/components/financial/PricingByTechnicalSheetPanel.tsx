@@ -17,7 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Calculator, FileText, AlertTriangle, RefreshCw, UserCheck, Box, Percent, Save, History, Trash2 } from 'lucide-react';
+import { Calculator, FileText, Warning as AlertTriangle, ArrowsClockwise as RefreshCw, UserCheck, Cube as Box, Percent, FloppyDisk as Save, ClockCounterClockwise as History, Trash as Trash2 } from '@phosphor-icons/react';
 import { useCostPolicies } from '@/hooks/useCostPolicies';
 import { useLaborCosts } from '@/hooks/useFinanceAdvanced';
 import { useTechnicalSheets, useSheetMaterials } from '@/hooks/useTechnicalSheets';

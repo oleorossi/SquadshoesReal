@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Loader2, Upload, FileCheck, Building2 } from 'lucide-react';
+import { FloppyDisk as Save, CircleNotch as Loader2, Upload, FileCheck, Buildings as Building2 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';

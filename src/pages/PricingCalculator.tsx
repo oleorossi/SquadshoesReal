@@ -13,7 +13,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Calculator, FileText } from 'lucide-react';
+import { Calculator, FileText } from '@phosphor-icons/react';
 import PricingCalculatorPanel from '@/components/financial/PricingCalculatorPanel';
 import PricingByTechnicalSheetPanel from '@/components/financial/PricingByTechnicalSheetPanel';
 

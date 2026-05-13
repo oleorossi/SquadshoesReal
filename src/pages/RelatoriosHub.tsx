@@ -13,9 +13,9 @@ import { Link } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
-  CalendarDays, FileBarChart, TrendingUp, ShieldCheck,
-  AlertTriangle, BarChart3, ArrowRight,
-} from 'lucide-react';
+  CalendarBlank as CalendarDays, ChartBar as FileBarChart, TrendUp as TrendingUp, ShieldCheck,
+  Warning as AlertTriangle, ChartBar as BarChart3, ArrowRight,
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 
 type ReportEntry = {
