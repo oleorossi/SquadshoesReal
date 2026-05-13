@@ -591,6 +591,12 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       return;
     }
     const baseData = { ...form };
+    // Unidade de estoque == unidade de consumo: sincronizamos sempre que houver
+    // unit definido. Form tem só "Unidade de Consumo" (que escreve em form.unit)
+    // — espelhamos no consumption_unit pra manter as duas colunas alinhadas.
+    if (baseData.unit) {
+      baseData.consumption_unit = baseData.unit;
+    }
     if (hasGrade) {
       baseData.min_stock_grade = minStockGrade;
       baseData.min_stock = Object.values(minStockGrade).reduce((s, v) => s + (v || 0), 0);
@@ -1578,14 +1584,14 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
               <Label className="text-sm font-semibold">Unidades de Medida</Label>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-xs text-muted-foreground">Unidade de Estoque</Label>
+                  <Label className="text-xs text-muted-foreground">Unidade de Consumo</Label>
                   <Select value={form.unit} onValueChange={v => update('unit', v)}>
                     <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {UNITS.map(u => <SelectItem key={u} value={u}>{UNIT_LABELS[u] ?? u}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Unidade usada para controle de estoque e consumo</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Mesma unidade usada no estoque e nas fichas técnicas</p>
                 </div>
                 <div>
                   <Label className="text-xs text-muted-foreground">Unidade de Compra</Label>
