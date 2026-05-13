@@ -215,7 +215,7 @@ function VariantDetailSheet({ open, onOpenChange, product, otherVariants }: {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">Quantidade atual <span className="text-muted-foreground font-mono">({form.unit ?? 'un'})</span></Label>
-                <Input type="number" min={0} value={form.quantity ?? 0} onChange={e => update('quantity', Number(e.target.value))} className="mt-1 h-9 font-mono" />
+                <Input type="number" step="0.01" min={0} value={form.quantity ?? 0} onChange={e => update('quantity', Number(String(e.target.value).replace(',', '.')))} className="mt-1 h-9 font-mono" />
               </div>
               <div>
                 <Label className="text-xs">Unidade</Label>
@@ -226,14 +226,14 @@ function VariantDetailSheet({ open, onOpenChange, product, otherVariants }: {
               </div>
               <div>
                 <Label className="text-xs">Estoque mínimo <span className="text-muted-foreground font-mono">({form.unit ?? 'un'})</span></Label>
-                <Input type="number" min={0} value={form.min_stock ?? 0} onChange={e => update('min_stock', Number(e.target.value))} className="mt-1 h-9 font-mono" />
+                <Input type="number" step="0.01" min={0} value={form.min_stock ?? 0} onChange={e => update('min_stock', Number(String(e.target.value).replace(',', '.')))} className="mt-1 h-9 font-mono" />
               </div>
               {/* Removidos em 2026-05 a pedido do usuário:
                   - "Estoque máximo": nunca usado em business logic
                   - "Estoque de segurança": duplicava conceitualmente o mínimo */}
               <div>
                 <Label className="text-xs">Reservado <span className="text-muted-foreground font-mono">({form.unit ?? 'un'})</span></Label>
-                <Input type="number" min={0} value={form.reserved_stock ?? 0} onChange={e => update('reserved_stock', Number(e.target.value))} className="mt-1 h-9 font-mono" />
+                <Input type="number" step="0.01" min={0} value={form.reserved_stock ?? 0} onChange={e => update('reserved_stock', Number(String(e.target.value).replace(',', '.')))} className="mt-1 h-9 font-mono" />
               </div>
             </div>
             <div>
@@ -251,15 +251,15 @@ function VariantDetailSheet({ open, onOpenChange, product, otherVariants }: {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">Custo unitário (R$)</Label>
-                <Input type="number" step="0.0001" min={0} value={form.unit_price ?? 0} onChange={e => update('unit_price', Number(e.target.value))} className="mt-1 h-9 font-mono" />
+                <Input type="number" step="0.0001" min={0} value={form.unit_price ?? 0} onChange={e => update('unit_price', Number(String(e.target.value).replace(',', '.')))} className="mt-1 h-9 font-mono" />
               </div>
               <div>
                 <Label className="text-xs">Preço atacado (R$)</Label>
-                <Input type="number" step="0.01" min={0} value={form.price_wholesale ?? 0} onChange={e => update('price_wholesale', Number(e.target.value))} className="mt-1 h-9 font-mono" />
+                <Input type="number" step="0.01" min={0} value={form.price_wholesale ?? 0} onChange={e => update('price_wholesale', Number(String(e.target.value).replace(',', '.')))} className="mt-1 h-9 font-mono" />
               </div>
               <div>
                 <Label className="text-xs">Preço varejo (R$)</Label>
-                <Input type="number" step="0.01" min={0} value={form.price_retail ?? 0} onChange={e => update('price_retail', Number(e.target.value))} className="mt-1 h-9 font-mono" />
+                <Input type="number" step="0.01" min={0} value={form.price_retail ?? 0} onChange={e => update('price_retail', Number(String(e.target.value).replace(',', '.')))} className="mt-1 h-9 font-mono" />
               </div>
               <div>
                 <Label className="text-xs">Lead time (dias)</Label>
@@ -267,7 +267,7 @@ function VariantDetailSheet({ open, onOpenChange, product, otherVariants }: {
               </div>
               <div className="col-span-2">
                 <Label className="text-xs">Quantidade mínima de compra</Label>
-                <Input type="number" min={0} value={form.min_order_quantity ?? 0} onChange={e => update('min_order_quantity', Number(e.target.value))} className="mt-1 h-9 font-mono" />
+                <Input type="number" step="0.01" min={0} value={form.min_order_quantity ?? 0} onChange={e => update('min_order_quantity', Number(String(e.target.value).replace(',', '.')))} className="mt-1 h-9 font-mono" />
               </div>
             </div>
             <div>
