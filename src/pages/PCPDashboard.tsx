@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { ChartBar as BarChart3, TrendUp as TrendingUp, Clock, Warning as AlertTriangle, Factory, Package, CheckCircle as CheckCircle2, XCircle } from '@phosphor-icons/react';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useOrders } from '@/hooks/useOrders';
@@ -109,16 +110,29 @@ export default function PCPDashboard() {
   }, [orders]);
 
   return (
-    
-      <div className="w-full space-y-6 page-enter">
-        <div className="flex items-center gap-2">
-          <BarChart3 className="h-6 w-6 text-primary" />
-          <h1 className="text-xl font-bold">Dashboard PCP</h1>
-          <Badge variant="secondary">{productionOrders.length} OPs em produção</Badge>
+
+      <div className="editorial-container editorial-stagger w-full space-y-6 page-enter">
+        <EditorialPageHeader
+          sectionNumber="02"
+          sectionLabel="PCP · VISÃO GERAL"
+          title="PCP"
+          description="Planejamento e controle de produção: WIP por setor, rendimento, lead time e qualidade."
+          actions={
+            <Badge variant="secondary" className="gap-1.5">
+              <BarChart3 className="h-3.5 w-3.5" />
+              {productionOrders.length} OPs em produção
+            </Badge>
+          }
+        />
+
+        {/* Section header: KPIs */}
+        <div className="flex items-baseline gap-3 pt-2">
+          <span className="font-display text-2xl text-muted-foreground tabular-nums">01</span>
+          <span className="section-label">Indicadores</span>
         </div>
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <Card>
             <CardContent className="p-3 text-center">
               <Factory className="h-5 w-5 mx-auto text-primary mb-1" />
@@ -163,8 +177,14 @@ export default function PCPDashboard() {
           </Card>
         </div>
 
+        {/* Section header: Charts */}
+        <div className="flex items-baseline gap-3 pt-2">
+          <span className="font-display text-2xl text-muted-foreground tabular-nums">02</span>
+          <span className="section-label">Distribuição</span>
+        </div>
+
         {/* Charts */}
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid sm:grid-cols-1 md:grid-cols-2 gap-4">
           {/* WIP by Sector */}
           <Card>
             <CardHeader className="pb-2">
@@ -214,6 +234,12 @@ export default function PCPDashboard() {
           </Card>
         </div>
 
+        {/* Section header: Detalhamento */}
+        <div className="flex items-baseline gap-3 pt-2">
+          <span className="font-display text-2xl text-muted-foreground tabular-nums">03</span>
+          <span className="section-label">Detalhamento por Setor</span>
+        </div>
+
         {/* Sector Detail Table */}
         <Card>
           <CardHeader className="pb-2">
@@ -252,6 +278,14 @@ export default function PCPDashboard() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Section header: Qualidade */}
+        {qualityRecords.length > 0 && (
+          <div className="flex items-baseline gap-3 pt-2">
+            <span className="font-display text-2xl text-muted-foreground tabular-nums">04</span>
+            <span className="section-label">Qualidade</span>
+          </div>
+        )}
 
         {/* Recent Quality Issues */}
         {qualityRecords.length > 0 && (

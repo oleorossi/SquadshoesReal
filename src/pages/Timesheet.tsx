@@ -41,6 +41,7 @@ import { useBankHoursBalances } from '@/hooks/useRH';
 import { getBatchDateRange, resolveTimeControlFilters } from '@/lib/timeControlFilters';
 import { calculateWeeklyPeriod } from '@/lib/weeklyTimeCalculation';
 import { findEmployeeMatch, resolveEmployeeName } from '@/lib/employeeMatching';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
@@ -1522,13 +1523,12 @@ export default function Timesheet() {
   const initialTab = searchParams.get('tab') || 'records';
   return (
     <AppLayout>
-      <div className="space-y-5 page-enter">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
-            <Clock className="h-6 w-6" /> Controle de Ponto
-          </h1>
-          <p className="text-sm text-muted-foreground">Importação de ponto, horários, feriados e cálculo de horas extras</p>
-        </div>
+      <div className="space-y-5 page-enter editorial-stagger">
+        <EditorialPageHeader
+          sectionLabel="RH · PONTO"
+          title="Controle de Ponto"
+          description="Importação de ponto, horários, feriados e cálculo de horas extras"
+        />
 
         <Tabs defaultValue={initialTab} className="space-y-4">
           <HubTabsList tabs={[

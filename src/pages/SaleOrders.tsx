@@ -40,6 +40,7 @@ import { buildThermalLabelsHtml } from '@/lib/printLabels';
 import { openPrintWindow, writeRawPrintWindow } from '@/lib/printOrder';
 import { todayISO, todayPlusDaysISO } from '@/lib/date';
 import logoImg from '@/assets/logo-squad-shoes.jpg';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 const STATUS_OPTIONS = ['Rascunho', 'Aprovado', 'Em Produção', 'Faturado', 'Finalizado s/ NF', 'Cancelado'] as const;
 
@@ -1145,14 +1146,13 @@ export default function SaleOrders() {
 
   return (
     <>
-      <div className="w-full space-y-6 page-enter">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-bold tracking-tight">Pedidos de Venda</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">Gestão comercial e geração de ordens de produção</p>
-          </div>
-          <div className="flex items-center gap-2">
+      <div className="w-full space-y-6 page-enter editorial-stagger">
+        <EditorialPageHeader
+          sectionLabel="COMERCIAL · PV"
+          title="Pedidos de Venda"
+          description="Gestão comercial e geração de ordens de produção"
+          actions={
+            <>
             <Button onClick={() => navigate('/sales/new')} className="gap-2">
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">Novo Pedido</span>
@@ -1292,8 +1292,9 @@ export default function SaleOrders() {
                 <span className="hidden sm:inline">Resync Fichas</span>
               </Button>
             )}
-          </div>
-        </div>
+            </>
+          }
+        />
 
         {/* Main tabs: Ativos vs Faturados */}
         <div className="flex items-center gap-1 border-b">

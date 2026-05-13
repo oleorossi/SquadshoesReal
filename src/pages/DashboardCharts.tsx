@@ -1,4 +1,5 @@
 import { Package, Truck, ChartBar as BarChart3 } from '@phosphor-icons/react';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -36,8 +37,21 @@ type Props = {
 
 export default function DashboardCharts({ monthlyData, categoryData, topModels, chartColors }: Props) {
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <div className="editorial-container editorial-stagger space-y-6">
+      <EditorialPageHeader
+        sectionNumber="05"
+        sectionLabel="ANALYTICS · CHARTS"
+        title="Análises"
+        description="Tendências, distribuição de estoque e modelos mais produzidos."
+      />
+
+      {/* Section header: Tendência */}
+      <div className="flex items-baseline gap-3 pt-2">
+        <span className="font-display text-2xl text-muted-foreground tabular-nums">01</span>
+        <span className="section-label">Tendência & Distribuição</span>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Monthly Trend */}
         <Card className="lg:col-span-2">
           <CardHeader className="pb-2">
@@ -95,6 +109,12 @@ export default function DashboardCharts({ monthlyData, categoryData, topModels, 
             )}
           </CardContent>
         </Card>
+      </div>
+
+      {/* Section header: Top Modelos */}
+      <div className="flex items-baseline gap-3 pt-2">
+        <span className="font-display text-2xl text-muted-foreground tabular-nums">02</span>
+        <span className="section-label">Top Modelos</span>
       </div>
 
       {/* Top Models */}

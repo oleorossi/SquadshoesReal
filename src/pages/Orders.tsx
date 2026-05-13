@@ -18,6 +18,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { StatusPill, canonicalStatusToKey } from '@/components/ui/badges';
@@ -1015,12 +1016,13 @@ function getWeekOptions() {
 
    return (
      <>
-       <div className="w-full space-y-4 page-enter">
+       <div className="w-full space-y-4 page-enter editorial-stagger">
          {!hideHeader && (
-           <div>
-             <h2 className="text-2xl font-bold tracking-tight">Ordens de Produção</h2>
-             <p className="text-sm text-muted-foreground">Gestão de OPs com controle por setor de produção</p>
-           </div>
+           <EditorialPageHeader
+             sectionLabel="PCP · OPs"
+             title="Ordens de Produção"
+             description="Gestão de OPs com controle por setor de produção"
+           />
          )}
 
         {/* ── Toolbar principal ── */}

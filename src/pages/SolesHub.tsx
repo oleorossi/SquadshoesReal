@@ -16,6 +16,7 @@ import SolesCadastroTab from '@/components/soles-hub/SolesCadastroTab';
 import SolesEstoqueTab from '@/components/soles-hub/SolesEstoqueTab';
 import SolesConsumosTab from '@/components/soles-hub/SolesConsumosTab';
 import SolesHistoricoTab from '@/components/soles-hub/SolesHistoricoTab';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 // ── Tipos ───────────────────────────────────────────────────────────────────
 import type { SoleProduct } from '@/components/soles-hub/types';
@@ -98,37 +99,32 @@ export default function SolesHub() {
 
   return (
     <AppLayout>
-      <div className="space-y-4 page-enter">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
-              <Package className="h-6 w-6 text-primary" />
-              Solados
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Tudo sobre solados num só lugar — cadastro, conjugação, estoque e consumos.
-            </p>
-          </div>
-          <div className="flex gap-3">
-            <Card className="px-3 py-2">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Solados</p>
-              <p className="text-lg font-bold font-mono">{stats.totalSoles}</p>
-            </Card>
-            <Card className="px-3 py-2">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Pares em estoque</p>
-              <p className="text-lg font-bold font-mono">{stats.totalPairs.toLocaleString('pt-BR')}</p>
-            </Card>
-            {stats.lowStock > 0 && (
-              <Card className="px-3 py-2 border-amber-300/60 bg-amber-50/30 dark:bg-amber-950/20">
-                <p className="text-[10px] uppercase tracking-wider text-amber-700 dark:text-amber-400 flex items-center gap-1">
-                  <AlertTriangle className="h-3 w-3" /> Abaixo do mínimo
-                </p>
-                <p className="text-lg font-bold font-mono text-amber-700 dark:text-amber-400">{stats.lowStock}</p>
+      <div className="space-y-4 page-enter editorial-stagger">
+        <EditorialPageHeader
+          sectionLabel="PRODUÇÃO · SOLADOS"
+          title="Gestão de Solados"
+          description="Tudo sobre solados num só lugar — cadastro, conjugação, estoque e consumos."
+          actions={
+            <div className="flex gap-3">
+              <Card className="px-3 py-2">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Solados</p>
+                <p className="text-lg font-bold font-mono">{stats.totalSoles}</p>
               </Card>
-            )}
-          </div>
-        </div>
+              <Card className="px-3 py-2">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Pares em estoque</p>
+                <p className="text-lg font-bold font-mono">{stats.totalPairs.toLocaleString('pt-BR')}</p>
+              </Card>
+              {stats.lowStock > 0 && (
+                <Card className="px-3 py-2 border-amber-300/60 bg-amber-50/30 dark:bg-amber-950/20">
+                  <p className="text-[10px] uppercase tracking-wider text-amber-700 dark:text-amber-400 flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3" /> Abaixo do mínimo
+                  </p>
+                  <p className="text-lg font-bold font-mono text-amber-700 dark:text-amber-400">{stats.lowStock}</p>
+                </Card>
+              )}
+            </div>
+          }
+        />
 
         {/* Layout: lista esquerda + detalhe direita */}
         <div className="grid grid-cols-12 gap-4 min-h-[600px]">

@@ -21,6 +21,7 @@ import { format } from 'date-fns';
 import { todayISO, todayPlusDaysISO } from '@/lib/date';
 import { TrendUp as TrendingUp, TrendDown as TrendingDown, WarningCircle as AlertCircle, CreditCard, Receipt, ArrowUpRight, ArrowDownRight, CurrencyDollar as DollarSign, Wallet, FileXls as FileSpreadsheet, CaretRight as ChevronRight, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import AppLayout from '@/components/layout/AppLayout';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -81,32 +82,33 @@ export default function FinanceiroDashboard() {
 
   return (
     <AppLayout>
-      <div className="space-y-5 pb-12">
-        {/* Header editorial */}
-        <div className="flex items-end justify-between gap-4 flex-wrap">
-          <div>
-            <div className="eyebrow flex items-center gap-2">
-              <span className="live-dot" />
-              {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
-            </div>
-            <h1 className="display text-3xl mt-2">Painel Financeiro</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Saldo, fluxo de caixa, alertas inteligentes e atalhos pra sub-módulos.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => navigate('/finance')} className="gap-1.5">
-              <Wallet className="h-3.5 w-3.5" /> Contas (AR/AP)
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => navigate('/nfe')} className="gap-1.5">
-              <Receipt className="h-3.5 w-3.5" /> NF-e
-            </Button>
-          </div>
+      <div className="editorial-container editorial-stagger space-y-6 pb-12">
+        <EditorialPageHeader
+          sectionNumber="01"
+          sectionLabel="FINANCEIRO · VISÃO GERAL"
+          title="Financeiro"
+          description="Saldo, fluxo de caixa, alertas inteligentes e atalhos pra sub-módulos."
+          actions={
+            <>
+              <Button variant="outline" size="sm" onClick={() => navigate('/finance')} className="gap-1.5">
+                <Wallet className="h-3.5 w-3.5" /> Contas (AR/AP)
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => navigate('/nfe')} className="gap-1.5">
+                <Receipt className="h-3.5 w-3.5" /> NF-e
+              </Button>
+            </>
+          }
+        />
+
+        {/* Section header: KPIs */}
+        <div className="flex items-baseline gap-3 pt-2">
+          <span className="font-display text-2xl text-muted-foreground tabular-nums">01</span>
+          <span className="section-label">Indicadores</span>
         </div>
 
         {/* KPIs principais */}
         {isLoading || !data ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {[...Array(4)].map((_, i) => (
               <Card key={i}><CardContent className="p-4 h-24 flex items-center justify-center">
                 <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -114,7 +116,7 @@ export default function FinanceiroDashboard() {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <Card className="slash-top">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 text-muted-foreground">
@@ -185,15 +187,33 @@ export default function FinanceiroDashboard() {
           </div>
         )}
 
+        {/* Section header: Alertas */}
+        <div className="flex items-baseline gap-3 pt-2">
+          <span className="font-display text-2xl text-muted-foreground tabular-nums">02</span>
+          <span className="section-label">Alertas Inteligentes</span>
+        </div>
+
         {/* Alertas Inteligentes (SmartDashboard) */}
         <SmartDashboard onNavigate={tab => navigate(`/finance?tab=${tab}`)} />
+
+        {/* Section header: Margem */}
+        <div className="flex items-baseline gap-3 pt-2">
+          <span className="font-display text-2xl text-muted-foreground tabular-nums">03</span>
+          <span className="section-label">Margem Líquida</span>
+        </div>
 
         {/* KPI: Margem líquida por período (round 10) */}
         <NetMarginChart />
 
+        {/* Section header: Vencimentos */}
+        <div className="flex items-baseline gap-3 pt-2">
+          <span className="font-display text-2xl text-muted-foreground tabular-nums">04</span>
+          <span className="section-label">Vencimentos</span>
+        </div>
+
         {/* Vencidos + Próximos Vencimentos */}
         {data && (
-          <div className="grid md:grid-cols-2 gap-4">
+          <div className="grid sm:grid-cols-1 md:grid-cols-2 gap-4">
             <Card>
               <CardHeader className="pb-3 flex flex-row items-center justify-between">
                 <CardTitle className="text-sm flex items-center gap-2">
@@ -285,12 +305,18 @@ export default function FinanceiroDashboard() {
           </div>
         )}
 
+        {/* Section header: Atalhos */}
+        <div className="flex items-baseline gap-3 pt-2">
+          <span className="font-display text-2xl text-muted-foreground tabular-nums">05</span>
+          <span className="section-label">Atalhos</span>
+        </div>
+
         {/* Atalhos para sub-módulos */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">Atalhos</CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-0">
+          <CardContent className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-0">
             <button
               onClick={() => navigate('/finance')}
               className="flex flex-col items-start gap-1.5 p-3 rounded-lg border hover:bg-muted/40 transition-colors text-left"

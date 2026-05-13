@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ShoppingCart, Users, TrendUp as TrendingUp, Medal as Award, CurrencyDollar as DollarSign, Package, Palette, CircleNotch as Loader2 } from '@phosphor-icons/react';
 
@@ -107,15 +108,23 @@ export default function ComercialDashboard() {
   if (!data) return null;
 
   return (
-    
-      <div className="space-y-5 page-enter">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Resumo Comercial</h1>
-          <p className="text-sm text-muted-foreground">Visão geral de vendas, clientes e representantes</p>
+
+      <div className="editorial-container editorial-stagger space-y-6 page-enter">
+        <EditorialPageHeader
+          sectionNumber="04"
+          sectionLabel="COMERCIAL · VISÃO GERAL"
+          title="Comercial"
+          description="Visão geral de vendas, clientes, representantes e cores mais vendidas."
+        />
+
+        {/* Section header: KPIs */}
+        <div className="flex items-baseline gap-3 pt-2">
+          <span className="font-display text-2xl text-muted-foreground tabular-nums">01</span>
+          <span className="section-label">Indicadores</span>
         </div>
 
         {/* KPIs */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card>
             <CardContent className="pt-5 pb-4">
               <div className="flex items-center gap-3">
@@ -162,7 +171,13 @@ export default function ComercialDashboard() {
           </Card>
         </div>
 
-         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+         {/* Section header: Rankings */}
+         <div className="flex items-baseline gap-3 pt-2">
+           <span className="font-display text-2xl text-muted-foreground tabular-nums">02</span>
+           <span className="section-label">Rankings & Top Performers</span>
+         </div>
+
+         <div className="grid sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6">
            {/* Top Colors */}
            <Card>
              <CardHeader className="pb-3">
