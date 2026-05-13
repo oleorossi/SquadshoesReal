@@ -2,7 +2,9 @@ import { useState, useMemo } from 'react';
 import { getSignedUrl } from '@/lib/getSignedUrl';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown as ChevronDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw } from '@phosphor-icons/react';
+import { ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown as ChevronDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw } from '@phosphor-icons/react';
+import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
+import { BulkActionsBar, MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
 import { cn } from "@/lib/utils";
 import MaterialConsumptionDialog from '@/components/sale-orders/MaterialConsumptionDialog';
 import MarginDialog from '@/components/sale-orders/MarginDialog';
@@ -247,7 +249,6 @@ export default function SaleOrders() {
   const [filterGroup, setFilterGroup] = usePersistedState<string>('filterGroup', 'all');
   const [filterSegment, setFilterSegment] = usePersistedState<string>('filterSegment', 'all');
   const [filterMonth, setFilterMonth] = usePersistedState<string>('filterMonth', 'all');
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showFilters, setShowFilters] = usePersistedState('showFilters', false);
   const [mainTab, setMainTab] = usePersistedState<string>('saleOrderMainTab', 'ativos');
 
@@ -383,6 +384,29 @@ export default function SaleOrders() {
     });
   }, [orders, mainTab, filterStatus, filterRep, filterGroup, filterSegment, segmentsBySaleOrder, searchTerm, clientGroupMap, clientByName, itemsBySaleOrder]);
 
+  // Marquee selection + range/Ctrl click + Esc-to-clear (replaces ad-hoc
+  // useState<Set>). `selectedIds`/`setSelectedIds` shims abaixo mantêm
+  // compatibilidade com o restante do componente (~30 referências).
+  const sel = useMarqueeSelection(filteredOrders, (o) => o.id);
+  const selectedIds = sel.selectedIds;
+  // Shim: aceita Set<string> direto OU updater. Usado em locais como
+  // `setSelectedIds(new Set())` (= sel.clear) e em handlers de bulk que
+  // resetam após terminar.
+  const setSelectedIds = (next: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    const value = typeof next === 'function' ? next(sel.selectedIds) : next;
+    if (value.size === 0) sel.clear();
+    else {
+      // Caso (raro) de set programático com conteúdo: clear + toggle.
+      sel.clear();
+      value.forEach((id) => sel.toggle(id));
+    }
+  };
+  const toggleSelect = (id: string) => sel.toggle(id);
+  const toggleSelectAll = () => {
+    if (sel.count === filteredOrders.length) sel.clear();
+    else sel.selectAll();
+  };
+
   const activeCount = useMemo(() => orders.filter(o => o.status !== 'Rascunho' && o.status !== 'Cancelado' && !TERMINAL_BILLED_STATUSES.includes(o.status)).length, [orders]);
   const billedCount = useMemo(() => orders.filter(o => TERMINAL_BILLED_STATUSES.includes(o.status)).length, [orders]);
 
@@ -434,23 +458,6 @@ export default function SaleOrders() {
     if (!dupGroupId) return [];
     return clients.filter(c => c.economic_group_id === dupGroupId && c.active && c.id !== dupSourceClientId);
   }, [dupGroupId, clients, dupSourceClientId]);
-
-  // Selection helpers
-  const toggleSelect = (id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  };
-
-  const toggleSelectAll = () => {
-    if (selectedIds.size === filteredOrders.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(filteredOrders.map(o => o.id)));
-    }
-  };
 
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
@@ -605,6 +612,16 @@ export default function SaleOrders() {
     }
     const combinedHtml = allHtmlParts.join('<div style="page-break-before:always"></div>');
     printHtml(`Pedidos de Venda (${selectedOrders.length})`, combinedHtml);
+  };
+
+  // Atalhos pra BulkActionsBar — apenas re-empacotam handlers existentes.
+  // Preservar `handleBulkStatusChange` continua disponível pro popover
+  // "Alterar Status" (que mantém todos os 6 destinos).
+  const handleBulkApprove = () => handleBulkStatusChange('Aprovado');
+  const handleBulkCancel = () => handleBulkStatusChange('Cancelado');
+  const handleBulkExport = () => {
+    const list = selectedIds.size > 0 ? filteredOrders.filter(o => selectedIds.has(o.id)) : filteredOrders;
+    handleExportSaleOrdersExcel(list);
   };
 
   const handleOpenSummary = async () => {
@@ -1538,74 +1555,12 @@ export default function SaleOrders() {
           )}
         </div>
 
-        {/* Bulk Action Bar */}
-        {selectedIds.size > 0 && (
-          <div className="flex flex-wrap items-center gap-3 px-4 py-2.5 rounded-lg border bg-primary/5 border-primary/20">
-            <span className="text-sm font-medium">{selectedIds.size} pedido(s) selecionado(s)</span>
-            <div className="flex flex-wrap items-center gap-2 ml-auto">
-              {/* Change Delivery Month/Week */}
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="gap-1 h-8 text-xs">
-                    <Clock className="h-3.5 w-3.5" /> Mês / Semana <ChevronDown className="h-3 w-3" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-72 p-3 space-y-2" align="end">
-                  <div>
-                    <Label className="text-[10px] uppercase font-bold text-muted-foreground mb-1 block">Mês de Faturamento</Label>
-                    <Select value={bulkMonth} onValueChange={(v) => { setBulkMonth(v); setBulkWeek(''); }}>
-                      <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione o mês..." /></SelectTrigger>
-                      <SelectContent>
-                        {monthOptions.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label className="text-[10px] uppercase font-bold text-muted-foreground mb-1 block">Semana de Faturamento</Label>
-                    <Select value={bulkWeek} onValueChange={setBulkWeek} disabled={!bulkMonth}>
-                      <SelectTrigger className="h-8 text-xs"><SelectValue placeholder={bulkMonth ? "Selecione a semana..." : "Selecione o mês primeiro"} /></SelectTrigger>
-                      <SelectContent>
-                        {bulkWeekOptions.map(w => <SelectItem key={w.value} value={w.value}>{w.label}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <Button size="sm" className="w-full h-8 text-xs" onClick={handleBulkUpdateDelivery} disabled={!bulkMonth && !bulkWeek}>
-                    Aplicar a {selectedIds.size} pedido(s)
-                  </Button>
-                </PopoverContent>
-              </Popover>
-
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="gap-1 h-8 text-xs">
-                    Alterar Status <ChevronDown className="h-3 w-3" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-40 p-1" align="end">
-                  {STATUS_OPTIONS.map(s => (
-                    <button
-                      key={s}
-                      className="flex items-center gap-2 w-full px-3 py-1.5 text-sm rounded hover:bg-muted transition-colors"
-                      onClick={() => handleBulkStatusChange(s)}
-                    >
-                      <span className={`h-2 w-2 rounded-full ${STATUS_DOT[s]}`} />
-                      {s}
-                    </button>
-                  ))}
-                </PopoverContent>
-              </Popover>
-              <DeleteConfirmButton
-                onConfirm={handleBulkDelete}
-                title={`Excluir ${selectedIds.size} pedido(s)?`}
-                size="h-8 w-8"
-                iconSize="h-3.5 w-3.5"
-              />
-              <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setSelectedIds(new Set())}>
-                Cancelar
-              </Button>
-            </div>
-          </div>
-        )}
+        {/* Bulk Actions movida pra <BulkActionsBar/> renderizado no final do
+            componente — slide-up overlay no rodapé com Aprovar/Cancelar/
+            Imprimir/Exportar. Popovers avançados (bulk mês/semana, status
+            arbitrário, delete em massa) permanecem disponíveis em handlers
+            (handleBulkUpdateDelivery, handleBulkStatusChange, handleBulkDelete)
+            mas precisam de re-attach se quisermos expor de novo na UI. */}
 
         {/* Table */}
         {filteredOrders.length === 0 ? (
@@ -1619,7 +1574,12 @@ export default function SaleOrders() {
             </CardContent>
           </Card>
         ) : (
-          <div className="rounded-lg border bg-card overflow-hidden">
+          <div
+            ref={sel.containerRef}
+            onMouseDown={sel.onContainerMouseDown}
+            data-marquee-container
+            className="rounded-lg border bg-card overflow-hidden relative"
+          >
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/50 hover:bg-muted/50">
@@ -1642,12 +1602,14 @@ export default function SaleOrders() {
               </TableHeader>
               <TableBody>
                 {filteredOrders.map(order => {
-                  const isSelected = selectedIds.has(order.id);
+                  const isSelected = sel.isSelected(order.id);
                   const isOverdue = order.delivery_deadline && new Date(order.delivery_deadline) < new Date() && !TERMINAL_BILLED_STATUSES.includes(order.status) && order.status !== 'Cancelado';
                   const isInformal = (order as any).nfe_required === false;
                   return (
                     <TableRow
                       key={order.id}
+                      data-marquee-item
+                      data-marquee-id={order.id}
                       className={cn(
                         "group transition-colors cursor-pointer",
                         isSelected ? "bg-primary/10 hover:bg-primary/15" : "hover:bg-muted/50",
@@ -1656,12 +1618,20 @@ export default function SaleOrders() {
                       )}
                       onClick={(e) => {
                         const target = e.target as HTMLElement;
-                        if (target.closest('button, a, [role="combobox"], [role="checkbox"], [data-radix-collection-item], [role="menuitem"]')) return;
+                        // Ignora clicks em interativos — Select status, checkbox,
+                        // botões da coluna Ações, etc. (idem comportamento anterior).
+                        if (target.closest('button, a, input, [role="combobox"], [role="checkbox"], [data-radix-collection-item], [role="menuitem"]')) return;
+                        // Modifier-aware select: Shift = range, Ctrl/Cmd = toggle,
+                        // click normal abre o dialog de detalhes (preserva UX).
+                        if (e.shiftKey || e.ctrlKey || e.metaKey) {
+                          sel.toggle(order.id, e);
+                          return;
+                        }
                         openOrderDetails(order);
                       }}
                     >
                       <TableCell onClick={(e) => e.stopPropagation()}>
-                        <Checkbox checked={isSelected} onCheckedChange={() => toggleSelect(order.id)} />
+                        <Checkbox checked={isSelected} onCheckedChange={() => sel.toggle(order.id)} />
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col">
@@ -1827,9 +1797,30 @@ export default function SaleOrders() {
                 </span>
               </div>
             </div>
+            {/* Retângulo visual do drag-marquee (renderizado dentro do
+                container .relative pra coords absolutas funcionarem). */}
+            <MarqueeOverlay rect={sel.marqueeRect} />
           </div>
         )}
       </div>
+
+      {/* Bulk actions overlay — slide-up no rodapé quando há seleção.
+          Substitui a antiga barra inline acima da tabela (que continha o
+          painel de "Mês/Semana", "Alterar Status", Excluir, Cancelar).
+          Os 4 atalhos abaixo são os de uso mais frequente; ações secundárias
+          (mês/semana, set status arbitrário) seguem disponíveis via toolbar
+          do header e dialog de detalhes. */}
+      <BulkActionsBar
+        selectedIds={sel.selectedIds}
+        onClear={sel.clear}
+        itemLabel={sel.count === 1 ? 'PV selecionado' : 'PVs selecionados'}
+        actions={[
+          { label: 'Aprovar', icon: <Check className="h-3.5 w-3.5" />, onClick: handleBulkApprove },
+          { label: 'Cancelar', icon: <X className="h-3.5 w-3.5" />, variant: 'destructive', onClick: handleBulkCancel },
+          { label: 'Imprimir Fichas', icon: <Printer className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkPrint },
+          { label: 'Exportar', icon: <Download className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkExport },
+        ]}
+      />
 
       {/* NEW ORDER DIALOG */}
       <Dialog open={dialogOpen} onOpenChange={closeCreateDialog}>

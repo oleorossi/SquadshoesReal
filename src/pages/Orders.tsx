@@ -2,7 +2,9 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { useQuery } from '@tanstack/react-query';
-import { ClipboardText as ClipboardList, Trash as Trash2, CircleNotch as Loader2, Warning as AlertTriangle, CheckCircle as CheckCircle2, Printer, Factory, Funnel as Filter, MagnifyingGlass as Search, Calendar, Stack as Layers, X, CaretDown as ChevronDown, Checks as CheckCheck, PencilSimple as Pencil, FileText, Square, CheckSquare, FileXls as FileSpreadsheet, Check, CaretUpDown as ChevronsUpDown, Package, Image as ImageIcon, Plus, CaretUp as ChevronUp, DotsThree as MoreHorizontal, Download, GridFour as LayoutGrid, List } from '@phosphor-icons/react';
+import { ClipboardText as ClipboardList, Trash as Trash2, CircleNotch as Loader2, Warning as AlertTriangle, CheckCircle as CheckCircle2, Printer, Factory, Funnel as Filter, MagnifyingGlass as Search, Calendar, Stack as Layers, X, CaretDown as ChevronDown, Checks as CheckCheck, PencilSimple as Pencil, FileText, Square, CheckSquare, FileXls as FileSpreadsheet, Check, CaretUpDown as ChevronsUpDown, Package, Image as ImageIcon, Plus, CaretUp as ChevronUp, DotsThree as MoreHorizontal, Download, GridFour as LayoutGrid, List, ArrowRight } from '@phosphor-icons/react';
+import { BulkActionsBar, MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
+import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import OrdersKanbanBoard from '@/components/orders/OrdersKanbanBoard';
 import { EmptyState } from '@/components/ui/empty-state';
 import { autoCreateSolePO } from '@/lib/soleAutoPO';
@@ -293,7 +295,6 @@ function getWeekOptions() {
   const [filtersOpen, setFiltersOpen] = usePersistedState('orders-filters-open', true);
   const [viewMode, setViewMode] = usePersistedState<'list' | 'kanban'>('orders-view-mode', 'list');
   const [approving, setApproving] = useState(false);
-  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
 
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -456,6 +457,12 @@ function getWeekOptions() {
     });
   }, [orders, saleOrderMetaById, searchTerm, normalizedStatusFilter, referenceFilter, colorFilter, weekFilter, segmentFilter, segmentByRefId]);
 
+  // Marquee + multi-select (Cmd/Ctrl/Shift click, drag-select, Esc to clear).
+  // Substitui o state local de seleção; expõe APIs `selectedOrderIds`/toggle/clear
+  // compatíveis com os handlers e checkboxes existentes.
+  const sel = useMarqueeSelection(filteredOrders, (o) => o.id);
+  const selectedOrderIds = sel.selectedIds;
+
   // Map: client cnpj -> economic_group {id, name}, and razao_social -> group
   const clientGroupByCnpj = useMemo(() => {
     const map = new Map<string, { id: string; name: string } | null>();
@@ -561,18 +568,14 @@ function getWeekOptions() {
   ].filter(Boolean).length;
 
   const toggleOrderSelection = (orderId: string) => {
-    setSelectedOrderIds(prev => {
-      const next = new Set(prev);
-      if (next.has(orderId)) next.delete(orderId); else next.add(orderId);
-      return next;
-    });
+    sel.toggle(orderId);
   };
 
   const toggleSelectAll = () => {
     if (selectedOrderIds.size === filteredOrders.length) {
-      setSelectedOrderIds(new Set());
+      sel.clear();
     } else {
-      setSelectedOrderIds(new Set(filteredOrders.map(o => o.id)));
+      sel.selectAll();
     }
   };
 
@@ -590,7 +593,44 @@ function getWeekOptions() {
     setSegmentFilter('all');
     setGroupByRefColor(false);
     setGroupByEconomic(false);
-    setSelectedOrderIds(new Set());
+    sel.clear();
+  };
+
+  // ── Bulk action handlers (usados pela BulkActionsBar) ──────────────────
+  const handleBulkAdvance = async (ids: Set<string>) => {
+    // TODO: implementar RPC advance_op_stage (não existe ainda — só advance_wave_stage).
+    // Por ora, mostra toast informativo. Quando RPC existir, iterar:
+    // for (const id of ids) await supabase.rpc('advance_op_stage', { p_order_id: id });
+    toast.info(`Avançar setor — em implementação (${ids.size} OPs selecionadas)`);
+  };
+
+  const handleBulkPrintWorksheets = (ids: Set<string>) => {
+    if (ids.size === 0) return;
+    navigate('/imprimir-fichas?orderIds=' + Array.from(ids).join(','));
+  };
+
+  const handleBulkCancel = async (ids: Set<string>) => {
+    if (ids.size === 0) return;
+    const confirmed = window.confirm(
+      `Cancelar ${ids.size} OP(s)? Esta ação marcará as OPs como "Cancelada" e não pode ser desfeita facilmente.`,
+    );
+    if (!confirmed) return;
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({ status: 'Cancelada', updated_at: new Date().toISOString() } as any)
+        .in('id', Array.from(ids));
+      if (error) throw error;
+      toast.success(`${ids.size} OP(s) cancelada(s)`);
+      sel.clear();
+    } catch (err: any) {
+      toast.error(`Erro ao cancelar OPs: ${err.message}`);
+    }
+  };
+
+  const handleBulkExport = (ids: Set<string>) => {
+    const opsToExport = filteredOrders.filter(o => ids.has(o.id));
+    handleExportExcel(opsToExport);
   };
 
   const SIZES_ALL = ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
@@ -1312,6 +1352,12 @@ function getWeekOptions() {
           </span>
         </div>
 
+        <div
+          ref={sel.containerRef}
+          onMouseDown={sel.onContainerMouseDown}
+          data-marquee-container
+          className="relative"
+        >
         {filteredOrders.length === 0 ? (
           <Card>
             <CardContent className="p-0">
@@ -1338,15 +1384,16 @@ function getWeekOptions() {
               const allGroupSelected = groupOrderIds.length > 0 && selectedInGroup === groupOrderIds.length;
               const someGroupSelected = selectedInGroup > 0 && selectedInGroup < groupOrderIds.length;
               const toggleGroupSelection = () => {
-                setSelectedOrderIds(prev => {
-                  const next = new Set(prev);
-                  if (allGroupSelected) {
-                    groupOrderIds.forEach(id => next.delete(id));
-                  } else {
-                    groupOrderIds.forEach(id => next.add(id));
-                  }
-                  return next;
-                });
+                // Toggle individual sem modificador apenas adiciona/remove sem limpar o resto.
+                if (allGroupSelected) {
+                  groupOrderIds.forEach(id => {
+                    if (selectedOrderIds.has(id)) sel.toggle(id);
+                  });
+                } else {
+                  groupOrderIds.forEach(id => {
+                    if (!selectedOrderIds.has(id)) sel.toggle(id);
+                  });
+                }
               };
               return (
               <Card key={eg.groupId} className="border-l-4 border-l-primary">
@@ -1389,7 +1436,7 @@ function getWeekOptions() {
                           {sub.orders.map(order => {
                             const so = saleOrderById.get((order as any).sale_order_id);
                             return (
-                              <div key={order.id} className={`flex items-center justify-between py-1.5 px-2 rounded cursor-pointer transition-colors hover:bg-muted/50 ${selectedOrderIds.has(order.id) ? 'ring-1 ring-primary/50 bg-primary/5' : ''}`} onClick={(e) => { e.stopPropagation(); setDetailOrders([order]); setDetailTitle(`OP ${(order as any).order_number}`); setDetailDialogOpen(true); }}>
+                              <div key={order.id} data-marquee-item data-marquee-id={order.id} className={`flex items-center justify-between py-1.5 px-2 rounded cursor-pointer transition-colors hover:bg-muted/50 ${selectedOrderIds.has(order.id) ? 'ring-1 ring-primary/50 bg-primary/5' : ''}`} onClick={(e) => { e.stopPropagation(); setDetailOrders([order]); setDetailTitle(`OP ${(order as any).order_number}`); setDetailDialogOpen(true); }}>
                                 <div className="flex items-center gap-3 flex-wrap">
                                   <Checkbox
                                     checked={selectedOrderIds.has(order.id)}
@@ -1452,7 +1499,7 @@ function getWeekOptions() {
                       const deliveryDate = (order as any).planned_delivery;
                       
                       return (
-                        <div key={order.id} className={`flex items-center justify-between py-2 px-3 rounded-lg cursor-pointer transition-colors border-l-4 ${getStatusBorderClass(statusMeta.canonicalStatus)} ${getStatusBgClass(statusMeta.canonicalStatus)} ${selectedOrderIds.has(order.id) ? 'ring-2 ring-primary/50' : ''} hover:bg-muted/50`} onClick={(e) => { e.stopPropagation(); setDetailOrders([order]); setDetailTitle(`OP ${(order as any).order_number}`); setDetailDialogOpen(true); }}>
+                        <div key={order.id} data-marquee-item data-marquee-id={order.id} className={`flex items-center justify-between py-2 px-3 rounded-lg cursor-pointer transition-colors border-l-4 ${getStatusBorderClass(statusMeta.canonicalStatus)} ${getStatusBgClass(statusMeta.canonicalStatus)} ${selectedOrderIds.has(order.id) ? 'ring-2 ring-primary/50' : ''} hover:bg-muted/50`} onClick={(e) => { e.stopPropagation(); setDetailOrders([order]); setDetailTitle(`OP ${(order as any).order_number}`); setDetailDialogOpen(true); }}>
                           <div className="flex items-center gap-3 flex-wrap">
                             <Checkbox
                               checked={selectedOrderIds.has(order.id)}
@@ -1534,7 +1581,7 @@ function getWeekOptions() {
                     const totalStages = orderStages.length;
 
                     return (
-                      <Card key={order.id} className={`group cursor-pointer hover:border-primary/50 transition-colors border-l-4 ${getStatusBorderClass(statusMeta.canonicalStatus)} ${selectedOrderIds.has(order.id) ? 'ring-2 ring-primary/50' : ''}`} onClick={() => { setDetailOrders([order]); setDetailTitle(`OP ${(order as any).order_number}`); setDetailDialogOpen(true); }}>
+                      <Card key={order.id} data-marquee-item data-marquee-id={order.id} className={`group cursor-pointer hover:border-primary/50 transition-colors border-l-4 ${getStatusBorderClass(statusMeta.canonicalStatus)} ${selectedOrderIds.has(order.id) ? 'ring-2 ring-primary/50' : ''}`} onClick={() => { setDetailOrders([order]); setDetailTitle(`OP ${(order as any).order_number}`); setDetailDialogOpen(true); }}>
                         <CardContent className="p-4">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3 flex-wrap">
@@ -1679,7 +1726,22 @@ function getWeekOptions() {
             })()}
           </div>
         )}
+        {sel.marqueeRect && <MarqueeOverlay rect={sel.marqueeRect} />}
+        </div>
       </div>
+
+      {/* BulkActionsBar — aparece quando há OPs selecionadas */}
+      <BulkActionsBar
+        selectedIds={sel.selectedIds}
+        onClear={sel.clear}
+        itemLabel={sel.count === 1 ? 'OP selecionada' : 'OPs selecionadas'}
+        actions={[
+          { label: 'Avançar Setor', icon: <ArrowRight className="h-3.5 w-3.5" />, onClick: handleBulkAdvance },
+          { label: 'Imprimir Fichas', icon: <Printer className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkPrintWorksheets },
+          { label: 'Cancelar OPs', icon: <X className="h-3.5 w-3.5" />, variant: 'destructive', onClick: handleBulkCancel },
+          { label: 'Exportar', icon: <Download className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkExport },
+        ]}
+      />
 
       {/* Detail dialog for OP(s) */}
       <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>

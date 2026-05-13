@@ -19,9 +19,12 @@ import { SoleTechnicalEditDialog } from './SoleTechnicalEditDialog';
 import GroupEditDialog from '@/components/groups/GroupEditDialog';
 import { MasterVariantDialog } from './MasterVariantDialog';
 import { SelectionMarquee } from '@/components/ui/selection-marquee';
+import { BulkActionsBar } from '@/components/ui/bulk-actions-bar';
 import { InlineEdit } from '@/components/ui/InlineEdit';
 import { ArtisanalProductDialog } from './ArtisanalProductDialog';
 import { useTableView, densityClasses } from './TableViewContext';
+import { useUpdateProduct, useDeleteProduct } from '@/hooks/useProducts';
+import { CheckCircle, XCircle, Trash, Download } from '@phosphor-icons/react';
 
 function ImageZoomDialog({ src, alt, open, onOpenChange }: { src: string; alt: string; open: boolean; onOpenChange: (o: boolean) => void }) {
   if (!src) return null;
@@ -747,12 +750,6 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
             </Table>
           </div>
         </SelectionMarquee>
-        {selectedIds.size > 0 && (
-          <div className="flex items-center gap-2 py-2">
-            <Badge variant="secondary">{selectedIds.size} selecionado(s)</Badge>
-            <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>Limpar seleção</Button>
-          </div>
-        )}
         <ManualStockOutDialog open={!!stockOutProduct} onOpenChange={(o) => { if (!o) setStockOutProduct(null); }} product={stockOutProduct} />
         <SoladoGradeDialog open={!!gradeProduct} onOpenChange={(o) => { if (!o) setGradeProduct(null); }} product={gradeProduct} />
         <SoleTechnicalEditDialog open={!!soleEditProduct} onOpenChange={(o) => { if (!o) setSoleEditProduct(null); }} product={soleEditProduct} />
@@ -787,12 +784,6 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
               </Table>
             </div>
           </SelectionMarquee>
-          {selectedIds.size > 0 && (
-            <div className="flex items-center gap-2 py-2">
-              <Badge variant="secondary">{selectedIds.size} selecionado(s)</Badge>
-              <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>Limpar seleção</Button>
-            </div>
-          )}
           <ManualStockOutDialog open={!!stockOutProduct} onOpenChange={(o) => { if (!o) setStockOutProduct(null); }} product={stockOutProduct} />
           <SoladoGradeDialog open={!!gradeProduct} onOpenChange={(o) => { if (!o) setGradeProduct(null); }} product={gradeProduct} /><SoleTechnicalEditDialog open={!!soleEditProduct} onOpenChange={(o) => { if (!o) setSoleEditProduct(null); }} product={soleEditProduct} />
        {masterVariant && <MasterVariantDialog open={!!masterVariant} onOpenChange={(o) => { if (!o) setMasterVariant(null); }} baseName={masterVariant.baseName} variants={masterVariant.products} onEditVariant={handleEditIntercepted} onDeleteVariant={onDelete} />}
@@ -821,12 +812,6 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
             </Table>
           </div>
         </SelectionMarquee>
-        {selectedIds.size > 0 && (
-          <div className="flex items-center gap-2 py-2">
-            <Badge variant="secondary">{selectedIds.size} selecionado(s)</Badge>
-            <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>Limpar seleção</Button>
-          </div>
-        )}
         <ManualStockOutDialog open={!!stockOutProduct} onOpenChange={(o) => { if (!o) setStockOutProduct(null); }} product={stockOutProduct} />
         <SoladoGradeDialog open={!!gradeProduct} onOpenChange={(o) => { if (!o) setGradeProduct(null); }} product={gradeProduct} /><SoleTechnicalEditDialog open={!!soleEditProduct} onOpenChange={(o) => { if (!o) setSoleEditProduct(null); }} product={soleEditProduct} />
         {masterVariant && <MasterVariantDialog open={!!masterVariant} onOpenChange={(o) => { if (!o) setMasterVariant(null); }} baseName={masterVariant.baseName} variants={masterVariant.products} onEditVariant={handleEditIntercepted} onDeleteVariant={onDelete} />}
@@ -920,12 +905,11 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
           })}
         </div>
       </SelectionMarquee>
-      {selectedIds.size > 0 && (
-        <div className="flex items-center gap-2 py-2">
-          <Badge variant="secondary">{selectedIds.size} selecionado(s)</Badge>
-          <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>Limpar seleção</Button>
-        </div>
-      )}
+      <ProductBulkActionsBar
+        selectedIds={selectedIds}
+        onClear={() => setSelectedIds(new Set())}
+        allProducts={products}
+      />
       <ManualStockOutDialog open={!!stockOutProduct} onOpenChange={(o) => { if (!o) setStockOutProduct(null); }} product={stockOutProduct} />
       <SoladoGradeDialog open={!!gradeProduct} onOpenChange={(o) => { if (!o) setGradeProduct(null); }} product={gradeProduct} /><SoleTechnicalEditDialog open={!!soleEditProduct} onOpenChange={(o) => { if (!o) setSoleEditProduct(null); }} product={soleEditProduct} />
       {editingGroup && (
@@ -934,5 +918,131 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
       {masterVariant && <MasterVariantDialog open={!!masterVariant} onOpenChange={(o) => { if (!o) setMasterVariant(null); }} baseName={masterVariant.baseName} variants={masterVariant.products} onEditVariant={handleEditIntercepted} onDeleteVariant={onDelete} />}
        <ArtisanalProductDialog products={artisanalProducts || []} open={!!artisanalProducts} onOpenChange={(o) => { if (!o) setArtisanalProducts(null); }} />
     </>
+  );
+}
+
+/**
+ * Barra contextual de ações em massa para produtos selecionados via marquee
+ * ou checkbox. Aparece com slide-up no rodapé quando há seleção.
+ *
+ * Ações:
+ *   - Ativar (set active=true em todos)
+ *   - Inativar (set active=false)
+ *   - Excluir (delete em batch; só permite se nenhum tem dependências)
+ *   - Exportar CSV (SKU, Nome, Estoque, Preço, etc.)
+ */
+function ProductBulkActionsBar({
+  selectedIds,
+  onClear,
+  allProducts,
+}: {
+  selectedIds: Set<string>;
+  onClear: () => void;
+  allProducts: Product[];
+}) {
+  const updateProduct = useUpdateProduct();
+  const deleteProduct = useDeleteProduct();
+  const [busy, setBusy] = React.useState(false);
+
+  const selectedProducts = React.useMemo(
+    () => allProducts.filter((p) => selectedIds.has(p.id)),
+    [allProducts, selectedIds],
+  );
+
+  async function handleSetActive(active: boolean) {
+    if (selectedIds.size === 0) return;
+    setBusy(true);
+    try {
+      for (const id of selectedIds) {
+        await updateProduct.mutateAsync({ id, data: { active } as any });
+      }
+      toast.success(`${selectedIds.size} produto(s) ${active ? 'ativados' : 'inativados'}.`);
+      onClear();
+    } catch (err: any) {
+      toast.error(`Erro: ${err.message}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`Excluir ${selectedIds.size} produto(s)? Esta ação não pode ser desfeita.`)) {
+      return;
+    }
+    setBusy(true);
+    try {
+      for (const id of selectedIds) {
+        await deleteProduct.mutateAsync(id);
+      }
+      toast.success(`${selectedIds.size} produto(s) excluído(s).`);
+      onClear();
+    } catch (err: any) {
+      toast.error(`Erro: ${err.message}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleExportCsv() {
+    if (selectedProducts.length === 0) return;
+    const headers = ['SKU', 'Nome', 'Categoria', 'Cor', 'Estoque', 'Unidade', 'Preço Unitário', 'Localização'];
+    const rows = selectedProducts.map((p) => [
+      p.sku,
+      p.name,
+      p.category || '',
+      p.color || '',
+      String(p.quantity),
+      p.unit,
+      String(p.unit_price || 0),
+      p.location || '',
+    ]);
+    const csv = [headers, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `produtos-selecionados-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`${selectedProducts.length} produto(s) exportados.`);
+  }
+
+  return (
+    <BulkActionsBar
+      selectedIds={selectedIds}
+      onClear={onClear}
+      itemLabel={selectedIds.size === 1 ? 'produto' : 'produtos'}
+      actions={[
+        {
+          label: 'Ativar',
+          icon: <CheckCircle className="h-3.5 w-3.5" />,
+          variant: 'outline',
+          disabled: busy,
+          onClick: () => handleSetActive(true),
+        },
+        {
+          label: 'Inativar',
+          icon: <XCircle className="h-3.5 w-3.5" />,
+          variant: 'outline',
+          disabled: busy,
+          onClick: () => handleSetActive(false),
+        },
+        {
+          label: 'Exportar CSV',
+          icon: <Download className="h-3.5 w-3.5" />,
+          variant: 'outline',
+          disabled: busy,
+          onClick: handleExportCsv,
+        },
+        {
+          label: 'Excluir',
+          icon: <Trash className="h-3.5 w-3.5" />,
+          variant: 'destructive',
+          disabled: busy,
+          onClick: handleDelete,
+        },
+      ]}
+    />
   );
 }
