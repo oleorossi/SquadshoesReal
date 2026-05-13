@@ -216,8 +216,11 @@ export default function SaleOrderForm() {
     }
   }, [form.delivery_month, form.delivery_week]);
 
-  // Prevents the min-billing dialog from re-opening on the second handleSubmit pass
-  const skipMinBillingCheckRef = useRef(false);
+  // Min-billing dialog re-entry: handleMinBillingConfirm/Manual chamam
+  // submitInternal({ skipMinBillingCheck: true }) pra evitar reabrir o dialog
+  // que o usuário acabou de confirmar. Substitui o antigo skipMinBillingCheckRef
+  // (useRef + setTimeout) por passagem explícita de parâmetro — mais previsível
+  // em duplo-click / re-render.
 
   const handleSaveStateAndNavigate = () => {
     const draft = {
@@ -392,7 +395,10 @@ export default function SaleOrderForm() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (
+    e: React.FormEvent,
+    opts: { skipMinBillingCheck?: boolean } = {},
+  ) => {
     e.preventDefault();
     const f = formLatestRef.current;
     const validItems = items.filter(i => i.reference_id).map(normalizeItemReference);
@@ -407,10 +413,9 @@ export default function SaleOrderForm() {
 
     // 1) Em pedidos NOVOS, sugere a semana mínima de faturamento antes dos checks de estoque.
     //    Se a data estiver vazia OU for anterior ao mínimo calculado, abre o diálogo.
-    //    skipMinBillingCheckRef is set by handleMinBillingConfirm/handleMinBillingManual to
-    //    prevent re-opening the dialog on the second pass (after the user already confirmed).
-    const doMinBillingCheck = !isEdit && validItems.length > 0 && !skipMinBillingCheckRef.current;
-    skipMinBillingCheckRef.current = false;
+    //    opts.skipMinBillingCheck=true vem de handleMinBillingConfirm/handleMinBillingManual
+    //    pra evitar reabrir o dialog após o usuário já ter confirmado.
+    const doMinBillingCheck = !isEdit && validItems.length > 0 && !opts.skipMinBillingCheck;
     if (doMinBillingCheck) {
       setComputingMinBilling(true);
       try {
@@ -519,10 +524,9 @@ export default function SaleOrderForm() {
     setForm((f) => ({ ...f, delivery_deadline: newISO, delivery_week: newWeek }));
     setMinBillingDialogOpen(false);
     toast.success(`Faturamento ajustado para ${new Date(newISO).toLocaleDateString('pt-BR')} (${newWeek}).`);
-    skipMinBillingCheckRef.current = true;
     setTimeout(() => {
       const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
-      handleSubmit(fakeEvent);
+      handleSubmit(fakeEvent, { skipMinBillingCheck: true });
     }, 50);
   };
 
@@ -543,10 +547,9 @@ export default function SaleOrderForm() {
         `Data anterior ao mínimo. O pedido será marcado como override manual.`,
       );
     }
-    skipMinBillingCheckRef.current = true;
     setTimeout(() => {
       const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
-      handleSubmit(fakeEvent);
+      handleSubmit(fakeEvent, { skipMinBillingCheck: true });
     }, 50);
   };
 
