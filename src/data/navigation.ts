@@ -60,6 +60,7 @@ export const menuGroups = [
       { name: "Live",             icon: Activity,          path: "/producao/live" },
       { name: "Timeline",         icon: GanttChartSquare,  path: "/producao/timeline" },
       { name: "Capacidade",       icon: BarChart3,         path: "/capacity-planning" },
+      { name: "Gargalos",         icon: AlertTriangle,     path: "/gargalos" },
       { name: "Centro Controle",  icon: AlertTriangle,     path: "/centro-controle" },
       { name: "Imprimir Fichas",  icon: Printer,           path: "/imprimir-fichas" },
       { name: "Picking",          icon: ClipboardCheck,    path: "/picking" },
