@@ -4,9 +4,33 @@ import { escapeHtml } from './htmlUtils';
  * Generates printable box labels (rótulos caixa externa), individual labels (etiquetas caixa individual)
  * and brand hangtags (etiquetas de marca/penduricalhos).
  * Based on industrial standard (Beira Rio / Molekinha pattern)
- * 
+ *
  * These functions return HTML strings — rendering is handled by the caller.
  */
+
+/**
+ * Hardening CSS aplicado em TODOS os builders de etiqueta — garante:
+ *  - cor fiel (sem desbotamento) em qualquer impressora
+ *  - imagem com contraste otimizado (P&B fiel)
+ *  - SEM clipping em containers ancestrais que possam ter overflow:hidden
+ *  - SEM animações/transforms residuais que distorcem snapshot do print
+ *  - cores forçadas a #000 em rule-lines/borders (não dependem de tokens)
+ *
+ * Inserido logo após `*{box-sizing:border-box;margin:0;padding:0;}` em cada
+ * builder. Mesma proteção que PrintWorkSheetsPage aplica em fichas A4.
+ */
+const LABEL_PRINT_HARDENING = `
+@media print{
+  *{
+    -webkit-print-color-adjust:exact !important;
+    color-adjust:exact !important;
+    print-color-adjust:exact !important;
+  }
+  html,body{overflow:visible !important;background:#fff !important;}
+  body *{overflow:visible !important;max-height:none !important;}
+  img{image-rendering:-webkit-optimize-contrast;image-rendering:crisp-edges;}
+  *{animation:none !important;transition:none !important;}
+}`;
 
 export interface BoxIdentificationData {
   nfe?: string;
@@ -351,6 +375,8 @@ ${preloadLinks}
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:Arial,Helvetica,sans-serif;color:#000;padding:16px 10px;background:#e8e8e8;}
 @media print{body{background:#fff;padding:0;}}
+${LABEL_PRINT_HARDENING}
+@page{size:A4;margin:5mm;}
 .label-box{
   width:100%;font-family:Arial,Helvetica,sans-serif;color:#000;
   border:1.5px solid #000;padding:0;box-sizing:border-box;
@@ -441,6 +467,7 @@ body{font-family:Arial,Helvetica,sans-serif;color:#000;padding:16px 10px;backgro
   }
 }
 @page{size:A4;margin:5mm 6mm;}
+${LABEL_PRINT_HARDENING}
 </style>
 </head><body>${pages.join('')}
 <div class="print-footer">
@@ -935,6 +962,7 @@ ${preloadLinks}
     .print-setup-notice{display:none !important;}
   }
   @page{size:${W}mm ${H}mm;margin:0;}
+  ${LABEL_PRINT_HARDENING}
   /* Screen-only setup guidance */
   .print-setup-notice{
     font-family:Arial,Helvetica,sans-serif;
@@ -1374,6 +1402,7 @@ export function buildIndividualLabelsHtml(items: LabelData[]): string {
         body{padding:0;margin:0;}
       }
       @page{size:A4 portrait;margin:0;}
+      ${LABEL_PRINT_HARDENING}
     </style></head><body>
     ${pages.join('')}
   </body></html>`;
