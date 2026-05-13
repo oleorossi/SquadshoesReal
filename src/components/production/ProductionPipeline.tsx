@@ -1,4 +1,4 @@
-import { Scissors, Stack as Layers, GridFour as LayoutGrid, Pen, PaintBrush as Paintbrush, Wind, Hammer, Footprints, Package, Truck } from '@phosphor-icons/react';
+import { Scissors, Stack as Layers, GridFour as LayoutGrid, Pen, PaintBrush as Paintbrush, Wind, Hammer, Footprints, Sparkle as Sparkles, Truck } from '@phosphor-icons/react';
 
 // Ordem canônica pós PR1-PR3: prep (Palmilha‖Forração‖Aviamento) → Costura → restantes.
 const STEPS = [
@@ -8,10 +8,10 @@ const STEPS = [
   { id: 'Costura',        label: 'Costura',      icon: Pen,         color: 'text-rose-500' },
   { id: 'Silk',           label: 'Silk',          icon: Paintbrush,  color: 'text-pink-500' },
   { id: 'Colagem',        label: 'Colagem',       icon: Wind,        color: 'text-amber-500' },
-  { id: 'Montagem',       label: 'Montagem',      icon: Montagem,    color: 'text-blue-500' },
+  { id: 'Montagem',       label: 'Montagem',      icon: Hammer,      color: 'text-blue-500' },
   { id: 'Solagem',        label: 'Solagem',       icon: Footprints,  color: 'text-lime-500' },
-  { id: 'Acabamento',     label: 'Acabamento',    icon: Acabamento,  color: 'text-emerald-500' },
-  { id: 'Expedição',      label: 'Expedição',     icon: Expedicao,   color: 'text-indigo-500' },
+  { id: 'Acabamento',     label: 'Acabamento',    icon: Sparkles,    color: 'text-emerald-500' },
+  { id: 'Expedição',      label: 'Expedição',     icon: Truck,       color: 'text-indigo-500' },
 ];
 
 // Map legacy (pre-rename) step ids to their canonical equivalents.

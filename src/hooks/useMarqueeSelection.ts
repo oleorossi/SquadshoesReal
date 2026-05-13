@@ -137,12 +137,19 @@ export function useMarqueeSelection<T>(
       if (e.button !== 0) return; // só left click
       const target = e.target as HTMLElement;
       // Ignora clicks em items, botões, inputs, links, labels (interativos)
+      // e popovers do Radix (Select trigger/content, Combobox, Dropdown).
+      // Sem esses extras, clicar no Select de status de um PV abria marquee
+      // que pegava linhas adjacentes ao mover o mouse pra dentro do dropdown.
       if (
         target.closest('[data-marquee-item]') ||
         target.closest(
-          'button, input, select, textarea, a, label, [role="button"], [role="checkbox"]',
+          'button, input, select, textarea, a, label, [role="button"], [role="checkbox"], [role="combobox"], [role="listbox"], [role="option"], [role="menuitem"], [data-radix-popper-content-wrapper], [data-state="open"]',
         )
       ) {
+        return;
+      }
+      // Skip se qualquer popover/dropdown Radix está aberto no documento
+      if (typeof document !== 'undefined' && document.querySelector('[data-state="open"][role="dialog"], [data-radix-popper-content-wrapper]')) {
         return;
       }
       if (!containerRef.current) return;
@@ -183,9 +190,12 @@ export function useMarqueeSelection<T>(
       const width = Math.abs(curX - startPoint.current.x);
       const height = Math.abs(curY - startPoint.current.y);
 
-      // Só ativa "modo drag" depois de movimento mínimo (4px) — evita
-      // tratar single-clicks acidentais como drag de 0×0.
-      if (!isDragging.current && (width > 4 || height > 4)) {
+      // Só ativa "modo drag" depois de movimento mínimo (8px) — evita
+      // tratar single-clicks acidentais ou jitter da mão como drag.
+      // Antes era 4px e isso disparava marquee acidental ao clicar no
+      // Select de status de PV (Radix dropdown abrindo + mouse movendo
+      // levemente pra dentro selecionava linhas adjacentes).
+      if (!isDragging.current && (width > 8 || height > 8)) {
         isDragging.current = true;
       }
       if (!isDragging.current) return;

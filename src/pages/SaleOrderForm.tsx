@@ -24,7 +24,7 @@ import { MaterialPurchaseConfirmDialog } from '@/components/sale-orders/Material
 import { checkSectorCapacity, CapacityCheckResult } from '@/lib/sectorCapacity';
 import { SectorOverloadDialog } from '@/components/sale-orders/SectorOverloadDialog';
 import { createOutsourceOrdersForOverloads } from '@/lib/outsourceOrders';
-import { computeMinBillingForNewOrder, isBeforeMinDate, toISOWeek, type MinBillingResult } from '@/lib/minBillingDate';
+import { computeMinBillingForNewOrder, fetchMinBillingDate, isBeforeMinDate, toISOWeek, type MinBillingResult } from '@/lib/minBillingDate';
 import { MinBillingDateSuggestionDialog } from '@/components/sale-orders/MinBillingDateSuggestionDialog';
 import { monthWeekToISODate } from '@/lib/billingWeek';
 

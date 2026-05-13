@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { QrCode, Scissors, Hammer, Footprints, Package, Stack as Layers, Wind, PaintBrush as Paintbrush, GridFour as LayoutGrid, Pen, Truck } from '@phosphor-icons/react';
+import { QrCode, Scissors, Hammer, Footprints, Package, Stack as Layers, Wind, PaintBrush as Paintbrush, GridFour as LayoutGrid, Pen, Truck, Sparkle as Sparkles } from '@phosphor-icons/react';
 import { getProductImage } from '@/utils/productUtils';
 import { ProductionOrder } from '@/types/inventory';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
@@ -40,10 +40,10 @@ const SECTOR_META: Record<string, { icon: React.ReactNode; color: string; bg: st
   Costura:          { icon: <Pen className="h-5 w-5" />,         color: 'text-rose-800',    bg: 'bg-rose-600',     border: 'border-rose-700' },
   Silk:             { icon: <Paintbrush className="h-5 w-5" />, color: 'text-pink-800',    bg: 'bg-pink-600',     border: 'border-pink-700' },
   Colagem:          { icon: <Wind className="h-5 w-5" />,        color: 'text-amber-800',   bg: 'bg-amber-600',    border: 'border-amber-700' },
-  Montagem:         { icon: <Montagem className="h-5 w-5" />,   color: 'text-blue-800',    bg: 'bg-blue-600',     border: 'border-blue-700' },
+  Montagem:         { icon: <Hammer className="h-5 w-5" />,    color: 'text-blue-800',    bg: 'bg-blue-600',     border: 'border-blue-700' },
   Solagem:          { icon: <Footprints className="h-5 w-5" />, color: 'text-lime-800',    bg: 'bg-lime-600',     border: 'border-lime-700' },
-  Acabamento:       { icon: <Acabamento className="h-5 w-5" />, color: 'text-emerald-800', bg: 'bg-emerald-600',  border: 'border-emerald-700' },
-  Expedição:        { icon: <Expedicao className="h-5 w-5" />,  color: 'text-indigo-800',  bg: 'bg-indigo-600',   border: 'border-indigo-700' },
+  Acabamento:       { icon: <Sparkles className="h-5 w-5" />,   color: 'text-emerald-800', bg: 'bg-emerald-600',  border: 'border-emerald-700' },
+  Expedição:        { icon: <Truck className="h-5 w-5" />,      color: 'text-indigo-800',  bg: 'bg-indigo-600',   border: 'border-indigo-700' },
 };
 
 const OperatorWorkSheet = ({

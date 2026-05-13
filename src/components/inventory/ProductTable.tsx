@@ -25,6 +25,7 @@ import { ArtisanalProductDialog } from './ArtisanalProductDialog';
 import { useTableView, densityClasses } from './TableViewContext';
 import { useUpdateProduct, useDeleteProduct } from '@/hooks/useProducts';
 import { CheckCircle, XCircle, Trash, Download } from '@phosphor-icons/react';
+import { toast } from 'sonner';
 
 function ImageZoomDialog({ src, alt, open, onOpenChange }: { src: string; alt: string; open: boolean; onOpenChange: (o: boolean) => void }) {
   if (!src) return null;

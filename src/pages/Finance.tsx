@@ -52,6 +52,7 @@ import BankReconciliationTab from '@/components/finance/BankReconciliationTab';
 import FinanceAttachments from '@/components/finance/FinanceAttachments';
 import { FinanceReportsTab } from '@/components/finance/FinanceReportsTab';
 import { SmartDashboard } from '@/components/finance/SmartDashboard';
+import { NetMarginChart } from '@/components/finance/NetMarginChart';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 const fmt = (v: number | null | undefined) => {
