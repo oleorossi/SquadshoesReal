@@ -47,7 +47,10 @@ function getGroupType(groupName: string): GroupType {
     case 'Cola / Químico': return 'chemical';
     case 'Ferramentas': return 'tool';
     case 'Fôrma': return 'last';
-    default: return 'generic';
+    // 'Componente' (fallback do deriveCategoryFromGroup) é tratado como cabedal:
+    // na prática componentes sempre são insumos de cabedal (forros, debruns,
+    // entretelas, etc.) — mesma matriz de campos.
+    default: return 'upper_material';
   }
 }
 

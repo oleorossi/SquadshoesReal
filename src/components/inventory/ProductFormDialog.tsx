@@ -3,6 +3,16 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { stripColorFromName } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -71,6 +81,72 @@ const emptyForm: ProductFormData = {
    consumption_unit: null, is_standard_sole_item: false,
  };
 
+// Whitelist de campos que fazem sentido propagar entre variações de cor do
+// mesmo grupo. Excluídos: name, sku, color, quantity, max_stock, min_stock_grade,
+// stock_grade, image_url, group_id, active, linked_last_id, sole_material,
+// heel_height (próprios da variante).
+const PROPAGABLE_FIELDS = [
+  'unit_price', 'price_wholesale', 'price_retail',
+  'unit', 'consumption_unit',
+  'location',
+  'dimensions_length', 'dimensions_width', 'dimensions_thickness', 'dimensions_unit',
+  'yield_per_meter', 'yield_unit',
+  'technical_name', 'category',
+  'supplier_lead_time_days', 'lead_time_days',
+  'min_stock',
+  'supplier_id',
+  'purchase_unit', 'production_unit', 'conversion_rate',
+  'purchase_order_unit', 'min_order_quantity',
+  'safety_stock',
+  'calculation_method',
+  'is_chemical',
+] as const;
+
+const PROPAGABLE_LABELS: Record<string, string> = {
+  unit_price: 'Preço unitário',
+  price_wholesale: 'Preço atacado',
+  price_retail: 'Preço varejo',
+  unit: 'Unidade',
+  consumption_unit: 'Unidade de consumo',
+  location: 'Localização',
+  dimensions_length: 'Comprimento',
+  dimensions_width: 'Largura',
+  dimensions_thickness: 'Espessura',
+  dimensions_unit: 'Unidade dimensional',
+  yield_per_meter: 'Rendimento',
+  yield_unit: 'Unidade de rendimento',
+  technical_name: 'Nome técnico',
+  category: 'Categoria',
+  supplier_lead_time_days: 'Lead time fornecedor',
+  lead_time_days: 'Lead time',
+  min_stock: 'Estoque mínimo',
+  supplier_id: 'Fornecedor',
+  purchase_unit: 'Unidade de compra',
+  production_unit: 'Unidade de produção',
+  conversion_rate: 'Taxa de conversão',
+  purchase_order_unit: 'Unidade de ordem de compra',
+  min_order_quantity: 'Quantidade mínima',
+  safety_stock: 'Estoque de segurança',
+  calculation_method: 'Método de cálculo',
+  is_chemical: 'Material químico',
+};
+
+function computePropagableDiff(original: Product, next: ProductFormData): Record<string, any> {
+  const diff: Record<string, any> = {};
+  for (const f of PROPAGABLE_FIELDS) {
+    const a = (original as any)[f];
+    const b = (next as any)[f];
+    const aN = a == null ? null : a;
+    const bN = b == null ? null : b;
+    if (typeof aN === 'number' || typeof bN === 'number') {
+      if (Number(aN || 0) !== Number(bN || 0)) diff[f] = bN;
+    } else if (String(aN ?? '') !== String(bN ?? '')) {
+      diff[f] = bN;
+    }
+  }
+  return diff;
+}
+
 function getBaseName(name: string): string {
   const colonIdx = name.lastIndexOf(':');
   if (colonIdx > 0) return name.substring(0, colonIdx).trim().toUpperCase();
@@ -100,6 +176,11 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
   const [duplicateMatch, setDuplicateMatch] = useState<Product | null>(null);
   const [duplicateConfirmed, setDuplicateConfirmed] = useState(false);
   const [groupConflict, setGroupConflict] = useState<Product | null>(null);
+  const [propagationPrompt, setPropagationPrompt] = useState<{
+    diff: Record<string, any>;
+    siblings: Array<{ id: string; name: string; color: string | null }>;
+    resolve: (apply: boolean) => void;
+  } | null>(null);
   const { data: groups = [] } = useGroups();
   const queryClient = useQueryClient();
   const { data: suppliers = [] } = useSuppliers();
@@ -609,6 +690,35 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       queryClient.invalidateQueries({ queryKey: ['packaging_links_overview'] });
     };
 
+    // Propagação entre variações de cor: se há outros produtos no mesmo grupo
+    // (siblings) e algum campo propagável foi alterado, pergunta ao usuário
+    // se deve aplicar a alteração em todas as variantes. Roda ANTES do save
+    // pra encadear o UPDATE dos siblings no mesmo turno e manter o dialog
+    // do form aberto enquanto o AlertDialog aguarda resposta.
+    let propagateDiff: Record<string, any> = {};
+    let propagateSiblingIds: string[] = [];
+    if (isEditing && product && product.group_id) {
+      const diff = computePropagableDiff(product, baseData);
+      if (Object.keys(diff).length > 0) {
+        const { data: siblings } = await supabase
+          .from('products')
+          .select('id, name, color')
+          .eq('group_id', product.group_id)
+          .eq('active', true)
+          .neq('id', product.id);
+        if (siblings && siblings.length > 0) {
+          const apply = await new Promise<boolean>((resolve) => {
+            setPropagationPrompt({ diff, siblings, resolve });
+          });
+          setPropagationPrompt(null);
+          if (apply) {
+            propagateDiff = diff;
+            propagateSiblingIds = siblings.map((s) => s.id);
+          }
+        }
+      }
+    }
+
     setSubmitting(true);
     try {
       if (isEditing) {
@@ -619,6 +729,21 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
             saveSolePackagingConfigs(product.id),
             syncSoleRangeToSiblings(product.id),
           ]);
+        }
+        if (propagateSiblingIds.length > 0) {
+          const { error } = await supabase
+            .from('products')
+            .update(propagateDiff)
+            .in('id', propagateSiblingIds);
+          if (error) {
+            toast.error(`Erro ao propagar nas variantes: ${error.message}`);
+          } else {
+            queryClient.invalidateQueries({ queryKey: ['products'] });
+            queryClient.invalidateQueries({ queryKey: ['paginated_products'] });
+            toast.success(
+              `Alteração aplicada em ${propagateSiblingIds.length} variante${propagateSiblingIds.length > 1 ? 's' : ''} do grupo.`
+            );
+          }
         }
       } else if (multiColorMode && multiColors.length > 0 && onSubmitMultiple) {
         const products = multiColors.map((color, idx) => ({
@@ -1727,6 +1852,70 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
           </div>
         </form>
       </DialogContent>
+
+      <AlertDialog
+        open={!!propagationPrompt}
+        onOpenChange={(open) => {
+          if (!open && propagationPrompt) {
+            propagationPrompt.resolve(false);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Aplicar nas outras variações do grupo?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm">
+                <p>
+                  Você alterou {propagationPrompt && Object.keys(propagationPrompt.diff).length === 1
+                    ? '1 campo'
+                    : `${propagationPrompt ? Object.keys(propagationPrompt.diff).length : 0} campos`}.
+                  Deseja propagar para as outras {propagationPrompt?.siblings.length} variações deste grupo?
+                </p>
+                {propagationPrompt && (
+                  <>
+                    <div className="rounded-md border bg-muted/30 p-2.5">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                        Campos alterados
+                      </p>
+                      <ul className="text-xs space-y-0.5">
+                        {Object.entries(propagationPrompt.diff).map(([key, val]) => (
+                          <li key={key} className="flex justify-between gap-2">
+                            <span className="text-muted-foreground">
+                              {PROPAGABLE_LABELS[key] || key}:
+                            </span>
+                            <span className="font-mono">{String(val ?? '—')}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="rounded-md border bg-muted/30 p-2.5">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                        Variações que serão atualizadas
+                      </p>
+                      <ul className="text-xs space-y-0.5 max-h-32 overflow-y-auto">
+                        {propagationPrompt.siblings.map((s) => (
+                          <li key={s.id}>
+                            {s.color ? `${s.color} — ` : ''}{s.name}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => propagationPrompt?.resolve(false)}>
+              Não, só nesta cor
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={() => propagationPrompt?.resolve(true)}>
+              Sim, aplicar em todas
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }

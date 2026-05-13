@@ -2645,10 +2645,16 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
  
             const sizes = parseSizesFromRange(form.sizes, form.shoe_category);
             // Resolves the measurement unit for a group name, used to label input fields.
+            // FIX: prioriza consumption_unit/dimensions_unit do grupo (unidade canônica
+            // de BOM). Antes pulava direto pro product.unit (unidade de estoque, ex:
+            // "rolo"), o que fazia o operador digitar consumo em rolo quando o
+            // cadastro era em m² — gerando prejuízo grande na BOM.
             const resolveGroupUnit = (groupName: string): string => {
               if (!groupName?.trim()) return 'dm²';
-              const g = (groups || []).find((x: any) => (x.name || '').trim() === groupName.trim());
+              const g: any = (groups || []).find((x: any) => (x.name || '').trim() === groupName.trim());
               if (!g) return 'dm²';
+              const groupUnit = ((g.consumption_unit || g.dimensions_unit) || '').toString().trim();
+              if (groupUnit) return groupUnit;
               const prod = (products || []).find((p: any) => p.group_id === g.id && p.active && (p.unit || '').trim())
                 || (products || []).find((p: any) => p.group_id === g.id && (p.unit || '').trim());
               return (prod?.unit || '').toString().trim() || 'dm²';
