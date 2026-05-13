@@ -83,9 +83,29 @@ export function useDeleteEmployee() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
+      // time_records não tem employee_id (FK pra employees) — tabela linka
+      // por employee_external_id (matricula REP) e employee_name. Antes
+      // quebrava a query inteira; agora resolvemos external_id + name pra
+      // contar registros vinculados.
+      const empMeta = await supabase
+        .from('employees')
+        .select('external_id, name')
+        .eq('id', id)
+        .single();
+      const extId = (empMeta.data as any)?.external_id || null;
+      const empName = (empMeta.data as any)?.name || '';
+      let timeQ = supabase.from('time_records').select('id', { count: 'exact', head: true });
+      if (extId) {
+        timeQ = timeQ.or(`employee_external_id.eq.${extId},employee_name.ilike.${empName}`);
+      } else if (empName) {
+        timeQ = timeQ.ilike('employee_name', empName);
+      } else {
+        // Sem chaves pra match — assume 0 registros
+        timeQ = timeQ.eq('id', '00000000-0000-0000-0000-000000000000');
+      }
       const [advRes, timeRes] = await Promise.all([
         supabase.from('employee_advances').select('id', { count: 'exact', head: true }).eq('employee_id', id),
-        supabase.from('time_records').select('id', { count: 'exact', head: true }).eq('employee_id', id),
+        timeQ,
       ]);
       if (advRes.error) throw advRes.error;
       if (timeRes.error) throw timeRes.error;

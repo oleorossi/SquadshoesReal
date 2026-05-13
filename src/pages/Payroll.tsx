@@ -92,22 +92,25 @@ export default function Payroll() {
     try {
       const monthDays = getMonthDays(period);
 
-      // Buscar time_records do período em batch único
+      // Buscar time_records do período em batch único.
+      // Tabela time_records não tem employee_id (FK pra employees) — só
+      // employee_external_id (matricula do REP) e employee_name. Indexamos
+      // por ambos pra match em calculateForEmployee.
       const { data: timeRecords, error } = await supabase
         .from('time_records')
-        .select('employee_id, employee_external_id, employee_name, record_date, punches')
+        .select('employee_external_id, employee_name, record_date, punches')
         .gte('record_date', periodRange.from!)
         .lte('record_date', periodRange.to!);
       if (error) throw error;
 
-      // Indexa por employee_id ou name (REPs nem sempre têm employee_id mapeado)
-      const byEmpId = new Map<string, Map<string, string[]>>();
+      const byExternalId = new Map<string, Map<string, string[]>>();
       const byName  = new Map<string, Map<string, string[]>>();
       for (const r of (timeRecords || []) as any[]) {
         const punches: string[] = Array.isArray(r.punches) ? r.punches : [];
-        if (r.employee_id) {
-          if (!byEmpId.has(r.employee_id)) byEmpId.set(r.employee_id, new Map());
-          byEmpId.get(r.employee_id)!.set(r.record_date, punches);
+        if (r.employee_external_id) {
+          const extKey = String(r.employee_external_id);
+          if (!byExternalId.has(extKey)) byExternalId.set(extKey, new Map());
+          byExternalId.get(extKey)!.set(r.record_date, punches);
         }
         const nameKey = (r.employee_name || '').toLowerCase().trim();
         if (nameKey) {
@@ -154,7 +157,12 @@ export default function Payroll() {
 
       let calculated = 0;
       for (const emp of employees.filter(e => e.active)) {
-        const empPunches = byEmpId.get(emp.id) || byName.get(emp.name.toLowerCase().trim()) || new Map();
+        // Match em ordem: external_id (matricula REP) → nome.
+        // emp.id é UUID interno, NÃO casa com employee_external_id do REP.
+        const extKey = (emp as any).external_id ? String((emp as any).external_id) : '';
+        const empPunches = (extKey && byExternalId.get(extKey))
+          || byName.get(emp.name.toLowerCase().trim())
+          || new Map();
 
         const days: PayrollDayInput[] = monthDays.map(d => {
           const punches = empPunches.get(d.date) || [];

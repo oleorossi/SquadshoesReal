@@ -1605,6 +1605,12 @@ export default function SaleOrders() {
                   const isSelected = sel.isSelected(order.id);
                   const isOverdue = order.delivery_deadline && new Date(order.delivery_deadline) < new Date() && !TERMINAL_BILLED_STATUSES.includes(order.status) && order.status !== 'Cancelado';
                   const isInformal = (order as any).nfe_required === false;
+                  const minBilling = minBillingMap.get(order.id) || null;
+                  const isInfeasible = !!(
+                    minBilling && order.delivery_deadline && order.delivery_deadline < minBilling
+                    && !TERMINAL_BILLED_STATUSES.includes(order.status)
+                    && order.status !== 'Cancelado'
+                  );
                   return (
                     <TableRow
                       key={order.id}
