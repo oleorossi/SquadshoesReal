@@ -15,6 +15,21 @@ import { Package, ShoppingCart, Gear as Settings, Truck, Factory, Kanban, Square
 //      "Estoque" + "Compras" (escopos distintos)
 // ════════════════════════════════════════════════════════════════════════
 
+// ════════════════════════════════════════════════════════════════════════
+// SQUAD SHOES — Sidebar
+// Reorganizado em 2026-05-07 (audit-round-5): 38 → 24 itens visíveis (-37%)
+// Princípios:
+//   1. Cada grupo no MÁX 4 itens (estava chegando a 9 — confuso)
+//   2. Painéis duplicados unificados: "Painel Comercial"/"Painel Produção"/
+//      "Painel Financeiro" foram removidos do sidebar — acessíveis pelo
+//      header da página principal de cada área
+//   3. Sub-features (MRP/Capacidade/Reservas/Histórico/Transporte/Receitas/
+//      Consumo Base/Monitor/Diagnóstico) ficam acessíveis via URL direta
+//      ou tabs internos das páginas hub (continuam funcionando)
+//   4. "Pessoas" virou "RH" (mais óbvio); "Estoque & Compras" splittado em
+//      "Estoque" + "Compras" (escopos distintos)
+// ════════════════════════════════════════════════════════════════════════
+
 export const topItem = {
   name: "Painel",
   icon: LayoutDashboard,

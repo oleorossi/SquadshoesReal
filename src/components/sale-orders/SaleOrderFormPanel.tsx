@@ -78,6 +78,11 @@ interface Props {
   packagingQuantity?: number;
   onPackagingQuantityChange?: (qty: number) => void;
   onSaveStateAndNavigate?: () => void;
+  /** Data mínima viável calculada (ISO yyyy-mm-dd). Quando delivery_deadline < esta data,
+   *  exibe alerta vermelho persistente ao lado do campo. */
+  minBillingISO?: string | null;
+  /** True enquanto recalcula a data mínima (mostra spinner em vez de alerta). */
+  computingMinBilling?: boolean;
 }
 
 const emptyItem: SaleOrderItemFormData = {
@@ -353,6 +358,7 @@ export default function SaleOrderFormPanel({
    isAdmin, selectedClientId, onClientSelect, onSubmit, onCancel, isPending, submitLabel,
    packagingProductId, onPackagingProductChange, packagingQuantity: _packagingQuantity, onPackagingQuantityChange,
    onSaveStateAndNavigate,
+   minBillingISO, computingMinBilling,
  }: Props) {
    const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
    const [duplicateList, setDuplicateList] = useState<string[]>([]);
