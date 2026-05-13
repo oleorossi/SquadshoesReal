@@ -123,10 +123,10 @@ export async function computeMaterialFloor(items: CapacityCheckInput[]): Promise
     qtyByRef.set(it.reference_id, (qtyByRef.get(it.reference_id) || 0) + Number(it.quantity || 0));
   }
 
-  // Busca sheet_materials das fichas envolvidas
+  // Busca sheet_materials + dados do produto (incluído na select)
   const { data: smRows, error } = await supabase
     .from('sheet_materials')
-    .select('sheet_id, product_id, quantity_per_unit, products(id, name, quantity, reserved_stock, supplier_lead_time_days)')
+    .select('sheet_id, product_id, quantity_per_unit, products(id, name, quantity, reserved_stock, supplier_lead_time_days, group_id)')
     .in('sheet_id', refIds);
   if (error) {
     console.error('[computeMaterialFloor] erro:', error);
@@ -137,9 +137,10 @@ export async function computeMaterialFloor(items: CapacityCheckInput[]): Promise
   type AggRow = {
     product_id: string;
     product_name: string;
+    group_id: string | null;
     needed: number;
     available: number;
-    supplierLead: number;
+    productSupplierLead: number;
   };
   const byProduct = new Map<string, AggRow>();
   for (const r of (smRows || []) as any[]) {
@@ -152,17 +153,76 @@ export async function computeMaterialFloor(items: CapacityCheckInput[]): Promise
     const pQty = Number(r.products?.quantity || 0);
     const pReserved = Number(r.products?.reserved_stock || 0);
     const available = Math.max(0, pQty - pReserved);
-    const supplierLead = Number(r.products?.supplier_lead_time_days ?? 10);
+    const productSupplierLead = Number(r.products?.supplier_lead_time_days ?? 10);
     if (prev) {
       prev.needed += need;
     } else {
       byProduct.set(r.product_id, {
         product_id: r.product_id,
         product_name: pName,
+        group_id: r.products?.group_id || null,
         needed: need,
         available,
-        supplierLead,
+        productSupplierLead,
       });
+    }
+  }
+
+  // Identifica shortages
+  const shortageProductIds: string[] = [];
+  for (const row of byProduct.values()) {
+    if (row.needed > row.available) shortageProductIds.push(row.product_id);
+  }
+
+  // G3 FIX: cascata de lead time consultando PO em aberto + group_supplier antes
+  // de cair pro lead cadastrado no produto. Espelha get_effective_supplier_lead_days.
+  // Só consulta pra produtos em ruptura (otimização).
+  const effectiveLeadByProduct = new Map<string, number>();
+  if (shortageProductIds.length > 0) {
+    // 1. PO em aberto com eta_days conhecido (mais preciso)
+    const { data: poRows } = await (supabase as any)
+      .from('purchase_order_items')
+      .select('product_id, purchase_orders!inner(id, eta_days, status)')
+      .in('product_id', shortageProductIds);
+    for (const r of (poRows || []) as any[]) {
+      const po = r.purchase_orders;
+      if (!po || !['pending', 'approved'].includes(po.status)) continue;
+      if (po.eta_days == null) continue;
+      const prev = effectiveLeadByProduct.get(r.product_id);
+      if (prev === undefined || Number(po.eta_days) < prev) {
+        effectiveLeadByProduct.set(r.product_id, Number(po.eta_days));
+      }
+    }
+
+    // 2. group_suppliers.lead_time_days pros produtos que ainda não têm PO
+    const groupIdsNeeded = Array.from(
+      new Set(
+        Array.from(byProduct.values())
+          .filter((r) => r.group_id && shortageProductIds.includes(r.product_id))
+          .filter((r) => !effectiveLeadByProduct.has(r.product_id))
+          .map((r) => r.group_id as string),
+      ),
+    );
+    if (groupIdsNeeded.length > 0) {
+      const { data: gsRows } = await (supabase as any)
+        .from('group_suppliers')
+        .select('group_id, lead_time_days, updated_at')
+        .in('group_id', groupIdsNeeded)
+        .gt('lead_time_days', 0)
+        .order('updated_at', { ascending: false });
+      // Mantém o mais recente por group_id
+      const leadByGroup = new Map<string, number>();
+      for (const g of (gsRows || []) as any[]) {
+        if (!leadByGroup.has(g.group_id)) {
+          leadByGroup.set(g.group_id, Number(g.lead_time_days));
+        }
+      }
+      for (const [pid, row] of byProduct.entries()) {
+        if (effectiveLeadByProduct.has(pid)) continue;
+        if (!row.group_id) continue;
+        const groupLead = leadByGroup.get(row.group_id);
+        if (groupLead && groupLead > 0) effectiveLeadByProduct.set(pid, groupLead);
+      }
     }
   }
 
@@ -170,14 +230,15 @@ export async function computeMaterialFloor(items: CapacityCheckInput[]): Promise
   let maxLead = 0;
   for (const row of byProduct.values()) {
     if (row.needed > row.available) {
+      const effective = effectiveLeadByProduct.get(row.product_id) ?? row.productSupplierLead;
       shortageItems.push({
         product_id: row.product_id,
         product_name: row.product_name,
         needed: row.needed,
         available: row.available,
-        supplier_lead_days: row.supplierLead,
+        supplier_lead_days: effective,
       });
-      if (row.supplierLead > maxLead) maxLead = row.supplierLead;
+      if (effective > maxLead) maxLead = effective;
     }
   }
   return { supplierLeadDays: maxLead, shortageItems };
