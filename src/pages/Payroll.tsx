@@ -11,7 +11,9 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Calculator, Gear as Settings, FileArrowDown as FileDown, CheckCircle as CheckCircle2, Receipt, Warning as AlertTriangle, Wallet } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Calculator, Gear as Settings, FileArrowDown as FileDown, CheckCircle as CheckCircle2, Receipt, Warning as AlertTriangle, Wallet, Clock, ArrowRight } from '@phosphor-icons/react';
+import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useEmployees } from '@/hooks/useEmployees';
 import {
   useBenefitsConfig, useSaveBenefitsConfig,
@@ -46,6 +48,7 @@ const STATUS_BADGES = {
 };
 
 export default function Payroll() {
+  const navigate = useNavigate();
   const today = new Date();
   const defaultPeriod = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
   const [period, setPeriod] = useState(defaultPeriod);
@@ -119,15 +122,33 @@ export default function Payroll() {
         absencesByEmp.get(a.employee_id)!.push(a);
       }
 
-      // Soma adiantamentos do período
+      // Soma adiantamentos do período PENDENTES (status='pending', não já
+      // descontados em outra folha). Vales descontados em folha aprovada NÃO
+      // entram aqui — o trigger DB liga payroll_run_id quando folha vira aprovada.
       const { data: advances } = await supabase
         .from('employee_advances')
-        .select('employee_id, amount, advance_date')
+        .select('employee_id, amount, advance_date, status, payroll_run_id')
         .gte('advance_date', periodRange.from!)
-        .lte('advance_date', periodRange.to!);
+        .lte('advance_date', periodRange.to!)
+        .or('payroll_run_id.is.null,status.eq.pending');
       const advancesByEmp = new Map<string, number>();
       for (const a of (advances || []) as any[]) {
         advancesByEmp.set(a.employee_id, (advancesByEmp.get(a.employee_id) || 0) + Number(a.amount || 0));
+      }
+
+      // Soma HE paga (overtime_resolutions com decision IN ('pay','split'))
+      // do mês — vai como adicional na folha, NÃO como financial_entry separado.
+      const monthFirstDay = `${period}-01`;
+      const { data: overtimeRes } = await supabase
+        .from('overtime_resolutions')
+        .select('employee_id, decision, pay_amount, payroll_run_id')
+        .eq('month', monthFirstDay);
+      const overtimePaidByEmp = new Map<string, number>();
+      for (const r of (overtimeRes || []) as any[]) {
+        if (r.decision === 'pay' || r.decision === 'split') {
+          overtimePaidByEmp.set(r.employee_id,
+            (overtimePaidByEmp.get(r.employee_id) || 0) + Number(r.pay_amount || 0));
+        }
       }
 
       let calculated = 0;
@@ -171,11 +192,21 @@ export default function Payroll() {
           config as BenefitsConfig,
         );
 
+        const overtimePaid = overtimePaidByEmp.get(emp.id) || 0;
+        // HE paga entra como adicional no proventos (e portanto líquido).
+        // Se não houver, fica em 0 e a folha computa só o salário base + extras
+        // calculados pelas batidas.
+        const proventos = (result as any).total_proventos + overtimePaid;
+        const liquido = (result as any).total_liquido + overtimePaid;
+
         await upsertRun.mutateAsync({
           employee_id: emp.id,
           period,
           ...result,
+          total_proventos: proventos,
+          total_liquido: liquido,
           advances_total: advancesByEmp.get(emp.id) || 0,
+          overtime_paid_value: overtimePaid,
           status: 'rascunho',
         });
         calculated++;
@@ -220,12 +251,19 @@ export default function Payroll() {
           <Button variant="outline" onClick={() => setConfigOpen(true)}>
             <Settings className="h-4 w-4 mr-2" />Configurações
           </Button>
+          <Button variant="outline" onClick={() => navigate('/timesheet?tab=overtime')}>
+            <Clock className="h-4 w-4 mr-2" />
+            Resolver HE
+          </Button>
           <Button onClick={calculateAll} disabled={calcRunning}>
             {calcRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Calculator className="h-4 w-4 mr-2" />}
             Calcular folha
           </Button>
         </div>
       </div>
+
+      <PayrollPendingInputsAlert period={period} />
+
 
       {/* Alerta de ano da tabela INSS/IRRF */}
       {(() => {
@@ -555,5 +593,90 @@ function BenefitsConfigDialog({ open, onOpenChange }: { open: boolean; onOpenCha
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Alerta no topo da página de Folha: mostra vales pendentes e HE não resolvida
+ * no período corrente. Operador deve resolver HE no /timesheet antes de
+ * calcular a folha pra os valores entrarem corretos.
+ */
+function PayrollPendingInputsAlert({ period }: { period: string }) {
+  const navigate = useNavigate();
+  const periodStart = `${period}-01`;
+  const periodEnd = new Date(Number(period.split('-')[0]), Number(period.split('-')[1]), 0)
+    .toISOString().slice(0, 10);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['payroll_pending_inputs', period],
+    queryFn: async () => {
+      const [advancesQ, overtimeQ] = await Promise.all([
+        (supabase as any)
+          .from('employee_advances')
+          .select('id, employee_id, amount, status, payroll_run_id')
+          .gte('advance_date', periodStart)
+          .lte('advance_date', periodEnd),
+        (supabase as any)
+          .from('overtime_resolutions')
+          .select('employee_id')
+          .eq('month', periodStart),
+      ]);
+      const pendingAdvances = (advancesQ.data || []).filter(
+        (a: any) => a.payroll_run_id == null && a.status === 'pending'
+      );
+      const pendingAdvancesTotal = pendingAdvances.reduce(
+        (s: number, a: any) => s + Number(a.amount || 0), 0
+      );
+      // Não fazemos query custosa de batidas pra detectar HE faltante — só
+      // sinalizamos se nenhum funcionário ainda foi resolvido (caso comum
+      // quando esquece). Usuário pode clicar pra ver detalhe.
+      const overtimeResolved = (overtimeQ.data || []).length;
+      return {
+        pendingAdvancesCount: pendingAdvances.length,
+        pendingAdvancesTotal,
+        overtimeResolved,
+      };
+    },
+    staleTime: 30_000,
+  });
+
+  if (isLoading || !data) return null;
+  const { pendingAdvancesCount, pendingAdvancesTotal, overtimeResolved } = data;
+  if (pendingAdvancesCount === 0 && overtimeResolved > 0) return null;
+
+  return (
+    <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 space-y-2">
+      <div className="flex items-center gap-2 text-sm font-semibold text-amber-800">
+        <AlertTriangle className="h-4 w-4" />
+        Atenção antes de calcular a folha
+      </div>
+      <div className="space-y-1 text-xs text-amber-800/90">
+        {pendingAdvancesCount > 0 && (
+          <div className="flex items-center justify-between gap-2">
+            <span>
+              <strong className="font-bold">{pendingAdvancesCount} vale(s)</strong> pendente(s) neste período
+              {' '}— total {pendingAdvancesTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.
+              Serão descontados automaticamente ao aprovar a folha.
+            </span>
+          </div>
+        )}
+        {overtimeResolved === 0 && (
+          <div className="flex items-center justify-between gap-2">
+            <span>
+              <strong className="font-bold">Horas extras ainda não resolvidas</strong> para este mês.
+              Decida quem fica no banco e quem recebe HE antes de calcular.
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-[11px] gap-1 border-amber-500/40"
+              onClick={() => navigate('/timesheet?tab=overtime')}
+            >
+              Resolver HE <ArrowRight className="h-3 w-3" />
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
