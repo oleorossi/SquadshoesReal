@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, Copy, Eye, PaintBucket, Star } from 'lucide-react';
+import { Plus, PencilSimple as Pencil, Trash as Trash2, Copy, Eye, PaintBucket, Star } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import type { LabelTemplate } from '@/types/label-system';
 import { useLabelTemplates } from '@/hooks/useLabelTemplates';

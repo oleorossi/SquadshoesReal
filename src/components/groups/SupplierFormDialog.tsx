@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Search, Loader2, Check } from 'lucide-react';
+import { MagnifyingGlass as Search, CircleNotch as Loader2, Check } from '@phosphor-icons/react';
 import { useSuppliers, type Supplier } from '@/hooks/useSuppliers';
 import type { GroupSupplier } from '@/hooks/useGroupSuppliers';
 import { cn } from '@/lib/utils';

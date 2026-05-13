@@ -1,7 +1,7 @@
  import { Badge } from '@/components/ui/badge';
  import { Button } from '@/components/ui/button';
  import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table';
-import { Package2, Truck, CheckCircle2 } from 'lucide-react';
+import { Package as Package2, Truck, CheckCircle as CheckCircle2 } from '@phosphor-icons/react';
 import { useFinishingPackages, useUpdatePackage } from '@/hooks/useProductionWaves';
 
 export function FinishingSplitTable({ waveId }: { waveId: string }) {

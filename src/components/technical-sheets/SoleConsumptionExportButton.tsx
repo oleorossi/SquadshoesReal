@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Download, Loader2 } from 'lucide-react';
+import { Download, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';

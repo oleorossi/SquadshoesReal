@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { NumberInput } from '@/components/ui/number-input';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Package, AlertTriangle, Check, Pencil } from 'lucide-react';
+import { CircleNotch as Loader2, Package, Warning as AlertTriangle, Check, PencilSimple as Pencil } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { sanitizeUuidFields } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -183,21 +183,27 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
 
       const normalizedColor = color.trim().toLowerCase();
       const normalizedGroup = groupName.trim().toLowerCase();
+      // BUG ANTIGO: buscávamos similares em TODOS os grupos e mostrávamos
+      // produtos de outras famílias (ex: "Verde Lima" em NAPA Sudani
+      // aparecia quando o usuário queria cadastrar "Verde Lima" em
+      // Tira Strass). Se ele clicasse no similar errado, o produto era
+      // RENOMEADO/MOVIDO pra outra família via handleUseExisting:219.
+      // FIX: filtrar similares APENAS dentro do mesmo group_id da tira
+      // selecionada. Se a cor não existe nesse grupo específico, vai
+      // direto pro form de criação (sem desvio).
       const { data: allMatches } = await supabase
         .from('products')
         .select('id, name, color, category, group_id, quantity, unit, sku, unit_price')
-        .eq('active', true);
+        .eq('active', true)
+        .eq('group_id', groupId);
 
       const similar = (allMatches || []).filter((p: any) => {
         const pName = p.name?.trim().toLowerCase() || '';
         const pColor = p.color?.trim().toLowerCase() || '';
-        // Exact group match
-        if (pColor === normalizedColor && pName.includes(normalizedGroup)) return true;
-        // Fuzzy: same color regardless of group
+        // Match exato da cor dentro do MESMO grupo (já filtrado no SQL)
+        if (pColor === normalizedColor) return true;
         if (fuzzyMatch(pColor, color)) return true;
-        // Fuzzy: name contains proposed name tokens
         if (fuzzyMatch(pName, proposedName)) return true;
-        // Color at end of name
         if (pName.endsWith(`: ${normalizedColor}`) || pName.endsWith(` - ${normalizedColor}`) || pName.endsWith(` ${normalizedColor}`)) return true;
         return false;
       });
@@ -298,10 +304,13 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
       }
 
       const finalSku = await resolveUniqueSku(sku, groupName, trimmedColor);
+      // Defesa: category é NOT NULL no DB. Se o state ficou vazio (sem
+      // produto anterior no grupo pra pré-preencher), deriva do groupName.
+      const safeCategory = (category && category.trim()) || deriveCategoryFromGroup(groupName);
       const productData = sanitizeUuidFields({
         name: trimmedName,
         sku: finalSku,
-        category,
+        category: safeCategory,
         color: trimmedColor,
         unit,
         unit_price: unitPrice,

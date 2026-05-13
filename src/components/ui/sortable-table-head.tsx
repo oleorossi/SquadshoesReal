@@ -1,6 +1,6 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import { ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { ArrowUp, ArrowDown, ArrowsDownUp as ArrowUpDown } from '@phosphor-icons/react';
 
 export type SortDirection = 'asc' | 'desc' | null;
 

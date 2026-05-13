@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { Printer, CheckCircle2, XCircle, Clock, AlertTriangle, RotateCcw, Trash2 } from 'lucide-react';
+import { Printer, CheckCircle as CheckCircle2, XCircle, Clock, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, Trash as Trash2 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import type { PrintJob, PrinterInfo } from '@/types/label-system';
 

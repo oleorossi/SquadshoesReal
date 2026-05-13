@@ -23,15 +23,21 @@ export interface NfeCCe {
 export function useNfeCCes(filters?: { nfeId?: string; status?: NfeCCeStatus }) {
   return useQuery({
     queryKey: ['nfe_cce', filters],
+    staleTime: 0,
     queryFn: async () => {
+      // Embed aninhado (cce → nfe → sale_orders) quebra a query quando há
+      // CCes apontando pra NFs sem sale_order — simplificado pra 1 nível.
       let query = supabase
         .from('nfe_cce' as any)
-        .select('*, nfe_emitidas(numero, serie, chave_acesso, sale_orders(order_number, client_name))')
+        .select('*, nfe_emitidas(numero, serie, chave_acesso, sale_order_id)')
         .order('created_at', { ascending: false });
       if (filters?.nfeId) query = query.eq('nfe_id', filters.nfeId);
       if (filters?.status) query = query.eq('status', filters.status);
       const { data, error } = await query;
-      if (error) throw error;
+      if (error) {
+        console.error('[useNfeCCes] error:', error);
+        throw error;
+      }
       return (data || []) as unknown as Array<NfeCCe & { nfe_emitidas?: any }>;
     },
   });
@@ -114,17 +120,25 @@ export function useMarkCCeEmitted() {
   });
 }
 
-export function useAuthorizedNfes() {
+export function useAuthorizedNfes(enabled = true) {
   return useQuery({
     queryKey: ['nfe_authorized_for_cce'],
+    enabled,
+    staleTime: 0,
     queryFn: async () => {
+      // Embed sale_orders removido — NF sincronizada do GestaoClick não tem
+      // sale_order_id, e PostgREST estava falhando o embed em alguns casos.
       const { data, error } = await supabase
         .from('nfe_emitidas')
-        .select('id, numero, serie, chave_acesso, data_emissao, sale_orders(order_number, client_name)')
+        .select('id, numero, serie, chave_acesso, data_emissao, sale_order_id, cnpj_emitente')
         .eq('status', 'autorizada')
         .order('data_emissao', { ascending: false })
         .limit(200);
-      if (error) throw error;
+      if (error) {
+        console.error('[useAuthorizedNfes] error:', error);
+        throw error;
+      }
+      console.info(`[useAuthorizedNfes] ${data?.length ?? 0} NF-es autorizadas`);
       return data || [];
     },
   });

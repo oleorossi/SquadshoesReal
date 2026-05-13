@@ -176,19 +176,73 @@ Deno.serve(async (req) => {
         .not("status", "in", "(received,cancelled)");
       if (arErr) cleanupWarnings.push(`AR não cancelada: ${arErr.message}`);
 
-      const { error: feErr } = await adminClient.from("financial_entries")
-        .delete()
+      // FIX C1: lançamentos 'confirmed/posted/reconciled/paid' são protegidos
+      // (trilha SPED). Em vez de deletar (que falha no filtro), inserimos uma
+      // entry NEGATIVA de estorno espelhando o que emit-nfe-devolucao faz.
+      // Comportamento: cancelar NF-e dentro de 24h registra estorno
+      // contábil sem violar a imutabilidade dos lançamentos já confirmados.
+      const { data: feToReverse, error: feFetchErr } = await adminClient.from("financial_entries")
+        .select("id, amount, type, description, account_id, entry_date, due_date, status")
         .eq("reference_id", nfe.sale_order_id)
-        .eq("reference_type", "sale_order")
-        .not("status", "in", "(posted,reconciled,paid,confirmed)");
-      if (feErr) cleanupWarnings.push(`Lançamento financeiro não removido: ${feErr.message}`);
+        .eq("reference_type", "sale_order");
+      if (feFetchErr) {
+        cleanupWarnings.push(`Lançamento financeiro não localizado: ${feFetchErr.message}`);
+      } else if (feToReverse && feToReverse.length > 0) {
+        const protectedStatuses = new Set(["posted", "reconciled", "paid", "confirmed"]);
+        const reversals: any[] = [];
+        const deletableIds: string[] = [];
+        for (const fe of feToReverse) {
+          if (protectedStatuses.has(fe.status)) {
+            // Estorno: entry com valor negativo + reference_type marcando estorno NF-e
+            reversals.push({
+              type: fe.type,
+              amount: -Number(fe.amount || 0),
+              description: `Estorno NF-e cancelada — ${fe.description || ''}`,
+              account_id: fe.account_id,
+              entry_date: new Date().toISOString().slice(0, 10),
+              due_date: fe.due_date,
+              status: "confirmed",
+              reference_id: nfe_id,
+              reference_type: "sale_order_cancel_nfe",
+            });
+          } else {
+            deletableIds.push(fe.id);
+          }
+        }
+        if (reversals.length > 0) {
+          const { error: revErr } = await adminClient.from("financial_entries").insert(reversals);
+          if (revErr) cleanupWarnings.push(`Estorno não inserido: ${revErr.message}`);
+        }
+        if (deletableIds.length > 0) {
+          const { error: delErr } = await adminClient.from("financial_entries")
+            .delete().in("id", deletableIds);
+          if (delErr) cleanupWarnings.push(`Lançamento não removido: ${delErr.message}`);
+        }
+      }
+
+      // FIX S3: reabrir PV pra 'Em Produção' quando a NF cancelada era a única ativa.
+      // Antes ficava em 'Faturado' órfão sem NF-e nem AR.
+      const { data: otherActiveNfes } = await adminClient.from("nfe_emitidas")
+        .select("id")
+        .eq("sale_order_id", nfe.sale_order_id)
+        .in("status", ["autorizada", "processando"])
+        .neq("id", nfe_id);
+      const reopenStatus = (!otherActiveNfes || otherActiveNfes.length === 0) ? "Em Produção" : null;
 
       if (nfe.numero) {
+        const soUpdate: any = { nfe: null };
+        if (reopenStatus) soUpdate.status = reopenStatus;
         const { error: soErr } = await adminClient.from("sale_orders")
-          .update({ nfe: null })
+          .update(soUpdate)
           .eq("id", nfe.sale_order_id)
           .eq("nfe", String(nfe.numero));
         if (soErr) cleanupWarnings.push(`Número NF-e não removido do PV: ${soErr.message}`);
+      } else if (reopenStatus) {
+        const { error: soErr } = await adminClient.from("sale_orders")
+          .update({ status: reopenStatus })
+          .eq("id", nfe.sale_order_id)
+          .eq("status", "Faturado");
+        if (soErr) cleanupWarnings.push(`Status do PV não restaurado: ${soErr.message}`);
       }
     }
 

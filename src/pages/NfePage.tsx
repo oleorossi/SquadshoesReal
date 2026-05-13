@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useAllNfeEmitidas, useEmitNfe, useCheckNfeStatus, useCancelNfe, useCompanies, NfeEmitida } from '@/hooks/useNfe';
+import { useAllNfeEmitidas, useEmitNfe, useCheckNfeStatus, useCancelNfe, useCompanies, useSyncNfeFromProvider, NfeEmitida } from '@/hooks/useNfe';
 import { useAccessControl } from '@/hooks/useAccessControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, FileText, RefreshCw, XCircle, Download, Search, Building2, Plus, CheckCircle, AlertCircle, Clock, Calculator, Activity, FileEdit } from 'lucide-react';
+import { CircleNotch as Loader2, FileText, ArrowsClockwise as RefreshCw, XCircle, Download, MagnifyingGlass as Search, Buildings as Building2, Plus, CheckCircle, WarningCircle as AlertCircle, Clock, Calculator, Pulse as Activity, FileText as FileEdit } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
@@ -19,6 +19,8 @@ import TaxConfigPanel from '@/components/nfe/TaxConfigPanel';
 import NfeDiagnosticPanel from '@/components/nfe/NfeDiagnosticPanel';
 import NfeCCePanel from '@/components/nfe/NfeCCePanel';
 import StandaloneNfePanel from '@/components/nfe/StandaloneNfePanel';
+import { NfeBillingHealthCard } from '@/components/nfe/NfeBillingHealthCard';
+import { AppErrorBoundary } from '@/components/ErrorBoundary';
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
@@ -291,6 +293,7 @@ export default function NfePage() {
   const { data: companies = [] } = useCompanies();
   const { isAdmin, roles } = useAccessControl();
   const canEmitNfe = isAdmin || roles.includes('gerente') || roles.includes('nfe_operator');
+  const syncFromProvider = useSyncNfeFromProvider();
 
   const { data: allNfe = [], isLoading } = useAllNfeEmitidas({
     status: statusFilter || undefined,
@@ -326,9 +329,23 @@ export default function NfePage() {
           </p>
         </div>
         {canEmitNfe && (
-          <Button onClick={() => setEmitOpen(true)} className="gap-2">
-            <Plus className="h-4 w-4" /> Emitir NF-e
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => syncFromProvider.mutate()}
+              disabled={syncFromProvider.isPending}
+              className="gap-2"
+              title="Importa NF-es emitidas direto no painel da GestaoClick"
+            >
+              {syncFromProvider.isPending
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <RefreshCw className="h-4 w-4" />}
+              Sincronizar com GestaoClick
+            </Button>
+            <Button onClick={() => setEmitOpen(true)} className="gap-2">
+              <Plus className="h-4 w-4" /> Emitir NF-e
+            </Button>
+          </div>
         )}
       </div>
 
@@ -348,6 +365,9 @@ export default function NfePage() {
           </Card>
         ))}
       </div>
+
+      {/* M2: PVs com inconsistência fiscal (Faturado sem NF, NF sem Faturado, etc.) */}
+      <NfeBillingHealthCard />
 
       <Tabs defaultValue="nfes">
         <TabsList>
@@ -450,7 +470,9 @@ export default function NfePage() {
         </TabsContent>
 
         <TabsContent value="cce" className="mt-4">
-          <NfeCCePanel />
+          <AppErrorBoundary fallbackTitle="Erro ao carregar Cartas de Correção">
+            <NfeCCePanel />
+          </AppErrorBoundary>
         </TabsContent>
 
         <TabsContent value="diagnostico" className="mt-4">

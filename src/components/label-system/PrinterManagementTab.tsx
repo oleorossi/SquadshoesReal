@@ -8,11 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
-import {
-  Printer, Wifi, Search, Plus, Settings2, Trash2,
-  CheckCircle2, AlertTriangle, Loader2, Unplug, Plug,
-  Gauge, Layers
-} from 'lucide-react';
+import { Printer, WifiHigh as Wifi, MagnifyingGlass as Search, Plus, Gear as Settings2, Trash as Trash2, CheckCircle as CheckCircle2, Warning as AlertTriangle, CircleNotch as Loader2, Plugs as Unplug, Plug, Gauge, Stack as Layers } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import type { PrinterInfo } from '@/types/label-system';
 

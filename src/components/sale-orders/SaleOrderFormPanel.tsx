@@ -1,5 +1,5 @@
  import { useMemo, useEffect, useRef, useState, useCallback } from 'react';
-import { Plus, Loader2, User, Truck, ClipboardList, Info, Percent, ChevronsUpDown, Check, History, AlertTriangle, CheckCircle2, Calculator, Banknote } from 'lucide-react';
+import { Plus, CircleNotch as Loader2, User, Truck, ClipboardText as ClipboardList, Info, Percent, CaretUpDown as ChevronsUpDown, Check, ClockCounterClockwise as History, Warning as AlertTriangle, CheckCircle as CheckCircle2, Calculator, Money as Banknote } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -9,12 +9,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { SaleOrderFormData, SaleOrderItemFormData, PACKAGING_MODE_LABELS, type PackagingMode } from '@/hooks/useSaleOrders';
 import { useAccessControl } from '@/hooks/useAccessControl';
+import { useClientCommercialDefaults } from '@/hooks/useEconomicGroup360';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import SaleOrderItemForm from './SaleOrderItemForm';
 import { OrderStatusStepper } from '@/components/ui/order-status-stepper';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { useFactoringConfigs } from '@/components/finance/FactoringTab';
 import { useAllActiveReferenceMaterialVariants } from '@/hooks/useReferenceMaterialVariants';
 import {
@@ -364,6 +366,22 @@ export default function SaleOrderFormPanel({
   const selectedRep = representatives.find(r => r.id === form.representative);
   const selectedClient = clients.find(c => c.id === selectedClientId);
 
+  // Defaults comerciais do cliente OU do grupo econômico (precedência cliente > grupo).
+  // Pré-popula campos vazios quando o cliente é selecionado pela primeira vez.
+  const { data: commercialDefaults } = useClientCommercialDefaults(selectedClientId);
+  const defaultsApplied = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selectedClientId || !commercialDefaults) return;
+    if (defaultsApplied.current === selectedClientId) return;
+    defaultsApplied.current = selectedClientId;
+    setForm(f => ({
+      ...f,
+      // Só preenche se o campo estiver vazio — preserva o que o user já mexeu
+      payment_condition: f.payment_condition || commercialDefaults.payment_condition || '',
+      factoring_config_id: f.factoring_config_id || commercialDefaults.factoring_config_id || '',
+    }));
+  }, [selectedClientId, commercialDefaults, setForm]);
+
   // Credit exposure: sum of open AR for selected client
   const { data: creditExposure } = useQuery({
     queryKey: ['client_credit_exposure', selectedClientId],
@@ -649,6 +667,20 @@ export default function SaleOrderFormPanel({
                       </span>
                     </div>
                   )}
+                  {commercialDefaults?.block_new_orders && (
+                    <div className="mt-1.5 flex items-center gap-1.5 text-xs rounded px-2 py-1 bg-destructive/10 text-destructive">
+                      <AlertTriangle className="h-3 w-3 shrink-0" />
+                      <span>
+                        <strong>Bloqueado:</strong> {commercialDefaults.block_reason || 'Cliente ou grupo econômico bloqueado pra novos pedidos'}
+                      </span>
+                    </div>
+                  )}
+                  {commercialDefaults && commercialDefaults.inherited_from === 'grupo econômico' && (
+                    <div className="mt-1.5 flex items-center gap-1.5 text-[10px] rounded px-2 py-1 bg-primary/5 text-primary border border-primary/20">
+                      <Info className="h-3 w-3 shrink-0" />
+                      <span>Condições herdadas do grupo econômico (pgto, factoring, desconto)</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -870,6 +902,27 @@ export default function SaleOrderFormPanel({
                     <div className="h-9 mt-1 flex items-center px-3 rounded-md border border-primary/40 bg-primary/5 font-mono font-bold text-foreground text-sm">
                       {formatCurrency(estimatedShippingCost)}
                     </div>
+                  </div>
+                </div>
+
+                {/* Frete próprio: opt-in que joga este PV no planejamento de
+                    rota em /entregas com cálculo de combustível e desgaste. */}
+                <div className="flex items-start gap-3 pt-3 border-t border-border/60">
+                  <Switch
+                    id="own-delivery-switch"
+                    checked={!!form.own_delivery}
+                    onCheckedChange={(v) => setForm(f => ({ ...f, own_delivery: v }))}
+                  />
+                  <div className="flex-1 -mt-0.5">
+                    <Label htmlFor="own-delivery-switch" className="text-xs font-bold cursor-pointer flex items-center gap-1.5">
+                      <Truck className="h-3.5 w-3.5 text-primary" />
+                      Frete próprio (entregar com nossa frota)
+                    </Label>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {form.own_delivery
+                        ? 'Este pedido entrará no planejamento de rota em Entregas, com projeção de combustível e desgaste do veículo.'
+                        : 'Quando ativo, o pedido aparece em Entregas para montar rota, escolher veículo/motorista e ver custo estimado por viagem.'}
+                    </p>
                   </div>
                 </div>
               </div>

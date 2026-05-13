@@ -18,16 +18,12 @@ export const ProductSchema = z.object({
   location: z.string().optional(),
   group_id: z.string().nullable().optional(),
   active: z.boolean().optional(),
-  image_url: z.string().optional(),
   calculation_method: z.enum(['weight', 'meter', 'unit']).optional(),
-  lot_number: z.string().nullable().optional(),
-  expiration_date: z.string().nullable().optional(),
   is_chemical: z.boolean().optional(),
-  linked_last_id: z.string().nullable().optional(),
-   sole_material: z.string().nullable().optional(),
-   heel_height: z.number().nullable().optional(),
-   is_standard_sole_item: z.boolean().optional(),
- }).passthrough();
+  sole_material: z.string().nullable().optional(),
+  heel_height: z.number().nullable().optional(),
+  is_standard_sole_item: z.boolean().optional(),
+}).passthrough();
 
 
 export function useProducts() {
@@ -106,7 +102,7 @@ export function getBaseName(name: string): string {
 const SYNC_FIELDS = [
   'category', 'unit', 'group_id', 'location',
   'dimensions_length', 'dimensions_width', 'dimensions_thickness', 'dimensions_unit',
-  'yield_per_meter', 'yield_unit', 'unit_price', 'min_stock', 'max_stock',
+  'unit_price', 'min_stock', 'max_stock',
 ] as const;
 
 export type SyncInfo = {

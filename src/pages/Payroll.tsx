@@ -11,7 +11,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Loader2, DollarSign, Calculator, Settings, FileDown, CheckCircle2, Receipt, AlertTriangle, Wallet } from 'lucide-react';
+import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Calculator, Gear as Settings, FileArrowDown as FileDown, CheckCircle as CheckCircle2, Receipt, Warning as AlertTriangle, Wallet } from '@phosphor-icons/react';
 import { useEmployees } from '@/hooks/useEmployees';
 import {
   useBenefitsConfig, useSaveBenefitsConfig,

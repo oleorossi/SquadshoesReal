@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Loader2, FileSearch, RotateCcw } from 'lucide-react';
+import { ArrowLeft, CircleNotch as Loader2, FileMagnifyingGlass as FileSearch, ArrowCounterClockwise as RotateCcw } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -24,7 +24,7 @@ import { MaterialPurchaseConfirmDialog } from '@/components/sale-orders/Material
 import { checkSectorCapacity, CapacityCheckResult } from '@/lib/sectorCapacity';
 import { SectorOverloadDialog } from '@/components/sale-orders/SectorOverloadDialog';
 import { createOutsourceOrdersForOverloads } from '@/lib/outsourceOrders';
-import { computeMinBillingForNewOrder, isBeforeMinDate, toISOWeek, type MinBillingPreview } from '@/lib/minBillingDate';
+import { computeMinBillingForNewOrder, isBeforeMinDate, toISOWeek, type MinBillingResult } from '@/lib/minBillingDate';
 import { MinBillingDateSuggestionDialog } from '@/components/sale-orders/MinBillingDateSuggestionDialog';
 import { monthWeekToISODate } from '@/lib/billingWeek';
 
@@ -36,6 +36,7 @@ const emptyForm: SaleOrderFormData = {
   nfe: '', remessa: '', is_factoring: false, factoring_config_id: '', packaging_mode: 'individual_amarrado',
   shipping_rate_per_pair: 0,
   nfe_required: true,
+  own_delivery: false,
 };
 
 const emptyItem: SaleOrderItemFormData = {
@@ -197,7 +198,7 @@ export default function SaleOrderForm() {
   const [capacityResult, setCapacityResult] = useState<CapacityCheckResult | null>(null);
   const [capacityDialogOpen, setCapacityDialogOpen] = useState(false);
   const [minBillingDialogOpen, setMinBillingDialogOpen] = useState(false);
-  const [minBillingSuggestion, setMinBillingSuggestion] = useState<MinBillingPreview | null>(null);
+  const [minBillingSuggestion, setMinBillingSuggestion] = useState<MinBillingResult | null>(null);
   const [computingMinBilling, setComputingMinBilling] = useState(false);
 
   // Always-current form ref so setTimeout callbacks don't capture stale closures
@@ -257,6 +258,7 @@ export default function SaleOrderForm() {
         packaging_mode: (order as any).packaging_mode || 'individual_amarrado',
         shipping_rate_per_pair: Number((order as any).shipping_rate_per_pair) || 0,
         nfe_required: (order as any).nfe_required !== false,
+        own_delivery: (order as any).own_delivery === true,
       });
       setPackagingProductId((order as any).packaging_product_id || '');
       setPackagingQuantity((order as any).packaging_quantity || 0);
@@ -661,6 +663,21 @@ export default function SaleOrderForm() {
     setTimeout(() => doSubmit(), 100);
   };
 
+  // Admin override: pula a criação automática de OS terceirizada e salva o PV
+  // assumindo que o admin já resolveu por fora (terceirizado próprio, material
+  // emprestado, hora extra). Motivo do override é registrado em notes do PV.
+  const handleCapacityAdminOverride = (reason: string) => {
+    setCapacityDialogOpen(false);
+    const existingNotes = (formLatestRef.current as any).notes || '';
+    const overrideNote = `[OVERRIDE CAPACIDADE ${new Date().toLocaleDateString('pt-BR')}] ${reason}`;
+    setForm((f) => ({
+      ...f,
+      notes: existingNotes ? `${existingNotes}\n${overrideNote}` : overrideNote,
+    } as any));
+    toast.warning('Override aplicado — pedido salvo sob sua responsabilidade.');
+    setTimeout(() => doSubmit(), 100);
+  };
+
   const handleSoleConfirm = (_generatedPO: boolean) => {
     setSoleDialogOpen(false);
     if (soleResult?.minBillingDateISO && !form.delivery_deadline) {
@@ -818,6 +835,7 @@ export default function SaleOrderForm() {
         result={capacityResult}
         onKeepDateAndOutsource={handleCapacityKeepDate}
         onPostponeDate={handleCapacityPostpone}
+        onAdminOverride={handleCapacityAdminOverride}
       />
 
       <MinBillingDateSuggestionDialog
@@ -825,9 +843,10 @@ export default function SaleOrderForm() {
         onOpenChange={setMinBillingDialogOpen}
         minDateISO={minBillingSuggestion?.minDateISO || ''}
         minWeekISO={minBillingSuggestion?.minWeekISO || ''}
-        materialShortage={minBillingSuggestion?.materialShortage || false}
-        supplierLeadDays={minBillingSuggestion?.supplierLeadDays || 0}
-        shortageItems={minBillingSuggestion?.shortageItems || []}
+        bottleneck={minBillingSuggestion?.bottleneck}
+        capacityReadyDateISO={minBillingSuggestion?.capacityReadyDateISO}
+        materialReadyDateISO={minBillingSuggestion?.materialReadyDateISO}
+        materialShortfalls={minBillingSuggestion?.materialShortfalls}
         onConfirmMin={handleMinBillingConfirm}
         onPickManual={handleMinBillingManual}
       />

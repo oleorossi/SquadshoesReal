@@ -7,11 +7,27 @@ type ReferenceLike = {
 
 const normalize = (value?: string | null) => value?.trim().toLowerCase() || '';
 
+/**
+ * Chave de deduplicação de fichas técnicas no PV.
+ *
+ * BUG ANTIGO: usávamos só `code` como chave. Mas se 2 fichas DIFERENTES (ex:
+ * DS19 e SP117) tivessem o mesmo `code` por engano (digitação errada/teste),
+ * a dedup mantinha só a mais recente e a outra SUMIA do dropdown do PV —
+ * mesmo estando cadastrada e ativa.
+ *
+ * FIX: chave combina `code + name` quando ambos existem. Assim, mesma ref
+ * com versionamento (mesmo code+name, várias updated_at) ainda deduplica
+ * pra mais recente, mas produtos diferentes (code igual MAS name diferente)
+ * aparecem ambos no dropdown.
+ */
 const getReferenceKey = <T extends ReferenceLike>(reference: T) => {
   const codeKey = normalize(reference.code);
-  if (codeKey) return `code:${codeKey}`;
-
   const nameKey = normalize(reference.name);
+
+  // Quando AMBOS existem, combina ambos — code sozinho não é mais suficiente
+  // pra identificar a referência (pode haver colisão acidental).
+  if (codeKey && nameKey) return `code+name:${codeKey}|${nameKey}`;
+  if (codeKey) return `code:${codeKey}`;
   if (nameKey) return `name:${nameKey}`;
 
   return `id:${reference.id}`;

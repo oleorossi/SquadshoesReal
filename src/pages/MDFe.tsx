@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
@@ -9,9 +9,11 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileText, Plus, CheckCircle, Trash2, Loader2, Lock } from 'lucide-react';
+import { FileText, Plus, CheckCircle, Trash as Trash2, CircleNotch as Loader2, Lock, ArrowCounterClockwise as RotateCcw, Package } from '@phosphor-icons/react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { useSaleOrdersWeightBatch } from '@/hooks/useSaleOrderWeight';
+import { IncompleteWeightWarning } from '@/components/weight/IncompleteWeightWarning';
 
 type MdfeStatus = 'rascunho' | 'autorizado' | 'encerrado' | 'cancelado';
 
@@ -230,12 +232,56 @@ function MdfeEditorDialog({
     return emptyForm;
   });
 
+  // Parse chaves NF-e digitadas → resolve cada uma pra sale_order_id em
+  // nfe_emitidas, e usa o batch hook pra somar peso/pares de todos os PVs.
+  const parsedChaves = useMemo(
+    () => form.related_nfe_chaves.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean),
+    [form.related_nfe_chaves],
+  );
+  const { data: nfeRows = [] } = useQuery({
+    queryKey: ['mdfe_nfe_chaves_resolution', parsedChaves],
+    queryFn: async () => {
+      if (parsedChaves.length === 0) return [];
+      const { data } = await (supabase as any)
+        .from('nfe_emitidas')
+        .select('chave_acesso, sale_order_id')
+        .in('chave_acesso', parsedChaves);
+      return (data || []) as { chave_acesso: string; sale_order_id: string | null }[];
+    },
+    enabled: parsedChaves.length > 0,
+  });
+  const linkedSoIds = useMemo(
+    () => Array.from(new Set(nfeRows.map(r => r.sale_order_id).filter((id): id is string => !!id))),
+    [nfeRows],
+  );
+  const { data: weightsBatch = [] } = useSaleOrdersWeightBatch(linkedSoIds);
+  const aggregated = useMemo(() => {
+    const totalPairs = weightsBatch.reduce((s, w) => s + w.totalPairs, 0);
+    const totalWeight = weightsBatch.reduce((s, w) => s + w.grossWeightKg, 0);
+    const allIncomplete = weightsBatch.flatMap(w => w.incompleteItems);
+    // NF-es que existem em nfe_emitidas mas têm sale_order_id NULL
+    // (NF-es legadas/avulsas sem PV vinculado). Sem isso, peso some do
+    // totalizador silenciosamente — operador pensa que somou, mas faltou.
+    const chavesSemPv = nfeRows
+      .filter((r) => !r.sale_order_id)
+      .map((r) => r.chave_acesso);
+    return {
+      totalPairs,
+      totalWeightKg: Math.round(totalWeight * 1000) / 1000,
+      incompleteItems: allIncomplete,
+      hasMissingChaves: parsedChaves.length > nfeRows.length,
+      missingChaves: parsedChaves.filter(c => !nfeRows.some(r => r.chave_acesso === c)),
+      chavesSemPv,
+    };
+  }, [weightsBatch, parsedChaves, nfeRows]);
+
+  const applyAggregated = () => {
+    setForm(f => ({ ...f, total_pairs: aggregated.totalPairs, total_weight_kg: aggregated.totalWeightKg }));
+  };
+
   const save = useMutation({
     mutationFn: async () => {
-      const chaves = form.related_nfe_chaves
-        .split(/[\s,;]+/)
-        .map(s => s.trim())
-        .filter(Boolean);
+      const chaves = parsedChaves;
       const payload = {
         mdfe_number: form.mdfe_number.trim(),
         emission_date: form.emission_date,
@@ -336,12 +382,22 @@ function MdfeEditorDialog({
           </div>
 
           <div>
-            <Label>Total de pares</Label>
+            <Label>
+              Total de pares
+              {form.total_pairs === aggregated.totalPairs && aggregated.totalPairs > 0 && (
+                <span className="ml-1 text-[9px] text-primary uppercase font-bold">auto</span>
+              )}
+            </Label>
             <Input type="number" min={0} value={form.total_pairs} onChange={e => setForm({ ...form, total_pairs: +e.target.value })} />
           </div>
           <div>
-            <Label>Peso (kg)</Label>
-            <Input type="number" step="0.1" min={0} value={form.total_weight_kg} onChange={e => setForm({ ...form, total_weight_kg: +e.target.value })} />
+            <Label>
+              Peso (kg)
+              {form.total_weight_kg === aggregated.totalWeightKg && aggregated.totalWeightKg > 0 && (
+                <span className="ml-1 text-[9px] text-primary uppercase font-bold">auto</span>
+              )}
+            </Label>
+            <Input type="number" step="0.001" min={0} value={form.total_weight_kg} onChange={e => setForm({ ...form, total_weight_kg: +e.target.value })} />
           </div>
 
           <div>
@@ -359,6 +415,45 @@ function MdfeEditorDialog({
               className="font-mono text-xs"
               placeholder="Uma chave por linha ou separadas por vírgula"
             />
+            {parsedChaves.length > 0 && (
+              <div className="mt-2 space-y-2">
+                <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 flex items-center gap-2 text-xs">
+                  <Package className="h-3.5 w-3.5 text-primary shrink-0" />
+                  <span className="flex-1">
+                    {linkedSoIds.length} PV(s) resolvido(s) de {parsedChaves.length} chave(s) ·{' '}
+                    <strong>{aggregated.totalPairs} pares</strong> ·{' '}
+                    <strong>{aggregated.totalWeightKg.toFixed(3)} kg</strong>
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs gap-1"
+                    onClick={applyAggregated}
+                    disabled={
+                      linkedSoIds.length === 0 ||
+                      (form.total_pairs === aggregated.totalPairs && form.total_weight_kg === aggregated.totalWeightKg)
+                    }
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    Aplicar
+                  </Button>
+                </div>
+                {aggregated.hasMissingChaves && (
+                  <div className="rounded-md border border-amber-300 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+                    <strong>{aggregated.missingChaves.length}</strong> chave(s) não encontrada(s) em nfe_emitidas — ignoradas no cálculo.
+                  </div>
+                )}
+                {aggregated.chavesSemPv.length > 0 && (
+                  <div className="rounded-md border border-amber-300 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+                    <strong>{aggregated.chavesSemPv.length}</strong> NF-e(s) sem PV vinculado — peso não pôde ser somado. Vincule o PV em /nfe ou edite peso manualmente.
+                  </div>
+                )}
+                {aggregated.incompleteItems.length > 0 && (
+                  <IncompleteWeightWarning items={aggregated.incompleteItems} scope="nas NF-es vinculadas" />
+                )}
+              </div>
+            )}
           </div>
 
           <div className="col-span-2">

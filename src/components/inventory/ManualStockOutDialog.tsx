@@ -9,7 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Product } from '@/types/inventory';
-import { PackageMinus, AlertTriangle } from 'lucide-react';
+import { Package as PackageMinus, Warning as AlertTriangle } from '@phosphor-icons/react';
 
 interface ManualStockOutDialogProps {
   open: boolean;

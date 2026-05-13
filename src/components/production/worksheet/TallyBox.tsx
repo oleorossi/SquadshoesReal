@@ -61,19 +61,19 @@ const ACCENT_BG_LIGHT: Record<NonNullable<Props['accentColor']>, string> = {
 export const TallyBox = ({ count, pairsPerCard = 12, accentColor = 'slate', title, size = 'md' }: Props) => {
   if (count <= 0) return null;
 
-  const boxSize = size === 'lg' ? 'w-8 h-8' : 'w-6 h-6';
+  const boxSize = size === 'lg' ? 'w-7 h-7' : 'w-5 h-5';
   const titleText = title || `Controle de fichas (marque cada ficha de ${pairsPerCard} pares)`;
 
   // Cap por linha pra fica sempre justificado: 30 caixas/linha cabe em A4 livre
   return (
-    <div className={cn('keep-together border-2 rounded overflow-hidden mb-3', ACCENT_BORDER[accentColor])}>
-      <div className={cn('px-3 py-1', ACCENT_HEADER_BG[accentColor], 'text-white flex items-center justify-between')}>
+    <div className={cn('keep-together border-2 rounded overflow-hidden mb-2', ACCENT_BORDER[accentColor])}>
+      <div className={cn('px-2.5 py-0.5', ACCENT_HEADER_BG[accentColor], 'text-white flex items-center justify-between')}>
         <span className="text-[10px] font-black uppercase tracking-wide">{titleText}</span>
         <span className="text-[10px] font-mono bg-white/20 px-2 py-0.5 rounded">
           {count} ficha{count > 1 ? 's' : ''} · {count * pairsPerCard} pares
         </span>
       </div>
-      <div className={cn('p-2 flex flex-wrap gap-1', ACCENT_BG_LIGHT[accentColor])}>
+      <div className={cn('p-1.5 flex flex-wrap gap-0.5', ACCENT_BG_LIGHT[accentColor])}>
         {Array.from({ length: count }, (_, i) => (
           <div
             key={i}

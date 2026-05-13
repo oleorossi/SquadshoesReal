@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
- import { History, Scissors } from 'lucide-react';
+ import { ClockCounterClockwise as History, Scissors } from '@phosphor-icons/react';
  import AuditLogTab from './tabs/AuditLogTab';
 import StrapStockLogTab from './tabs/StrapStockLogTab';
 

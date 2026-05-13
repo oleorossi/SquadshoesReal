@@ -1,11 +1,7 @@
 import AppLayout from "@/components/layout/AppLayout";
 import { useState, useCallback, useEffect } from 'react';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import {
-  Loader2, Plus, Pencil, Trash2, Truck, FileUp, ChevronDown, ChevronUp,
-  Phone, Mail, MapPin, Clock, CreditCard, FileText, Search, PackagePlus, Zap,
-  Package, TrendingUp, TrendingDown, Minus,
-} from 'lucide-react';
+import { CircleNotch as Loader2, Plus, PencilSimple as Pencil, Trash as Trash2, Truck, FileArrowUp as FileUp, CaretDown as ChevronDown, CaretUp as ChevronUp, Phone, Envelope as Mail, MapPin, Clock, CreditCard, FileText, MagnifyingGlass as Search, Package as PackagePlus, Lightning as Zap, Package, TrendUp as TrendingUp, TrendDown as TrendingDown, Minus } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Filter, CheckCircle2, Loader2 } from 'lucide-react';
+import { Funnel as Filter, CheckCircle as CheckCircle2, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';

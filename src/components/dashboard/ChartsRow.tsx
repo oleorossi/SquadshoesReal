@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Skeleton } from "@/components/ui/skeleton";
 import { subMonths, format, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { getDashboardPeriodRange, type DashboardPeriod } from "@/lib/dashboardPeriod";
 
 const PRIMARY      = "hsl(162, 90%, 15%)";
 const CHART_BLUE   = "#3b82f6";
@@ -25,10 +26,16 @@ const CARD_TOOLTIP_STYLE = {
   boxShadow: "0 4px 12px -2px rgb(0 0 0 / 0.1)",
 };
 
-export function ChartsRow() {
+export function ChartsRow({ period = 'current_month' }: { period?: DashboardPeriod } = {}) {
+  const range = getDashboardPeriodRange(period);
+
+  // Quantidade de buckets no chart varia conforme período:
+  // current_month=1 (mostra dia/semana — fallback 1 mês), last_3m=3, last_6m=6,
+  // current_year=mês atual, all=12. Garantimos mínimo 1.
   const months = useMemo(() => {
-    return Array.from({ length: 6 }, (_, i) => {
-      const d = subMonths(new Date(), 5 - i);
+    const count = Math.max(1, range.bucketMonths);
+    return Array.from({ length: count }, (_, i) => {
+      const d = subMonths(new Date(), count - 1 - i);
       return {
         label: format(d, "MMM", { locale: ptBR }),
         start: startOfMonth(d).toISOString(),
@@ -36,16 +43,16 @@ export function ChartsRow() {
         key:   format(d, "yyyy-MM"),
       };
     });
-  }, []);
+  }, [range.cacheKey]);
 
   const { data: salesData = [], isLoading: salesLoading } = useQuery({
-    queryKey: ["dashboard-charts-sales"],
+    queryKey: ["dashboard-charts-sales", range.cacheKey],
     queryFn: async () => {
-      const since = subMonths(new Date(), 6).toISOString();
       const { data, error } = await supabase
         .from("sale_orders")
         .select("created_at, total")
-        .gte("created_at", since)
+        .gte("created_at", range.startISO)
+        .lte("created_at", range.endISO)
         .not("status", "eq", "cancelled");
       if (error) throw error;
       return data ?? [];
@@ -54,13 +61,13 @@ export function ChartsRow() {
   });
 
   const { data: productionData = [], isLoading: prodLoading } = useQuery({
-    queryKey: ["dashboard-charts-production"],
+    queryKey: ["dashboard-charts-production", range.cacheKey],
     queryFn: async () => {
-      const since = subMonths(new Date(), 6).toISOString();
       const { data, error } = await supabase
         .from("orders")
         .select("created_at, quantity")
-        .gte("created_at", since)
+        .gte("created_at", range.startISO)
+        .lte("created_at", range.endISO)
         .not("status", "eq", "cancelled");
       if (error) throw error;
       return data ?? [];
@@ -139,27 +146,34 @@ export function ChartsRow() {
         </div>
         <div className="px-4 pt-3 pb-4">
           <ResponsiveContainer width="100%" height={160}>
-            <AreaChart data={areaData} margin={{ top: 4, right: 4, left: -16, bottom: 0 }}>
+            <AreaChart data={areaData} margin={{ top: 4, right: 0, left: -10, bottom: 0 }}>
               <defs>
                 <linearGradient id="gradVendas" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%"  stopColor={PRIMARY}     stopOpacity={0.2} />
                   <stop offset="95%" stopColor={PRIMARY}     stopOpacity={0} />
                 </linearGradient>
                 <linearGradient id="gradProd" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor={CHART_BLUE}  stopOpacity={0.15} />
+                  <stop offset="5%"  stopColor={CHART_BLUE}  stopOpacity={0.2} />
                   <stop offset="95%" stopColor={CHART_BLUE}  stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid stroke="hsl(var(--border))" vertical={false} strokeDasharray="3 3" />
               <XAxis dataKey="month" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
-              <YAxis tickFormatter={formatK} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
+              {/* Fix #22: dois Y-axes separados garantem que cada série mantém
+                  sua própria escala. Antes (sem yAxisId) compartilhavam eixo,
+                  comprimindo produção (~5k pares) a uma linha colada no 0 vs
+                  vendas (~200k BRL). Margin right=0 + width auto deixa
+                  espaço pro eixo direito sem cortar. Solid line (sem
+                  dasharray) facilita ver a linha de produção. */}
+              <YAxis yAxisId="vendas" tickFormatter={formatK} tick={{ fontSize: 10, fill: PRIMARY }} axisLine={false} tickLine={false} width={36} />
+              <YAxis yAxisId="producao" orientation="right" tickFormatter={formatK} tick={{ fontSize: 10, fill: CHART_BLUE }} axisLine={false} tickLine={false} width={36} />
               <Tooltip
                 formatter={(v: number, name: string) => name === "vendas" ? formatBRL(v) : `${v} pares`}
                 labelFormatter={(l) => `Mês: ${l}`}
                 contentStyle={CARD_TOOLTIP_STYLE}
               />
-              <Area type="monotone" dataKey="vendas"   stroke={PRIMARY}    strokeWidth={2}   fill="url(#gradVendas)" dot={{ r: 3, fill: PRIMARY, strokeWidth: 0 }} activeDot={{ r: 4, strokeWidth: 0 }} />
-              <Area type="monotone" dataKey="producao" stroke={CHART_BLUE} strokeWidth={1.5} strokeDasharray="4 2"  fill="url(#gradProd)"   dot={{ r: 2.5, fill: CHART_BLUE, strokeWidth: 0 }} />
+              <Area yAxisId="vendas"   type="monotone" dataKey="vendas"   stroke={PRIMARY}    strokeWidth={2} fill="url(#gradVendas)" dot={{ r: 3, fill: PRIMARY, strokeWidth: 0 }} activeDot={{ r: 4, strokeWidth: 0 }} />
+              <Area yAxisId="producao" type="monotone" dataKey="producao" stroke={CHART_BLUE} strokeWidth={2} fill="url(#gradProd)" dot={{ r: 3, fill: CHART_BLUE, strokeWidth: 0 }} activeDot={{ r: 4, strokeWidth: 0 }} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -184,9 +198,9 @@ export function ChartsRow() {
                 <Pie
                   data={donutData}
                   cx="50%"
-                  cy="50%"
-                  innerRadius={48}
-                  outerRadius={68}
+                  cy="42%"
+                  innerRadius="38%"
+                  outerRadius="62%"
                   paddingAngle={3}
                   dataKey="value"
                 >

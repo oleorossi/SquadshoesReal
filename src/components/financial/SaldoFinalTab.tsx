@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Search, Package, AlertTriangle, TrendingDown, Filter } from 'lucide-react';
+import { MagnifyingGlass as Search, Package, Warning as AlertTriangle, TrendDown as TrendingDown, Funnel as Filter } from '@phosphor-icons/react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
@@ -55,7 +55,8 @@ export default function SaldoFinalTab() {
           id, order_number, quantity, status, planned_delivery, reference_id,
           sale_orders!orders_sale_order_id_fkey(delivery_deadline, delivery_week, delivery_month)
         `)
-        .in('status', ['Reservado', 'Em Produção', 'Pronto'])
+        // Status REAIS de orders no backend (audit 2026-05): 'Pronto' não existe.
+        .in('status', ['Reservado', 'Em Produção'])
         .order('planned_delivery', { ascending: true });
 
       const refIds = [...new Set((orders as any[]).map(o => o.reference_id).filter(Boolean))];

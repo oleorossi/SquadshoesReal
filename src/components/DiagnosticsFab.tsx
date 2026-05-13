@@ -1,4 +1,4 @@
-import { Stethoscope } from 'lucide-react';
+import { Stethoscope } from '@phosphor-icons/react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';

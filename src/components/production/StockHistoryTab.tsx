@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Search, ArrowDownCircle, ArrowUpCircle, User } from 'lucide-react';
+import { MagnifyingGlass as Search, ArrowCircleDown as ArrowDownCircle, ArrowCircleUp as ArrowUpCircle, User } from '@phosphor-icons/react';
 import { useState, useMemo } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';

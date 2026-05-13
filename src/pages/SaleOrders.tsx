@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { getSignedUrl } from '@/lib/getSignedUrl';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { ShoppingCart, Plus, Loader2, Copy, Printer, Factory, Pencil, FileText, Filter, X, Search, Package, DollarSign, Clock, ChevronDown, BarChart3, ClipboardList, RefreshCw, Tag, LayoutDashboard, Zap, FileSpreadsheet, Receipt, XCircle, CheckCircle, Download, TrendingUp, AlertTriangle, RotateCcw } from 'lucide-react';
+import { ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown as ChevronDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw } from '@phosphor-icons/react';
 import { cn } from "@/lib/utils";
 import MaterialConsumptionDialog from '@/components/sale-orders/MaterialConsumptionDialog';
 import MarginDialog from '@/components/sale-orders/MarginDialog';
@@ -911,12 +911,7 @@ export default function SaleOrders() {
             if (debitError) { errors.push(`${order.order_number}: Estoque - ${debitError.message}`); opHadCriticalFailure = true; }
 
             if (!opHadCriticalFailure) {
-              const { error: stockOutErr } = await supabase.rpc('process_order_stock_out', {
-                p_order_id: createdOp.id,
-                p_product_id: item.reference_id,
-                p_quantity: item.quantity
-              });
-              if (stockOutErr) errors.push(`${order.order_number}: BOM stock out - ${stockOutErr.message}`);
+              // FIX A3: process_order_stock_out removido — hybrid_debit_stock_for_order já cobre o BOM.
 
               // Debit sole stock by grade — capture error and attempt auto-PO
               if (Object.keys(scaledGrade).length > 0) {
@@ -1217,7 +1212,7 @@ export default function SaleOrders() {
                       const { data: linkedOps } = await supabase.from('orders').select('id, order_number, reference_id, color, grade, quantity').eq('sale_order_id', order.id);
                       if (!linkedOps || linkedOps.length === 0) continue;
                       for (const op of linkedOps) {
-                        const { data: refData } = await supabase.from('technical_sheets').select('barcode, image_url, images, shoe_category, code, name').eq('id', op.reference_id).single();
+                        const { data: refData } = await supabase.from('technical_sheets').select('image_url, images, shoe_category, code, name').eq('id', op.reference_id).single();
                         const rawRefImageUrl = ((refData as any)?.images as string[] | null)?.[0] || refData?.image_url || '';
                         const refImageUrl = await getSignedUrl(rawRefImageUrl);
                         const color = op.color || '';
@@ -1821,7 +1816,7 @@ export default function SaleOrders() {
                       const displayOrderNumber = selectedOrder.client_order_number || selectedOrder.order_number || '';
                       
                       for (const op of linkedOps) {
-                        const { data: refData } = await supabase.from('technical_sheets').select('barcode, image_url, images, shoe_category, code, name').eq('id', op.reference_id).single();
+                        const { data: refData } = await supabase.from('technical_sheets').select('image_url, images, shoe_category, code, name').eq('id', op.reference_id).single();
                         const rawRefImgUrl = ((refData as any)?.images as string[] | null)?.[0] || refData?.image_url || '';
                         const refImageUrl = await getSignedUrl(rawRefImgUrl);
                         const color = op.color || '';

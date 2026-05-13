@@ -1,13 +1,5 @@
 import { useState, useEffect } from 'react';
-import { 
-  AlertTriangle, 
-  CheckCircle2, 
-  RefreshCw, 
-  Settings, 
-  ArrowLeft,
-  ExternalLink,
-  ShieldCheck
-} from 'lucide-react';
+import { Warning as AlertTriangle, CheckCircle as CheckCircle2, ArrowsClockwise as RefreshCw, Gear as Settings, ArrowLeft, ArrowSquareOut as ExternalLink, ShieldCheck } from '@phosphor-icons/react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';

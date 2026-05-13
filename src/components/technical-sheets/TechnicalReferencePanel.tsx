@@ -1,8 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import {
-  Plus, Loader2, AlertTriangle, CheckCircle2, ShieldCheck,
-  Package, Ruler, RefreshCw, ChevronDown, ChevronUp, Search
-} from 'lucide-react';
+import { Plus, CircleNotch as Loader2, Warning as AlertTriangle, CheckCircle as CheckCircle2, ShieldCheck, Package, Ruler, ArrowsClockwise as RefreshCw, CaretDown as ChevronDown, CaretUp as ChevronUp, MagnifyingGlass as Search } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';

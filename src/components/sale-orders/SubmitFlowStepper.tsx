@@ -1,5 +1,5 @@
 import { Fragment } from 'react';
-import { Calendar, Package, Footprints, Activity, ChevronRight, Check } from 'lucide-react';
+import { Calendar, Package, Footprints, Pulse as Activity, CaretRight as ChevronRight, Check } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 
 export type SubmitStep = 'min_billing' | 'material' | 'sole' | 'capacity';

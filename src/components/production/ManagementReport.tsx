@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, QrCode, Calendar, MapPin, Building2, TrendingUp, AlertTriangle } from 'lucide-react';
+import { FileText, QrCode, Calendar, MapPin, Buildings as Building2, TrendUp as TrendingUp, Warning as AlertTriangle } from '@phosphor-icons/react';
 
 export interface ReportStage {
   stage_name: string;
@@ -24,6 +24,7 @@ export interface ReportOrder {
     material_cost: number;
     labor_cost: number;
     overhead_cost: number;
+    packaging_cost: number;
     total_cost: number;
     revenue: number;
     margin: number;
@@ -101,6 +102,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
   const totalMaterial = orders.reduce((s, o) => s + (o.cost?.material_cost || 0), 0);
   const totalLabor = orders.reduce((s, o) => s + (o.cost?.labor_cost || 0), 0);
   const totalOverhead = orders.reduce((s, o) => s + (o.cost?.overhead_cost || 0), 0);
+  const totalPackaging = orders.reduce((s, o) => s + (o.cost?.packaging_cost || 0), 0);
   const totalCost = orders.reduce((s, o) => s + (o.cost?.total_cost || 0), 0);
   const totalRevenue = orders.reduce((s, o) => s + (o.cost?.revenue || 0), 0);
   const margin = totalRevenue - totalCost;
@@ -122,16 +124,16 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
 
   return (
     <div
-      className="w-[210mm] p-[8mm] bg-white border border-slate-300 shadow-none print:shadow-none print:border-0 m-auto flex flex-col gap-0"
+      className="w-[210mm] p-[8mm] print:w-full print:p-0 bg-white border border-slate-300 shadow-none print:shadow-none print:border-0 m-auto flex flex-col gap-0"
       style={{ boxSizing: 'border-box', fontFamily: "'Helvetica Neue', Arial, sans-serif" }}
     >
       {/* ── Header: PV + cliente ── */}
-      <div className="flex items-stretch gap-0 mb-3 rounded-lg overflow-hidden border-2 border-indigo-700">
-        <div className="bg-indigo-600 text-white flex items-center gap-2 px-4 py-2.5 shrink-0">
-          <FileText className="h-5 w-5" />
-          <span className="text-base font-black uppercase tracking-tight">Relatório Gerencial</span>
+      <div className="flex items-stretch gap-0 mb-2 rounded-lg overflow-hidden border-2 border-indigo-700">
+        <div className="bg-indigo-600 text-white flex items-center gap-2 px-3 py-1.5 shrink-0">
+          <FileText className="h-4 w-4" />
+          <span className="text-sm font-black uppercase tracking-tight">Relatório Gerencial</span>
         </div>
-        <div className="flex-1 flex flex-col justify-center px-4 bg-slate-50">
+        <div className="flex-1 flex flex-col justify-center px-3 bg-slate-50">
           <div className="flex items-baseline gap-3 flex-wrap">
             <p className="text-lg font-black text-indigo-900 leading-tight">
               PV {saleOrder.order_number || '—'}
@@ -169,15 +171,15 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
             )}
           </div>
         </div>
-        <div className="flex flex-col items-center justify-center px-3 bg-white border-l border-slate-200">
-          <QrCode className="h-10 w-10 text-slate-700" />
+        <div className="flex flex-col items-center justify-center px-2 bg-white border-l border-slate-200">
+          <QrCode className="h-8 w-8 text-slate-700" />
           <span className="text-[7px] font-mono text-slate-400 mt-0.5">RELATÓRIO</span>
           {date && <span className="text-[8px] text-slate-500 mt-0.5">{date}</span>}
         </div>
       </div>
 
       {/* ── KPIs ── */}
-      <div className="keep-together grid grid-cols-4 gap-2 mb-3">
+      <div className="keep-together grid grid-cols-4 gap-1.5 mb-2">
         <KpiCard label="OPs" value={orders.length} color="indigo" />
         <KpiCard label="Pares" value={totalPairs} color="indigo" />
         <KpiCard label="Receita" value={fmtCurrency(totalRevenue)} color="emerald" />
@@ -185,7 +187,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
       </div>
 
       {/* ── Tabela de OPs com status por setor ── */}
-      <div className="keep-together mb-3">
+      <div className="keep-together mb-2">
         <div className="bg-slate-100 px-3 py-1.5 rounded-t-lg border border-slate-300 border-b-0">
           <p className="text-xs font-black text-slate-700 uppercase tracking-wide">Ordens de Produção · Status por setor</p>
         </div>
@@ -244,7 +246,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
 
       {/* ── Custos ── */}
       {totalCost > 0 && (
-        <div className="keep-together mb-3 border-2 border-slate-300 rounded-lg overflow-hidden">
+        <div className="keep-together mb-2 border-2 border-slate-300 rounded-lg overflow-hidden">
           <div className="bg-slate-700 text-white px-3 py-1.5 flex items-center gap-2">
             <TrendingUp className="h-4 w-4" />
             <span className="text-xs font-black uppercase tracking-wide">Custos</span>
@@ -257,6 +259,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
                 <th className="border border-slate-300 py-1 px-2 text-right text-[10px] font-bold">Material</th>
                 <th className="border border-slate-300 py-1 px-2 text-right text-[10px] font-bold">M. Obra</th>
                 <th className="border border-slate-300 py-1 px-2 text-right text-[10px] font-bold">Overhead</th>
+                <th className="border border-slate-300 py-1 px-2 text-right text-[10px] font-bold">Embalagem</th>
                 <th className="border border-slate-300 py-1 px-2 text-right text-[10px] font-bold">Total</th>
                 <th className="border border-slate-300 py-1 px-2 text-right text-[10px] font-bold">Receita</th>
                 <th className="border border-slate-300 py-1 px-2 text-right text-[10px] font-bold">Margem</th>
@@ -270,6 +273,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
                   <td className="border border-slate-300 py-1 px-2 text-right font-mono text-[10px]">{fmtCurrency(o.cost!.material_cost)}</td>
                   <td className="border border-slate-300 py-1 px-2 text-right font-mono text-[10px]">{fmtCurrency(o.cost!.labor_cost)}</td>
                   <td className="border border-slate-300 py-1 px-2 text-right font-mono text-[10px]">{fmtCurrency(o.cost!.overhead_cost)}</td>
+                  <td className="border border-slate-300 py-1 px-2 text-right font-mono text-[10px]">{fmtCurrency(o.cost!.packaging_cost)}</td>
                   <td className="border border-slate-300 py-1 px-2 text-right font-mono font-bold text-[10px]">{fmtCurrency(o.cost!.total_cost)}</td>
                   <td className="border border-slate-300 py-1 px-2 text-right font-mono text-[10px]">{fmtCurrency(o.cost!.revenue)}</td>
                   <td className={`border border-slate-300 py-1 px-2 text-right font-mono font-bold text-[10px] ${o.cost!.margin >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
@@ -284,6 +288,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
                 <td className="border border-slate-400 py-1.5 px-2 text-right font-mono text-[10px]">{fmtCurrency(totalMaterial)}</td>
                 <td className="border border-slate-400 py-1.5 px-2 text-right font-mono text-[10px]">{fmtCurrency(totalLabor)}</td>
                 <td className="border border-slate-400 py-1.5 px-2 text-right font-mono text-[10px]">{fmtCurrency(totalOverhead)}</td>
+                <td className="border border-slate-400 py-1.5 px-2 text-right font-mono text-[10px]">{fmtCurrency(totalPackaging)}</td>
                 <td className="border border-slate-400 py-1.5 px-2 text-right font-mono text-[11px]">{fmtCurrency(totalCost)}</td>
                 <td className="border border-slate-400 py-1.5 px-2 text-right font-mono text-[10px]">{fmtCurrency(totalRevenue)}</td>
                 <td className={`border border-slate-400 py-1.5 px-2 text-right font-mono text-[11px] ${margin >= 0 ? 'text-emerald-800' : 'text-rose-800'}`}>
@@ -295,7 +300,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
         </div>
       )}
       {totalCost === 0 && (
-        <div className="keep-together mb-3 border border-amber-300 rounded p-2 bg-amber-50 flex items-center gap-2">
+        <div className="keep-together mb-2 border border-amber-300 rounded p-1.5 bg-amber-50 flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 text-amber-600" />
           <p className="text-xs text-amber-800">
             Sem custos calculados ainda — calcule via "Calcular Custos" no PV pra ver material/mão de obra/margem aqui.
@@ -303,7 +308,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
         </div>
       )}
       {isPartialReport && (
-        <div className="keep-together mb-3 border border-amber-300 rounded p-2 bg-amber-50 flex items-center gap-2">
+        <div className="keep-together mb-2 border border-amber-300 rounded p-1.5 bg-amber-50 flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 text-amber-600" />
           <p className="text-xs text-amber-800">
             <strong>Receita/Margem PARCIAIS:</strong> {opsWithCost} de {orders.length} OPs com custo
@@ -313,11 +318,11 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
       )}
 
       {/* ── Footer: assinaturas ── */}
-      <div className="mt-auto pt-2 border-t border-slate-200">
-        <div className="flex items-end justify-between gap-3">
+      <div className="mt-auto pt-1.5 border-t border-slate-200">
+        <div className="flex items-end justify-between gap-2">
           {['PCP', 'Comercial', 'Financeiro'].map(label => (
             <div key={label} className="text-center flex-1">
-              <div className="border-t border-slate-400 mt-6 pt-1">
+              <div className="border-t border-slate-400 mt-4 pt-0.5">
                 <p className="text-[9px] text-slate-500 uppercase font-bold">{label}</p>
               </div>
             </div>
@@ -335,9 +340,9 @@ function KpiCard({ label, value, color }: { label: string; value: string | numbe
     rose:    'bg-rose-50 border-rose-300 text-rose-900',
   };
   return (
-    <div className={`border-2 rounded-lg px-3 py-2 ${bg[color] || bg.indigo}`}>
+    <div className={`border-2 rounded-lg px-2.5 py-1.5 ${bg[color] || bg.indigo}`}>
       <p className="text-[9px] font-bold uppercase opacity-70">{label}</p>
-      <p className="text-lg font-black font-mono leading-tight">{value}</p>
+      <p className="text-base font-black font-mono leading-tight">{value}</p>
     </div>
   );
 }

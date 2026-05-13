@@ -6,11 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import {
-  Users2, DollarSign, Wallet, Loader2,
-  UserCheck, ArrowRight, Building2, CalendarClock, TrendingUp, AlertTriangle,
-  Cake, ClipboardEdit, FileText, AlarmClock,
-} from 'lucide-react';
+import { Users as Users2, CurrencyDollar as DollarSign, Wallet, CircleNotch as Loader2, UserCheck, ArrowRight, Buildings as Building2, CalendarBlank as CalendarClock, TrendUp as TrendingUp, Warning as AlertTriangle, Cake, Clipboard as ClipboardEdit, FileText, Alarm as AlarmClock } from '@phosphor-icons/react';
 import { startOfMonth, endOfMonth } from 'date-fns';
 import { useBankHoursBalances } from '@/hooks/useRH';
 import {

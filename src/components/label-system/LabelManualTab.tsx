@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { Printer, Upload, Plus, Minus, RotateCcw, Eye, Import, X } from 'lucide-react';
+import { Printer, Upload, Plus, Minus, ArrowCounterClockwise as RotateCcw, Eye, ArrowSquareIn as Import, X } from '@phosphor-icons/react';
 import { buildThermalLabelsHtml, buildBoxIdentificationHtml, DEFAULT_THERMAL_CONFIG } from '@/lib/printLabels';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -94,7 +94,9 @@ export function LabelManualTab() {
       const { data } = await supabase
         .from('orders')
         .select('id, order_number, color, status, technical_sheets:reference_id(name, code)')
-        .in('status', ['Em Produção', 'Pronto', 'Faturado'])
+        // Status REAIS de orders no backend (audit 2026-05): 'Pronto' e
+        // 'Faturado' não existem em orders — só Finalizado pra OP concluída.
+        .in('status', ['Em Produção', 'Finalizado'])
         .order('created_at', { ascending: false })
         .limit(200);
       return (data || []) as any[];

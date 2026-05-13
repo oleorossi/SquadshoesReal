@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, BellRing, Package, Footprints, Search, RefreshCw } from 'lucide-react';
+import { Warning as AlertTriangle, BellRinging as BellRing, Package, Footprints, MagnifyingGlass as Search, ArrowsClockwise as RefreshCw } from '@phosphor-icons/react';
 import AppLayout from '@/components/layout/AppLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';

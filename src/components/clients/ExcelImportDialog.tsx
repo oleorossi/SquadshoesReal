@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo } from 'react';
-import { FileUp, Upload, Loader2, FileSpreadsheet, FileText, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
+import { FileArrowUp as FileUp, Upload, CircleNotch as Loader2, FileXls as FileSpreadsheet, FileText, Warning as AlertTriangle, CheckCircle as CheckCircle2, XCircle } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -37,6 +37,7 @@ const emptyClient = (): ClientFormData => ({
   contato: '', notes: '', economic_group_id: null, active: true, logo_url: '',
   silk_url: null, is_favorite: false, accepts_bundled_packaging: true,
   credit_limit: 0,
+  branch_code: null, branch_name: null,
 });
 
 function validateClient(client: ClientFormData): string[] {

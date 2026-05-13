@@ -2,10 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useDebounce } from 'use-debounce';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { toast } from 'sonner';
-import { 
-  Plus, Loader2, Barcode, ChevronLeft, ChevronRight, Search, FileUp, Layers, ArrowUpDown, X, MoreHorizontal,
-  Rows3, Rows2, Eye
-} from 'lucide-react';
+import { Plus, CircleNotch as Loader2, Barcode, CaretLeft as ChevronLeft, CaretRight as ChevronRight, MagnifyingGlass as Search, FileArrowUp as FileUp, Stack as Layers, ArrowsDownUp as ArrowUpDown, X, DotsThree as MoreHorizontal, Rows as Rows3, Rows as Rows2, Eye } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -23,6 +20,7 @@ import {
 import { ProductTable } from '@/components/inventory/ProductTable';
 import { TableViewProvider, useTableView, ALL_COLUMNS } from '@/components/inventory/TableViewContext';
 import { ProductFormDialog } from '@/components/inventory/ProductFormDialog';
+import { QuickFamilyDialog } from '@/components/inventory/QuickFamilyDialog';
 import { InventoryStatusFilters } from '@/components/inventory/InventoryStatusFilters';
 import XmlImportDialog from '@/components/suppliers/XmlImportDialog';
 import AddToStockDialog from '@/components/suppliers/AddToStockDialog';
@@ -113,11 +111,19 @@ function ViewControls() {
 }
 
 function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGroupName?: string, title?: string }) {
-  // Resolve defaultGroupName to a group ID for filtering
+  // Resolve defaultGroupName: prioridade pra products.category (mais granular
+  // que product_groups). Solados são caso especial — existem múltiplos grupos
+  // (SOLADO/SOLADO 01/SOLADO 204/...) mas todos compartilham products.category='Solado'.
+  // Mesmo pra Cabedal/Forro/Químicos onde não há um grupo único.
   const { data: allGroups = [] } = useGroups();
-  const defaultGroupId = defaultGroupName 
-    ? allGroups.find(g => g.name.toLowerCase().includes(defaultGroupName.toLowerCase()))?.id || 'all'
-    : 'all';
+  const defaultCategory = defaultGroupName || 'all';
+  // Fallback: se nenhum produto tiver essa category mas existir um grupo
+  // com nome similar, usa groupId. (Cobre legado quando produtos não
+  // estão categorizados mas pertencem a um grupo nomeado.)
+  const matchedGroup = defaultGroupName
+    ? allGroups.find(g => g.name.toLowerCase() === defaultGroupName.toLowerCase())
+    : null;
+  const defaultGroupId = matchedGroup?.id || 'all';
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const returnTo = searchParams.get('returnTo');
@@ -134,6 +140,7 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
   // ... existing code (unused variables removed)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
+  const [quickFamilyOpen, setQuickFamilyOpen] = useState(false);
   const [groupListOpen, setGroupListOpen] = useState(false);
   const [xmlDialogOpen, setXmlDialogOpen] = useState(false);
   const [stockDialogOpen, setStockDialogOpen] = useState(false);
@@ -210,13 +217,18 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
   };
 
   
-  const effectiveGroup = defaultGroupName ? defaultGroupId : groupFilter;
-  
+  // Se chip foi clicado (defaultGroupName setado), usa SÓ category — não filtra
+  // groupId. Senão (uso fora do chip), respeita o groupFilter manual.
+  // Sem isso o AND filter (groupId + category) eliminaria produtos como
+  // "01-CARAMELO" que pertencem a "SOLADO 01" (group) mas category='Solado'.
+  const effectiveGroup = defaultGroupName ? 'all' : groupFilter;
+
   const { data: paginatedData, isLoading: isPaginatedLoading } = usePaginatedProducts({
     search: debouncedSearch,
     groupId: effectiveGroup,
     supplierId: supplierFilter,
     status: statusFilter,
+    category: defaultCategory,
     page,
     limit: 9999,
   });
@@ -389,8 +401,11 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel>Organização</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => setQuickFamilyOpen(true)}>
+                  <Layers className="h-4 w-4 mr-2" /> Cadastro rápido com cores (família)
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setGroupDialogOpen(true)}>
-                  <Layers className="h-4 w-4 mr-2" /> Novo grupo de produtos
+                  <Layers className="h-4 w-4 mr-2" /> Nova família (vazia)
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -511,6 +526,7 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
 
       <GroupCreateDialog open={groupDialogOpen} onOpenChange={setGroupDialogOpen} />
       <GroupListDialog open={groupListOpen} onOpenChange={setGroupListOpen} />
+      <QuickFamilyDialog open={quickFamilyOpen} onOpenChange={setQuickFamilyOpen} defaultGroupId={defaultGroupId} />
     </div>
   );
 }

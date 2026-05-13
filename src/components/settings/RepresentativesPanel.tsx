@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, Trash2, Pencil, Users2, Search, Loader2, Filter, Mail, Phone, MapPin, Percent, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Trash as Trash2, PencilSimple as Pencil, Users as Users2, MagnifyingGlass as Search, CircleNotch as Loader2, Funnel as Filter, Envelope as Mail, Phone, MapPin, Percent, CaretDown as ChevronDown, CaretUp as ChevronUp } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';

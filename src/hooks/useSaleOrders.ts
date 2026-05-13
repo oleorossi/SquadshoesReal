@@ -567,6 +567,10 @@ export type SaleOrderFormData = {
   original_min_billing_date?: string | null;
   /** Motivo do override informado pelo usuário (livre). */
   manual_override_reason?: string | null;
+  /** Quando true, este PV entra no planejamento de rota em /entregas com
+   *  cálculo de combustível e desgaste do veículo da frota própria. Default
+   *  false — pedido segue fluxo normal de transportadora. */
+  own_delivery?: boolean;
 };
 
 export type SaleOrderItemFormData = {
@@ -1074,16 +1078,10 @@ export function useUpdateSaleOrderStatus() {
                 if (!criticalDebitFailed) {
                   const secondaryDebitErrors: string[] = [];
 
-                  // Automatic stock out based on Technical Sheet (BOM)
-                  const { error: stockOutErr } = await supabase.rpc('process_order_stock_out', {
-                    p_order_id: createdOp.id,
-                    p_product_id: item.reference_id,
-                    p_quantity: item.quantity
-                  } as any);
-                  if (stockOutErr) {
-                    console.error('Erro ao processar stock out (Em Produção):', stockOutErr.message);
-                    secondaryDebitErrors.push(`stock-out: ${stockOutErr.message}`);
-                  }
+                  // FIX A3: process_order_stock_out removido — hybrid_debit_stock_for_order
+                  // já cobre o BOM via snapshot da ficha técnica (calculate_order_consumption_by_grade).
+                  // Manter o segundo débito gerava double-debit silencioso em produtos com
+                  // component_sheets nas categorias acessório/embalagem/cola/ferramentas.
 
                   if (Object.keys(scaledGrade).length > 0) {
                     const { error: soleErr } = await supabase.rpc('debit_sole_stock_by_grade', {
@@ -1334,16 +1332,8 @@ export function useUpdateSaleOrderStatus() {
 
               const secondaryDebitErrorsAprov: string[] = [];
 
-              // Automatic stock out based on Technical Sheet (BOM)
-              const { error: stockOutErrAprov } = await supabase.rpc('process_order_stock_out', {
-                p_order_id: createdOp.id,
-                p_product_id: item.reference_id,
-                p_quantity: item.quantity
-              } as any);
-              if (stockOutErrAprov) {
-                console.error('Erro ao processar stock out (Aprovado):', stockOutErrAprov.message);
-                secondaryDebitErrorsAprov.push(`stock-out: ${stockOutErrAprov.message}`);
-              }
+              // FIX A3: process_order_stock_out removido — hybrid_debit_stock_for_order
+              // já cobre o BOM via snapshot da ficha técnica.
 
               // Debit sole stock by grade
               if (Object.keys(scaledGrade).length > 0) {
@@ -1955,15 +1945,8 @@ export function useUpdateSaleOrder() {
             }
           }
 
-          // BOM stock out (consumables per technical sheet) — mirrors Aprovado branch
-          if (newOp?.id) {
-            const { error: bomErr } = await supabase.rpc('process_order_stock_out', {
-              p_order_id: newOp.id,
-              p_product_id: item.reference_id,
-              p_quantity: item.quantity,
-            } as any);
-            if (bomErr) console.error('Erro ao processar BOM stock out (update PV):', bomErr.message);
-          }
+          // FIX A3: BOM stock out via process_order_stock_out removido — hybrid_debit_stock_for_order
+          // já cobre o BOM via snapshot da ficha técnica.
 
           // Packaging debit — mirrors Aprovado branch; packaging_mode hoisted above loop
           if (newOp?.id) {

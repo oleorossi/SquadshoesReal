@@ -1,10 +1,5 @@
  import { useState, useMemo } from 'react';
-  import {
-    Plus, Loader2, Package, Tag, Barcode, Trash2,
-    GripVertical, Pencil, Check, X, ToggleLeft, ToggleRight,
-    Hash, ShoppingCart, DollarSign, Info, ChevronsUpDown, Search,
-    ChevronUp, ChevronDown, Sparkles
-  } from 'lucide-react';
+  import { Plus, CircleNotch as Loader2, Package, Tag, Barcode, Trash as Trash2, DotsSixVertical as GripVertical, PencilSimple as Pencil, Check, X, ToggleLeft, ToggleRight, Hash, ShoppingCart, CurrencyDollar as DollarSign, Info, CaretUpDown as ChevronsUpDown, MagnifyingGlass as Search, Copy, CaretUp as ChevronUp, CaretDown as ChevronDown, Sparkle as Sparkles } from '@phosphor-icons/react';
  import { Button } from '@/components/ui/button';
  import { Input } from '@/components/ui/input';
  import { Label } from '@/components/ui/label';
@@ -21,12 +16,13 @@
    DialogTitle,
    DialogFooter,
  } from '@/components/ui/dialog';
- import { 
-   useReferenceMaterialVariants, 
-   useAddReferenceMaterialVariant, 
-   useUpdateReferenceMaterialVariant, 
+ import {
+   useReferenceMaterialVariants,
+   useAddReferenceMaterialVariant,
+   useUpdateReferenceMaterialVariant,
    useDeleteReferenceMaterialVariant,
    useReorderReferenceMaterialVariants,
+   useDuplicateReferenceMaterialVariant,
    ReferenceMaterialVariant
  } from '@/hooks/useReferenceMaterialVariants';
  import { useProducts } from '@/hooks/useProducts';
@@ -46,9 +42,11 @@ import { supabase } from '@/integrations/supabase/client';
    const updateVariant = useUpdateReferenceMaterialVariant();
    const deleteVariant = useDeleteReferenceMaterialVariant();
    const reorderVariants = useReorderReferenceMaterialVariants();
- 
+   const duplicateVariant = useDuplicateReferenceMaterialVariant();
+
    const [isDialogOpen, setIsDialogOpen] = useState(false);
    const [editingVariant, setEditingVariant] = useState<Partial<ReferenceMaterialVariant> | null>(null);
+   const [duplicatingFromId, setDuplicatingFromId] = useState<string | null>(null);
    
    // Temporary state for the form
     const [formData, setFormData] = useState<Partial<ReferenceMaterialVariant>>({
@@ -141,6 +139,7 @@ import { supabase } from '@/integrations/supabase/client';
     };
  
    const handleOpenDialog = (variant?: ReferenceMaterialVariant) => {
+     setDuplicatingFromId(null);
      if (variant) {
        setEditingVariant(variant);
        setFormData(variant);
@@ -161,18 +160,63 @@ import { supabase } from '@/integrations/supabase/client';
       }
      setIsDialogOpen(true);
    };
- 
+
+   const handleOpenDuplicateDialog = (source: ReferenceMaterialVariant) => {
+     setEditingVariant(null);
+     setDuplicatingFromId(source.id);
+     setFormData({
+       material_name: `${source.material_name} (cópia)`,
+       sku: generateNextSku(),
+       barcode: '',
+       ncm: source.ncm,
+       description_override: source.description_override,
+       unit_price_override: source.unit_price_override,
+       active: source.active,
+       upper_material_product_id: source.upper_material_product_id,
+       display_order: variants.length,
+     });
+     setIsDialogOpen(true);
+   };
+
    const handleSave = async () => {
      if (!formData.material_name?.trim()) {
        toast.error('O nome do material é obrigatório');
        return;
      }
- 
+
+     const normalized = formData.material_name.trim().toLowerCase();
+     const collision = variants.find(v =>
+       v.id !== editingVariant?.id &&
+       v.material_name.trim().toLowerCase() === normalized
+     );
+     if (collision) {
+       toast.error(`Já existe variante com nome "${collision.material_name}" nesta ficha`);
+       return;
+     }
+
      try {
        if (editingVariant?.id) {
          await updateVariant.mutateAsync({
            id: editingVariant.id,
            data: formData
+         });
+       } else if (duplicatingFromId) {
+         const { material_name, sku, barcode, ncm, description_override,
+                 unit_price_override, active, upper_material_product_id } = formData;
+         await duplicateVariant.mutateAsync({
+           source_variant_id: duplicatingFromId,
+           sheet_id: sheetId,
+           overrides: {
+             material_name,
+             sku,
+             barcode,
+             ncm,
+             description_override,
+             unit_price_override,
+             active,
+             upper_material_product_id,
+             display_order: variants.length,
+           },
          });
        } else {
          await addVariant.mutateAsync({
@@ -182,6 +226,7 @@ import { supabase } from '@/integrations/supabase/client';
          });
        }
        setIsDialogOpen(false);
+       setDuplicatingFromId(null);
      } catch (err) {
        // Error handled by mutation
      }
@@ -292,8 +337,8 @@ import { supabase } from '@/integrations/supabase/client';
                      </div>
                    </TableCell>
                    <TableCell>
-                     {v.unit_price_override ? (
-                       <span className="text-sm font-semibold text-green-600">R$ {v.unit_price_override.toFixed(2)}</span>
+                     {v.unit_price_override != null && v.unit_price_override !== '' ? (
+                       <span className="text-sm font-semibold text-green-600">R$ {Number(v.unit_price_override).toFixed(2)}</span>
                      ) : (
                        <span className="text-xs text-muted-foreground italic">Padrão da ficha</span>
                      )}
@@ -309,18 +354,28 @@ import { supabase } from '@/integrations/supabase/client';
                    </TableCell>
                    <TableCell className="text-right">
                      <div className="flex justify-end gap-1">
-                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(v)}>
+                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(v)} title="Editar variante">
                          <Pencil className="h-3.5 w-3.5" />
                        </Button>
-                       <Button 
-                         variant="ghost" 
-                         size="icon" 
+                       <Button
+                         variant="ghost"
+                         size="icon"
+                         className="h-8 w-8"
+                         onClick={() => handleOpenDuplicateDialog(v)}
+                         title="Duplicar variante (copia BOM específico)"
+                       >
+                         <Copy className="h-3.5 w-3.5" />
+                       </Button>
+                       <Button
+                         variant="ghost"
+                         size="icon"
                          className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
                          onClick={async () => {
                            if (window.confirm('Excluir esta variante?')) {
                              await deleteVariant.mutateAsync(v.id);
                            }
                          }}
+                         title="Excluir variante"
                        >
                          <Trash2 className="h-3.5 w-3.5" />
                        </Button>
@@ -333,12 +388,22 @@ import { supabase } from '@/integrations/supabase/client';
          </Table>
        </div>
  
-       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+       <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) setDuplicatingFromId(null); }}>
          <DialogContent className="sm:max-w-[500px]">
            <DialogHeader>
-             <DialogTitle>{editingVariant ? 'Editar Variante' : 'Nova Variante de Material'}</DialogTitle>
+             <DialogTitle>
+               {editingVariant ? 'Editar Variante' : duplicatingFromId ? 'Duplicar Variante' : 'Nova Variante de Material'}
+             </DialogTitle>
            </DialogHeader>
-           
+
+           {duplicatingFromId && (
+             <div className="rounded-md border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
+               Os itens de BOM específicos da variante de origem serão copiados para a nova.
+               Itens compartilhados (sem variante atrelada) continuam valendo automaticamente.
+               Ajuste o <strong>nome do material</strong>, <strong>SKU</strong> e <strong>EAN/GTIN</strong> antes de salvar.
+             </div>
+           )}
+
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="material_name" className="text-right text-xs">Material</Label>
@@ -351,7 +416,7 @@ import { supabase } from '@/integrations/supabase/client';
                         aria-expanded={materialSearchOpen}
                         className="w-full justify-between font-normal text-xs h-9"
                       >
-                        {formData.material_name || "Selecionar material do estoque..."}
+                        {formData.material_name || "Selecionar material de cabedal..."}
                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                       </Button>
                     </PopoverTrigger>
@@ -362,7 +427,7 @@ import { supabase } from '@/integrations/supabase/client';
                           <CommandEmpty>Nenhum material encontrado.</CommandEmpty>
                           <CommandGroup>
                             {products
-                              .filter(p => p.active)
+                              .filter(p => p.active && (p.category || '').toLowerCase() === 'cabedal')
                               .map((product) => (
                                 <CommandItem
                                   key={product.id}
@@ -487,10 +552,10 @@ import { supabase } from '@/integrations/supabase/client';
            </div>
            
            <DialogFooter>
-             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
-             <Button onClick={handleSave} disabled={addVariant.isPending || updateVariant.isPending}>
-               {(addVariant.isPending || updateVariant.isPending) && <Loader2 className="h-3 w-3 mr-2 animate-spin" />}
-               Salvar Variante
+             <Button variant="outline" onClick={() => { setIsDialogOpen(false); setDuplicatingFromId(null); }}>Cancelar</Button>
+             <Button onClick={handleSave} disabled={addVariant.isPending || updateVariant.isPending || duplicateVariant.isPending}>
+               {(addVariant.isPending || updateVariant.isPending || duplicateVariant.isPending) && <Loader2 className="h-3 w-3 mr-2 animate-spin" />}
+               {duplicatingFromId ? 'Duplicar Variante' : 'Salvar Variante'}
              </Button>
            </DialogFooter>
          </DialogContent>

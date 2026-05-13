@@ -3,7 +3,7 @@ import AppLayout from "@/components/layout/AppLayout";
  import { useQuery } from '@tanstack/react-query';
  import { supabase } from '@/integrations/supabase/client';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Layers, Printer, Package2, Grid3X3, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Stack as Layers, Printer, Package as Package2, GridFour as Grid3X3, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';

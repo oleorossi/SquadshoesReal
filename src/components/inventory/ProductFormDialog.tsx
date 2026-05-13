@@ -29,7 +29,7 @@ import { useProducts } from '@/hooks/useProducts';
 import { useComponentSheets, useAddComponentSheet, useUpdateComponentSheet } from '@/hooks/useComponentSheets';
 import { NumberInput } from '@/components/ui/number-input';
 import { toast } from 'sonner';
-import { X, Layers, ArrowRightLeft, Footprints, Box, Loader2 } from 'lucide-react';
+import { X, Stack as Layers, ArrowsLeftRight as ArrowRightLeft, Footprints, Cube as Box, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import React from 'react';
 import { SoleSizeConjugationsEditor } from './SoleSizeConjugationsEditor';
@@ -71,15 +71,15 @@ const normalizeCalculationMethod = (
 };
 
 const emptyForm: ProductFormData = {
-   name: '', technical_name: '', sku: '', category: '', color: '', quantity: 0, min_stock: 0, max_stock: 0, unit: 'un', unit_price: 0, price_wholesale: 0, price_retail: 0, location: '', group_id: null, active: true, image_url: '', min_stock_grade: {}, stock_grade: {}, yield_per_meter: null, yield_unit: 'dm²', dimensions_length: 0, dimensions_width: 0, dimensions_thickness: 0, dimensions_unit: 'mm',
+  name: '', technical_name: '', sku: '', category: '', color: '', quantity: 0, min_stock: 0, max_stock: 0, unit: 'un', unit_price: 0, location: '', group_id: null, active: true, image_url: '', min_stock_grade: {}, stock_grade: {}, dimensions_length: 0, dimensions_width: 0, dimensions_thickness: 0, dimensions_unit: 'mm',
   purchase_unit: 'un', production_unit: 'un', conversion_rate: 1, purchase_order_unit: 'un', min_order_quantity: 0,
-  safety_stock: 0, lead_time_days: 7, supplier_lead_time_days: 7,
+  safety_stock: 0, supplier_lead_time_days: 7,
   calculation_method: 'weight',
   supplier_id: null,
-  lot_number: null, expiration_date: null, is_chemical: false,
-   linked_last_id: null, sole_material: null, heel_height: null,
-   consumption_unit: null, is_standard_sole_item: false,
- };
+  is_chemical: false,
+  sole_material: null, heel_height: null,
+  consumption_unit: null, is_standard_sole_item: false,
+};
 
 // Whitelist de campos que fazem sentido propagar entre variações de cor do
 // mesmo grupo. Excluídos: name, sku, color, quantity, max_stock, min_stock_grade,
@@ -181,7 +181,18 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
     siblings: Array<{ id: string; name: string; color: string | null }>;
     resolve: (apply: boolean) => void;
   } | null>(null);
-  const { data: groups = [] } = useGroups();
+  const { data: allGroups = [] } = useGroups();
+  // Filtra grupos de solado quando o usuário está cadastrando MATERIAL comum.
+  // Solados têm sua aba/ferramenta própria (SoleTechnicalDetails); poluir o
+  // select de família com SOLADO 01/204/etc. confunde quem só quer cadastrar
+  // tira/cabedal/etc. Detecta pelo nome (case-insensitive) começando com SOLADO.
+  const groups = useMemo(
+    () => allGroups.filter(g => {
+      const n = (g.name || '').trim().toUpperCase();
+      return n !== 'SOLADO' && !n.startsWith('SOLADO ');
+    }),
+    [allGroups],
+  );
   const queryClient = useQueryClient();
   const { data: suppliers = [] } = useSuppliers();
   const { data: allProducts = [] } = useProducts();
@@ -245,8 +256,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       min_stock: source.min_stock ?? prev.min_stock,
       max_stock: source.max_stock ?? prev.max_stock,
       unit_price: source.unit_price ?? prev.unit_price,
-      yield_per_meter: source.yield_per_meter ?? prev.yield_per_meter,
-      yield_unit: source.yield_unit || prev.yield_unit,
       dimensions_length: source.dimensions_length || prev.dimensions_length,
       dimensions_width: source.dimensions_width || prev.dimensions_width,
       dimensions_thickness: source.dimensions_thickness || prev.dimensions_thickness,
@@ -312,8 +321,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
         max_stock: rest.max_stock ?? 0,
         unit: rest.unit || 'un',
         unit_price: rest.unit_price ?? 0,
-        price_wholesale: (rest as any).price_wholesale ?? 0,
-        price_retail: (rest as any).price_retail ?? 0,
         location: rest.location || '',
         group_id: rest.group_id || null,
         active: rest.active ?? true,
@@ -322,8 +329,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
           ? (rest.min_stock_grade as Record<string, number>) : {},
         stock_grade: (rest.stock_grade && typeof rest.stock_grade === 'object' && !Array.isArray(rest.stock_grade))
           ? (rest.stock_grade as Record<string, number>) : {},
-        yield_per_meter: rest.yield_per_meter ?? null,
-        yield_unit: rest.yield_unit || 'dm²',
         dimensions_length: rest.dimensions_length ?? 0,
         dimensions_width: rest.dimensions_width ?? 0,
         dimensions_thickness: rest.dimensions_thickness ?? 0,
@@ -334,19 +339,15 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
         purchase_order_unit: normalizeUnit(rest.purchase_unit || rest.purchase_order_unit),
         min_order_quantity: rest.min_order_quantity ?? 1,
         safety_stock: rest.safety_stock ?? 0,
-        lead_time_days: rest.lead_time_days ?? 10,
         supplier_lead_time_days: rest.supplier_lead_time_days ?? 10,
         calculation_method: normalizeCalculationMethod(rest.calculation_method),
-        lot_number: rest.lot_number || null,
-        expiration_date: rest.expiration_date || null,
         is_chemical: rest.is_chemical ?? false,
-        linked_last_id: rest.linked_last_id || null,
         sole_material: rest.sole_material || null,
         heel_height: rest.heel_height ?? null,
-         box_type_id: rest.box_type_id || null,
-         consumption_unit: (rest as any).consumption_unit || null,
-         is_standard_sole_item: (rest as any).is_standard_sole_item ?? false,
-       });
+        box_type_id: rest.box_type_id || null,
+        consumption_unit: (rest as any).consumption_unit || null,
+        is_standard_sole_item: (rest as any).is_standard_sole_item ?? false,
+      });
       setMultiColorMode(false);
       setMultiColors([]);
       setColorInput('');
@@ -939,15 +940,19 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
               </div>
             </div>
           )}
-           <div className="grid grid-cols-1 gap-6 mt-4">
-             <div className="col-span-1">
+           {/* Reforma 2026-05: grid de 2 colunas. Nome e Nome Técnico ocupam linha
+                inteira (col-span-2) pra acomodar textos longos. SKU/Grupo lado-a-lado;
+                Fornecedor span 2 também. Removidos: "Item Padrão de Solado", "Cor"
+                e "Rendimento Técnico" — viram parte de outros fluxos. */}
+           <div className="grid grid-cols-2 gap-4 mt-4">
+             <div className="col-span-2">
               <Label htmlFor="name" className={attempted && errors.name ? 'text-destructive' : ''}>Nome *</Label>
               <Input
                 id="name"
                 value={form.name}
                 onChange={e => { update('name', e.target.value); setDuplicateConfirmed(false); setDuplicateMatch(null); if (attempted) setErrors(prev => ({ ...prev, name: !e.target.value.trim() })); }}
                 onBlur={handleNameBlur}
-                className={`mt-1 ${attempted && errors.name ? 'border-destructive ring-destructive' : ''}`}
+                className={`mt-1 h-10 text-sm ${attempted && errors.name ? 'border-destructive ring-destructive' : ''}`}
                 placeholder="Ex: NAPA SOFT, LINHA60"
               />
               {attempted && errors.name && <p className="text-xs text-destructive mt-1">Nome é obrigatório</p>}
@@ -1007,121 +1012,16 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                />
              </div>
 
-             <div className="col-span-2 flex items-center gap-2 py-2">
-               <Switch
-                 id="is_standard_sole_item"
-                 checked={form.is_standard_sole_item || false}
-                 onCheckedChange={v => update('is_standard_sole_item', v)}
-               />
-               <div className="grid gap-1.5 leading-none">
-                 <Label htmlFor="is_standard_sole_item" className="text-sm font-medium leading-none cursor-pointer">
-                   Item Padrão de Solado
-                 </Label>
-                 <p className="text-xs text-muted-foreground">
-                   Se marcado, este item (como cola ou linha) será adicionado automaticamente às fichas técnicas ao selecionar o solado correspondente.
-                 </p>
-               </div>
-             </div>
-            {!hasGrade && (
-              <div className="col-span-2">
-                <Label htmlFor="color">Cor</Label>
-                {isEditing ? (
-                  <Input
-                    id="color"
-                    value={form.color}
-                    onChange={e => update('color', e.target.value)}
-                    className="mt-1"
-                    placeholder="Ex: Preto"
-                  />
-                ) : !multiColorMode ? (
-                  <div className="space-y-2 mt-1">
-                    <div className="flex gap-2">
-                      <Input
-                        id="color"
-                        value={form.color}
-                        onChange={e => update('color', e.target.value)}
-                        className="flex-1"
-                        placeholder="Ex: Preto"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="text-xs whitespace-nowrap"
-                        onClick={() => {
-                          setMultiColorMode(true);
-                          if (form.color.trim()) {
-                            setMultiColors([form.color.trim()]);
-                            update('color', '');
-                          }
-                        }}
-                      >
-                        + Várias cores
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Para cadastrar várias cores do mesmo material, clique em "+ Várias cores"
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-2 mt-1">
-                    <div className="flex gap-2">
-                      <Input
-                        id="color"
-                        value={colorInput}
-                        onChange={e => setColorInput(e.target.value)}
-                        onKeyDown={handleColorKeyDown}
-                        onBlur={handleAddColors}
-                        className="flex-1"
-                        placeholder="Digite uma cor e pressione Enter"
-                      />
-                      <Button type="button" variant="outline" size="sm" onClick={handleAddColors}>
-                        Adicionar
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="text-xs"
-                        onClick={() => {
-                          setMultiColorMode(false);
-                          setMultiColors([]);
-                          setColorInput('');
-                        }}
-                      >
-                        Cancelar
-                      </Button>
-                    </div>
-                    {multiColors.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5">
-                        {multiColors.map(color => (
-                          <Badge key={color} variant="secondary" className="gap-1 pr-1">
-                            {color}
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveColor(color)}
-                              className="hover:bg-muted rounded-full p-0.5"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-                    <p className="text-xs text-muted-foreground">
-                      <span className="font-semibold text-primary">{multiColors.length} material(is)</span> serão criados, um para cada cor
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-            <div>
+            {/* Removidos em 2026-05: "Item Padrão de Solado" (vive em outro
+                fluxo agora) e bloco "Cor" (gerenciado via GroupColorsManager
+                no GroupEditDialog). */}
+            <div className="col-span-1">
               <Label htmlFor="sku" className={attempted && errors.sku ? 'text-destructive' : ''}>Código (SKU) *</Label>
-              <Input id="sku" value={form.sku} onChange={e => { update('sku', e.target.value); if (attempted) setErrors(prev => ({ ...prev, sku: !e.target.value.trim() })); }} className={`mt-1 font-mono ${attempted && errors.sku ? 'border-destructive ring-destructive' : ''}`} placeholder="Ex: CAB-001" />
+              <Input id="sku" value={form.sku} onChange={e => { update('sku', e.target.value); if (attempted) setErrors(prev => ({ ...prev, sku: !e.target.value.trim() })); }} className={`mt-1 h-10 font-mono text-sm ${attempted && errors.sku ? 'border-destructive ring-destructive' : ''}`} placeholder="Ex: CAB-001" />
               {attempted && errors.sku && <p className="text-xs text-destructive mt-1">SKU é obrigatório</p>}
             </div>
-            <div>
-              <Label>Grupo</Label>
+            <div className="col-span-1">
+              <Label>Família</Label>
               <Select value={form.group_id || 'none'} onValueChange={v => {
                 const gid = v === 'none' ? null : v;
                 update('group_id', gid);
@@ -1146,7 +1046,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                   }
                 }
               }}>
-                <SelectTrigger className="mt-1"><SelectValue placeholder="Sem grupo" /></SelectTrigger>
+                <SelectTrigger className="mt-1 h-10"><SelectValue placeholder="Sem grupo" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Sem grupo</SelectItem>
                   {groups.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
@@ -1167,10 +1067,10 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
               })()}
             </div>
 
-            <div>
+            <div className="col-span-2">
               <Label>Fornecedor</Label>
               <Select value={form.supplier_id || 'none'} onValueChange={v => update('supplier_id', v === 'none' ? null : v)}>
-                <SelectTrigger className="mt-1"><SelectValue placeholder="Sem fornecedor" /></SelectTrigger>
+                <SelectTrigger className="mt-1 h-10"><SelectValue placeholder="Sem fornecedor" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Sem fornecedor</SelectItem>
                   {suppliers.filter(s => s.active).map(s => (
@@ -1319,27 +1219,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                     min={0}
                     className="mt-1"
                   />
-                </div>
-                <div className="col-span-2">
-                  <Label htmlFor="linked_last_id">Vincular com Fôrma</Label>
-                  <Select 
-                    value={form.linked_last_id || 'none'} 
-                    onValueChange={v => update('linked_last_id', v === 'none' ? null : v)}
-                  >
-                    <SelectTrigger className="mt-1">
-                      <SelectValue placeholder="Selecione a fôrma correspondente" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Nenhuma fôrma vinculada</SelectItem>
-                      {allProducts
-                        .filter(p => p.category === 'Fôrma' || p.category === 'Ferramentas' || p.id === form.linked_last_id)
-                        .map(p => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.name} {p.sku ? `(${p.sku})` : ''}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
                 </div>
               </>
             )}
@@ -1534,51 +1413,8 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
               </div>
             )}
 
-            <div className="col-span-2 p-3 rounded-lg border bg-muted/30 space-y-3">
-              <Label className="text-sm font-semibold flex items-center gap-1.5">
-                <Layers className="h-3.5 w-3.5 text-primary" />
-                Rendimento Técnico (dm²/par por numeração)
-              </Label>
-              <p className="text-[10px] text-muted-foreground -mt-1">
-                Consumo em dm² por par para cada numeração. Usado no cálculo de pares estimados no estoque.
-              </p>
-              <div className={`grid gap-2 ${shoeCategory === 'infantil' ? 'grid-cols-8' : 'grid-cols-7'}`}>
-                {currentSizes.map(size => (
-                  <div key={size} className="text-center">
-                    <span className="text-xs text-muted-foreground font-medium">{size}</span>
-                    <NumberInput
-                      min={0}
-                      step="0.01"
-                      value={yieldPerSize[String(size)] || 0}
-                      onChange={v => setYieldPerSize(prev => ({ ...prev, [String(size)]: v }))}
-                      className="h-8 text-xs text-center px-1"
-                      placeholder="0"
-                    />
-                  </div>
-                ))}
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs text-muted-foreground">Perda / Desperdício (%)</Label>
-                  <NumberInput
-                    value={wastePct}
-                    onChange={setWastePct}
-                    min={0}
-                    step="0.5"
-                    className="mt-1 h-9"
-                    placeholder="8"
-                  />
-                </div>
-                <div className="flex items-end">
-                  {existingSheet
-                    ? <Badge variant="secondary" className="text-[10px]">Ficha existente</Badge>
-                    : Object.values(yieldPerSize).some(v => v > 0)
-                      ? <Badge variant="outline" className="text-[10px] text-primary border-primary/30">Nova ficha será criada</Badge>
-                      : <span className="italic text-xs text-muted-foreground">Sem ficha de componente</span>
-                  }
-                </div>
-              </div>
-            </div>
+            {/* "Rendimento Técnico (dm²/par por numeração)" removido em 2026-05
+                — agora vive em outra tela específica de consumo. */}
 
             <div className="col-span-2 p-3 rounded-lg border bg-muted/30 space-y-3">
               <Label className="text-sm font-semibold">Unidades de Medida</Label>
@@ -1675,18 +1511,11 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
               </div>
             )}
 
-            {/* Estoque Máximo - escondido para solados */}
-            {!hasGrade && (
-              <div>
-                <Label htmlFor="max_stock">Estoque Máximo</Label>
-                <NumberInput id="max_stock" min={0} step="0.0001" value={form.max_stock} onChange={v => update('max_stock', v)} required className="mt-1" />
-              </div>
-            )}
-            {hasGrade && (
-              <div className="col-span-2 text-xs text-muted-foreground italic">
-                Solados utilizam estoque mínimo por numeração. Estoque máximo não se aplica.
-              </div>
-            )}
+            {/* "Estoque Máximo" e "Estoque de Segurança" foram removidos do form
+                em 2026-05 a pedido do usuário — o campo Máximo era pouco usado
+                e Segurança duplicava conceitualmente o Mínimo no olhar do
+                operador. As colunas continuam no DB (default 0) — lógica de
+                MRP/projeção/try_reserve segue funcionando. */}
             {(() => {
               const selectedGroup = groups.find(g => g.name === form.category);
               const hasGroupPrice = selectedGroup && selectedGroup.package_price > 0 && selectedGroup.package_weight_kg > 0;
@@ -1779,16 +1608,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
               );
             })()}
             <div>
-              <Label>Estoque de Segurança</Label>
-              <NumberInput value={form.safety_stock ?? 0} onChange={v => update('safety_stock', v)} min={0} step="0.01" className="mt-1" placeholder="0" />
-              <p className="text-[10px] text-muted-foreground mt-0.5">Estoque mínimo reservado como segurança</p>
-            </div>
-            <div>
-              <Label>Lead Time Interno (dias)</Label>
-              <NumberInput value={form.lead_time_days ?? 7} onChange={v => update('lead_time_days', v)} min={0} step="1" className="mt-1" placeholder="7" />
-              <p className="text-[10px] text-muted-foreground mt-0.5">Prazo interno de processamento</p>
-            </div>
-            <div>
               <Label>Lead Time Fornecedor (dias)</Label>
               <NumberInput value={form.supplier_lead_time_days ?? 10} onChange={v => update('supplier_lead_time_days', v)} min={0} step="1" className="mt-1" placeholder="10" />
               <p className="text-[10px] text-muted-foreground mt-0.5">
@@ -1798,22 +1617,9 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
               </p>
             </div>
 
-            {form.is_chemical && (
-              <>
-                <div>
-                  <Label htmlFor="lot_number">Nº do Lote</Label>
-                  <Input id="lot_number" value={form.lot_number || ''} onChange={e => update('lot_number', e.target.value || null)} className="mt-1" placeholder="Ex: LOTE-2026-001" />
-                </div>
-                <div>
-                  <Label htmlFor="expiration_date">Data de Validade</Label>
-                  <Input type="date" value={form.expiration_date || ''} onChange={e => update('expiration_date', e.target.value || null)} className="mt-1" />
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Importante para produtos químicos.</p>
-                </div>
-              </>
-            )}
             <div className="flex items-center gap-3 pt-2">
               <Switch id="is_chemical" checked={form.is_chemical ?? false} onCheckedChange={v => update('is_chemical', v)} />
-              <Label htmlFor="is_chemical">Produto Químico / Validade Controlada</Label>
+              <Label htmlFor="is_chemical">Produto Químico</Label>
             </div>
 
             <div>
@@ -1824,10 +1630,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                   {LOCATIONS.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
                 </SelectContent>
               </Select>
-            </div>
-            <div>
-              <Label htmlFor="image_url">URL da Imagem</Label>
-              <Input id="image_url" value={form.image_url} onChange={e => update('image_url', e.target.value)} className="mt-1" placeholder="https://..." />
             </div>
             <div className="flex items-center gap-3 pt-4">
               <Switch id="active" checked={form.active} onCheckedChange={v => update('active', v)} />

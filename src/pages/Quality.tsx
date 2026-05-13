@@ -1,6 +1,6 @@
 import AppLayout from "@/components/layout/AppLayout";
 import { useMemo, useState } from 'react';
- import { ShieldCheck, AlertTriangle, XCircle, CheckCircle2, Clock, Search, Filter, ClipboardCheck } from 'lucide-react';
+ import { ShieldCheck, Warning as AlertTriangle, XCircle, CheckCircle as CheckCircle2, Clock, MagnifyingGlass as Search, Funnel as Filter, ClipboardText as ClipboardCheck } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

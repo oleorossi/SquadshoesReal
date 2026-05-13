@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Footprints, Save, Loader2, RefreshCw, Layers, Shield, Plus, X, Copy, Info, Search, Link2, AlertTriangle, ChevronDown, Calculator } from "lucide-react";
+import { Footprints, FloppyDisk as Save, CircleNotch as Loader2, ArrowsClockwise as RefreshCw, Stack as Layers, Shield, Plus, X, Copy, Info, MagnifyingGlass as Search, Link as Link2, Warning as AlertTriangle, CaretDown as ChevronDown, Calculator } from '@phosphor-icons/react';
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { SoleConjugationPanel } from "@/components/inventory/SoleConjugationPanel";
@@ -90,6 +90,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
   const [referenceInfo, setReferenceInfo] = useState<{ id: string; name: string; date: string } | null>(null);
   const [copyAnyOpen, setCopyAnyOpen] = useState(false);
   const [soleGroupId, setSoleGroupId] = useState<string | null>(null);
+  const [soleClassification, setSoleClassification] = useState<'tradicional' | 'palmilha_pronta' | 'conjugado' | null>(null);
   const [isFachetado, setIsFachetado] = useState<boolean>(false);
   const [shoeCategory, setShoeCategory] = useState<string | null>(null);
   // Passo 3 (Materiais padrão) é opcional — escondemos por default pra não
@@ -200,13 +201,14 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
       fetchMetadata();
       supabase
         .from('products')
-        .select('group_id, is_fachetado, name, stock_grade')
+        .select('group_id, is_fachetado, name, stock_grade, sole_classification')
         .eq('id', soleId)
         .single()
         .then(({ data }) => {
           const d = data as any;
           if (d?.group_id) setSoleGroupId(d.group_id);
           setIsFachetado((data as any)?.is_fachetado ?? false);
+          setSoleClassification((data as any)?.sole_classification ?? null);
           // Auto-popula `sizes` a partir do range definido na aba Cadastro
           // (stock_grade._size_from / _size_to). Antes essa seção ficava vazia
           // quando o solado não tinha sole_technical_specs, e o user tinha
@@ -670,29 +672,82 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
         </div>
       </div>
 
-      {/* ─── Passo 1: Conjugação de numerações ───────────────────── */}
-      <Card className="border-primary/30 bg-primary/[0.03]">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground text-[11px] font-bold">1</span>
-            <Link2 className="h-4 w-4 text-primary" />
-            Numerações conjugadas
-            {conjugationCount > 0 && (
-              <Badge variant="secondary" className="text-[10px] ml-1">
-                {conjugationCount} regra{conjugationCount === 1 ? '' : 's'} · {conjugatedSizesCount} tam.
+      {/* ─── Passo 1: Conjugação de numerações ─────────────────────
+          Só aparece pra solados do tipo 'conjugado'. Pra Tradicional/Palmilha
+          Pronta, oferece botão "Marcar como conjugado" que altera o tipo do
+          grupo inteiro (todas as variantes de cor) e revela o painel. */}
+      {soleClassification === 'conjugado' ? (
+        <Card className="border-primary/30 bg-primary/[0.03]">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground text-[11px] font-bold">1</span>
+              <Link2 className="h-4 w-4 text-primary" />
+              Numerações conjugadas
+              {conjugationCount > 0 && (
+                <Badge variant="secondary" className="text-[10px] ml-1">
+                  {conjugationCount} regra{conjugationCount === 1 ? '' : 's'} · {conjugatedSizesCount} tam.
+                </Badge>
+              )}
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Marque tamanhos que <strong>compartilham o mesmo molde</strong> (ex: 33/34, 39/40).
+              O estoque, o débito do PV, e o planejamento de compra usam essas chaves automaticamente.
+              Tamanhos que não estão em nenhuma conjugação são tratados como individuais.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <SoleConjugationPanel soleGroupId={soleGroupId} soleName={soleName} />
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="border-dashed bg-muted/10">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2 text-muted-foreground">
+              <Link2 className="h-4 w-4" />
+              Numerações conjugadas
+              <Badge variant="outline" className="text-[10px] ml-1">
+                Tipo atual: {soleClassification === 'palmilha_pronta' ? 'Palmilha Pronta' : 'Tradicional'}
               </Badge>
-            )}
-          </CardTitle>
-          <CardDescription className="text-xs">
-            Marque tamanhos que <strong>compartilham o mesmo molde</strong> (ex: 33/34, 39/40).
-            O estoque, o débito do PV, e o planejamento de compra usam essas chaves automaticamente.
-            Tamanhos que não estão em nenhuma conjugação são tratados como individuais.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <SoleConjugationPanel soleGroupId={soleGroupId} soleName={soleName} />
-        </CardContent>
-      </Card>
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Conjugações só fazem sentido pra solados onde algumas numerações compartilham
+              o mesmo molde (ex.: 23/24, 33/34). Se for o caso deste solado, marque como
+              <strong> Conjugado</strong> abaixo pra configurar.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!soleGroupId || saving}
+              onClick={async () => {
+                if (!soleGroupId) {
+                  toast.error('Solado sem grupo — vincule a um grupo primeiro pela aba Cadastro');
+                  return;
+                }
+                setSaving(true);
+                const { error } = await supabase
+                  .from('products')
+                  .update({ sole_classification: 'conjugado' } as any)
+                  .eq('group_id', soleGroupId);
+                setSaving(false);
+                if (error) {
+                  toast.error(error.message);
+                  return;
+                }
+                setSoleClassification('conjugado');
+                qc.invalidateQueries({ queryKey: ['soles_hub_products'] });
+                qc.invalidateQueries({ queryKey: ['products'] });
+                toast.success('Solado marcado como conjugado — configure as numerações abaixo');
+              }}
+              className="gap-1.5"
+            >
+              <Link2 className="h-3.5 w-3.5" />
+              Marcar como conjugado
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ─── Passo 2: Grade de numerações ──────────────────────────
           User feedback: o range já é definido no Cadastro (size_from/size_to).

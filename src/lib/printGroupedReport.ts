@@ -579,8 +579,8 @@ export function buildGroupedReportHtml(
 
   html += `
   <div class="page-break"></div>
-  <div style="margin-top:6px;">
-    <h2 style="font-size:13px;font-weight:800;margin-bottom:6px;color:${cfg.color};border-bottom:2px solid ${cfg.darkBg};padding-bottom:3px;">
+  <div style="margin-top:4px;">
+    <h2 style="font-size:13px;font-weight:800;margin-bottom:4px;color:${cfg.color};border-bottom:2px solid ${cfg.darkBg};padding-bottom:3px;">
       Resumo Geral — ${escapeHtml(sectorName)} (${grandTotalPairs} pares)
     </h2>
     <table class="summary-table">
@@ -619,7 +619,7 @@ export function printGroupedReport(
     writePrintWindow(
       printWin,
       'Agrupado ' + sectorName,
-      `<h1 style="font-size:18px;margin-bottom:8px;">Erro ao gerar relatório agrupado</h1><p style="font-size:12px;color:#444;">${message}</p>`
+      `<h1 style="font-size:18px;margin-bottom:5px;">Erro ao gerar relatório agrupado</h1><p style="font-size:12px;color:#444;">${message}</p>`
     );
   }
 }

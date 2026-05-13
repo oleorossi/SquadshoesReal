@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, CheckCircle2, Clock, Layers, Timer, TrendingUp, CalendarDays } from 'lucide-react';
+import { ArrowRight, CheckCircle as CheckCircle2, Clock, Stack as Layers, Timer, TrendUp as TrendingUp, CalendarBlank as CalendarDays } from '@phosphor-icons/react';
 import type { SectorBoardRow, ProductionStage } from '@/types/production-waves';
 import { STAGE_LABEL } from '@/types/production-waves';
 import { useAdvanceStage } from '@/hooks/useProductionWaves';

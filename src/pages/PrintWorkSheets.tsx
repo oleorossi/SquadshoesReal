@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Printer, Search, Loader2, FileText, Filter, FileStack } from 'lucide-react';
+import { Printer, MagnifyingGlass as Search, CircleNotch as Loader2, FileText, Funnel as Filter, Files as FileStack } from '@phosphor-icons/react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -21,14 +21,26 @@ interface OrderRow {
   grade: Record<string, number> | null;
   status: string;
   sale_order_id: string | null;
+  sale_order_item_id?: string | null;
   sale_orders?: { order_number: string; client_name: string; delivery_deadline: string | null } | null;
   technical_sheets?: { name: string; code: string | null } | null;
+  /** Sequência de tiras do item de PV (ordem TIRA 1, TIRA 2, ...).
+   *  Trazido via join sale_order_items pra que as fichas de operador
+   *  mostrem cada tira com sua cor na ordem definida na ficha técnica. */
+  sale_order_items?: { strap_colors: Array<{ id?: string; label?: string; color?: string; group_id?: string; group_name?: string }> | null } | null;
 }
 
-const STATUS_OPTIONS = ['Reservado', 'Em Produção', 'Pronto', 'Faturado'];
+// Status REAIS de `orders` (OPs) no backend, conforme auditoria 2026-05:
+//   Reservado · Em Produção · Finalizado
+// Antes a UI listava 'Pronto' e 'Faturado' que não existem em orders
+// ('Faturado' é status de sale_orders, não de orders). Remover essas opções
+// mortas evita o filtro mostrar vazio e o user achar que algo sumiu.
+// Default 'em_fluxo' cobre OPs ainda passíveis de impressão de ficha.
+const STATUS_OPTIONS = ['Reservado', 'Em Produção', 'Finalizado'];
+const EM_FLUXO = ['Reservado', 'Em Produção'];
 
 export default function PrintWorkSheets() {
-  const [statusFilter, setStatusFilter] = useState<string>('Em Produção');
+  const [statusFilter, setStatusFilter] = useState<string>('em_fluxo');
   const [search, setSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showPrintView, setShowPrintView] = useState(false);
@@ -42,10 +54,14 @@ export default function PrintWorkSheets() {
         .from('orders')
         // sale_orders!sale_order_id desambigua: orders tem 2 FKs pra sale_orders
         // (sale_order_id e cross_dock_sale_order_id). PostgREST não escolhe sozinho.
-        .select('id, order_number, reference_id, color, quantity, grade, status, sale_order_id, sale_orders!sale_order_id(order_number, client_name, delivery_deadline), technical_sheets:reference_id(name, code)')
+        .select('id, order_number, reference_id, color, quantity, grade, status, sale_order_id, sale_order_item_id, sale_orders!sale_order_id(order_number, client_name, delivery_deadline), technical_sheets:reference_id(name, code), sale_order_items!sale_order_item_id(strap_colors)')
         .order('order_number', { ascending: false })
         .limit(500);
-      if (statusFilter !== 'todos') q = q.eq('status', statusFilter);
+      if (statusFilter === 'em_fluxo') {
+        q = q.in('status', EM_FLUXO);
+      } else if (statusFilter !== 'todos') {
+        q = q.eq('status', statusFilter);
+      }
       const { data, error } = await q;
       if (error) throw error;
       return (data || []) as unknown as OrderRow[];
@@ -117,6 +133,13 @@ export default function PrintWorkSheets() {
         sale_order_number: r.sale_orders?.order_number ?? '',
         sale_order_id: r.sale_order_id,
         status: r.status,
+        // Sequência de tiras preservando a ordem (TIRA 1, TIRA 2, ...). Vazio
+        // pra modelos sem tiras. As fichas de operador (Aviamento, Colagem)
+        // renderizam essa sequência pra cortador/aviamento saber qual tira
+        // recebe qual cor (relevante quando o cliente pede mix de cores).
+        strap_colors: Array.isArray(r.sale_order_items?.strap_colors)
+          ? r.sale_order_items!.strap_colors
+          : [],
       }));
   }, [rows, selectedIds]);
 
@@ -187,10 +210,11 @@ export default function PrintWorkSheets() {
               />
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-44 h-9">
+              <SelectTrigger className="w-52 h-9">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="em_fluxo">Em fluxo (Reservado + Em Produção)</SelectItem>
                 <SelectItem value="todos">Todos os status</SelectItem>
                 {STATUS_OPTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
               </SelectContent>

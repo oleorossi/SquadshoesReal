@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, Plus, Pencil, Trash2, Star, Building2, Upload, FileCheck, ShieldCheck, ShieldAlert, ShieldX } from 'lucide-react';
+import { CircleNotch as Loader2, Plus, PencilSimple as Pencil, Trash as Trash2, Star, Buildings as Building2, Upload, FileText as FileCheck, ShieldCheck, ShieldWarning as ShieldAlert, Shield as ShieldX } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';

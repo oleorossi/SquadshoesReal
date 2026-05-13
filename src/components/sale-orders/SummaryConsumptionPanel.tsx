@@ -5,7 +5,7 @@ import { escapeHtml } from '@/lib/htmlUtils';
  import { Button } from "@/components/ui/button";
  import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
  import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
- import { Loader2, FileText, ChevronRight, ChevronDown, Filter, X } from "lucide-react";
+ import { CircleNotch as Loader2, FileText, CaretRight as ChevronRight, CaretDown as ChevronDown, Funnel as Filter, X } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import {
    calculateGradeBasedDm2,

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Copy, Search, Loader2, AlertTriangle, Footprints, Calendar } from 'lucide-react';
+import { Copy, MagnifyingGlass as Search, CircleNotch as Loader2, Warning as AlertTriangle, Footprints, Calendar } from '@phosphor-icons/react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';

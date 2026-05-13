@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { History, ArrowRight, Plus, Trash2, Loader2 } from 'lucide-react';
+import { ClockCounterClockwise as History, ArrowRight, Plus, Trash as Trash2, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';

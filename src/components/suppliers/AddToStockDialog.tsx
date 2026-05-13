@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { PackagePlus, Search, AlertTriangle } from 'lucide-react';
+import { Package as PackagePlus, MagnifyingGlass as Search, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';

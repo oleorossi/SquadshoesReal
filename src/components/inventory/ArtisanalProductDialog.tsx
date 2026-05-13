@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
-import { FlaskConical, ArrowRight, Package, Scissors, Loader2 } from 'lucide-react';
+import { Flask as FlaskConical, ArrowRight, Package, Scissors, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { Product } from '@/types/inventory';

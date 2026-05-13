@@ -1,6 +1,6 @@
 import AppLayout from "@/components/layout/AppLayout";
 import { useState, useMemo, lazy, Suspense } from 'react';
-import { AlertTriangle, Package, ShoppingCart, CheckCircle2, Clock, ArrowUpDown, Filter } from 'lucide-react';
+import { Warning as AlertTriangle, Package, ShoppingCart, CheckCircle as CheckCircle2, Clock, ArrowsDownUp as ArrowUpDown, Funnel as Filter } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';

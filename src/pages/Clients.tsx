@@ -1,7 +1,8 @@
 import AppLayout from "@/components/layout/AppLayout";
 import { useState, useMemo } from 'react';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Users, Plus, Loader2, Pencil, Trash2, Search, Building2, ChevronDown, FileUp, Store, Check, Star, RefreshCw } from 'lucide-react';
+import { Users, Plus, CircleNotch as Loader2, PencilSimple as Pencil, Trash as Trash2, MagnifyingGlass as Search, Buildings as Building2, CaretDown as ChevronDown, FileArrowUp as FileUp, Storefront as Store, Check, Star, ArrowsClockwise as RefreshCw, ArrowSquareOut as ExternalLink } from '@phosphor-icons/react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -34,9 +35,12 @@ const emptyClient: ClientFormData = {
   is_favorite: false,
   accepts_bundled_packaging: true,
   credit_limit: 0,
+  branch_code: null,
+  branch_name: null,
 };
 
 export default function Clients() {
+  const navigate = useNavigate();
   const { data: clients = [], isLoading, isError, error } = useClients();
   const { data: economicGroups = [] } = useEconomicGroups();
   const createClient = useCreateClient();
@@ -415,8 +419,9 @@ export default function Clients() {
                   <TableBody>
                     {economicGroups.map(g => {
                       const count = clients.filter(c => c.economic_group_id === g.id).length;
+                      // Clique na linha abre a tela 360° (gestão completa). Pencil = edit rápido inline.
                       return (
-                        <TableRow key={g.id} className="group cursor-pointer hover:bg-muted/50 transition-colors" onClick={(e) => { if ((e.target as HTMLElement).closest('button')) return; openEditGroup(g); }}>
+                        <TableRow key={g.id} className="group cursor-pointer hover:bg-muted/50 transition-colors" onClick={(e) => { if ((e.target as HTMLElement).closest('button')) return; navigate(`/grupos-economicos/${g.id}`); }}>
                           <TableCell className="font-mono text-xs text-muted-foreground">{g.group_number || '—'}</TableCell>
                           <TableCell className="font-medium">
                             <div className="flex items-center gap-1.5">
@@ -432,7 +437,8 @@ export default function Clients() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditGroup(g)}><Pencil className="h-4 w-4" /></Button>
+                              <Button variant="ghost" size="icon" className="h-8 w-8" title="Abrir 360°" onClick={() => navigate(`/grupos-economicos/${g.id}`)}><ExternalLink className="h-4 w-4" /></Button>
+                              <Button variant="ghost" size="icon" className="h-8 w-8" title="Edição rápida" onClick={() => openEditGroup(g)}><Pencil className="h-4 w-4" /></Button>
                               <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => setDeleteGroupId(g.id)}><Trash2 className="h-4 w-4" /></Button>
                             </div>
                           </TableCell>

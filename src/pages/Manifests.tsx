@@ -9,11 +9,10 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import {
-  FileCheck2, Plus, ArrowLeft, Loader2, ChevronRight, Trash2,
-  Truck, Package, MapPin, Lock,
-} from 'lucide-react';
+import { FileText as FileCheck2, Plus, ArrowLeft, CircleNotch as Loader2, CaretRight as ChevronRight, Trash as Trash2, Truck, Package, MapPin, Lock, ArrowCounterClockwise as RotateCcw } from '@phosphor-icons/react';
 import { format } from 'date-fns';
+import { useSaleOrderWeight } from '@/hooks/useSaleOrderWeight';
+import { IncompleteWeightWarning } from '@/components/weight/IncompleteWeightWarning';
 import { toast } from 'sonner';
 
 type ManifestStatus = 'em_montagem' | 'liberado' | 'em_transito' | 'entregue' | 'cancelado';
@@ -376,6 +375,17 @@ function AddVolumeDialog({
   const [city, setCity] = useState('');
   const [uf, setUf] = useState('');
   const [ean, setEan] = useState('');
+  /** Marca se peso/pares foram preenchidos pela RPC; se user editar, vira false. */
+  const [autoFilled, setAutoFilled] = useState(false);
+
+  const { data: weightData } = useSaleOrderWeight(saleOrderId || null);
+
+  const applyWeightFromPv = () => {
+    if (!weightData) return;
+    setTotalPairs(weightData.totalPairs);
+    setWeight(weightData.grossWeightKg);
+    setAutoFilled(true);
+  };
 
   const { data: saleOrders = [] } = useQuery({
     queryKey: ['sale_orders_for_manifest'],
@@ -414,6 +424,7 @@ function AddVolumeDialog({
       onSaved();
       toast.success('Volume adicionado.');
       setSaleOrderId(''); setTotalPairs(0); setWeight(0); setCity(''); setUf(''); setEan('');
+      setAutoFilled(false);
       onClose();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -430,6 +441,7 @@ function AddVolumeDialog({
             <Label>Pedido de venda (opcional)</Label>
             <Select value={saleOrderId} onValueChange={(v) => {
               setSaleOrderId(v);
+              setAutoFilled(false);
               const so = saleOrders.find((s: any) => s.id === v);
               if (so) {
                 if (!city && so.delivery_city) setCity(so.delivery_city);
@@ -443,6 +455,34 @@ function AddVolumeDialog({
                 ))}
               </SelectContent>
             </Select>
+            {weightData && (
+              <div className="mt-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 flex items-center gap-2 text-xs">
+                <Package className="h-3.5 w-3.5 text-primary shrink-0" />
+                <span className="flex-1">
+                  PV calculado: <strong>{weightData.totalPairs} pares</strong> ·{' '}
+                  <strong>{weightData.grossWeightKg.toFixed(3)} kg</strong>
+                  {weightData.boxWeightKg > 0 && (
+                    <span className="text-muted-foreground"> (caixinha: {weightData.boxWeightKg.toFixed(3)} kg)</span>
+                  )}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs gap-1"
+                  onClick={applyWeightFromPv}
+                  disabled={autoFilled && totalPairs === weightData.totalPairs && weight === weightData.grossWeightKg}
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  {autoFilled ? 'Aplicado' : 'Aplicar'}
+                </Button>
+              </div>
+            )}
+            {weightData && !weightData.isComplete && (
+              <div className="mt-2">
+                <IncompleteWeightWarning items={weightData.incompleteItems} scope="neste PV" />
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
@@ -462,12 +502,12 @@ function AddVolumeDialog({
               <Input value={ean} onChange={e => setEan(e.target.value)} className="font-mono" />
             </div>
             <div>
-              <Label>Pares</Label>
-              <Input type="number" min={0} value={totalPairs} onChange={e => setTotalPairs(+e.target.value)} />
+              <Label>Pares{autoFilled && <span className="ml-1 text-[9px] text-primary uppercase font-bold">auto</span>}</Label>
+              <Input type="number" min={0} value={totalPairs} onChange={e => { setTotalPairs(+e.target.value); setAutoFilled(false); }} />
             </div>
             <div>
-              <Label>Peso (kg)</Label>
-              <Input type="number" step="0.1" min={0} value={weight} onChange={e => setWeight(+e.target.value)} />
+              <Label>Peso (kg){autoFilled && <span className="ml-1 text-[9px] text-primary uppercase font-bold">auto</span>}</Label>
+              <Input type="number" step="0.001" min={0} value={weight} onChange={e => { setWeight(+e.target.value); setAutoFilled(false); }} />
             </div>
             <div>
               <Label>Cidade destino</Label>

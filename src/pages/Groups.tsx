@@ -1,6 +1,6 @@
 import AppLayout from "@/components/layout/AppLayout";
 import { useState } from 'react';
-import { Loader2, Plus, Pencil, Trash2, FolderOpen, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react';
+import { CircleNotch as Loader2, Plus, PencilSimple as Pencil, Trash as Trash2, FolderOpen, CaretDown as ChevronDown, CaretUp as ChevronUp, Warning as AlertTriangle } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,17 +25,32 @@ export default function Groups() {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<ProductGroup | null>(null);
-  const [form, setForm] = useState({ name: '', description: '', auto_component_sheet: false });
+  const emptyForm = {
+    name: '',
+    description: '',
+    auto_component_sheet: false,
+    pairs_per_box_individual: null as number | null,
+    pairs_per_box_master: null as number | null,
+    pairs_per_box_colmeia: null as number | null,
+    pairs_per_box_fitilho: null as number | null,
+  };
+  const [form, setForm] = useState(emptyForm);
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
   const [editGroup, setEditGroup] = useState<ProductGroup | null>(null);
 
-  const openAdd = () => { setEditing(null); setForm({ name: '', description: '', auto_component_sheet: false }); setDialogOpen(true); };
+  const openAdd = () => { setEditing(null); setForm(emptyForm); setDialogOpen(true); };
   const openEdit = (g: ProductGroup) => { setEditGroup(g); };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     addGroup.mutate(form);
     setDialogOpen(false);
+  };
+
+  const parseIntOrNull = (v: string): number | null => {
+    if (v === '') return null;
+    const n = parseInt(v, 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
   };
 
   const countProducts = (groupId: string) => products.filter(p => p.group_id === groupId).length;
@@ -129,7 +144,7 @@ export default function Groups() {
         </div>
       </div>
 
-      <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setEditing(null); setForm({ name: '', description: '', auto_component_sheet: false }); } }}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setEditing(null); setForm(emptyForm); } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Novo grupo de material</DialogTitle>
@@ -152,6 +167,50 @@ export default function Groups() {
               <Label htmlFor="auto-bom" className="cursor-pointer text-sm">
                 Ficha de Componente (BOM) — itens deste grupo entram automaticamente
               </Label>
+            </div>
+            <div className="rounded-lg border p-3 bg-muted/30 space-y-2">
+              <Label className="text-sm font-medium">Pares por embalagem (opcional)</Label>
+              <p className="text-[10px] text-muted-foreground -mt-1">
+                Use somente os tipos de caixa aplicáveis a este grupo. Pode ajustar depois na edição.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label htmlFor="ppb-ind" className="text-xs">Individual</Label>
+                  <Input
+                    id="ppb-ind" type="number" min={1} step={1}
+                    value={form.pairs_per_box_individual ?? ''}
+                    onChange={e => setForm(f => ({ ...f, pairs_per_box_individual: parseIntOrNull(e.target.value) }))}
+                    className="mt-1 h-8" placeholder="Ex: 1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="ppb-mas" className="text-xs">Master</Label>
+                  <Input
+                    id="ppb-mas" type="number" min={1} step={1}
+                    value={form.pairs_per_box_master ?? ''}
+                    onChange={e => setForm(f => ({ ...f, pairs_per_box_master: parseIntOrNull(e.target.value) }))}
+                    className="mt-1 h-8" placeholder="Ex: 12"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="ppb-col" className="text-xs">Colmeia</Label>
+                  <Input
+                    id="ppb-col" type="number" min={1} step={1}
+                    value={form.pairs_per_box_colmeia ?? ''}
+                    onChange={e => setForm(f => ({ ...f, pairs_per_box_colmeia: parseIntOrNull(e.target.value) }))}
+                    className="mt-1 h-8" placeholder="Ex: 24"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="ppb-fit" className="text-xs">Fitilho</Label>
+                  <Input
+                    id="ppb-fit" type="number" min={1} step={1}
+                    value={form.pairs_per_box_fitilho ?? ''}
+                    onChange={e => setForm(f => ({ ...f, pairs_per_box_fitilho: parseIntOrNull(e.target.value) }))}
+                    className="mt-1 h-8" placeholder="Ex: 2"
+                  />
+                </div>
+              </div>
             </div>
             <div className="flex justify-end gap-3 pt-2">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>

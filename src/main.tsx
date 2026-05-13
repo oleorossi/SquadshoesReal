@@ -1,3 +1,4 @@
+// Build trigger: 2026-05-12 — teste 3 (VERCEL_ORG_ID adicionado)
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import { GlobalErrorBoundary } from "./components/GlobalErrorBoundary";

@@ -6,7 +6,7 @@ import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Printer, SlidersHorizontal, Eye, Wrench, RotateCcw, CheckCircle2, AlertTriangle, Info, Save } from 'lucide-react';
+import { Printer, Sliders as SlidersHorizontal, Eye, Wrench, ArrowCounterClockwise as RotateCcw, CheckCircle as CheckCircle2, Warning as AlertTriangle, Info, FloppyDisk as Save } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { BarcodeSVG } from '@/components/ui/barcode-svg';
 

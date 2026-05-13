@@ -25,6 +25,8 @@ export type Client = {
   is_favorite: boolean;
   accepts_bundled_packaging: boolean;
   credit_limit: number;
+  branch_code: string | null;
+  branch_name: string | null;
   created_at: string;
   updated_at: string;
 };

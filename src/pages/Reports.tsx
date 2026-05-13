@@ -1,10 +1,5 @@
 import { useMemo, useState } from 'react';
-import {
-  ShoppingCart, TrendingUp, DollarSign, Percent, Package, AlertTriangle,
-  Clock, FileText, Download, Filter, Calendar, BarChart3, PieChart as PieChartIcon,
-  Map, Users, ArrowUpRight, ArrowDownRight, Loader2, RefreshCw,
-  FileSpreadsheet, Printer, Mail, ChevronRight, Activity, Layers, SearchX
-} from 'lucide-react';
+import { ShoppingCart, TrendUp as TrendingUp, CurrencyDollar as DollarSign, Percent, Package, Warning as AlertTriangle, Clock, FileText, Download, Funnel as Filter, Calendar, ChartBar as BarChart3, ChartPie as PieChartIcon, MapTrifold as Map, Users, ArrowUpRight, ArrowDownRight, CircleNotch as Loader2, ArrowsClockwise as RefreshCw, FileXls as FileSpreadsheet, Printer, Envelope as Mail, CaretRight as ChevronRight, Pulse as Activity, Stack as Layers, MagnifyingGlassMinus as SearchX } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';

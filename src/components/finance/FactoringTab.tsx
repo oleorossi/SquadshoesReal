@@ -11,7 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Plus, Pencil, Trash2, Percent, FileText, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, PencilSimple as Pencil, Trash as Trash2, Percent, FileText, CaretDown as ChevronDown, CaretUp as ChevronUp } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { calculateFactoringDiscount } from '@/lib/factoringCalc';

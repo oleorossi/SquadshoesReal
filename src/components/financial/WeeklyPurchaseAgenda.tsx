@@ -25,10 +25,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import {
-  Loader2, CalendarDays, AlertTriangle, ShoppingCart, ChevronDown, ChevronUp,
-  Package, TrendingDown, CheckCircle2,
-} from 'lucide-react';
+import { CircleNotch as Loader2, CalendarBlank as CalendarDays, Warning as AlertTriangle, ShoppingCart, CaretDown as ChevronDown, CaretUp as ChevronUp, Package, TrendDown as TrendingDown, CheckCircle as CheckCircle2 } from '@phosphor-icons/react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 

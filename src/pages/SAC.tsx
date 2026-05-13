@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Plus, MessageSquare, History, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, ChatText as MessageSquare, ClockCounterClockwise as History, CaretDown as ChevronDown, CaretRight as ChevronRight } from '@phosphor-icons/react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';

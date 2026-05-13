@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, CheckCircle2, ClipboardList, Search, ChevronRight } from 'lucide-react';
+import { Warning as AlertTriangle, CheckCircle as CheckCircle2, ClipboardText as ClipboardList, MagnifyingGlass as Search, CaretRight as ChevronRight } from '@phosphor-icons/react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';

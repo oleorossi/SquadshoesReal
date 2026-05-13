@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2, Lock, ImageIcon, Hash } from 'lucide-react';
+import { WarningCircle as AlertCircle, CheckCircle as CheckCircle2, Lock, Image as ImageIcon, Hash } from '@phosphor-icons/react';
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {

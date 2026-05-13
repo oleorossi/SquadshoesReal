@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { X, Plus, Wand2, Link2 } from 'lucide-react';
+import { X, Plus, MagicWand as Wand2, Link as Link2 } from '@phosphor-icons/react';
 import {
   useSoleConjugations,
   useUpsertSoleConjugation,

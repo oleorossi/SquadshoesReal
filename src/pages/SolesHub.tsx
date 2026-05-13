@@ -9,10 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import {
-  Loader2, Package, Search, Settings2, Boxes, History,
-  AlertTriangle, ChevronRight, ListPlus,
-} from 'lucide-react';
+import { CircleNotch as Loader2, Package, MagnifyingGlass as Search, Gear as Settings2, Stack as Boxes, ClockCounterClockwise as History, Warning as AlertTriangle, CaretRight as ChevronRight, ListPlus } from '@phosphor-icons/react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { cn } from '@/lib/utils';
 import SolesCadastroTab from '@/components/soles-hub/SolesCadastroTab';
@@ -229,17 +226,20 @@ export default function SolesHub() {
                       { value: 'historico', label: 'Histórico',  icon: History },
                     ]} />
 
+                    {/* key={selected.id} força remount ao trocar de solado —
+                        sem isso, useState interno dos subcomponentes fica preso
+                        nos valores iniciais do primeiro solado selecionado. */}
                     <TabsContent value="cadastro" className="mt-4">
-                      <SolesCadastroTab sole={selected} />
+                      <SolesCadastroTab key={selected.id} sole={selected} />
                     </TabsContent>
                     <TabsContent value="estoque" className="mt-4">
-                      <SolesEstoqueTab sole={selected} />
+                      <SolesEstoqueTab key={selected.id} sole={selected} />
                     </TabsContent>
                     <TabsContent value="consumos" className="mt-4">
-                      <SolesConsumosTab sole={selected} />
+                      <SolesConsumosTab key={selected.id} sole={selected} />
                     </TabsContent>
                     <TabsContent value="historico" className="mt-4">
-                      <SolesHistoricoTab sole={selected} />
+                      <SolesHistoricoTab key={selected.id} sole={selected} />
                     </TabsContent>
                   </Tabs>
                 </CardContent>

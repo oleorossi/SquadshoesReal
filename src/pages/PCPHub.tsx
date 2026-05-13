@@ -1,19 +1,8 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSearchParams } from "react-router-dom";
 import { lazy, Suspense } from "react";
-import {
-  Loader2,
-  LayoutDashboard,
-  ClipboardList,
-  Factory,
-  BarChart3,
-  Boxes,
-  History,
-  Waves,
-  Workflow,
-  Clock
-} from "lucide-react";
-import { Gauge, FileBarChart } from "lucide-react";
+import { CircleNotch as Loader2, SquaresFour as LayoutDashboard, ClipboardText as ClipboardList, Factory, ChartBar as BarChart3, Stack as Boxes, ClockCounterClockwise as History, Waves, FlowArrow as Workflow, Clock } from '@phosphor-icons/react';
+import { Gauge, FileText as FileBarChart } from '@phosphor-icons/react';
 
 const Orders = lazy(() => import("./Orders"));
 const ProductionScheduleTimeline = lazy(() => import("@/components/financial/ProductionScheduleTimeline").then(m => ({ default: m.ProductionScheduleTimeline })));

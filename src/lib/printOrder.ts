@@ -3,6 +3,11 @@ import { escapeHtml } from './htmlUtils';
 
 function buildPrintHtmlContent(title: string, bodyHtml: string, options?: { landscape?: boolean }): string {
   const pageSize = options?.landscape ? 'A4 landscape' : 'A4';
+  // OTIMIZAÇÃO DE ESPAÇO: helper compartilhado por ~10 arquivos lib/print*.ts
+  // (printGroupedReport, printCombinedSectorReport, printSectorWorkSheet,
+  //  printPurchaseOrder, printSaleOrderOPs, printStockPurchaseOrder,
+  //  printTimeMirror, printTimesheet, printLabels, printCuttingGroupedReport).
+  // Reduzir margens/paddings/font-sizes aqui = otimizar TODOS de uma vez.
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -11,24 +16,25 @@ function buildPrintHtmlContent(title: string, bodyHtml: string, options?: { land
 <style>
   @page {
     size: ${pageSize};
-    margin: 8mm 8mm;
+    margin: 6mm 7mm;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif; font-size: 12px; color: #000; font-weight: 400; line-height: 1.35; padding: 5mm 6mm; max-width: ${options?.landscape ? '297mm' : '210mm'}; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  h1 { font-size: 18px; font-weight: 800; margin-bottom: 4px; color: #000; letter-spacing: -0.2px; }
-  h2 { font-size: 14px; font-weight: 800; margin: 10px 0 4px; border-bottom: 2px solid #000; padding-bottom: 2px; color: #000; text-transform: uppercase; letter-spacing: 0.3px; }
-  .subtitle { font-size: 11px; color: #1a1a1a; margin-bottom: 8px; font-weight: 600; }
-  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px; margin-bottom: 8px; font-size: 11px; }
+  body { font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif; font-size: 11px; color: #000; font-weight: 400; line-height: 1.25; padding: 3mm 4mm; max-width: ${options?.landscape ? '297mm' : '210mm'}; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  h1 { font-size: 16px; font-weight: 800; margin-bottom: 2px; color: #000; letter-spacing: -0.2px; }
+  h2 { font-size: 13px; font-weight: 800; margin: 6px 0 2px; border-bottom: 2px solid #000; padding-bottom: 1px; color: #000; text-transform: uppercase; letter-spacing: 0.3px; }
+  h3 { font-size: 12px; font-weight: 700; margin: 4px 0 2px; color: #000; }
+  .subtitle { font-size: 10px; color: #1a1a1a; margin-bottom: 4px; font-weight: 600; }
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; margin-bottom: 4px; font-size: 10.5px; }
   .info-grid .label { font-weight: 700; color: #000; }
-  table { width: 100%; border-collapse: collapse; margin-top: 4px; }
-  th, td { border: 1px solid #555; padding: 4px 6px; text-align: left; font-size: 11px; color: #000; font-weight: 500; }
-  th { background: #1f2937; color: #fff !important; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; font-size: 10.5px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 2px; }
+  th, td { border: 1px solid #555; padding: 2px 4px; text-align: left; font-size: 10.5px; color: #000; font-weight: 500; line-height: 1.2; }
+  th { background: #1f2937; color: #fff !important; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; font-size: 10px; }
   tbody tr:nth-child(even) td { background: #f7f8fa; }
   .text-right { text-align: right; }
   .text-center { text-align: center; }
   .mono { font-family: 'SFMono-Regular', 'Courier New', monospace; font-variant-numeric: tabular-nums; font-weight: 600; }
-  .footer { margin-top: 10px; font-size: 9px; color: #1a1a1a; text-align: center; border-top: 1px solid #999; padding-top: 4px; font-weight: 600; }
-  .total-row td { font-weight: 800 !important; background: #fef3c7 !important; color: #000 !important; border-top: 2px solid #000; font-size: 11.5px; }
+  .footer { margin-top: 6px; font-size: 9px; color: #1a1a1a; text-align: center; border-top: 1px solid #999; padding-top: 2px; font-weight: 600; }
+  .total-row td { font-weight: 800 !important; background: #fef3c7 !important; color: #000 !important; border-top: 2px solid #000; font-size: 11px; }
   img { max-width: 100%; }
   .toolbar { display: none; }
   .content-wrapper { margin-top: 0; }

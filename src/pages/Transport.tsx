@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
- import { Truck, Package, Box, Plus, Calculator, Pencil, Trash2, Building2, Search, MapPin, TrendingUp, Navigation } from 'lucide-react';
+ import { Truck, Package, Cube as Box, Plus, Calculator, PencilSimple as Pencil, Trash as Trash2, Buildings as Building2, MagnifyingGlass as Search, MapPin, TrendUp as TrendingUp, NavigationArrow as Navigation } from '@phosphor-icons/react';
 import { OrderTransportCalculator } from '@/components/transport/OrderTransportCalculator';
 import { RouteOptimizerPanel } from '@/components/logistics/RouteOptimizerPanel';
 import { RoutePlanner } from '@/components/logistics/RoutePlanner';

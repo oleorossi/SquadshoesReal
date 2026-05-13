@@ -17,10 +17,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { EmptyState } from '@/components/ui/empty-state';
-import {
-  FileEdit, Plus, Trash2, CheckCircle, AlertCircle, Send,
-  Loader2, Search,
-} from 'lucide-react';
+import { FileText as FileEdit, Plus, Trash as Trash2, CheckCircle, WarningCircle as AlertCircle, PaperPlaneRight as Send, CircleNotch as Loader2, MagnifyingGlass as Search } from '@phosphor-icons/react';
 
 const STATUS_META: Record<NfeCCeStatus, { label: string; className: string; icon: React.ReactNode }> = {
   rascunho:  { label: 'Rascunho',  className: 'bg-muted text-muted-foreground border-border',           icon: <FileEdit className="h-3 w-3" /> },
@@ -47,10 +44,14 @@ function CCeDialog({
   onClose: () => void;
   editing: (NfeCCe & { nfe_emitidas?: any }) | null;
 }) {
+  // Hooks SEM condição: precisam rodar mesmo com open=false pra ordem ficar
+  // estável (rules of hooks). Mas só fetcham quando o dialog está aberto.
   const isEdit = !!editing;
   const [nfeId, setNfeId] = useState<string>(editing?.nfe_id ?? '');
   const [correctionText, setCorrectionText] = useState(editing?.correction_text ?? '');
-  const { data: nfes = [], isLoading: loadingNfes } = useAuthorizedNfes();
+  // Pausa o fetch enquanto o dialog está fechado pra evitar trabalho desnecessário
+  // e eliminar qualquer trap em embed PostgREST quando o painel ainda não foi visto.
+  const { data: nfes = [], isLoading: loadingNfes } = useAuthorizedNfes(open);
   const { data: nextSeq } = useNextCCeSequence(nfeId || null);
   const save = useSaveCCe();
 
@@ -107,7 +108,8 @@ function CCeDialog({
                 <SelectContent>
                   {nfes.map((n: any) => (
                     <SelectItem key={n.id} value={n.id}>
-                      NF {n.numero}/{n.serie} — {n.sale_orders?.order_number} · {n.sale_orders?.client_name}
+                      NF {n.numero}/{n.serie}
+                      {n.data_emissao ? ` · ${new Date(n.data_emissao).toLocaleDateString('pt-BR')}` : ''}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -251,7 +253,6 @@ function CCeRow({
   onMarkEmitted: (c: NfeCCe) => void;
   onDelete: (id: string) => void;
 }) {
-  const order = cce.nfe_emitidas?.sale_orders;
   return (
     <div className="flex items-center gap-3 py-3 border-b border-border/50 last:border-0">
       <div className="flex-1 min-w-0">
@@ -260,9 +261,6 @@ function CCeRow({
             NF {cce.nfe_number} #CCe{cce.sequencia}
           </span>
           <CCeStatusBadge status={cce.status} />
-          {order?.order_number && (
-            <span className="text-xs text-muted-foreground">{order.order_number}</span>
-          )}
         </div>
         <p className="text-sm text-foreground/80 line-clamp-2 mt-0.5" title={cce.correction_text}>
           {cce.correction_text}
@@ -384,10 +382,11 @@ export default function NfeCCePanel() {
               icon={FileEdit}
               title="Nenhuma carta de correção"
               description="Crie uma CCe pra corrigir erros pontuais em NF-e já autorizada."
-              action={{
-                label: 'Nova CCe',
-                onClick: () => setCreating(true),
-              }}
+              action={
+                <Button onClick={() => setCreating(true)} className="gap-2">
+                  <Plus className="h-4 w-4" /> Nova CCe
+                </Button>
+              }
             />
           ) : (
             <div className="divide-y divide-border/50">

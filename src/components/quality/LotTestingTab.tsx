@@ -1,9 +1,5 @@
 import { useState } from 'react';
-import { 
-  ClipboardCheck, Plus, Search, Filter, 
-  CheckCircle2, XCircle, AlertTriangle, Info,
-  Package, Calendar, User, ArrowRight
-} from 'lucide-react';
+import { ClipboardText as ClipboardCheck, Plus, MagnifyingGlass as Search, Funnel as Filter, CheckCircle as CheckCircle2, XCircle, Warning as AlertTriangle, Info, Package, Calendar, User, ArrowRight } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';

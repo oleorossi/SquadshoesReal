@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQueries } from '@tanstack/react-query';
 import { useDebounce } from 'use-debounce';
 import { useNavigate } from 'react-router-dom';
- import { Search, ClipboardList, Users, Package, FileText, X, ArrowRight, Home } from 'lucide-react';
+ import { MagnifyingGlass as Search, ClipboardText as ClipboardList, Users, Package, FileText, X, ArrowRight, House as Home } from '@phosphor-icons/react';
  import { menuGroups } from '@/data/navigation';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@/components/ui/command';
@@ -192,7 +192,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
               .limit(5),
             supabase
               .from('technical_sheets')
-              .select('id, name, gender')
+              .select('id, name, shoe_category')
               .ilike('name', `%${searchTerm}%`)
               .order('updated_at', { ascending: false })
               .limit(5),
@@ -207,7 +207,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
           const fromSheets = (sheetRes.data ?? []).map((r: any) => ({
             id: r.id,
             name: r.name,
-            category: r.gender,
+            category: r.shoe_category,
             source: 'technical_sheets' as const,
           }));
 

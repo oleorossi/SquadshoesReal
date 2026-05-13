@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Loader2, Search, Undo2, Plus, Pencil, Trash2 } from 'lucide-react';
+import { CircleNotch as Loader2, MagnifyingGlass as Search, ArrowUUpLeft as Undo2, Plus, PencilSimple as Pencil, Trash as Trash2 } from '@phosphor-icons/react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';

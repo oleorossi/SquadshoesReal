@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Trash2, Lock, ChevronsUpDown, Check, Package, ExternalLink, Search, Command, Palette, Plus, X, MessageSquare } from 'lucide-react';
+import { Trash as Trash2, Lock, CaretUpDown as ChevronsUpDown, Check, Package, ArrowSquareOut as ExternalLink, MagnifyingGlass as Search, Command, Palette, Plus, X, ChatText as MessageSquare } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { SaleOrderItemFormData } from '@/hooks/useSaleOrders';
@@ -398,6 +398,31 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     return mergeAllGroupColors(group);
   };
 
+  // Resolve o group_id da cor principal do item — usado pra "cadastrar cor
+  // na hora" via CreateStrapProductDialog. Prioriza variant de material
+  // explicitamente selecionada; senão usa o primeiro grupo de forração/cabedal
+  // do BOM da ficha técnica. Retorna null quando não consegue inferir (UI
+  // esconde o botão "+ Cadastrar" nesse caso).
+  const mainGroupForNewColor = useMemo<{ id: string; name: string } | null>(() => {
+    if (item.material_variant_id) {
+      const variant = activeMaterialVariants.find(v => v.id === item.material_variant_id);
+      if (variant?.group_id) {
+        return { id: variant.group_id, name: variant.group_name || variant.material_name || '' };
+      }
+    }
+    // Fallback: primeiro material de forração/palmilha no BOM
+    const liningCategories = new Set(['Forração da Palmilha', 'Palmilha']);
+    for (const m of refMaterials as any[]) {
+      const category = (m.products as any)?.category;
+      const groupId = m.group_id || m.product_groups?.id || (m.products as any)?.group_id;
+      const groupName = m.product_groups?.name || (m.products as any)?.name || '';
+      if (groupId && liningCategories.has(category)) {
+        return { id: groupId, name: groupName };
+      }
+    }
+    return null;
+  }, [item.material_variant_id, activeMaterialVariants, refMaterials]);
+
   const availableColors: string[] = useMemo(() => {
     // When a material group is selected and has specific colors defined, use those exclusively.
     // This enforces the Reference → Material → Color flow for multi-material references.
@@ -469,11 +494,20 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     // strap_colors refresh in the query cache, skip — otherwise a cache update
     // would silently restore straps the user deliberately removed.
     const refIdForStraps = selectedRef?.id ?? item.reference_id ?? '';
+    // BUG ANTIGO 2026-05-12: exigíamos selectedRef.has_straps=true. Mas
+    // várias fichas técnicas existem com strap_colors configuradas (TIRA 1,
+    // 2…) e has_straps=false (estado inconsistente vindo do save da ficha).
+    // Resultado: PV nunca populava as tiras → section "Cores das Tiras"
+    // ficava invisível mesmo após cor principal escolhida (SP117/SP119).
+    // FIX: derivar — se a ficha tem strap_colors.length>0, considera que
+    // tem tiras (independente do flag has_straps).
+    const refStrapDefs = Array.isArray(selectedRef?.strap_colors) ? selectedRef!.strap_colors : [];
+    const refHasStrapsEffective = !!selectedRef?.has_straps || refStrapDefs.length > 0;
     if (strapSyncedForRef.current !== refIdForStraps) {
       strapSyncedForRef.current = refIdForStraps;
 
-      if (selectedRef?.has_straps && selectedRef.strap_colors?.length && currentStraps.length === 0) {
-        const straps = (selectedRef.strap_colors as any[]).map((s: any) => ({
+      if (refHasStrapsEffective && refStrapDefs.length > 0 && currentStraps.length === 0) {
+        const straps = (refStrapDefs as any[]).map((s: any) => ({
           id: s.id || String(Math.random()),
           label: s.label || 'TIRA',
           color: '',
@@ -483,11 +517,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           consumption_per_size: s.consumption_per_size || {},
         }));
         update(idx, 'strap_colors', straps);
-      } else if (selectedRef?.has_straps && selectedRef.strap_colors?.length && currentStraps.length > 0) {
+      } else if (refHasStrapsEffective && refStrapDefs.length > 0 && currentStraps.length > 0) {
         // Sync structure with current reference definition (straps added/removed in sheet)
         // but preserve colors the user already selected.
-        const refStrapIds = new Set((selectedRef.strap_colors as any[]).map(s => s.id));
-        const updatedStraps = (selectedRef.strap_colors as any[]).map((refStrap: any) => {
+        const refStrapIds = new Set((refStrapDefs as any[]).map(s => s.id));
+        const updatedStraps = (refStrapDefs as any[]).map((refStrap: any) => {
           const existing = currentStraps.find(s => s.id === refStrap.id);
           return {
             id: refStrap.id || String(Math.random()),
@@ -533,6 +567,33 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       update(idx, 'material_variant_id', activeMaterialVariants[0].id);
     }
   }, [item.reference_id, activeMaterialVariants.length]);
+
+  // Auto-sincroniza cor das tiras com a cor principal do item. Regra de negócio
+  // (user em 2026-05): "cor da sandália = cor da forração; em modelos com tiras,
+  // cada cor de forração tem uma tira correspondente". Antes o operador
+  // precisava clicar "Igualar à principal" toda vez ou setar manualmente cor
+  // a cor — fonte recorrente de erro no débito (debit_strap_stock falhava
+  // quando esquecia de igualar).
+  // Só auto-sync quando:
+  //  - item.color foi escolhida (não vazio)
+  //  - tiras existem
+  //  - tira ainda não tem cor OU todas as tiras estão com a mesma cor antiga
+  //    (preserva override manual do operador se ele variou as tiras)
+  useEffect(() => {
+    if (!item.color) return;
+    const straps = (item.strap_colors as any[]) || [];
+    if (straps.length === 0) return;
+
+    const allBlank = straps.every(s => !s?.color);
+    const allSameOldColor = straps.every(s => s?.color && s.color !== item.color &&
+      straps.every(other => other?.color === s.color));
+
+    if (allBlank || allSameOldColor) {
+      const updated = straps.map(s => ({ ...s, color: item.color }));
+      const { index: idx, onUpdate: update } = latestRef.current;
+      update(idx, 'strap_colors', updated);
+    }
+  }, [item.color, (item.strap_colors as any[])?.length]);
 
   useEffect(() => {
     if (totalPairs !== item.quantity) {
@@ -753,6 +814,16 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                 colors={availableColors}
                 value={item.color}
                 onSelect={(v) => onUpdate(index, 'color', v)}
+                onAddNew={mainGroupForNewColor ? (color) => {
+                  // Reusa o CreateStrapProductDialog pra criar produto na cor
+                  // principal (forração/cabedal). Sentinela index=-1 indica
+                  // "cor principal, não tira" pro callback onCreated.
+                  setPendingStrapGroupId(mainGroupForNewColor.id);
+                  setPendingStrapGroupName(mainGroupForNewColor.name);
+                  setPendingStrapColor(color);
+                  setPendingStrapIndex(-1);
+                  setCreateStrapDialog(true);
+                } : undefined}
               />
               {onSaveStateAndNavigate && activeMaterialVariants.length === 0 && (
                 <Button
@@ -932,45 +1003,131 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           </div>
         </div>
 
-        {/* Straps Section */}
-        {(item.strap_colors as any[])?.length > 0 && (
-          <div className="rounded-lg border border-border/60 overflow-hidden">
-            <div className="bg-muted/30 px-3 py-1.5 border-b flex items-center justify-between">
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Cores das Tiras</span>
-              <Button variant="link" size="sm" className="h-auto p-0 text-[10px]" onClick={() => {
-                const updated = (item.strap_colors as any[]).map((s: any) => ({ ...s, color: item.color }));
-                onUpdate(index, 'strap_colors', updated);
-              }}>Igualar à principal</Button>
-            </div>
-            <div className="p-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-              {(item.strap_colors as any[]).map((strap: any, sIdx: number) => (
-                <div key={strap.id || sIdx} className="space-y-1">
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase truncate">{strap.label || `Tira ${sIdx + 1}`}</span>
-                    {strap.group_name && <span className="text-[9px] text-muted-foreground opacity-70 truncate max-w-[80px]">({strap.group_name})</span>}
+        {/* Straps Section — fluxo sequencial: só abre após cor principal definida.
+            Sem isso, ao selecionar referência com tiras o user via cor principal +
+            tiras juntas e ficava confuso sobre qual preencher primeiro.
+            Fallback: se o item já tem alguma tira com cor (edição de PV existente),
+            sempre mostra. */}
+        {(() => {
+          const straps = (item.strap_colors as any[]) || [];
+          if (straps.length === 0) return null;
+          const anyStrapHasColor = straps.some((s: any) => !!s?.color);
+          const principalDefined = !!item.color;
+          // Se cor principal ainda não foi escolhida E nenhuma tira ainda tem cor,
+          // mostra placeholder com hint em vez da section completa.
+          if (!principalDefined && !anyStrapHasColor) {
+            return (
+              <div className="rounded-lg border border-dashed border-border/60 bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground italic flex items-center gap-2">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-muted-foreground/40" />
+                Defina a <strong className="text-foreground">Cor Principal</strong> acima para abrir as <strong className="text-foreground">cores das {straps.length} tira{straps.length > 1 ? 's' : ''}</strong>.
+              </div>
+            );
+          }
+          return null;
+        })()}
+        {(item.strap_colors as any[])?.length > 0 && (!!item.color || ((item.strap_colors as any[]) || []).some((s: any) => !!s?.color)) && (() => {
+          const straps = item.strap_colors as any[];
+          // Detecta tiras com cor escolhida mas SEM produto no estoque (group_id + color)
+          // Antes o operador só descobria isso quando OP entrava em produção e
+          // debit_strap_stock falhava. Agora alertamos no momento da escolha.
+          const missing = straps
+            .map((s: any, idx: number) => {
+              if (!s?.color || !s?.group_id) return null;
+              const targetColor = s.color.trim().toLowerCase();
+              const hasProduct = (allProducts as any[]).some(
+                (p: any) => p.group_id === s.group_id &&
+                  (p.color || '').trim().toLowerCase() === targetColor &&
+                  p.active !== false,
+              );
+              return hasProduct ? null : { idx, color: s.color, group_name: s.group_name };
+            })
+            .filter(Boolean) as Array<{ idx: number; color: string; group_name: string }>;
+          const hasMissing = missing.length > 0;
+
+          return (
+            <div className={`rounded-lg border overflow-hidden ${hasMissing ? 'border-amber-500/50' : 'border-border/60'}`}>
+              <div className={`px-3 py-1.5 border-b flex items-center justify-between ${hasMissing ? 'bg-amber-500/10' : 'bg-muted/30'}`}>
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                  Cores das Tiras{hasMissing && <span className="text-amber-700 ml-1">⚠ {missing.length} sem estoque</span>}
+                </span>
+                <Button variant="link" size="sm" className="h-auto p-0 text-[10px]" onClick={() => {
+                  const updated = straps.map((s: any) => ({ ...s, color: item.color }));
+                  onUpdate(index, 'strap_colors', updated);
+                }}>Igualar à principal</Button>
+              </div>
+
+              {hasMissing && (
+                <div className="px-3 py-2 bg-amber-500/5 border-b border-amber-500/30 text-xs text-amber-800 space-y-2">
+                  <p>
+                    <strong>Atenção:</strong> {missing.length === 1
+                      ? `Cor "${missing[0].color}" não tem produto no estoque do grupo "${missing[0].group_name || 'tira'}".`
+                      : `${missing.length} tiras com cor sem produto no estoque.`}
+                    {' '}O débito vai falhar quando a OP entrar em produção. Cadastre agora pra continuar:
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {missing.map(m => {
+                      const strap = straps[m.idx];
+                      return (
+                        <Button
+                          key={m.idx}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-[11px] gap-1 border-amber-500/40 bg-white hover:bg-amber-50 text-amber-800"
+                          onClick={() => {
+                            setPendingStrapGroupId(strap.group_id);
+                            setPendingStrapGroupName(strap.group_name || '');
+                            setPendingStrapColor(strap.color);
+                            setPendingStrapIndex(m.idx);
+                            setCreateStrapDialog(true);
+                          }}
+                          title={`Cadastrar produto "${m.group_name} - ${m.color}" no estoque`}
+                        >
+                          <Plus className="h-3 w-3" />
+                          Cadastrar "{m.color}"
+                        </Button>
+                      );
+                    })}
                   </div>
-                  <ColorPickerDropdown
-                    value={strap.color || ''}
-                    colors={strap.group_id ? getColorsFromGroupId(strap.group_id) : availableColors}
-                    onChange={(v) => {
-                      const updated = [...(item.strap_colors as any[])];
-                      updated[sIdx] = { ...updated[sIdx], color: v };
-                      onUpdate(index, 'strap_colors', updated);
-                    }}
-                    disabled={!item.reference_id}
-                    onAddNew={strap.group_id ? (color) => {
-                      setPendingStrapGroupId(strap.group_id);
-                      setPendingStrapGroupName(strap.group_name || '');
-                      setPendingStrapColor(color);
-                      setPendingStrapIndex(sIdx);
-                      setCreateStrapDialog(true);
-                    } : undefined}
-                  />
                 </div>
-              ))}
+              )}
+
+              <div className="p-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                {straps.map((strap: any, sIdx: number) => {
+                  const isMissing = missing.some(m => m.idx === sIdx);
+                  return (
+                    <div key={strap.id || sIdx} className="space-y-1">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase truncate">{strap.label || `Tira ${sIdx + 1}`}</span>
+                        {strap.group_name && <span className="text-[9px] text-muted-foreground opacity-70 truncate max-w-[80px]">({strap.group_name})</span>}
+                      </div>
+                      <ColorPickerDropdown
+                        value={strap.color || ''}
+                        colors={strap.group_id ? getColorsFromGroupId(strap.group_id) : availableColors}
+                        onChange={(v) => {
+                          const updated = [...straps];
+                          updated[sIdx] = { ...updated[sIdx], color: v };
+                          onUpdate(index, 'strap_colors', updated);
+                        }}
+                        disabled={!item.reference_id}
+                        onAddNew={strap.group_id ? (color) => {
+                          setPendingStrapGroupId(strap.group_id);
+                          setPendingStrapGroupName(strap.group_name || '');
+                          setPendingStrapColor(color);
+                          setPendingStrapIndex(sIdx);
+                          setCreateStrapDialog(true);
+                        } : undefined}
+                      />
+                      {isMissing && (
+                        <p className="text-[10px] text-amber-700 leading-tight">sem produto no estoque</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Observation */}
         <div>
@@ -1024,15 +1181,26 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           qc.invalidateQueries({ queryKey: ['products_for_colors'] });
           qc.invalidateQueries({ queryKey: ['group_supplier_materials_for_colors'] });
           qc.invalidateQueries({ queryKey: ['product_groups_colors'] });
-          // Auto-set the color on the strap after creation
-          if (pendingStrapIndex !== null && pendingStrapColor) {
-            const updated = [...(item.strap_colors as any[])];
-            if (updated[pendingStrapIndex]) {
-              updated[pendingStrapIndex] = { ...updated[pendingStrapIndex], color: pendingStrapColor };
-              onUpdate(index, 'strap_colors', updated);
+          qc.invalidateQueries({ queryKey: ['products'] });
+          if (pendingStrapColor) {
+            if (pendingStrapIndex === -1) {
+              // Sentinela: criação foi pra COR PRINCIPAL do item (não tira).
+              // Auto-seleciona a cor recém-criada no item.color e propaga
+              // pras tiras (via auto-sync do useEffect que existe).
+              onUpdate(index, 'color', pendingStrapColor);
+            } else if (pendingStrapIndex !== null) {
+              // Auto-set the color on the strap after creation
+              const updated = [...(item.strap_colors as any[])];
+              if (updated[pendingStrapIndex]) {
+                updated[pendingStrapIndex] = { ...updated[pendingStrapIndex], color: pendingStrapColor };
+                onUpdate(index, 'strap_colors', updated);
+              }
             }
           }
           setPendingStrapIndex(null);
+          setPendingStrapColor('');
+          setPendingStrapGroupId('');
+          setPendingStrapGroupName('');
         }}
       />
 
@@ -1044,11 +1212,21 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
 const SaleOrderItemForm = memo(SaleOrderItemFormInner);
 export default SaleOrderItemForm;
 
-function ColorSearchSelect({ colors, value, onSelect }: { colors: string[]; value: string; onSelect: (color: string) => void }) {
+function ColorSearchSelect({
+  colors, value, onSelect, onAddNew,
+}: {
+  colors: string[];
+  value: string;
+  onSelect: (color: string) => void;
+  /** Quando definido, mostra "+ Cadastrar 'X' no estoque" se a busca n\u00e3o casar nenhuma cor. */
+  onAddNew?: (color: string) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const normalize = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const filtered = colors.filter(c => normalize(c).includes(normalize(search)));
+  const trimmedSearch = search.trim();
+  const showAdd = !!onAddNew && trimmedSearch && !colors.some(c => normalize(c) === normalize(trimmedSearch));
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -1071,7 +1249,7 @@ function ColorSearchSelect({ colors, value, onSelect }: { colors: string[]; valu
             />
           </div>
           <div className="max-h-[250px] overflow-y-auto space-y-0.5">
-            {filtered.length === 0 && (
+            {filtered.length === 0 && !showAdd && (
               <p className="text-xs text-muted-foreground text-center py-4">Nenhuma cor encontrada.</p>
             )}
             {filtered.map(color => (
@@ -1087,6 +1265,19 @@ function ColorSearchSelect({ colors, value, onSelect }: { colors: string[]; valu
                 {value === color && <Check className="h-3.5 w-3.5 text-primary" />}
               </button>
             ))}
+            {showAdd && (
+              <button
+                onClick={() => {
+                  onAddNew!(trimmedSearch);
+                  setOpen(false);
+                  setSearch('');
+                }}
+                className="w-full text-left px-3 py-2 text-xs text-primary font-medium hover:bg-accent rounded-sm flex items-center gap-1.5"
+              >
+                <Plus className="h-3 w-3" />
+                Cadastrar "{trimmedSearch}" no estoque
+              </button>
+            )}
           </div>
         </div>
       </PopoverContent>

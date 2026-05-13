@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Target, Download, TrendingUp, TrendingDown } from 'lucide-react';
+import { CircleNotch as Loader2, Target, Download, TrendUp as TrendingUp, TrendDown as TrendingDown } from '@phosphor-icons/react';
 import { Progress } from '@/components/ui/progress';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useTimeRecords, useWorkSchedules, calculateDaySummary, useHolidays } from '@/hooks/useTimesheet';

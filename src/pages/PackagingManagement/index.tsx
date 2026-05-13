@@ -1,4 +1,4 @@
-import { Package, Box, Link as LinkIcon, Calculator, AlertTriangle, Warehouse } from 'lucide-react';
+import { Package, Cube as Box, Link as LinkIcon, Calculator, Warning as AlertTriangle, Warehouse } from '@phosphor-icons/react';
 import { StatsCard } from '@/components/inventory/StatsCard';
 import { usePackagingStats } from '@/hooks/usePackaging';
 import PackagingLinksPanel from '@/components/packaging/PackagingLinksPanel';

@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { useQuery } from '@tanstack/react-query';
-import { ClipboardList, Trash2, Loader2, AlertTriangle, CheckCircle2, Printer, Factory, Filter, Search, Calendar, Layers, X, ChevronDown, CheckCheck, Pencil, FileText, Square, CheckSquare, FileSpreadsheet, Check, ChevronsUpDown, Package, ImageIcon, Plus, ChevronUp, MoreHorizontal, Download, LayoutGrid, List } from 'lucide-react';
+import { ClipboardText as ClipboardList, Trash as Trash2, CircleNotch as Loader2, Warning as AlertTriangle, CheckCircle as CheckCircle2, Printer, Factory, Funnel as Filter, MagnifyingGlass as Search, Calendar, Stack as Layers, X, CaretDown as ChevronDown, Checks as CheckCheck, PencilSimple as Pencil, FileText, Square, CheckSquare, FileXls as FileSpreadsheet, Check, CaretUpDown as ChevronsUpDown, Package, Image as ImageIcon, Plus, CaretUp as ChevronUp, DotsThree as MoreHorizontal, Download, GridFour as LayoutGrid, List } from '@phosphor-icons/react';
 import OrdersKanbanBoard from '@/components/orders/OrdersKanbanBoard';
 import { EmptyState } from '@/components/ui/empty-state';
 import { autoCreateSolePO } from '@/lib/soleAutoPO';

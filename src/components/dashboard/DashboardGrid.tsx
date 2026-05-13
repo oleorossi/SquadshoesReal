@@ -1,5 +1,5 @@
  import { KPICard as KpiCard } from './KPICard';
-import { Factory, ClipboardList, AlertTriangle, ShoppingCart, TrendingUp, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { Factory, ClipboardText as ClipboardList, Warning as AlertTriangle, ShoppingCart, TrendUp as TrendingUp, ArrowUpRight, ArrowDownRight } from '@phosphor-icons/react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';

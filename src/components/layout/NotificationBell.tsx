@@ -1,4 +1,4 @@
-import { Bell, DollarSign, Package, Factory, Users2, PackageSearch, ExternalLink } from 'lucide-react';
+import { Bell, CurrencyDollar as DollarSign, Package, Factory, Users as Users2, Package as PackageSearch, ArrowSquareOut as ExternalLink } from '@phosphor-icons/react';
 import { useNotifications, NotificationItem } from '@/hooks/useNotifications';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';

@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
- import { Save, Loader2, Search, X, AlertTriangle, SlidersHorizontal, ChevronDown, ChevronRight, History } from "lucide-react";
+ import { FloppyDisk as Save, CircleNotch as Loader2, MagnifyingGlass as Search, X, Warning as AlertTriangle, Sliders as SlidersHorizontal, CaretDown as ChevronDown, CaretRight as ChevronRight, ClockCounterClockwise as History } from '@phosphor-icons/react';
  import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
  import StockHistory from "./StockHistory";
 import { cn } from "@/lib/utils";

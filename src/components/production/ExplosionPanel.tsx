@@ -2,7 +2,7 @@ import { useMaterialExplosion, type ExplodedMaterial } from '@/hooks/useMaterial
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Scissors, PackageCheck, AlertTriangle } from 'lucide-react';
+import { Scissors, Package as PackageCheck, Warning as AlertTriangle } from '@phosphor-icons/react';
 
 interface OrderInput {
   pairsBySizes: Record<string, number>;

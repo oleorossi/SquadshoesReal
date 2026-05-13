@@ -1,8 +1,9 @@
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight } from '@phosphor-icons/react';
 import { cn } from "@/lib/utils";
+import { getDashboardPeriodRange, type DashboardPeriod } from "@/lib/dashboardPeriod";
 
 type OPStatus = "ok" | "warn" | "err";
 
@@ -26,15 +27,18 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled:   "Cancelada",
 };
 
-export function BottomRow() {
+export function BottomRow({ period = 'current_month' }: { period?: DashboardPeriod } = {}) {
   const navigate = useNavigate();
+  const range = getDashboardPeriodRange(period);
 
   const { data: recentOps = [] } = useQuery({
-    queryKey: ["dashboard-recent-ops"],
+    queryKey: ["dashboard-recent-ops", range.cacheKey],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("orders")
-        .select("id, order_number, quantity, status, planned_delivery")
+        .select("id, order_number, quantity, status, planned_delivery, created_at")
+        .gte("created_at", range.startISO)
+        .lte("created_at", range.endISO)
         .order("created_at", { ascending: false })
         .limit(6);
       if (error) throw error;
@@ -54,12 +58,16 @@ export function BottomRow() {
     staleTime: 60_000,
   });
 
+  // Top modelos vendidos no período: filtra sale_order_items pelo created_at
+  // do PV pai (via inner join). Antes pegava all-time, agora respeita o filtro.
   const { data: topProducts = [] } = useQuery({
-    queryKey: ["dashboard-top-sold-models"],
+    queryKey: ["dashboard-top-sold-models", range.cacheKey],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("sale_order_items")
-        .select("quantity, technical_sheets(id, name, code)");
+        .select("quantity, sale_orders!inner(created_at), technical_sheets(id, name, code)")
+        .gte("sale_orders.created_at", range.startISO)
+        .lte("sale_orders.created_at", range.endISO);
       if (error) throw error;
       const grouped = (data || []).reduce((acc: any, item: any) => {
         const ref = item.technical_sheets;
@@ -72,6 +80,7 @@ export function BottomRow() {
       const maxQty = (sorted[0] as any)?.qty || 1;
       return sorted.map((p: any) => ({ ...p, pct: Math.round((p.qty / maxQty) * 100) }));
     },
+    staleTime: 5 * 60_000,
   });
 
   return (

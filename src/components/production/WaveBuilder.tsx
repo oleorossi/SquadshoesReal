@@ -11,11 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent } from '@/components/ui/card';
 import { todayISO } from '@/lib/date';
-import {
-  CalendarDays, Package, AlertTriangle, Users, ChevronDown, ChevronRight,
-  CheckCircle, XCircle, Clock, ShoppingBag, ArrowRight, Scissors, Loader2, Wrench, Search,
-  Hand, Pen, Printer, Flame, Hammer, Footprints, Sparkles, Truck,
-} from 'lucide-react';
+import { CalendarBlank as CalendarDays, Package, Warning as AlertTriangle, Users, CaretDown as ChevronDown, CaretRight as ChevronRight, CheckCircle, XCircle, Clock, ShoppingBag, ArrowRight, Scissors, CircleNotch as Loader2, Wrench, MagnifyingGlass as Search, Hand, Pen, Printer, Flame, Hammer, Footprints, Sparkle as Sparkles, Truck } from '@phosphor-icons/react';
 import { snapToMonday } from '@/lib/isoWeek';
 import { useCreateWave } from '@/hooks/useProductionWaves';
 import {

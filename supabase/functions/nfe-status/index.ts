@@ -129,11 +129,16 @@ Deno.serve(async (req) => {
 
     if (newStatus === "autorizada" && d.numero_nf && nfe.sale_order_id
         && updatedRows && updatedRows.length > 0) {
+      // FIX M1: avança PV pra "Faturado" quando NF-e autoriza via polling
+      // (status='processando' → 'autorizada'). Antes só o caminho síncrono
+      // do emit-nfe disparava esse update — emissão assíncrona ficava com
+      // AR/financial_entries órfãos.
       const { error: updateSoErr } = await adminClient
         .from("sale_orders")
-        .update({ nfe: String(d.numero_nf) })
-        .eq("id", nfe.sale_order_id);
-      if (updateSoErr) console.error("nfe-status: failed to update sale_order.nfe:", updateSoErr.message);
+        .update({ nfe: String(d.numero_nf), status: "Faturado" })
+        .eq("id", nfe.sale_order_id)
+        .not("status", "in", "(Cancelado,Faturado)");
+      if (updateSoErr) console.error("nfe-status: failed to update sale_order:", updateSoErr.message);
     }
 
     return new Response(JSON.stringify({

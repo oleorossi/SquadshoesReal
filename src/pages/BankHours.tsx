@@ -18,10 +18,7 @@
  */
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import {
-  Clock, TrendingUp, TrendingDown, Scale, Users, Building2,
-  Search, Loader2, ChevronRight, Plus, Trash2,
-} from 'lucide-react';
+import { Clock, TrendUp as TrendingUp, TrendDown as TrendingDown, Scales as Scale, Users, Buildings as Building2, MagnifyingGlass as Search, CircleNotch as Loader2, CaretRight as ChevronRight, Plus, Trash as Trash2 } from '@phosphor-icons/react';
 import AppLayout from '@/components/layout/AppLayout';
 import { todayISO } from '@/lib/date';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';

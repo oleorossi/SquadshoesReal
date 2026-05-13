@@ -607,7 +607,7 @@ export function printIndividualCalendarReport(emp: EmployeeTimesheetData, period
 
     return `
       <h3 style="margin:8px 0 4px;font-size:13px;color:#000;font-weight:800;page-break-after:avoid">Semana ${wi + 1} — ${weekDates[0].split('-').reverse().join('/')} a ${weekDates[weekDates.length - 1].split('-').reverse().join('/')}</h3>
-      <table style="width:100%;border-collapse:collapse;font-size:12px;page-break-inside:avoid;margin-bottom:6px">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;page-break-inside:avoid;margin-bottom:4px">
         <thead><tr><th style="width:100%;font-size:11px;font-weight:800;padding:5px 6px;text-align:left;color:#fff !important;background:#1f2937 !important">Batidas</th>${headerCells}</tr></thead>
         <tbody><tr><td style="font-weight:800;font-size:12px;color:#000;padding:4px 6px;vertical-align:top;background:#f3f4f6">${escapeHtml(emp.name)}</td>${cells}</tbody>
       </table>
@@ -616,7 +616,7 @@ export function printIndividualCalendarReport(emp: EmployeeTimesheetData, period
 
   const html = `
     <h1 style="font-size:18px;margin-bottom:2px;color:#000;font-weight:900">📅 Calendário Individual — ${escapeHtml(emp.name)}</h1>
-    <p class="subtitle" style="margin-bottom:6px;font-size:12px;color:#000;font-weight:600">Período: ${escapeHtml(periodLabel)} · ${allDates.length} dias · Impresso em ${new Date().toLocaleString('pt-BR')}</p>
+    <p class="subtitle" style="margin-bottom:4px;font-size:12px;color:#000;font-weight:600">Período: ${escapeHtml(periodLabel)} · ${allDates.length} dias · Impresso em ${new Date().toLocaleString('pt-BR')}</p>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 6px">
       <div class="summary-card"><div class="sc-label">Trabalhado</div><div class="sc-value">${minutesToDisplay(balance.totalWorked)}</div></div>
       <div class="summary-card"><div class="sc-label">Esperado</div><div class="sc-value">${minutesToDisplay(balance.totalExpected)}</div></div>
@@ -624,7 +624,7 @@ export function printIndividualCalendarReport(emp: EmployeeTimesheetData, period
       <div class="summary-card"><div class="sc-label">Faltas</div><div class="sc-value" style="color:#7f1d1d">${balance.absences}</div></div>
     </div>
     ${sections}
-    <div style="margin-top:8px;font-size:11px;color:#000;font-weight:700">
+    <div style="margin-top:5px;font-size:11px;color:#000;font-weight:700">
       <b>Legenda:</b> 🟡 HE · 🔴 Falta · 🔵 Feriado · Cinza = fim de semana
     </div>
   `;
@@ -717,7 +717,7 @@ export function printCalendarReport(allData: EmployeeTimesheetData[], periodLabe
     <h1 style="font-size:14px;margin-bottom:1px">📅 Calendário de Ponto — Todos os Funcionários</h1>
     <p class="subtitle" style="margin-bottom:4px">Período: ${escapeHtml(periodLabel)} · ${sortedNames.length} funcionários · ${allDates.length} dias · Impresso em ${new Date().toLocaleString('pt-BR')}</p>
     ${sections}
-    <div style="margin-top:6px;font-size:9px;color:#666">
+    <div style="margin-top:4px;font-size:9px;color:#666">
       <b>Legenda:</b> 🟡 HE · 🔴 Falta · 🔵 Feriado · Cinza = fim de semana
     </div>
   `;

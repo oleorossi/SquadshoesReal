@@ -1,4 +1,4 @@
- import { Bell, AlertTriangle, CheckCircle2, XCircle, EyeOff, Trash2 } from 'lucide-react';
+ import { Bell, Warning as AlertTriangle, CheckCircle as CheckCircle2, XCircle, EyeSlash as EyeOff, Trash as Trash2 } from '@phosphor-icons/react';
  import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
  import { Badge } from '@/components/ui/badge';
  import { Button } from '@/components/ui/button';

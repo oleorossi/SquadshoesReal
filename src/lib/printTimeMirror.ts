@@ -102,22 +102,22 @@ export function printTimeMirror(params: {
 <style>
   @page { size: A4 portrait; margin: 12mm; }
   body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #111; font-size: 11px; }
-  .header { border:2px solid #111; padding:8px 12px; margin-bottom:8px; display:flex; justify-content:space-between; }
+  .header { border:2px solid #111; padding:5px 8px; margin-bottom:5px; display:flex; justify-content:space-between; }
   .header h1 { margin:0; font-size:14px; font-weight:900; text-transform:uppercase; }
   .header .small { font-size:10px; color:#444; }
-  table { border-collapse:collapse; width:100%; margin-bottom:6px; }
+  table { border-collapse:collapse; width:100%; margin-bottom:4px; }
   th { background:#e0e0c8; border:1px solid #999; padding:4px 6px; font-size:10px; text-transform:uppercase; }
-  .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:0; border:1px solid #999; padding:6px 10px; margin-bottom:6px; font-size:10px; }
+  .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:0; border:1px solid #999; padding:4px 8px; margin-bottom:4px; font-size:10px; }
   .info-grid div { padding:2px 0; }
   .info-grid strong { display:inline-block; min-width:90px; color:#444; }
-  .totals { display:grid; grid-template-columns:repeat(5, 1fr); gap:0; border:2px solid #111; padding:6px 10px; margin-top:8px; font-size:11px; }
+  .totals { display:grid; grid-template-columns:repeat(5, 1fr); gap:0; border:2px solid #111; padding:4px 8px; margin-top:5px; font-size:11px; }
   .totals .cell { text-align:center; }
   .totals .label { font-size:9px; text-transform:uppercase; color:#666; }
   .totals .value { font-size:14px; font-weight:900; font-family:monospace; }
   .signatures { margin-top:30px; display:grid; grid-template-columns:1fr 1fr; gap:40px; font-size:10px; }
   .sig { border-top:1px solid #111; padding-top:4px; text-align:center; }
-  .obs { margin-top:12px; padding:6px 10px; border:1px dashed #999; font-size:10px; min-height:30px; }
-  .footer { margin-top:8px; font-size:8px; color:#888; text-align:center; }
+  .obs { margin-top:12px; padding:4px 8px; border:1px dashed #999; font-size:10px; min-height:30px; }
+  .footer { margin-top:5px; font-size:8px; color:#888; text-align:center; }
 </style>
 </head><body>
 

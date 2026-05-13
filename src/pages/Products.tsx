@@ -1,6 +1,6 @@
 import AppLayout from "@/components/layout/AppLayout";
 import { useState } from 'react';
-import { FileText, Layers } from 'lucide-react';
+import { FileText, Stack as Layers } from '@phosphor-icons/react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import TechnicalSheetsContent from '@/pages/TechnicalSheets';
 import ComponentSheetsContent from '@/pages/ComponentSheets';

@@ -1,8 +1,5 @@
 import { useMemo, useState } from 'react';
-import {
-  Users2, Clock, AlertTriangle, CheckCircle2, XCircle, TrendingUp,
-  CalendarDays, Loader2, BarChart3, Search, Filter
-} from 'lucide-react';
+import { Users as Users2, Clock, Warning as AlertTriangle, CheckCircle as CheckCircle2, XCircle, TrendUp as TrendingUp, CalendarBlank as CalendarDays, CircleNotch as Loader2, ChartBar as BarChart3, MagnifyingGlass as Search, Funnel as Filter } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';

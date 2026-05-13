@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Tag, Printer, Settings2, Sparkles, Cpu, BarChart3, PenLine } from 'lucide-react';
+import { Tag, Printer, Gear as Settings2, Sparkle as Sparkles, Cpu, ChartBar as BarChart3, PencilLine as PenLine } from '@phosphor-icons/react';
 import { LabelTemplatesTab } from '@/components/label-system/LabelTemplatesTab';
 import { LabelProductionTab } from '@/components/label-system/LabelProductionTab';
 import { PrintDashboardTab } from '@/components/label-system/PrintDashboardTab';

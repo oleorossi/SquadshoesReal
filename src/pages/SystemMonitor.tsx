@@ -8,11 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Progress } from '@/components/ui/progress';
-import {
-  Activity, Shield, Database, Cpu, Users, Clock, Search,
-  CheckCircle2, XCircle, AlertTriangle, Eye, RefreshCw,
-  BarChart3, Zap, HardDrive, Wifi
-} from 'lucide-react';
+import { Pulse as Activity, Shield, Database, Cpu, Users, Clock, MagnifyingGlass as Search, CheckCircle as CheckCircle2, XCircle, Warning as AlertTriangle, Eye, ArrowsClockwise as RefreshCw, ChartBar as BarChart3, Lightning as Zap, HardDrive, WifiHigh as Wifi } from '@phosphor-icons/react';
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell

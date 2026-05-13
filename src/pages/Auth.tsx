@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, ArrowRight } from 'lucide-react';
+import { CircleNotch as Loader2, ArrowRight } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import logoImg from '@/assets/logo-squad-shoes.jpg';
 

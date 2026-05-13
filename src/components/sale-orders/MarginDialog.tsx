@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, TrendingUp, TrendingDown, Minus, AlertTriangle } from 'lucide-react';
+import { CircleNotch as Loader2, TrendUp as TrendingUp, TrendDown as TrendingDown, Minus, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { calculateOrderCost, type OrderCostResult } from '@/services/costingService';
 import { cn } from '@/lib/utils';
@@ -84,6 +84,20 @@ export default function MarginDialog({ open, onOpenChange, saleOrderId, orderNum
                 const totalCost = Number(cost.total_cost) || 0;
                 const margin = revenue - totalCost;
                 const marginPct = revenue > 0 ? margin / revenue : 0;
+                // D10: surface warnings vindos do SQL (B3 conversion_warning + B8 no_active_cost_policy)
+                const sqlWarnings: string[] = Array.isArray((cost as any).warnings) ? (cost as any).warnings : [];
+                const conversionIssues = (cost.breakdown?.materials ?? [])
+                  .filter((m: any) => m.conversion_warning)
+                  .map((m: any) => `${m.product_name} (${m.consumption_unit} → ${m.product_unit})`);
+                if (sqlWarnings.length > 0 || conversionIssues.length > 0) {
+                  const tag = `${refName} (${it.color || '—'})`;
+                  if (sqlWarnings.includes('no_active_cost_policy')) {
+                    errs.push(`${tag}: sem cost_policies ativa — overhead/embalagem zerados`);
+                  }
+                  if (conversionIssues.length > 0) {
+                    errs.push(`${tag}: unidade incompatível em ${conversionIssues.join(', ')}`);
+                  }
+                }
                 return {
                   itemId: it.id, refName, refCode, color: it.color || '—',
                   quantity: qty, unitPrice, revenue,
@@ -95,11 +109,13 @@ export default function MarginDialog({ open, onOpenChange, saleOrderId, orderNum
                 };
               } catch (err: any) {
                 errs.push(`${refName} (${it.color || '—'}): ${err.message || 'erro no cálculo'}`);
+                // B4: receita também zerada em itens com erro pra não inflar margem agregada.
+                // A coluna "Margem" da linha mostra "—" (erro) e o tfoot soma só itens válidos.
                 return {
                   itemId: it.id, refName, refCode, color: it.color || '—',
-                  quantity: qty, unitPrice, revenue,
+                  quantity: qty, unitPrice, revenue: 0,
                   materialCost: 0, laborCost: 0, overheadCost: 0, packagingCost: 0,
-                  totalCost: 0, margin: revenue, marginPct: revenue > 0 ? 1 : 0,
+                  totalCost: 0, margin: 0, marginPct: 0,
                   error: err.message,
                 };
               }

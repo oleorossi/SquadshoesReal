@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Wallet, PiggyBank, Split, Check, AlertTriangle } from 'lucide-react';
+import { CircleNotch as Loader2, Wallet, PiggyBank, GitBranch as Split, Check, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 

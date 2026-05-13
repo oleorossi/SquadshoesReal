@@ -1,8 +1,5 @@
 import { useMemo, useState } from 'react';
-import {
-  Search, Layers, Footprints, Info, Wrench, Image as ImageIcon,
-  Ruler, DollarSign, Truck, Package, Settings2, Box,
-} from 'lucide-react';
+import { MagnifyingGlass as Search, Stack as Layers, Footprints, Info, Wrench, Image as ImageIcon, Ruler, CurrencyDollar as DollarSign, Truck, Package, Gear as Settings2, Cube as Box } from '@phosphor-icons/react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';

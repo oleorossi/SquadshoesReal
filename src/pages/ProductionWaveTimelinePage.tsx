@@ -1,8 +1,6 @@
 import { useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import {
-  ArrowLeft, CheckCircle2, Clock, Factory, CircleDashed, Ban, Layers,
-} from 'lucide-react';
+import { ArrowLeft, CheckCircle as CheckCircle2, Clock, Factory, CircleDashed, Ban, Stack as Layers } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';

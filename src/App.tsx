@@ -4,16 +4,17 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { createBrowserRouter, RouterProvider, Navigate, Outlet, useLocation, useParams } from "react-router-dom";
+import { createBrowserRouter, RouterProvider, Navigate, Outlet, useLocation, useParams, useRouteError } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useCurrentProfile } from "@/hooks/useUserManagement";
 import { useAccessControl } from "@/hooks/useAccessControl";
-import { Loader2, ShieldAlert, RefreshCw, LogIn } from "lucide-react";
+import { CircleNotch as Loader2, ShieldWarning as ShieldAlert, ArrowsClockwise as RefreshCw, SignIn as LogIn } from '@phosphor-icons/react';
 import { Button } from "@/components/ui/button";
  import { lazy, Suspense, useState, useEffect } from "react";
 import ScrollRestorationComponent from "@/components/ScrollRestoration";
 import { GlobalErrorBoundary } from "@/components/GlobalErrorBoundary";
  import AppLayout from "@/components/layout/AppLayout";
+import { TabsProvider } from "@/contexts/TabsContext";
 import { VersionChecker, manualVersionCheck } from "@/components/VersionChecker";
 import PageSkeleton from "@/components/layout/PageSkeleton";
 
@@ -42,6 +43,7 @@ const Settings = lazy(() => import("./pages/Settings"));
 const Suppliers = lazy(() => import("./pages/Suppliers"));
 const Finance = lazy(() => import("./pages/Finance"));
 const Clients = lazy(() => import("./pages/Clients"));
+const EconomicGroupDetail = lazy(() => import("./pages/EconomicGroupDetail"));
 const Contractors = lazy(() => import("./pages/Contractors"));
 // Employees/Timesheet agora são abas dentro do hub /rh (RHHub).
 // Rotas legadas (/employees, /timesheet) redirecionam para /rh?tab=...
@@ -270,14 +272,16 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
     return () => clearTimeout(t);
   }, [loading]);
 
-  // Audit visual #10: grace period antes de mostrar "Acesso Restrito".
+  // Audit visual #10 + #21: grace period antes de mostrar "Acesso Restrito".
   // Bug: navegação direta pra rota nova podia retornar canAccess=false
   // brevemente durante refetch dos roles, gerando flash da página de erro.
-  // 500ms de tolerância elimina o flash sem afetar negações reais.
+  // Aumentado pra 1500ms (era 500ms) — eliminava flash em redes rápidas mas
+  // pegava em redes lentas/cancelar form. Negação real continua intacta
+  // depois desse intervalo curto.
   const [showDeniedConfirmed, setShowDeniedConfirmed] = useState(false);
   useEffect(() => {
     if (canAccess) { setShowDeniedConfirmed(false); return; }
-    const t = setTimeout(() => setShowDeniedConfirmed(true), 500);
+    const t = setTimeout(() => setShowDeniedConfirmed(true), 1500);
     return () => clearTimeout(t);
   }, [canAccess, path]);
 
@@ -385,16 +389,29 @@ function PedidosRedirect() {
 
 // Router configuration using createBrowserRouter
 const RouteErrorFallback = () => {
+  const error = useRouteError() as any;
+  console.error('[RouteErrorFallback] error:', error);
+  try { (window as any).__lastError = error; } catch {}
+  const message = error?.message || error?.statusText || error?.toString?.() || 'Erro desconhecido';
+  const stack = error?.stack || error?.componentStack;
   return (
-    <div className="min-h-[300px] flex items-center justify-center p-8">
-      <div className="text-center space-y-4 max-w-md">
-        <ShieldAlert className="h-10 w-10 text-destructive mx-auto" />
+    <div className="min-h-[300px] flex flex-col items-center justify-center p-8 gap-4">
+      <ShieldAlert className="h-10 w-10 text-destructive" />
+      <div className="text-center">
         <h3 className="text-lg font-semibold">Algo deu errado</h3>
-        <p className="text-sm text-muted-foreground">
-          Ocorreu um erro ao carregar esta página.
-        </p>
-        <Button variant="outline" onClick={() => window.location.reload()}>
-          Recarregar página
+        <p className="text-sm text-muted-foreground">Ocorreu um erro ao carregar esta página.</p>
+      </div>
+      <div className="w-full max-w-3xl bg-destructive/5 border border-destructive/30 rounded-lg p-4">
+        <p className="text-sm font-semibold text-destructive mb-2">Erro:</p>
+        <pre className="text-xs bg-background rounded p-3 overflow-auto max-h-80 whitespace-pre-wrap break-words">
+{message}
+{stack ? `\n${stack}` : ''}
+        </pre>
+      </div>
+      <div className="flex gap-2">
+        <Button variant="outline" onClick={() => window.location.reload()}>Recarregar página</Button>
+        <Button variant="outline" onClick={() => (window as any).forceAppUpdate?.()}>
+          Limpar cache e recarregar
         </Button>
       </div>
     </div>
@@ -415,14 +432,16 @@ const router = createBrowserRouter([
     path: "/",
     element: (
       <ProtectedRoute>
-        <AppLayout>
-          <ScrollRestorationComponent />
-          <Suspense fallback={<InlinePageLoader />}>
-            <RouteGuard>
-              <Outlet />
-            </RouteGuard>
-          </Suspense>
-        </AppLayout>
+        <TabsProvider>
+          <AppLayout>
+            <ScrollRestorationComponent />
+            <Suspense fallback={<InlinePageLoader />}>
+              <RouteGuard>
+                <Outlet />
+              </RouteGuard>
+            </Suspense>
+          </AppLayout>
+        </TabsProvider>
       </ProtectedRoute>
     ),
     errorElement: <RouteErrorFallback />,
@@ -605,6 +624,10 @@ const router = createBrowserRouter([
         element: <Clients />,
       },
       {
+        path: "grupos-economicos/:id",
+        element: <EconomicGroupDetail />,
+      },
+      {
         path: "finance",
         element: <Finance />,
       },
@@ -775,10 +798,11 @@ const router = createBrowserRouter([
        { path: "cnab",                lazy: () => import("./pages/CNAB").then(m => ({ Component: m.default })) },
        { path: "bank-reconciliation", lazy: () => import("./pages/BankReconciliation").then(m => ({ Component: m.default })) },
        { path: "sped",                lazy: () => import("./pages/SPED").then(m => ({ Component: m.default })) },
-       { path: "picking",             lazy: () => import("./pages/Picking").then(m => ({ Component: m.default })) },
+       { path: "picking-sessions",    lazy: () => import("./pages/Picking").then(m => ({ Component: m.default })) },
        { path: "manifests",           lazy: () => import("./pages/Manifests").then(m => ({ Component: m.default })) },
        { path: "transporters",        lazy: () => import("./pages/Transporters").then(m => ({ Component: m.default })) },
        { path: "delivery-tracking",   lazy: () => import("./pages/DeliveryTracking").then(m => ({ Component: m.default })) },
+       { path: "entregas",            lazy: () => import("./pages/OwnDeliveriesPage").then(m => ({ Component: m.default })) },
        { path: "lgpd",                lazy: () => import("./pages/LGPD").then(m => ({ Component: m.default })) },
        { path: "security",            lazy: () => import("./pages/Security").then(m => ({ Component: m.default })) },
       // Heavy modules (can be used elsewhere if needed)

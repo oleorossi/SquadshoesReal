@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { addDays, endOfMonth, startOfWeek, endOfWeek, isWithinInterval, parseISO, startOfMonth } from 'date-fns';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Footprints, Printer, Filter, Layers, ListChecks, CheckCircle2, Loader2 } from 'lucide-react';
+import { Footprints, Printer, Funnel as Filter, Stack as Layers, ListChecks, CheckCircle as CheckCircle2, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { WorkSheetSettingsButton } from '@/components/production/WorkSheetSettingsDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -569,7 +569,7 @@ export default function Silk() {
           <Card>
             <CardContent className="p-4 text-center">
               <p className="text-2xl font-bold text-primary">{solagemOrders.length}</p>
-              <p className="text-xs text-muted-foreground">OPs p/ Solagem</p>
+              <p className="text-xs text-muted-foreground">OPs p/ Silk</p>
             </CardContent>
           </Card>
           {soleData.map(row => (

@@ -10,11 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  AlertTriangle, Activity, Truck, Loader2, Send, CheckCircle2,
-  Calendar, TrendingUp, ArrowRight, Settings, Bell, Clock,
-  Award, AlertCircle, BellRing, X,
-} from 'lucide-react';
+import { Warning as AlertTriangle, Pulse as Activity, Truck, CircleNotch as Loader2, PaperPlaneRight as Send, CheckCircle as CheckCircle2, Calendar, TrendUp as TrendingUp, ArrowRight, Gear as Settings, Bell, Clock, Medal as Award, WarningCircle as AlertCircle, BellRinging as BellRing, X } from '@phosphor-icons/react';
 import { format, parseISO, addWeeks, startOfWeek, getISOWeek, getISOWeekYear, differenceInBusinessDays, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -381,8 +377,20 @@ export default function ProductionControlCenter() {
             <Card>
               <CardContent className="p-3">
                 <p className="text-[10px] font-bold text-muted-foreground uppercase">Maior gargalo</p>
-                <p className="text-lg font-bold text-amber-600 truncate">{worstCell.sector}</p>
-                <p className="text-[10px] text-muted-foreground">{worstCell.weekLabel} · {Math.round(worstCell.loadPct)}%</p>
+                {worstCell.loadPct === 0 ? (
+                  <>
+                    <p className="text-lg font-bold text-emerald-600 truncate">Sem gargalo</p>
+                    <p className="text-[10px] text-muted-foreground">Capacidade folgada nas próximas semanas</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-lg font-bold text-amber-600 truncate">{worstCell.sector}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {worstCell.weekLabel && worstCell.weekLabel !== '—' ? `${worstCell.weekLabel} · ` : ''}
+                      {Math.round(worstCell.loadPct)}%
+                    </p>
+                  </>
+                )}
               </CardContent>
             </Card>
             <Card>

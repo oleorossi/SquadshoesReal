@@ -1,0 +1,103 @@
+name: Vercel Production Deploy
+
+# Dispara em push direto pra main + manualmente pelo Actions tab.
+# Serve como BACKUP do webhook Vercel→GitHub: se o webhook estiver
+# intermitente ou desligado, esse Action garante que cada push em main
+# vire um deploy production no Vercel.
+#
+# Setup necessário (uma vez só):
+# 1. https://vercel.com/account/tokens → Create Token → copia
+# 2. Na pasta do projeto local: `npx vercel link` pra criar .vercel/project.json
+#    Pega `orgId` e `projectId` do arquivo .vercel/project.json
+# 3. GitHub Settings → Secrets and variables → Actions → New secret:
+#    - VERCEL_TOKEN      = token do passo 1
+#    - VERCEL_ORG_ID     = orgId do project.json
+#    - VERCEL_PROJECT_ID = projectId do project.json
+
+on:
+  push:
+    branches: [main]
+    # Ignora pushes que mexem só em migrations/docs — não precisam de novo deploy
+    paths-ignore:
+      - 'supabase/migrations/**'
+      - '**.md'
+      - '.github/**'
+
+  # Permite disparar manualmente em Actions tab
+  workflow_dispatch:
+
+# Evita 2 deploys paralelos se vários pushes chegarem em sequência
+concurrency:
+  group: vercel-prod
+  cancel-in-progress: true
+
+env:
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Diagnose secrets (sem expor valores sensíveis)
+        env:
+          TOK: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          echo "== Secrets check =="
+          if [ -z "$TOK" ]; then echo "❌ VERCEL_TOKEN ausente"; exit 1; fi
+          echo "✅ VERCEL_TOKEN setado (length=${#TOK})"
+
+          if [ -z "$VERCEL_ORG_ID" ]; then echo "❌ VERCEL_ORG_ID ausente"; exit 1; fi
+          echo "✅ VERCEL_ORG_ID setado (prefix=${VERCEL_ORG_ID:0:10}...)"
+
+          if [ -z "$VERCEL_PROJECT_ID" ]; then echo "❌ VERCEL_PROJECT_ID ausente"; exit 1; fi
+          echo "✅ VERCEL_PROJECT_ID setado (prefix=${VERCEL_PROJECT_ID:0:10}...)"
+
+          echo ""
+          echo "== Vercel CLI whoami =="
+          if vercel whoami --token=$TOK; then
+            echo "✅ Token aceito pelo CLI"
+          else
+            echo "❌ Token rejeitado — verifique scope e validade"
+            exit 1
+          fi
+
+          echo ""
+          echo "== Project access check via API =="
+          STATUS=$(curl -s -o /tmp/proj.json -w "%{http_code}" \
+            "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID?teamId=$VERCEL_ORG_ID" \
+            -H "Authorization: Bearer $TOK")
+          echo "HTTP $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "❌ Falha ao acessar projeto $VERCEL_PROJECT_ID via API"
+            jq -r '.error.message // .' < /tmp/proj.json 2>/dev/null || cat /tmp/proj.json
+            exit 1
+          fi
+          PROJECT_NAME=$(jq -r '.name' < /tmp/proj.json)
+          echo "✅ Projeto encontrado: $PROJECT_NAME"
+
+      - name: Pull Vercel config
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build for production
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy to production
+        run: |
+          DEPLOY_URL=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
+          echo "🚀 Deploy concluído: $DEPLOY_URL"
+          echo "## Deploy info" >> $GITHUB_STEP_SUMMARY
+          echo "- URL: $DEPLOY_URL" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { DollarSign, TrendingUp, TrendingDown, Target } from 'lucide-react';
+import { CurrencyDollar as DollarSign, TrendUp as TrendingUp, TrendDown as TrendingDown, Target } from '@phosphor-icons/react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 

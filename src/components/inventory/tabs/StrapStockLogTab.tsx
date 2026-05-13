@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Loader2, Search, ArrowDownRight, ArrowUpRight, RotateCcw, BarChart3 } from 'lucide-react';
+import { CircleNotch as Loader2, MagnifyingGlass as Search, ArrowDownRight, ArrowUpRight, ArrowCounterClockwise as RotateCcw, ChartBar as BarChart3 } from '@phosphor-icons/react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';

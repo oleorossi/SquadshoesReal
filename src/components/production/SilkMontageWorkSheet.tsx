@@ -1,5 +1,5 @@
 import React from 'react';
-import { Paintbrush, Hammer, Pen, Paperclip, Sparkles, Cloud } from 'lucide-react';
+import { PaintBrush as Paintbrush, Hammer, Pen, Paperclip, Sparkle as Sparkles, Cloud } from '@phosphor-icons/react';
 import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { ProductImageBlock } from './worksheet/ProductImageBlock';
@@ -51,6 +51,7 @@ export type GroupedSector =
   | 'Silk'
   | 'Montagem'
   | 'Corte Forração'
+  | 'Corte Cabedal'
   | 'Costura'
   | 'Aviamento'
   | 'Acabamento';
@@ -70,7 +71,7 @@ const SECTOR_THEME: Record<GroupedSector, {
   border1: string;
   textColor: string;
   icon: typeof Paintbrush;
-  accentColor: 'pink' | 'blue' | 'cyan' | 'violet' | 'amber' | 'emerald';
+  accentColor: 'pink' | 'blue' | 'cyan' | 'violet' | 'amber' | 'emerald' | 'orange';
   showFrenteTraseiro: boolean;
   showSilkImage: boolean;
   /** Renderiza foto do produto (sandália). Desligar em setores que cortam só
@@ -86,10 +87,17 @@ const SECTOR_THEME: Record<GroupedSector, {
   showFinishingChecklist: boolean;
   /** Mostra info de embalagem individual (Acabamento). */
   showIndividualBox: boolean;
+  /** Mostra checklist específico de Corte de Cabedal (peças do cabedal,
+   *  conferência de cor do couro, etiquetagem por lote). Só em Corte Cabedal. */
+  showCabedalCutChecklist?: boolean;
 }> = {
   'Silk':           { border: 'border-pink-700',    bg: 'bg-pink-600',    bgLight: 'bg-pink-50',    border1: 'border-pink-500',   textColor: 'text-pink-900',    icon: Paintbrush, accentColor: 'pink',    showFrenteTraseiro: false, showSilkImage: true,  showProductImage: true,  showAlerts: false, showMaterials: 'none',  showStitching: false, showFinishingChecklist: false, showIndividualBox: false },
   'Montagem':       { border: 'border-blue-700',    bg: 'bg-blue-600',    bgLight: 'bg-blue-50',    border1: 'border-blue-500',   textColor: 'text-blue-900',    icon: Hammer,     accentColor: 'blue',    showFrenteTraseiro: false, showSilkImage: false, showProductImage: true,  showAlerts: false, showMaterials: 'none',  showStitching: false, showFinishingChecklist: false, showIndividualBox: false },
   'Corte Forração': { border: 'border-cyan-700',    bg: 'bg-cyan-600',    bgLight: 'bg-cyan-50',    border1: 'border-cyan-500',   textColor: 'text-cyan-900',    icon: Cloud,      accentColor: 'cyan',    showFrenteTraseiro: false, showSilkImage: false, showProductImage: false, showAlerts: false, showMaterials: 'lining',showStitching: false, showFinishingChecklist: false, showIndividualBox: false },
+  // Corte Cabedal — só em modelos has_straps=false. Mostra material do cabedal,
+  // sem silk, sem foto do calçado (cortador só vê o cabedal por cor). Amber pra
+  // distinguir visualmente dos outros 2 cortes.
+  'Corte Cabedal':  { border: 'border-orange-700',  bg: 'bg-orange-600',  bgLight: 'bg-orange-50',  border1: 'border-orange-500', textColor: 'text-orange-900', icon: Scissors,   accentColor: 'orange',  showFrenteTraseiro: false, showSilkImage: false, showProductImage: false, showAlerts: true,  showMaterials: 'upper', showStitching: false, showFinishingChecklist: false, showIndividualBox: false, showCabedalCutChecklist: true },
   'Costura':        { border: 'border-violet-700',  bg: 'bg-violet-600',  bgLight: 'bg-violet-50',  border1: 'border-violet-500', textColor: 'text-violet-900',  icon: Pen,        accentColor: 'violet',  showFrenteTraseiro: false, showSilkImage: false, showProductImage: true,  showAlerts: false, showMaterials: 'none',  showStitching: true,  showFinishingChecklist: false, showIndividualBox: false },
   'Aviamento':      { border: 'border-amber-700',   bg: 'bg-amber-600',   bgLight: 'bg-amber-50',   border1: 'border-amber-500',  textColor: 'text-amber-900',   icon: Paperclip,  accentColor: 'amber',   showFrenteTraseiro: true,  showSilkImage: false, showProductImage: true,  showAlerts: true,  showMaterials: 'both',  showStitching: false, showFinishingChecklist: false, showIndividualBox: false },
   'Acabamento':     { border: 'border-emerald-700', bg: 'bg-emerald-600', bgLight: 'bg-emerald-50', border1: 'border-emerald-500',textColor: 'text-emerald-900', icon: Sparkles,   accentColor: 'emerald', showFrenteTraseiro: false, showSilkImage: true,  showProductImage: true,  showAlerts: false, showMaterials: 'none',  showStitching: false, showFinishingChecklist: true,  showIndividualBox: true  },
@@ -127,7 +135,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
 
   return (
     <div
-      className="w-[210mm] p-[8mm] bg-white border border-slate-300 shadow-none print:shadow-none print:border-0 m-auto flex flex-col gap-0"
+      className="w-[210mm] p-[8mm] print:w-full print:p-0 bg-white border border-slate-300 shadow-none print:shadow-none print:border-0 m-auto flex flex-col gap-0"
       style={{ boxSizing: 'border-box', fontFamily: "'Helvetica Neue', Arial, sans-serif" }}
     >
       <WorksheetHeader
@@ -155,8 +163,8 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
 
       {/* Silks em destaque — uma por solado, multiple se cliente/grupo tem silk própria */}
       {theme.showSilkImage && uniqueSilks.length > 0 && (
-        <div className={`mb-2 border-2 ${theme.border1} rounded-lg p-2 ${theme.bgLight} keep-together`}>
-          <div className="flex items-center justify-between mb-2">
+        <div className={`mb-1.5 border-2 ${theme.border1} rounded-lg p-1.5 ${theme.bgLight} keep-together`}>
+          <div className="flex items-center justify-between mb-1">
             <p className={`text-[10px] font-bold uppercase tracking-wide ${theme.textColor}`}>
               Silk{uniqueSilks.length > 1 ? 's' : ''} pra forração — solado {group.soleName}
             </p>
@@ -164,22 +172,36 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
               {uniqueSilks.length} arte{uniqueSilks.length > 1 ? 's' : ''} · verificar antes de iniciar
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-1.5">
             {uniqueSilks.map((silk, idx) => (
-              <div key={`${silk.silk_url}-${idx}`} className="flex items-center gap-2 bg-white border border-slate-200 rounded p-1.5">
+              <div key={`${silk.silk_url}-${idx}`} className="flex items-center gap-2 bg-white border border-slate-200 rounded p-1">
                 {silk.silk_url ? (
-                  <div className="w-20 h-20 border border-slate-300 bg-white rounded overflow-hidden shrink-0 flex items-center justify-center">
-                    <img src={silk.silk_url} alt={silk.silk_name} className="w-full h-full object-contain" />
+                  <div className="w-16 h-16 border border-slate-300 bg-white rounded overflow-hidden shrink-0 flex items-center justify-center">
+                    <img
+                      src={silk.silk_url}
+                      alt={silk.silk_name}
+                      className="w-full h-full object-contain"
+                      onError={(e) => {
+                        // URL quebrada (ex: projeto antigo deletado) → esconde o img.
+                        // O irmão do parent vai mostrar placeholder via JS.
+                        const img = e.currentTarget;
+                        img.style.display = 'none';
+                        const parent = img.parentElement;
+                        if (parent) parent.classList.add('bg-amber-50', 'border-amber-300');
+                      }}
+                    />
                   </div>
                 ) : (
-                  <div className="w-20 h-20 bg-slate-100 border border-slate-200 rounded shrink-0" />
+                  <div className="w-16 h-16 bg-amber-50 border border-amber-300 rounded shrink-0 flex items-center justify-center">
+                    <span className="text-[8px] text-amber-700 text-center px-1 font-bold">Sem imagem</span>
+                  </div>
                 )}
                 <div className="min-w-0">
                   <p className={`text-base font-black leading-tight truncate ${theme.textColor}`} title={silk.silk_name}>
                     {silk.silk_name}
                   </p>
                   {!silk.silk_url && (
-                    <p className="text-[9px] text-amber-600 mt-0.5">Imagem não cadastrada</p>
+                    <p className="text-[9px] text-amber-600 mt-0.5">Re-upload em /silks</p>
                   )}
                 </div>
               </div>
@@ -189,7 +211,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
       )}
 
       {/* Per-color blocks */}
-      <div className="flex-1 space-y-3">
+      <div className="flex-1 space-y-2">
         {group.colorGroups.map((cg, idx) => {
           const activeSizes = Object.keys(cg.combinedGrid)
             .filter(s => (cg.combinedGrid[s] ?? 0) > 0)
@@ -220,9 +242,9 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                 </div>
               </div>
 
-              <div className={`p-2 ${theme.bgLight}`}>
+              <div className={`p-1.5 ${theme.bgLight}`}>
                 {/* Linha superior: foto (quando aplicável ao setor) + info setor-específica */}
-                <div className="flex gap-2 mb-2">
+                <div className="flex gap-2 mb-1.5">
                   {theme.showProductImage && (
                     <ProductImageBlock
                       variantImageUrl={cg.variantImageUrl}
@@ -283,25 +305,90 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                   </div>
                 </div>
 
-                {/* Componentes auxiliares (Aviamento) */}
-                {theme.showMaterials === 'both' && cg.components && cg.components.length > 0 && (
-                  <div className="mb-2 border border-amber-300 rounded p-2 bg-white">
-                    <p className="text-[9px] font-bold text-amber-700 uppercase mb-1">Componentes</p>
-                    <ul className="text-[10px] space-y-0.5">
-                      {cg.components.map((c, i) => (
-                        <li key={i}>
-                          <span className="font-bold">{c.name}:</span>{' '}
-                          {c.material || '—'}
-                          {c.color && ` (${c.color})`}
-                          {c.qty && ` · ${c.qty}`}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+                {/* Componentes auxiliares (Aviamento). Quando TODOS os items
+                    têm label começando com 'TIRA', renderiza como tabela de
+                    "Sequência de Tiras" — ordem matters pra montagem (mesma
+                    ordem da ficha técnica, ex: TIRA 1 / TIRA 2 / TIRA 3 com
+                    cores diferentes em modelos mix). */}
+                {theme.showMaterials === 'both' && cg.components && cg.components.length > 0 && (() => {
+                  const isAllStraps = cg.components.every(c => /^TIRA(\s|$)/i.test(c.name || ''));
+                  return (
+                    <div className={`mb-1.5 border-2 ${isAllStraps ? 'border-amber-500' : 'border-amber-300'} rounded p-1.5 bg-white keep-together`}>
+                      <p className="text-[9px] font-bold text-amber-700 uppercase mb-1 tracking-wide">
+                        {isAllStraps ? `Sequência de Tiras (ordem da ficha técnica · ${cg.components.length} tiras)` : 'Componentes'}
+                      </p>
+                      {isAllStraps ? (
+                        <table className="w-full text-[10px]" style={{ borderCollapse: 'collapse' }}>
+                          <thead>
+                            <tr className="bg-amber-50">
+                              <th className="border border-amber-200 px-1.5 py-0.5 text-left font-bold w-12">#</th>
+                              <th className="border border-amber-200 px-1.5 py-0.5 text-left font-bold">Tira</th>
+                              <th className="border border-amber-200 px-1.5 py-0.5 text-left font-bold">Cor</th>
+                              <th className="border border-amber-200 px-1.5 py-0.5 text-left font-bold">Material</th>
+                              <th className="border border-amber-200 px-1.5 py-0.5 text-center font-bold w-6">✓</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {cg.components.map((c, i) => (
+                              <tr key={i}>
+                                <td className="border border-amber-200 px-1.5 py-0.5 font-mono font-bold text-amber-800">{i + 1}</td>
+                                <td className="border border-amber-200 px-1.5 py-0.5 font-bold">{c.name}</td>
+                                <td className="border border-amber-200 px-1.5 py-0.5 font-black uppercase">{c.color || '—'}</td>
+                                <td className="border border-amber-200 px-1.5 py-0.5 text-slate-600">{c.material || '—'}</td>
+                                <td className="border border-amber-200 px-1.5 py-0.5 text-center">
+                                  <span className="inline-block w-3 h-3 border-2 border-amber-500 rounded-sm" />
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <ul className="text-[10px] space-y-0.5">
+                          {cg.components.map((c, i) => (
+                            <li key={i}>
+                              <span className="font-bold">{c.name}:</span>{' '}
+                              {c.material || '—'}
+                              {c.color && ` (${c.color})`}
+                              {c.qty && ` · ${c.qty}`}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Alertas (só renderiza no setor relevante — ex: Aviamento) */}
                 {theme.showAlerts && cg.alerts && cg.alerts.length > 0 && <SectorAlerts alerts={cg.alerts} />}
+
+                {/* Checklist específico de Corte de Cabedal: peças do cabedal +
+                    conferência de cor + etiquetagem. Aparece antes da grade
+                    pra que o cortador siga a checklist do alto pra baixo. */}
+                {theme.showCabedalCutChecklist && (
+                  <div className={`mb-1.5 border-2 ${theme.border1} rounded p-1.5 bg-white keep-together`}>
+                    <p className={`text-[9px] font-black uppercase tracking-wide ${theme.textColor} mb-1`}>
+                      Checklist — Corte do Cabedal ({cg.color})
+                    </p>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+                      {[
+                        `Conferir cor do material (esperado: ${cg.color})`,
+                        cg.upperMaterial ? `Material: ${cg.upperMaterial}` : 'Conferir tipo de material da ficha',
+                        'Molde do cabedal separado por numeração',
+                        'Cortar peças: lateral, peito (língua), traseira',
+                        'Cortar reforços/contraforte se aplicável',
+                        'Separar peças por par (verificar simetria L/R)',
+                        cg.upperConsumptionPerPair
+                          ? `Consumo esperado: ${cg.upperConsumptionPerPair.toFixed(2)} dm²/par`
+                          : 'Identificar lote com cor + numeração + OP',
+                      ].map((item, i) => (
+                        <label key={i} className="flex items-start gap-1.5 text-[10px] leading-tight py-0.5">
+                          <span className="w-3.5 h-3.5 border-2 border-orange-500 rounded-sm shrink-0 inline-block mt-0.5" />
+                          <span>{item}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Grade de números */}
                 <table className="w-full text-center bg-white" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
@@ -359,7 +446,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
 
                 {/* Checklist Acabamento */}
                 {theme.showFinishingChecklist && (
-                  <div className="mt-2 border border-emerald-300 rounded p-2 bg-white">
+                  <div className="mt-1.5 border border-emerald-300 rounded p-1.5 bg-white">
                     <p className="text-[9px] font-bold text-emerald-700 uppercase mb-1">Checklist por ficha</p>
                     <div className="flex items-center justify-between text-[10px]">
                       <label className="flex items-center gap-1">
@@ -383,7 +470,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                 )}
 
                 {/* Tally Box */}
-                <div className="mt-2">
+                <div className="mt-1.5">
                   <TallyBox count={cards} pairsPerCard={pairsPerCard} accentColor={theme.accentColor} />
                 </div>
               </div>
@@ -392,7 +479,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
         })}
       </div>
 
-      <div className="mt-3">
+      <div className="mt-2">
         <SignatureFooter />
       </div>
     </div>

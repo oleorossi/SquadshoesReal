@@ -13,11 +13,7 @@
  */
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  Tag, Search, Barcode, Settings2, BoxIcon, Package,
-  RotateCcw, Factory, ScanLine, CalendarDays,
-  Building2, Loader2, Layers, CheckCircle2, Pencil, Download
-} from 'lucide-react';
+import { Tag, MagnifyingGlass as Search, Barcode, Gear as Settings2, Package as BoxIcon, Package, ArrowCounterClockwise as RotateCcw, Factory, Scan as ScanLine, CalendarBlank as CalendarDays, Buildings as Building2, CircleNotch as Loader2, Stack as Layers, CheckCircle as CheckCircle2, PencilSimple as Pencil, Download } from '@phosphor-icons/react';
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, parseISO } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -315,7 +311,7 @@ export function LabelProductionTab() {
         .from('sale_orders')
         .select(`
           *,
-          clients(id, razao_social, cnpj, endereco, bairro, cidade, estado, cep, economic_group_id, economic_groups(name)),
+          clients(id, razao_social, cnpj, endereco, bairro, cidade, estado, cep, branch_code, branch_name, economic_group_id, economic_groups(name)),
           transport_companies:transport_company_id(nome)
         `);
       if (error) throw error;
@@ -349,7 +345,7 @@ export function LabelProductionTab() {
     queryFn: async () => {
       const { data } = await supabase
         .from('clients')
-        .select('id, razao_social, cnpj, endereco, bairro, cidade, estado, cep');
+        .select('id, razao_social, cnpj, endereco, bairro, cidade, estado, cep, branch_code, branch_name');
       const map = new Map<string, any>();
       for (const c of data || []) {
         if (c.cnpj) map.set((c.cnpj as string).replace(/\D/g, ''), c);
@@ -372,7 +368,17 @@ export function LabelProductionTab() {
       for (const item of data || []) {
         const straps = item.strap_colors as any[];
         if (Array.isArray(straps) && straps.length > 0) {
-          const sig = straps
+          // Ordena por id numérico antes de montar a label, garantindo
+          // sequência TIRA 1 → TIRA 2 → TIRA 3 mesmo se o usuário tiver
+          // reordenado/deletado tiras na ficha técnica (id pode ficar
+          // fora de ordem natural no array).
+          const ordered = [...straps].sort((a: any, b: any) => {
+            const ka = parseInt(a?.id, 10);
+            const kb = parseInt(b?.id, 10);
+            if (isFinite(ka) && isFinite(kb)) return ka - kb;
+            return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
+          });
+          const sig = ordered
             .filter((s: any) => s.label && s.color)
             .map((s: any) => `${s.label}:${s.color}`)
             .join('|');
@@ -878,11 +884,14 @@ export function LabelProductionTab() {
             const cnpjDigits = String(so.client_cnpj).replace(/\D/g, '');
             client = clientsByCnpj.get(cnpjDigits) || null;
           }
-          const recipientAddress = client
-            ? [client.endereco, client.bairro].filter(Boolean).join(', ') || undefined
-            : undefined;
+          const recipientAddress = client?.endereco || undefined;
+          const recipientNeighborhood = client?.bairro || undefined;
           const recipientCity = client?.cidade || undefined;
           const recipientUf = client?.estado || undefined;
+          const recipientCep = client?.cep || undefined;
+          const recipientRazaoSocial = client?.razao_social || so?.client_name || undefined;
+          const recipientBranchCode = client?.branch_code || undefined;
+          const recipientBranchName = client?.branch_name || undefined;
           const recipientCode = client?.cnpj
             ? client.cnpj.replace(/\D/g, '').slice(-5)
             : (so?.client_cnpj ? String(so.client_cnpj).replace(/\D/g, '').slice(-5) : undefined);
@@ -896,11 +905,16 @@ export function LabelProductionTab() {
               senderName: 'SQUAD SHOES IND. E COM. DE CALÇADOS LTDA', senderCnpj: '62.406.033/0001-93',
               senderAddress: companyAddress || undefined,
               recipientName: so?.client_name || '',
+              recipientRazaoSocial,
               recipientCnpj: so?.client_cnpj || '',
               recipientCode,
               recipientAddress,
+              recipientNeighborhood,
               recipientCity,
               recipientUf,
+              recipientCep,
+              recipientBranchCode,
+              recipientBranchName,
               transporter,
               clientOrderNumber: so?.client_order_number || '',
               shoeCategory: refData?.shoe_category || '',

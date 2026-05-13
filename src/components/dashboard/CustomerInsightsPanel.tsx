@@ -1,4 +1,4 @@
- import { Users, Star, Footprints } from 'lucide-react';
+ import { Users, Star, Footprints } from '@phosphor-icons/react';
  import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
  import { cn } from '@/lib/utils';
  

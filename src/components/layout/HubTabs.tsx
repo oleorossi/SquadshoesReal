@@ -1,5 +1,5 @@
 import { TabsList, TabsTrigger } from '@/components/ui/tabs';
-import type { LucideIcon } from 'lucide-react';
+import type { Icon as LucideIcon } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 
 export interface HubTab {

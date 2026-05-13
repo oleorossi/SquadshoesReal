@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ShoppingCart, Users, TrendingUp, Award, DollarSign, Package, Palette, Loader2 } from 'lucide-react';
+import { ShoppingCart, Users, TrendUp as TrendingUp, Medal as Award, CurrencyDollar as DollarSign, Package, Palette, CircleNotch as Loader2 } from '@phosphor-icons/react';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 

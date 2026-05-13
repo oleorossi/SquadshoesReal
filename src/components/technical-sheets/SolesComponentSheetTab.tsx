@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Footprints, Search, Loader2, Save, CheckCircle2, AlertCircle, Package, X, ChevronRight, ChevronDown, Box } from 'lucide-react';
+import { Footprints, MagnifyingGlass as Search, CircleNotch as Loader2, FloppyDisk as Save, CheckCircle as CheckCircle2, WarningCircle as AlertCircle, Package, X, CaretRight as ChevronRight, CaretDown as ChevronDown, Cube as Box } from '@phosphor-icons/react';
 import { SoleStandardItemsPanel } from './SoleStandardItemsPanel';
 import { PackagingTab } from './PackagingTab';
 import { Input } from '@/components/ui/input';

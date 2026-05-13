@@ -1,9 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import {
-  TrendingUp, TrendingDown, AlertCircle, CheckCircle2, Pause,
-  Layers, Palette, ShoppingCart, Search, Filter, BarChart3,
-} from 'lucide-react';
+import { TrendUp as TrendingUp, TrendDown as TrendingDown, WarningCircle as AlertCircle, CheckCircle as CheckCircle2, Pause, Stack as Layers, Palette, ShoppingCart, MagnifyingGlass as Search, Funnel as Filter, ChartBar as BarChart3 } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';

@@ -13,7 +13,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { toast } from 'sonner';
- import { Wrench, Truck, DollarSign, Ruler, Settings2, Package2 } from 'lucide-react';
+ import { Wrench, Truck, CurrencyDollar as DollarSign, Ruler, Gear as Settings2, Package as Package2 } from '@phosphor-icons/react';
  import { Switch } from '@/components/ui/switch';
 import { SoleStandardMaterialsEditor } from './SoleStandardMaterialsEditor';
 

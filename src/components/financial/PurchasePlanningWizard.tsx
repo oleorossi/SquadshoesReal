@@ -9,10 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
-import {
-  CheckCircle2, ArrowRight, ArrowLeft, Search,
-  TrendingUp, Package, Truck, Calendar, DollarSign, ShoppingCart, Sparkles, CalendarDays
-} from 'lucide-react';
+import { CheckCircle as CheckCircle2, ArrowRight, ArrowLeft, MagnifyingGlass as Search, TrendUp as TrendingUp, Package, Truck, Calendar, CurrencyDollar as DollarSign, ShoppingCart, Sparkle as Sparkles, CalendarBlank as CalendarDays } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format, addDays, startOfWeek, endOfWeek, isAfter, isBefore, addWeeks } from 'date-fns';
@@ -112,7 +109,8 @@ export default function PurchasePlanningWizard() {
           sale_order_id,
           sale_orders!orders_sale_order_id_fkey(order_number, delivery_deadline, delivery_week, delivery_month, client_name)
         `)
-        .in('status', ['Reservado', 'Em Produção', 'Pronto'])
+        // Status REAIS de orders no backend (audit 2026-05): 'Pronto' não existe.
+        .in('status', ['Reservado', 'Em Produção'])
         .order('planned_delivery', { ascending: true });
       if (ordersError) throw ordersError;
 

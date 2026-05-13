@@ -6,7 +6,7 @@
    return null;
  }
  
- import { ArrowRight, ChevronRight, Calculator, CheckCircle, HelpCircle } from 'lucide-react';
+ import { ArrowRight, CaretRight as ChevronRight, Calculator, CheckCircle, Question as HelpCircle } from '@phosphor-icons/react';
  function GuidedPathSelector({ sheets, products, onSelect }: { sheets: any[], products: any[], onSelect: (id: string) => void }) {
    const [selectedRef, setSelectedRef] = useState<string | null>(null);
    const [selectedMaterial, setSelectedMaterial] = useState<string | null>(null);
@@ -132,20 +132,17 @@
    );
  }
  
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { SignedImage } from '@/components/ui/signed-image';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  FileText, Plus, Trash2, Pencil, Loader2, Package, Copy, Search,
-   Layers, Scissors, Droplets, Shield, Box, Footprints, Save, Wrench, Tag,
-    ImagePlus, AlertTriangle, History, Factory, Wand2, RefreshCw, Gauge, ArrowLeft, ClipboardCopy, Lock, Palette,
-    DollarSign
-} from 'lucide-react';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { FileText, Plus, Trash as Trash2, PencilSimple as Pencil, CircleNotch as Loader2, Package, Copy, MagnifyingGlass as Search, Stack as Layers, Scissors, Drop as Droplets, Shield, Cube as Box, Footprints, FloppyDisk as Save, Wrench, Tag, ImageSquare as ImagePlus, Warning as AlertTriangle, ClockCounterClockwise as History, Factory, MagicWand as Wand2, ArrowsClockwise as RefreshCw, Gauge, ArrowLeft, ClipboardText as ClipboardCopy, Lock, Palette, CurrencyDollar as DollarSign } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -183,7 +180,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Check, ChevronsUpDown } from 'lucide-react';
+import { Check, CaretUpDown as ChevronsUpDown } from '@phosphor-icons/react';
 import { cn, getSoleModelName, parseSafeNumber, formatCurrency as globalFormatCurrency, safeToFixed } from '@/lib/utils';
 import { getShoeSizeMappings } from '@/utils/shoeUtils';
 
@@ -192,7 +189,8 @@ import { AppErrorBoundary } from '@/components/ErrorBoundary';
 const STATUSES = ['Ativo', 'Em desenvolvimento', 'Descontinuado'] as const;
 const STATUS_FICHA = ['rascunho', 'em_revisao', 'validada', 'publicada'] as const;
 const STATUS_FICHA_LABELS: Record<string, string> = { rascunho: 'Rascunho', em_revisao: 'Em Revisão', validada: 'Validada', publicada: 'Publicada' };
-const GENDERS = ['Feminino', 'Masculino', 'Unissex', 'Infantil'] as const;
+// GENDERS removido em 2026-05: campo `gender` foi marcado como dead code
+// (nunca era lido em business logic, search, filtros ou cálculos).
 const SOLE_PROCESSES = ['Injetada', 'Colada', 'Costurada', 'Vulcanizada'] as const;
 const ACABAMENTOS_TIRAS = ['brilho', 'fosco', 'metálico', 'metalic', 'glow', 'texturizado', 'envernizado'] as const;
 const MATERIAIS_SOLADO = ['TR', 'EVA', 'Borracha', 'PVC', 'TPU'] as const;
@@ -283,6 +281,20 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
   const [cloneNewName, setCloneNewName] = useState<string>('');
   const [cloneSearchTerm, setCloneSearchTerm] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Deep-link via ?ref=<id> (usado pelo IncompleteWeightWarning em outras
+  // telas pra pular direto pra ficha que precisa cadastrar peso).
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const refFromUrl = searchParams.get('ref');
+    if (refFromUrl && refFromUrl !== expandedId) {
+      setExpandedId(refFromUrl);
+      // Remove o param da URL pra não re-disparar em outras navegações
+      const next = new URLSearchParams(searchParams);
+      next.delete('ref');
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
   const [imageDialogSheet, setImageDialogSheet] = useState<any>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [soleFilter, setSoleFilter] = useState<string>('all');
@@ -792,7 +804,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
           <DialogHeader>
             <DialogTitle>Nova Ficha Técnica</DialogTitle>
           </DialogHeader>
-          <QuickCreateForm onCreated={(id) => { setDialogOpen(false); setExpandedId(id); }} />
+          <QuickCreateForm onCreated={(id) => { setDialogOpen(false); setExpandedId(id); }} onCancel={() => setDialogOpen(false)} />
         </DialogContent>
       </Dialog>
 
@@ -963,11 +975,25 @@ function SheetImageEditor({ sheet, onSaved, updateSheet }: { sheet: any; onSaved
   );
 }
 
-function QuickCreateForm({ onCreated }: { onCreated: (id: string) => void }) {
+function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => void; onCancel: () => void }) {
   const addSheet = useAddSheet();
-  const [form, setForm] = useState({ name: '', brand: '', model: '', code: '', shoe_category: '', gender: '', sizes: '33-41', status: 'Ativo', images: [] as string[] });
+  // Form reformulado em 2026-05: agora inclui campos essenciais (descrição,
+  // coleção, status da ficha) pra reduzir asymmetry com edit. Removido
+  // 'gender' — campo morto sem uso em business logic. Layout em 2 seções
+  // (Identidade + Especificações) com Cancelar visível no rodapé.
+  const [form, setForm] = useState({
+    name: '', brand: '', model: '', code: '', shoe_category: '',
+    sizes: '33-41', status: 'Ativo',
+    collection: '', description: '',
+    images: [] as string[],
+  });
   const [uploading, setUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [touched, setTouched] = useState(false);
+
+  const nameMissing = touched && !form.name.trim();
+  const codeMissing = touched && !form.code.trim();
+  const categoryMissing = touched && !form.shoe_category;
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -991,75 +1017,127 @@ function QuickCreateForm({ onCreated }: { onCreated: (id: string) => void }) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setTouched(true);
+    if (!form.name.trim() || !form.code.trim() || !form.shoe_category) {
+      toast.error('Preencha Nome, SKU e Categoria.');
+      return;
+    }
     const result = await addSheet.mutateAsync(form);
     if (result) onCreated(result.id);
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 mt-2">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="col-span-2 flex flex-col gap-2">
-          <Label>Foto do Produto</Label>
-          {previewUrl ? (
-            <div className="relative w-full h-40 rounded-lg border overflow-hidden bg-muted">
-              <SignedImage src={previewUrl} alt="Preview" className="w-full h-full object-contain" />
-              <Button type="button" variant="destructive" size="icon" className="absolute top-2 right-2 h-6 w-6"
-                onClick={() => { setPreviewUrl(null); setForm(f => ({ ...f, images: [] })); }}>
-                <Trash2 className="h-3 w-3" />
-              </Button>
+    <form onSubmit={handleSubmit} className="space-y-5 mt-2">
+      {/* ── Seção 1: Identidade ──────────────────────────────── */}
+      <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+          <Package className="h-3.5 w-3.5" /> Identidade
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* Foto (full width) */}
+          <div className="md:col-span-2">
+            <Label className="text-xs">Foto do Produto</Label>
+            <div className="mt-1">
+              {previewUrl ? (
+                <div className="relative w-full h-36 rounded-lg border overflow-hidden bg-muted">
+                  <SignedImage src={previewUrl} alt="Preview" className="w-full h-full object-contain" />
+                  <Button type="button" variant="destructive" size="icon" className="absolute top-2 right-2 h-6 w-6"
+                    onClick={() => { setPreviewUrl(null); setForm(f => ({ ...f, images: [] })); }}>
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              ) : (
+                <label className="cursor-pointer w-full">
+                  <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={uploading} />
+                  <div className="w-full h-28 rounded-lg border-2 border-dashed border-muted-foreground/30 flex flex-col items-center justify-center gap-1 hover:border-primary/50 transition-colors">
+                    {uploading ? <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /> : (
+                      <>
+                        <Package className="h-6 w-6 text-muted-foreground/50" />
+                        <span className="text-[11px] text-muted-foreground">Clique pra adicionar foto</span>
+                      </>
+                    )}
+                  </div>
+                </label>
+              )}
             </div>
-          ) : (
-            <label className="cursor-pointer w-full">
-              <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={uploading} />
-              <div className="w-full h-32 rounded-lg border-2 border-dashed border-muted-foreground/30 flex flex-col items-center justify-center gap-2 hover:border-primary/50 transition-colors">
-                {uploading ? <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /> : (
-                  <>
-                    <Package className="h-8 w-8 text-muted-foreground/50" />
-                    <span className="text-xs text-muted-foreground">Clique para adicionar foto</span>
-                  </>
-                )}
-              </div>
-            </label>
-          )}
+          </div>
+
+          <div className="md:col-span-2">
+            <Label htmlFor="qc-name" className="text-xs">Nome da Ficha / Referência <span className="text-red-500">*</span></Label>
+            <Input
+              id="qc-name"
+              value={form.name}
+              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              required
+              className={cn("mt-1 h-9", nameMissing && "border-red-500")}
+              placeholder="Ex: Sandália MONALISA"
+              autoFocus
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="qc-code" className="text-xs">SKU / Código <span className="text-red-500">*</span></Label>
+            <Input
+              id="qc-code"
+              value={form.code}
+              onChange={e => setForm(f => ({ ...f, code: e.target.value }))}
+              required
+              className={cn("mt-1 h-9 font-mono", codeMissing && "border-red-500")}
+              placeholder="Ex: MON-893767-003"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="qc-category" className="text-xs">Categoria <span className="text-red-500">*</span></Label>
+            <Select value={form.shoe_category} onValueChange={v => setForm(f => ({ ...f, shoe_category: v, sizes: v === 'Infantil' ? '25-36' : '34-40' }))}>
+              <SelectTrigger id="qc-category" className={cn("mt-1 h-9", categoryMissing && "border-red-500")}>
+                <SelectValue placeholder="Selecione…" />
+              </SelectTrigger>
+              <SelectContent>{SHOE_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="qc-brand" className="text-xs">Marca</Label>
+            <Input id="qc-brand" value={form.brand} onChange={e => setForm(f => ({ ...f, brand: e.target.value }))} className="mt-1 h-9" placeholder="Ex: Squad Shoes" />
+          </div>
+          <div>
+            <Label htmlFor="qc-model" className="text-xs">Modelo</Label>
+            <Input id="qc-model" value={form.model} onChange={e => setForm(f => ({ ...f, model: e.target.value }))} className="mt-1 h-9" placeholder="Ex: Air Max Style" />
+          </div>
+
+          <div className="md:col-span-2">
+            <Label htmlFor="qc-description" className="text-xs">Descrição (opcional)</Label>
+            <Input
+              id="qc-description"
+              value={form.description}
+              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+              className="mt-1 h-9"
+              placeholder="Detalhes do modelo, especificações breves…"
+            />
+          </div>
         </div>
+      </div>
+
+      {/* ── Seção 2: Especificações ───────────────────────────── */}
+      <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+          <Footprints className="h-3.5 w-3.5" /> Especificações
+        </div>
+
         <div>
-          <Label>Marca</Label>
-          <Input value={form.brand} onChange={e => setForm(f => ({ ...f, brand: e.target.value }))} className="mt-1" placeholder="Ex: Squad Shoes" />
+          <Label htmlFor="qc-collection" className="text-xs">Coleção (opcional)</Label>
+          <Input id="qc-collection" value={form.collection} onChange={e => setForm(f => ({ ...f, collection: e.target.value }))} className="mt-1 h-9" placeholder="Ex: Verão 2026" />
         </div>
+
         <div>
-          <Label>Modelo</Label>
-          <Input value={form.model} onChange={e => setForm(f => ({ ...f, model: e.target.value }))} className="mt-1" placeholder="Ex: Air Max Style" />
-        </div>
-        <div className="col-span-2">
-          <Label>Nome da Ficha / Referência</Label>
-          <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required className="mt-1" placeholder="Ex: Sandália MONALISA" />
-        </div>
-        <div>
-          <Label>SKU / Código</Label>
-          <Input value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} className="mt-1 font-mono" placeholder="Ex: MON-893767-003" />
-        </div>
-        <div>
-          <Label>Categoria</Label>
-          <Select value={form.shoe_category} onValueChange={v => setForm(f => ({ ...f, shoe_category: v, sizes: v === 'Infantil' ? '25-36' : '34-40' }))}>
-            <SelectTrigger className="mt-1"><SelectValue placeholder="Tipo" /></SelectTrigger>
-            <SelectContent>{SHOE_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label>Gênero</Label>
-          <Select value={form.gender} onValueChange={v => setForm(f => ({ ...f, gender: v }))}>
-            <SelectTrigger className="mt-1"><SelectValue placeholder="Gênero" /></SelectTrigger>
-            <SelectContent>{GENDERS.map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
-          </Select>
-        </div>
-        <div className="col-span-2">
-          <Label className="mb-1.5 block">Grade de Numeração</Label>
-          <div className="flex gap-2 mb-2">
-            <Button type="button" variant={form.sizes === '34-40' || form.sizes === '33-41' ? 'default' : 'outline'} size="sm" className="gap-1.5"
+          <Label className="text-xs mb-1.5 block">Grade de Numeração</Label>
+          <div className="flex gap-2 mb-2 flex-wrap">
+            <Button type="button" variant={form.sizes === '34-40' || form.sizes === '33-41' ? 'default' : 'outline'} size="sm" className="gap-1.5 h-8"
               onClick={() => setForm(f => ({ ...f, sizes: '34-40' }))}>
               <Footprints className="h-3.5 w-3.5" /> Adulto (34-40)
             </Button>
-            <Button type="button" variant={form.sizes === '25-36' ? 'default' : 'outline'} size="sm" className="gap-1.5"
+            <Button type="button" variant={form.sizes === '25-36' ? 'default' : 'outline'} size="sm" className="gap-1.5 h-8"
               onClick={() => setForm(f => ({ ...f, sizes: '25-36' }))}>
               <Footprints className="h-3.5 w-3.5" /> Infantil (25-36)
             </Button>
@@ -1095,8 +1173,21 @@ function QuickCreateForm({ onCreated }: { onCreated: (id: string) => void }) {
           </div>
         </div>
       </div>
-      <div className="flex justify-end gap-3">
-        <Button type="submit" disabled={addSheet.isPending || uploading}>Criar e Editar</Button>
+
+      {/* ── Aviso de próximos passos + ações ──────────────────────── */}
+      <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground flex items-start gap-2">
+        <span className="font-bold text-primary mt-0.5">→</span>
+        <span>Após criar, você poderá completar materiais, consumo por setor, custos e variantes de cor na tela de edição.</span>
+      </div>
+
+      <div className="flex justify-end gap-2 pt-1 border-t pt-3">
+        <Button type="button" variant="outline" onClick={onCancel} disabled={addSheet.isPending}>
+          Cancelar
+        </Button>
+        <Button type="submit" disabled={addSheet.isPending || uploading} className="gap-2">
+          {addSheet.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+          Criar e abrir edição
+        </Button>
       </div>
     </form>
   );
@@ -1865,9 +1956,12 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         </TabsList>
 
 
-        {/* TAB: Identificação — reorganizada em 4 cards temáticos:
-            (1) Dados Principais, (2) Categoria & Grade, (3) Status & Custo,
-            (4) Foto. Layout mais respiritado, agrupamento claro Gestalt. */}
+        {/* TAB: Identificação — reorganizada em cards temáticos.
+            (1) Dados Principais (SKU + Nome + Marca + Modelo)
+            (2) Categoria & Grade
+            (3) Comercial & Tributário
+            (4) Foto
+            Removido "Gênero" — campo morto sem uso em business logic. */}
         <TabsContent value="id" className="mt-4 space-y-4">
           {/* CARD 1 — Dados Principais */}
           <div className="rounded-xl border bg-card shadow-sm">
@@ -1876,10 +1970,22 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               <h3 className="text-sm font-bold">Dados Principais</h3>
               <span className="text-[10px] text-muted-foreground ml-auto">Identificação comercial do produto</span>
             </div>
-            <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-              <FieldInput label="SKU / Código" value={form.code} onChange={v => updateField('code', v)} placeholder="MON-893767-003" mono />
-              <FieldInput label="Nome do Modelo" value={form.name} onChange={v => updateField('name', v)} placeholder="Sandália MONALISA" />
-              <FieldSelect label="Gênero" value={form.gender} onChange={v => updateField('gender', v)} options={[...GENDERS]} placeholder="Gênero" />
+            <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FieldInput label="SKU / Código" value={form.code || ''} onChange={v => updateField('code', v)} placeholder="MON-893767-003" mono />
+              <FieldInput label="Nome do Modelo" value={form.name || ''} onChange={v => updateField('name', v)} placeholder="Sandália MONALISA" />
+              <FieldInput label="Marca" value={form.brand || ''} onChange={v => updateField('brand', v)} placeholder="Ex: Squad Shoes" />
+              <FieldInput label="Modelo" value={form.model || ''} onChange={v => updateField('model', v)} placeholder="Ex: Air Max Style" />
+              <div className="md:col-span-2">
+                <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Descrição</Label>
+                <Textarea
+                  value={form.description || ''}
+                  onChange={e => updateField('description', e.target.value)}
+                  rows={2}
+                  placeholder="Detalhes do modelo, especificações, observações…"
+                  className="mt-1"
+                />
+              </div>
+              <FieldInput label="Coleção" value={form.collection || ''} onChange={v => updateField('collection', v)} placeholder="Ex: Verão 2026" />
             </div>
           </div>
 
@@ -1988,7 +2094,52 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             </div>
           </div>
 
-          {/* CARD 4 — Fotos */}
+          {/* CARD 4 — Peso & Embalagem (alimenta cálculo automático em NF-e, romaneio, MDF-e e rota) */}
+          <div className="rounded-xl border bg-card shadow-sm">
+            <div className="px-4 py-3 border-b flex items-center gap-2">
+              <Package className="h-4 w-4 text-primary" />
+              <h3 className="text-sm font-bold">Peso &amp; Embalagem</h3>
+              <span className="text-[10px] text-muted-foreground ml-auto">Usado em NF-e, romaneio, MDF-e e rota</span>
+            </div>
+            <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label className="text-xs text-muted-foreground">Peso do par (kg) — produto acabado</Label>
+                <NumberInput
+                  value={form.weight_per_pair_kg ?? ''}
+                  onChange={v => {
+                    if (v !== null && v < 0) { toast.error('Peso não pode ser negativo'); return; }
+                    updateField('weight_per_pair_kg' as any, v);
+                  }}
+                  className="mt-1 h-9 text-sm font-mono"
+                  placeholder="ex: 0,450"
+                  step="0.001"
+                  min={0}
+                />
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Cabedal + forro + solado + ferragens montados. Sem este valor, o PV deste item entra como "peso incompleto" nas telas fiscais.
+                </p>
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Peso da caixinha individual (kg)</Label>
+                <NumberInput
+                  value={form.box_weight_kg ?? ''}
+                  onChange={v => {
+                    if (v !== null && v < 0) { toast.error('Peso não pode ser negativo'); return; }
+                    updateField('box_weight_kg' as any, v);
+                  }}
+                  className="mt-1 h-9 text-sm font-mono"
+                  placeholder="ex: 0,080 (opcional)"
+                  step="0.001"
+                  min={0}
+                />
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Soma ao peso bruto da NF-e. Deixe vazio se a caixinha individual já está embutida no peso do par.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* CARD 5 — Fotos */}
           <div className="rounded-xl border bg-card shadow-sm">
             <div className="px-4 py-3 border-b flex items-center gap-2">
               <History className="h-4 w-4 text-primary" />
@@ -2029,10 +2180,15 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
           </div>
 
           {/* ═══ SECTION 0: Grupo de Solado (driver técnico central) ═══
-              Visual reforçado — solado é o item principal: borda 2px, sombra,
-              tipografia forte, fundo gradiente sutil. Materiais "padrão"
-              herdados desse solado caem direto no BOM ao selecionar. */}
-          <div className="rounded-xl border-2 border-primary/40 bg-gradient-to-br from-primary/5 to-primary/10 p-5 space-y-4 shadow-sm">
+              Visual: borda colorida só quando solado AINDA não foi selecionado
+              (chama atenção). Depois de selecionar, neutral (não confunde com
+              estado de erro, já que primary=vermelho no tema). */}
+          <div className={cn(
+            "rounded-xl border-2 p-5 space-y-4 shadow-sm transition-colors",
+            form.sole_material
+              ? "border-border bg-card"
+              : "border-primary/40 bg-gradient-to-br from-primary/5 to-primary/10"
+          )}>
             <div className="flex items-center gap-3">
               <div className="bg-primary/15 p-2 rounded-lg">
                 <Footprints className="h-5 w-5 text-primary" />
@@ -2050,7 +2206,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             <p className="text-xs text-muted-foreground">
               O solado define a estrutura base do produto: fôrma, numeração, consumo de palmilha e forração. Selecione o grupo de solado antes de preencher os demais materiais.
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
               <SoleProductSelect
                 label="Solado"
                 value={form.sole_material || ''}
@@ -2112,14 +2268,6 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 <Label className="text-xs text-muted-foreground">Consumo Solado (un/par)</Label>
                 <NumberInput value={form.sole_consumption || 0} onChange={v => updateField('sole_consumption', v)} className="mt-1 h-9 text-sm" placeholder="1" step="1" />
               </div>
-              <div className="flex items-center gap-2 pb-2">
-                <Checkbox 
-                  id="sole-drives-cons" 
-                  checked={form.sole_drives_consumption} 
-                  onCheckedChange={v => updateField('sole_drives_consumption', !!v)} 
-                />
-                <Label htmlFor="sole-drives-cons" className="text-xs font-semibold cursor-pointer">Consumo por Grade</Label>
-              </div>
             </div>
             {form.sole_material && (
               <SoleClassificationBadge
@@ -2168,78 +2316,24 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                        </div>
                        <Label className="text-xs font-bold text-amber-800">Forração de Salto (Fachete)</Label>
                      </div>
-                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
-                       <div>
-                         <Label className="text-[10px] text-muted-foreground uppercase">Material do Fachete</Label>
-                         <Select 
-                           value={form.fachete_material || ''} 
-                           onValueChange={v => updateField('fachete_material', v)}
-                         >
-                           <SelectTrigger className="h-8 text-xs mt-1">
-                             <SelectValue placeholder="Selecionar grupo..." />
-                           </SelectTrigger>
-                           <SelectContent>
-                             {(groups || []).map((g: any) => (
-                               <SelectItem key={g.id} value={g.name} className="text-xs">{g.name}</SelectItem>
-                             ))}
-                           </SelectContent>
-                         </Select>
-                       </div>
-                        <div className="flex flex-col gap-1">
-                          <Label className="text-[10px] text-muted-foreground uppercase">Consumo Médio (dm²)</Label>
-                          <Input 
-                            type="number" 
-                            value={form.fachete_consumption || 0} 
-                            onChange={e => updateField('fachete_consumption', Number(e.target.value))}
-                            className="h-8 text-xs"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="pt-2 border-t border-amber-200">
-                        <Label className="text-[10px] text-amber-800 font-semibold uppercase mb-2 block">Consumo de Fachete por Numeração (dm²)</Label>
-                        <div className="overflow-x-auto pb-2">
-                          <div className="flex gap-1.5 min-w-max">
-                            {(form.sizes || '').split(',').map((size: string) => {
-                              const s = size.trim();
-                              if (!s) return null;
-                              return (
-                                <div key={s} className="flex flex-col items-center gap-1">
-                                  <span className="text-[9px] font-bold text-amber-700">{s}</span>
-                                  <Input
-                                    type="number"
-                                    className="w-12 h-7 text-[10px] px-1 text-center"
-                                    value={(form.fachete_consumption_per_size as any)?.[s] || ''}
-                                    onChange={(e) => {
-                                      const val = Number(e.target.value);
-                                      const next = { ...(form.fachete_consumption_per_size as any) || {} };
-                                      if (val > 0) next[s] = val; else delete next[s];
-                                      updateField('fachete_consumption_per_size', next);
-                                    }}
-                                  />
-                                </div>
-                              );
-                            })}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 w-7 p-0 self-end mb-0.5 text-amber-600 hover:text-amber-700 hover:bg-amber-100"
-                              title="Preencher restante"
-                              onClick={() => {
-                                const grid = { ...(form.fachete_consumption_per_size as any) || {} };
-                                const firstVal = Object.values(grid).find(v => Number(v) > 0);
-                                if (!firstVal) return;
-                                (form.sizes || '').split(',').forEach((sz: string) => {
-                                  const s = sz.trim();
-                                  if (s && !grid[s]) grid[s] = Number(firstVal);
-                                });
-                                updateField('fachete_consumption_per_size', grid);
-                              }}
-                            >
-                              <Wand2 className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </div>
+                     <div>
+                       <Label className="text-[10px] text-muted-foreground uppercase">Material do Fachete</Label>
+                       <Select
+                         value={form.fachete_material || ''}
+                         onValueChange={v => updateField('fachete_material', v)}
+                       >
+                         <SelectTrigger className="h-8 text-xs mt-1">
+                           <SelectValue placeholder="Selecionar grupo..." />
+                         </SelectTrigger>
+                         <SelectContent>
+                           {(groups || []).map((g: any) => (
+                             <SelectItem key={g.id} value={g.name} className="text-xs">{g.name}</SelectItem>
+                           ))}
+                         </SelectContent>
+                       </Select>
+                       <p className="text-[10px] text-muted-foreground mt-1">
+                         Consumo de fachete por numeração é configurado em <strong>Solados → Cadastro</strong>.
+                       </p>
                      </div>
                    </div>
                  )}
@@ -2555,8 +2649,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 </div>
                 <div className="space-y-3">
                   <GroupMaterialSelect label="Material" value={form.insole_material} onChange={v => { updateField('insole_material', v); autoFillConsumption(v, 'insole_material'); }} />
-                  <InsolePlateProductSelect label="Tipo de Placa" value={form.insole_plate_product} onChange={v => updateField('insole_plate_product', v)} />
-                  
+                  {/* Tipo de Placa removido — vem do cadastro do Solado (insole_plate_product
+                      duplicava o que já tá em Solados → Cadastro). */}
+
                   {(() => {
                     const soleProd = form.sole_group_id ? products.find(p => p.group_id === form.sole_group_id) : null;
                     const mode = (soleProd as any)?.insole_mode || 'cortar';
@@ -2585,29 +2680,33 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Box className="h-3.5 w-3.5 text-green-600" />
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Componentes (un)</span>
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Componentes</span>
               </div>
               <p className="text-xs text-muted-foreground">
-                Componentes avulsos medidos por unidade (ex: ABS, fivelas, ilhós).
+                Componentes avulsos (ABS, fivelas, ilhós, elástico…). A unidade vem do cadastro do produto (un, m, cm, kg…).
               </p>
-              {(form.direct_components || []).map((comp: any, idx: number) => (
+              {(form.direct_components || []).map((comp: any, idx: number) => {
+                const unit = (comp.unit || 'un').toString().trim() || 'un';
+                return (
                 <div key={idx} className="grid grid-cols-3 gap-4 items-end border-l-2 border-green-400/30 pl-3">
                   <DirectComponentSelect
                     label={`Componente ${idx + 1}`}
                     value={comp.product_id || ''}
-                    onChange={(pid, pname, price) => {
+                    onChange={(pid, pname, price, prodUnit) => {
                       const arr = [...(form.direct_components || [])];
-                      arr[idx] = { ...arr[idx], product_id: pid, product_name: pname, unit_price: price };
+                      arr[idx] = { ...arr[idx], product_id: pid, product_name: pname, unit_price: price, unit: prodUnit };
                       updateField('direct_components', arr);
                     }}
                   />
                   <div>
-                    <Label className="text-xs text-muted-foreground">Qtd por par (un)</Label>
+                    <Label className="text-xs text-muted-foreground">
+                      Qtd por par <span className="font-mono">({unit})</span>
+                    </Label>
                     <NumberInput value={comp.quantity || 0} onChange={v => {
                       const arr = [...(form.direct_components || [])];
                       arr[idx] = { ...arr[idx], quantity: v };
                       updateField('direct_components', arr);
-                    }} className="mt-1 h-9 text-sm" placeholder="0" step="1" />
+                    }} className="mt-1 h-9 text-sm" placeholder="0" step={unit === 'un' ? '1' : '0.01'} />
                   </div>
                   <div className="flex items-end gap-2">
                     {comp.unit_price > 0 && comp.quantity > 0 && (
@@ -2624,9 +2723,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                     </Button>
                   </div>
                 </div>
-              ))}
+              );})}
               <Button variant="outline" size="sm" className="gap-1.5" onClick={() => {
-                updateField('direct_components', [...(form.direct_components || []), { product_id: '', product_name: '', quantity: 1, unit_price: 0 }]);
+                updateField('direct_components', [...(form.direct_components || []), { product_id: '', product_name: '', quantity: 1, unit_price: 0, unit: 'un' }]);
               }}>
                 <Plus className="h-3.5 w-3.5" /> Adicionar Componente
               </Button>
@@ -2666,12 +2765,13 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               groupName: string;
               show: boolean;
             };
+            // Apenas Cabedal — consumo do cabedal é exclusivo do MODELO (varia
+            // por linha/coleção). Palmilha/Forração/Fachete são especs do
+            // SOLADO (mesmo solado tem o mesmo consumo independente do modelo)
+            // e ficam centralizados em Solados → Consumos → Forração/Palmilha.
             const rows: MaterialRow[] = ([
-               { label: 'Cabedal',  field: 'upper_consumption_per_size',  scalarField: 'upper_consumption',  groupName: form.upper_material || '',  show: !!form.upper_material },
-               { label: 'Forração', field: 'lining_consumption_per_size', scalarField: 'lining_consumption', groupName: form.lining_material || '', show: !!form.lining_material },
-                { label: 'Palmilha', field: 'insole_consumption_per_size', scalarField: 'insole_consumption', groupName: form.insole_material || '', show: !!form.insole_material && !insoleIsPronta },
-                { label: 'Salto Fachetado', field: 'fachete_consumption_per_size' as any, scalarField: 'fachete_consumption' as any, groupName: form.fachete_material || '', show: isSoleFachetado && !!form.fachete_material },
-             ] as MaterialRow[]).filter(r => r.show);
+              { label: 'Cabedal', field: 'upper_consumption_per_size', scalarField: 'upper_consumption', groupName: form.upper_material || '', show: !!form.upper_material },
+            ] as MaterialRow[]).filter(r => r.show);
  
              if (rows.length === 0) return null;
 
@@ -2831,6 +2931,14 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                       { id: '3', label: 'TIRA 3', color: '' },
                     ]);
                   }
+                  // BUG ANTIGO: ao desmarcar 'Habilitar tiras', strap_colors
+                  // ficava órfão no JSON. Resultado: PV não sabia se tinha
+                  // tiras (has_straps=false mas strap_colors preenchido) e
+                  // a seção de cores nunca aparecia.
+                  // FIX: ao desmarcar, limpa strap_colors também.
+                  if (!v && (form.strap_colors || []).length > 0) {
+                    updateField('strap_colors', []);
+                  }
                 }}
               />
               <Label htmlFor="has-straps" className="text-sm font-medium">Habilitar tiras neste modelo</Label>
@@ -2853,24 +2961,16 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                     <div key={strap.id || idx} className="p-3 rounded-lg border bg-background space-y-3">
                       <div className="flex items-center gap-4">
                         <Badge variant="outline" className="font-semibold text-xs whitespace-nowrap">{strap.label || `TIRA ${idx + 1}`}</Badge>
-                        <Select
+                        <StrapGroupCombobox
                           value={strap.group_id || ''}
-                          onValueChange={(val) => {
+                          groups={groups || []}
+                          onChange={(val) => {
                             const updated = [...(form.strap_colors || [])];
                             const selectedGroup = groups?.find((g: any) => g.id === val);
                             updated[idx] = { ...updated[idx], group_id: val, group_name: selectedGroup?.name || '' };
                             updateField('strap_colors', updated);
                           }}
-                        >
-                          <SelectTrigger className="w-[200px] h-8 text-xs">
-                            <SelectValue placeholder="Grupo de material..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(groups || []).map((g: any) => (
-                              <SelectItem key={g.id} value={g.id} className="text-xs">{g.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        />
                         <span className="text-xs text-muted-foreground ml-auto">
                           Média: <strong>{safeToFixed(avgConsumption, 1)} cm</strong>/par
                         </span>
@@ -3036,7 +3136,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
              </div>
            </div>
            <ProductionSectorsTab
-             sectors={sheet.production_sectors || ['Corte', 'Forração', 'Silk', 'Colagem', 'Montagem', 'Acabamento', 'Expedição']}
+             sectors={sheet.production_sectors || ['Corte Palmilha', 'Corte Forração', 'Corte Cabedal', 'Costura', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição']}
              onChange={(sectors: string[]) => {
                updateSheet.mutate({ id: sheet.id, data: { production_sectors: sectors } as any });
              }}
@@ -3252,15 +3352,22 @@ function PhotosByColorTab({ sheetId, form, groups, products }: {
 }
 
  const ALL_PRODUCTION_SECTORS = [
-   { name: 'Corte', order: 1 },
-   { name: 'Forração', order: 2 },
-    { name: 'Aviamento', order: 3 },
-    { name: 'Silk', order: 4 },
-    { name: 'Colagem', order: 5 },
-    { name: 'Montagem', order: 6 },
-    { name: 'Solagem', order: 7 },
-    { name: 'Acabamento', order: 8 },
-    { name: 'Expedição', order: 9 },
+   // Sub-etapas paralelas de Corte (decisão 2026-05-12):
+   //   - Corte Palmilha: sempre (todo sapato tem palmilha)
+   //   - Corte Forração: quando o modelo tem forração na palmilha
+   //   - Corte Cabedal:  quando NÃO has_straps (modelo sem tiras)
+   //   - Costura: junta palmilha + forração + cabedal
+   { name: 'Corte Palmilha', order: 1 },
+   { name: 'Corte Forração', order: 2 },
+   { name: 'Corte Cabedal',  order: 3 },
+   { name: 'Costura',        order: 4 },
+   { name: 'Aviamento',      order: 5 },
+   { name: 'Silk',           order: 6 },
+   { name: 'Colagem',        order: 7 },
+   { name: 'Montagem',       order: 8 },
+   { name: 'Solagem',        order: 9 },
+   { name: 'Acabamento',     order: 10 },
+   { name: 'Expedição',      order: 11 },
  ];
  
  function ProductionSectorsTab({ sectors, onChange }: { sectors: string[]; onChange: (sectors: string[]) => void }) {
@@ -4354,17 +4461,60 @@ function SoleClassificationBadge({ groupId, soleMaterial, process, products }: {
 }
 
 /* ===== Sole Product Select (products from Solado groups — color-independent) ===== */
+function StrapGroupCombobox({ value, groups, onChange }: {
+  value: string;
+  groups: any[];
+  onChange: (groupId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const selected = groups.find((g: any) => g.id === value);
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return groups;
+    return groups.filter((g: any) => (g.name || '').toLowerCase().includes(q));
+  }, [groups, search]);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" role="combobox" aria-expanded={open}
+          className="w-[200px] h-8 px-2 text-xs font-normal justify-between">
+          <span className="truncate">{selected?.name || 'Grupo de material...'}</span>
+          <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[300px] p-0" align="start">
+        <Command shouldFilter={false}>
+          <CommandInput placeholder="Buscar tira/material..." value={search} onValueChange={setSearch} className="h-9 text-xs" />
+          <CommandList>
+            <CommandEmpty>Nenhum grupo encontrado.</CommandEmpty>
+            <CommandGroup>
+              {filtered.map((g: any) => (
+                <CommandItem key={g.id} value={g.id} onSelect={() => { onChange(g.id); setOpen(false); setSearch(''); }} className="text-xs">
+                  <Check className={cn('mr-2 h-3.5 w-3.5', value === g.id ? 'opacity-100' : 'opacity-0')} />
+                  {g.name}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function SoleProductSelect({ label, value, onChange }: { label: string; value: string; onChange: (productName: string, groupId: string | null, productId?: string) => void }) {
   const { data: soleModels = [] } = useQuery({
     queryKey: ['products_solado_groups_unified'],
     queryFn: async () => {
-      const { data: groups } = await supabase.from('product_groups').select('id, name').ilike('name', '%solado%');
-      if (!groups || groups.length === 0) return [];
-      const groupIds = groups.map(g => g.id);
+      // Antes filtrava product_groups por nome ILIKE '%solado%' — perdia grupos
+      // como "SALTINHO BLOCO" cujo nome não contém 'solado'. Filtra direto pela
+      // categoria do produto pra cobrir todos os saltos/solados, independente
+      // do nome do grupo.
       const { data, error } = await supabase
         .from('products')
-        .select('id, name, sku, color, group_id, unit_price, quantity')
-        .in('group_id', groupIds)
+        .select('id, name, sku, color, group_id, unit_price, quantity, product_groups(id, name)')
+        .ilike('category', '%solado%')
         .eq('active', true)
         .order('name');
       if (error) throw error;
@@ -4377,7 +4527,7 @@ function SoleProductSelect({ label, value, onChange }: { label: string; value: s
       const modelMap = new Map<string, { id: string; name: string; group_id: string; groupName: string; totalStock: number; variantCount: number; sku: string | null }>();
       (data || []).forEach((p: any) => {
         const key = normalizeBaseName(p.name, p.color);
-        const groupName = groups.find(g => g.id === p.group_id)?.name || '';
+        const groupName = (p.product_groups?.name as string | undefined) || '';
         const displayName = getSoleModelName(p.name, p.color);
         const existing = modelMap.get(key);
         if (existing) {
@@ -4444,7 +4594,7 @@ function SoleProductSelect({ label, value, onChange }: { label: string; value: s
 }
 
 /* ===== Direct Component Select (products from "Componentes" group) ===== */
-function DirectComponentSelect({ label, value, onChange }: { label: string; value: string; onChange: (productId: string, productName: string, unitPrice: number) => void }) {
+function DirectComponentSelect({ label, value, onChange }: { label: string; value: string; onChange: (productId: string, productName: string, unitPrice: number, unit: string) => void }) {
   const { data: products = [] } = useQuery({
     queryKey: ['products_componentes_group'],
     queryFn: async () => {
@@ -4452,7 +4602,10 @@ function DirectComponentSelect({ label, value, onChange }: { label: string; valu
       const { data: groups } = await supabase.from('product_groups').select('id').ilike('name', 'componentes').limit(1);
       if (!groups || groups.length === 0) return [];
       const groupId = groups[0].id;
-      const { data, error } = await supabase.from('products').select('id, name, sku, unit_price, color').eq('group_id', groupId).eq('active', true).order('name');
+      // BUG ANTIGO: select não incluía 'unit' — bottom callback assumia
+      // sempre 'un'. Resultado: elástico em metro era cadastrado como
+      // unidade no BOM, inflando custos por 100×.
+      const { data, error } = await supabase.from('products').select('id, name, sku, unit_price, unit, color').eq('group_id', groupId).eq('active', true).order('name');
       if (error) throw error;
       return data || [];
     },
@@ -4485,10 +4638,13 @@ function DirectComponentSelect({ label, value, onChange }: { label: string; valu
               <CommandEmpty>Nenhum componente encontrado. Verifique se existe um grupo "Componentes" com produtos.</CommandEmpty>
               <CommandGroup heading={`Componentes (${filtered.length})`}>
                 {filtered.map((p: any) => (
-                  <CommandItem key={p.id} value={p.id} onSelect={() => { onChange(p.id, p.name, Number(p.unit_price || 0)); setOpen(false); setSearch(''); }}>
+                  <CommandItem key={p.id} value={p.id} onSelect={() => { onChange(p.id, p.name, Number(p.unit_price || 0), (p.unit || 'un').toString().trim() || 'un'); setOpen(false); setSearch(''); }}>
                     <Check className={cn("mr-2 h-4 w-4", value === p.id ? "opacity-100" : "opacity-0")} />
                     <div className="flex flex-col">
-                      <span className="text-sm">{p.name} {p.color ? `(${p.color})` : ''}</span>
+                      <span className="text-sm">
+                        {p.name} {p.color ? `(${p.color})` : ''}
+                        <span className="text-[10px] text-muted-foreground font-mono ml-1">[{p.unit || 'un'}]</span>
+                      </span>
                       {p.sku && <span className="text-[10px] text-muted-foreground font-mono">{p.sku}</span>}
                     </div>
                   </CommandItem>
@@ -5580,7 +5736,7 @@ function CostsTab({ sheetId, form, groups }: {
     // Direct components (unit-based)
     (form.direct_components || []).forEach((comp: any, idx: number) => {
       if (comp.product_id && comp.quantity > 0 && comp.unit_price > 0) {
-        items.push({ label: comp.product_name || `Componente ${idx + 1}`, material: 'un', consumption: comp.quantity, pricePerUnit: comp.unit_price, cost: comp.quantity * comp.unit_price });
+        items.push({ label: comp.product_name || `Componente ${idx + 1}`, material: (comp.unit || 'un').toString().trim() || 'un', consumption: comp.quantity, pricePerUnit: comp.unit_price, cost: comp.quantity * comp.unit_price });
       }
     });
     return items;

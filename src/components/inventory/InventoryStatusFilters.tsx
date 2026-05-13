@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { AlertOctagon, TrendingDown, Gauge, Package } from "lucide-react";
+import { Warning as AlertOctagon, TrendDown as TrendingDown, Gauge, Package } from '@phosphor-icons/react';
 import { cn } from "@/lib/utils";
 
 type FilterKey = "all" | "critical" | "low" | "overstock";

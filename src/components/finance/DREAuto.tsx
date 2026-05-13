@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line } from 'recharts';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { TrendingUp, FileBarChart, PackageSearch, Info } from 'lucide-react';
+import { TrendUp as TrendingUp, FileText as FileBarChart, Package as PackageSearch, Info } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });

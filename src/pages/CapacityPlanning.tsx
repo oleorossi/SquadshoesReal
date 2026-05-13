@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Scissors, Layers, Hammer, Sparkles, AlertTriangle, TrendingUp, Hand, Pen, Printer, Flame, Footprints, Package } from 'lucide-react';
+import { Scissors, Stack as Layers, Hammer, Sparkle as Sparkles, Warning as AlertTriangle, TrendUp as TrendingUp, Hand, Pen, Printer, Flame, Footprints, Package } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -14,6 +14,7 @@ import { format, addDays, parseISO, startOfWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { computeSectorLeadTimeDays } from '@/lib/leadTime';
+import { computeParallelWindows } from '@/lib/sectorCapacity';
 
 // ─── TYPES & CONFIG ──────────────────────────────────────────────────────────
 
@@ -150,7 +151,9 @@ function bizDaysBetween(a: Date, b: Date): number {
 const SECTOR_NORM: Record<string, SectorKey> = {
   'corte palmilha': 'corte_palmilha', 'corte_palmilha': 'corte_palmilha', 'palmilha': 'corte_palmilha', 'corte': 'corte_palmilha',
   'corte forração': 'corte_forracao', 'corte forracão': 'corte_forracao', 'corte_forracao': 'corte_forracao',
-  'costura': 'corte_forracao', 'forração': 'corte_forracao', 'forracao': 'corte_forracao',
+  // FIX D3: Costura é setor próprio (PR 2). Antes alias errado de corte_forracao.
+  'costura': 'costura',
+  'forração': 'corte_forracao', 'forracao': 'corte_forracao',
   'mesa': 'mesa', 'aviamento': 'mesa',
   'silk': 'silk', 'serigrafia': 'silk',
   'colagem': 'colagem',
@@ -338,44 +341,21 @@ export default function CapacityPlanning() {
       const s = o.sheet;
       const billing = parseISO(o.planned_delivery);
 
-      // Lead time derivado da capacidade: ceil(qty / cap_per_day)
-      const ltAcab = computeSectorLeadTimeDays('acabamento',     qty, s);
-      const ltSola = computeSectorLeadTimeDays('solagem',        qty, s);
-      const ltMont = computeSectorLeadTimeDays('montagem',       qty, s);
-      const ltCola = computeSectorLeadTimeDays('colagem',        qty, s);
-      const ltSilk = computeSectorLeadTimeDays('silk',           qty, s);
-      const ltMesa = computeSectorLeadTimeDays('mesa',           qty, s);
-      const ltForr = computeSectorLeadTimeDays('corte_forracao', qty, s);
-      const ltPalm = computeSectorLeadTimeDays('corte_palmilha', qty, s);
-
-      // Janelas de trás para frente (9-sector backward cascade)
-      const acabEnd   = billing;
-      const acabStart = addBizDays(acabEnd,   -ltAcab);
-      const solaEnd   = acabStart;
-      const solaStart = addBizDays(solaEnd,   -ltSola);
-      const montEnd   = solaStart;
-      const montStart = addBizDays(montEnd,   -ltMont);
-      const colaEnd   = montStart;
-      const colaStart = addBizDays(colaEnd,   -ltCola);
-      const silkEnd   = colaStart;
-      const silkStart = addBizDays(silkEnd,   -ltSilk);
-      const mesaEnd   = silkStart;
-      const mesaStart = addBizDays(mesaEnd,   -ltMesa);
-      const forrEnd   = mesaStart;
-      const forrStart = addBizDays(forrEnd,   -ltForr);
-      const palmEnd   = forrStart;
-      const palmStart = addBizDays(palmEnd,   -ltPalm);
+      // FIX D2+D3: usa computeParallelWindows (paralelismo + Costura). Antes
+      // calculava cascata sequencial e ignorava Costura.
+      const pw = computeParallelWindows(s, qty, billing);
 
       const windows: { key: SectorKey; start: Date; end: Date; active: boolean }[] = [
-        { key: 'corte_palmilha', start: palmStart, end: palmEnd,  active: ltPalm > 0 },
-        { key: 'corte_forracao', start: forrStart, end: forrEnd,  active: ltForr > 0 && hasSectorActive(s, 'corte_forracao') },
-        { key: 'mesa',           start: mesaStart, end: mesaEnd,  active: ltMesa > 0 && hasSectorActive(s, 'mesa') },
-        { key: 'silk',           start: silkStart, end: silkEnd,  active: ltSilk > 0 && hasSectorActive(s, 'silk') },
-        { key: 'colagem',        start: colaStart, end: colaEnd,  active: ltCola > 0 && hasSectorActive(s, 'colagem') },
-        { key: 'montagem',       start: montStart, end: montEnd,  active: ltMont > 0 },
-        { key: 'solagem',        start: solaStart, end: solaEnd,  active: ltSola > 0 && hasSectorActive(s, 'solagem') },
-        { key: 'acabamento',     start: acabStart, end: acabEnd,  active: ltAcab > 0 },
-        { key: 'expedicao',      start: acabEnd,   end: billing,  active: true },
+        { key: 'corte_palmilha', start: pw.corte_palmilha.start, end: pw.corte_palmilha.end, active: pw.corte_palmilha.required },
+        { key: 'corte_forracao', start: pw.corte_forracao.start, end: pw.corte_forracao.end, active: pw.corte_forracao.required && hasSectorActive(s, 'corte_forracao') },
+        { key: 'mesa',           start: pw.mesa.start,           end: pw.mesa.end,           active: pw.mesa.required && hasSectorActive(s, 'mesa') },
+        { key: 'costura',        start: pw.costura.start,        end: pw.costura.end,        active: pw.costura.required && pw.costura.cap > 0 },
+        { key: 'silk',           start: pw.silk.start,           end: pw.silk.end,           active: pw.silk.required && hasSectorActive(s, 'silk') },
+        { key: 'colagem',        start: pw.colagem.start,        end: pw.colagem.end,        active: pw.colagem.required && hasSectorActive(s, 'colagem') },
+        { key: 'montagem',       start: pw.montagem.start,       end: pw.montagem.end,       active: pw.montagem.required },
+        { key: 'solagem',        start: pw.solagem.start,        end: pw.solagem.end,        active: pw.solagem.required && hasSectorActive(s, 'solagem') },
+        { key: 'acabamento',     start: pw.acabamento.start,     end: pw.acabamento.end,     active: pw.acabamento.required },
+        { key: 'expedicao',      start: pw.acabamento.end,       end: billing,               active: true },
       ];
 
       for (const w of windows) {

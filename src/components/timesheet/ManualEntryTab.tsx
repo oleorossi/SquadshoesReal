@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { ClipboardEdit, Plus, Trash2, Save, ChevronLeft, ChevronRight, User, Users2, X, Clock } from 'lucide-react';
+import { Clipboard as ClipboardEdit, Plus, Trash as Trash2, FloppyDisk as Save, CaretLeft as ChevronLeft, CaretRight as ChevronRight, User, Users as Users2, X, Clock } from '@phosphor-icons/react';
 import { getBatchDateRange } from '@/lib/timeControlFilters';
 
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];

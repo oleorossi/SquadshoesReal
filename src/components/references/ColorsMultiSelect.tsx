@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Check, ChevronsUpDown, Plus, X } from 'lucide-react';
+import { Check, CaretUpDown as ChevronsUpDown, Plus, X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 
 interface ColorsMultiSelectProps {

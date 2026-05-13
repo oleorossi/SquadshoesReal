@@ -7,7 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiService } from '@/lib/apiService';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Loader2 } from 'lucide-react';
+import { CircleNotch as Loader2 } from '@phosphor-icons/react';
 
 // Schema de validação robusto
 const ProductionSystemSchema = z.object({

@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Printer, Clock, AlertTriangle, TrendingUp, TrendingDown, Zap } from 'lucide-react';
+import { Printer, Clock, Warning as AlertTriangle, TrendUp as TrendingUp, TrendDown as TrendingDown, Lightning as Zap } from '@phosphor-icons/react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 
 interface PrinterMetric {

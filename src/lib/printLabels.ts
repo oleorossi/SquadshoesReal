@@ -22,12 +22,20 @@ export interface BoxIdentificationData {
   senderCnpj: string;
   senderAddress?: string;
   recipientName?: string;
+  /** Razão social completa (preferida sobre recipientName quando ambos presentes). */
+  recipientRazaoSocial?: string;
   recipientCnpj?: string;
   recipientNumber?: string;
   recipientCode?: string;
   recipientAddress?: string;
+  recipientNeighborhood?: string;
   recipientCity?: string;
   recipientUf?: string;
+  recipientCep?: string;
+  /** Código da filial fornecido pelo cliente (ex: "L12", "SP-03"). */
+  recipientBranchCode?: string;
+  /** Nome amigável da filial. */
+  recipientBranchName?: string;
   transporter?: string;
   clientOrderNumber?: string;
   shoeCategory?: string;
@@ -129,11 +137,35 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
       </div>`;
     };
 
+    // Bloco DESTINATÁRIO: razão social em destaque + filial (se houver) +
+    // endereço completo + CNPJ. Razão social vai por cima pra não passar
+    // despercebida — quem recebe a caixa precisa identificar o cliente
+    // ANTES de qualquer outro dado.
+    const branchLabel = [item.recipientBranchCode, item.recipientBranchName]
+      .filter(Boolean)
+      .join(' — ');
+    const cityUf = [item.recipientCity, item.recipientUf].filter(Boolean).join(' / ');
+    const cepFmt = item.recipientCep
+      ? (() => {
+          const c = item.recipientCep!.replace(/\D/g, '');
+          return c.length === 8 ? `${c.slice(0, 5)}-${c.slice(5)}` : item.recipientCep!;
+        })()
+      : '';
+    const razaoSocial = item.recipientRazaoSocial || item.recipientName;
+    const razaoLine = razaoSocial
+      ? `<div style="display:flex;align-items:baseline;gap:6px;line-height:1.2;margin-bottom:2px;">
+          <span style="font-size:9px;color:#222;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;">Para:</span>
+          <span style="font-size:13px;font-weight:900;color:#000;text-transform:uppercase;letter-spacing:0.3px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(razaoSocial)}</span>
+          ${branchLabel ? `<span style="font-size:10px;font-weight:800;color:#000;border:1.5px solid #000;border-radius:2px;padding:1px 5px;white-space:nowrap;">${escapeHtml(branchLabel)}</span>` : ''}
+        </div>`
+      : '';
     const recipientBlock = [
-      item.recipientCode ? fieldRow('Cliente:', item.recipientCode) : '',
+      razaoLine,
       item.recipientAddress ? fieldRow('Endereço:', item.recipientAddress) : '',
-      item.recipientCity ? fieldRow('Cidade:', item.recipientCity) : '',
-      item.recipientUf ? fieldRow('UF:', item.recipientUf) : '',
+      item.recipientNeighborhood ? fieldRow('Bairro:', item.recipientNeighborhood) : '',
+      cityUf ? fieldRow('Cidade/UF:', cityUf) : '',
+      cepFmt ? fieldRow('CEP:', cepFmt) : '',
+      item.recipientCnpj ? fieldRow('CNPJ:', item.recipientCnpj) : (item.recipientCode ? fieldRow('Cliente:', item.recipientCode) : ''),
       item.transporter ? fieldRow('Transp:', item.transporter) : '',
     ].filter(Boolean).join('');
 
@@ -1331,7 +1363,7 @@ export function buildIndividualLabelsHtml(items: LabelData[]): string {
       .page-break{page-break-after:always;break-after:page;}
       .label-cell{
         border:1.5px solid #000;
-        padding:6px 10px;
+        padding:4px 8px;
         display:flex;
         flex-direction:column;
         justify-content:center;

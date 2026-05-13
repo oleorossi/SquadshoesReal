@@ -3,14 +3,12 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { computeSectorLeadTimeDays } from '@/lib/leadTime';
 import type { SectorKey } from '@/lib/leadTime';
+import { computeParallelWindows } from '@/lib/sectorCapacity';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import {
-  Loader2, ChevronLeft, ChevronRight, CalendarDays,
-  BarChart3, Info, RefreshCw,
-} from 'lucide-react';
+import { CircleNotch as Loader2, CaretLeft as ChevronLeft, CaretRight as ChevronRight, CalendarBlank as CalendarDays, ChartBar as BarChart3, Info, ArrowsClockwise as RefreshCw } from '@phosphor-icons/react';
 import {
   format, startOfWeek, addDays, addWeeks,
 } from 'date-fns';
@@ -23,7 +21,8 @@ const DAY_MS = 86_400_000;
 const DISPLAY_SECTORS: { key: SectorKey; label: string }[] = [
   { key: 'corte_palmilha', label: 'Corte Palmilha' },
   { key: 'corte_forracao', label: 'Corte Forração' },
-  { key: 'mesa',           label: 'Mesa' },
+  { key: 'mesa',           label: 'Aviamento' },
+  { key: 'costura',        label: 'Costura' },   // FIX D3
   { key: 'silk',           label: 'Silk' },
   { key: 'colagem',        label: 'Colagem' },
   { key: 'montagem',       label: 'Montagem' },
@@ -106,7 +105,9 @@ const SECTOR_NORM: Record<string, SectorKey> = {
   serigrafia: 'silk', colagem: 'colagem', montagem: 'montagem',
   solagem: 'solagem', acabamento: 'acabamento', expedição: 'expedicao',
   expedicao: 'expedicao', corte: 'corte_palmilha', palmilha: 'corte_palmilha',
-  costura: 'corte_forracao', forração: 'corte_forracao', forracao: 'corte_forracao',
+  // FIX D3: Costura é setor próprio desde PR 2 (não é mais alias de corte_forracao)
+  costura: 'costura',
+  forração: 'corte_forracao', forracao: 'corte_forracao',
   aviamento: 'mesa',
 };
 
@@ -123,51 +124,22 @@ function hasSector(sheet: any, key: SectorKey): boolean {
 
 type WindowMap = Partial<Record<SectorKey, { start: Date; end: Date; cap: number }>>;
 
-function computeWindows(sheet: any, qty: number, deadline: Date, defaults: any | null): WindowMap {
-  const lt  = (s: SectorKey) => computeSectorLeadTimeDays(s, qty, sheet, defaults);
-  const on  = (s: SectorKey) => hasSector(sheet, s);
-  const cap = (f: string) => {
-    const v = Number(sheet?.[f] || 0);
-    return v > 0 ? v : Number(defaults?.[f] || 0);
-  };
-
-  const ltAcab = lt('acabamento');
-  const ltSola = on('solagem')        ? lt('solagem')        : 0;
-  const ltMont = lt('montagem');
-  const ltCola = on('colagem')        ? lt('colagem')        : 0;
-  const ltSilk = on('silk')           ? lt('silk')           : 0;
-  const ltMesa = on('mesa')           ? lt('mesa')           : 0;
-  const ltForr = on('corte_forracao') ? lt('corte_forracao') : 0;
-  const ltPalm = on('corte_palmilha') ? lt('corte_palmilha') : 0;
-
-  // Backward schedule (end dates exclusive, mirroring sectorCapacity.ts convention)
-  const acabEnd   = deadline;
-  const acabStart = addBizDays(acabEnd, -ltAcab);
-  const solaEnd   = acabStart;
-  const solaStart = addBizDays(solaEnd, -ltSola);
-  const montEnd   = solaStart;
-  const montStart = addBizDays(montEnd, -ltMont);
-  const colaEnd   = montStart;
-  const colaStart = addBizDays(colaEnd, -ltCola);
-  const silkEnd   = colaStart;
-  const silkStart = addBizDays(silkEnd, -ltSilk);
-  const mesaEnd   = silkStart;
-  const mesaStart = addBizDays(mesaEnd, -ltMesa);
-  const forrEnd   = mesaStart;
-  const forrStart = addBizDays(forrEnd, -ltForr);
-  const palmEnd   = forrStart;
-  const palmStart = addBizDays(palmEnd, -ltPalm);
-
-  const w: WindowMap = {};
-  if (ltPalm > 0 && on('corte_palmilha')) w.corte_palmilha = { start: palmStart, end: palmEnd, cap: cap('sewing_capacity_per_day') };
-  if (ltForr > 0 && on('corte_forracao')) w.corte_forracao = { start: forrStart, end: forrEnd, cap: cap('cutting_capacity_per_day') };
-  if (ltMesa > 0 && on('mesa'))           w.mesa           = { start: mesaStart, end: mesaEnd, cap: cap('mesa_daily_capacity') };
-  if (ltSilk > 0 && on('silk'))           w.silk           = { start: silkStart, end: silkEnd, cap: cap('silk_capacity_per_day') };
-  if (ltCola > 0 && on('colagem'))        w.colagem        = { start: colaStart, end: colaEnd, cap: cap('gluing_capacity_per_day') };
-  if (ltMont > 0)                         w.montagem       = { start: montStart, end: montEnd, cap: cap('assembly_capacity_per_day') };
-  if (ltSola > 0 && on('solagem'))        w.solagem        = { start: solaStart, end: solaEnd, cap: cap('soling_capacity_per_day') };
-  if (ltAcab > 0)                         w.acabamento     = { start: acabStart, end: acabEnd, cap: cap('finishing_capacity_per_day') };
-  return w;
+// FIX D2+D3: usa computeParallelWindows de lib/sectorCapacity.ts. Antes essa
+// tela calculava cascata sequencial e ignorava Costura.
+function computeWindows(sheet: any, qty: number, deadline: Date, _defaults: any | null): WindowMap {
+  const w = computeParallelWindows(sheet, qty, deadline);
+  const out: WindowMap = {};
+  if (w.corte_palmilha.required) out.corte_palmilha = { start: w.corte_palmilha.start, end: w.corte_palmilha.end, cap: w.corte_palmilha.cap };
+  if (w.corte_forracao.required) out.corte_forracao = { start: w.corte_forracao.start, end: w.corte_forracao.end, cap: w.corte_forracao.cap };
+  if (w.costura.required && w.costura.cap > 0)
+                                 out.costura        = { start: w.costura.start,        end: w.costura.end,        cap: w.costura.cap };
+  if (w.mesa.required)           out.mesa           = { start: w.mesa.start,           end: w.mesa.end,           cap: w.mesa.cap };
+  if (w.silk.required)           out.silk           = { start: w.silk.start,           end: w.silk.end,           cap: w.silk.cap };
+  if (w.colagem.required)        out.colagem        = { start: w.colagem.start,        end: w.colagem.end,        cap: w.colagem.cap };
+  if (w.montagem.required)       out.montagem       = { start: w.montagem.start,       end: w.montagem.end,       cap: w.montagem.cap };
+  if (w.solagem.required)        out.solagem        = { start: w.solagem.start,        end: w.solagem.end,        cap: w.solagem.cap };
+  if (w.acabamento.required)     out.acabamento     = { start: w.acabamento.start,     end: w.acabamento.end,     cap: w.acabamento.cap };
+  return out;
 }
 
 // ── Data hook ─────────────────────────────────────────────────────────────────
@@ -190,6 +162,7 @@ function useCapacityCalendar() {
                 assembly_capacity_per_day, finishing_capacity_per_day,
                 mesa_daily_capacity, silk_capacity_per_day,
                 gluing_capacity_per_day, soling_capacity_per_day,
+                costura_capacity_per_day,
                 lead_time_corte_dias, lead_time_costura_dias,
                 lead_time_montagem_dias, lead_time_acabamento_dias
               )
@@ -200,7 +173,7 @@ function useCapacityCalendar() {
           .order('earliest_deadline', { ascending: true }),
         supabase
           .from('default_lead_times' as any)
-          .select('shoe_category, cutting_capacity_per_day, sewing_capacity_per_day, mesa_daily_capacity, assembly_capacity_per_day, finishing_capacity_per_day, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, lead_time_corte_dias, lead_time_costura_dias, lead_time_montagem_dias, lead_time_acabamento_dias'),
+          .select('shoe_category, cutting_capacity_per_day, sewing_capacity_per_day, mesa_daily_capacity, assembly_capacity_per_day, finishing_capacity_per_day, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, costura_capacity_per_day, lead_time_corte_dias, lead_time_costura_dias, lead_time_montagem_dias, lead_time_acabamento_dias'),
       ]);
 
       if (wavesRes.error) throw wavesRes.error;

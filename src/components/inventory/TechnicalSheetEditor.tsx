@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
- import { Trash2, PlusCircle, Save, Copy, Loader2, Info } from 'lucide-react';
+ import { Trash as Trash2, PlusCircle, FloppyDisk as Save, Copy, CircleNotch as Loader2, Info } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import {

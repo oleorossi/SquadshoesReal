@@ -10,10 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
-import {
-  ClipboardCheck, Plus, ArrowLeft, ScanLine, Loader2, CheckCircle2,
-  Trash2, AlertTriangle, Play, X, ChevronRight,
-} from 'lucide-react';
+import { ClipboardText as ClipboardCheck, Plus, ArrowLeft, Scan as ScanLine, CircleNotch as Loader2, CheckCircle as CheckCircle2, Trash as Trash2, Warning as AlertTriangle, Play, X, CaretRight as ChevronRight } from '@phosphor-icons/react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 

@@ -3,7 +3,7 @@
  import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { Package, Layers, ShoppingBag, ExternalLink, CalendarDays, RefreshCw } from 'lucide-react';
+import { Package, Stack as Layers, ShoppingBag, ArrowSquareOut as ExternalLink, CalendarBlank as CalendarDays, ArrowsClockwise as RefreshCw } from '@phosphor-icons/react';
 import { useWaveDetail, useWaveSaleOrders, useSyncWaveFromKanban } from '@/hooks/useProductionWaves';
 import { STAGE_LABEL, STAGE_ORDER } from '@/types/production-waves';
 import { FinishingSplitTable } from './FinishingSplitTable';

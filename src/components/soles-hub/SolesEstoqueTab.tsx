@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Boxes, Edit3, AlertTriangle, AlertCircle, Link2 } from 'lucide-react';
+import { Stack as Boxes, PencilSimple as Edit3, Warning as AlertTriangle, WarningCircle as AlertCircle, Link as Link2 } from '@phosphor-icons/react';
 import { SoladoGradeDialog } from '@/components/inventory/SoladoGradeDialog';
 import type { Product } from '@/types/inventory';
 import type { SoleProduct } from './types';

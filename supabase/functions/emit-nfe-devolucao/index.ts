@@ -370,19 +370,48 @@ Deno.serve(async (req) => {
         }
       }
 
-      // 12b) Stock movement de entrada por devolução
-      // Modela: produto = technical_sheet (ref) com cor especificada.
-      // Se houver products row específica pra (ref, color), usar. Senão, registra
-      // só o movimento sem incrementar quantity diretamente.
+      // 12b) Stock movement de entrada + restaura products.quantity
+      // FIX C3: antes só inseria stock_movement com product_id=null — mercadoria
+      // voltava fisicamente mas estoque ficava subdimensionado. Agora faz lookup
+      // por (reference_id, color) e atualiza products.quantity quando achar.
       try {
         for (const it of itensFinal) {
+          // Lookup do product representando (ref, color)
+          let productId: string | null = null;
+          let prevQty = 0;
+          if (it.reference_id) {
+            const { data: prodRow } = await adminClient
+              .from("products")
+              .select("id, quantity")
+              .eq("reference_id", it.reference_id)
+              .eq("color", it.color || "")
+              .eq("active", true)
+              .limit(1)
+              .maybeSingle();
+            if (prodRow) {
+              productId = prodRow.id;
+              prevQty = Number(prodRow.quantity || 0);
+              const newQty = prevQty + Number(it.qty);
+              const { error: updErr } = await adminClient.from("products")
+                .update({ quantity: newQty, updated_at: new Date().toISOString() })
+                .eq("id", productId);
+              if (updErr) cleanupWarnings.push(`products.quantity não atualizado (${it.reference_id}/${it.color}): ${updErr.message}`);
+            } else {
+              cleanupWarnings.push(`Produto (ref ${it.reference_id}, cor ${it.color || '—'}) não encontrado — devolução registrada sem update de estoque.`);
+            }
+          }
+
           await adminClient.from("stock_movements").insert({
+            movement_type: "in",
             type: "Devolução cliente",
-            product_id: null,
+            product_id: productId,
             reference_id: it.reference_id,
             color: it.color,
             quantity: it.qty,
+            previous_stock: prevQty,
+            new_stock: prevQty + Number(it.qty),
             sale_order_id: nfeOriginal.sale_order_id,
+            description: `NF devolução ${chave || gcNfeId} — motivo: ${motivo.trim()}`,
             notes: `NF devolução ${chave || gcNfeId} — motivo: ${motivo.trim()}`,
             created_by: userId,
           } as any);

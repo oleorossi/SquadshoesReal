@@ -13,7 +13,7 @@
  * Header tem 3 botões: Hoje · Semana · Mês (escopo de filtro de OPs)
  */
 import { useMemo, useState } from 'react';
-import { Loader2, ClipboardList } from 'lucide-react';
+import { CircleNotch as Loader2, ClipboardText as ClipboardList } from '@phosphor-icons/react';
 import AppLayout from '@/components/layout/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -93,8 +93,14 @@ export default function ProductionTimeline() {
     return (orders as Order[]).filter(o => {
       const status = (o.status || '').toLowerCase();
       if (!status.includes('produ')) return false;  // só Em Produção
-      if (!o.due_date) return scope === 'mes';      // sem prazo só aparece em "mês"
-      return new Date(o.due_date) <= cutoff;
+      // Semana/Hoje: inclui OPs sem due_date (passa do filtro de prazo) —
+      // operador precisa ver TODAS as OPs em produção mesmo que prazo seja
+      // futuro distante ou esteja em branco. Mês continua mostrando tudo.
+      if (!o.due_date) return true;
+      // Se due_date está dentro do cutoff (hoje/semana/mês) OU já passou
+      // (atrasada), aparece. Atrasadas precisam visibilidade independente
+      // de qual escopo o usuário escolheu.
+      return new Date(o.due_date) <= cutoff || new Date(o.due_date) < now;
     });
   }, [orders, scope]);
 

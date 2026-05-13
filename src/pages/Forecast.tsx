@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { TrendingUp } from 'lucide-react';
+import { TrendUp as TrendingUp } from '@phosphor-icons/react';
 
 export default function Forecast() {
   const { data: summary = [] } = useQuery({

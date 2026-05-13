@@ -1,10 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { escapeHtml } from '@/lib/htmlUtils';
-import {
-  ClipboardList, Package, Printer, Calendar, Search,
-  CheckSquare, Square, RotateCcw, TrendingUp, CheckCircle2,
-  Loader2, FileText, Hash,
-} from 'lucide-react';
+import { ClipboardText as ClipboardList, Package, Printer, Calendar, MagnifyingGlass as Search, CheckSquare, Square, ArrowCounterClockwise as RotateCcw, TrendUp as TrendingUp, CheckCircle as CheckCircle2, CircleNotch as Loader2, FileText, Hash } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';

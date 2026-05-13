@@ -14,7 +14,7 @@
  */
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, AlertTriangle, Activity } from 'lucide-react';
+import { CircleNotch as Loader2, Warning as AlertTriangle, Pulse as Activity } from '@phosphor-icons/react';
 import AppLayout from '@/components/layout/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';

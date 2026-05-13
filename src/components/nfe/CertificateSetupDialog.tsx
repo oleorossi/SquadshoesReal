@@ -1,6 +1,6 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { ShieldCheck, ExternalLink } from 'lucide-react';
+import { ShieldCheck, ArrowSquareOut as ExternalLink } from '@phosphor-icons/react';
 
 type Props = {
   open: boolean;

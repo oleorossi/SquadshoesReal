@@ -2,10 +2,7 @@ import AppLayout from "@/components/layout/AppLayout";
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { 
-  History, Search, Filter, CheckCircle2, XCircle, 
-  Info, Calendar, User, Database, ArrowRight
-} from 'lucide-react';
+import { ClockCounterClockwise as History, MagnifyingGlass as Search, Funnel as Filter, CheckCircle as CheckCircle2, XCircle, Info, Calendar, User, Database, ArrowRight } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';

@@ -243,7 +243,7 @@ async function buildSectorChecklistHtml(ops: OrderWithRef[], sectorName: string,
 
     let gradeHtml = '';
     if (grade && activeSizes.length > 0) {
-      gradeHtml = `<table style="border-collapse:collapse;margin-top:8px;">
+      gradeHtml = `<table style="border-collapse:collapse;margin-top:5px;">
         <tr style="background:#e8e8d0;">
           ${activeSizes.map(s => `<th style="border:1px solid #999;padding:3px 8px;font-size:11px;text-align:center;">${s}</th>`).join('')}
           <th style="border:1px solid #999;padding:3px 8px;font-size:11px;text-align:center;background:#e0e0c8;">Total</th>
@@ -267,12 +267,12 @@ async function buildSectorChecklistHtml(ops: OrderWithRef[], sectorName: string,
           ${imageHtml}
         </div>
         <div style="flex:1;">
-          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:4px;">
             <div>
               <h1 style="font-size:18px; margin:0; color:#1a56db;">${emoji} ${escapeHtml(title)}</h1>
               <p style="font-size:14px; margin:4px 0 0; font-weight:700; color:#475569;">OP: ${escapeHtml(order.order_number)}</p>
             </div>
-            <div style="text-align:center; background:white; padding:8px; border-radius:8px; border:1px solid #e2e8f0; min-width:100px;">
+            <div style="text-align:center; background:white; padding:5px; border-radius:8px; border:1px solid #e2e8f0; min-width:100px;">
               <p style="font-size:8px; color:#94a3b8; text-transform:uppercase; margin:0 0 4px; font-weight:700;">Logotipo SILK</p>
               ${silkHtml}
             </div>
@@ -285,8 +285,8 @@ async function buildSectorChecklistHtml(ops: OrderWithRef[], sectorName: string,
             <div><span style="color:#64748b; font-weight:600;">Status:</span> <span style="font-weight:700; color:#1a56db;">${escapeHtml(order.status)}</span></div>
           </div>
 
-          ${(order as any).item_observation ? `<div style="margin-top:8px; padding:8px 12px; background:#fffbeb; border:1px solid #fde68a; border-radius:6px; font-size:10px; color:#92400e;"><strong>📝 Observação:</strong> ${escapeHtml((order as any).item_observation)}</div>` : ''}
-          <div style="margin-top:10px;">
+          ${(order as any).item_observation ? `<div style="margin-top:5px; padding:5px 8px; background:#fffbeb; border:1px solid #fde68a; border-radius:6px; font-size:10px; color:#92400e;"><strong>📝 Observação:</strong> ${escapeHtml((order as any).item_observation)}</div>` : ''}
+          <div style="margin-top:4px;">
             ${gradeHtml}
           </div>
         </div>
@@ -296,7 +296,7 @@ async function buildSectorChecklistHtml(ops: OrderWithRef[], sectorName: string,
         <h2 style="font-size:14px; margin:0 0 10px; padding-bottom:5px; border-bottom:2px solid #e2e8f0; color:#1e293b;">
           📋 Controle de Produção — <span style="color:#1a56db;">${totalFichas} fichas</span>
         </h2>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; font-size:10px; color:#64748b;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; font-size:10px; color:#64748b;">
           <span>Setor: <strong>${sectorName}</strong> | Total: <strong>${totalPairs} pares</strong> | Padrão: <strong>${pairsPerFicha} pares/ficha</strong></span>
           <span>Instrução: Marque cada quadrado ao concluir uma ficha.</span>
         </div>
@@ -329,7 +329,7 @@ export async function printAllSectorsForSaleOrder(saleOrderId: string, orderNumb
     html ? html : `<h1>${fallbackEmoji} ${title}</h1><p>Sem dados</p>`;
 
   const combinedHtml = `
-    <div style="margin-bottom:8px;font-size:10px;color:#666;">Pedido de Venda: <strong>${escapeHtml(orderNumber)}</strong> | ${ops.length} OP(s): ${escapeHtml(ops.map(o => o.order_number).join(', '))}</div>
+    <div style="margin-bottom:5px;font-size:10px;color:#666;">Pedido de Venda: <strong>${escapeHtml(orderNumber)}</strong> | ${ops.length} OP(s): ${escapeHtml(ops.map(o => o.order_number).join(', '))}</div>
 
     ${corteHtml}
     <div style="page-break-before:always;"></div>

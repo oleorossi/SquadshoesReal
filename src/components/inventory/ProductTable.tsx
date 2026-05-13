@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { Pencil, AlertTriangle, FolderOpen, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown, Layers, PackageMinus, Grid3X3, Settings2, Package, ImageIcon, X, FlaskConical } from 'lucide-react';
+import { PencilSimple as Pencil, Warning as AlertTriangle, FolderOpen, CaretDown as ChevronDown, ArrowsDownUp as ArrowUpDown, ArrowUp, ArrowDown, Stack as Layers, Package as PackageMinus, GridFour as Grid3X3, Gear as Settings2, Package, Image as ImageIcon, X, Flask as FlaskConical } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { cn, getSoleModelName, stripColorFromName } from '@/lib/utils';
 import { useGroups, ProductGroup } from '@/hooks/useGroups';
@@ -416,14 +416,26 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
    const [soleEditProduct, setSoleEditProduct] = useState<Product | null>(null);
    const [artisanalProducts, setArtisanalProducts] = useState<Product[] | null>(null);
 
-  // Intercept edit clicks: route Solado category to the dedicated technical dialog
+  // Intercept edit clicks: rota Solado pro dialog técnico dedicado, e produtos
+  // que pertencem a um grupo (group_id) abrem o MasterVariantDialog pra gerenciar
+  // variantes de cor (incluir/excluir/editar). Antes só abria edit simples,
+  // sem como acessar as variantes a partir do row.
   const handleEditIntercepted = useCallback((product: Product) => {
     if (product.category === 'Solado' || product.category?.toLowerCase().includes('solado')) {
       setSoleEditProduct(product);
       return;
     }
+    if (product.group_id) {
+      const groupVariants = products.filter(p => p.group_id === product.group_id);
+      if (groupVariants.length > 0) {
+        // Usa o nome base normalizado pra o título do dialog
+        const baseName = (product.name || '').replace(/\s*\([^)]*\)\s*$/, '').trim() || product.name;
+        setMasterVariant({ baseName, products: groupVariants });
+        return;
+      }
+    }
     onEdit(product);
-  }, [onEdit]);
+  }, [onEdit, products]);
   const [editingGroup, setEditingGroup] = useState<ProductGroup | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [masterVariant, setMasterVariant] = useState<{ baseName: string; products: Product[] } | null>(null);

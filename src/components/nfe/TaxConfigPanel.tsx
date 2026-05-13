@@ -10,9 +10,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import {
-  Calculator, FileText, MapPin, Truck, AlertTriangle, CheckCircle2,
-} from 'lucide-react';
+import { Calculator, FileText, MapPin, Truck, Warning as AlertTriangle, CheckCircle as CheckCircle2 } from '@phosphor-icons/react';
 
 interface CompanyTax {
   id: string;

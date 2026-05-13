@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Box, Layers, Link as LinkIcon, AlertCircle, Package, ArrowRight } from 'lucide-react';
+import { Cube as Box, Stack as Layers, Link as LinkIcon, WarningCircle as AlertCircle, Package, ArrowRight } from '@phosphor-icons/react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { calculateBestPackaging } from '@/utils/packaging-calculator';

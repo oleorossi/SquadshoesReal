@@ -9,11 +9,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import {
-  CheckCircle2, XCircle, AlertTriangle, Search, RefreshCw, ChevronDown, ChevronUp,
-  ShoppingCart, ClipboardList, Package, Factory, Sparkles, DollarSign, FileText, Loader2,
-  History, Layers
-} from 'lucide-react';
+import { CheckCircle as CheckCircle2, XCircle, Warning as AlertTriangle, MagnifyingGlass as Search, ArrowsClockwise as RefreshCw, CaretDown as ChevronDown, CaretUp as ChevronUp, ShoppingCart, ClipboardText as ClipboardList, Package, Factory, Sparkle as Sparkles, CurrencyDollar as DollarSign, FileText, CircleNotch as Loader2, ClockCounterClockwise as History, Stack as Layers } from '@phosphor-icons/react';
 import { format, parseISO, differenceInDays } from 'date-fns';
 
 type StepStatus = 'ok' | 'warning' | 'error' | 'pending';

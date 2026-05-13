@@ -94,7 +94,73 @@ const ALL_ACTIVE_KEY = ['reference_material_variants', 'all_active'] as const;
    });
  }
  
- export function useReorderReferenceMaterialVariants() {
+ type DuplicateVariantInput = {
+  source_variant_id: string;
+  sheet_id: string;
+  overrides: Partial<ReferenceMaterialVariant>;
+};
+
+export function useDuplicateReferenceMaterialVariant() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ source_variant_id, sheet_id, overrides }: DuplicateVariantInput) => {
+      const { data: source, error: fetchErr } = await supabase
+        .from('reference_material_variants')
+        .select('*')
+        .eq('id', source_variant_id)
+        .single();
+      if (fetchErr) throw fetchErr;
+      if (!source) throw new Error('Variante de origem não encontrada');
+
+      const { id, created_at, updated_at, ...sourceData } = source as any;
+
+      const insertPayload = {
+        ...sourceData,
+        ...overrides,
+        reference_id: sheet_id,
+      };
+
+      const { data: newVariant, error: insertErr } = await supabase
+        .from('reference_material_variants')
+        .insert(insertPayload)
+        .select()
+        .single();
+      if (insertErr) throw insertErr;
+
+      const { data: bomCount, error: rpcErr } = await supabase.rpc(
+        'duplicate_material_variant_bom' as any,
+        {
+          p_source_variant_id: source_variant_id,
+          p_target_variant_id: newVariant.id,
+          p_sheet_id: sheet_id,
+        }
+      );
+      if (rpcErr) {
+        await supabase
+          .from('reference_material_variants')
+          .delete()
+          .eq('id', newVariant.id);
+        throw rpcErr;
+      }
+
+      return {
+        variant: newVariant as ReferenceMaterialVariant,
+        bom_lines_copied: (bomCount as number) ?? 0,
+      };
+    },
+    onSuccess: (result, vars) => {
+      qc.invalidateQueries({ queryKey: QUERY_KEY(vars.sheet_id) });
+      qc.invalidateQueries({ queryKey: ALL_ACTIVE_KEY });
+      const msg = result.bom_lines_copied > 0
+        ? `Variante duplicada com ${result.bom_lines_copied} item(ns) de BOM`
+        : 'Variante duplicada (sem BOM específico para copiar)';
+      toast.success(msg);
+    },
+    onError: (err: Error) => toast.error(`Erro ao duplicar: ${err.message}`),
+  });
+}
+
+export function useReorderReferenceMaterialVariants() {
    const qc = useQueryClient();
    return useMutation({
      mutationFn: async (variants: { id: string; display_order: number }[]) => {

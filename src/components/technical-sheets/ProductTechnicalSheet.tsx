@@ -1,4 +1,4 @@
-import { Layers, Scissors, Box, Info } from 'lucide-react';
+import { Stack as Layers, Scissors, Cube as Box, Info } from '@phosphor-icons/react';
 import { Card } from '@/components/ui/card';
 import { InlineEdit } from '../ui/InlineEdit';
 import { parseSafeNumber, safeToFixed } from '@/lib/utils';

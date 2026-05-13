@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Play, CheckSquare, AlertTriangle } from 'lucide-react';
+import { Play, CheckSquare, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

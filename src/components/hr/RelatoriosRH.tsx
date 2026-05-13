@@ -1,10 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { HubTabsList } from '@/components/layout/HubTabs';
-import {
-  TrendingUp, AlertTriangle, DollarSign, AlarmClock,
-  Activity, Target, Repeat, Loader2,
-} from 'lucide-react';
+import { TrendUp as TrendingUp, Warning as AlertTriangle, CurrencyDollar as DollarSign, Alarm as AlarmClock, Pulse as Activity, Target, Repeat, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 
 const HeadcountReport = lazy(() => import('@/pages/HeadcountReport'));

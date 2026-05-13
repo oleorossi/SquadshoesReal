@@ -1,7 +1,7 @@
 import { useLocation, Link } from "react-router-dom";
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Home, LogIn, Search, AlertCircle } from "lucide-react";
+import { House as Home, SignIn as LogIn, MagnifyingGlass as Search, WarningCircle as AlertCircle } from '@phosphor-icons/react';
 
 const NotFound = () => {
   const location = useLocation();

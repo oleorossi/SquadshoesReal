@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { BarChart3, TrendingUp, Clock, AlertTriangle, Factory, Package, CheckCircle2, XCircle } from 'lucide-react';
+import { ChartBar as BarChart3, TrendUp as TrendingUp, Clock, Warning as AlertTriangle, Factory, Package, CheckCircle as CheckCircle2, XCircle } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useOrders } from '@/hooks/useOrders';

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Truck, Package, MapPin, Phone, Receipt } from 'lucide-react';
+import { Truck, Package, MapPin, Phone, Receipt } from '@phosphor-icons/react';
 import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { SignatureFooter } from './worksheet/SignatureFooter';
@@ -94,7 +94,7 @@ export const ExpedicaoWorkSheet = ({ group, date }: Props) => {
 
   return (
     <div
-      className="w-[210mm] p-[8mm] bg-white border border-slate-300 shadow-none print:shadow-none print:border-0 m-auto flex flex-col gap-0"
+      className="w-[210mm] p-[8mm] print:w-full print:p-0 bg-white border border-slate-300 shadow-none print:shadow-none print:border-0 m-auto flex flex-col gap-0"
       style={{ boxSizing: 'border-box', fontFamily: "'Helvetica Neue', Arial, sans-serif" }}
     >
       <WorksheetHeader
@@ -149,8 +149,8 @@ export const ExpedicaoWorkSheet = ({ group, date }: Props) => {
       />
 
       {/* Resumo embalagem */}
-      <div className="keep-together mb-2 border-2 border-emerald-300 rounded-lg p-2 bg-emerald-50">
-        <div className="flex items-center justify-between gap-3 mb-2">
+      <div className="keep-together mb-1.5 border-2 border-emerald-300 rounded-lg p-1.5 bg-emerald-50">
+        <div className="flex items-center justify-between gap-3 mb-1.5">
           <div className="flex items-center gap-2">
             <Package className="h-4 w-4 text-emerald-700" />
             <span className="text-xs font-black text-emerald-900 uppercase tracking-wide">Embalagem (caixas coletivas)</span>
@@ -257,7 +257,7 @@ export const ExpedicaoWorkSheet = ({ group, date }: Props) => {
       </div>
 
       {/* Checklist final de expedição */}
-      <div className="mt-2 border border-emerald-300 rounded p-2 bg-emerald-50">
+      <div className="mt-1.5 border border-emerald-300 rounded p-1.5 bg-emerald-50">
         <p className="text-[9px] font-bold text-emerald-700 uppercase mb-1">Checklist final</p>
         <div className="flex items-center justify-between text-[10px] flex-wrap gap-2">
           <label className="flex items-center gap-1">
@@ -279,7 +279,7 @@ export const ExpedicaoWorkSheet = ({ group, date }: Props) => {
         </div>
       </div>
 
-      <div className="mt-3">
+      <div className="mt-2">
         <SignatureFooter labels={['Conferente', 'Embalagem', 'Transportadora']} showTime={false} />
       </div>
     </div>

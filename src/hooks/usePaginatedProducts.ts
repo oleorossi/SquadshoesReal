@@ -6,6 +6,7 @@ export interface PaginatedProductsParams {
   groupId?: string;
   supplierId?: string;
   status?: string;
+  category?: string;
   page?: number;
   limit?: number;
 }
@@ -18,10 +19,10 @@ export interface PaginatedResult<T> {
 }
 
 export function usePaginatedProducts(params: PaginatedProductsParams = {}) {
-  const { search = '', groupId = 'all', supplierId = 'all', status = 'all', page = 1, limit = 12 } = params;
+  const { search = '', groupId = 'all', supplierId = 'all', status = 'all', category = 'all', page = 1, limit = 12 } = params;
 
   return useQuery({
-    queryKey: ['products', 'paginated', search, groupId, supplierId, status, page, limit],
+    queryKey: ['products', 'paginated', search, groupId, supplierId, status, category, page, limit],
     queryFn: async () => {
       // Fetch products and in-production quantities in parallel
       const [productsResult, inProdResult] = await Promise.all([
@@ -71,6 +72,14 @@ export function usePaginatedProducts(params: PaginatedProductsParams = {}) {
         } else {
           filtered = filtered.filter(p => p.group_id === groupId);
         }
+      }
+
+      // 3b. Category (fallback quando o defaultGroupName do chip não casa com nenhum
+      // grupo do DB — ex.: chips "Cabedal", "Forro", "Químicos" não têm grupo com
+      // mesmo nome, mas existem produtos com products.category = "Cabedal" etc.)
+      if (category && category !== 'all') {
+        const cat = category.toLowerCase();
+        filtered = filtered.filter((p: any) => (p.category || '').toLowerCase() === cat);
       }
 
       // 4. Supplier

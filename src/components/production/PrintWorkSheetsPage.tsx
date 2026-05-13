@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { Printer, ArrowLeft, Layers } from 'lucide-react';
+import { Printer, ArrowLeft, Stack as Layers } from '@phosphor-icons/react';
 import OperatorWorkSheet from '@/components/production/OperatorWorkSheet';
 import { PalmilhaWorkSheet, type PalmilhaGroup } from '@/components/production/PalmilhaWorkSheet';
 import { SilkMontageWorkSheet, type SoleSilkGroup, type SilkColorGroup, type GroupedSector } from '@/components/production/SilkMontageWorkSheet';
@@ -14,24 +14,118 @@ import { ManagementReport, type ReportSaleOrder, type ReportOrder, type ReportSt
 const printStyles = `
   @page {
     size: A4 portrait;
-    margin: 0;
+    /* BUG ANTIGO: margin: 0 fazia o conteúdo (w-[210mm]) colar nas bordas
+       absolutas do A4. Quase nenhuma impressora consegue imprimir até a borda
+       física (têm ~4-7mm de área não-imprimível), então o lado direito das
+       tabelas (e o pé da página) saía cortado. FIX: 8mm de margem segura
+       em todos os lados — área imprimível resultante = 194mm × 281mm. */
+    margin: 8mm;
   }
   @media print {
-    /* Reset visibility — só mostra a print-area */
+    /* BUG ANTIGO 1: usávamos position:absolute na print-area pra tirar o app
+       chrome (sidebar/header) do caminho. Mas position:absolute remove o
+       elemento do fluxo de paginação — o navegador só renderizava a primeira
+       página e ignorava .page-break dos filhos.
+       FIX: deixar print-area no fluxo natural (sem position).
+
+       BUG ANTIGO 2: PDF saía em BRANCO (todas as páginas) mesmo com
+       print-area visível. Causa: AppLayout envolve a página em
+       <main class="flex-1 ... overflow-auto"> dentro de wrappers com
+       min-h-screen. Em print:
+         - main = flex-1 em min-h-screen → altura ≈ viewport
+         - main tem overflow-auto → tudo além da altura computada vai pra
+           área de scroll que NÃO é impressa
+         - AppLayout só ativa print:overflow-visible quando o pai passa
+           printMode={true} (App.tsx:432 não faz)
+       FIX: resetar agressivamente overflow / max-width / max-height /
+       min-height em todos os elementos durante print, e zerar margin/padding
+       /flex/transform nos ancestrais conhecidos. Sem isso só a primeira tela
+       de conteúdo imprime — o resto fica fantasma na área de scroll. */
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      background: white !important;
+      height: auto !important;
+      min-height: 0 !important;
+      width: auto !important;
+      overflow: visible !important;
+    }
+
+    /* Reset universal: nenhum elemento pode clipar ou constrangir dimensões
+       em print. Destrava overflow-auto do <main>, min-h-screen dos wrappers,
+       max-w-[1600px] da main, etc. — sem alterar estrutura da AppLayout. */
+    body * {
+      overflow: visible !important;
+      max-width: none !important;
+      max-height: none !important;
+      min-height: 0 !important;
+    }
+
+    /* Em ancestrais conhecidos da print-area (AppLayout: wrapper externo,
+       main wrapper, main, animate-in), zerar padding/margin/flex/transform
+       pra não empurrar a print-area pra direita/baixo nem aplicar animações
+       que afetam o snapshot do print. */
+    body > div,
+    body > div > div,
+    main,
+    main > div {
+      margin: 0 !important;
+      padding: 0 !important;
+      width: auto !important;
+      height: auto !important;
+      flex: none !important;
+      transform: none !important;
+      animation: none !important;
+      position: static !important;
+    }
+
+    /* Esconde chrome do app. Inclui o breadcrumb sticky do AppLayout que
+       não tem .no-print nem é <header> mas é "hidden md:flex sticky top-0 z-20". */
+    aside, header, .no-print,
+    [class*="sticky"][class*="top-0"][class*="z-20"] {
+      display: none !important;
+    }
+
+    /* Esconde o resto via visibility (mantém layout pra não quebrar refs)
+       e só re-ativa visibilidade no que está dentro da print-area */
     body * { visibility: hidden; }
     .print-area, .print-area * { visibility: visible; }
     .print-area {
-      position: absolute;
-      left: 0;
-      top: 0;
       width: 100%;
+      margin: 0;
+      padding: 0;
     }
-    .no-print { display: none !important; }
 
-    /* Quebras de página */
+    /* Cada ficha tem w-[210mm] p-[8mm] no <div> raiz (tamanho real pra
+       preview em tela). Em print, o ajuste pra área imprimível é feito via
+       print:w-full print:p-0 direto no className de cada componente
+       (PalmilhaWorkSheet, SilkMontageWorkSheet, SolagemWorkSheet,
+       ExpedicaoWorkSheet, ManagementReport, OperatorWorkSheet). Tentamos
+       um override CSS global aqui antes (.print-area .page-break > div) mas
+       em conjunto com flex+mt-auto da ManagementReport o resultado saía em
+       branco — modifier Tailwind por componente é mais previsível. */
+
+    /* Tabelas nunca devem estourar o container — quebra texto se preciso
+       (evita que célula com texto longo empurre a coluna pra fora). */
+    .print-area table {
+      max-width: 100% !important;
+      table-layout: fixed !important;
+    }
+    .print-area th, .print-area td {
+      overflow: hidden !important;
+      word-wrap: break-word !important;
+      word-break: break-word !important;
+    }
+
+    /* Quebras de página entre setores/grupos */
     .page-break {
       page-break-after: always;
       break-after: page;
+    }
+    /* Última página não precisa do break extra (evita página em branco final) */
+    .page-break:last-child {
+      page-break-after: auto;
+      break-after: auto;
     }
     .store-divider {
       page-break-before: always;
@@ -57,7 +151,7 @@ const printStyles = `
       line-height: 1.25;
     }
 
-    /* Reduz padding interno de containers de print pra evitar desperdício */
+    /* Containers internos da print-area podem quebrar livremente */
     .print-area > div {
       page-break-inside: auto;
     }
@@ -71,7 +165,11 @@ interface PrintWorkSheetsPageProps {
   printAll?: boolean;
 }
 
-const SECTORS = ['Corte Palmilha', 'Corte Forração', 'Costura', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição', 'Relatório Gerencial'] as const;
+// 'Corte Cabedal' adicionado em 2026-05-12 como 3ª sub-etapa de Corte
+// (ao lado de Corte Palmilha + Corte Forração). Ficha de operador específica
+// vem em Phase 2 — por ora aceita seleção mas reusa o template do SilkMontage
+// para sole+color sectors (vide SOLE_COLOR_GROUPED_SECTORS abaixo).
+const SECTORS = ['Corte Palmilha', 'Corte Forração', 'Corte Cabedal', 'Costura', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição', 'Relatório Gerencial'] as const;
 
 // ── Group orders by reference_id + color ────────────────────────────────────
 function groupOrdersByRefColor(orders: any[]): Array<{
@@ -147,7 +245,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
       if (saleOrderIdsSet.size === 0) return [];
       const { data, error } = await (supabase as any)
         .from('order_costs')
-        .select('id, sale_order_id, sale_order_item_id, reference_id, color, quantity, material_cost, labor_cost, overhead_cost, total_cost, revenue, margin, margin_pct')
+        .select('id, sale_order_id, sale_order_item_id, reference_id, color, quantity, material_cost, labor_cost, overhead_cost, packaging_cost, total_cost, revenue, margin, margin_pct')
         .in('sale_order_id', Array.from(saleOrderIdsSet));
       if (error) throw error;
       return data || [];
@@ -207,7 +305,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('sale_orders')
-        .select('id, transport_company_id, transport_companies:transport_company_id(name)')
+        .select('id, transport_company_id, transport_companies:transport_company_id(nome)')
         .in('id', saleOrderIds);
       if (error) throw error;
       return data || [];
@@ -474,7 +572,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
   // (Corte Palmilha = só por solado; Solagem = por cor de solado;
   //  Expedição = por cliente; Colagem ainda usa Ref+Cor.)
   const SOLE_COLOR_GROUPED_SECTORS: ReadonlyArray<GroupedSector> = [
-    'Silk', 'Montagem', 'Corte Forração', 'Costura', 'Aviamento', 'Acabamento',
+    'Silk', 'Montagem', 'Corte Forração', 'Corte Cabedal', 'Costura', 'Aviamento', 'Acabamento',
   ];
 
   // Lookup: variantes de cor por ref (pra foto + fallback "Preto")
@@ -532,6 +630,25 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
         if (liningFlag) {
           alerts.push({ text: 'Modelo com fachete — duplicar corte de forro', variant: 'warning' });
         }
+        // Sequência de tiras na ordem da ficha técnica (TIRA 1, TIRA 2, ...).
+        // Renderizada no Aviamento pra o operador montar na ordem certa.
+        // Stable sort por id (string) pra garantir consistência.
+        const strapColorsRaw = Array.isArray((order as any).strap_colors)
+          ? ((order as any).strap_colors as Array<any>)
+          : [];
+        const strapsOrdered = [...strapColorsRaw].sort((a: any, b: any) => {
+          const ka = parseInt(a?.id, 10);
+          const kb = parseInt(b?.id, 10);
+          if (isFinite(ka) && isFinite(kb)) return ka - kb;
+          return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
+        });
+        const strapsAsComponents = strapsOrdered.map((s: any) => ({
+          name: s?.label || 'TIRA',
+          material: s?.group_name || '',
+          qty: undefined,
+          color: s?.color || '—',
+        }));
+
         colorMap.set(colorName, {
           color: colorName,
           colorHex,
@@ -543,6 +660,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
           alerts: alerts.length > 0 ? alerts : undefined,
           opNumbers: [],
           silk,
+          components: strapsAsComponents.length > 0 ? strapsAsComponents : undefined,
         });
       }
 
@@ -637,7 +755,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
     }
     const transportByOrder = new Map<string, string | null>();
     for (const t of saleOrdersTransport as any[]) {
-      transportByOrder.set(t.id, (t.transport_companies as any)?.name || null);
+      transportByOrder.set(t.id, (t.transport_companies as any)?.nome || null);
     }
 
     // Agrupa por client_id (fallback: sale_order_id pra avulsos)
@@ -787,6 +905,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
           material_cost: Number(cost.material_cost) || 0,
           labor_cost: Number(cost.labor_cost) || 0,
           overhead_cost: Number(cost.overhead_cost) || 0,
+          packaging_cost: Number(cost.packaging_cost) || 0,
           total_cost: Number(cost.total_cost) || 0,
           revenue: Number(cost.revenue) || 0,
           margin: Number(cost.margin) || 0,
@@ -894,10 +1013,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
         {/* ── Sole+Color sectors (Silk, Corte Forração, Costura, Aviamento, Montagem, Acabamento) ── */}
         {(() => {
           if (!silkMontageGroups || silkMontageGroups.length === 0) return null;
-          // Em printAll, renderiza os 6 setores em sequência (ordem de fluxo de produção).
+          // Em printAll, renderiza os 7 setores sole+cor em sequência (ordem de fluxo).
+          // 'Corte Cabedal' fica logo após 'Corte Forração' — ambas são sub-etapas
+          // de Corte e podem ser executadas em paralelo.
           // Em modo normal, só o sector selecionado.
           const sectorsToRender: GroupedSector[] = printAll
-            ? ['Corte Forração', 'Silk', 'Costura', 'Aviamento', 'Montagem', 'Acabamento']
+            ? ['Corte Forração', 'Corte Cabedal', 'Silk', 'Costura', 'Aviamento', 'Montagem', 'Acabamento']
             : SOLE_COLOR_GROUPED_SECTORS.includes(selectedSector as GroupedSector)
               ? [selectedSector as GroupedSector]
               : [];
@@ -956,6 +1077,18 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
           };
           const silk = getOrderSilk(representative);
           const { soleColor, insoleColor, insoleHasLining, insoleReadyMade, hasStraps, mesaCapacity } = getOrderColors(representative);
+          // Sequência de tiras (TIRA 1, TIRA 2, ...) na ordem da ficha técnica.
+          // Cada OP do grupo Ref+Cor pode ter tiras diferentes — pra Colagem
+          // basta a do representative (todas as OPs do grupo têm a mesma ref+cor).
+          const strapsRaw = Array.isArray((representative as any).strap_colors)
+            ? ((representative as any).strap_colors as Array<any>)
+            : [];
+          const strapColorsOrdered = [...strapsRaw].sort((a: any, b: any) => {
+            const ka = parseInt(a?.id, 10);
+            const kb = parseInt(b?.id, 10);
+            if (isFinite(ka) && isFinite(kb)) return ka - kb;
+            return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
+          });
           return (
             <div key={`colagem-${representative.reference_id}::${representative.color}`} className="page-break">
               <OperatorWorkSheet
@@ -967,6 +1100,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
                 insoleHasLining={insoleHasLining}
                 insoleReadyMade={insoleReadyMade}
                 hasStraps={hasStraps}
+                strapColors={strapColorsOrdered}
                 mesaCapacity={mesaCapacity}
                 sectorCapacityPerDay={getSheetSectorCapacity(representative.reference_id, 'Colagem')}
                 opNumbers={group.opNumbers}

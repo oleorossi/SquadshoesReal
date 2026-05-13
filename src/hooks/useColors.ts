@@ -128,7 +128,8 @@ export function useDeleteColor() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const colorCols = ['cor_predominante_id', 'cor_palmilha_id', 'cor_tiras_id', 'cor_solado_id'] as const;
+      // cor_palmilha_id e cor_tiras_id foram dropadas em 2026-05 (dead fields).
+      const colorCols = ['cor_predominante_id', 'cor_solado_id'] as const;
       for (const col of colorCols) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { count, error: chkErr } = await (supabase.from('technical_sheets') as any)

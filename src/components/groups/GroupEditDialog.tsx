@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Pencil, Palette, Save, Package, Plus, Search, Footprints, Ruler, Loader2, Box as BoxIcon, Layers, FlaskConical } from 'lucide-react';
+import { PencilSimple as Pencil, Palette, FloppyDisk as Save, Package, Plus, MagnifyingGlass as Search, Footprints, Ruler, CircleNotch as Loader2, Cube as BoxIcon, Flask as FlaskConical } from '@phosphor-icons/react';
 import { ProductGroup, useUpdateGroup } from '@/hooks/useGroups';
 import { useProducts } from '@/hooks/useProducts';
 import GroupColorsManager from '@/components/groups/GroupColorsManager';
@@ -9,6 +9,8 @@ import { useArtisanalRecipes, useCreateArtisanalRecipe, useUpdateArtisanalRecipe
 import { useContractors } from '@/hooks/useContractors';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { MasterVariantDialog } from '@/components/inventory/MasterVariantDialog';
+import { useDeleteProduct } from '@/hooks/useProducts';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -578,14 +580,10 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
   const [boxTypeId, setBoxTypeId] = useState<string>((group as any).box_type_id || '__none__');
   const [boxTypeMasterId, setBoxTypeMasterId] = useState<string>((group as any).box_type_master_id || '__none__');
   const [boxTypeColmeiaId, setBoxTypeColmeiaId] = useState<string>((group as any).box_type_colmeia_id || '__none__');
-  const [sharedSpecs, setSharedSpecs] = useState<boolean>(group.shared_specs ?? false);
   const [consumptionUnit, setConsumptionUnit] = useState<string>(group.consumption_unit || '__none__');
-  const [silkUrl, setSilkUrl] = useState<string>((group as any).silk_url || '');
-  const [unitWeightKg, setUnitWeightKg] = useState<number>((group as any).unit_weight_kg || 0);
   const [unitPrice, setUnitPrice] = useState<number>(0);
   const [location, setLocation] = useState<string>('');
   const [saving, setSaving] = useState(false);
-  const [uploadingSilk, setUploadingSilk] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [editProductName, setEditProductName] = useState('');
 
@@ -598,7 +596,9 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
   const [artNotes, setArtNotes] = useState('');
   const [existingRecipeId, setExistingRecipeId] = useState<string | null>(null);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [variantsDialogOpen, setVariantsDialogOpen] = useState(false);
   const queryClient = useQueryClient();
+  const deleteProduct = useDeleteProduct();
 
   const { data: boxTypes = [] } = useQuery({
     queryKey: ['box_types_active'],
@@ -622,10 +622,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
     setBoxTypeId((group as any).box_type_id || '__none__');
     setBoxTypeMasterId((group as any).box_type_master_id || '__none__');
     setBoxTypeColmeiaId((group as any).box_type_colmeia_id || '__none__');
-    setSharedSpecs(group.shared_specs ?? false);
     setConsumptionUnit(group.consumption_unit || '__none__');
-    setSilkUrl((group as any).silk_url || '');
-    setUnitWeightKg((group as any).unit_weight_kg || 0);
 
     // If all products in group share the same price/location, set them as defaults
     if (products.length > 0) {
@@ -665,33 +662,6 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
     }
   }, [group.id, group.name, recipes, allProducts]);
 
-  const handleSilkUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      toast.error('Selecione uma imagem.');
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('Imagem deve ter no máximo 5MB.');
-      return;
-    }
-    setUploadingSilk(true);
-    try {
-      const ext = file.name.split('.').pop();
-      const path = `group-${group.id}/silk.${ext}`;
-      const { error } = await supabase.storage.from('client-logos').upload(path, file, { upsert: true });
-      if (error) throw error;
-      const { data: { publicUrl } } = supabase.storage.from('client-logos').getPublicUrl(path);
-      setSilkUrl(publicUrl);
-      toast.success('Silk enviada!');
-    } catch (err: any) {
-      toast.error(`Erro: ${err.message}`);
-    } finally {
-      setUploadingSilk(false);
-    }
-  };
-
   const handleSave = async () => {
     if (!name.trim()) {
       toast.error('Nome do grupo é obrigatório');
@@ -711,22 +681,18 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
           box_type_id: boxTypeId === '__none__' ? null : boxTypeId,
           box_type_master_id: boxTypeMasterId === '__none__' ? null : boxTypeMasterId,
           box_type_colmeia_id: boxTypeColmeiaId === '__none__' ? null : boxTypeColmeiaId,
-          shared_specs: sharedSpecs,
           consumption_unit: finalUnit,
-          silk_url: silkUrl || null,
-          unit_weight_kg: unitWeightKg,
         } as any,
       });
 
       // Propaga a unidade de consumo e outras specs para todos os itens do grupo
       const prevUnit = group.consumption_unit ?? null;
       const unitChanged = finalUnit !== prevUnit;
-      
+
       if (products.length > 0) {
         const updateData: any = {};
-        if (unitChanged || sharedSpecs) updateData.consumption_unit = finalUnit;
-        if (sharedSpecs && finalUnit) updateData.unit = finalUnit;
-        
+        if (unitChanged) updateData.consumption_unit = finalUnit;
+
         // Mass update price and location if provided
         if (unitPrice > 0) updateData.unit_price = unitPrice;
         if (location.trim()) updateData.location = location.trim();
@@ -802,7 +768,20 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-5xl max-h-[95vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">Editar grupo de material</DialogTitle>
+            <DialogTitle className="flex items-center justify-between gap-2">
+              <span>Editar grupo de material</span>
+              {products.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 mr-6"
+                  onClick={() => setVariantsDialogOpen(true)}
+                >
+                  <Palette className="h-3.5 w-3.5" />
+                  Gerenciar variantes de cor
+                </Button>
+              )}
+            </DialogTitle>
           </DialogHeader>
 
           <Tabs defaultValue={showYieldTab ? "specs" : "general"} className="mt-2">
@@ -1199,6 +1178,19 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
         groupId={group.id}
         groupName={group.name}
       />
+
+      {/* Gerenciador de variantes de cor — pra incluir/excluir/editar variantes
+          do grupo direto daqui, sem precisar ir até a tabela do estoque. */}
+      {variantsDialogOpen && (
+        <MasterVariantDialog
+          open={variantsDialogOpen}
+          onOpenChange={setVariantsDialogOpen}
+          baseName={group.name}
+          variants={products}
+          onEditVariant={() => { /* no-op: o usuário já está no GroupEditDialog */ }}
+          onDeleteVariant={(id: string) => { deleteProduct.mutate(id); }}
+        />
+      )}
     </>
   );
 }

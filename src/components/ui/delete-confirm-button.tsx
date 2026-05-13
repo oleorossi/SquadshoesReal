@@ -4,7 +4,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import { Trash2 } from 'lucide-react';
+import { Trash as Trash2 } from '@phosphor-icons/react';
 
 interface DeleteConfirmButtonProps {
   onConfirm: () => void;

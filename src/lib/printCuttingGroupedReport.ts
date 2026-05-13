@@ -94,7 +94,7 @@ function buildColorGradeTable(
 
   return `
     <h2 style="font-size:14px;margin:6px 0 4px;border-bottom:2px solid #333;padding-bottom:2px;">${emoji} ${title}</h2>
-    <table style="width:100%;border-collapse:collapse;margin-bottom:10px;">
+    <table style="width:100%;border-collapse:collapse;margin-bottom:4px;">
       <thead><tr style="background:#e8e8d0;">
         <th style="border:1px solid #999;padding:3px 6px;text-align:left;font-size:10px;">Cor</th>
         <th style="border:1px solid #999;padding:3px 6px;text-align:left;font-size:9px;">Lojas</th>
@@ -150,7 +150,7 @@ function buildSummedGradeTable(
 
   return `
     <h2 style="font-size:14px;margin:6px 0 4px;border-bottom:2px solid #333;padding-bottom:2px;">${emoji} ${title}</h2>
-    <table style="width:100%;border-collapse:collapse;margin-bottom:10px;">
+    <table style="width:100%;border-collapse:collapse;margin-bottom:4px;">
       <thead><tr style="background:#e8e8d0;">
         <th style="border:1px solid #999;padding:3px 6px;text-align:left;font-size:10px;">Agrupamento</th>
         <th style="border:1px solid #999;padding:3px 6px;text-align:left;font-size:9px;">OPs</th>
@@ -261,7 +261,7 @@ function groupOrdersByColor(orders: OrderData[], saleOrders?: SaleOrderData[]): 
 
   // Cabeçalho compartilhado (renderizado em cada ficha)
   const buildSheetHeader = (sheetTitle: string, sheetEmoji: string, opCount: number, pairCount: number, extra?: string) => `
-    <div style="border-bottom:3px solid #111;padding-bottom:4px;margin-bottom:6px;">
+    <div style="border-bottom:3px solid #111;padding-bottom:4px;margin-bottom:4px;">
       <h1 style="font-size:18px;margin:0 0 2px;">${sheetEmoji} Ficha de Corte — ${sheetTitle}</h1>
       <p style="font-size:10px;color:#666;margin:0;">
         Gerado em ${new Date().toLocaleString('pt-BR')} · ${opCount} OP(s) · ${pairCount} pares${extra ? ' · ' + extra : ''}
@@ -277,7 +277,7 @@ function groupOrdersByColor(orders: OrderData[], saleOrders?: SaleOrderData[]): 
     cabedalHtml += buildColorGradeTable('Cabedal — por Cor', '👟', cabedal.items, cabedal.activeSizes, cabedal.grandTotal);
 
     // Apêndice: grade individual por solado/referência/cor (auditoria)
-    cabedalHtml += '<div style="margin-top:10px;border-top:2px dashed #999;padding-top:6px;"></div>';
+    cabedalHtml += '<div style="margin-top:4px;border-top:2px dashed #999;padding-top:6px;"></div>';
     cabedalHtml += '<h2 style="font-size:13px;margin:0 0 4px;">📐 Detalhamento por Solado / Referência / Cor</h2>';
 
     const bySole = new Map<string, Map<string, { ref: ReferenceData; orders: OrderData[] }>>();
@@ -294,7 +294,7 @@ function groupOrdersByColor(orders: OrderData[], saleOrders?: SaleOrderData[]): 
     for (const [soleType, refMap] of bySole) {
       const soleBorderColor = soleType === 'Solado Preto' ? '#333' : '#c9a84c';
       const soleEmoji = soleType === 'Solado Preto' ? '⬛' : '🟨';
-      cabedalHtml += '<div style="margin-top:6px;border-top:2px solid ' + soleBorderColor + ';padding-top:3px;"></div>';
+      cabedalHtml += '<div style="margin-top:4px;border-top:2px solid ' + soleBorderColor + ';padding-top:3px;"></div>';
       cabedalHtml += '<h3 style="font-size:12px;margin:0 0 3px;font-weight:800;">' + soleEmoji + ' ' + escapeHtml(soleType) + '</h3>';
 
       for (const [, { ref, orders: refOrders }] of refMap) {
@@ -326,7 +326,7 @@ function groupOrdersByColor(orders: OrderData[], saleOrders?: SaleOrderData[]): 
           ? ' <span style="font-size:9px;padding:1px 6px;background:#e0f2fe;border:1px solid #7dd3fc;border-radius:3px;color:#0369a1;font-weight:600;">🏪 ' + escapeHtml(Array.from(refClientNames).join(', ')) + '</span>'
           : '';
 
-        cabedalHtml += '<div style="margin-bottom:8px;page-break-inside:avoid;">';
+        cabedalHtml += '<div style="margin-bottom:5px;page-break-inside:avoid;">';
         cabedalHtml += '<h4 style="font-size:11px;margin:4px 0 2px;font-weight:700;">' + escapeHtml(refCode) + ' — ' + escapeHtml(refName) + clientLabel + '</h4>';
         cabedalHtml += '<table style="width:100%;border-collapse:collapse;">';
         cabedalHtml += '<thead><tr style="background:#e8e8d0;">';

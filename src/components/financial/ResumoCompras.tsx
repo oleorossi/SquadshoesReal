@@ -1,7 +1,7 @@
 import React from 'react';
 import { ResumoCalculoCompras } from '@/services/planejamento';
 import { Card, CardContent } from '@/components/ui/card';
-import { AlertTriangle, TrendingUp, Package } from 'lucide-react';
+import { Warning as AlertTriangle, TrendUp as TrendingUp, Package } from '@phosphor-icons/react';
 
 interface ResumoComprasProps {
   resumo: ResumoCalculoCompras;

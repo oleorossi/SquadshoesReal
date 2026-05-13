@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { FileText, Loader2, Users2, Clock, TrendingUp, Search } from 'lucide-react';
+import { FileText, CircleNotch as Loader2, Users as Users2, Clock, TrendUp as TrendingUp, MagnifyingGlass as Search } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';

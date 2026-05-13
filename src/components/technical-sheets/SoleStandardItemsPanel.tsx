@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
- import { Plus, Trash2, Save, Loader2, Layers, Wand2, Sparkles, Search, X } from 'lucide-react';
+ import { Plus, Trash as Trash2, FloppyDisk as Save, CircleNotch as Loader2, Stack as Layers, MagicWand as Wand2, Sparkle as Sparkles, MagnifyingGlass as Search, X } from '@phosphor-icons/react';
  import { Button } from '@/components/ui/button';
  import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
@@ -487,8 +487,15 @@ export function SoleStandardItemsPanel({ soleProductId }: Props) {
                     </TableHeader>
                     <TableBody>
                       <TableRow>
-                        <TableCell className="text-[11px] text-muted-foreground font-mono">
-                          {draft.unit}/par
+                        <TableCell
+                          className="text-[11px] text-muted-foreground font-mono"
+                          title={
+                            draft.unit === 'par'
+                              ? 'Pares de solado consumidos por par de sapato (1:1 para solados normais)'
+                              : `Quantidade em ${draft.unit} consumida por par de sapato`
+                          }
+                        >
+                          {draft.unit === 'par' ? 'par/par sap.' : `${draft.unit}/par`}
                         </TableCell>
                         {sizes.map((s) => (
                           <TableCell key={s} className="p-1 text-center">

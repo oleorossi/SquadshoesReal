@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Bell, AlertTriangle, Loader2 } from 'lucide-react';
+import { Bell, Warning as AlertTriangle, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { apiService } from '@/lib/apiService';
@@ -14,15 +14,16 @@ export function NotificationsTab() {
     queryFn: () => apiService.getDashboardNotifications(),
   });
 
+  const productsArr = Array.isArray(products) ? products : [];
   const zeroStockItems = useMemo(() =>
-    products.filter(p => p.quantity === 0 && p.active),
-    [products]
+    productsArr.filter(p => p.quantity === 0 && p.active),
+    [productsArr]
   );
 
   // Exclude zero-stock items to avoid double-counting (they appear in zeroStockItems)
   const lowStockItems = useMemo(() =>
-    products.filter(p => p.quantity > 0 && p.quantity <= p.min_stock && p.active).sort((a, b) => a.quantity - b.quantity),
-    [products]
+    productsArr.filter(p => p.quantity > 0 && p.quantity <= p.min_stock && p.active).sort((a, b) => a.quantity - b.quantity),
+    [productsArr]
   );
 
   if (isLoading) {

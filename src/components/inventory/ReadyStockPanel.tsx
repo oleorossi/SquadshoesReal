@@ -1,9 +1,6 @@
 import { useState, useMemo } from 'react';
 import { escapeHtml } from '@/lib/htmlUtils';
-import {
-  Plus, Trash2, Loader2, Search, Package, ShoppingBag, Pencil,
-  MapPin, StickyNote, FileDown, Tag, BoxIcon, Printer, ImagePlus
-} from 'lucide-react';
+import { Plus, Trash as Trash2, CircleNotch as Loader2, MagnifyingGlass as Search, Package, ShoppingBag, PencilSimple as Pencil, MapPin, Note as StickyNote, FileArrowDown as FileDown, Tag, Package as BoxIcon, Printer, ImageSquare as ImagePlus } from '@phosphor-icons/react';
 import { printBoxLabels } from '@/lib/printLabels';
 import { buildIndividualLabelsHtml } from '@/lib/printLabels';
 import { printHtml, writeRawPrintWindow, openPrintWindow } from '@/lib/printOrder';

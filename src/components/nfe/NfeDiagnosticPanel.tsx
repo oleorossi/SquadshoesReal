@@ -2,10 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import {
-  Activity, ShieldCheck, ShieldAlert, FileCheck, AlertTriangle, Clock,
-  CheckCircle2, XCircle, Wrench,
-} from 'lucide-react';
+import { Pulse as Activity, ShieldCheck, ShieldWarning as ShieldAlert, FileText as FileCheck, Warning as AlertTriangle, Clock, CheckCircle as CheckCircle2, XCircle, Wrench } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 
 type Severity = 'ok' | 'warn' | 'error' | 'pending';

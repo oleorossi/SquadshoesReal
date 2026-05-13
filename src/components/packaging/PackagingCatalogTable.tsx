@@ -3,7 +3,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Search, Pencil, Trash2 } from 'lucide-react';
+import { Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2 } from '@phosphor-icons/react';
 import { usePackagingCatalog, PackagingCatalogItem } from '@/hooks/usePackaging';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';

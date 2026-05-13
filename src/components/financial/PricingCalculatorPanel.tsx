@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Calculator, DollarSign, Percent, TrendingUp, AlertTriangle, BarChart3, PieChart, Truck, UserCheck, Building2, ArrowRightLeft } from 'lucide-react';
+import { Calculator, CurrencyDollar as DollarSign, Percent, TrendUp as TrendingUp, Warning as AlertTriangle, ChartBar as BarChart3, ChartPie as PieChart, Truck, UserCheck, Buildings as Building2, ArrowsLeftRight as ArrowRightLeft } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Tooltip as UiTooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { PieChart as RePieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, CartesianGrid, Legend } from 'recharts';

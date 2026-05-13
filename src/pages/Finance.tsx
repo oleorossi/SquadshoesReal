@@ -3,11 +3,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import {
-  DollarSign, TrendingUp, TrendingDown, AlertTriangle, Plus, Pencil, Trash2,
-  CheckCircle, Clock, Loader2, FileText, Building2, BarChart3, Calculator,
-   Landmark, FileUp, FileDown, UserCheck, Search, Percent, X,
-} from 'lucide-react';
+import { CurrencyDollar as DollarSign, TrendUp as TrendingUp, TrendDown as TrendingDown, Warning as AlertTriangle, Plus, PencilSimple as Pencil, Trash as Trash2, CheckCircle, Clock, CircleNotch as Loader2, FileText, Buildings as Building2, ChartBar as BarChart3, Calculator, Bank as Landmark, FileArrowUp as FileUp, FileArrowDown as FileDown, UserCheck, MagnifyingGlass as Search, Percent, X } from '@phosphor-icons/react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { format, parseISO, isAfter, isBefore, addDays, startOfMonth, endOfMonth, eachDayOfInterval, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -319,8 +315,12 @@ function FinancialEntriesTab() {
   const [form, setForm] = useState<any>({ entry_date: format(todayMidnight(), 'yyyy-MM-dd'), type: 'despesa', description: '', amount: 0, account_id: '', cost_center_id: '', bank_account_id: '', reference_type: 'manual', reference_id: '', collection: '', sku: '', notes: '' });
 
   const totals = useMemo(() => {
-    const rec = entries.filter((e: any) => e.type === 'receita').reduce((s: number, e: any) => s + e.amount, 0);
-    const desp = entries.filter((e: any) => e.type === 'despesa').reduce((s: number, e: any) => s + e.amount, 0);
+    // FIX M3: filtrar status cancelado/estornado antes de somar. Antes os
+    // cards mostravam totais que não batiam com DRE (que filtra por status).
+    const CANCELLED = new Set(['cancelado', 'cancelled', 'estornado']);
+    const active = entries.filter((e: any) => !CANCELLED.has(String(e.status || '').toLowerCase()));
+    const rec = active.filter((e: any) => e.type === 'receita').reduce((s: number, e: any) => s + e.amount, 0);
+    const desp = active.filter((e: any) => e.type === 'despesa').reduce((s: number, e: any) => s + e.amount, 0);
     return { receitas: rec, despesas: desp, resultado: rec - desp };
   }, [entries]);
 
@@ -453,8 +453,19 @@ function CashFlowTab() {
 
     // Pre-bucket entries / payables / receivables by date once (O(N)) so per-day
     // lookup is O(1) instead of O(N×days).
+    // FIX C2: filtra entries com reference_type de PV pra evitar double-count
+    // com accounts_receivable. Cada PV faturado cria 1 financial_entry (entry_date=hoje)
+    // E 1 AR (due_date=vencimento). Antes o chart somava ambos → receita 2× no mês.
+    // Mantém só lançamentos manuais e os de tipos não cobertos por AR/AP.
+    const AUTO_PV_REFS = new Set([
+      'sale_order', 'sale_order_factoring', 'sale_order_devolucao',
+      'sale_order_frete', 'sale_order_cancel_nfe',
+    ]);
+    const cancelledStatuses = new Set(['cancelado', 'cancelled', 'estornado']);
     const entriesByDay = new Map<string, { receitas: number; despesas: number }>();
     for (const e of entries as any[]) {
+      if (cancelledStatuses.has(String(e.status || '').toLowerCase())) continue;
+      if (AUTO_PV_REFS.has(String(e.reference_type || ''))) continue;
       const key = e.entry_date;
       const bucket = entriesByDay.get(key) || { receitas: 0, despesas: 0 };
       if (e.type === 'receita') bucket.receitas += Number(e.amount || 0);

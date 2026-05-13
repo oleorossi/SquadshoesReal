@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { NumberInput } from '@/components/ui/number-input';
 import { Badge } from '@/components/ui/badge';
-import { X, Plus } from 'lucide-react';
+import { X, Plus } from '@phosphor-icons/react';
 import { ProductFormData, UNITS, LOCATIONS } from '@/types/inventory';
 import { deriveCategoryFromGroup } from '@/lib/categoryFromGroup';
 import { useGroups } from '@/hooks/useGroups';
@@ -167,10 +167,7 @@ export function BatchColorDialog({ open, onOpenChange, onSubmit }: BatchColorDia
               <NumberInput min={0} step="0.01" value={minStock} onChange={setMinStock} className="mt-1" />
             </div>
 
-            <div>
-              <Label>Estoque Máximo</Label>
-              <NumberInput min={0} step="0.01" value={maxStock} onChange={setMaxStock} className="mt-1" />
-            </div>
+            {/* Estoque Máximo removido em 2026-05 — não usado em business logic. */}
 
             <div>
               <Label>Localização</Label>

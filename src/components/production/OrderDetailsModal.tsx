@@ -1,7 +1,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Box, User, Hash, Palette, ImageIcon, Activity, Loader2 } from "lucide-react";
+import { Cube as Box, User, Hash, Palette, Image as ImageIcon, Pulse as Activity, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 

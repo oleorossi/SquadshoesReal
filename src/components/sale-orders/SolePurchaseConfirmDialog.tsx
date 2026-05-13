@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Calendar, Truck, AlertTriangle, ShoppingCart, Loader2, Package, FileText, Shield } from 'lucide-react';
+import { Calendar, Truck, Warning as AlertTriangle, ShoppingCart, CircleNotch as Loader2, Package, FileText, Shield } from '@phosphor-icons/react';
 import { SoleAvailabilityResult, SoleShortage, InsoleShortage } from '@/lib/soleAvailability';
 import { useCreatePurchaseOrder } from '@/hooks/usePurchaseOrders';
 import { toast } from 'sonner';

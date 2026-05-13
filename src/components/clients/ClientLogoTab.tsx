@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Upload, Trash2, Loader2, Image } from 'lucide-react';
+import { Upload, Trash as Trash2, CircleNotch as Loader2, Image } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';

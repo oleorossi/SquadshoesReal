@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, Info } from 'lucide-react';
+import { Warning as AlertTriangle, Info } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 
 export type AlertVariant = 'warning' | 'info';

@@ -76,16 +76,24 @@ export function useNfeEmitidas(saleOrderId?: string) {
 export function useAllNfeEmitidas(filters?: { status?: string; search?: string; company_id?: string }) {
   return useQuery({
     queryKey: ['nfe_emitidas_all', filters],
+    // staleTime=0 garante refetch ao montar — evita cache vencido depois de sync.
+    staleTime: 0,
+    refetchOnMount: 'always',
     queryFn: async () => {
       let query = supabase
         .from('nfe_emitidas')
-        .select('*, sale_orders(order_number, client_name, total)')
+        .select('*, sale_orders!nfe_emitidas_sale_order_id_fkey(order_number, client_name, total)')
         .order('created_at', { ascending: false });
       if (filters?.status) query = query.eq('status', filters.status);
       if (filters?.company_id) query = query.eq('company_id', filters.company_id);
       query = query.limit(500);
       const { data, error } = await query;
-      if (error) throw error;
+      if (error) {
+        // Log com detalhes pra DevTools — facilita debug quando lista fica vazia.
+        console.error('[useAllNfeEmitidas] error:', error);
+        throw error;
+      }
+      console.info(`[useAllNfeEmitidas] ${data?.length ?? 0} NF-es carregadas`);
       return data || [];
     },
   });
@@ -359,6 +367,38 @@ export function useCheckNfeStatus() {
       toast.success('Status da NF-e atualizado!');
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
+  });
+}
+
+// Importa NF-es emitidas direto no painel da GestaoClick pro nosso DB. Necessário
+// quando a NF foi gerada fora do nosso sistema (painel web do provedor) — sem
+// isso, ela não aparece na aba "NF-es Emitidas" e bloqueia CC-e por aqui.
+export function useSyncNfeFromProvider() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('sync-nfe-from-provider', { body: {} });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data as {
+        success: boolean;
+        pages_fetched: number;
+        total_seen: number;
+        created: number;
+        updated: number;
+        errors: Array<{ provider_id: string | null; error: string }>;
+      };
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['nfe_emitidas'] });
+      qc.invalidateQueries({ queryKey: ['nfe_emitidas_all'] });
+      const errCount = data.errors?.length || 0;
+      const msg = `${data.created} importada(s), ${data.updated} atualizada(s)`
+        + (errCount > 0 ? ` · ${errCount} erro(s)` : '');
+      if (errCount > 0) toast.warning(msg);
+      else toast.success(`Sincronização concluída: ${msg}`);
+    },
+    onError: (err: Error) => toast.error(`Erro na sincronização: ${err.message}`),
   });
 }
 

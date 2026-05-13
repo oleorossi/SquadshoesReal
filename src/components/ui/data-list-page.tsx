@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Plus, Inbox } from 'lucide-react';
+import { CircleNotch as Loader2, Plus, Tray as Inbox } from '@phosphor-icons/react';
 import { Link } from 'react-router-dom';
 
 interface Column {

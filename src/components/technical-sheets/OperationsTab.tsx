@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Pencil, Loader2, Clock, Wrench, DollarSign, Gauge, Calendar, TrendingUp, Factory } from 'lucide-react';
+import { Plus, PencilSimple as Pencil, CircleNotch as Loader2, Clock, Wrench, CurrencyDollar as DollarSign, Gauge, Calendar, TrendUp as TrendingUp, Factory } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
-import { parseSafeNumber, formatCurrency as globalFormatCurrency, safeToFixed } from '@/lib/utils';
+import { formatCurrency as globalFormatCurrency, safeToFixed } from '@/lib/utils';
 import {
   useBomOperations, useAddBomOperation, useUpdateBomOperation, useDeleteBomOperation,
   BomOperationFormData, emptyOperationForm, PRODUCTION_STAGES,
@@ -21,21 +21,21 @@ import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 const STAGE_COLORS: Record<string, string> = {
-   'Corte': 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
-   'Forração': 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+   // Sub-etapas de Corte — 3 cores diferentes pra distinguir visualmente
+   'Corte': 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300', // legacy genérico
+   'Corte Palmilha': 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
+   'Corte Forração': 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+   'Corte Cabedal':  'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+   'Forração': 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300', // legacy alias
+   'Costura': 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300',
+   'Aviamento': 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
   'Silk': 'bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300',
    'Colagem': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
-   'Montagem': 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
+   'Montagem': 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300',
+   'Solagem': 'bg-lime-100 text-lime-800 dark:bg-lime-900/30 dark:text-lime-300',
   'Acabamento': 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
    'Expedição': 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-300',
 };
-
-const DIFFICULTY_LEVELS = [
-  { value: 'facil', label: 'Fácil', color: 'text-green-600', factor: 0.85 },
-  { value: 'medio', label: 'Médio', color: 'text-amber-600', factor: 1.0 },
-  { value: 'dificil', label: 'Difícil', color: 'text-orange-600', factor: 1.2 },
-  { value: 'muito_dificil', label: 'Muito Difícil', color: 'text-red-600', factor: 1.5 },
-] as const;
 
 const DAILY_WORK_MINUTES = 480; // 8h
 
@@ -43,8 +43,11 @@ const formatCurrency = (v: any) => globalFormatCurrency(v);
 
 interface OperationsTabProps {
   sheetId: string;
+  /** @deprecated Mantido na prop pra compat com TechnicalSheets.tsx, não usado mais. */
   assemblyTimeMinutes?: number;
+  /** @deprecated idem. */
   processDifficulty?: string;
+  /** @deprecated coluna daily_capacity_pairs removida; capacidade agora é por setor. */
   dailyCapacityPairs?: number;
   leadTimeCorteDias?: number;
   leadTimeCosturaDias?: number;
@@ -71,9 +74,10 @@ interface OperationsTabProps {
 
 export function OperationsTab({
   sheetId,
-  assemblyTimeMinutes = 0,
-  processDifficulty = 'medio',
-  dailyCapacityPairs = 0,
+  // Props deprecated mantidas pra compat com TechnicalSheets.tsx; não usadas.
+  assemblyTimeMinutes: _assemblyTimeMinutes = 0,
+  processDifficulty: _processDifficulty = 'medio',
+  dailyCapacityPairs: _dailyCapacityPairs = 0,
   leadTimeCorteDias = 2,
   leadTimeCosturaDias = 3,
   leadTimeSilkDias = 1,
@@ -104,9 +108,10 @@ export function OperationsTab({
   const [editForm, setEditForm] = useState<BomOperationFormData>({ ...emptyOperationForm });
 
   // Local state for production fields
-  const [localAssemblyTime, setLocalAssemblyTime] = useState(assemblyTimeMinutes);
-  const [localDifficulty, setLocalDifficulty] = useState(processDifficulty);
-  const [_localCapacity] = useState(dailyCapacityPairs);
+  // Removidos: localAssemblyTime / localDifficulty / _localCapacity — card
+  // "Configuração de Capacidade & Lead Times" deletado por redundância com
+  // os cards "Setores produtivos" abaixo, que já capturam capacidade direta
+  // (pares/dia) por setor.
   const [ltCorte, setLtCorte] = useState(leadTimeCorteDias);
   const [ltCostura, setLtCostura] = useState(leadTimeCosturaDias);
   const [ltSilk, setLtSilk] = useState(leadTimeSilkDias);
@@ -128,13 +133,9 @@ export function OperationsTab({
   const totalMODCost = operations.reduce((s, op: any) => s + Number(op.cost_per_pair || 0), 0);
   const overheadPerPair = costPolicy?.overhead_rate_per_pair || 0;
 
-  const difficultyInfo = DIFFICULTY_LEVELS.find(d => d.value === localDifficulty) || DIFFICULTY_LEVELS[1];
-
-  // Suggested capacity for Montagem based on assembly time × difficulty
-  const effectiveTimePerPair = localAssemblyTime > 0 ? localAssemblyTime * difficultyInfo.factor : totalTimeMin * difficultyInfo.factor;
-  const suggestedAssemblyCapacity = effectiveTimePerPair > 0 ? Math.floor(DAILY_WORK_MINUTES / effectiveTimePerPair) : 0;
-  // Manual capacity prevails; fallback to suggestion only if manual = 0
-  const calculatedDailyCapacity = capMontagem > 0 ? capMontagem : suggestedAssemblyCapacity;
+  // Capacidade do dia = capacidade de Montagem (entrada manual no card abaixo).
+  // Antes calculávamos sugestão via tempo×dificuldade — removido, entrada direta agora.
+  const calculatedDailyCapacity = capMontagem;
   const weeklyCapacity = calculatedDailyCapacity * 5;
   const monthlyCapacity = calculatedDailyCapacity * 22;
 
@@ -168,10 +169,10 @@ export function OperationsTab({
     setSaving(true);
     try {
       const payload = {
-        assembly_time_minutes: localAssemblyTime,
-        process_difficulty: localDifficulty,
-        // daily_capacity_pairs removido: substituído pelas capacidades
-        // por setor (sewing_capacity_per_day, cutting_capacity_per_day, etc.)
+        // assembly_time_minutes / process_difficulty removidos do payload —
+        // card "Configuração de Capacidade & Lead Times" foi deletado
+        // por redundância. daily_capacity_pairs também removido (capacidade
+        // agora é por setor).
         lead_time_corte_dias: ltCorte,
         lead_time_costura_dias: ltCostura,
         lead_time_silk_dias: ltSilk,
@@ -235,11 +236,17 @@ export function OperationsTab({
     const toAdd = PRODUCTION_STAGES.filter(s => !existing.has(s));
     if (toAdd.length === 0) return;
     const DEFAULT_COSTS: Record<string, { time: number; cost: number; resource: string }> = {
-   'Corte': { time: 2, cost: 18, resource: 'Cortador' },
-   'Forração': { time: 2, cost: 18, resource: 'Forrador' },
+   'Corte': { time: 2, cost: 18, resource: 'Cortador' }, // legacy genérico
+   'Corte Palmilha': { time: 1.5, cost: 18, resource: 'Cortador Palmilha' },
+   'Corte Forração': { time: 2,   cost: 18, resource: 'Forrador' },
+   'Corte Cabedal':  { time: 2.5, cost: 20, resource: 'Cortador Cabedal' },
+   'Forração': { time: 2, cost: 18, resource: 'Forrador' }, // legacy alias
+   'Costura': { time: 2, cost: 22, resource: 'Costureira' },
+   'Aviamento': { time: 2, cost: 18, resource: 'Aviamento' },
    'Silk': { time: 1, cost: 16, resource: 'Silk' },
    'Colagem': { time: 1, cost: 16, resource: 'Colagem' },
    'Montagem': { time: 3, cost: 22, resource: 'Montador' },
+   'Solagem': { time: 1.5, cost: 18, resource: 'Solagem' },
    'Acabamento': { time: 1.5, cost: 18, resource: 'Acabamento' },
    'Expedição': { time: 1, cost: 20, resource: 'Expedição' },
     };
@@ -265,63 +272,22 @@ export function OperationsTab({
 
   return (
     <div className="space-y-6">
-      {/* ── Production Time & Difficulty ── */}
-      <div className="rounded-lg border-2 border-primary/20 bg-primary/5 p-4 space-y-4">
+      {/* Card "Configuração de Capacidade & Lead Times" (Tempo de Montagem /
+          Dificuldade / Tempo Efetivo) foi removido — era redundante com os
+          cards "Setores produtivos" abaixo, onde a capacidade já é informada
+          direta em pares/dia por setor. */}
+
+      {/* ── Setores: capacidade + lead time juntos por card ── */}
+      <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Factory className="h-4 w-4 text-primary" />
-             <h3 className="text-sm font-semibold">Configuração de Capacidade & Lead Times</h3>
+            <Factory className="h-4 w-4 text-amber-600" />
+            <h3 className="text-sm font-semibold">Setores produtivos</h3>
           </div>
           <Button size="sm" className="h-7 text-xs gap-1" onClick={handleSaveProductionFields} disabled={saving}>
             {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
             Salvar
           </Button>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div>
-            <Label className="text-xs font-medium">Tempo de Montagem (min/par)</Label>
-            <p className="text-[10px] text-muted-foreground mb-1">Tempo total de montagem por par completo</p>
-            <NumberInput
-              value={localAssemblyTime}
-              onChange={v => setLocalAssemblyTime(v)}
-              className="h-9 text-sm font-mono"
-              step="0.5"
-              min={0}
-            />
-          </div>
-          <div>
-            <Label className="text-xs font-medium">Dificuldade do Processo</Label>
-            <p className="text-[10px] text-muted-foreground mb-1">Fator de ajuste: ×{safeToFixed(difficultyInfo.factor, 2)}</p>
-            <Select value={localDifficulty} onValueChange={v => setLocalDifficulty(v)}>
-              <SelectTrigger className="h-9 text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {DIFFICULTY_LEVELS.map(d => (
-                  <SelectItem key={d.value} value={d.value}>
-                    <span className={d.color}>{d.label}</span>
-                    <span className="text-muted-foreground ml-2 text-xs">(×{d.factor})</span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs font-medium">Tempo Efetivo (min/par)</Label>
-            <p className="text-[10px] text-muted-foreground mb-1">= Tempo × Fator de dificuldade</p>
-            <div className="h-9 flex items-center px-3 rounded-md border bg-muted/50 text-sm font-mono font-semibold">
-              {safeToFixed(effectiveTimePerPair, 1)} min
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Setores: capacidade + lead time juntos por card ── */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <Factory className="h-4 w-4 text-amber-600" />
-          <h3 className="text-sm font-semibold">Setores produtivos</h3>
         </div>
         <p className="text-[11px] text-muted-foreground -mt-2">
           Cada setor tem <strong>capacidade</strong> (pares/dia) e <strong>lead time fallback</strong> (dias —
@@ -331,19 +297,15 @@ export function OperationsTab({
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {([
             { key: 'corte',     label: 'Corte',      cap: capCorte,      setCap: setCapCorte,      lt: ltCorte,      setLt: setLtCorte },
-            { key: 'forracao',  label: 'Forração',   cap: capCostura,    setCap: setCapCostura,    lt: ltCostura,    setLt: setLtCostura },
+            { key: 'forracao',  label: 'Corte Forração', cap: capCostura,    setCap: setCapCostura,    lt: ltCostura,    setLt: setLtCostura },
             { key: 'silk',      label: 'Silk',       cap: capSilk,       setCap: setCapSilk,       lt: ltSilk,       setLt: setLtSilk },
             { key: 'colagem',   label: 'Colagem',    cap: capColagem,    setCap: setCapColagem,    lt: ltColagem,    setLt: setLtColagem },
             {
               key: 'montagem', label: 'Montagem',
               cap: capMontagem, setCap: setCapMontagem,
               lt: ltMontagem,   setLt: setLtMontagem,
-              hint: suggestedAssemblyCapacity > 0
-                ? `Sugestão por tempo×dificuldade: ${suggestedAssemblyCapacity} pares/dia`
-                : undefined,
-              applySuggestion: suggestedAssemblyCapacity > 0
-                ? () => setCapMontagem(suggestedAssemblyCapacity)
-                : undefined,
+              // Sugestão automática removida — dependia do card de
+              // tempo×dificuldade que foi deletado por redundância.
             },
             { key: 'acabamento', label: 'Acabamento', cap: capAcabamento, setCap: setCapAcabamento, lt: ltAcabamento, setLt: setLtAcabamento },
             { key: 'expedicao',  label: 'Expedição',  cap: capExpedicao,  setCap: setCapExpedicao,  lt: ltExpedicao,  setLt: setLtExpedicao },
@@ -392,19 +354,7 @@ export function OperationsTab({
                   </span>
                 </div>
                 <div>
-                  <div className="flex items-center justify-between">
-                    <Label className="text-[10px] text-muted-foreground">Capacidade (pares/dia)</Label>
-                    {'applySuggestion' in s && s.applySuggestion && suggestedAssemblyCapacity > 0 && (
-                      <button
-                        type="button"
-                        onClick={s.applySuggestion}
-                        className="text-[9px] text-primary hover:underline"
-                        title={'hint' in s && s.hint ? s.hint : undefined}
-                      >
-                        usar {suggestedAssemblyCapacity}
-                      </button>
-                    )}
-                  </div>
+                  <Label className="text-[10px] text-muted-foreground">Capacidade (pares/dia)</Label>
                   <NumberInput value={s.cap} onChange={s.setCap} className="h-8 text-sm font-mono mt-0.5" min={0} step="1" />
                 </div>
                 <div>

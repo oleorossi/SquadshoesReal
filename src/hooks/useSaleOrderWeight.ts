@@ -1,0 +1,106 @@
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+
+export interface IncompleteWeightItem {
+  reference_id: string;
+  code: string | null;
+  name: string | null;
+  pairs: number;
+}
+
+export interface SaleOrderWeight {
+  saleOrderId: string;
+  totalPairs: number;
+  netWeightKg: number;
+  boxWeightKg: number;
+  grossWeightKg: number;
+  incompleteItems: IncompleteWeightItem[];
+  isComplete: boolean;
+}
+
+interface RawResult {
+  sale_order_id: string;
+  total_pairs: number;
+  net_weight_kg: number;
+  box_weight_kg: number;
+  gross_weight_kg: number;
+  incomplete_items: IncompleteWeightItem[];
+  is_complete: boolean;
+}
+
+/**
+ * Calcula peso de um PV via RPC `calculate_sale_order_weight`. Usado em
+ * /manifests, /nfe, /mdfe e /entregas para auto-popular peso bruto/líquido
+ * no lugar dos inputs manuais.
+ *
+ * Quando algum item não tem `weight_per_pair_kg` cadastrado na ficha
+ * técnica, retorna em `incompleteItems` para a UI mostrar warning âmbar
+ * sem bloquear a operação.
+ */
+export function useSaleOrderWeight(saleOrderId: string | null | undefined) {
+  return useQuery({
+    queryKey: ['sale_order_weight', saleOrderId],
+    queryFn: async (): Promise<SaleOrderWeight | null> => {
+      if (!saleOrderId) return null;
+      const { data, error } = await (supabase.rpc as any)(
+        'calculate_sale_order_weight',
+        { p_sale_order_id: saleOrderId },
+      );
+      if (error) throw error;
+      const r = data as RawResult;
+      return {
+        saleOrderId: r.sale_order_id,
+        totalPairs: r.total_pairs,
+        netWeightKg: Number(r.net_weight_kg) || 0,
+        boxWeightKg: Number(r.box_weight_kg) || 0,
+        grossWeightKg: Number(r.gross_weight_kg) || 0,
+        incompleteItems: r.incomplete_items || [],
+        isComplete: r.is_complete,
+      };
+    },
+    enabled: !!saleOrderId,
+    staleTime: 15 * 1000,
+  });
+}
+
+/**
+ * Versão batch — para MDF-e e Entregas que precisam somar vários PVs.
+ * Faz N chamadas em paralelo (Promise.all). Para volumes maiores poderia
+ * virar uma RPC array, mas pra dezenas de PVs isso é OK.
+ */
+export function useSaleOrdersWeightBatch(saleOrderIds: string[]) {
+  return useQuery({
+    queryKey: ['sale_orders_weight_batch', [...saleOrderIds].sort()],
+    queryFn: async (): Promise<SaleOrderWeight[]> => {
+      if (saleOrderIds.length === 0) return [];
+      const results = await Promise.all(
+        saleOrderIds.map(async (id) => {
+          const { data, error } = await (supabase.rpc as any)(
+            'calculate_sale_order_weight',
+            { p_sale_order_id: id },
+          );
+          if (error) {
+            // Log explícito pra operador notar quando peso de algum PV
+            // não entrou no totalizador (antes era silenciado e o user
+            // via peso parcial sem aviso).
+            console.warn('[useSaleOrdersWeightBatch] calculate_sale_order_weight falhou para PV:', id, error);
+            return null;
+          }
+          const r = data as RawResult;
+          return {
+            saleOrderId: r.sale_order_id,
+            totalPairs: r.total_pairs,
+            netWeightKg: Number(r.net_weight_kg) || 0,
+            boxWeightKg: Number(r.box_weight_kg) || 0,
+            grossWeightKg: Number(r.gross_weight_kg) || 0,
+            incompleteItems: r.incomplete_items || [],
+            isComplete: r.is_complete,
+          };
+        }),
+      );
+      return results.filter((r): r is SaleOrderWeight => r !== null);
+    },
+    enabled: saleOrderIds.length > 0,
+    staleTime: 15 * 1000,
+  });
+}
