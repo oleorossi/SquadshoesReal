@@ -8,7 +8,10 @@
 #   1 — new violations found (blocks CI or pre-commit)
 #
 # EXEMPT FILES (intentional hardcoded colors — print layouts, labels):
-EXEMPT_PATTERN="EtiquetaProduto|PrintWork|OperatorWorkSheet|PalmilhaWorkSheet|SilkMontageWorkSheet|SolagemWorkSheet|ExpedicaoWorkSheet|ManagementReport"
+# Cores são hardcoded porque impressão A4 precisa de tons garantidos, não
+# tokens que mudam com tema/dark mode. components/production/worksheet/* são
+# blocos reusados entre os *WorkSheet.tsx — mesma regra de print aplica.
+EXEMPT_PATTERN="EtiquetaProduto|PrintWork|OperatorWorkSheet|PalmilhaWorkSheet|SilkMontageWorkSheet|SolagemWorkSheet|ExpedicaoWorkSheet|ManagementReport|production/worksheet/"
 
 # Patterns that indicate old visual system usage
 # Using word-boundary anchors (\b) with -E to avoid matching substrings,
@@ -70,7 +73,7 @@ echo "  text-slate-*      →  text-muted-foreground  ou  text-foreground"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo "  Total de ocorrências: $violations"
-echo "  Arquivos isentos (impressão): EtiquetaProduto, PrintWork, OperatorWorkSheet"
+echo "  Arquivos isentos (impressão): EtiquetaProduto, PrintWork, *WorkSheet, ManagementReport, worksheet/*"
 echo ""
 
 # Exit 0 (informational — does not block commits)
