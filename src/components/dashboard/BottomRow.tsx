@@ -91,7 +91,7 @@ export function BottomRow({ period = 'current_month' }: { period?: DashboardPeri
         <div className="px-5 py-3.5 border-b border-border/60 flex items-center justify-between bg-muted/20">
           <h3 className="text-[13px] font-semibold text-foreground tracking-tight">Top Modelos Produzidos</h3>
           <button
-            onClick={() => navigate("/references")}
+            onClick={() => navigate("/fichas-tecnicas")}
             className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground border border-border rounded-lg px-2.5 py-1 hover:bg-muted/50 transition-colors"
           >
             Ver todos <ArrowRight className="h-3 w-3" />
@@ -121,7 +121,7 @@ export function BottomRow({ period = 'current_month' }: { period?: DashboardPeri
               <tr
                 key={m.id}
                 className="hover:bg-primary/[0.03] transition-colors cursor-pointer border-b border-border/40 last:border-0"
-                onClick={() => navigate("/references")}
+                onClick={() => navigate("/fichas-tecnicas")}
               >
                 <td className="py-2.5 pl-5 text-[12.5px] font-medium text-foreground">{m.name}</td>
                 <td className="py-2.5 px-4 text-[12px] font-mono text-muted-foreground">{m.ref}</td>

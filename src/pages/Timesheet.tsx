@@ -1520,7 +1520,9 @@ function TimesheetRecordsTab() {
 // ── Main Page ──────────────────────────────────────────
 export default function Timesheet() {
   const [searchParams] = useSearchParams();
-  const initialTab = searchParams.get('tab') || 'records';
+  // Quando o Timesheet é renderizado dentro do RHHub (`/rh?tab=ponto`), o param
+  // `tab` já carrega o tab do hub. A sub-aba interna usa `subtab`.
+  const initialTab = searchParams.get('subtab') || searchParams.get('tab') || 'records';
   return (
     <AppLayout>
       <div className="space-y-5 page-enter editorial-stagger">

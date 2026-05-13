@@ -1073,7 +1073,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                           type="button"
                           variant="outline"
                           size="sm"
-                          className="h-7 text-[11px] gap-1 border-amber-500/40 bg-white hover:bg-amber-50 text-amber-800"
+                          className="h-7 text-[11px] gap-1 border-amber-500/40 bg-card hover:bg-amber-500/10 text-amber-700 dark:text-amber-400"
                           onClick={() => {
                             setPendingStrapGroupId(strap.group_id);
                             setPendingStrapGroupName(strap.group_name || '');

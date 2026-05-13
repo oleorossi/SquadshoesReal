@@ -103,7 +103,9 @@ export default function PickingListPage() {
     const map = new Map<string, WeekGroup>();
     for (const so of activeSaleOrders) {
       if (!so.delivery_deadline) continue;
-      const dl = new Date(so.delivery_deadline);
+      // `delivery_deadline` é DATE (yyyy-MM-dd). `new Date(str)` parseia como UTC,
+      // que em fuso BR (-3) cai no dia anterior — agrupa na semana errada.
+      const dl = new Date(`${so.delivery_deadline}T00:00:00`);
       if (isNaN(dl.getTime())) continue;
       const iso = getISOWeek(dl);
       const code = `W${iso.year}-${pad(iso.week)}`;

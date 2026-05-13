@@ -127,7 +127,7 @@ export function useNotifications() {
           severity: 'info',
           title: `${pendingAdvances.length} adiantamento(s) pendente(s)`,
           description: `Total: ${fmt(totalAdv)}`,
-          link: '/employees',
+          link: '/rh?tab=folha',
         });
       }
 
