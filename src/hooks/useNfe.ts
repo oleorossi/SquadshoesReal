@@ -306,10 +306,22 @@ export function useEmitStandaloneNfe() {
       // Idem useEmitNfe: prioriza mensagem real do body antes do HTTP error genérico.
       if (nfeData?.error) throw new Error(nfeData.error);
       if (nfeErr) {
-        try {
-          const body = await (nfeErr as any).context?.json?.();
-          if (body?.error) throw new Error(body.error);
-        } catch { /* fallthrough */ }
+        let realMsg: string | null = null;
+        const ctx = (nfeErr as any).context;
+        if (ctx && typeof ctx.json === 'function') {
+          try {
+            const body = await ctx.json();
+            if (body?.error) realMsg = String(body.error);
+            else if (typeof body === 'string') realMsg = body;
+          } catch { /* não-JSON */ }
+        }
+        if (!realMsg && ctx && typeof ctx.text === 'function') {
+          try {
+            const txt = await ctx.text();
+            if (txt) realMsg = txt.slice(0, 500);
+          } catch { /* ignore */ }
+        }
+        if (realMsg) throw new Error(realMsg);
         throw new Error((nfeErr as any).message || 'Erro desconhecido ao emitir NF avulsa');
       }
       return { sale_order_id: so.id, ...nfeData };
@@ -341,11 +353,25 @@ export function useEmitNfe() {
       // Checa data.error primeiro pra mostrar a mensagem REAL da edge fn.
       if (data?.error) throw new Error(data.error);
       if (error) {
-        // Última tentativa: ler o body do response do FunctionsHttpError
-        try {
-          const body = await (error as any).context?.json?.();
-          if (body?.error) throw new Error(body.error);
-        } catch { /* fallthrough */ }
+        // FunctionsHttpError tem error.context (Response). Lê o body antes de
+        // desistir e mostrar mensagem genérica. NÃO usa try/throw aninhado
+        // (o throw interno cai no próprio catch e se perde silenciosamente).
+        let realMsg: string | null = null;
+        const ctx = (error as any).context;
+        if (ctx && typeof ctx.json === 'function') {
+          try {
+            const body = await ctx.json();
+            if (body?.error) realMsg = String(body.error);
+            else if (typeof body === 'string') realMsg = body;
+          } catch { /* não-JSON; tenta texto */ }
+        }
+        if (!realMsg && ctx && typeof ctx.text === 'function') {
+          try {
+            const txt = await ctx.text();
+            if (txt) realMsg = txt.slice(0, 500);
+          } catch { /* ignore */ }
+        }
+        if (realMsg) throw new Error(realMsg);
         throw new Error((error as any).message || 'Erro desconhecido ao emitir NF-e');
       }
       return data;
