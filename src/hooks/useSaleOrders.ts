@@ -848,6 +848,115 @@ export function useUpdateSaleOrderStatus() {
         }
       }
 
+      // REATIVAÇÃO DE PV CANCELADO (Cancelado → Rascunho):
+      // O cancelamento marca todas as OPs como 'Cancelada' e devolve o estoque.
+      // Pra "desfazer o cancelamento" voltamos as OPs pra 'Reservado' e re-criamos
+      // as reservas soft via hybrid_debit (p_force_soft=true). Se alguma reserva
+      // falhar (estoque insuficiente porque outro PV consumiu), a OP volta pra
+      // Cancelada e toast warna. O PV fica em Rascunho de qualquer jeito.
+      if (currentStatus === 'Cancelado' && status === 'Rascunho') {
+        const { data: cancelledOps } = await supabase
+          .from('orders')
+          .select('id, reference_id, quantity, color, grade, sale_order_item_id')
+          .eq('sale_order_id', id)
+          .eq('status', 'Cancelada');
+
+        if (cancelledOps && cancelledOps.length > 0) {
+          // Carrega strap_colors e packaging_mode (no PV ou item) pra re-reservar tira/embalagem
+          const { data: pvData } = await supabase
+            .from('sale_orders')
+            .select('packaging_mode')
+            .eq('id', id)
+            .single();
+          const itemIds = cancelledOps.map(o => o.sale_order_item_id).filter(Boolean);
+          const itemsMap = new Map<string, any>();
+          if (itemIds.length > 0) {
+            const { data: items } = await supabase
+              .from('sale_order_items')
+              .select('id, strap_colors')
+              .in('id', itemIds);
+            (items || []).forEach((it: any) => itemsMap.set(it.id, it));
+          }
+
+          const failedReactivations: string[] = [];
+          const opNumberById = new Map<string, string>();
+
+          for (const op of cancelledOps) {
+            // Tenta volver pra Reservado
+            const { error: reviveErr } = await supabase
+              .from('orders')
+              .update({ status: 'Reservado', updated_at: new Date().toISOString() })
+              .eq('id', op.id)
+              .eq('status', 'Cancelada');
+            if (reviveErr) {
+              failedReactivations.push(`OP ${(op as any).id.slice(0, 8)}: ${reviveErr.message}`);
+              continue;
+            }
+
+            const item = itemsMap.get(op.sale_order_item_id as any);
+            const grade = (op as any).grade && Object.keys((op as any).grade).length > 0 ? (op as any).grade : null;
+
+            // Re-soft-reserve materiais BOM
+            const { error: hybridErr } = await supabase.rpc('hybrid_debit_stock_for_order', {
+              p_reference_id: op.reference_id,
+              p_order_quantity: op.quantity,
+              p_color: op.color || '',
+              p_order_id: op.id,
+              p_order_grade: grade,
+              p_force_soft: true,
+            } as any);
+            if (hybridErr) {
+              await supabase.from('orders').update({ status: 'Cancelada', notes: `Reativação falhou: ${hybridErr.message}` }).eq('id', op.id);
+              failedReactivations.push(`OP ${(op as any).id.slice(0, 8)}: ${hybridErr.message}`);
+              continue;
+            }
+
+            // Re-soft-reserve solado por grade
+            if (grade) {
+              await supabase.rpc('debit_sole_stock_by_grade', {
+                p_reference_id: op.reference_id,
+                p_order_id: op.id,
+                p_color: op.color || '',
+                p_order_grade: grade,
+                p_force_soft: true,
+              } as any);
+            }
+
+            // Re-soft-reserve tiras
+            if (item?.strap_colors && Array.isArray(item.strap_colors) && item.strap_colors.length > 0) {
+              await supabase.rpc('debit_strap_stock', {
+                p_strap_colors: item.strap_colors,
+                p_order_quantity: op.quantity,
+                p_order_id: op.id,
+                p_order_grade: grade,
+                p_force_soft: true,
+              } as any);
+            }
+
+            // Re-soft-reserve embalagem
+            await supabase.rpc('debit_packaging_for_order', {
+              p_sale_order_id: id,
+              p_order_id: op.id,
+              p_reference_id: op.reference_id,
+              p_order_quantity: op.quantity,
+              p_packaging_mode: (pvData as any)?.packaging_mode || 'individual_amarrado',
+              p_force_soft: true,
+            } as any);
+
+            opNumberById.set(op.id, (op as any).order_number || op.id.slice(0, 8));
+          }
+
+          if (failedReactivations.length > 0) {
+            toast.warning(
+              `PV reativado mas ${failedReactivations.length} OP(s) não puderam re-reservar materiais (estoque insuficiente — foi consumido após o cancelamento). OPs ficaram canceladas: ${failedReactivations.slice(0, 3).join('; ')}${failedReactivations.length > 3 ? '…' : ''}`,
+              { duration: 12000 },
+            );
+          } else {
+            toast.success(`PV reativado — ${cancelledOps.length} OP(s) voltaram a Reservado com materiais re-reservados.`);
+          }
+        }
+      }
+
       // Quando "Cancelado", cancelar OPs vinculadas e RESTAURAR ESTOQUE
       if (status === 'Cancelado') {
         // Revert the PV claim so the operator can retry if any post-claim step fails.
