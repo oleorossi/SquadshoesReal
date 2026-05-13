@@ -262,6 +262,8 @@ export default function Payroll() {
 
       <PayrollPendingInputsAlert period={period} />
 
+      <PayrollPendingInputsAlert period={period} />
+
       {/* Alerta de ano da tabela INSS/IRRF */}
       {(() => {
         const periodYear = Number(period.split('-')[0] || 0);
