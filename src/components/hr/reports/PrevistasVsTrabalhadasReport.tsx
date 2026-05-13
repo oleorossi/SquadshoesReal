@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -139,106 +138,124 @@ export default function PrevistasVsTrabalhadasReport() {
   }
 
   return (
-    <div className="space-y-5 page-enter">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
-            <Target className="h-5 w-5 text-primary" />
-            Horas Previstas × Trabalhadas
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Compara as horas previstas pela escala com o trabalhado real (a partir das batidas de ponto).
-          </p>
+    <div className="editorial-stagger space-y-8 page-enter">
+      {/* ─────────── MASTHEAD ─────────── */}
+      <div>
+        <div className="flex items-baseline justify-between gap-4 mb-3">
+          <span className="section-label text-foreground">RH · Relatório</span>
+          <span className="section-label font-mono">{from} → {to}</span>
         </div>
-        <div className="flex gap-2 items-center">
-          <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="w-40" />
-          <span className="text-muted-foreground">→</span>
-          <Input type="date" value={to} onChange={e => setTo(e.target.value)} className="w-40" />
-          <Button size="sm" onClick={exportCsv} className="gap-1.5"><Download className="h-3.5 w-3.5" /> CSV</Button>
+        <div className="rule-line mb-4" />
+        <div className="flex items-end justify-between gap-6 flex-wrap">
+          <div className="flex-1 min-w-[260px]">
+            <p className="section-label mb-2">Aderência · Escala vs Ponto</p>
+            <h1 className="text-display-lg leading-none">
+              Previstas
+              <span className="text-primary"> × </span>
+              Trabalhadas
+            </h1>
+            <p className="text-sm text-muted-foreground mt-3 max-w-xl leading-relaxed">
+              Compara as horas previstas pela escala com o trabalhado real (a partir das batidas de ponto).
+            </p>
+          </div>
+          <div className="flex gap-2 items-center">
+            <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="w-40 h-9" />
+            <span className="text-muted-foreground">→</span>
+            <Input type="date" value={to} onChange={e => setTo(e.target.value)} className="w-40 h-9" />
+            <Button size="sm" className="h-9 gap-1.5" onClick={exportCsv}><Download className="h-3.5 w-3.5" /> CSV</Button>
+          </div>
         </div>
+        <div className="rule-line-double mt-5" />
       </div>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-muted-foreground uppercase">Funcionários no período</p>
-          <p className="text-2xl font-bold">{totals.empCount}</p>
-        </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-muted-foreground uppercase">Total previsto</p>
-          <p className="text-2xl font-bold font-mono">{fmtMin(totals.expected)}</p>
-        </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-muted-foreground uppercase">Total trabalhado</p>
-          <p className="text-2xl font-bold font-mono text-emerald-600">{fmtMin(totals.worked)}</p>
-        </CardContent></Card>
-        <Card className="border-primary/40"><CardContent className="p-4">
-          <p className="text-xs text-muted-foreground uppercase">Cumprimento global</p>
-          <p className={`text-2xl font-bold flex items-center gap-1 ${cumprimento >= 100 ? 'text-emerald-600' : cumprimento < 90 ? 'text-rose-600' : 'text-amber-600'}`}>
-            {cumprimento >= 100 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
-            {cumprimento.toFixed(1)}%
-          </p>
-          <Progress value={Math.min(150, cumprimento)} className="h-1.5 mt-1" />
-        </CardContent></Card>
-      </div>
+      {/* ─────────── 01 / INDICADORES ─────────── */}
+      <section>
+        <div className="flex items-baseline gap-3 mb-5">
+          <span className="font-display text-2xl leading-none">01</span>
+          <span className="section-label text-foreground">Indicadores do Período</span>
+          <div className="flex-1 h-px bg-border" />
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 border-y border-border">
+          <div className="px-4 py-5">
+            <p className="section-label mb-2">Funcionários</p>
+            <p className="font-mono font-bold leading-none tracking-tight text-2xl text-foreground">{totals.empCount}</p>
+          </div>
+          <div className="px-4 py-5 border-l border-border">
+            <p className="section-label mb-2">Total previsto</p>
+            <p className="font-mono font-bold leading-none tracking-tight text-2xl text-foreground">{fmtMin(totals.expected)}</p>
+          </div>
+          <div className="px-4 py-5 border-l border-border">
+            <p className="section-label mb-2">Total trabalhado</p>
+            <p className="font-mono font-bold leading-none tracking-tight text-2xl text-emerald-600">{fmtMin(totals.worked)}</p>
+          </div>
+          <div className="px-4 py-5 border-l border-border">
+            <p className="section-label mb-2">Cumprimento</p>
+            <p className={`font-mono font-bold leading-none tracking-tight text-2xl flex items-center gap-2 ${cumprimento >= 100 ? 'text-emerald-600' : cumprimento < 90 ? 'text-rose-600' : 'text-amber-600'}`}>
+              {cumprimento >= 100 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
+              {cumprimento.toFixed(1)}%
+            </p>
+            <Progress value={Math.min(150, cumprimento)} className="h-1 mt-2" />
+          </div>
+        </div>
+      </section>
 
+      {/* ─────────── 02 / COMPARATIVO ─────────── */}
       {rows.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            <Target className="h-10 w-10 mx-auto mb-3 opacity-30" />
-            <p>Nenhum registro de ponto no período.</p>
-          </CardContent>
-        </Card>
+        <div className="py-16 text-center border-y border-border">
+          <Target className="h-10 w-10 mx-auto mb-3 opacity-30" />
+          <p className="section-label mb-1">Sem dados</p>
+          <p className="text-sm text-muted-foreground">Nenhum registro de ponto no período.</p>
+        </div>
       ) : (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Comparativo por funcionário</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Funcionário</TableHead>
-                  <TableHead>Setor</TableHead>
-                  <TableHead>Escala</TableHead>
-                  <TableHead className="text-right">Previsto</TableHead>
-                  <TableHead className="text-right">Trabalhado</TableHead>
-                  <TableHead className="text-right">Diferença</TableHead>
-                  <TableHead className="text-right">% cumpr.</TableHead>
-                  <TableHead className="text-center">Dias</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map(r => {
-                  const variant = r.diff < -120 ? 'rose' : r.diff > 120 ? 'emerald' : 'muted';
-                  return (
-                    <TableRow key={r.name}>
-                      <TableCell className="font-medium">{r.name}</TableCell>
-                      <TableCell className="text-muted-foreground text-xs">{r.department}</TableCell>
-                      <TableCell className="text-muted-foreground text-xs">{r.scheduleName}</TableCell>
-                      <TableCell className="text-right font-mono text-xs">{fmtMin(r.expected)}</TableCell>
-                      <TableCell className="text-right font-mono text-xs">{fmtMin(r.worked)}</TableCell>
-                      <TableCell className={`text-right font-mono font-bold text-xs ${variant === 'rose' ? 'text-rose-600' : variant === 'emerald' ? 'text-emerald-600' : ''}`}>
-                        {r.diff > 0 ? '+' : ''}{fmtMin(r.diff)}
-                      </TableCell>
-                      <TableCell className={`text-right font-mono text-xs ${r.pct >= 100 ? 'text-emerald-600' : r.pct < 90 ? 'text-rose-600' : 'text-amber-600'}`}>
-                        {r.pct.toFixed(1)}%
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <div className="text-[10px] flex flex-col items-center gap-0.5">
-                          <Badge variant="outline" className="h-4 px-1 text-[9px]">{r.diasComBatida} c/</Badge>
-                          {r.diasSemBatida > 0 && (
-                            <Badge variant="outline" className="h-4 px-1 text-[9px] border-rose-300 text-rose-700">{r.diasSemBatida} s/</Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        <section>
+          <div className="flex items-baseline gap-3 mb-5">
+            <span className="font-display text-2xl leading-none">02</span>
+            <span className="section-label text-foreground">Comparativo por Funcionário</span>
+            <div className="flex-1 h-px bg-border" />
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow className="border-b-2 border-foreground hover:bg-transparent">
+                <TableHead className="section-label text-foreground">Funcionário</TableHead>
+                <TableHead className="section-label text-foreground">Setor</TableHead>
+                <TableHead className="section-label text-foreground">Escala</TableHead>
+                <TableHead className="section-label text-foreground text-right">Previsto</TableHead>
+                <TableHead className="section-label text-foreground text-right">Trabalhado</TableHead>
+                <TableHead className="section-label text-foreground text-right">Diferença</TableHead>
+                <TableHead className="section-label text-foreground text-right">% cumpr.</TableHead>
+                <TableHead className="section-label text-foreground text-center">Dias</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map(r => {
+                const variant = r.diff < -120 ? 'rose' : r.diff > 120 ? 'emerald' : 'muted';
+                return (
+                  <TableRow key={r.name} className="border-b border-border/60">
+                    <TableCell className="font-medium">{r.name}</TableCell>
+                    <TableCell className="text-muted-foreground text-xs">{r.department}</TableCell>
+                    <TableCell className="text-muted-foreground text-xs">{r.scheduleName}</TableCell>
+                    <TableCell className="text-right font-mono text-xs">{fmtMin(r.expected)}</TableCell>
+                    <TableCell className="text-right font-mono text-xs">{fmtMin(r.worked)}</TableCell>
+                    <TableCell className={`text-right font-mono font-bold text-xs ${variant === 'rose' ? 'text-rose-600' : variant === 'emerald' ? 'text-emerald-600' : ''}`}>
+                      {r.diff > 0 ? '+' : ''}{fmtMin(r.diff)}
+                    </TableCell>
+                    <TableCell className={`text-right font-mono text-xs ${r.pct >= 100 ? 'text-emerald-600' : r.pct < 90 ? 'text-rose-600' : 'text-amber-600'}`}>
+                      {r.pct.toFixed(1)}%
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <div className="text-[10px] flex flex-col items-center gap-0.5">
+                        <Badge variant="outline" className="h-4 px-1 text-[9px]">{r.diasComBatida} c/</Badge>
+                        {r.diasSemBatida > 0 && (
+                          <Badge variant="outline" className="h-4 px-1 text-[9px] border-rose-300 text-rose-700">{r.diasSemBatida} s/</Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </section>
       )}
     </div>
   );

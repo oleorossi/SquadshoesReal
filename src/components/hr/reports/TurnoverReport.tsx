@@ -1,9 +1,8 @@
 import { useMemo, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { CircleNotch as Loader2, Repeat, TrendUp as TrendingUp, TrendDown as TrendingDown } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, TrendUp as TrendingUp, TrendDown as TrendingDown } from '@phosphor-icons/react';
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
@@ -140,90 +139,114 @@ export default function TurnoverReport() {
   }
 
   return (
-    <div className="space-y-5 page-enter">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
-            <Repeat className="h-5 w-5 text-primary" />
-            Turnover
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Rotatividade de pessoal mês a mês. Turnover = ((admissões + dispensas) / 2) ÷ quadro médio.
-          </p>
+    <div className="editorial-stagger space-y-8 page-enter">
+      {/* ─────────── MASTHEAD ─────────── */}
+      <div>
+        <div className="flex items-baseline justify-between gap-4 mb-3">
+          <span className="section-label text-foreground">RH · Relatório</span>
+          <span className="section-label font-mono">{from} → {to}</span>
         </div>
-        <div className="flex gap-2 items-center">
-          <Input type="month" value={from} onChange={e => setFrom(e.target.value)} className="w-40" />
-          <span className="text-muted-foreground">→</span>
-          <Input type="month" value={to} onChange={e => setTo(e.target.value)} className="w-40" />
-        </div>
-      </div>
-
-      {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-muted-foreground uppercase">Admissões no período</p>
-          <p className="text-2xl font-bold text-emerald-600">+{totals.admitted}</p>
-        </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-muted-foreground uppercase">Dispensas no período</p>
-          <p className="text-2xl font-bold text-rose-600">-{totals.dismissed}</p>
-        </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-muted-foreground uppercase">Saldo</p>
-          <p className={`text-2xl font-bold flex items-center gap-1 ${totals.net >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-            {totals.net >= 0 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
-            {totals.net >= 0 ? '+' : ''}{totals.net}
-          </p>
-        </CardContent></Card>
-        <Card className="border-primary/40"><CardContent className="p-4">
-          <p className="text-xs text-muted-foreground uppercase">Tempo médio de casa</p>
-          <p className="text-2xl font-bold font-mono text-primary">
-            {totals.avgTenure < 12 ? `${totals.avgTenure.toFixed(1)}m` : `${(totals.avgTenure / 12).toFixed(1)}a`}
-          </p>
-        </CardContent></Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Turnover mensal</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={series} margin={{ top: 8, right: 12, left: -10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.4)" />
-                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                <YAxis yAxisId="left" tick={{ fontSize: 11 }} label={{ value: '#', angle: -90, position: 'insideLeft', fontSize: 11 }} />
-                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} label={{ value: '%', angle: 90, position: 'insideRight', fontSize: 11 }} />
-                <Tooltip />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar yAxisId="left" dataKey="admitted" name="Admitidos" fill="#10b981" />
-                <Bar yAxisId="left" dataKey="dismissed" name="Dispensados" fill="#ef4444" />
-                <Line yAxisId="right" type="monotone" dataKey="turnoverPct" name="Turnover %" stroke="hsl(var(--primary))" strokeWidth={2.5} />
-              </ComposedChart>
-            </ResponsiveContainer>
+        <div className="rule-line mb-4" />
+        <div className="flex items-end justify-between gap-6 flex-wrap">
+          <div className="flex-1 min-w-[260px]">
+            <p className="section-label mb-2">Rotatividade · Mensal</p>
+            <h1 className="text-display-lg leading-none">
+              Turn
+              <span className="text-primary">over</span>
+            </h1>
+            <p className="text-sm text-muted-foreground mt-3 max-w-xl leading-relaxed">
+              Rotatividade de pessoal mês a mês. Turnover = ((admissões + dispensas) / 2) ÷ quadro médio.
+            </p>
           </div>
-        </CardContent>
-      </Card>
+          <div className="flex gap-2 items-center">
+            <Input type="month" value={from} onChange={e => setFrom(e.target.value)} className="w-40 h-9" />
+            <span className="text-muted-foreground">→</span>
+            <Input type="month" value={to} onChange={e => setTo(e.target.value)} className="w-40 h-9" />
+          </div>
+        </div>
+        <div className="rule-line-double mt-5" />
+      </div>
 
-      <div className="grid lg:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader><CardTitle className="text-sm">Detalhe mês a mês</CardTitle></CardHeader>
-          <CardContent className="p-0">
+      {/* ─────────── 01 / INDICADORES ─────────── */}
+      <section>
+        <div className="flex items-baseline gap-3 mb-5">
+          <span className="font-display text-2xl leading-none">01</span>
+          <span className="section-label text-foreground">Indicadores do Período</span>
+          <div className="flex-1 h-px bg-border" />
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 border-y border-border">
+          <div className="px-4 py-5">
+            <p className="section-label mb-2">Admissões</p>
+            <p className="font-mono font-bold leading-none tracking-tight text-2xl text-emerald-600">+{totals.admitted}</p>
+          </div>
+          <div className="px-4 py-5 border-l border-border">
+            <p className="section-label mb-2">Dispensas</p>
+            <p className="font-mono font-bold leading-none tracking-tight text-2xl text-rose-600">-{totals.dismissed}</p>
+          </div>
+          <div className="px-4 py-5 border-l border-border">
+            <p className="section-label mb-2">Saldo</p>
+            <p className={`font-mono font-bold leading-none tracking-tight text-2xl flex items-center gap-2 ${totals.net >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+              {totals.net >= 0 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
+              {totals.net >= 0 ? '+' : ''}{totals.net}
+            </p>
+          </div>
+          <div className="px-4 py-5 border-l border-border">
+            <p className="section-label mb-2">Tempo médio de casa</p>
+            <p className="font-mono font-bold leading-none tracking-tight text-2xl text-primary">
+              {totals.avgTenure < 12 ? `${totals.avgTenure.toFixed(1)}m` : `${(totals.avgTenure / 12).toFixed(1)}a`}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ─────────── 02 / EVOLUÇÃO ─────────── */}
+      <section>
+        <div className="flex items-baseline gap-3 mb-5">
+          <span className="font-display text-2xl leading-none">02</span>
+          <span className="section-label text-foreground">Turnover Mensal</span>
+          <div className="flex-1 h-px bg-border" />
+        </div>
+        <div className="h-72 border-t border-border pt-3">
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={series} margin={{ top: 8, right: 12, left: -10, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.4)" />
+              <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+              <YAxis yAxisId="left" tick={{ fontSize: 11 }} label={{ value: '#', angle: -90, position: 'insideLeft', fontSize: 11 }} />
+              <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} label={{ value: '%', angle: 90, position: 'insideRight', fontSize: 11 }} />
+              <Tooltip />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Bar yAxisId="left" dataKey="admitted" name="Admitidos" fill="#10b981" />
+              <Bar yAxisId="left" dataKey="dismissed" name="Dispensados" fill="#ef4444" />
+              <Line yAxisId="right" type="monotone" dataKey="turnoverPct" name="Turnover %" stroke="hsl(var(--primary))" strokeWidth={2.5} />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+      </section>
+
+      {/* ─────────── 03 / DETALHES ─────────── */}
+      <section>
+        <div className="flex items-baseline gap-3 mb-5">
+          <span className="font-display text-2xl leading-none">03</span>
+          <span className="section-label text-foreground">Detalhamento</span>
+          <div className="flex-1 h-px bg-border" />
+        </div>
+        <div className="grid lg:grid-cols-2 gap-8">
+          <div>
+            <p className="section-label mb-3">Mês a Mês</p>
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Mês</TableHead>
-                  <TableHead className="text-right">Quadro fim</TableHead>
-                  <TableHead className="text-right">Adm.</TableHead>
-                  <TableHead className="text-right">Dem.</TableHead>
-                  <TableHead className="text-right">Saldo</TableHead>
-                  <TableHead className="text-right">Turnover %</TableHead>
+                <TableRow className="border-b-2 border-foreground hover:bg-transparent">
+                  <TableHead className="section-label text-foreground">Mês</TableHead>
+                  <TableHead className="section-label text-foreground text-right">Quadro fim</TableHead>
+                  <TableHead className="section-label text-foreground text-right">Adm.</TableHead>
+                  <TableHead className="section-label text-foreground text-right">Dem.</TableHead>
+                  <TableHead className="section-label text-foreground text-right">Saldo</TableHead>
+                  <TableHead className="section-label text-foreground text-right">Turn. %</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {series.map(p => (
-                  <TableRow key={p.month}>
+                  <TableRow key={p.month} className="border-b border-border/60">
                     <TableCell className="font-medium">{p.label}</TableCell>
                     <TableCell className="text-right font-mono font-bold">{p.activeEnd}</TableCell>
                     <TableCell className="text-right font-mono text-emerald-600">{p.admitted > 0 ? '+' + p.admitted : '0'}</TableCell>
@@ -236,23 +259,21 @@ export default function TurnoverReport() {
                 ))}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
+          </div>
 
-        <Card>
-          <CardHeader><CardTitle className="text-sm">Tempo de casa por setor</CardTitle></CardHeader>
-          <CardContent className="p-0">
+          <div>
+            <p className="section-label mb-3">Tempo de Casa · Por Setor</p>
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Setor</TableHead>
-                  <TableHead className="text-right">Ativos</TableHead>
-                  <TableHead className="text-right">Tempo médio</TableHead>
+                <TableRow className="border-b-2 border-foreground hover:bg-transparent">
+                  <TableHead className="section-label text-foreground">Setor</TableHead>
+                  <TableHead className="section-label text-foreground text-right">Ativos</TableHead>
+                  <TableHead className="section-label text-foreground text-right">Tempo médio</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {byDept.map(d => (
-                  <TableRow key={d.dept}>
+                  <TableRow key={d.dept} className="border-b border-border/60">
                     <TableCell><Badge variant="secondary">{d.dept}</Badge></TableCell>
                     <TableCell className="text-right font-mono">{d.active}</TableCell>
                     <TableCell className="text-right font-mono">
@@ -262,9 +283,9 @@ export default function TurnoverReport() {
                 ))}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

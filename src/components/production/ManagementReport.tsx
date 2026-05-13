@@ -150,9 +150,9 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
               className="font-display leading-none tracking-tight"
               style={{
                 fontFamily: "'Anton', Impact, sans-serif",
-                fontSize: '64pt',
-                lineHeight: 0.85,
-                letterSpacing: '-0.02em',
+                fontSize: '78pt',
+                lineHeight: 0.82,
+                letterSpacing: '-0.025em',
                 color: '#000',
                 textTransform: 'uppercase',
               }}
@@ -160,7 +160,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
               PV {saleOrder.order_number || '—'}
             </h1>
             {saleOrder.client_order_number && (
-              <p className="mt-2 text-[9pt] text-black">
+              <p className="mt-3 text-[9pt] text-black">
                 <span className="section-label" style={{ color: '#666' }}>Pedido cliente</span>{' '}
                 <span className="font-mono font-semibold ml-1">{saleOrder.client_order_number}</span>
               </p>
@@ -485,8 +485,8 @@ function KpiBlock({
         className="font-mono font-bold leading-none"
         style={{
           fontFamily: "'JetBrains Mono', monospace",
-          fontSize: '18pt',
-          letterSpacing: '-0.02em',
+          fontSize: '22pt',
+          letterSpacing: '-0.03em',
           color: accent === 'negative' ? '#E11D2E' : '#000',
         }}
       >
