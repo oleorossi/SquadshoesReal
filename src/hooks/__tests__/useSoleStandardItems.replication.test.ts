@@ -19,12 +19,19 @@ const deleteInSpy = vi.fn();
 vi.mock('@/integrations/supabase/client', () => {
   const fromProducts = () => ({
     select: (..._args: unknown[]) => {
+      // Listagem via `.in('category', [...])` ou via await direto retornam
+      // a mesma fonte mockada (productsListSelect). `.eq().maybeSingle()`
+      // continua sendo o fetch individual.
+      const listThenable = {
+        then: (resolve: (v: { data: any[] }) => void) =>
+          productsListSelect().then(resolve),
+      };
       const sub: any = {
         eq: (_col: string, val: string) => ({
           maybeSingle: () => productsByIdSingle(val),
         }),
-        then: (resolve: (v: { data: any[] }) => void) =>
-          productsListSelect().then(resolve),
+        in: (_col: string, _vals: string[]) => listThenable,
+        ...listThenable,
       };
       return sub;
     },
