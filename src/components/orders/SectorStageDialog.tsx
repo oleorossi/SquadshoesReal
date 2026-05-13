@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -53,6 +55,30 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
     observations: '',
     defects: '',
     actual_time_minutes: 0,
+  });
+
+  // Operário que executou o setor — persistido por terminal (localStorage)
+  // pra ele não ter que escolher de novo a cada OP. Carrega lista de funcionários
+  // ativos via query separada (não usa useEmployees pra evitar dependência circular
+  // de hooks num dialog usado em várias páginas).
+  const [operatorEmployeeId, setOperatorEmployeeId] = useState<string>(() => {
+    try {
+      return localStorage.getItem('sector_operator_employee_id') || '';
+    } catch { return ''; }
+  });
+
+  const { data: employees = [] } = useQuery({
+    queryKey: ['sector_operators'],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('employees')
+        .select('id, name, role, department, active')
+        .eq('active', true)
+        .order('name');
+      if (error) throw error;
+      return (data || []) as { id: string; name: string; role: string | null; department: string | null }[];
+    },
   });
 
   // Load all stages for this order to check sequential constraint
@@ -110,12 +136,19 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
   };
 
   const handleComplete = async () => {
+    if (!operatorEmployeeId) {
+      // UI exibe o select destacado quando vazio; aqui só protegemos o submit.
+      return;
+    }
+    // Persiste pra próxima OP no mesmo terminal não precisar reescolher
+    try { localStorage.setItem('sector_operator_employee_id', operatorEmployeeId); } catch {}
     try {
       await update.mutateAsync({
         id: stage.id,
         status: 'concluido',
         completed_at: new Date().toISOString(),
         completed_by: user?.id || null,
+        operator_employee_id: operatorEmployeeId,
         quantity_processed: form.quantity_processed,
         observations: form.observations,
         defects: form.defects,
@@ -310,6 +343,35 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
             />
           </div>
 
+          {/* Operário responsável — obrigatório pra finalizar */}
+          {stage.status === 'em_andamento' && (
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 mt-3">
+              <Label className="text-xs font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300">
+                Operário responsável *
+              </Label>
+              <p className="text-[10px] text-muted-foreground mb-1.5">
+                Quem fisicamente executou este setor. Obrigatório para finalizar — fica registrado para
+                relatórios de produtividade e auditoria de qualidade.
+              </p>
+              <Select value={operatorEmployeeId} onValueChange={setOperatorEmployeeId}>
+                <SelectTrigger className={`h-9 ${!operatorEmployeeId ? 'border-amber-500/60' : ''}`}>
+                  <SelectValue placeholder="Selecione o operário..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {employees.length === 0 ? (
+                    <div className="text-xs text-muted-foreground p-2">Nenhum funcionário ativo</div>
+                  ) : (
+                    employees.map(e => (
+                      <SelectItem key={e.id} value={e.id}>
+                        {e.name}{e.role ? ` — ${e.role}` : ''}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           {/* Actions */}
           <div className="flex justify-end gap-2 pt-2 border-t">
             {stage.status === 'pendente' && (
@@ -321,7 +383,12 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
             {stage.status === 'em_andamento' && (
               <>
                 <Button variant="outline" onClick={handleSaveProgress}>Salvar Progresso</Button>
-                <Button onClick={handleComplete} className="gap-2 bg-success hover:bg-success/90 text-success-foreground">
+                <Button
+                  onClick={handleComplete}
+                  disabled={!operatorEmployeeId}
+                  className="gap-2 bg-success hover:bg-success/90 text-success-foreground"
+                  title={!operatorEmployeeId ? 'Selecione o operário responsável para finalizar' : ''}
+                >
                   <CheckCircle2 className="h-4 w-4" /> Finalizar Etapa
                 </Button>
               </>

@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { Info } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -24,6 +27,19 @@ export function DREAuto() {
   const [months, setMonths] = useState<3 | 6 | 12>(6);
   const { data = [], isLoading } = useDREAuto(months);
   const { data: inventoryData = [], isLoading: invLoading } = useDREInventoryVariation(months);
+  const { data: company } = useQuery({
+    queryKey: ['primary_company_regime'],
+    staleTime: 10 * 60_000,
+    queryFn: async () => {
+      const { data } = await (supabase as any)
+        .from('companies')
+        .select('regime_tributario, razao_social')
+        .eq('is_primary', true)
+        .maybeSingle();
+      return data as { regime_tributario: string; razao_social: string } | null;
+    },
+  });
+  const isSimplesNacional = String(company?.regime_tributario || '') === '1';
 
   if (isLoading) return <Skeleton className="h-96" />;
 
@@ -34,6 +50,18 @@ export function DREAuto() {
 
   return (
     <div className="space-y-4">
+      {isSimplesNacional && (
+        <div className="rounded-md border border-blue-500/30 bg-blue-500/5 p-3 flex items-start gap-2 text-sm">
+          <Info className="h-4 w-4 mt-0.5 text-blue-600 shrink-0" />
+          <div className="text-blue-800 dark:text-blue-300">
+            <strong>{company?.razao_social || 'Empresa'}</strong> está em <strong>Simples Nacional</strong>.
+            PIS, COFINS, ICMS, IRPJ, CSLL, ISS já estão consolidados no DAS — o sistema
+            soma pagamentos categoria <code className="font-mono text-xs bg-blue-500/10 px-1 rounded">imposto</code>
+            {' '}dentro de "Despesas Operacionais" (não em linha "Impostos" separada),
+            seguindo a forma correta de apresentar DRE no Simples.
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-base font-semibold flex items-center gap-2">

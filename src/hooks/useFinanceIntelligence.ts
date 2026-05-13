@@ -153,7 +153,7 @@ export function useDREAuto(monthsBack: number = 6) {
       const startDate = format(startOfMonth(subMonths(now, monthsBack - 1)), 'yyyy-MM-dd');
       const endDate = format(endOfMonth(now), 'yyyy-MM-dd');
 
-      const [recRes, payRes] = await Promise.all([
+      const [recRes, payRes, companyRes] = await Promise.all([
         supabase
           .from('accounts_receivable')
           .select('due_date, amount, amount_received, status, category')
@@ -166,9 +166,18 @@ export function useDREAuto(monthsBack: number = 6) {
           .gte('due_date', startDate)
           .lte('due_date', endDate)
           .neq('status', 'cancelled'),
+        // Regime tributário da empresa primária pra ajustar DRE:
+        // regime_tributario='1' = Simples Nacional → impostos vão no DAS,
+        // não devem somar separadamente em "impostos" no DRE.
+        (supabase as any)
+          .from('companies')
+          .select('regime_tributario, razao_social')
+          .eq('is_primary', true)
+          .maybeSingle(),
       ]);
       if (recRes.error) throw recRes.error;
       if (payRes.error) throw payRes.error;
+      const isSimplesNacional = String(companyRes?.data?.regime_tributario || '') === '1';
 
       const months: Record<string, DREMonth> = {};
       for (let i = monthsBack - 1; i >= 0; i--) {
@@ -202,7 +211,15 @@ export function useDREAuto(monthsBack: number = 6) {
         if (cat === 'material' || cat === 'mao_de_obra') {
           months[m].cmv += v;
         } else if (cat === 'imposto') {
-          months[m].impostos += v;
+          // Simples Nacional: PIS/COFINS/ICMS/IRPJ/CSLL/ISS são consolidados em DAS único.
+          // Lançar como "imposto" separadamente distorce o DRE — DAS já é despesa
+          // operacional consolidada. Empresas em Simples NÃO têm linha "Impostos"
+          // separada do DRE; pagamento DAS aparece em despesas operacionais.
+          if (isSimplesNacional) {
+            months[m].despOperacionais += v;
+          } else {
+            months[m].impostos += v;
+          }
         } else {
           months[m].despOperacionais += v;
         }
