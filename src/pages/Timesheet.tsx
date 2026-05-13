@@ -10,6 +10,7 @@ import TimeValidationPanel from '@/components/timeControl/TimeValidationPanel';
 import ReportsPanel from '@/components/timeControl/ReportsPanel';
 import { OvertimeResolutionPanel } from '@/components/timesheet/OvertimeResolutionPanel';
 import { useState, useRef, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Clock, Upload, Plus, Trash as Trash2, CircleNotch as Loader2, Calendar, Gear as Settings2, Warning as AlertTriangle, FileXls as FileSpreadsheet, CaretDown as ChevronDown, Sun, Moon, Coffee, CheckCircle as CheckCircle2, XCircle, MinusCircle, Printer, Users as Users2, CurrencyDollar as DollarSign, Link as Link2, Unlink2, Shield, FileText, Clipboard as ClipboardEdit, Alarm as AlarmClock, ClockCounterClockwise as History, Wallet } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
@@ -1517,6 +1518,8 @@ function TimesheetRecordsTab() {
 
 // ── Main Page ──────────────────────────────────────────
 export default function Timesheet() {
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab') || 'records';
   return (
     <AppLayout>
       <div className="space-y-5 page-enter">
@@ -1527,7 +1530,7 @@ export default function Timesheet() {
           <p className="text-sm text-muted-foreground">Importação de ponto, horários, feriados e cálculo de horas extras</p>
         </div>
 
-        <Tabs defaultValue="records" className="space-y-4">
+        <Tabs defaultValue={initialTab} className="space-y-4">
           <HubTabsList tabs={[
             { value: 'records',     label: 'Ponto',          icon: FileSpreadsheet },
             { value: 'overview',    label: 'Visão Geral',    icon: Users2 },
