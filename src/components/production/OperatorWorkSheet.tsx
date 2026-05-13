@@ -967,37 +967,52 @@ const OperatorWorkSheet = ({
         </div>
       </div>
 
-      {/* ── Footer: obs + signatures ── */}
-      <div className="mt-auto pt-1.5 border-t border-slate-200">
-        <div className="flex items-start justify-between gap-2 mb-1">
-          <div className="flex-1">
-            {order.notes && (
-              <p className="text-[9px] text-slate-500"><strong>Obs.:</strong> {order.notes}</p>
-            )}
+      {/* ── Footer: obs + signatures — editorial close ── */}
+      <div className="mt-3 pt-2">
+        {(order.notes) && (
+          <div className="mb-2 border-t border-black pt-1.5">
+            <span className="section-label block mb-0.5" style={{ color: '#000' }}>Observações</span>
+            <p className="text-[11px] text-black leading-tight">{order.notes}</p>
           </div>
-          <div className="flex items-center gap-1 text-[9px] text-slate-500 shrink-0">
-            <span className="font-bold">Turno:</span>
-            {['M', 'T', 'N'].map(t => (
-              <span key={t} className="w-5 h-5 border border-slate-400 rounded-sm flex items-center justify-center font-bold">{t}</span>
-            ))}
+        )}
+        <div
+          className="w-full mb-3"
+          style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000', height: '4px' }}
+        />
+        <div className="grid grid-cols-4 gap-3 mb-5">
+          <div>
+            <span className="section-label block mb-0.5" style={{ color: '#000' }}>Início</span>
+            <span className="font-mono text-sm text-black tracking-wider">__ : __</span>
+          </div>
+          <div>
+            <span className="section-label block mb-0.5" style={{ color: '#000' }}>Fim</span>
+            <span className="font-mono text-sm text-black tracking-wider">__ : __</span>
+          </div>
+          <div>
+            <span className="section-label block mb-0.5" style={{ color: '#000' }}>Data</span>
+            <span className="font-mono text-sm text-black tracking-wider">__ / __ / ____</span>
+          </div>
+          <div>
+            <span className="section-label block mb-0.5" style={{ color: '#000' }}>Turno</span>
+            <div className="flex items-center gap-2 mt-0.5">
+              {['M', 'T', 'N'].map(t => (
+                <span key={t} className="w-5 h-5 flex items-center justify-center font-bold font-mono text-[11px] text-black" style={{ border: '1.5px solid #000' }}>
+                  {t}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
-        <div className="flex items-end justify-between gap-2">
-          <div className="text-center flex-1">
-            <div className="border-t border-slate-400 mt-4 pt-0.5">
-              <p className="text-[9px] text-slate-500 uppercase font-bold">Operador(a)</p>
+        <div className="flex items-end justify-between gap-6">
+          {['Operador(a)', 'Conferente', 'Supervisor(a)'].map(label => (
+            <div key={label} className="flex-1">
+              <div className="border-t border-black pt-1.5 mt-8">
+                <p className="section-label" style={{ color: '#000' }}>
+                  Assinatura · {label}
+                </p>
+              </div>
             </div>
-          </div>
-          <div className="text-center flex-1">
-            <div className="border-t border-slate-400 mt-4 pt-0.5">
-              <p className="text-[9px] text-slate-500 uppercase font-bold">Conferente</p>
-            </div>
-          </div>
-          <div className="text-center flex-1">
-            <div className="border-t border-slate-400 mt-4 pt-0.5">
-              <p className="text-[9px] text-slate-500 uppercase font-bold">Supervisor(a)</p>
-            </div>
-          </div>
+          ))}
         </div>
       </div>
     </div>

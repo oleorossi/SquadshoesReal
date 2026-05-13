@@ -135,26 +135,29 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
 
   return (
     <div
-      className="w-[210mm] p-[8mm] print:w-full print:p-0 bg-white border border-slate-300 shadow-none print:shadow-none print:border-0 m-auto flex flex-col gap-0"
-      style={{ boxSizing: 'border-box', fontFamily: "'Helvetica Neue', Arial, sans-serif" }}
+      className="w-[210mm] p-[8mm] print:w-full print:p-0 bg-white shadow-none print:shadow-none m-auto flex flex-col gap-0"
+      style={{ boxSizing: 'border-box', fontFamily: "'Inter Tight', sans-serif", color: '#000' }}
     >
       <WorksheetHeader
         sector={sector}
         icon={Icon}
-        bgColor={theme.bg}
-        borderColor={theme.border}
         identification={
           <>
-            <div className="flex items-baseline gap-3 flex-wrap">
-              <p className="text-lg font-black text-slate-900 leading-tight">{group.soleName}</p>
-              <p className="text-xs text-slate-600">
+            <span className="section-label block" style={{ color: '#000' }}>Solado</span>
+            <p
+              className="text-black uppercase leading-none mt-0.5"
+              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '36px', letterSpacing: '-0.025em' }}
+            >
+              {group.soleName}
+            </p>
+            <div className="flex items-baseline gap-3 mt-1 flex-wrap">
+              <span className="font-mono text-[11px] text-black tracking-widest uppercase">
                 {group.colorGroups.length} cor{group.colorGroups.length !== 1 ? 'es' : ''}
-              </p>
-              <p className="text-xs text-slate-600">
-                Total: <span className="font-mono font-black text-slate-900">{group.totalPairs} pares</span>
-              </p>
+              </span>
+              <span className="font-mono text-[11px] text-black tracking-widest uppercase">
+                Total · <span className="font-bold">{group.totalPairs}</span> pares
+              </span>
             </div>
-            <p className="text-[10px] text-slate-500 uppercase tracking-wide font-bold">Solado · agrupado por cor</p>
           </>
         }
         qrLabel={sector.toUpperCase().slice(0, 8)}
@@ -163,45 +166,45 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
 
       {/* Silks em destaque — uma por solado, multiple se cliente/grupo tem silk própria */}
       {theme.showSilkImage && uniqueSilks.length > 0 && (
-        <div className={`mb-1.5 border-2 ${theme.border1} rounded-lg p-1.5 ${theme.bgLight} keep-together`}>
-          <div className="flex items-center justify-between mb-1">
-            <p className={`text-[10px] font-bold uppercase tracking-wide ${theme.textColor}`}>
-              Silk{uniqueSilks.length > 1 ? 's' : ''} pra forração — solado {group.soleName}
-            </p>
-            <p className="text-[9px] text-slate-500">
-              {uniqueSilks.length} arte{uniqueSilks.length > 1 ? 's' : ''} · verificar antes de iniciar
-            </p>
+        <div className="mb-2 keep-together">
+          <div className="flex items-baseline justify-between mb-1">
+            <span className="section-label" style={{ color: '#000' }}>
+              02 / Silk{uniqueSilks.length > 1 ? 's' : ''} · Solado {group.soleName}
+            </span>
+            <span className="font-mono text-[10px] text-black tracking-widest uppercase">
+              {uniqueSilks.length} arte{uniqueSilks.length > 1 ? 's' : ''} · verificar antes
+            </span>
           </div>
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="border-t border-black pt-2 grid grid-cols-2 gap-2">
             {uniqueSilks.map((silk, idx) => (
-              <div key={`${silk.silk_url}-${idx}`} className="flex items-center gap-2 bg-white border border-slate-200 rounded p-1">
+              <div key={`${silk.silk_url}-${idx}`} className="flex items-center gap-2 bg-white p-1.5" style={{ border: '1px solid #000' }}>
                 {silk.silk_url ? (
-                  <div className="w-16 h-16 border border-slate-300 bg-white rounded overflow-hidden shrink-0 flex items-center justify-center">
+                  <div className="w-16 h-16 bg-white overflow-hidden shrink-0 flex items-center justify-center" style={{ border: '1.5px solid #000' }}>
                     <img
                       src={silk.silk_url}
                       alt={silk.silk_name}
                       className="w-full h-full object-contain"
                       onError={(e) => {
-                        // URL quebrada (ex: projeto antigo deletado) → esconde o img.
-                        // O irmão do parent vai mostrar placeholder via JS.
                         const img = e.currentTarget;
                         img.style.display = 'none';
-                        const parent = img.parentElement;
-                        if (parent) parent.classList.add('bg-amber-50', 'border-amber-300');
                       }}
                     />
                   </div>
                 ) : (
-                  <div className="w-16 h-16 bg-amber-50 border border-amber-300 rounded shrink-0 flex items-center justify-center">
-                    <span className="text-[8px] text-amber-700 text-center px-1 font-bold">Sem imagem</span>
+                  <div className="w-16 h-16 bg-white shrink-0 flex items-center justify-center" style={{ border: '1.5px solid #000' }}>
+                    <span className="text-[8px] text-black text-center px-1 font-mono uppercase tracking-widest">Sem imagem</span>
                   </div>
                 )}
-                <div className="min-w-0">
-                  <p className={`text-base font-black leading-tight truncate ${theme.textColor}`} title={silk.silk_name}>
+                <div className="min-w-0 flex-1">
+                  <p
+                    className="text-black uppercase leading-none truncate"
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '22px', letterSpacing: '-0.02em' }}
+                    title={silk.silk_name}
+                  >
                     {silk.silk_name}
                   </p>
                   {!silk.silk_url && (
-                    <p className="text-[9px] text-amber-600 mt-0.5">Re-upload em /silks</p>
+                    <p className="text-[9px] font-mono text-black mt-0.5 tracking-widest uppercase">Re-upload em /silks</p>
                   )}
                 </div>
               </div>
@@ -222,29 +225,47 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
           const cards = Math.max(1, Math.ceil(cg.totalPairs / pairsPerCard));
 
           return (
-            <div key={idx} className={`keep-together border-2 rounded overflow-hidden ${theme.border1}`}>
-              <div className={`${theme.bg} text-white px-3 py-1.5 flex items-center justify-between`}>
-                <div className="flex items-center gap-2">
+            <div key={idx} className="keep-together bg-white" style={{ border: '1.5px solid #000' }}>
+              {/* Color header — editorial, no fill */}
+              <div className="px-3 py-2 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
+                <div className="flex items-center gap-2 min-w-0">
                   {cg.colorHex && (
-                    <div className="w-4 h-4 rounded-full border border-white/50 shrink-0" style={{ backgroundColor: cg.colorHex }} />
+                    <div className="w-5 h-5 shrink-0" style={{ backgroundColor: cg.colorHex, border: '1px solid #000' }} />
                   )}
-                  <span className="font-black text-sm uppercase tracking-wide">{cg.color}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  {cg.opNumbers.length > 0 && (
-                    <span className="text-[10px] font-mono bg-white/20 px-2 py-0.5 rounded">
-                      {cg.opNumbers.length === 1
-                        ? cg.opNumbers[0]
-                        : `${cg.opNumbers[0]} +${cg.opNumbers.length - 1}`}
+                  <div className="min-w-0">
+                    <span className="section-label block" style={{ color: '#000' }}>Cor</span>
+                    <span
+                      className="text-black uppercase leading-none block"
+                      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em' }}
+                    >
+                      {cg.color}
                     </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 shrink-0">
+                  {cg.opNumbers.length > 0 && (
+                    <div className="text-right">
+                      <span className="section-label block" style={{ color: '#000' }}>OP</span>
+                      <span className="font-mono text-[12px] font-bold text-black tracking-wider">
+                        {cg.opNumbers.length === 1 ? cg.opNumbers[0] : `${cg.opNumbers[0]} +${cg.opNumbers.length - 1}`}
+                      </span>
+                    </div>
                   )}
-                  <span className="text-sm font-black">{cg.totalPairs} pares</span>
+                  <div className="text-right">
+                    <span className="section-label block" style={{ color: '#000' }}>Pares</span>
+                    <span
+                      className="text-black leading-none block"
+                      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.02em' }}
+                    >
+                      {cg.totalPairs}
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              <div className={`p-1.5 ${theme.bgLight}`}>
+              <div className="p-2 bg-white">
                 {/* Linha superior: foto (quando aplicável ao setor) + info setor-específica */}
-                <div className="flex gap-2 mb-1.5">
+                <div className="flex gap-2 mb-2">
                   {theme.showProductImage && (
                     <ProductImageBlock
                       variantImageUrl={cg.variantImageUrl}
@@ -255,24 +276,24 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                       alt={`${group.soleName} ${cg.color}`}
                     />
                   )}
-                  <div className="flex-1 grid grid-cols-2 gap-1 text-[10px]">
+                  <div className="flex-1 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
                     {theme.showMaterials !== 'none' && (
                       <>
                         {(theme.showMaterials === 'upper' || theme.showMaterials === 'both') && (
                           <div>
-                            <p className="text-[8px] uppercase font-bold text-slate-500">Cabedal</p>
-                            <p className="font-semibold">{cg.upperMaterial || '—'}</p>
+                            <span className="section-label block" style={{ color: '#000' }}>Cabedal</span>
+                            <p className="font-bold text-black uppercase mt-0.5 leading-tight">{cg.upperMaterial || '—'}</p>
                             {cg.upperConsumptionPerPair && (
-                              <p className="text-slate-500">{cg.upperConsumptionPerPair.toFixed(2)} dm²/par</p>
+                              <p className="font-mono text-[10px] text-black tracking-wider">{cg.upperConsumptionPerPair.toFixed(2)} dm²/par</p>
                             )}
                           </div>
                         )}
                         {(theme.showMaterials === 'lining' || theme.showMaterials === 'both') && (
                           <div>
-                            <p className="text-[8px] uppercase font-bold text-slate-500">Forro</p>
-                            <p className="font-semibold">{cg.liningMaterial || '—'}</p>
+                            <span className="section-label block" style={{ color: '#000' }}>Forro</span>
+                            <p className="font-bold text-black uppercase mt-0.5 leading-tight">{cg.liningMaterial || '—'}</p>
                             {cg.liningConsumptionPerPair && (
-                              <p className="text-slate-500">{cg.liningConsumptionPerPair.toFixed(2)} dm²/par</p>
+                              <p className="font-mono text-[10px] text-black tracking-wider">{cg.liningConsumptionPerPair.toFixed(2)} dm²/par</p>
                             )}
                           </div>
                         )}
@@ -281,24 +302,24 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                     {theme.showStitching && (
                       <>
                         <div>
-                          <p className="text-[8px] uppercase font-bold text-slate-500">Linha</p>
-                          <p className="font-semibold">{cg.threadColor || '—'}</p>
+                          <span className="section-label block" style={{ color: '#000' }}>Linha</span>
+                          <p className="font-bold text-black uppercase mt-0.5">{cg.threadColor || '—'}</p>
                         </div>
                         <div>
-                          <p className="text-[8px] uppercase font-bold text-slate-500">Ponto</p>
-                          <p className="font-semibold">{cg.stitchType || '—'}</p>
+                          <span className="section-label block" style={{ color: '#000' }}>Ponto</span>
+                          <p className="font-bold text-black uppercase mt-0.5">{cg.stitchType || '—'}</p>
                         </div>
                       </>
                     )}
                     {theme.showIndividualBox && (
                       <>
                         <div>
-                          <p className="text-[8px] uppercase font-bold text-slate-500">Caixa individual</p>
-                          <p className="font-semibold">{cg.individualBoxColor || '—'}</p>
+                          <span className="section-label block" style={{ color: '#000' }}>Caixa Individual</span>
+                          <p className="font-bold text-black uppercase mt-0.5">{cg.individualBoxColor || '—'}</p>
                         </div>
                         <div>
-                          <p className="text-[8px] uppercase font-bold text-slate-500">Pares/caixa</p>
-                          <p className="font-semibold">{cg.pairsPerIndividualBox || 12}</p>
+                          <span className="section-label block" style={{ color: '#000' }}>Pares / Caixa</span>
+                          <p className="font-mono font-bold text-black mt-0.5">{cg.pairsPerIndividualBox || 12}</p>
                         </div>
                       </>
                     )}
@@ -307,48 +328,55 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
 
                 {/* Componentes auxiliares (Aviamento). Quando TODOS os items
                     têm label começando com 'TIRA', renderiza como tabela de
-                    "Sequência de Tiras" — ordem matters pra montagem (mesma
-                    ordem da ficha técnica, ex: TIRA 1 / TIRA 2 / TIRA 3 com
-                    cores diferentes em modelos mix). */}
+                    "Sequência de Tiras". */}
                 {theme.showMaterials === 'both' && cg.components && cg.components.length > 0 && (() => {
                   const isAllStraps = cg.components.every(c => /^TIRA(\s|$)/i.test(c.name || ''));
                   return (
-                    <div className={`mb-1.5 border-2 ${isAllStraps ? 'border-amber-500' : 'border-amber-300'} rounded p-1.5 bg-white keep-together`}>
-                      <p className="text-[9px] font-bold text-amber-700 uppercase mb-1 tracking-wide">
-                        {isAllStraps ? `Sequência de Tiras (ordem da ficha técnica · ${cg.components.length} tiras)` : 'Componentes'}
-                      </p>
+                    <div className="mb-2 keep-together">
+                      <div className="flex items-baseline justify-between mb-1">
+                        <span className="section-label" style={{ color: '#000' }}>
+                          {isAllStraps ? `Sequência de Tiras · ${cg.components.length}` : 'Componentes'}
+                        </span>
+                        {isAllStraps && (
+                          <span className="font-mono text-[10px] text-black tracking-widest uppercase">
+                            Ordem da ficha técnica
+                          </span>
+                        )}
+                      </div>
                       {isAllStraps ? (
-                        <table className="w-full text-[10px]" style={{ borderCollapse: 'collapse' }}>
+                        <table className="w-full text-[11px]" style={{ borderCollapse: 'collapse', border: '1px solid #000' }}>
                           <thead>
-                            <tr className="bg-amber-50">
-                              <th className="border border-amber-200 px-1.5 py-0.5 text-left font-bold w-12">#</th>
-                              <th className="border border-amber-200 px-1.5 py-0.5 text-left font-bold">Tira</th>
-                              <th className="border border-amber-200 px-1.5 py-0.5 text-left font-bold">Cor</th>
-                              <th className="border border-amber-200 px-1.5 py-0.5 text-left font-bold">Material</th>
-                              <th className="border border-amber-200 px-1.5 py-0.5 text-center font-bold w-6">✓</th>
+                            <tr style={{ borderBottom: '1.5px solid #000' }}>
+                              <th className="section-label px-2 py-1 text-left" style={{ color: '#000', width: 36 }}>#</th>
+                              <th className="section-label px-2 py-1 text-left" style={{ color: '#000' }}>Tira</th>
+                              <th className="section-label px-2 py-1 text-left" style={{ color: '#000' }}>Cor</th>
+                              <th className="section-label px-2 py-1 text-left" style={{ color: '#000' }}>Material</th>
+                              <th className="section-label px-2 py-1 text-center" style={{ color: '#000', width: 32 }}>OK</th>
                             </tr>
                           </thead>
                           <tbody>
                             {cg.components.map((c, i) => (
-                              <tr key={i}>
-                                <td className="border border-amber-200 px-1.5 py-0.5 font-mono font-bold text-amber-800">{i + 1}</td>
-                                <td className="border border-amber-200 px-1.5 py-0.5 font-bold">{c.name}</td>
-                                <td className="border border-amber-200 px-1.5 py-0.5 font-black uppercase">{c.color || '—'}</td>
-                                <td className="border border-amber-200 px-1.5 py-0.5 text-slate-600">{c.material || '—'}</td>
-                                <td className="border border-amber-200 px-1.5 py-0.5 text-center">
-                                  <span className="inline-block w-3 h-3 border-2 border-amber-500 rounded-sm" />
+                              <tr key={i} style={{ borderBottom: '1px solid #000' }}>
+                                <td className="px-2 py-1 font-mono font-bold text-black">{i + 1}</td>
+                                <td className="px-2 py-1 font-bold text-black uppercase">{c.name}</td>
+                                <td className="px-2 py-1 text-black uppercase" style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '16px', letterSpacing: '-0.01em' }}>
+                                  {c.color || '—'}
+                                </td>
+                                <td className="px-2 py-1 text-black">{c.material || '—'}</td>
+                                <td className="px-2 py-1 text-center">
+                                  <span className="inline-block w-4 h-4" style={{ border: '1.5px solid #000' }} />
                                 </td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
                       ) : (
-                        <ul className="text-[10px] space-y-0.5">
+                        <ul className="text-[11px] space-y-0.5 bg-white p-2 border-t border-black">
                           {cg.components.map((c, i) => (
-                            <li key={i}>
-                              <span className="font-bold">{c.name}:</span>{' '}
+                            <li key={i} className="text-black">
+                              <span className="font-bold uppercase">{c.name}:</span>{' '}
                               {c.material || '—'}
-                              {c.color && ` (${c.color})`}
+                              {c.color && ` · ${c.color}`}
                               {c.qty && ` · ${c.qty}`}
                             </li>
                           ))}
@@ -361,28 +389,26 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                 {/* Alertas (só renderiza no setor relevante — ex: Aviamento) */}
                 {theme.showAlerts && cg.alerts && cg.alerts.length > 0 && <SectorAlerts alerts={cg.alerts} />}
 
-                {/* Checklist específico de Corte de Cabedal: peças do cabedal +
-                    conferência de cor + etiquetagem. Aparece antes da grade
-                    pra que o cortador siga a checklist do alto pra baixo. */}
+                {/* Checklist específico de Corte de Cabedal */}
                 {theme.showCabedalCutChecklist && (
-                  <div className={`mb-1.5 border-2 ${theme.border1} rounded p-1.5 bg-white keep-together`}>
-                    <p className={`text-[9px] font-black uppercase tracking-wide ${theme.textColor} mb-1`}>
-                      Checklist — Corte do Cabedal ({cg.color})
-                    </p>
-                    <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+                  <div className="mb-2 keep-together">
+                    <span className="section-label block mb-1" style={{ color: '#000' }}>
+                      Checklist · Corte do Cabedal · {cg.color}
+                    </span>
+                    <div className="border-t border-black pt-1.5 grid grid-cols-2 gap-x-3 gap-y-0.5">
                       {[
-                        `Conferir cor do material (esperado: ${cg.color})`,
-                        cg.upperMaterial ? `Material: ${cg.upperMaterial}` : 'Conferir tipo de material da ficha',
+                        `Conferir cor do material · esperado ${cg.color}`,
+                        cg.upperMaterial ? `Material · ${cg.upperMaterial}` : 'Conferir tipo de material da ficha',
                         'Molde do cabedal separado por numeração',
-                        'Cortar peças: lateral, peito (língua), traseira',
-                        'Cortar reforços/contraforte se aplicável',
-                        'Separar peças por par (verificar simetria L/R)',
+                        'Cortar peças · lateral, peito (língua), traseira',
+                        'Cortar reforços / contraforte se aplicável',
+                        'Separar peças por par · verificar simetria L/R',
                         cg.upperConsumptionPerPair
-                          ? `Consumo esperado: ${cg.upperConsumptionPerPair.toFixed(2)} dm²/par`
-                          : 'Identificar lote com cor + numeração + OP',
+                          ? `Consumo esperado · ${cg.upperConsumptionPerPair.toFixed(2)} dm²/par`
+                          : 'Identificar lote · cor + numeração + OP',
                       ].map((item, i) => (
-                        <label key={i} className="flex items-start gap-1.5 text-[10px] leading-tight py-0.5">
-                          <span className="w-3.5 h-3.5 border-2 border-orange-500 rounded-sm shrink-0 inline-block mt-0.5" />
+                        <label key={i} className="flex items-start gap-1.5 text-[11px] leading-tight py-0.5 text-black">
+                          <span className="w-3.5 h-3.5 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
                           <span>{item}</span>
                         </label>
                       ))}
@@ -390,98 +416,117 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                   </div>
                 )}
 
-                {/* Grade de números */}
-                <table className="w-full text-center bg-white" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
-                  <thead>
-                    <tr className="bg-slate-100">
-                      <th className="border border-slate-300 py-1 text-[9px] font-bold text-slate-600" style={{ width: 54 }}>Nº</th>
-                      {activeSizes.map(s => (
-                        <th key={s} className="border border-slate-300 py-1 text-[10px] font-bold">{s}</th>
-                      ))}
-                      <th className="border border-slate-300 py-1 text-[9px] font-bold bg-slate-200" style={{ width: 50 }}>TOTAL</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td className="border border-slate-300 py-1.5 text-[8px] font-bold text-slate-500">Pares</td>
-                      {activeSizes.map(s => (
-                        <td key={s} className="border border-slate-300 py-1.5 font-mono text-lg font-black">
-                          {cg.combinedGrid[s] || 0}
+                {/* Grade de números — editorial hairline */}
+                <div className="mb-2">
+                  <span className="section-label block mb-1" style={{ color: '#000' }}>Grade · Pares por Numeração</span>
+                  <table className="w-full text-center bg-white" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', border: '1.5px solid #000' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1.5px solid #000' }}>
+                        <th className="section-label py-1.5" style={{ color: '#000', width: 54, borderRight: '1px solid #000' }}>Nº</th>
+                        {activeSizes.map((s, i) => (
+                          <th
+                            key={s}
+                            className="py-1.5 text-black font-bold"
+                            style={{
+                              fontSize: '13px',
+                              fontFamily: "'JetBrains Mono', monospace",
+                              borderRight: '1px solid #000',
+                            }}
+                          >
+                            {s}
+                          </th>
+                        ))}
+                        <th className="section-label py-1.5" style={{ color: '#000', width: 50 }}>Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr style={{ borderBottom: theme.showFrenteTraseiro ? '1px solid #000' : 'none' }}>
+                        <td className="py-1.5 text-[10px] font-mono font-bold text-black uppercase tracking-wider" style={{ borderRight: '1px solid #000' }}>
+                          Pares
                         </td>
-                      ))}
-                      <td className="border border-slate-300 py-1.5 font-mono text-lg font-black bg-slate-100">
-                        {cg.totalPairs}
-                      </td>
-                    </tr>
+                        {activeSizes.map(s => (
+                          <td
+                            key={s}
+                            className="py-1.5 text-black"
+                            style={{
+                              fontFamily: "'Anton', Impact, sans-serif",
+                              fontSize: '22px',
+                              letterSpacing: '-0.02em',
+                              lineHeight: '1',
+                              borderRight: '1px solid #000',
+                            }}
+                          >
+                            {cg.combinedGrid[s] || 0}
+                          </td>
+                        ))}
+                        <td
+                          className="py-1.5 text-black"
+                          style={{
+                            fontFamily: "'Anton', Impact, sans-serif",
+                            fontSize: '22px',
+                            letterSpacing: '-0.02em',
+                            lineHeight: '1',
+                          }}
+                        >
+                          {cg.totalPairs}
+                        </td>
+                      </tr>
 
-                    {/* Frente/Traseiro (Aviamento) */}
-                    {theme.showFrenteTraseiro && (
-                      <>
-                        <tr className={theme.bgLight}>
-                          <td className={`border border-slate-300 py-1.5 text-[10px] font-bold ${theme.textColor}`}>Frente</td>
-                          {activeSizes.map(s => (
-                            <td key={s} className="border border-slate-300 py-1.5">
-                              <span className="inline-block w-6 h-6 border-2 border-slate-400 rounded" />
+                      {/* Frente/Traseiro (Aviamento) */}
+                      {theme.showFrenteTraseiro && (
+                        <>
+                          <tr style={{ borderBottom: '1px solid #000' }}>
+                            <td className="py-1.5 text-[10px] font-mono font-bold text-black uppercase tracking-wider" style={{ borderRight: '1px solid #000' }}>Frente</td>
+                            {activeSizes.map(s => (
+                              <td key={s} className="py-1.5" style={{ borderRight: '1px solid #000' }}>
+                                <span className="inline-block w-5 h-5" style={{ border: '1.5px solid #000' }} />
+                              </td>
+                            ))}
+                            <td className="py-1.5">
+                              <span className="inline-block w-5 h-5" style={{ border: '1.5px solid #000' }} />
                             </td>
-                          ))}
-                          <td className="border border-slate-300 py-1.5 bg-slate-50">
-                            <span className="inline-block w-6 h-6 border-2 border-slate-400 rounded" />
-                          </td>
-                        </tr>
-                        <tr className={theme.bgLight}>
-                          <td className={`border border-slate-300 py-1.5 text-[10px] font-bold ${theme.textColor}`}>Traseira</td>
-                          {activeSizes.map(s => (
-                            <td key={s} className="border border-slate-300 py-1.5">
-                              <span className="inline-block w-6 h-6 border-2 border-slate-400 rounded" />
+                          </tr>
+                          <tr>
+                            <td className="py-1.5 text-[10px] font-mono font-bold text-black uppercase tracking-wider" style={{ borderRight: '1px solid #000' }}>Traseira</td>
+                            {activeSizes.map(s => (
+                              <td key={s} className="py-1.5" style={{ borderRight: '1px solid #000' }}>
+                                <span className="inline-block w-5 h-5" style={{ border: '1.5px solid #000' }} />
+                              </td>
+                            ))}
+                            <td className="py-1.5">
+                              <span className="inline-block w-5 h-5" style={{ border: '1.5px solid #000' }} />
                             </td>
-                          ))}
-                          <td className="border border-slate-300 py-1.5 bg-slate-50">
-                            <span className="inline-block w-6 h-6 border-2 border-slate-400 rounded" />
-                          </td>
-                        </tr>
-                      </>
-                    )}
-                  </tbody>
-                </table>
+                          </tr>
+                        </>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
 
                 {/* Checklist Acabamento */}
                 {theme.showFinishingChecklist && (
-                  <div className="mt-1.5 border border-emerald-300 rounded p-1.5 bg-white">
-                    <p className="text-[9px] font-bold text-emerald-700 uppercase mb-1">Checklist por ficha</p>
-                    <div className="flex items-center justify-between text-[10px]">
-                      <label className="flex items-center gap-1">
-                        <span className="inline-block w-4 h-4 border-2 border-emerald-500 rounded" />
-                        Limpou cola
-                      </label>
-                      <label className="flex items-center gap-1">
-                        <span className="inline-block w-4 h-4 border-2 border-emerald-500 rounded" />
-                        Conferiu numeração
-                      </label>
-                      <label className="flex items-center gap-1">
-                        <span className="inline-block w-4 h-4 border-2 border-emerald-500 rounded" />
-                        Conferiu par
-                      </label>
-                      <label className="flex items-center gap-1">
-                        <span className="inline-block w-4 h-4 border-2 border-emerald-500 rounded" />
-                        Embalou
-                      </label>
+                  <div className="mb-2">
+                    <span className="section-label block mb-1" style={{ color: '#000' }}>Checklist por Ficha</span>
+                    <div className="border-t border-black pt-1.5 grid grid-cols-4 gap-2">
+                      {['Limpou cola', 'Conferiu numeração', 'Conferiu par', 'Embalou'].map(item => (
+                        <label key={item} className="flex items-center gap-1.5 text-[11px] text-black">
+                          <span className="inline-block w-4 h-4 shrink-0" style={{ border: '1.5px solid #000' }} />
+                          <span className="leading-tight">{item}</span>
+                        </label>
+                      ))}
                     </div>
                   </div>
                 )}
 
                 {/* Tally Box */}
-                <div className="mt-1.5">
-                  <TallyBox count={cards} pairsPerCard={pairsPerCard} accentColor={theme.accentColor} />
-                </div>
+                <TallyBox count={cards} pairsPerCard={pairsPerCard} />
               </div>
             </div>
           );
         })}
       </div>
 
-      <div className="mt-2">
-        <SignatureFooter />
-      </div>
+      <SignatureFooter />
     </div>
   );
 };
