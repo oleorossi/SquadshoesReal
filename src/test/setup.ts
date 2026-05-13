@@ -1,4 +1,13 @@
 import "@testing-library/jest-dom";
+import { afterEach } from "vitest";
+import { cleanup } from "@testing-library/react";
+
+// Auto-cleanup do DOM entre testes. Sem isso, render() acumula múltiplas
+// instâncias renderizadas no document.body — getByText falha com "found
+// multiple elements" no segundo teste em diante (ex.: SecurityIntegration
+// test 2 onde dois "Acesso Restrito" coexistiam do teste anterior).
+afterEach(() => cleanup());
+
 
 // Mock env vars que o cliente Supabase precisa para instanciar (testes não
 // acessam o backend real). Sem isso, qualquer import indireto de
