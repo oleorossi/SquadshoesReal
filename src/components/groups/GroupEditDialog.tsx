@@ -23,12 +23,52 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { getSoleModelName } from '@/lib/utils';
 import { CONSUMPTION_UNITS_BY_GROUP } from '@/lib/measurementUnits';
+import { deriveCategoryFromGroup } from '@/lib/categoryFromGroup';
 import { CurrencyInput } from '@/components/ui/currency-input';
 
 interface GroupEditDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   group: ProductGroup;
+}
+
+// Renderização condicional por tipo de grupo: campos só aparecem quando fazem
+// sentido pra categoria. Solado precisa de tipos de caixa + peso; cabedal/napa
+// precisa de material artesanal; cola/ferramenta só precisa do básico.
+// "generic" cobre o fallback "Componente" — mostra tudo (catch-all seguro).
+type GroupType = 'sole' | 'upper_material' | 'insole_part' | 'chemical' | 'tool' | 'last' | 'generic';
+
+function getGroupType(groupName: string): GroupType {
+  switch (deriveCategoryFromGroup(groupName)) {
+    case 'Solado': return 'sole';
+    case 'Cabedal': return 'upper_material';
+    case 'Palmilha':
+    case 'Forração da Palmilha': return 'insole_part';
+    case 'Cola / Químico': return 'chemical';
+    case 'Ferramentas': return 'tool';
+    case 'Fôrma': return 'last';
+    default: return 'generic';
+  }
+}
+
+function getVisibleFields(type: GroupType) {
+  const isSole = type === 'sole';
+  const isUpper = type === 'upper_material';
+  const isInsole = type === 'insole_part';
+  const isChemical = type === 'chemical';
+  const isTool = type === 'tool';
+  const isLast = type === 'last';
+  const isGeneric = type === 'generic';
+
+  return {
+    bomColorSource: isSole || isUpper || isInsole || isGeneric,
+    sharedSpecs:    !isChemical && !isTool,
+    artisanal:      isUpper || isGeneric,
+    colorsManager:  isSole || isUpper || isInsole || isGeneric,
+    boxTypes:       isSole || isLast,
+    unitWeight:     isSole || isGeneric,
+    yieldTab:       isSole || isUpper || isInsole || isGeneric,
+  };
 }
 
 const SIZES = ['15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
@@ -525,8 +565,9 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
   const { data: allProducts = [] } = useProducts();
   const products = allProducts.filter(p => p.group_id === group.id);
 
-  // All groups can have sole-specific yield (not just Palmilha)
-  const showYieldTab = true;
+  const groupType = useMemo(() => getGroupType(group.name), [group.name]);
+  const show = useMemo(() => getVisibleFields(groupType), [groupType]);
+  const showYieldTab = show.yieldTab;
 
   const [name, setName] = useState(group.name);
   const [description, setDescription] = useState(group.description || '');
@@ -770,20 +811,23 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
 
             {/* Tab: General */}
             <TabsContent value="general" className="space-y-4 mt-4">
-              <div className="flex items-center justify-between rounded-lg border p-4 bg-muted/30">
-                <div className="flex items-center gap-3">
-                  <Palette className="h-5 w-5 text-primary" />
-                  <div>
-                    <p className="text-sm font-medium">Fonte de cores para BOM</p>
-                    <p className="text-xs text-muted-foreground">
-                      Habilite para que as cores deste grupo apareçam como opções nas variantes de cor
-                    </p>
+              {show.bomColorSource && (
+                <div className="flex items-center justify-between rounded-lg border p-4 bg-muted/30">
+                  <div className="flex items-center gap-3">
+                    <Palette className="h-5 w-5 text-primary" />
+                    <div>
+                      <p className="text-sm font-medium">Fonte de cores para BOM</p>
+                      <p className="text-xs text-muted-foreground">
+                        Habilite para que as cores deste grupo apareçam como opções nas variantes de cor
+                      </p>
+                    </div>
                   </div>
+                  <Switch checked={isBomColorSource} onCheckedChange={setIsBomColorSource} />
                 </div>
-                <Switch checked={isBomColorSource} onCheckedChange={setIsBomColorSource} />
-              </div>
+              )}
 
               {/* Especificações Compartilhadas */}
+              {show.sharedSpecs && (
               <div className="rounded-lg border-2 border-primary/20 p-4 bg-primary/5 space-y-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3">
@@ -827,8 +871,10 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                   </p>
                 </div>
               </div>
+              )}
 
               {/* Artesanal */}
+              {show.artisanal && (
               <div className="rounded-lg border-2 border-amber-200 p-4 bg-amber-50/50 space-y-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3">
@@ -919,6 +965,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                   </div>
                 )}
               </div>
+              )}
 
               <div className="space-y-3">
                 <div>
@@ -929,29 +976,29 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                   <Label htmlFor="edit-group-desc">Descrição</Label>
                   <Textarea id="edit-group-desc" value={description} onChange={e => setDescription(e.target.value)} className="mt-1" rows={2} />
                 </div>
+                {show.unitWeight && (
                 <div>
                   <Label htmlFor="edit-group-weight">Peso Unitário (kg)</Label>
-                  <Input 
-                    id="edit-group-weight" 
-                    type="number" 
+                  <Input
+                    id="edit-group-weight"
+                    type="number"
                     step="0.001"
-                    value={unitWeightKg || ''} 
-                    onChange={e => setUnitWeightKg(parseFloat(e.target.value) || 0)} 
-                    className="mt-1" 
+                    value={unitWeightKg || ''}
+                    onChange={e => setUnitWeightKg(parseFloat(e.target.value) || 0)}
+                    className="mt-1"
                     placeholder="Ex: 0.250"
                   />
                   <p className="text-[10px] text-muted-foreground mt-1">
                     Peso de uma unidade (par de solados, um cabedal ou uma caixa) usado para cálculo do peso total de despacho.
                   </p>
                 </div>
-                <GroupColorsManager groupId={group.id} groupName={group.name} />
-
-                {/* Silk padrão removida em 2026-06: silk agora é gerenciada
-                    centralmente em /silks (Engenharia → Silks → Por Solado).
-                    A coluna product_groups.silk_url ainda existe pra compat,
-                    mas o campo de UI foi movido pra evitar duplicidade. */}
+                )}
+                {show.colorsManager && (
+                  <GroupColorsManager groupId={group.id} groupName={group.name} />
+                )}
 
                 {/* Box Types */}
+                {show.boxTypes && (
                 <Card className="border-dashed">
                   <CardHeader className="pb-2 pt-3 px-4">
                     <CardTitle className="text-sm flex items-center gap-2">
@@ -1003,6 +1050,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                     </div>
                   </CardContent>
                 </Card>
+                )}
               </div>
 
               <Card className="border-2 border-primary/10">
