@@ -297,11 +297,21 @@ export function useEmitStandaloneNfe() {
         throw new Error(`Erro ao criar itens: ${itemsErr.message}`);
       }
 
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Sessão expirada. Faça login novamente.');
       const { data: nfeData, error: nfeErr } = await supabase.functions.invoke('emit-nfe', {
         body: { sale_order_id: so.id, company_id: payload.companyId },
+        headers: { Authorization: `Bearer ${session.access_token}` },
       });
-      if (nfeErr) throw nfeErr;
+      // Idem useEmitNfe: prioriza mensagem real do body antes do HTTP error genérico.
       if (nfeData?.error) throw new Error(nfeData.error);
+      if (nfeErr) {
+        try {
+          const body = await (nfeErr as any).context?.json?.();
+          if (body?.error) throw new Error(body.error);
+        } catch { /* fallthrough */ }
+        throw new Error((nfeErr as any).message || 'Erro desconhecido ao emitir NF avulsa');
+      }
       return { sale_order_id: so.id, ...nfeData };
     },
     onSuccess: () => {
@@ -320,11 +330,24 @@ export function useEmitNfe() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ saleOrderId, companyId }: { saleOrderId: string; companyId?: string }) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Sessão expirada. Faça login novamente.');
       const { data, error } = await supabase.functions.invoke('emit-nfe', {
         body: { sale_order_id: saleOrderId, company_id: companyId },
+        headers: { Authorization: `Bearer ${session.access_token}` },
       });
-      if (error) throw error;
+      // Em non-2xx, supabase-js seta error = FunctionsHttpError (mensagem
+      // genérica "non-2xx status code") MAS data ainda traz o body parsed.
+      // Checa data.error primeiro pra mostrar a mensagem REAL da edge fn.
       if (data?.error) throw new Error(data.error);
+      if (error) {
+        // Última tentativa: ler o body do response do FunctionsHttpError
+        try {
+          const body = await (error as any).context?.json?.();
+          if (body?.error) throw new Error(body.error);
+        } catch { /* fallthrough */ }
+        throw new Error((error as any).message || 'Erro desconhecido ao emitir NF-e');
+      }
       return data;
     },
     onSuccess: (data: any) => {
