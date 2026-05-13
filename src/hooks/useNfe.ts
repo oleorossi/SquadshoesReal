@@ -299,31 +299,30 @@ export function useEmitStandaloneNfe() {
 
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error('Sessão expirada. Faça login novamente.');
-      const { data: nfeData, error: nfeErr } = await supabase.functions.invoke('emit-nfe', {
-        body: { sale_order_id: so.id, company_id: payload.companyId },
-        headers: { Authorization: `Bearer ${session.access_token}` },
+
+      // Fetch direto: controle total sobre a leitura do body de erro.
+      const SUPABASE_URL = (import.meta as any).env?.VITE_SUPABASE_URL;
+      const SUPABASE_KEY = (import.meta as any).env?.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/emit-nfe`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+          'apikey': SUPABASE_KEY,
+        },
+        body: JSON.stringify({ sale_order_id: so.id, company_id: payload.companyId }),
       });
-      // Idem useEmitNfe: prioriza mensagem real do body antes do HTTP error genérico.
-      if (nfeData?.error) throw new Error(nfeData.error);
-      if (nfeErr) {
-        let realMsg: string | null = null;
-        const ctx = (nfeErr as any).context;
-        if (ctx && typeof ctx.json === 'function') {
-          try {
-            const body = await ctx.json();
-            if (body?.error) realMsg = String(body.error);
-            else if (typeof body === 'string') realMsg = body;
-          } catch { /* não-JSON */ }
-        }
-        if (!realMsg && ctx && typeof ctx.text === 'function') {
-          try {
-            const txt = await ctx.text();
-            if (txt) realMsg = txt.slice(0, 500);
-          } catch { /* ignore */ }
-        }
-        if (realMsg) throw new Error(realMsg);
-        throw new Error((nfeErr as any).message || 'Erro desconhecido ao emitir NF avulsa');
+
+      const txt = await res.text();
+      let nfeData: any = null;
+      try { nfeData = JSON.parse(txt); } catch { /* não-JSON */ }
+
+      if (!res.ok) {
+        const realMsg = nfeData?.error || nfeData?.message || txt || `HTTP ${res.status} ao emitir NF avulsa`;
+        console.error('[emit-nfe avulsa] HTTP', res.status, nfeData || txt);
+        throw new Error(typeof realMsg === 'string' ? realMsg : JSON.stringify(realMsg));
       }
+      if (nfeData?.error) throw new Error(String(nfeData.error));
       return { sale_order_id: so.id, ...nfeData };
     },
     onSuccess: () => {
@@ -344,37 +343,34 @@ export function useEmitNfe() {
     mutationFn: async ({ saleOrderId, companyId }: { saleOrderId: string; companyId?: string }) => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error('Sessão expirada. Faça login novamente.');
-      const { data, error } = await supabase.functions.invoke('emit-nfe', {
-        body: { sale_order_id: saleOrderId, company_id: companyId },
-        headers: { Authorization: `Bearer ${session.access_token}` },
+
+      // Fetch direto pra ter controle total sobre a leitura do body.
+      // supabase-js .invoke() consome o Response no construtor do
+      // FunctionsHttpError e depois fica difícil ler error.context.json().
+      const SUPABASE_URL = (import.meta as any).env?.VITE_SUPABASE_URL;
+      const SUPABASE_KEY = (import.meta as any).env?.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/emit-nfe`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+          'apikey': SUPABASE_KEY,
+        },
+        body: JSON.stringify({ sale_order_id: saleOrderId, company_id: companyId }),
       });
-      // Em non-2xx, supabase-js seta error = FunctionsHttpError (mensagem
-      // genérica "non-2xx status code") MAS data ainda traz o body parsed.
-      // Checa data.error primeiro pra mostrar a mensagem REAL da edge fn.
-      if (data?.error) throw new Error(data.error);
-      if (error) {
-        // FunctionsHttpError tem error.context (Response). Lê o body antes de
-        // desistir e mostrar mensagem genérica. NÃO usa try/throw aninhado
-        // (o throw interno cai no próprio catch e se perde silenciosamente).
-        let realMsg: string | null = null;
-        const ctx = (error as any).context;
-        if (ctx && typeof ctx.json === 'function') {
-          try {
-            const body = await ctx.json();
-            if (body?.error) realMsg = String(body.error);
-            else if (typeof body === 'string') realMsg = body;
-          } catch { /* não-JSON; tenta texto */ }
-        }
-        if (!realMsg && ctx && typeof ctx.text === 'function') {
-          try {
-            const txt = await ctx.text();
-            if (txt) realMsg = txt.slice(0, 500);
-          } catch { /* ignore */ }
-        }
-        if (realMsg) throw new Error(realMsg);
-        throw new Error((error as any).message || 'Erro desconhecido ao emitir NF-e');
+
+      // Tenta JSON, depois texto. Sempre mostra a mensagem REAL do edge fn.
+      const txt = await res.text();
+      let parsed: any = null;
+      try { parsed = JSON.parse(txt); } catch { /* não-JSON */ }
+
+      if (!res.ok) {
+        const realMsg = parsed?.error || parsed?.message || txt || `HTTP ${res.status} ao emitir NF-e`;
+        console.error('[emit-nfe] HTTP', res.status, parsed || txt);
+        throw new Error(typeof realMsg === 'string' ? realMsg : JSON.stringify(realMsg));
       }
-      return data;
+      if (parsed?.error) throw new Error(String(parsed.error));
+      return parsed;
     },
     onSuccess: (data: any) => {
       if (data?.reconciliation_needed) {
