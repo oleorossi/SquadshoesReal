@@ -9,6 +9,15 @@ const routeImports: Record<string, () => Promise<any>> = {
   '/quality': () => import('@/pages/Quality'),
   '/capacity-planning': () => import('@/pages/CapacityPlanning'),
   '/producao': () => import('@/pages/ProducaoDashboard'),
+  '/producao/fluxo': () => import('@/pages/ProductionFlow'),
+  '/relatorios/diario-producao': () => import('@/pages/RelDiarioA4'),
+  '/relatorios/op': () => import('@/pages/RelOpA4'),
+  '/relatorios/oee': () => import('@/pages/RelOeeA4'),
+  '/relatorios': () => import('@/pages/RelatoriosHub'),
+  '/cost-policies': () => import('@/pages/CostPolicies'),
+  '/relatorios/qualidade': () => import('@/pages/RelQualidadeA4'),
+  '/relatorios/refugo': () => import('@/pages/RelRefugoA4'),
+  '/relatorios/semanal': () => import('@/pages/RelSemanalA4'),
   '/estoque': () => import('@/pages/Index'),
   '/ajuste-estoque': () => import('@/pages/StockAdjustmentPage'),
   '/alertas-estoque': () => import('@/pages/StockAlerts'),
@@ -32,7 +41,7 @@ const routeImports: Record<string, () => Promise<any>> = {
   '/custos-insumos': () => import('@/pages/InputCostsPage'),
   '/finance': () => import('@/pages/Finance'),
   '/nfe': () => import('@/pages/NfePage'),
-  '/financeiro': () => import('@/pages/FinanceiroDashboard'),
+  '/financeiro': () => import('@/pages/Finance'),
   // Atalhos legados — Employees e Timesheet agora vivem como abas dentro do hub /rh.
   // Os paths abaixo fazem prefetch do hub para que os redirects /employees → /rh
   // e /timesheet → /rh sejam instantâneos.

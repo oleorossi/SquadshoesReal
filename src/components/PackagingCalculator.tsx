@@ -45,7 +45,7 @@ export function PackagingCalculator({
               <Package className="w-6 h-6 text-primary" />
             </div>
             <div>
-              <CardTitle className="text-xl font-bold text-foreground">Sugestão de Embalagem</CardTitle>
+              <CardTitle className="display text-xl tabular-nums text-foreground">Sugestão de Embalagem</CardTitle>
               <p className="text-sm text-muted-foreground font-medium">{modelName}</p>
             </div>
           </div>
@@ -63,7 +63,7 @@ export function PackagingCalculator({
             <span className="text-xs font-semibold uppercase tracking-wider text-blue-600 mb-1">
               {result.method === 'master' ? 'Caixas Master' : result.method === 'colmeia' ? 'Colmeias' : 'Amarrados'}
             </span>
-            <span className="text-3xl font-bold text-foreground">{result.quantityMaster}</span>
+            <span className="display text-3xl tabular-nums text-foreground">{result.quantityMaster}</span>
             <span className="text-[10px] text-muted-foreground font-medium mt-1">
               (Contendo 12 pares cada)
             </span>
@@ -74,7 +74,7 @@ export function PackagingCalculator({
               <LinkIcon className="w-5 h-5 text-muted-foreground" />
             </div>
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Amarrado</span>
-            <span className="text-3xl font-bold text-foreground">0</span>
+            <span className="display text-3xl tabular-nums text-foreground">0</span>
             <span className="text-[10px] text-muted-foreground font-medium mt-1">Nenhum adicional</span>
           </div>
 
@@ -83,7 +83,7 @@ export function PackagingCalculator({
               <Box className="w-5 h-5 text-amber-600" />
             </div>
             <span className="text-xs font-semibold uppercase tracking-wider text-amber-600 mb-1">Sobra Indiv.</span>
-            <span className="text-3xl font-bold text-foreground">{result.remainingIndividual}</span>
+            <span className="display text-3xl tabular-nums text-foreground">{result.remainingIndividual}</span>
             <span className="text-[10px] text-amber-600/70 font-medium mt-1">pares avulsos</span>
           </div>
         </div>

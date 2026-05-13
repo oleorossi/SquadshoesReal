@@ -228,7 +228,7 @@ export default function PostOPAnalysis() {
               <div className="flex items-center gap-2">
                 <div className="p-2 rounded-md bg-muted/50"><CheckCircle2 className="h-4 w-4 text-green-600" /></div>
                 <div>
-                  <p className={`text-xl font-bold ${kpis.onTimeRate >= 90 ? "text-green-600" : kpis.onTimeRate >= 70 ? "text-amber-600" : "text-red-600"}`}>
+                  <p className={`display text-xl tabular-nums ${kpis.onTimeRate >= 90 ? "text-green-600" : kpis.onTimeRate >= 70 ? "text-amber-600" : "text-red-600"}`}>
                     {kpis.onTimeRate.toFixed(0)}%
                   </p>
                   <p className="text-[10px] text-muted-foreground">Entrega no Prazo ({kpis.onTimeCount}/{kpis.withTimeCount})</p>
@@ -242,7 +242,7 @@ export default function PostOPAnalysis() {
               <div className="flex items-center gap-2">
                 <div className="p-2 rounded-md bg-muted/50"><DollarSign className="h-4 w-4 text-blue-600" /></div>
                 <div>
-                  <p className={`text-xl font-bold ${kpis.avgVariance > 5 ? "text-red-600" : kpis.avgVariance < -2 ? "text-green-600" : "text-foreground"}`}>
+                  <p className={`display text-xl tabular-nums ${kpis.avgVariance > 5 ? "text-red-600" : kpis.avgVariance < -2 ? "text-green-600" : "text-foreground"}`}>
                     {kpis.avgVariance > 0 ? "+" : ""}{kpis.avgVariance.toFixed(1)}%
                   </p>
                   <p className="text-[10px] text-muted-foreground">Variação Custo ({kpis.opsWithCost} OPs)</p>
@@ -256,7 +256,7 @@ export default function PostOPAnalysis() {
               <div className="flex items-center gap-2">
                 <div className="p-2 rounded-md bg-muted/50"><Clock className="h-4 w-4 text-violet-600" /></div>
                 <div>
-                  <p className="text-xl font-bold">{kpis.avgLeadTimeDays.toFixed(1)}d</p>
+                  <p className="display text-xl tabular-nums">{kpis.avgLeadTimeDays.toFixed(1)}d</p>
                   <p className="text-[10px] text-muted-foreground">Lead Time Médio</p>
                 </div>
               </div>
@@ -268,7 +268,7 @@ export default function PostOPAnalysis() {
               <div className="flex items-center gap-2">
                 <div className="p-2 rounded-md bg-muted/50"><AlertTriangle className="h-4 w-4 text-amber-600" /></div>
                 <div>
-                  <p className={`text-xl font-bold ${kpis.defectRate > 5 ? "text-red-600" : "text-foreground"}`}>
+                  <p className={`display text-xl tabular-nums ${kpis.defectRate > 5 ? "text-red-600" : "text-foreground"}`}>
                     {kpis.defectRate.toFixed(1)}%
                   </p>
                   <p className="text-[10px] text-muted-foreground">Taxa de Defeitos</p>
@@ -285,7 +285,7 @@ export default function PostOPAnalysis() {
               <div className="flex items-center gap-2">
                 <div className="p-2 rounded-md bg-muted/50"><Factory className="h-4 w-4 text-muted-foreground" /></div>
                 <div>
-                  <p className="text-xl font-bold">
+                  <p className="display text-xl tabular-nums">
                     {kpis.timeEfficiency > 0 ? `${kpis.timeEfficiency.toFixed(0)}%` : "—"}
                   </p>
                   <p className="text-[10px] text-muted-foreground">Eficiência Produtiva</p>

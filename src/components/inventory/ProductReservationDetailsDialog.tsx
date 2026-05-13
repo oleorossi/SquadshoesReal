@@ -118,7 +118,7 @@ export default function ProductReservationDetailsDialog({
             <div className="flex items-center gap-2 text-xs uppercase font-medium text-amber-700">
               <Lock className="h-3.5 w-3.5" /> Reservado
             </div>
-            <div className="text-2xl font-bold text-amber-700 mt-1">
+            <div className="display text-2xl tabular-nums text-amber-700 mt-1">
               {fmt(totalReserved)} <span className="text-sm font-normal text-muted-foreground">{unit || ''}</span>
             </div>
             <div className="text-xs text-muted-foreground mt-0.5">
@@ -129,7 +129,7 @@ export default function ProductReservationDetailsDialog({
             <div className="flex items-center gap-2 text-xs uppercase font-medium text-blue-700">
               <Factory className="h-3.5 w-3.5" /> Em Produção
             </div>
-            <div className="text-2xl font-bold text-blue-700 mt-1">
+            <div className="display text-2xl tabular-nums text-blue-700 mt-1">
               {fmt(totalInProd)} <span className="text-sm font-normal text-muted-foreground">{unit || ''}</span>
             </div>
             <div className="text-xs text-muted-foreground mt-0.5">

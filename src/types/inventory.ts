@@ -67,7 +67,7 @@ export const CATEGORIES = [
   'Fôrma',
 ] as const;
 
-export const UNITS = ['g', 'kg', 'ml', 'L', 'mm', 'cm', 'm', 'dm²', 'm²', 'un', 'par', 'pc', 'cx', 'rolo', 'chapa'] as const;
+export const UNITS = ['g', 'kg', 'ml', 'L', 'mm', 'cm', 'm', 'dm²', 'm²', 'un', 'par', 'pc', 'cx', 'rolo', 'chapa', 'placa'] as const;
 
 export const UNIT_LABELS: Record<string, string> = {
   g: 'Grama (g)',
@@ -76,7 +76,7 @@ export const UNIT_LABELS: Record<string, string> = {
   L: 'Litro (L)',
   mm: 'Milímetro (mm)',
   cm: 'Centímetro (cm)',
-  m: 'Metro (m)',
+  m: 'Metro linear (m)',
   'dm²': 'Decímetro² (dm²)',
   'm²': 'Metro² (m²)',
   un: 'Unidade (un)',
@@ -85,6 +85,7 @@ export const UNIT_LABELS: Record<string, string> = {
   cx: 'Caixa (cx)',
   rolo: 'Rolo',
   chapa: 'Chapa / Folha',
+  placa: 'Placa',
 };
 
 export const LOCATIONS = ['Almoxarifado A', 'Almoxarifado B', 'Almoxarifado C', 'Prateleira', 'Linha de Produção', 'Expedição'] as const;

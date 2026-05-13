@@ -568,11 +568,27 @@ function SoleYieldEditor({ groupId }: { groupId: string }) {
 export default function GroupEditDialog({ open, onOpenChange, group }: GroupEditDialogProps) {
   const updateGroup = useUpdateGroup();
   const { data: allProducts = [] } = useProducts();
+  const { data: allGroups = [] } = useGroups();
   const products = allProducts.filter(p => p.group_id === group.id);
 
   const groupType = useMemo(() => getGroupType(group.name), [group.name]);
   const show = useMemo(() => getVisibleFields(groupType), [groupType]);
   const showYieldTab = show.yieldTab;
+
+  /**
+   * Detecta se o grupo é de Solado pra mostrar campos específicos
+   * (Silk padrão, Tipos de Caixa). Heurística: produtos da categoria
+   * Solado/Sola, ou nome do grupo contém "solado".
+   */
+  const isSoleGroup = useMemo(() => {
+    const nameMatch = (group.name || '').toLowerCase().includes('solado') ||
+                      (group.name || '').toLowerCase().includes('sola');
+    const productMatch = products.some(p => {
+      const c = (p.category || '').toLowerCase();
+      return c === 'solado' || c === 'sola' || c.startsWith('solado');
+    });
+    return nameMatch || productMatch;
+  }, [group.name, products]);
 
   const [name, setName] = useState(group.name);
   const [description, setDescription] = useState(group.description || '');
@@ -954,6 +970,131 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                   <Label htmlFor="edit-group-name">Nome do grupo de material *</Label>
                   <Input id="edit-group-name" value={name} onChange={e => setName(e.target.value)} className="mt-1" placeholder="Ex: Solados, Santorine, Colas" />
                 </div>
+                <div>
+                  <Label htmlFor="edit-group-parent" className="flex items-center gap-1.5">
+                    <Layers className="h-3.5 w-3.5" /> Grupo Pai (hierarquia)
+                  </Label>
+                  <Select
+                    value={parentGroupId || '__root__'}
+                    onValueChange={(v) => setParentGroupId(v === '__root__' ? '' : v)}
+                  >
+                    <SelectTrigger id="edit-group-parent" className="mt-1">
+                      <SelectValue placeholder="Sem pai (grupo raiz)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__root__">Sem pai (grupo raiz)</SelectItem>
+                      {validParentOptions.map((g) => (
+                        <SelectItem key={g.id} value={g.id}>
+                          {`${'  '.repeat(g.depth)}${g.depth > 0 ? '└ ' : ''}${g.name}`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Use pra agrupar variações (ex.: "Componentes" → "Tira chata", "Tira Strass").
+                    Próprio grupo e descendentes ficam ocultos pra evitar ciclos.
+                  </p>
+                </div>
+
+                {/* Subgrupos — filhos diretos desta família */}
+                <div className="rounded-lg border p-3 bg-muted/20 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Layers className="h-4 w-4 text-primary" />
+                      <span className="text-sm font-medium">
+                        Subgrupos da família ({childrenGroups.length})
+                      </span>
+                    </div>
+                    <Popover open={linkChildOpen} onOpenChange={setLinkChildOpen}>
+                      <PopoverTrigger asChild>
+                        <Button type="button" size="sm" variant="outline" className="h-7 text-xs gap-1.5">
+                          <Link2 className="h-3 w-3" /> Vincular grupo
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-80 p-0" align="end">
+                        <Command>
+                          <CommandInput placeholder="Buscar grupo..." />
+                          <CommandList>
+                            <CommandEmpty>Nenhum grupo disponível</CommandEmpty>
+                            <CommandGroup heading="Tornar filho deste grupo">
+                              {availableToLinkAsChild.map(g => (
+                                <CommandItem
+                                  key={g.id}
+                                  value={g.name}
+                                  onSelect={async () => {
+                                    try {
+                                      await updateGroup.mutateAsync({
+                                        id: g.id,
+                                        data: { parent_group_id: group.id },
+                                      });
+                                      setLinkChildOpen(false);
+                                    } catch {
+                                      // toast tratado pelo hook
+                                    }
+                                  }}
+                                  className="text-sm"
+                                >
+                                  <span className="text-muted-foreground mr-1.5">
+                                    {'  '.repeat(g.depth)}{g.depth > 0 ? '└ ' : ''}
+                                  </span>
+                                  <span className="truncate">{g.name}</span>
+                                  {g.parent_group_id && (
+                                    <Badge variant="outline" className="ml-auto text-[9px] h-4">
+                                      tem pai
+                                    </Badge>
+                                  )}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+
+                  {childrenGroups.length === 0 ? (
+                    <p className="text-xs text-muted-foreground py-1">
+                      Sem subgrupos. Vincule outros grupos como filhos desta família — ex.: "Forração" como pai de "Napa Sud Dani", "Napa Santorini", "Napa Soft", "Nobuck".
+                    </p>
+                  ) : (
+                    <div className="space-y-1">
+                      {childrenGroups.map(c => (
+                        <div
+                          key={c.id}
+                          className="flex items-center justify-between rounded border bg-card px-2.5 py-1.5"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-muted-foreground text-xs font-mono shrink-0">└</span>
+                            <span className="text-sm font-medium truncate">{c.name}</span>
+                            <Badge variant="secondary" className="text-[10px] h-4 font-mono shrink-0">
+                              {itemCountByGroup.get(c.id) ?? 0} itens
+                            </Badge>
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
+                            onClick={async () => {
+                              try {
+                                await updateGroup.mutateAsync({
+                                  id: c.id,
+                                  data: { parent_group_id: null },
+                                });
+                              } catch {
+                                // toast tratado pelo hook
+                              }
+                            }}
+                            title="Desvincular (remove o pai, mas mantém o grupo)"
+                          >
+                            <X className="h-3 w-3 mr-0.5" /> Desvincular
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <div>
                   <Label htmlFor="edit-group-desc">Descrição</Label>
                   <Textarea id="edit-group-desc" value={description} onChange={e => setDescription(e.target.value)} className="mt-1" rows={2} />

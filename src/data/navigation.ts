@@ -15,6 +15,21 @@ import { Package, ShoppingCart, Gear as Settings, Truck, Factory, Kanban, Square
 //      "Estoque" + "Compras" (escopos distintos)
 // ════════════════════════════════════════════════════════════════════════
 
+// ════════════════════════════════════════════════════════════════════════
+// SQUAD SHOES — Sidebar
+// Reorganizado em 2026-05-07 (audit-round-5): 38 → 24 itens visíveis (-37%)
+// Princípios:
+//   1. Cada grupo no MÁX 4 itens (estava chegando a 9 — confuso)
+//   2. Painéis duplicados unificados: "Painel Comercial"/"Painel Produção"/
+//      "Painel Financeiro" foram removidos do sidebar — acessíveis pelo
+//      header da página principal de cada área
+//   3. Sub-features (MRP/Capacidade/Reservas/Histórico/Transporte/Receitas/
+//      Consumo Base/Monitor/Diagnóstico) ficam acessíveis via URL direta
+//      ou tabs internos das páginas hub (continuam funcionando)
+//   4. "Pessoas" virou "RH" (mais óbvio); "Estoque & Compras" splittado em
+//      "Estoque" + "Compras" (escopos distintos)
+// ════════════════════════════════════════════════════════════════════════
+
 export const topItem = {
   name: "Painel",
   icon: LayoutDashboard,
@@ -41,6 +56,7 @@ export const menuGroups = [
     items: [
       { name: "PCP",              icon: Kanban,            path: "/pcp" },
       { name: "Ordens (OPs)",     icon: ListChecks,        path: "/orders" },
+      { name: "Fluxo",            icon: Kanban,            path: "/producao/fluxo" },
       { name: "Live",             icon: Activity,          path: "/producao/live" },
       { name: "Timeline",         icon: GanttChartSquare,  path: "/producao/timeline" },
       { name: "Capacidade",       icon: BarChart3,         path: "/capacity-planning" },
@@ -64,7 +80,7 @@ export const menuGroups = [
     label: "Estoque",
     icon: Package,
     items: [
-      { name: "Posição",          icon: Package,      path: "/estoque" },
+      { name: "Estoque",          icon: Package,      path: "/estoque" },
       { name: "Ajustes",          icon: Boxes,        path: "/ajuste-estoque" },
       { name: "Histórico",        icon: History,      path: "/estoque/historico" },
       { name: "MRP",              icon: Boxes,        path: "/mrp" },
@@ -124,7 +140,7 @@ export const menuGroups = [
 export const systemItems = [
   { to: '/settings',           icon: Settings,  label: 'Configurações' },
   { to: '/automations',        icon: Zap,       label: 'Automações' },
-  { to: '/reports',            icon: BarChart2, label: 'Relatórios' },
+  { to: '/relatorios',         icon: BarChart2, label: 'Relatórios' },
   { to: '/audit-logs',         icon: FileText,  label: 'Auditoria' },
   { to: '/lgpd',               icon: Lock,      label: 'LGPD' },
   { to: '/security',           icon: ShieldCheck, label: 'Segurança' },

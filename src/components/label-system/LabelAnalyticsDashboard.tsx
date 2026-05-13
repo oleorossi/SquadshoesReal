@@ -93,7 +93,7 @@ export function LabelAnalyticsDashboard() {
         <Card>
           <CardContent className="py-4 text-center space-y-1">
             <Printer className="h-5 w-5 mx-auto text-primary" />
-            <div className="text-2xl font-bold text-foreground">{totals.printed.toLocaleString()}</div>
+            <div className="display text-2xl tabular-nums text-foreground">{totals.printed.toLocaleString()}</div>
             <div className="text-xs text-muted-foreground">Etiquetas Impressas</div>
             <TrendBadge value={12.5} />
           </CardContent>
@@ -101,7 +101,7 @@ export function LabelAnalyticsDashboard() {
         <Card>
           <CardContent className="py-4 text-center space-y-1">
             <Clock className="h-5 w-5 mx-auto text-green-600" />
-            <div className="text-2xl font-bold text-foreground">{totals.avgTime}s</div>
+            <div className="display text-2xl tabular-nums text-foreground">{totals.avgTime}s</div>
             <div className="text-xs text-muted-foreground">Tempo Médio</div>
             <TrendBadge value={-8.3} />
           </CardContent>
@@ -109,7 +109,7 @@ export function LabelAnalyticsDashboard() {
         <Card>
           <CardContent className="py-4 text-center space-y-1">
             <AlertTriangle className="h-5 w-5 mx-auto text-destructive" />
-            <div className="text-2xl font-bold text-foreground">{errorRate}%</div>
+            <div className="display text-2xl tabular-nums text-foreground">{errorRate}%</div>
             <div className="text-xs text-muted-foreground">Taxa de Erro</div>
             <TrendBadge value={-2.1} />
           </CardContent>
@@ -117,7 +117,7 @@ export function LabelAnalyticsDashboard() {
         <Card>
           <CardContent className="py-4 text-center space-y-1">
             <Zap className="h-5 w-5 mx-auto text-purple-600" />
-            <div className="text-2xl font-bold text-foreground">{totals.optimizations}</div>
+            <div className="display text-2xl tabular-nums text-foreground">{totals.optimizations}</div>
             <div className="text-xs text-muted-foreground">Otimizações Aplicadas</div>
             <TrendBadge value={4} suffix="" />
           </CardContent>

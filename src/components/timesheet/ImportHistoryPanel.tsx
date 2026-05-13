@@ -92,25 +92,25 @@ export default function ImportHistoryPanel() {
         <Card>
           <CardContent className="p-4">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Arquivos</p>
-            <p className="text-2xl font-bold mt-1 font-mono">{totals.files}</p>
+            <p className="display text-2xl tabular-nums mt-1 font-mono">{totals.files}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Inseridos</p>
-            <p className="text-2xl font-bold mt-1 font-mono text-green-600">{totals.inserted}</p>
+            <p className="display text-2xl tabular-nums mt-1 font-mono text-green-600">{totals.inserted}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Atualizados</p>
-            <p className="text-2xl font-bold mt-1 font-mono text-blue-600">{totals.updated}</p>
+            <p className="display text-2xl tabular-nums mt-1 font-mono text-blue-600">{totals.updated}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Linhas com erro</p>
-            <p className="text-2xl font-bold mt-1 font-mono text-destructive">{totals.errors}</p>
+            <p className="display text-2xl tabular-nums mt-1 font-mono text-destructive">{totals.errors}</p>
           </CardContent>
         </Card>
       </div>
@@ -218,15 +218,15 @@ export default function ImportHistoryPanel() {
               <div className="grid grid-cols-3 gap-2">
                 <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-3 text-center">
                   <p className="text-[10px] uppercase tracking-wider text-green-600 font-semibold">Inseridos</p>
-                  <p className="text-2xl font-bold font-mono text-green-600">{selected.inserted_count}</p>
+                  <p className="display text-2xl tabular-nums font-mono text-green-600">{selected.inserted_count}</p>
                 </div>
                 <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-3 text-center">
                   <p className="text-[10px] uppercase tracking-wider text-blue-600 font-semibold">Atualizados</p>
-                  <p className="text-2xl font-bold font-mono text-blue-600">{selected.updated_count}</p>
+                  <p className="display text-2xl tabular-nums font-mono text-blue-600">{selected.updated_count}</p>
                 </div>
                 <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-center">
                   <p className="text-[10px] uppercase tracking-wider text-destructive font-semibold">Erros</p>
-                  <p className="text-2xl font-bold font-mono text-destructive">{selected.error_count}</p>
+                  <p className="display text-2xl tabular-nums font-mono text-destructive">{selected.error_count}</p>
                 </div>
               </div>
 

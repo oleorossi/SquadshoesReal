@@ -71,7 +71,7 @@
                  </div>
                </CardHeader>
                <CardContent className="space-y-2">
-                 <div className="text-2xl font-bold">{kpi.total_pairs.toLocaleString()}p</div>
+                 <div className="display text-2xl tabular-nums">{kpi.total_pairs.toLocaleString()}p</div>
                  <div className="flex items-center justify-between text-[10px] text-muted-foreground">
                    <span>Backlog: {kpi.days_of_backlog} dias</span>
                    <span>Capacidade: {kpi.daily_capacity}/dia</span>

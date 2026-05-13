@@ -177,7 +177,7 @@ export default function WeeklyPurchasingContent() {
             <Package className="h-8 w-8 text-primary" />
             <div>
               <p className="text-sm text-muted-foreground">Materiais com Necessidade</p>
-              <p className="text-2xl font-bold">{totals.materials}</p>
+              <p className="display text-2xl tabular-nums">{totals.materials}</p>
             </div>
           </CardContent>
         </Card>
@@ -186,7 +186,7 @@ export default function WeeklyPurchasingContent() {
             <TrendingUp className="h-8 w-8 text-primary" />
             <div>
               <p className="text-sm text-muted-foreground">Custo Estimado Total</p>
-              <p className="text-2xl font-bold">{formatCurrency(totals.cost)}</p>
+              <p className="display text-2xl tabular-nums">{formatCurrency(totals.cost)}</p>
             </div>
           </CardContent>
         </Card>
@@ -195,7 +195,7 @@ export default function WeeklyPurchasingContent() {
             <AlertTriangle className="h-8 w-8 text-destructive" />
             <div>
               <p className="text-sm text-muted-foreground">Estoque Zerado</p>
-              <p className="text-2xl font-bold">{totals.criticalCount}</p>
+              <p className="display text-2xl tabular-nums">{totals.criticalCount}</p>
             </div>
           </CardContent>
         </Card>
@@ -204,7 +204,7 @@ export default function WeeklyPurchasingContent() {
             <ShoppingCart className="h-8 w-8 text-primary" />
             <div>
               <p className="text-sm text-muted-foreground">Semanas Planejadas</p>
-              <p className="text-2xl font-bold">{result?.sortedWeeks.length || 0}</p>
+              <p className="display text-2xl tabular-nums">{result?.sortedWeeks.length || 0}</p>
             </div>
           </CardContent>
         </Card>

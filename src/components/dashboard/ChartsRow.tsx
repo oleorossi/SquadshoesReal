@@ -10,9 +10,19 @@ import { subMonths, format, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { getDashboardPeriodRange, type DashboardPeriod } from "@/lib/dashboardPeriod";
 
-const PRIMARY      = "hsl(162, 90%, 15%)";
-const CHART_BLUE   = "#3b82f6";
-const DONUT_COLORS = [PRIMARY, CHART_BLUE, "#6366f1", "#f59e0b", "#94a3b8"];
+// Cores dos gráficos seguem o handoff Novidade (vermelho Squad como acento
+// principal). Antes tinha um verde escuro `hsl(162, 90%, 15%)` hardcoded —
+// resíduo de outro tema. Agora puxa do token CSS pra ficar coerente com
+// dark mode + sidebar + KPIs.
+const PRIMARY      = "hsl(var(--primary))";
+const CHART_BLUE   = "hsl(var(--stage-cut-fg))";
+const DONUT_COLORS = [
+  "hsl(var(--primary))",
+  "hsl(var(--stage-cut-fg))",
+  "hsl(var(--stage-sew-fg))",
+  "hsl(var(--warning))",
+  "hsl(var(--muted-foreground))",
+];
 
 const formatK   = (v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v);
 const formatBRL = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;

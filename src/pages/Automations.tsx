@@ -291,7 +291,7 @@ export default function Automations() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="display text-xl tracking-tight flex items-center gap-2">
             <Zap className="h-6 w-6 text-primary" />Automações
           </h1>
           <p className="text-sm text-muted-foreground">Workflows inteligentes com gatilhos e ações configuráveis</p>
@@ -321,28 +321,28 @@ export default function Automations() {
         <Card>
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Total</p>
-            <p className="text-2xl font-bold font-mono mt-1">{workflows.length}</p>
+            <p className="display text-2xl tabular-nums font-mono mt-1">{workflows.length}</p>
             <p className="text-[11px] text-muted-foreground">automações</p>
           </CardContent>
         </Card>
         <Card className="border-success/30 bg-success/5">
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Ativas</p>
-            <p className="text-2xl font-bold font-mono mt-1 text-success">{activeCount}</p>
+            <p className="display text-2xl tabular-nums font-mono mt-1 text-success">{activeCount}</p>
             <p className="text-[11px] text-muted-foreground">habilitadas</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Execuções</p>
-            <p className="text-2xl font-bold font-mono mt-1">{totalExecutions}</p>
+            <p className="display text-2xl tabular-nums font-mono mt-1">{totalExecutions}</p>
             <p className="text-[11px] text-muted-foreground">total acumulado</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Taxa de Sucesso</p>
-            <p className="text-2xl font-bold font-mono mt-1">{avgSuccess}%</p>
+            <p className="display text-2xl tabular-nums font-mono mt-1">{avgSuccess}%</p>
             <p className="text-[11px] text-muted-foreground">média geral</p>
           </CardContent>
         </Card>

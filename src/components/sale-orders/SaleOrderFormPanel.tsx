@@ -78,6 +78,11 @@ interface Props {
   packagingQuantity?: number;
   onPackagingQuantityChange?: (qty: number) => void;
   onSaveStateAndNavigate?: () => void;
+  /** Data mínima viável calculada (ISO yyyy-mm-dd). Quando delivery_deadline < esta data,
+   *  exibe alerta vermelho persistente ao lado do campo. */
+  minBillingISO?: string | null;
+  /** True enquanto recalcula a data mínima (mostra spinner em vez de alerta). */
+  computingMinBilling?: boolean;
 }
 
 const emptyItem: SaleOrderItemFormData = {
@@ -353,6 +358,7 @@ export default function SaleOrderFormPanel({
    isAdmin, selectedClientId, onClientSelect, onSubmit, onCancel, isPending, submitLabel,
    packagingProductId, onPackagingProductChange, packagingQuantity: _packagingQuantity, onPackagingQuantityChange,
    onSaveStateAndNavigate,
+   minBillingISO, computingMinBilling,
  }: Props) {
    const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
    const [duplicateList, setDuplicateList] = useState<string[]>([]);
@@ -935,20 +941,31 @@ export default function SaleOrderFormPanel({
                     onValueChange={(v) => setForm(f => ({ ...f, packaging_mode: v as PackagingMode }))}
                     className="grid grid-cols-1 sm:grid-cols-3 gap-2"
                   >
-                    {(Object.entries(PACKAGING_MODE_LABELS) as [PackagingMode, string][]).map(([value, label]) => (
-                      <Label
-                        key={value}
-                        htmlFor={`pkg-${value}`}
-                        className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${
-                          form.packaging_mode === value
-                            ? 'border-primary bg-primary/5'
-                            : 'border-border hover:bg-muted/30'
-                        }`}
-                      >
-                        <RadioGroupItem value={value} id={`pkg-${value}`} />
-                        <span className="text-xs font-medium">{label}</span>
-                      </Label>
-                    ))}
+                    {/* Mostra os 3 modos canônicos. Se o PV foi salvo com modo legado
+                        ('individual_amarrado'), inclui ele na lista pra não quebrar a edição. */}
+                    {(() => {
+                      const visibleModes: PackagingMode[] = [...PACKAGING_MODE_CANONICAL];
+                      if (
+                        form.packaging_mode &&
+                        !visibleModes.includes(form.packaging_mode as PackagingMode)
+                      ) {
+                        visibleModes.push(form.packaging_mode as PackagingMode);
+                      }
+                      return visibleModes.map((value) => (
+                        <Label
+                          key={value}
+                          htmlFor={`pkg-${value}`}
+                          className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${
+                            form.packaging_mode === value
+                              ? 'border-primary bg-primary/5'
+                              : 'border-border hover:bg-muted/30'
+                          }`}
+                        >
+                          <RadioGroupItem value={value} id={`pkg-${value}`} />
+                          <span className="text-xs font-medium">{PACKAGING_MODE_LABELS[value]}</span>
+                        </Label>
+                      ));
+                    })()}
                   </RadioGroup>
 
                   {/* Show packaging configs from technical sheets */}
@@ -962,6 +979,7 @@ export default function SaleOrderFormPanel({
                           if (mode === 'colmeia') return cfg.packaging_type === 'colmeia';
                           if (mode === 'individual_amarrado') return cfg.packaging_type === 'individual';
                           if (mode === 'individual_master') return cfg.packaging_type === 'individual' || cfg.packaging_type === 'master';
+                          if (mode === 'individual_fitilho') return cfg.packaging_type === 'individual' || cfg.packaging_type === 'fitilho';
                           return true;
                         });
 

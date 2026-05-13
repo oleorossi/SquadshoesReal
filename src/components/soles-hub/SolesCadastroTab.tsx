@@ -63,14 +63,41 @@ export default function SolesCadastroTab({ sole }: Props) {
   });
 
   const update = useMutation({
-    mutationFn: async (patch: Partial<SoleProduct>) => {
-      const { error } = await supabase.from('products').update(patch as any).eq('id', sole.id);
+    mutationFn: async (patch: { name: string; sku: string | null; color: string | null; gradeRange?: { from: number; to: number } }) => {
+      // 1. Atualiza o produto selecionado (todos os campos)
+      const updates: any = {
+        name: patch.name,
+        sku: patch.sku,
+        color: patch.color,
+      };
+      if (patch.gradeRange) {
+        const grade = { ...(sole.stock_grade as any || {}), _size_from: patch.gradeRange.from, _size_to: patch.gradeRange.to };
+        updates.stock_grade = grade;
+      }
+      const { error } = await supabase.from('products').update(updates).eq('id', sole.id);
       if (error) throw error;
+
+      // 2. Replica name + gradeRange pras siblings (cor diferente, mesmo modelo)
+      const nameChanged = patch.name !== sole.name;
+      const rangeChanged = !!patch.gradeRange;
+      let siblingCount = 0;
+      if (nameChanged || rangeChanged) {
+        const result = await replicateToSiblings({
+          name: nameChanged ? patch.name : undefined,
+          gradeRange: patch.gradeRange,
+        });
+        siblingCount = result.count;
+      }
+      return { siblingCount };
     },
-    onSuccess: () => {
+    onSuccess: ({ siblingCount }) => {
       qc.invalidateQueries({ queryKey: ['soles_hub_products'] });
       qc.invalidateQueries({ queryKey: ['products'] });
-      toast.success('Cadastro atualizado!');
+      if (siblingCount > 0) {
+        toast.success(`Cadastro atualizado · propagado para ${siblingCount} ${siblingCount === 1 ? 'cor' : 'cores'} adicionais.`);
+      } else {
+        toast.success('Cadastro atualizado!');
+      }
       setEditing(false);
     },
     onError: (e: Error) => toast.error(e.message),
@@ -162,19 +189,40 @@ export default function SolesCadastroTab({ sole }: Props) {
   });
 
   const handleSave = () => {
+    const currentFrom = (sole.stock_grade as any)?._size_from ?? 33;
+    const currentTo = (sole.stock_grade as any)?._size_to ?? 40;
+    const rangeChanged = form.size_from !== currentFrom || form.size_to !== currentTo;
+
     update.mutate({
       name: form.name,
       sku: form.sku || null,
       color: form.color || null,
+      gradeRange: rangeChanged ? { from: Number(form.size_from), to: Number(form.size_to) } : undefined,
     });
-    if (form.size_from !== ((sole.stock_grade as any)?._size_from ?? 33) ||
-        form.size_to !== ((sole.stock_grade as any)?._size_to ?? 40)) {
-      updateGrade.mutate({ from: Number(form.size_from), to: Number(form.size_to) });
-    }
   };
 
   return (
     <div className="space-y-4">
+      {/* Aviso: o que é compartilhado vs. por cor */}
+      {groupId && (
+        <Card className="border-amber-300/60 bg-amber-50/30 dark:bg-amber-950/10">
+          <CardContent className="py-3 px-4 flex items-start gap-2">
+            <Info className="h-4 w-4 text-amber-700 dark:text-amber-400 mt-0.5 shrink-0" />
+            <div className="text-xs text-amber-900 dark:text-amber-200 space-y-1">
+              <p>
+                <strong>O que é compartilhado entre cores:</strong> nome, range de numeração,
+                conjugações (33/34, 39/40), consumo de Forração/Palmilha e Itens Padrão.
+                Editar aqui propaga automaticamente.
+              </p>
+              <p>
+                <strong>O que fica por cor:</strong> SKU, estoque por numeração e a conjugação
+                cabedal × solado (silk também — artes mudam por cor).
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Cadastro básico */}
       <Card>
         <CardHeader className="pb-3 flex flex-row items-center justify-between">
@@ -207,7 +255,10 @@ export default function SolesCadastroTab({ sole }: Props) {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label className="text-xs">Nome do solado</Label>
+              <Label className="text-xs flex items-center gap-1.5">
+                Nome do solado
+                {groupId && <span className="text-[9px] text-primary uppercase tracking-wider font-bold">· compartilhado</span>}
+              </Label>
               <Input
                 value={form.name}
                 onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
@@ -215,7 +266,10 @@ export default function SolesCadastroTab({ sole }: Props) {
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">SKU</Label>
+              <Label className="text-xs flex items-center gap-1.5">
+                SKU
+                <span className="text-[9px] text-muted-foreground uppercase tracking-wider font-bold">· por cor</span>
+              </Label>
               <Input
                 value={form.sku}
                 onChange={e => setForm(f => ({ ...f, sku: e.target.value }))}
@@ -226,6 +280,7 @@ export default function SolesCadastroTab({ sole }: Props) {
             <div className="space-y-1.5">
               <Label className="text-xs flex items-center gap-1.5">
                 <Palette className="h-3 w-3" /> Cor
+                <span className="text-[9px] text-muted-foreground uppercase tracking-wider font-bold">· por variante</span>
               </Label>
               <Input
                 value={form.color}
@@ -267,6 +322,7 @@ export default function SolesCadastroTab({ sole }: Props) {
             <div className="space-y-1.5">
               <Label className="text-xs flex items-center gap-1.5">
                 <Layers className="h-3 w-3" /> Range de numeração
+                {groupId && <span className="text-[9px] text-primary uppercase tracking-wider font-bold">· compartilhado</span>}
               </Label>
               {(() => {
                 const rangeInvalid = Number(form.size_from) > Number(form.size_to);

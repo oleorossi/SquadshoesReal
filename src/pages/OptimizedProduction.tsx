@@ -252,7 +252,7 @@ const OptimizedProductionSystem: React.FC = () => {
       
         <div className="space-y-6">
           <div className="flex justify-between items-center">
-            <h1 className="text-xl font-bold tracking-tight">Sistema de Produção Otimizado</h1>
+            <h1 className="display text-xl tracking-tight">Sistema de Produção Otimizado</h1>
             <div className="flex gap-2">
               <Button onClick={() => refetch()} variant="outline">Atualizar</Button>
             </div>
@@ -270,15 +270,15 @@ const OptimizedProductionSystem: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <div className="p-4 border rounded bg-card">
                   <h3 className="text-sm font-medium text-muted-foreground">Estoque Crítico</h3>
-                  <p className="text-2xl font-bold">{dashboardMetrics.inventory.criticalItems}</p>
+                  <p className="display text-2xl tabular-nums">{dashboardMetrics.inventory.criticalItems}</p>
                 </div>
                 <div className="p-4 border rounded bg-card">
                   <h3 className="text-sm font-medium text-muted-foreground">Ordens Ativas</h3>
-                  <p className="text-2xl font-bold">{dashboardMetrics.production.activeOrders}</p>
+                  <p className="display text-2xl tabular-nums">{dashboardMetrics.production.activeOrders}</p>
                 </div>
                 <div className="p-4 border rounded bg-card">
                   <h3 className="text-sm font-medium text-muted-foreground">Taxa de Defeitos</h3>
-                  <p className="text-2xl font-bold">{dashboardMetrics.quality.defectRate.toFixed(2)}%</p>
+                  <p className="display text-2xl tabular-nums">{dashboardMetrics.quality.defectRate.toFixed(2)}%</p>
                 </div>
               </div>
             )}

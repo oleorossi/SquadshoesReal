@@ -22,6 +22,7 @@ import { CurrencyInput } from '@/components/ui/currency-input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Product, ProductFormData, UNITS, UNIT_LABELS, LOCATIONS } from '@/types/inventory';
+import { CONVERSION_TEMPLATES, suggestConversionRate, effectiveConversionFactor, describeConversion, needsWidthForConversion, purchasePriceToUnitPrice } from '@/lib/purchaseConversion';
 import { deriveCategoryFromGroup } from '@/lib/categoryFromGroup';
 import { useGroups } from '@/hooks/useGroups';
 import { useSuppliers } from '@/hooks/useSuppliers';
@@ -828,27 +829,79 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       if (key === 'unit') {
         // production_unit always mirrors the stock unit
         next.production_unit = value as string;
-        // Auto-suggest conversion_rate for common pairs
+        // Preserva preço em R$/purchase_unit antes de mudar a conversão.
+        // Sem isso, ao trocar unit (ex: 'm' → 'dm²') o unit_price ficava
+        // desalinhado: estava em R$/m e virava "R$/dm²" sem conversão.
+        const oldFactor = effectiveConversionFactor({
+          unit: prev.unit,
+          purchase_unit: prev.purchase_unit,
+          conversion_rate: prev.conversion_rate,
+          dimensions_width: prev.dimensions_width,
+        });
+        const oldPackPrice = (prev.unit_price ?? 0) * oldFactor;
+
+        // Auto-suggest conversion_rate (cobre área, massa, volume, comprimento)
         const pu = prev.purchase_unit || prev.purchase_order_unit || 'un';
         const su = value as string;
-        if (pu === 'm²' && su === 'dm²') next.conversion_rate = 100;
-        else if (pu === 'dm²' && su === 'm²') next.conversion_rate = 0.01;
-        else if (pu === su) next.conversion_rate = 1;
+        const suggested = suggestConversionRate(pu, su);
+        if (suggested !== null) next.conversion_rate = suggested;
+
+        // Recalcula unit_price para manter o R$/purchase_unit constante
+        if (oldPackPrice > 0) {
+          next.unit_price = purchasePriceToUnitPrice(oldPackPrice, {
+            unit: next.unit,
+            purchase_unit: next.purchase_unit,
+            conversion_rate: next.conversion_rate,
+            dimensions_width: next.dimensions_width,
+          });
+        }
       }
 
       if (key === 'purchase_unit') {
-        // purchase_order_unit always mirrors purchase_unit
+        // Preserva preço em R$/purchase_unit antes de trocar a unidade de compra
+        const oldFactor = effectiveConversionFactor({
+          unit: prev.unit,
+          purchase_unit: prev.purchase_unit,
+          conversion_rate: prev.conversion_rate,
+          dimensions_width: prev.dimensions_width,
+        });
+        const oldPackPrice = (prev.unit_price ?? 0) * oldFactor;
+
         next.purchase_order_unit = value as string;
-        // Auto-suggest conversion_rate for common pairs
-        const pu = value as string;
-        const su = next.unit;
-        if (pu === 'm²' && su === 'dm²') next.conversion_rate = 100;
-        else if (pu === 'dm²' && su === 'm²') next.conversion_rate = 0.01;
-        else if (pu === su) next.conversion_rate = 1;
+        const suggested = suggestConversionRate(value as string, next.unit);
+        if (suggested !== null) next.conversion_rate = suggested;
+
+        if (oldPackPrice > 0) {
+          next.unit_price = purchasePriceToUnitPrice(oldPackPrice, {
+            unit: next.unit,
+            purchase_unit: next.purchase_unit,
+            conversion_rate: next.conversion_rate,
+            dimensions_width: next.dimensions_width,
+          });
+        }
       }
 
       return next;
     });
+
+  /** Aplica um template de conversão (chave do CONVERSION_TEMPLATES). */
+  const applyConversionTemplate = (templateKey: string) => {
+    const tpl = CONVERSION_TEMPLATES.find(t => t.key === templateKey);
+    if (!tpl) return;
+    setForm(prev => ({
+      ...prev,
+      unit: tpl.unit,
+      purchase_unit: tpl.purchase_unit,
+      purchase_order_unit: tpl.purchase_unit,
+      production_unit: tpl.unit,
+      conversion_rate: tpl.conversion_rate,
+      dimensions_width: tpl.dimensions_width ?? prev.dimensions_width,
+      dimensions_unit: tpl.dimensions_unit ?? prev.dimensions_unit,
+    }));
+    if (tpl.dimensions_width) setPlateWidth(tpl.dimensions_width);
+    if (tpl.dimensions_unit) setPlateUnit(tpl.dimensions_unit);
+    toast.success(`Template aplicado: ${tpl.label}`);
+  };
 
    const checkDuplicateName = useCallback((name: string, groupId: string | null, color?: string) => {
      if (!name.trim()) { setDuplicateMatch(null); return; }
@@ -1417,7 +1470,26 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                 — agora vive em outra tela específica de consumo. */}
 
             <div className="col-span-2 p-3 rounded-lg border bg-muted/30 space-y-3">
-              <Label className="text-sm font-semibold">Unidades de Medida</Label>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <Label className="text-sm font-semibold">Unidades de Medida</Label>
+                {/* Quick-fill: aplica template do CONVERSION_TEMPLATES */}
+                <div className="flex items-center gap-1.5">
+                  <Label className="text-[10px] text-muted-foreground">Atalho:</Label>
+                  <Select value="" onValueChange={v => v && applyConversionTemplate(v)}>
+                    <SelectTrigger className="h-7 text-[11px] w-56">
+                      <SelectValue placeholder="Aplicar template..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CONVERSION_TEMPLATES.map(tpl => (
+                        <SelectItem key={tpl.key} value={tpl.key} className="text-xs">
+                          {tpl.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs text-muted-foreground">Unidade de Consumo</Label>
@@ -1430,47 +1502,101 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                   <p className="text-[10px] text-muted-foreground mt-0.5">Mesma unidade usada no estoque e nas fichas técnicas</p>
                 </div>
                 <div>
-                  <Label className="text-xs text-muted-foreground">Unidade de Compra</Label>
+                  <Label className="text-xs text-muted-foreground">Unidade de Compra (NF / OC)</Label>
                   <Select value={form.purchase_unit || form.unit} onValueChange={v => update('purchase_unit', v)}>
                     <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {UNITS.map(u => <SelectItem key={u} value={u}>{UNIT_LABELS[u] ?? u}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Unidade que aparece nas notas fiscais e OCs</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Como o material chega/é faturado</p>
                 </div>
               </div>
+
               {(form.purchase_unit && form.purchase_unit !== form.unit) && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Fator de Conversão</Label>
-                    <NumberInput
-                      value={form.conversion_rate ?? 1}
-                      onChange={v => update('conversion_rate', v)}
-                      min={0.0001}
-                      step={form.unit === 'kg' || form.purchase_unit === 'kg' ? '0.001' : '0.01'}
-                      className="mt-1 h-9"
-                      placeholder="Ex: 137"
-                    />
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
-                      1 {form.purchase_unit} = {form.conversion_rate ?? 1} {form.unit}
-                    </p>
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Fator de Conversão</Label>
+                      <NumberInput
+                        value={form.conversion_rate ?? 1}
+                        onChange={v => update('conversion_rate', v)}
+                        min={0.0001}
+                        step={form.unit === 'kg' || form.purchase_unit === 'kg' ? '0.001' : '0.01'}
+                        className="mt-1 h-9"
+                        placeholder="Ex: 144"
+                      />
+                      <p className="text-[10px] text-primary/80 mt-0.5 font-medium">
+                        {describeConversion({
+                          unit: form.unit,
+                          purchase_unit: form.purchase_unit,
+                          conversion_rate: form.conversion_rate,
+                          dimensions_width: form.dimensions_width,
+                        })}
+                      </p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Lote Mínimo de Compra</Label>
+                      <NumberInput
+                        value={form.min_order_quantity ?? 0}
+                        onChange={v => update('min_order_quantity', v)}
+                        min={0}
+                        step="1"
+                        className="mt-1 h-9"
+                        placeholder="Ex: 50"
+                      />
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        Em {form.purchase_unit || form.unit}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Lote Mínimo de Compra</Label>
-                    <NumberInput
-                      value={form.min_order_quantity ?? 0}
-                      onChange={v => update('min_order_quantity', v)}
-                      min={0}
-                      step="1"
-                      className="mt-1 h-9"
-                      placeholder="Ex: 50"
-                    />
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
-                      Em {form.purchase_unit || form.unit}
-                    </p>
-                  </div>
-                </div>
+
+                  {needsWidthForConversion({ unit: form.unit, purchase_unit: form.purchase_unit }) && (
+                    <div className="rounded-md border border-primary/30 bg-primary/5 p-2.5">
+                      <Label className="text-xs font-semibold flex items-center gap-1.5">
+                        <ArrowRightLeft className="h-3 w-3" /> Largura do material (linear → área)
+                      </Label>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        Pra converter metro linear em dm², informe a largura do rolo. Sistema calcula:
+                        <span className="font-mono ml-1">1 m × largura(dm) = dm²</span>.
+                      </p>
+                      <div className="grid grid-cols-2 gap-2 mt-2">
+                        <div>
+                          <Label className="text-[10px] text-muted-foreground">Largura</Label>
+                          <NumberInput
+                            value={form.dimensions_width ?? 0}
+                            onChange={v => {
+                              update('dimensions_width', v);
+                              setPlateWidth(v);
+                              // recalcula conversion_rate via largura
+                              if (v > 0 && form.unit === 'dm²') {
+                                update('conversion_rate', 10 * v);
+                              } else if (v > 0 && form.unit === 'm²') {
+                                update('conversion_rate', v / 10);
+                              }
+                            }}
+                            min={0}
+                            step="0.1"
+                            className="mt-0.5 h-8 text-xs"
+                            placeholder="Ex: 10 (dm)"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-[10px] text-muted-foreground">Unidade da largura</Label>
+                          <Select value={form.dimensions_unit || 'dm'} onValueChange={v => { update('dimensions_unit', v); setPlateUnit(v); }}>
+                            <SelectTrigger className="mt-0.5 h-8 text-xs"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="dm">dm</SelectItem>
+                              <SelectItem value="cm">cm</SelectItem>
+                              <SelectItem value="m">m</SelectItem>
+                              <SelectItem value="mm">mm</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
             {!hasGrade && (
@@ -1591,17 +1717,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                           </p>
                         </div>
                       )}
-                    </div>
-                    <div>
-                      <Label className="text-xs text-muted-foreground">Cálculo de Consumo</Label>
-                      <Select value={normalizeCalculationMethod(form.calculation_method)} onValueChange={v => update('calculation_method', v as any)}>
-                        <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="weight">Por Peso (kg)</SelectItem>
-                          <SelectItem value="meter">Por Metro (m/dm²)</SelectItem>
-                          <SelectItem value="unit">Por Unidade (un/par/pc)</SelectItem>
-                        </SelectContent>
-                      </Select>
                     </div>
                   </div>
                 </div>

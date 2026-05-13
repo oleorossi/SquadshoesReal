@@ -460,7 +460,7 @@ export default function OrderFlowAudit() {
       <div className="w-full space-y-6">
         <div className="flex items-center justify-between flex-wrap gap-4 border-b pb-6">
           <div className="space-y-1">
-            <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+            <h1 className="display text-xl tracking-tight flex items-center gap-2">
               <Layers className="h-6 w-6 text-primary" /> Auditoria de Fluxo
             </h1>
             <p className="text-sm text-muted-foreground">

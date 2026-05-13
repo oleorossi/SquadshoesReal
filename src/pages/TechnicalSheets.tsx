@@ -182,6 +182,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Check, CaretUpDown as ChevronsUpDown } from '@phosphor-icons/react';
 import { cn, getSoleModelName, parseSafeNumber, formatCurrency as globalFormatCurrency, safeToFixed } from '@/lib/utils';
+import { needsWidthForConversion, effectiveConversionFactor } from '@/lib/purchaseConversion';
 import { getShoeSizeMappings } from '@/utils/shoeUtils';
 
 import { SHOE_CATEGORIES } from '@/lib/shoeCategories';
@@ -5391,6 +5392,27 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
                     const displayName = groupInfo?.name || prod?.name || '—';
                     const perSize = (m as any).consumption_per_size || {};
                     const perSizeEntries = Object.entries(perSize).filter(([, v]: [string, any]) => Number(v) > 0);
+
+                    // Aviso de conversão incompleta: produto comprado em unidade diferente
+                    // do estoque mas sem fator/largura cadastrado → débito errado.
+                    let conversionIssue: string | null = null;
+                    if (prod) {
+                      const ctx = {
+                        unit: prod.unit || 'un',
+                        purchase_unit: prod.purchase_unit,
+                        conversion_rate: prod.conversion_rate,
+                        dimensions_width: prod.dimensions_width,
+                      };
+                      const hasDifferentUnits = ctx.purchase_unit && ctx.purchase_unit !== ctx.unit;
+                      if (hasDifferentUnits) {
+                        if (needsWidthForConversion(ctx) && (!ctx.dimensions_width || ctx.dimensions_width <= 0)) {
+                          conversionIssue = `Falta largura — ${ctx.purchase_unit} → ${ctx.unit} requer dimensions_width.`;
+                        } else if (effectiveConversionFactor(ctx) === 1 && ctx.purchase_unit !== ctx.unit) {
+                          conversionIssue = `Falta fator — informe quantos ${ctx.unit} cabem em 1 ${ctx.purchase_unit}.`;
+                        }
+                      }
+                    }
+
                     rows.push(
                       <TableRow key={m.id}>
                         <TableCell className="text-xs font-medium">
@@ -5399,7 +5421,15 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
                               {displayName}
                               {groupInfo && <Badge variant="outline" className="text-[8px]">Grupo</Badge>}
                               {cs && <Badge variant="outline" className="text-[8px] bg-accent/30 border-accent">FT</Badge>}
+                              {conversionIssue && (
+                                <Badge variant="outline" className="text-[8px] border-amber-500 text-amber-700 dark:text-amber-400 gap-0.5">
+                                  <AlertTriangle className="h-2.5 w-2.5" /> Conversão
+                                </Badge>
+                              )}
                             </div>
+                            {conversionIssue && (
+                              <span className="text-[10px] text-amber-600 dark:text-amber-400">{conversionIssue}</span>
+                            )}
                             {prod?.name && groupInfo && prod.name !== groupInfo.name && (
                               <span className="text-[10px] text-muted-foreground">Item: {prod.name}{prod.color ? ` (${prod.color})` : ''}</span>
                             )}

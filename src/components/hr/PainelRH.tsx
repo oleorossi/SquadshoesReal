@@ -180,7 +180,7 @@ export default function PainelRH({ onNavigateTab }: Props) {
     <div className="space-y-5 page-enter">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Painel de Pessoas</h1>
+          <h1 className="display text-xl tracking-tight">Painel de Pessoas</h1>
           <p className="text-sm text-muted-foreground">
             Resumo do quadro, alertas que pedem ação e evolução do efetivo.
           </p>
@@ -205,7 +205,7 @@ export default function PainelRH({ onNavigateTab }: Props) {
               </div>
               <div className="min-w-0">
                 <p className="text-xs text-muted-foreground">Ativos</p>
-                <p className="text-2xl font-bold">{data.totalActive}</p>
+                <p className="display text-2xl tabular-nums">{data.totalActive}</p>
                 {data.totalInactive > 0 && <p className="text-[10px] text-muted-foreground">{data.totalInactive} inativo{data.totalInactive > 1 ? 's' : ''}</p>}
               </div>
             </div>
@@ -249,7 +249,7 @@ export default function PainelRH({ onNavigateTab }: Props) {
               </div>
               <div className="min-w-0">
                 <p className="text-xs text-muted-foreground">Ausências (mês)</p>
-                <p className="text-2xl font-bold">{data.absentDays}</p>
+                <p className="display text-2xl tabular-nums">{data.absentDays}</p>
                 <p className="text-[10px] text-muted-foreground">{data.absencesMonth} ocorrência{data.absencesMonth > 1 ? 's' : ''}</p>
               </div>
             </div>

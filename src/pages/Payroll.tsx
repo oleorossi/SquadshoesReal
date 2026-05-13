@@ -287,11 +287,11 @@ export default function Payroll() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Funcionários</p>
-          <p className="text-2xl font-bold">{runs.length}</p>
+          <p className="display text-2xl tabular-nums">{runs.length}</p>
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Total proventos</p>
-          <p className="text-xl font-bold text-emerald-600">{fmt(totals.proventos)}</p>
+          <p className="display text-xl tabular-nums text-emerald-600">{fmt(totals.proventos)}</p>
         </CardContent></Card>
         <Card className={totals.advances > 0 ? 'border-amber-500/40 bg-amber-500/5' : ''}>
           <CardContent className="p-4">
@@ -308,11 +308,11 @@ export default function Payroll() {
         </Card>
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Total descontos</p>
-          <p className="text-xl font-bold text-destructive">{fmt(totals.descontos)}</p>
+          <p className="display text-xl tabular-nums text-destructive">{fmt(totals.descontos)}</p>
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Total líquido</p>
-          <p className="text-xl font-bold text-primary">{fmt(totals.liquido)}</p>
+          <p className="display text-xl tabular-nums text-primary">{fmt(totals.liquido)}</p>
         </CardContent></Card>
       </div>
 

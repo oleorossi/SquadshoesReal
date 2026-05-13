@@ -136,43 +136,43 @@ export default function PCPDashboard() {
           <Card>
             <CardContent className="p-3 text-center">
               <Factory className="h-5 w-5 mx-auto text-primary mb-1" />
-              <p className="text-2xl font-bold">{productionOrders.length}</p>
-              <p className="text-xs text-muted-foreground">OPs Ativas</p>
+              <p className="display text-3xl tabular-nums">{productionOrders.length}</p>
+              <p className="eyebrow mt-1">OPs Ativas</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-3 text-center">
               <Package className="h-5 w-5 mx-auto text-warning mb-1" />
-              <p className="text-2xl font-bold">{productionOrders.reduce((s, o) => s + (o.quantity || 0), 0)}</p>
-              <p className="text-xs text-muted-foreground">Total Pares</p>
+              <p className="display text-3xl tabular-nums">{productionOrders.reduce((s, o) => s + (o.quantity || 0), 0)}</p>
+              <p className="eyebrow mt-1">Total Pares</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-3 text-center">
               <TrendingUp className="h-5 w-5 mx-auto text-success mb-1" />
-              <p className="text-2xl font-bold">{yieldStats.rate.toFixed(1)}%</p>
-              <p className="text-xs text-muted-foreground">Rendimento</p>
+              <p className="display text-3xl tabular-nums">{yieldStats.rate.toFixed(1)}%</p>
+              <p className="eyebrow mt-1">Rendimento</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-3 text-center">
               <XCircle className="h-5 w-5 mx-auto text-destructive mb-1" />
-              <p className="text-2xl font-bold">{defectStats.rate.toFixed(1)}%</p>
-              <p className="text-xs text-muted-foreground">Taxa Rejeito</p>
+              <p className="display text-3xl tabular-nums">{defectStats.rate.toFixed(1)}%</p>
+              <p className="eyebrow mt-1">Taxa Rejeito</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-3 text-center">
               <Clock className="h-5 w-5 mx-auto text-accent mb-1" />
-              <p className="text-2xl font-bold">{avgLeadTime}h</p>
-              <p className="text-xs text-muted-foreground">Lead Time Médio</p>
+              <p className="display text-3xl tabular-nums">{avgLeadTime}h</p>
+              <p className="eyebrow mt-1">Lead Time Médio</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-3 text-center">
               <AlertTriangle className="h-5 w-5 mx-auto text-warning mb-1" />
-              <p className="text-2xl font-bold">{materialStats.pending}</p>
-              <p className="text-xs text-muted-foreground">Materiais Reservados</p>
+              <p className="display text-3xl tabular-nums">{materialStats.pending}</p>
+              <p className="eyebrow mt-1">Materiais Reservados</p>
             </CardContent>
           </Card>
         </div>

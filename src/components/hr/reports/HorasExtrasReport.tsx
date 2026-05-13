@@ -185,8 +185,8 @@ export default function HorasExtrasReport() {
                       <Tooltip formatter={(v: number) => fmt(v)} />
                       <Legend wrapperStyle={{ fontSize: 11 }} />
                       <Bar dataKey="ot50Value" name="HE 50%" stackId="a" fill="hsl(var(--primary))" />
-                      <Bar dataKey="ot100Value" name="HE 100%" stackId="a" fill="#f59e0b" />
-                      <Bar dataKey="nightValue" name="Noturno" stackId="a" fill="#6366f1" />
+                      <Bar dataKey="ot100Value" name="HE 100%" stackId="a" fill="hsl(var(--warning))" />
+                      <Bar dataKey="nightValue" name="Noturno" stackId="a" fill="hsl(var(--stage-sew-fg))" />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>

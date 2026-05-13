@@ -69,7 +69,7 @@ export default function UnitAudit() {
       <div className="space-y-5 page-enter">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
-            <h1 className="text-xl font-bold tracking-tight">Auditoria de Unidades</h1>
+            <h1 className="display text-xl tracking-tight">Auditoria de Unidades</h1>
             <p className="text-sm text-muted-foreground">
               Detecta divergências de unidade de medida entre o frontend e o backend, com exemplos de registros afetados.
             </p>
@@ -102,7 +102,7 @@ export default function UnitAudit() {
                   <CardTitle className="text-xs text-muted-foreground font-medium">Verificações</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{data.checks.length}</div>
+                  <div className="display text-2xl tabular-nums">{data.checks.length}</div>
                 </CardContent>
               </Card>
               <Card>
@@ -110,7 +110,7 @@ export default function UnitAudit() {
                   <CardTitle className="text-xs text-muted-foreground font-medium">Com divergência</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-destructive">{failingChecks.length}</div>
+                  <div className="display text-2xl tabular-nums text-destructive">{failingChecks.length}</div>
                 </CardContent>
               </Card>
               <Card>
@@ -118,7 +118,7 @@ export default function UnitAudit() {
                   <CardTitle className="text-xs text-muted-foreground font-medium">Registros afetados</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{totalIssues}</div>
+                  <div className="display text-2xl tabular-nums">{totalIssues}</div>
                 </CardContent>
               </Card>
             </div>

@@ -87,9 +87,32 @@ const formatDate = (d: string | null) =>
 const formatDateShort = (d: string) =>
   new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 
+// Lookup batch de min_billing_date pra todos os PVs ativos da view sale_order_min_billing.
+// Usado pra marcar em vermelho linhas com delivery_deadline < min_billing_date.
+function useMinBillingMap() {
+  return useQuery<Map<string, string>>({
+    queryKey: ['sale_order_min_billing_map'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('sale_order_min_billing' as any)
+        .select('sale_order_id, min_billing_date');
+      const out = new Map<string, string>();
+      if (error || !data) return out;
+      for (const row of data as any[]) {
+        if (row.sale_order_id && row.min_billing_date) {
+          out.set(row.sale_order_id, row.min_billing_date);
+        }
+      }
+      return out;
+    },
+    staleTime: 60_000,
+  });
+}
+
 export default function SaleOrders() {
   const { data: orders = [], isLoading, isError, error } = useSaleOrders();
   const { data: allSaleItems = [] } = useSaleOrderAllItems();
+  const { data: minBillingMap = new Map<string, string>() } = useMinBillingMap();
   const { data: references = [] } = useTechnicalSheets();
   const { data: clients = [] } = useClients();
   const { data: economicGroups = [] } = useEconomicGroups();
@@ -444,6 +467,28 @@ export default function SaleOrders() {
 
   const handleBulkStatusChange = async (status: string) => {
     const ids = Array.from(selectedIds);
+    // Pré-check só se o status alvo é Aprovado/Em Produção (estados que
+    // disparam o pipeline produtivo). Cancelar/Rascunho não precisam de
+    // viabilidade — são ações de "desistir" ou "voltar atrás".
+    if (status === 'Aprovado' || status === 'Em Produção') {
+      const targets = filteredOrders.filter((o) => ids.includes(o.id));
+      const infeasibleOrders = targets.filter((o) => {
+        const min = minBillingMap.get(o.id);
+        return min && o.delivery_deadline && o.delivery_deadline < min;
+      });
+      if (infeasibleOrders.length > 0) {
+        const list = infeasibleOrders
+          .slice(0, 5)
+          .map((o) => `• ${o.order_number} (${formatDate(o.delivery_deadline)} → mín ${formatDate(minBillingMap.get(o.id) || null)})`)
+          .join('\n');
+        const more = infeasibleOrders.length > 5 ? `\n... e mais ${infeasibleOrders.length - 5}` : '';
+        const ok = window.confirm(
+          `${infeasibleOrders.length} pedido(s) com data INVIÁVEL — produção não cabe no prazo:\n\n${list}${more}\n\n` +
+          'Mover para "' + status + '" mesmo assim? (Recomendado: ajustar a data primeiro)'
+        );
+        if (!ok) return;
+      }
+    }
     const results = await Promise.allSettled(ids.map(id => updateStatus.mutateAsync({ id, status })));
     const failed = results.filter(r => r.status === 'rejected').length;
     setSelectedIds(new Set());
@@ -859,6 +904,29 @@ export default function SaleOrders() {
 
   const handleBulkGenerateOPs = async () => {
     if (pendingOrders.length === 0) { toast.info('Nenhum pedido pendente.'); return; }
+
+    // Pré-check de viabilidade: bloqueia approval em massa de PVs com
+    // delivery_deadline anterior à data mínima viável (capacidade dos
+    // 9 setores + buffer + supplier descontando POs pending). Pré-2026-06
+    // o sistema aprovava sem checar — geravam OPs que entravam em ondas
+    // com purchase_deadline já vencido.
+    const infeasibleOrders = pendingOrders.filter((o) => {
+      const min = minBillingMap.get(o.id);
+      return min && o.delivery_deadline && o.delivery_deadline < min;
+    });
+    if (infeasibleOrders.length > 0) {
+      const list = infeasibleOrders
+        .slice(0, 5)
+        .map((o) => `• ${o.order_number} (${formatDate(o.delivery_deadline)} → mín ${formatDate(minBillingMap.get(o.id) || null)})`)
+        .join('\n');
+      const more = infeasibleOrders.length > 5 ? `\n... e mais ${infeasibleOrders.length - 5}` : '';
+      const ok = window.confirm(
+        `${infeasibleOrders.length} pedido(s) com data INVIÁVEL — produção não cabe no prazo:\n\n${list}${more}\n\n` +
+        'Aprovar mesmo assim? (Recomendado: ajustar a data primeiro)'
+      );
+      if (!ok) return;
+    }
+
     setGeneratingOPs(true);
     let ordersProcessed = 0, opsCreated = 0;
     const errors: string[] = [];
@@ -1326,39 +1394,39 @@ export default function SaleOrders() {
           </button>
         </div>
 
-        {/* KPI Cards */}
+        {/* KPI Cards — Novidade editorial */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Card className="border-border/50">
+          <Card className="border-border/50 slash-top">
             <CardContent className="p-4 flex items-center gap-3">
               <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                 <ShoppingCart className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground font-medium">Total Pedidos</p>
-                <p className="text-xl font-bold">{kpis.count}</p>
+                <p className="eyebrow">Total Pedidos</p>
+                <p className="display text-2xl tabular-nums mt-1">{kpis.count}</p>
                 <p className="text-[10px] text-muted-foreground">{totalPares.toLocaleString('pt-BR')} pares</p>
               </div>
             </CardContent>
           </Card>
-          <Card className="border-border/50">
+          <Card className="border-border/50 slash-top">
             <CardContent className="p-4 flex items-center gap-3">
               <div className="h-10 w-10 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0">
                 <Clock className="h-5 w-5 text-amber-600" />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground font-medium">Pendentes</p>
-                <p className="text-xl font-bold">{kpis.pending}</p>
+                <p className="eyebrow">Pendentes</p>
+                <p className="display text-2xl tabular-nums mt-1">{kpis.pending}</p>
               </div>
             </CardContent>
           </Card>
-          <Card className="border-border/50">
+          <Card className="border-border/50 slash-top">
             <CardContent className="p-4 flex items-center gap-3">
               <div className="h-10 w-10 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
                 <Package className="h-5 w-5 text-emerald-600" />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground font-medium">Aprovados</p>
-                <p className="text-xl font-bold">{kpis.approved}</p>
+                <p className="eyebrow">Aprovados</p>
+                <p className="display text-2xl tabular-nums mt-1">{kpis.approved}</p>
                 <p className="text-[10px] text-muted-foreground">{kpis.inProduction} em produção</p>
               </div>
             </CardContent>
@@ -1669,13 +1737,30 @@ export default function SaleOrders() {
                       <TableCell className="text-right text-xs font-mono font-semibold">
                         {(pairsBySaleOrder[order.id] || 0).toLocaleString('pt-BR')}
                       </TableCell>
-                      <TableCell className={`text-xs ${isOverdue ? 'text-destructive font-semibold' : 'text-muted-foreground'}`}>
+                      <TableCell
+                        className={cn(
+                          'text-xs',
+                          (isOverdue || isInfeasible) ? 'text-destructive font-semibold' : 'text-muted-foreground'
+                        )}
+                        title={
+                          isInfeasible && minBilling
+                            ? `DATA INVIÁVEL — mínima necessária: ${formatDate(minBilling)} (considera estoque, supplier lead time descontando POs em trânsito, e capacidade dos 9 setores).`
+                            : isOverdue
+                              ? 'Prazo de entrega já passou.'
+                              : undefined
+                        }
+                      >
                         <div className="flex flex-col">
                           <span>
                             {formatDate(order.delivery_deadline)}
-                            {isOverdue && <span className="ml-1 text-[10px]">⚠</span>}
+                            {(isOverdue || isInfeasible) && <span className="ml-1 text-[10px]">⚠</span>}
                           </span>
-                          {(order.delivery_month || order.delivery_week) && (
+                          {isInfeasible && minBilling && (
+                            <span className="text-[10px] font-mono text-destructive font-bold">
+                              MÍN: {formatDate(minBilling)}
+                            </span>
+                          )}
+                          {!isInfeasible && (order.delivery_month || order.delivery_week) && (
                             <span className="text-[10px] text-muted-foreground font-mono">
                               {[order.delivery_month, order.delivery_week].filter(Boolean).join(' ')}
                             </span>

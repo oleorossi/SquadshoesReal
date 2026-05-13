@@ -5182,6 +5182,7 @@ export type Database = {
           pairs_per_box_individual: number | null
           pairs_per_box_master: number | null
           parent_group_id: string | null
+          metros_fitilho_per_amarrado: number | null
           shared_specs: boolean
           silk_url: string | null
           unit_weight_kg: number | null
@@ -5213,6 +5214,7 @@ export type Database = {
           pairs_per_box_individual?: number | null
           pairs_per_box_master?: number | null
           parent_group_id?: string | null
+          metros_fitilho_per_amarrado?: number | null
           shared_specs?: boolean
           silk_url?: string | null
           unit_weight_kg?: number | null
@@ -5244,6 +5246,7 @@ export type Database = {
           pairs_per_box_individual?: number | null
           pairs_per_box_master?: number | null
           parent_group_id?: string | null
+          metros_fitilho_per_amarrado?: number | null
           shared_specs?: boolean
           silk_url?: string | null
           unit_weight_kg?: number | null

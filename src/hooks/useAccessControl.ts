@@ -50,6 +50,18 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/producao': 'producao',
   '/producao/live': 'producao',
   '/producao/timeline': 'producao',
+  '/producao/fluxo': 'producao',
+  '/relatorios/diario-producao': 'reports',
+  '/relatorios/op': 'reports',
+  '/relatorios/oee': 'reports',
+  // Rota raiz /relatorios é admin-only (item aparece em systemItems da sidebar,
+  // só visível para admins). Sub-rotas continuam acessíveis a gerente via
+  // módulo 'reports'. Mantém consistência com NavigationAccessConsistency.test.
+  '/relatorios': 'sistema',
+  '/cost-policies': 'financeiro',
+  '/relatorios/qualidade': 'reports',
+  '/relatorios/refugo': 'reports',
+  '/relatorios/semanal': 'reports',
   '/production-dashboard': 'producao',
   '/financeiro': 'financeiro',
   '/rh': 'rh',

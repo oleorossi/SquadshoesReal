@@ -247,21 +247,21 @@ export default function WeeklyPurchaseAgenda() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Materiais a comprar</p>
-          <p className="text-2xl font-bold">{deficits.length}</p>
+          <p className="display text-2xl tabular-nums">{deficits.length}</p>
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Semanas planejadas</p>
-          <p className="text-2xl font-bold">{byTuesday.filter(w => !w.isOverdue).length}</p>
+          <p className="display text-2xl tabular-nums">{byTuesday.filter(w => !w.isOverdue).length}</p>
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Itens atrasados</p>
-          <p className={`text-2xl font-bold ${overdueCount > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+          <p className={`display text-2xl tabular-nums ${overdueCount > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
             {overdueCount}
           </p>
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <p className="text-xs text-muted-foreground uppercase">Total estimado</p>
-          <p className="text-xl font-bold text-primary">{fmt(totalEstimado)}</p>
+          <p className="display text-xl tabular-nums text-primary">{fmt(totalEstimado)}</p>
         </CardContent></Card>
       </div>
 

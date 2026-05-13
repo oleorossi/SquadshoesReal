@@ -6,7 +6,7 @@ export default function MaterialConsumption() {
     
       <div className="space-y-5 page-enter">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Consumo de Material</h1>
+          <h1 className="display text-xl tracking-tight">Consumo de Material</h1>
           <p className="text-sm text-muted-foreground">Análise de consumo de materiais por pedido e período</p>
         </div>
         <MaterialConsumptionTab />

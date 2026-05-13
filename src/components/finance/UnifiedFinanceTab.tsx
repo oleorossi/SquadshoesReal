@@ -3,20 +3,30 @@ import { CurrencyDollar as DollarSign, TrendUp as TrendingUp, TrendDown as Trend
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-export default function UnifiedFinanceTab({ 
-  payableContent, 
+export default function UnifiedFinanceTab({
+  payableContent,
   receivableContent,
-  totals
-}: { 
-  payableContent: React.ReactNode; 
+  totals,
+  initialSubTab,
+  onSubTabChange,
+}: {
+  payableContent: React.ReactNode;
   receivableContent: React.ReactNode;
   totals: {
     payable: number;
     receivable: number;
     balance: number;
-  }
+  };
+  initialSubTab?: 'payable' | 'receivable';
+  onSubTabChange?: (sub: 'payable' | 'receivable') => void;
 }) {
-  const [activeSubTab, setActiveSubTab] = useState('payable');
+  const [activeSubTab, setActiveSubTab] = useState<'payable' | 'receivable'>(initialSubTab ?? 'payable');
+
+  // Mantém o sub-tab sincronizado quando o pai muda (deep-link, click em alerta).
+  useEffect(() => {
+    if (initialSubTab && initialSubTab !== activeSubTab) setActiveSubTab(initialSubTab);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSubTab]);
 
   const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -31,7 +41,15 @@ export default function UnifiedFinanceTab({
           <p className="text-xs text-muted-foreground mt-0.5">Visão consolidada de Contas a Pagar e a Receber</p>
         </div>
         
-        <Tabs value={activeSubTab} onValueChange={setActiveSubTab} className="w-full sm:w-auto">
+        <Tabs
+          value={activeSubTab}
+          onValueChange={(v) => {
+            const next = v as 'payable' | 'receivable';
+            setActiveSubTab(next);
+            onSubTabChange?.(next);
+          }}
+          className="w-full sm:w-auto"
+        >
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="payable" className="gap-2">
               <TrendingDown className="h-4 w-4" /> A Pagar
@@ -47,19 +65,19 @@ export default function UnifiedFinanceTab({
         <Card className="bg-destructive/5 border-destructive/20">
           <CardContent className="pt-4">
             <p className="text-xs font-semibold text-destructive uppercase">Total a Pagar</p>
-            <p className="text-2xl font-bold text-destructive">{fmt(totals.payable)}</p>
+            <p className="display text-2xl tabular-nums text-destructive">{fmt(totals.payable)}</p>
           </CardContent>
         </Card>
         <Card className="bg-emerald-50 border-emerald-200">
           <CardContent className="pt-4">
             <p className="text-xs font-semibold text-emerald-700 uppercase">Total a Receber</p>
-            <p className="text-2xl font-bold text-emerald-700">{fmt(totals.receivable)}</p>
+            <p className="display text-2xl tabular-nums text-emerald-700">{fmt(totals.receivable)}</p>
           </CardContent>
         </Card>
         <Card className={totals.balance >= 0 ? "bg-primary/5 border-primary/20" : "bg-destructive/5 border-destructive/20"}>
           <CardContent className="pt-4">
             <p className="text-xs font-semibold uppercase">Saldo Projetado</p>
-            <p className={`text-2xl font-bold ${totals.balance >= 0 ? 'text-primary' : 'text-destructive'}`}>
+            <p className={`display text-2xl tabular-nums ${totals.balance >= 0 ? 'text-primary' : 'text-destructive'}`}>
               {fmt(totals.balance)}
             </p>
           </CardContent>

@@ -32,9 +32,10 @@ export default function Auth() {
 
   return (
     <div className="min-h-screen flex">
-      {/* Left panel — branding */}
-      <div className="hidden lg:flex lg:w-[45%] relative overflow-hidden items-center justify-center"
-        style={{ background: 'linear-gradient(160deg, hsl(160 60% 15%), hsl(160 60% 22%), hsl(160 60% 30%))' }}>
+      {/* Left panel — branding (handoff Novidade: preto editorial + acento vermelho Squad) */}
+      <div className="hidden lg:flex lg:w-[45%] relative overflow-hidden items-center justify-center bg-sidebar">
+        {/* slash decorativo no topo */}
+        <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-primary to-transparent z-20" />
         {/* Decorative circles */}
         <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] rounded-full bg-card/5" />
         <div className="absolute bottom-[-15%] left-[-8%] w-[400px] h-[400px] rounded-full bg-card/5" />

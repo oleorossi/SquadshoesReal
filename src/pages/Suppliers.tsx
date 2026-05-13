@@ -400,19 +400,19 @@ export default function Suppliers() {
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <Card><CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold">{suppliers.length}</p>
+            <p className="display text-2xl tabular-nums">{suppliers.length}</p>
             <p className="text-xs text-muted-foreground">Total</p>
           </CardContent></Card>
           <Card><CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-success">{suppliers.filter(s => s.active).length}</p>
+            <p className="display text-2xl tabular-nums text-success">{suppliers.filter(s => s.active).length}</p>
             <p className="text-xs text-muted-foreground">Ativos</p>
           </CardContent></Card>
           <Card><CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-warning">{suppliers.filter(s => !s.active).length}</p>
+            <p className="display text-2xl tabular-nums text-warning">{suppliers.filter(s => !s.active).length}</p>
             <p className="text-xs text-muted-foreground">Inativos</p>
           </CardContent></Card>
           <Card><CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-primary">{suppliers.filter(s => s.cnpj).length}</p>
+            <p className="display text-2xl tabular-nums text-primary">{suppliers.filter(s => s.cnpj).length}</p>
             <p className="text-xs text-muted-foreground">Com CNPJ</p>
           </CardContent></Card>
         </div>
