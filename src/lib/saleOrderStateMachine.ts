@@ -50,7 +50,12 @@ export const VALID_TRANSITIONS: Record<string, string[]> = {
   [SALE_ORDER_STATUS.EXPEDIDO]: [SALE_ORDER_STATUS.CONCLUIDO],
   [SALE_ORDER_STATUS.CONCLUIDO]: [], // terminal
   [SALE_ORDER_STATUS.FINALIZADO_SEM_NF]: [], // terminal (pedido informal concluído)
-  [SALE_ORDER_STATUS.CANCELADO]: [], // terminal
+  // Cancelado deixou de ser terminal: permite reativar voltando pra Rascunho.
+  // De Rascunho o user reaprova pelo fluxo normal — daí materiais voltam a ser
+  // reservados e OPs são recriadas. Não permitimos pular direto pra Em Produção
+  // ou Aprovado porque a OP original foi cancelada e o estoque restaurado;
+  // precisa passar pelo fluxo de aprovação pra reconstruir essas amarrações.
+  [SALE_ORDER_STATUS.CANCELADO]: [SALE_ORDER_STATUS.RASCUNHO],
 };
 
 /**
