@@ -18,7 +18,7 @@
  *
  * **Wiring**: hoje usa dados mock fiel ao handoff. Pra produção, troque
  * `useOpsMock()` por `useOrders({ status: 'Em Produção' })` e mapeie o
- * `current_step` da OP para a coluna (`getColForStep`).
+ * `production_step` da OP para a coluna (`getColForStep`).
  */
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -66,7 +66,7 @@ function useOps() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('orders')
-        .select('id, order_number, quantity, current_step, status, created_at')
+        .select('id, order_number, quantity, production_step, status, created_at')
         .in('status', ['Reservado', 'Em Produção', 'Em produção'])
         .order('created_at', { ascending: false })
         .limit(40);
@@ -75,7 +75,7 @@ function useOps() {
         id: o.order_number || o.id.slice(0, 8),
         modelo: '—',
         pairs: Number(o.quantity) || 0,
-        col: getColForStep((o as any).current_step),
+        col: getColForStep((o as any).production_step),
         prog: Math.min(100, Math.max(10, ((idx % 5) + 1) * 18)),
         due: '—',
         late: false,
