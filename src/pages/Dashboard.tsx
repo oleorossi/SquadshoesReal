@@ -112,7 +112,7 @@ export default function Dashboard() {
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
   return (
-    <div className="flex flex-col gap-4 page-enter">
+    <div className="flex flex-col gap-6 page-enter editorial-stagger">
       {consumptionError && (
         <ConsumptionErrorAlert
           error={consumptionError}
@@ -121,19 +121,24 @@ export default function Dashboard() {
         />
       )}
 
-      {/* Editorial header com filtro de período */}
-      <div className="flex items-end justify-between gap-4 pb-1 flex-wrap">
-        <div className="min-w-0">
-          <div className="eyebrow flex items-center gap-2">
+      {/* Editorial header — section label + display title + meta */}
+      <div className="flex items-end justify-between gap-4 pb-2 flex-wrap">
+        <div className="min-w-0 space-y-2">
+          <div className="section-label flex items-center gap-2">
             <span className="live-dot" />
-            {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
+            Painel · {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
           </div>
-          <h1 className="display text-2xl mt-2 sm:text-3xl">Squad Shoes · Visão geral</h1>
+          <h1 className="text-display-lg !text-foreground">
+            Squad Shoes
+          </h1>
+          <p className="text-sm text-muted-foreground max-w-md">
+            Visão geral de produção, estoque e financeiro · {range.label}
+          </p>
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2">
-            <CalendarBlank as CalendarRange className="h-4 w-4 text-muted-foreground" />
+            <CalendarRange className="h-4 w-4 text-muted-foreground" />
             <Select value={period} onValueChange={v => setPeriod(v as DashboardPeriod)}>
               <SelectTrigger className="h-9 w-44 text-sm">
                 <SelectValue />
@@ -154,8 +159,17 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Rule line: divisor editorial sob o header */}
+      <div className="rule-line-thick !bg-foreground" aria-hidden="true" />
+
+      {/* Section label antes do bloco produção */}
+      <div className="flex items-baseline gap-3 pt-2">
+        <span className="font-display text-2xl text-muted-foreground tabular-nums">01</span>
+        <span className="section-label">Produção & Estoque</span>
+      </div>
+
       {/* KPIs — Produção */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2.5 stagger-children">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2.5">
         <KPICard
           label="Produtos"
           value={productionStats?.products ?? "..."}
@@ -206,8 +220,14 @@ export default function Dashboard() {
         />
       </div>
 
+      {/* Section label antes do bloco financeiro */}
+      <div className="flex items-baseline gap-3 pt-2">
+        <span className="font-display text-2xl text-muted-foreground tabular-nums">02</span>
+        <span className="section-label">Financeiro</span>
+      </div>
+
       {/* KPIs — Financeiro (Faturamento filtra por período; A Receber/Pagar globais) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 stagger-children">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
         <div onClick={() => navigate('/finance')} className="cursor-pointer">
           <FinCard label={`Faturamento · ${range.label}`} value={formatCurrency(financialStats?.revenue ?? 0)} sub="Total PVs" subColor="up" trendIcon={TrendingUp} />
         </div>
@@ -238,6 +258,12 @@ export default function Dashboard() {
             highlight
           />
         </div>
+      </div>
+
+      {/* Section label antes dos gráficos */}
+      <div className="flex items-baseline gap-3 pt-2">
+        <span className="font-display text-2xl text-muted-foreground tabular-nums">03</span>
+        <span className="section-label">Tendências & Atividade</span>
       </div>
 
       {/* Gráficos + lista — recebem o período pra ajustar buckets/filtros */}

@@ -30,33 +30,53 @@ export const EtiquetaProduto = ({ produto, varianteSelecionada }: EtiquetaProdut
   const barcodeValue = varianteSelecionada?.barcode || '000000000000';
 
   return (
-    <div 
-      className="etiqueta-100x30mm flex flex-row items-center justify-between p-2 bg-white text-black border border-gray-100 shadow-sm print:shadow-none print:border-none overflow-hidden"
+    <div
+      className="etiqueta-100x30mm relative flex flex-row items-stretch bg-white text-black border-l-4 border-black rounded-none print:shadow-none overflow-hidden"
       style={{ width: '100mm', height: '30mm', boxSizing: 'border-box' }}
     >
-      {/* Esquerda: Imagem */}
-      <div className="w-16 h-16 flex-shrink-0 flex items-center justify-center">
-        <img 
-          src={imagemParaExibir} 
-          alt={produto.nome} 
-          className="w-16 h-16 object-contain grayscale"
+      {/* Esquerda: Imagem em moldura aguda */}
+      <div className="w-[22mm] flex-shrink-0 flex items-center justify-center pl-2 pr-1 py-2">
+        <img
+          src={imagemParaExibir}
+          alt={produto.nome}
+          className="w-full h-full object-contain grayscale"
           onError={(e) => {
             (e.target as HTMLImageElement).src = '/placeholder-sapato.png';
           }}
         />
       </div>
 
-      {/* Centro: Info */}
-      <div className="flex-1 px-4 flex flex-col justify-center min-w-0">
-        <div className="text-xs font-bold truncate uppercase">{produto.nome}</div>
-        <div className="text-[10px] text-gray-700 mt-1 truncate">
-          {varianteSelecionada?.cor || 'PADRÃO'} - Tam: {varianteSelecionada?.tamanho || '--'}
+      {/* Centro: Tipografia dominante */}
+      <div className="flex-1 px-3 py-2 flex flex-col justify-between min-w-0">
+        <div className="min-w-0">
+          <div className="section-label text-black/60">SKU</div>
+          <div className="font-display text-2xl leading-none uppercase truncate -mt-0.5">
+            {produto.nome}
+          </div>
+        </div>
+
+        <div className="flex items-end justify-between gap-3 min-w-0">
+          <div className="min-w-0 flex-1">
+            <div className="section-label text-black/60">Cor</div>
+            <div className="font-editorial text-[11px] font-semibold uppercase tracking-[0.2em] truncate leading-tight">
+              {varianteSelecionada?.cor || 'Padrão'}
+            </div>
+          </div>
+          <div className="flex-shrink-0 text-right">
+            <div className="section-label text-black/60">Tam</div>
+            <div className="font-mono text-base font-bold leading-none tabular-nums">
+              {varianteSelecionada?.tamanho ?? '--'}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Direita: Código de Barras */}
-      <div className="w-[30mm] flex items-center justify-center overflow-hidden">
-        <BarcodeSVG value={barcodeValue} height={25} fontSize={8} />
+      {/* Direita: EAN + Código de Barras */}
+      <div className="w-[32mm] flex-shrink-0 flex flex-col items-stretch justify-center pr-2 pl-1 py-2 border-l border-black/15">
+        <div className="section-label text-black/60 mb-1">EAN</div>
+        <div className="flex-1 flex items-center justify-center overflow-hidden">
+          <BarcodeSVG value={barcodeValue} height={28} fontSize={8} />
+        </div>
       </div>
     </div>
   );

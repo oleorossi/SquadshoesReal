@@ -118,76 +118,116 @@ const OperatorWorkSheet = ({
 
   return (
     <div
-      className="w-[210mm] p-[8mm] print:w-full print:p-0 bg-white border border-slate-300 shadow-none print:shadow-none print:border-0 m-auto flex flex-col gap-0"
-      style={{ boxSizing: 'border-box', fontFamily: "'Helvetica Neue', Arial, sans-serif" }}
+      className="w-[210mm] p-[8mm] print:w-full print:p-0 bg-white shadow-none print:shadow-none m-auto flex flex-col gap-0"
+      style={{ boxSizing: 'border-box', fontFamily: "'Inter Tight', sans-serif", color: '#000' }}
     >
-      {/* ── Header bar ── */}
-      <div className={`flex items-stretch gap-0 mb-2 rounded-lg overflow-hidden border-2 ${meta.border}`}>
-        {/* Sector label */}
-        <div className={`${meta.bg} text-white flex items-center gap-2 px-3 py-1.5 shrink-0`}>
-          {meta.icon}
-          <span className="text-sm font-black uppercase tracking-tight">Ficha de {sector}</span>
+      {/* ── Header — Industrial Editorial ── */}
+      <div className="flex items-center justify-between mb-1">
+        <span className="section-label" style={{ color: '#000' }}>
+          {sector.toUpperCase()} · FICHA DE OPERADOR
+        </span>
+        <span className="font-mono text-[10px] text-black tracking-wide">{today}</span>
+      </div>
+
+      <div className="border-y border-black py-3 mb-2 flex items-stretch gap-4">
+        {/* Sector identity — Anton massive */}
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="text-black">{meta.icon}</div>
+          <span
+            className="text-black uppercase leading-none"
+            style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '36px', letterSpacing: '-0.02em' }}
+          >
+            {sector}
+          </span>
         </div>
-        {/* OP + date info */}
-        <div className="flex-1 flex items-center gap-5 px-3 bg-slate-50 flex-wrap">
-          <div>
-            <p className="text-[9px] font-bold text-slate-400 uppercase leading-none">
-              {opNumbers && opNumbers.length > 1 ? `OPs (${opNumbers.length})` : 'OP'}
-            </p>
-            <p className="text-base font-black font-mono text-slate-900 leading-tight">
-              {opNumbers && opNumbers.length > 1 ? opNumbers[0] + '…' : order.op_number}
-            </p>
+
+        {/* OP/Pares heroes */}
+        <div className="flex-1 flex items-stretch gap-4 border-l border-black pl-4 min-w-0 flex-wrap">
+          <div className="flex flex-col">
+            <span className="section-label" style={{ color: '#000' }}>
+              {opNumbers && opNumbers.length > 1 ? `OP × ${opNumbers.length}` : 'OP'}
+            </span>
+            <span
+              className="text-black font-mono leading-none mt-0.5"
+              style={{ fontSize: '28px', fontWeight: 700, letterSpacing: '-0.02em' }}
+            >
+              {opNumbers && opNumbers.length > 1 ? `${opNumbers[0]}+` : order.op_number}
+            </span>
           </div>
-          <div>
-            <p className="text-[9px] font-bold text-slate-400 uppercase leading-none">Entrega</p>
-            <p className="text-sm font-bold text-slate-800 leading-tight">{order.due_date ? new Date(order.due_date).toLocaleDateString('pt-BR') : '—'}</p>
+          <div className="border-l border-black pl-4 flex flex-col">
+            <span className="section-label" style={{ color: '#000' }}>Pares</span>
+            <span
+              className="text-black font-mono leading-none mt-0.5"
+              style={{ fontSize: '34px', fontWeight: 700, letterSpacing: '-0.02em' }}
+            >
+              {totalPairs}
+            </span>
           </div>
-          <div>
-            <p className="text-[9px] font-bold text-slate-400 uppercase leading-none">Data</p>
-            <p className="text-sm font-bold text-slate-800 leading-tight">{today}</p>
+          <div className="border-l border-black pl-4 flex flex-col">
+            <span className="section-label" style={{ color: '#000' }}>Entrega</span>
+            <span className="text-black font-mono text-sm leading-tight mt-1">
+              {order.due_date ? new Date(order.due_date).toLocaleDateString('pt-BR') : '—'}
+            </span>
+            {fichas > 1 && (
+              <span className="font-mono text-[10px] text-black mt-0.5">
+                {fichas}× ficha · {gradeSum}p
+              </span>
+            )}
           </div>
-          <div>
-            <p className="text-[9px] font-bold text-slate-400 uppercase leading-none">Pares</p>
-            <p className="text-sm font-black font-mono text-slate-900 leading-tight">{totalPairs}</p>
-          </div>
-          {fichas > 1 && (
-            <div>
-              <p className="text-[9px] font-bold text-slate-400 uppercase leading-none">Fichas</p>
-              <p className="text-sm font-bold text-slate-700 leading-tight">{fichas}×{gradeSum}p</p>
-            </div>
-          )}
-          {/* Acabamento: client/store banner */}
           {clientInfo && (
-            <div className="ml-auto bg-emerald-700 text-white rounded px-3 py-1.5 text-right shrink-0">
-              <p className="text-[8px] font-bold uppercase opacity-80 leading-none">Loja / Cliente</p>
-              <p className="text-sm font-black leading-tight">{clientInfo.name}</p>
+            <div className="ml-auto border-l border-black pl-4 text-right">
+              <span className="section-label block" style={{ color: '#000' }}>Loja / Cliente</span>
+              <p
+                className="text-black uppercase leading-tight mt-0.5"
+                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.01em' }}
+              >
+                {clientInfo.name}
+              </p>
               {clientInfo.orderNumber && (
-                <p className="text-[9px] opacity-80 font-mono">{clientInfo.orderNumber}</p>
+                <p className="text-[10px] font-mono text-black">{clientInfo.orderNumber}</p>
               )}
             </div>
           )}
         </div>
-        {/* QR placeholder */}
-        <div className="flex flex-col items-center justify-center px-2 bg-white border-l border-slate-200">
-          <QrCode className="h-9 w-9 text-slate-700" />
-          <span className="text-[8px] font-mono text-slate-400 mt-0.5">{order.id?.split('-')[0] || order.op_number || '—'}</span>
+
+        {/* QR */}
+        <div className="flex flex-col items-center justify-center border-l border-black pl-3 shrink-0">
+          <QrCode className="h-12 w-12 text-black" weight="thin" />
+          <span className="text-[8px] font-mono text-black mt-0.5 tracking-widest">
+            {order.id?.split('-')[0] || order.op_number || '—'}
+          </span>
         </div>
       </div>
 
-      {/* ── Produção diária / tempo estimado ── */}
+      {/* ── Produção diária / tempo estimado — KPI band ── */}
       {effectiveCapacity > 0 && (
-        <div className="flex items-center gap-0 mb-2 rounded-lg overflow-hidden border border-amber-300">
-          <div className="flex-1 flex items-center justify-center flex-col py-1 px-2.5 bg-amber-500 text-white">
-            <p className="text-[8px] font-bold uppercase tracking-wide opacity-90 leading-none mb-0.5">Produção Diária</p>
-            <p className="text-base font-black leading-none">{effectiveCapacity} pares/dia</p>
+        <div className="grid grid-cols-3 gap-0 mb-2 border-y border-black">
+          <div className="py-1.5 px-3">
+            <span className="section-label block" style={{ color: '#000' }}>Produção / dia</span>
+            <span
+              className="text-black font-mono leading-none mt-0.5 block"
+              style={{ fontSize: '22px', fontWeight: 700 }}
+            >
+              {effectiveCapacity} <span className="text-xs">pares</span>
+            </span>
           </div>
-          <div className="flex-1 flex items-center justify-center flex-col py-1 px-2.5 bg-amber-50 border-l border-amber-200">
-            <p className="text-[8px] font-bold uppercase tracking-wide text-amber-700 leading-none mb-0.5">Tempo Estimado</p>
-            <p className="text-base font-black text-amber-900 leading-none">{estimatedDays} dia{estimatedDays !== 1 ? 's' : ''}</p>
+          <div className="py-1.5 px-3 border-l border-black">
+            <span className="section-label block" style={{ color: '#000' }}>Tempo</span>
+            <span
+              className="text-black font-mono leading-none mt-0.5 block"
+              style={{ fontSize: '22px', fontWeight: 700 }}
+            >
+              {estimatedDays} <span className="text-xs">dia{estimatedDays !== 1 ? 's' : ''}</span>
+            </span>
           </div>
-          <div className="flex-1 flex items-center justify-center flex-col py-1 px-2.5 bg-amber-50 border-l border-amber-200">
-            <p className="text-[8px] font-bold uppercase tracking-wide text-amber-700 leading-none mb-0.5">Total desta Ficha</p>
-            <p className="text-base font-black text-amber-900 leading-none">{totalPairs} pares</p>
+          <div className="py-1.5 px-3 border-l border-black">
+            <span className="section-label block" style={{ color: '#000' }}>Total Ficha</span>
+            <span
+              className="text-black font-mono leading-none mt-0.5 block"
+              style={{ fontSize: '22px', fontWeight: 700 }}
+            >
+              {totalPairs} <span className="text-xs">pares</span>
+            </span>
           </div>
         </div>
       )}

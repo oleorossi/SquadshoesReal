@@ -78,11 +78,8 @@ export const ProductImageBlock = ({
 
   return (
     <div
-      className={cn(
-        'relative bg-slate-50 border-2 border-slate-300 rounded overflow-hidden shrink-0',
-        className,
-      )}
-      style={{ width: size, height: size }}
+      className={cn('relative bg-white overflow-hidden shrink-0', className)}
+      style={{ width: size, height: size, border: '1.5px solid #000' }}
     >
       <img
         src={url}
@@ -92,7 +89,8 @@ export const ProductImageBlock = ({
       />
       {showBadge && (
         <div
-          className="absolute top-0.5 left-0.5 bg-amber-500 text-white text-[7px] font-black px-1 py-0.5 rounded-sm uppercase tracking-wide leading-none"
+          className="absolute top-0 left-0 bg-white text-black text-[8px] font-mono px-1.5 py-0.5 uppercase tracking-[0.18em] leading-none font-bold"
+          style={{ borderRight: '1.5px solid #000', borderBottom: '1.5px solid #000' }}
           title={orderColor ? `Imagem genérica — cor ${orderColor} sem foto específica` : 'Imagem genérica'}
         >
           Ref.

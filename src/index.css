@@ -989,3 +989,120 @@ a:focus-visible {
     display: none !important;
   }
 }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   FRONTEND-DESIGN · Editorial Industrial — animations + utilities (2026-05)
+   CSS-only motion (framer-motion not installed). Foundation usada em:
+   - Hero/Dashboard reveals com staggered animation-delay
+   - Relatórios print-editorial (rule lines, section labels)
+   - Fichas de operador (high contrast, big typography)
+   - Etiquetas (typography-first)
+   Print-safe: animations off em @media print.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@keyframes editorial-rise {
+  0%   { opacity: 0; transform: translateY(24px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes editorial-fade {
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes editorial-slide-left {
+  0%   { opacity: 0; transform: translateX(-12px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes editorial-scale-rule {
+  0%   { transform: scaleX(0); }
+  100% { transform: scaleX(1); }
+}
+
+/* Staggered reveal: filhos diretos de .editorial-stagger ganham delay
+   crescente. Pra hero/dashboard. Cada filho começa 80ms depois do anterior. */
+.editorial-stagger > * {
+  opacity: 0;
+  animation: editorial-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.editorial-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.editorial-stagger > *:nth-child(2) { animation-delay: 80ms; }
+.editorial-stagger > *:nth-child(3) { animation-delay: 160ms; }
+.editorial-stagger > *:nth-child(4) { animation-delay: 240ms; }
+.editorial-stagger > *:nth-child(5) { animation-delay: 320ms; }
+.editorial-stagger > *:nth-child(6) { animation-delay: 400ms; }
+.editorial-stagger > *:nth-child(7) { animation-delay: 480ms; }
+.editorial-stagger > *:nth-child(8) { animation-delay: 560ms; }
+.editorial-stagger > *:nth-child(n+9) { animation-delay: 640ms; }
+
+.editorial-rise   { animation: editorial-rise   0.7s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.editorial-fade   { animation: editorial-fade   0.5s ease-out both; }
+.editorial-slide  { animation: editorial-slide-left 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* Rule line: divisor horizontal grosso usado em relatórios print-editorial.
+   Variante .rule-line-thick = 3px, .rule-line-double = duas linhas 1px com gap. */
+.rule-line {
+  width: 100%;
+  height: 1px;
+  background-color: hsl(var(--foreground));
+  transform-origin: left;
+  animation: editorial-scale-rule 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.rule-line-thick {
+  width: 100%;
+  height: 3px;
+  background-color: hsl(var(--foreground));
+  transform-origin: left;
+}
+.rule-line-double {
+  width: 100%;
+  border-top: 1px solid hsl(var(--foreground));
+  border-bottom: 1px solid hsl(var(--foreground));
+  height: 4px;
+}
+
+/* Section label: ALL-CAPS pequenino tipográfico usado em report sections.
+   Combina com Inter Tight + tracking expandido. */
+.section-label {
+  font-family: var(--font-editorial);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+  line-height: 1;
+}
+
+/* Display number: gigante pra hero/KPIs, Anton em tamanho dramático.
+   Usar em .text-display-xl (140px+) onde quer impacto. */
+.text-display-xl {
+  font-family: var(--font-display);
+  font-size: clamp(72px, 11vw, 168px);
+  font-weight: 400;
+  letter-spacing: -0.04em;
+  line-height: 0.85;
+  color: hsl(var(--foreground));
+}
+.text-display-lg {
+  font-family: var(--font-display);
+  font-size: clamp(48px, 7vw, 96px);
+  font-weight: 400;
+  letter-spacing: -0.03em;
+  line-height: 0.9;
+  color: hsl(var(--foreground));
+}
+
+/* Print-safe: anima ações desligadas em @media print pra fichas/etiquetas
+   imprimirem fielmente. */
+@media print {
+  .editorial-stagger > *,
+  .editorial-rise,
+  .editorial-fade,
+  .editorial-slide,
+  .rule-line {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
