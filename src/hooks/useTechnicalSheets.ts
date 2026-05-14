@@ -138,6 +138,9 @@ export type SheetFormData = {
    /** Observações por setor produtivo. Chave = nome canônico do setor
     *  (mesmas chaves de production_sectors). Reflete nas fichas de operador. */
    sector_notes: Record<string, string>;
+   /** Origem da mercadoria pra NF-e (tag orig): 0=Nacional, 1=Importação
+    *  direta, 2=Importação mercado interno, 3=Nacional >40% importado, 4-8. */
+   origem_mercadoria: number;
 };
 
 export const emptySheetForm: SheetFormData = {
@@ -176,6 +179,7 @@ export const emptySheetForm: SheetFormData = {
    weight_per_pair_kg: null,
    box_weight_kg: null,
    sector_notes: {},
+   origem_mercadoria: 0,
 };
 
 export type SheetMaterialFormData = {

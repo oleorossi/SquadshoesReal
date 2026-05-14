@@ -2336,6 +2336,29 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             <p className="text-[11px] text-muted-foreground -mt-2">
               O NCM é definido principalmente pelo solado. Quando você troca o solado acima, o campo é preenchido automaticamente com o NCM da última ficha cadastrada para esse solado.
             </p>
+            <div className="pt-2 border-t border-border/40">
+              <Label className="text-xs text-muted-foreground">Origem da mercadoria (NF-e)</Label>
+              <Select
+                value={String(form.origem_mercadoria ?? 0)}
+                onValueChange={v => updateField('origem_mercadoria', Number(v))}
+              >
+                <SelectTrigger className="mt-1 h-9 text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">0 — Nacional</SelectItem>
+                  <SelectItem value="1">1 — Estrangeira (importação direta)</SelectItem>
+                  <SelectItem value="2">2 — Estrangeira (mercado interno)</SelectItem>
+                  <SelectItem value="3">3 — Nacional, importado &gt; 40% e ≤ 70%</SelectItem>
+                  <SelectItem value="4">4 — Nacional (processos produtivos básicos)</SelectItem>
+                  <SelectItem value="5">5 — Nacional, importado ≤ 40%</SelectItem>
+                  <SelectItem value="6">6 — Estrangeira (import. direta, sem similar nacional)</SelectItem>
+                  <SelectItem value="7">7 — Estrangeira (mercado interno, sem similar nacional)</SelectItem>
+                  <SelectItem value="8">8 — Nacional, importado &gt; 70%</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Calçado de produção nacional = 0. Mude só se o cabedal/insumo for importado em volume relevante.
+              </p>
+            </div>
             {form.sole_material && (
               <SoleClassificationBadge
                 groupId={form.sole_group_id || ''}
