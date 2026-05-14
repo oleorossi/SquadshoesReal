@@ -39,6 +39,9 @@ export interface SilkColorGroup {
   pairsPerIndividualBox?: number;
   /** Lista de alertas específicos pra essa cor/setor (ex: "Modelo fachetado"). */
   alerts?: SectorAlert[];
+  /** Observações por setor da ficha técnica (característica fixa da referência).
+   *  Keyed pelo nome canônico do setor. Renderizado como aviso no setor atual. */
+  sectorNotes?: Record<string, string>;
 }
 
 export interface SoleSilkGroup {
@@ -386,8 +389,18 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                   );
                 })()}
 
-                {/* Alertas (só renderiza no setor relevante — ex: Aviamento) */}
-                {theme.showAlerts && cg.alerts && cg.alerts.length > 0 && <SectorAlerts alerts={cg.alerts} />}
+                {/* Alertas: auto (fachete/conjugado — só no setor relevante via
+                    theme.showAlerts) + observação fixa da ficha técnica pra
+                    ESTE setor (sempre, é orientação explícita do usuário). */}
+                {(() => {
+                  const autoAlerts = theme.showAlerts && cg.alerts ? cg.alerts : [];
+                  const sectorNote = cg.sectorNotes?.[sector]?.trim();
+                  const combined: SectorAlert[] = [
+                    ...autoAlerts,
+                    ...(sectorNote ? [{ text: sectorNote, variant: 'info' as const }] : []),
+                  ];
+                  return combined.length > 0 ? <SectorAlerts alerts={combined} /> : null;
+                })()}
 
                 {/* Checklist específico de Corte de Cabedal */}
                 {theme.showCabedalCutChecklist && (

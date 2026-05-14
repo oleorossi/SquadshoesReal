@@ -135,6 +135,9 @@ export type SheetFormData = {
    weight_per_pair_kg: number | null;
    /** Peso da caixinha individual de 1 par em kg. Soma ao peso bruto. */
    box_weight_kg: number | null;
+   /** Observações por setor produtivo. Chave = nome canônico do setor
+    *  (mesmas chaves de production_sectors). Reflete nas fichas de operador. */
+   sector_notes: Record<string, string>;
 };
 
 export const emptySheetForm: SheetFormData = {
@@ -172,6 +175,7 @@ export const emptySheetForm: SheetFormData = {
    mesa_daily_capacity: 0,
    weight_per_pair_kg: null,
    box_weight_kg: null,
+   sector_notes: {},
 };
 
 export type SheetMaterialFormData = {

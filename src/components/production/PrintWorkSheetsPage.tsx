@@ -371,12 +371,24 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('technical_sheets')
-        .select('id, image_url, images')
+        .select('id, image_url, images, sector_notes')
         .in('id', referenceIds);
       if (error) throw error;
       return data || [];
     },
   });
+
+  // Observações por setor da ficha técnica (característica da referência).
+  // Renderizadas como aviso na ficha de operador do setor correspondente.
+  const sectorNotesByRef = useMemo(() => {
+    const m = new Map<string, Record<string, string>>();
+    for (const r of refTechnicalSheets as any[]) {
+      if (r.sector_notes && typeof r.sector_notes === 'object') {
+        m.set(r.id, r.sector_notes as Record<string, string>);
+      }
+    }
+    return m;
+  }, [refTechnicalSheets]);
 
   const { data: palmilhaMappings = [] } = useQuery({
     queryKey: ['palmilha_ref_mappings', referenceIds],
@@ -658,6 +670,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
           alternateVariants: variants,
           technicalSheetImageUrl: tsImageByRef.get(sheetId) || null,
           alerts: alerts.length > 0 ? alerts : undefined,
+          sectorNotes: sectorNotesByRef.get(sheetId),
           opNumbers: [],
           silk,
           components: strapsAsComponents.length > 0 ? strapsAsComponents : undefined,
@@ -1104,6 +1117,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
                 mesaCapacity={mesaCapacity}
                 sectorCapacityPerDay={getSheetSectorCapacity(representative.reference_id, 'Colagem')}
                 opNumbers={group.opNumbers}
+                sectorNote={sectorNotesByRef.get(representative.reference_id)?.['Colagem']}
               />
             </div>
           );

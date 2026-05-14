@@ -161,6 +161,7 @@ import { useComponentSheets } from '@/hooks/useComponentSheets';
 import ComponentSheets from '@/pages/ComponentSheets';
 
  import { OperationsTab } from '@/components/technical-sheets/OperationsTab';
+import { SectorNotesEditor } from '@/components/technical-sheets/SectorNotesEditor';
  // ColorVariantsTab removido — cor é definida no PV, não na ficha técnica.
  import { MaterialVariantsTab } from '@/components/technical-sheets/MaterialVariantsTab';
  import { useAllActiveReferenceMaterialVariants } from '@/hooks/useReferenceMaterialVariants';
@@ -3230,6 +3231,13 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             finishingCapacityPerDay={Number((sheet as any).finishing_capacity_per_day ?? 0)}
             onUpdateSheet={(data) => updateSheet.mutate({ id: sheet.id, data: data as any })}
             activeSectors={Array.isArray((sheet as any).production_sectors) ? ((sheet as any).production_sectors as string[]) : undefined}
+          />
+          <Separator />
+          <SectorNotesEditor
+            sectors={Array.isArray(sheet.production_sectors) ? (sheet.production_sectors as string[]) : []}
+            value={(sheet.sector_notes as Record<string, string>) || {}}
+            saving={updateSheet.isPending}
+            onSave={(notes) => updateSheet.mutate({ id: sheet.id, data: { sector_notes: notes } as any })}
           />
         </TabsContent>
 

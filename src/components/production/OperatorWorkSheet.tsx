@@ -4,6 +4,7 @@ import { getProductImage } from '@/utils/productUtils';
 import { ProductionOrder } from '@/types/inventory';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 import { TallyBox } from './worksheet/TallyBox';
+import { SectorAlerts } from './worksheet/SectorAlerts';
 
 interface Props {
   order: ProductionOrder;
@@ -28,6 +29,9 @@ interface Props {
   opNumbers?: string[];
   /** Client/store info shown prominently on Acabamento worksheets */
   clientInfo?: { name: string; orderNumber: string };
+  /** Observação fixa da ficha técnica pra ESTE setor (característica da
+   *  referência). Renderizada como aviso no topo da ficha. */
+  sectorNote?: string;
 }
 
 const SECTOR_META: Record<string, { icon: React.ReactNode; color: string; bg: string; border: string }> = {
@@ -60,6 +64,7 @@ const OperatorWorkSheet = ({
   sectorCapacityPerDay = 0,
   opNumbers,
   clientInfo,
+  sectorNote,
 }: Props) => {
   const displayImage = getProductImage(order.variant, order.master);
   const meta = SECTOR_META[sector] || SECTOR_META['Montagem'];
@@ -201,6 +206,11 @@ const OperatorWorkSheet = ({
           </span>
         </div>
       </div>
+
+      {/* Observação fixa da ficha técnica pra este setor */}
+      {sectorNote && sectorNote.trim() && (
+        <SectorAlerts alerts={[{ text: sectorNote.trim(), variant: 'info' }]} />
+      )}
 
       {/* ── Produção diária / tempo estimado — KPI band ── */}
       {effectiveCapacity > 0 && (
