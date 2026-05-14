@@ -93,7 +93,8 @@ export default function CNAB() {
   return (
     <>
       <DataListPage
-        title="CNAB · Boletos Remessa/Retorno"
+        sectionLabel="FINANCEIRO · CNAB"
+        title="Boletos Remessa/Retorno"
         subtitle="Arquivos CNAB 240/400 — remessa de boletos ao banco e processamento de retorno"
         icon={FileSpreadsheet}
         table="cnab_remittance_files"

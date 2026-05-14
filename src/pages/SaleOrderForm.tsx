@@ -770,6 +770,7 @@ export default function SaleOrderForm() {
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div>
+              <span className="section-label">COMERCIAL · Pedido de Venda</span>
               <div className="flex items-center gap-2">
                 <h2 className="display text-xl tracking-tight">
                   {isEdit ? 'Editar Pedido' : 'Novo Pedido'}

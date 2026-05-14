@@ -10,7 +10,8 @@
  } from "@/components/ui/table";
  import { format, parseISO } from "date-fns";
  import { ptBR } from "date-fns/locale";
- 
+ import { EditorialPageHeader } from "@/components/layout/EditorialPageHeader";
+
  const SECTOR_ICONS: Record<string, any> = {
    'Corte': Scissors,
    'Forração': PenLine,
@@ -49,6 +50,11 @@
  
    return (
      <div className="space-y-6">
+       <EditorialPageHeader
+         sectionLabel="PRODUÇÃO · Planejamento"
+         title="Planejamento de Produção"
+         description="Capacidade por setor, ocupação e timeline de ondas"
+       />
        {/* KPI Dashboard Section */}
        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
          {kpis.map((kpi: any) => {

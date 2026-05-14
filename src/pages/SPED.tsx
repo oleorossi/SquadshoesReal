@@ -61,7 +61,8 @@ export default function SPED() {
   return (
     <>
       <DataListPage
-        title="SPED · Escrituração Digital"
+        sectionLabel="FISCAL · SPED"
+        title="Escrituração Digital"
         subtitle="EFD ICMS/IPI · EFD Contribuições · ECD · ECF · EFD-Reinf"
         icon={FileText}
         table="sped_exports"

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { CircleNotch as Loader2, Plus, Tray as Inbox } from '@phosphor-icons/react';
 import { Link } from 'react-router-dom';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 interface Column {
   key: string;
@@ -24,6 +25,13 @@ interface Stat {
 interface Props {
   title: string;
   subtitle?: string;
+  /**
+   * Quando informado, o cabeçalho é renderizado como EditorialPageHeader
+   * (título Anton, kicker, rule-line) — usado quando o DataListPage é a
+   * página inteira. Sem ele, mantém o header compacto (ideal pra uso
+   * embutido dentro de abas/cards).
+   */
+  sectionLabel?: string;
   icon?: any;
   table: string;
   selectCols?: string;
@@ -42,7 +50,7 @@ interface Props {
 }
 
 export function DataListPage({
-  title, subtitle, icon: Icon,
+  title, subtitle, sectionLabel, icon: Icon,
   table, selectCols = '*', orderBy = 'created_at', ascending = false, limit = 100,
   filters = {},
   columns, stats = [], emptyText = 'Nenhum registro',
@@ -69,35 +77,64 @@ export function DataListPage({
     destructive: 'text-destructive',
   };
 
+  const headerActions = (
+    <>
+      {badge}
+      {headerExtra}
+      {newButtonLabel && newButtonOnClick && (
+        <Button size="sm" className="gap-1.5" onClick={newButtonOnClick}>
+          <Plus className="h-4 w-4" /> {newButtonLabel}
+        </Button>
+      )}
+      {newButtonLabel && newButtonHref && (
+        <Button size="sm" className="gap-1.5" asChild>
+          <Link to={newButtonHref}>
+            <Plus className="h-4 w-4" /> {newButtonLabel}
+          </Link>
+        </Button>
+      )}
+    </>
+  );
+  const hasActions = !!(badge || headerExtra || (newButtonLabel && (newButtonOnClick || newButtonHref)));
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-start gap-3">
-          {Icon && <Icon className="h-7 w-7 text-primary mt-1 shrink-0" />}
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
-              {badge}
+      {sectionLabel ? (
+        <EditorialPageHeader
+          sectionLabel={sectionLabel}
+          title={title}
+          description={subtitle}
+          actions={hasActions ? headerActions : undefined}
+        />
+      ) : (
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-start gap-3">
+            {Icon && <Icon className="h-7 w-7 text-primary mt-1 shrink-0" />}
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+                {badge}
+              </div>
+              {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
             </div>
-            {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
+          </div>
+          <div className="flex items-center gap-2">
+            {headerExtra}
+            {newButtonLabel && newButtonOnClick && (
+              <Button size="sm" className="gap-1.5" onClick={newButtonOnClick}>
+                <Plus className="h-4 w-4" /> {newButtonLabel}
+              </Button>
+            )}
+            {newButtonLabel && newButtonHref && (
+              <Button size="sm" className="gap-1.5" asChild>
+                <Link to={newButtonHref}>
+                  <Plus className="h-4 w-4" /> {newButtonLabel}
+                </Link>
+              </Button>
+            )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {headerExtra}
-          {newButtonLabel && newButtonOnClick && (
-            <Button size="sm" className="gap-1.5" onClick={newButtonOnClick}>
-              <Plus className="h-4 w-4" /> {newButtonLabel}
-            </Button>
-          )}
-          {newButtonLabel && newButtonHref && (
-            <Button size="sm" className="gap-1.5" asChild>
-              <Link to={newButtonHref}>
-                <Plus className="h-4 w-4" /> {newButtonLabel}
-              </Link>
-            </Button>
-          )}
-        </div>
-      </div>
+      )}
 
       {stats.length > 0 && (
         <div className={`grid grid-cols-2 ${stats.length >= 3 ? 'md:grid-cols-3' : ''} ${stats.length >= 4 ? 'lg:grid-cols-4' : ''} gap-3`}>

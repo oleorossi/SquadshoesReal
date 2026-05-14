@@ -17,6 +17,7 @@ const STATUS: Record<string, string> = {
 export default function DeliveryTracking() {
   return (
     <DataListPage
+      sectionLabel="LOGÍSTICA · Rastreamento"
       title="Rastreamento de Entregas"
       subtitle="Eventos por entrega + tracking integrado"
       icon={Activity}

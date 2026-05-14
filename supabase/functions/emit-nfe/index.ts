@@ -245,6 +245,14 @@ Deno.serve(async (req) => {
     //       codigo_municipio do cliente, e manda o endereço no formato
     //       aninhado correto { endereco: { cidade_id, ... } }.
     let gcClientId: string | null = client?.gestaoclick_id || null;
+    // Contribuinte de ICMS? Destinatário com IE válida (≠ ISENTO) é
+    // contribuinte/revenda. Sem IE → não contribuinte. Define tanto o
+    // tipo_contribuinte do cliente no GestaoClick quanto o consumidor_final
+    // da NF-e (SEFAZ Rejeição 696).
+    const ieDestDigits = (client.inscricao_estadual || "").replace(/\D/g, "");
+    const ieDestRaw = (client.inscricao_estadual || "").trim().toUpperCase();
+    const isContribuinte = ieDestDigits.length > 0 && ieDestRaw !== "ISENTO";
+
     {
       const isPj = cnpjDestRaw.length === 14;
       const ibge = (client.codigo_municipio || "").replace(/\D/g, "");
@@ -275,6 +283,10 @@ Deno.serve(async (req) => {
       const buildPayload = () => ({
         tipo_pessoa: isPj ? "PJ" : "PF",
         nome: order.client_name || client?.razao_social || client?.nome,
+        // tipo_contribuinte do GestaoClick: 1=contribuinte ICMS, 9=não
+        // contribuinte. Sem isso o GestaoClick assume 1 e a NF-e sai com
+        // indicador_destinatario errado → SEFAZ Rejeição 696.
+        tipo_contribuinte: isContribuinte ? "1" : "9",
         ...(isPj
           ? { cnpj: cnpjDestRaw, inscricao_estadual: (client.inscricao_estadual || "").replace(/\D/g, "") }
           : { cpf: cnpjDestRaw }),
@@ -380,7 +392,10 @@ Deno.serve(async (req) => {
       produtosGC.push({
         produto_id: gcProductId,
         quantidade: Number(it.quantity).toFixed(2),
-        valor_venda: (Number(it.quantity) * price).toFixed(2),
+        // valor_venda é o preço UNITÁRIO — o GestaoClick multiplica por
+        // quantidade internamente. Antes mandávamos (qtd × preço) e o
+        // total saía qtd² × preço (ex: R$ 8.3M em vez de R$ 25k).
+        valor_venda: price.toFixed(2),
         cfop: resolvedCfop,
         unidade: isStandalone ? unidade : "PAR",
         NCM: ncm,
@@ -441,12 +456,9 @@ Deno.serve(async (req) => {
 
     // ---------- Cria a NF-e no GestaoClick (rascunho) ----------
     // SEFAZ Rejeição 696: "Operação com não contribuinte deve indicar operação
-    // com consumidor final". Destinatário SEM Inscrição Estadual = não
-    // contribuinte de ICMS → consumidor_final precisa ser "1". Com IE válida
-    // (contribuinte/revenda) → "0".
-    const ieDestDigits = (client.inscricao_estadual || "").replace(/\D/g, "");
-    const ieDestRaw = (client.inscricao_estadual || "").trim().toUpperCase();
-    const isContribuinte = ieDestDigits.length > 0 && ieDestRaw !== "ISENTO";
+    // com consumidor final". isContribuinte foi calculado acima (a partir da
+    // IE do destinatário) e já definiu o tipo_contribuinte do cliente no
+    // GestaoClick — aqui ele só decide o consumidor_final da NF-e.
     const consumidorFinal = isContribuinte ? "0" : "1";
 
     const nfePayload = {

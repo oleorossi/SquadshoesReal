@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { ArrowLeft } from '@phosphor-icons/react';
 import AppLayout from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import SummaryConsumptionPanel from '@/components/sale-orders/SummaryConsumptionPanel';
 
 export default function SaleOrdersConsumption() {
@@ -17,17 +18,16 @@ export default function SaleOrdersConsumption() {
   return (
     <AppLayout>
       <div className="space-y-5 page-enter">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/sales')} aria-label="Voltar para Pedidos de Venda">
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <h1 className="display text-xl tracking-tight">Consumo Consolidado</h1>
-            <p className="text-sm text-muted-foreground">
-              {saleOrderIds.length} pedido(s) selecionado(s)
-            </p>
-          </div>
-        </div>
+        <EditorialPageHeader
+          sectionLabel="COMERCIAL · Pedido de Venda"
+          title="Consumo Consolidado"
+          description={`${saleOrderIds.length} pedido(s) selecionado(s)`}
+          actions={
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => navigate('/sales')}>
+              <ArrowLeft className="h-4 w-4" /> Voltar
+            </Button>
+          }
+        />
 
         {saleOrderIds.length === 0 ? (
           <p className="text-center text-muted-foreground py-12">
