@@ -7,6 +7,12 @@ import { Badge } from '@/components/ui/badge';
 import { CircleNotch as Loader2, Plus, Tray as Inbox } from '@phosphor-icons/react';
 import { Link } from 'react-router-dom';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
+
+const STAT_TONE: Record<string, 'default' | 'primary' | 'success' | 'warning' | 'destructive'> = {
+  default: 'default', primary: 'primary', amber: 'warning', emerald: 'success', destructive: 'destructive',
+};
 
 interface Column {
   key: string;
@@ -69,14 +75,6 @@ export function DataListPage({
     },
   });
 
-  const STAT_COLORS: Record<string, string> = {
-    default: 'text-foreground',
-    primary: 'text-primary',
-    amber: 'text-amber-600',
-    emerald: 'text-emerald-600',
-    destructive: 'text-destructive',
-  };
-
   const headerActions = (
     <>
       {badge}
@@ -137,62 +135,55 @@ export function DataListPage({
       )}
 
       {stats.length > 0 && (
-        <div className={`grid grid-cols-2 ${stats.length >= 3 ? 'md:grid-cols-3' : ''} ${stats.length >= 4 ? 'lg:grid-cols-4' : ''} gap-3`}>
+        <StatGrid>
           {stats.map((s, i) => (
-            <Card key={i}>
-              <CardContent className="p-3">
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{s.label}</p>
-                <p className={`text-2xl font-bold tracking-tight ${STAT_COLORS[s.color || 'default']}`}>{s.value}</p>
-              </CardContent>
-            </Card>
+            <StatCard key={i} label={s.label} value={s.value} tone={STAT_TONE[s.color || 'default']} />
           ))}
-        </div>
+        </StatGrid>
       )}
 
-      <Card>
-        <CardContent className="p-0">
-          {isLoading ? (
-            <div className="py-10 flex items-center justify-center text-muted-foreground">
-              <Loader2 className="h-5 w-5 animate-spin mr-2" /> Carregando...
-            </div>
-          ) : rows.length === 0 ? (
-            <div className="py-10 text-center space-y-2">
-              <Inbox className="h-10 w-10 mx-auto text-muted-foreground/30" />
-              <p className="text-sm text-muted-foreground">{emptyText}</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/30">
-                  <tr>
+      <Panel flush>
+        {isLoading ? (
+          <div className="py-10 flex items-center justify-center text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin mr-2" /> Carregando...
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="py-10 text-center space-y-2">
+            <Inbox className="h-10 w-10 mx-auto text-muted-foreground/30" />
+            <p className="text-sm text-muted-foreground">{emptyText}</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40">
+                <tr>
+                  {columns.map(c => (
+                    <th key={c.key} style={{ width: c.width }}
+                      className={`px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground ${
+                        c.align === 'right' ? 'text-right' : c.align === 'center' ? 'text-center' : 'text-left'
+                      }`}>
+                      {c.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {rows.map((row: any, idx: number) => (
+                  <tr key={row.id || idx} className="hover:bg-muted/30 transition-colors">
                     {columns.map(c => (
-                      <th key={c.key} style={{ width: c.width }}
-                        className={`px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground ${
-                          c.align === 'right' ? 'text-right' : c.align === 'center' ? 'text-center' : 'text-left'
-                        }`}>
-                        {c.label}
-                      </th>
+                      <td key={c.key} className={`px-3 py-2.5 ${
+                        c.align === 'right' ? 'text-right' : c.align === 'center' ? 'text-center' : ''
+                      }`}>
+                        {c.render ? c.render(row) : (row[c.key] ?? '—')}
+                      </td>
                     ))}
                   </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {rows.map((row: any, idx: number) => (
-                    <tr key={row.id || idx} className="hover:bg-muted/30">
-                      {columns.map(c => (
-                        <td key={c.key} className={`px-3 py-2 ${
-                          c.align === 'right' ? 'text-right' : c.align === 'center' ? 'text-center' : ''
-                        }`}>
-                          {c.render ? c.render(row) : (row[c.key] ?? '—')}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
     </div>
   );
 }

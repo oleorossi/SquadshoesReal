@@ -7,6 +7,8 @@ import { WorkSheetSettingsButton } from '@/components/production/WorkSheetSettin
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -272,39 +274,32 @@ export default function Montagem() {
       />
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <Card>
-          <CardContent className="p-4 text-center">
-            <p className="display text-2xl tabular-nums text-primary">{montagemOrders.length}</p>
-            <p className="text-xs text-muted-foreground">OPs p/ Montagem</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <p className="display text-2xl tabular-nums text-foreground">
-              {montagemOrders.reduce((s, o) => s + (o.quantity || 0), 0)}
-            </p>
-            <p className="text-xs text-muted-foreground">Total de Pares</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <p className="display text-2xl tabular-nums text-foreground">
-              {new Set(montagemOrders.map(o => {
-                const so = saleOrders.find((s: any) => s.id === o.sale_order_id);
-                return so?.client_name || '';
-              }).filter(Boolean)).size}
-            </p>
-            <p className="text-xs text-muted-foreground">Clientes</p>
-          </CardContent>
-        </Card>
-      </div>
+      <StatGrid>
+        <StatCard
+          label="OPs p/ Montagem"
+          value={montagemOrders.length}
+          tone="primary"
+        />
+        <StatCard
+          label="Total de Pares"
+          value={montagemOrders.reduce((s, o) => s + (o.quantity || 0), 0)}
+        />
+        <StatCard
+          label="Clientes"
+          value={new Set(montagemOrders.map(o => {
+            const so = saleOrders.find((s: any) => s.id === o.sale_order_id);
+            return so?.client_name || '';
+          }).filter(Boolean)).size}
+        />
+      </StatGrid>
 
       {/* Orders list */}
       {montagemOrders.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground text-sm">
-          Nenhuma OP com montagem pendente.
-        </div>
+        <EmptyState
+          icon={Layers}
+          title="Nenhuma OP com montagem pendente"
+          description="Não há ordens de produção aguardando montagem no momento."
+        />
       ) : (
         <div className="space-y-3">
           <div className="flex items-center gap-2 px-1">
@@ -409,12 +404,12 @@ export default function Montagem() {
                         <div className="overflow-x-auto">
                           <Table>
                             <TableHeader>
-                              <TableRow>
-                                <TableHead className="text-xs"></TableHead>
+                              <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                                <TableHead></TableHead>
                                 {activeSizes.map(s => (
-                                  <TableHead key={s} className="text-xs text-center w-14">{s}</TableHead>
+                                  <TableHead key={s} className="text-center w-14">{s}</TableHead>
                                 ))}
-                                <TableHead className="text-xs text-center font-bold bg-muted">Total</TableHead>
+                                <TableHead className="text-center bg-muted">Total</TableHead>
                               </TableRow>
                             </TableHeader>
                             <TableBody>

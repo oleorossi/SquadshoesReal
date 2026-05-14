@@ -6,6 +6,9 @@ import { usePersistedState } from '@/hooks/usePersistedState';
 import { Printer, Funnel as Filter, CheckCircle as CheckCircle2, CaretDown as ChevronDown, CaretRight as ChevronRight, Storefront as Store, Buildings as Building2, Stack as Layers, Scissors } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Panel } from '@/components/ui/panel';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -310,13 +313,24 @@ export default function Costura() {
 
       <OrderSearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Buscar por PV, OP, cliente..." />
 
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Badge variant="outline">{costuraOrders.length} OPs</Badge>
-        <Badge variant="outline">{costuraOrders.reduce((s, o) => s + (o.quantity || 0), 0)} pares</Badge>
-        {selectedOrders.size > 0 && (
-          <Badge variant="secondary">{selectedOrders.size} selecionadas</Badge>
-        )}
-      </div>
+      <StatGrid>
+        <StatCard
+          label={`OPs em ${SECTOR_NAME}`}
+          value={costuraOrders.length.toLocaleString('pt-BR')}
+          hint="na fila do setor"
+        />
+        <StatCard
+          label="Total de pares"
+          value={costuraOrders.reduce((s, o) => s + (o.quantity || 0), 0).toLocaleString('pt-BR')}
+          hint="somatório das OPs"
+        />
+        <StatCard
+          label="Selecionadas"
+          value={selectedOrders.size.toLocaleString('pt-BR')}
+          hint="para finalizar / agrupar"
+          tone={selectedOrders.size > 0 ? 'primary' : 'default'}
+        />
+      </StatGrid>
 
       {groupedByEconomicGroup.map((eg) => {
         const isGroupCollapsed = collapsedGroups.has(eg.name);
@@ -416,13 +430,13 @@ export default function Costura() {
       })}
 
       {costuraOrders.length === 0 && (
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            <Scissors className="h-12 w-12 mx-auto mb-3 opacity-30" />
-            <p className="text-lg font-medium">Nenhuma OP pendente de {SECTOR_NAME}</p>
-            <p className="text-sm">As OPs aparecerão aqui quando tiverem o setor de {SECTOR_NAME} configurado na ficha técnica.</p>
-          </CardContent>
-        </Card>
+        <Panel flush>
+          <EmptyState
+            icon={Scissors}
+            title={`Nenhuma OP pendente de ${SECTOR_NAME}`}
+            description={`As OPs aparecerão aqui quando tiverem o setor de ${SECTOR_NAME} configurado na ficha técnica.`}
+          />
+        </Panel>
       )}
     </div>
   );
