@@ -236,14 +236,19 @@ Deno.serve(async (req) => {
     }
 
     // ---------- Sync lazy: cliente no GestaoClick ----------
-    // SEMPRE envia o endereço completo — seja criando (POST) ou atualizando
-    // (PUT). Antes só criava se gestaoclick_id ausente; clientes sincronizados
-    // com endereço incompleto ficavam quebrados no GestaoClick pra sempre
-    // (erro "É necessário informar a cidade do destinatário").
+    // SEMPRE re-sincroniza o endereço completo. Histórico do bug:
+    //  v17: só criava (POST) se gestaoclick_id ausente — clientes antigos com
+    //       endereço incompleto ficavam quebrados pra sempre.
+    //  v18: passou a fazer PUT, mas SEM o id do endereço — o GestaoClick
+    //       ADICIONA um endereço novo em vez de atualizar; o endereço primário
+    //       (antigo, sem cidade) continuava sendo usado na NF-e.
+    //  v19: lê o cliente atual, pega o id do 1º endereço e manda no PUT pra
+    //       UPDATE in-place. Se o PUT não resolver (cidade ainda ausente),
+    //       cria um cliente NOVO do zero (POST) e re-aponta o gestaoclick_id.
     let gcClientId: string | null = client?.gestaoclick_id || null;
     {
       const isPj = cnpjDestRaw.length === 14;
-      const payload: any = {
+      const buildPayload = (addrId?: string) => ({
         tipo_pessoa: isPj ? "PJ" : "PF",
         nome: order.client_name || client?.razao_social || client?.nome,
         ...(isPj
@@ -252,6 +257,7 @@ Deno.serve(async (req) => {
         ...(client.telefone ? { telefone: client.telefone } : {}),
         ...(client.email ? { email: client.email } : {}),
         enderecos: [{
+          ...(addrId ? { id: addrId } : {}),
           logradouro: client.endereco,
           numero: (client as any).numero || "S/N",
           ...(client.complemento ? { complemento: client.complemento } : {}),
@@ -260,28 +266,56 @@ Deno.serve(async (req) => {
           cidade_nome: client.cidade,
           estado: client.estado,
         }],
+      });
+
+      // cidade preenchida no endereço retornado pelo GestaoClick?
+      const hasCidade = (gcData: any): boolean => {
+        const e = Array.isArray(gcData?.enderecos) ? gcData.enderecos[0] : null;
+        return !!(e && String(e.cidade_nome || e.cidade || e.municipio || "").trim());
       };
 
-      if (!gcClientId) {
-        // Cliente novo → POST cria no GestaoClick
-        const r = await gcFetch("/clientes", { method: "POST", body: JSON.stringify(payload) });
+      const createFresh = async (): Promise<string> => {
+        const r = await gcFetch("/clientes", { method: "POST", body: JSON.stringify(buildPayload()) });
         if (!r.ok || r.json?.status === "error") {
-          return new Response(JSON.stringify({
-            error: `Falha ao sincronizar cliente com GestaoClick: ${r.json?.message || r.json?.mensagem || JSON.stringify(r.json)}`,
-          }), { status: 502, headers: corsHeaders });
+          throw new Error(`Falha ao criar cliente no GestaoClick: ${r.json?.message || r.json?.mensagem || JSON.stringify(r.json)}`);
         }
-        gcClientId = String(r.json?.data?.id);
-        if (client?.id) {
-          await adminClient.from("clients").update({ gestaoclick_id: gcClientId }).eq("id", client.id);
+        return String(r.json?.data?.id);
+      };
+
+      try {
+        if (!gcClientId) {
+          gcClientId = await createFresh();
+          if (client?.id) await adminClient.from("clients").update({ gestaoclick_id: gcClientId }).eq("id", client.id);
+        } else {
+          // 1) Lê o cliente atual pra pegar o id do endereço existente
+          const cur = await gcFetch(`/clientes/${gcClientId}`);
+          const curData = cur.json?.data;
+          const existingAddrId = Array.isArray(curData?.enderecos) && curData.enderecos[0]?.id
+            ? String(curData.enderecos[0].id)
+            : undefined;
+
+          // 2) PUT atualizando o endereço IN-PLACE (com id) — não cria duplicado
+          const u = await gcFetch(`/clientes/${gcClientId}`, {
+            method: "PUT",
+            body: JSON.stringify(buildPayload(existingAddrId)),
+          });
+          if (!u.ok || u.json?.status === "error") {
+            console.warn(`[emit-nfe] PUT /clientes/${gcClientId} falhou:`, u.json?.message || u.json?.mensagem || JSON.stringify(u.json));
+          }
+
+          // 3) Re-lê e valida: se a cidade AINDA não foi pro GestaoClick,
+          //    o registro está corrompido — cria um cliente novo do zero.
+          const verify = await gcFetch(`/clientes/${gcClientId}`);
+          if (!hasCidade(verify.json?.data)) {
+            console.warn(`[emit-nfe] cliente ${gcClientId} sem cidade após PUT — recriando do zero`);
+            gcClientId = await createFresh();
+            if (client?.id) await adminClient.from("clients").update({ gestaoclick_id: gcClientId }).eq("id", client.id);
+          }
         }
-      } else {
-        // Cliente já existe → PUT atualiza endereço (corrige registros antigos
-        // com endereço incompleto). Não-fatal: se o PUT falhar, segue com o
-        // que o GestaoClick já tem — a emissão dirá se algo essencial falta.
-        const u = await gcFetch(`/clientes/${gcClientId}`, { method: "PUT", body: JSON.stringify(payload) });
-        if (!u.ok || u.json?.status === "error") {
-          console.warn(`[emit-nfe] PUT /clientes/${gcClientId} falhou:`, u.json?.message || u.json?.mensagem || JSON.stringify(u.json));
-        }
+      } catch (e) {
+        return new Response(JSON.stringify({
+          error: e instanceof Error ? e.message : `Falha ao sincronizar cliente com GestaoClick: ${String(e)}`,
+        }), { status: 502, headers: corsHeaders });
       }
     }
 
