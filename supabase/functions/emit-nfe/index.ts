@@ -107,12 +107,20 @@ Deno.serve(async (req) => {
       }), { status: 409, headers: corsHeaders });
     }
 
-    const { data: items } = await adminClient
+    const { data: items, error: itemsErr } = await adminClient
       .from("sale_order_items")
       .select("*, technical_sheets(id, name, code, ncm, gestaoclick_id), reference_material_variants(sku, ncm, description_override, active, unit_price_override), products(id, name, sku, ncm, gestaoclick_id, unit)")
       .eq("sale_order_id", sale_order_id)
       .order("created_at", { ascending: true })
       .order("id", { ascending: true });
+    // Defesa: sem essa checagem, FK ausente fazia items=null e a validação
+    // de total mostrava "soma 0.00 difere de X" mesmo com itens válidos.
+    if (itemsErr) {
+      return new Response(JSON.stringify({ error: `Falha ao carregar itens do pedido: ${itemsErr.message}` }), { status: 500, headers: corsHeaders });
+    }
+    if (!items || items.length === 0) {
+      return new Response(JSON.stringify({ error: "Pedido sem itens. Adicione produtos antes de emitir a NF-e." }), { status: 400, headers: corsHeaders });
+    }
 
     let fiscal: any = null;
     let resolvedCompanyId: string | null = company_id || null;
@@ -228,8 +236,12 @@ Deno.serve(async (req) => {
     }
 
     // ---------- Sync lazy: cliente no GestaoClick ----------
+    // SEMPRE envia o endereço completo — seja criando (POST) ou atualizando
+    // (PUT). Antes só criava se gestaoclick_id ausente; clientes sincronizados
+    // com endereço incompleto ficavam quebrados no GestaoClick pra sempre
+    // (erro "É necessário informar a cidade do destinatário").
     let gcClientId: string | null = client?.gestaoclick_id || null;
-    if (!gcClientId) {
+    {
       const isPj = cnpjDestRaw.length === 14;
       const payload: any = {
         tipo_pessoa: isPj ? "PJ" : "PF",
@@ -249,15 +261,27 @@ Deno.serve(async (req) => {
           estado: client.estado,
         }],
       };
-      const r = await gcFetch("/clientes", { method: "POST", body: JSON.stringify(payload) });
-      if (!r.ok || r.json?.status === "error") {
-        return new Response(JSON.stringify({
-          error: `Falha ao sincronizar cliente com GestaoClick: ${r.json?.message || r.json?.mensagem || JSON.stringify(r.json)}`,
-        }), { status: 502, headers: corsHeaders });
-      }
-      gcClientId = String(r.json?.data?.id);
-      if (client?.id) {
-        await adminClient.from("clients").update({ gestaoclick_id: gcClientId }).eq("id", client.id);
+
+      if (!gcClientId) {
+        // Cliente novo → POST cria no GestaoClick
+        const r = await gcFetch("/clientes", { method: "POST", body: JSON.stringify(payload) });
+        if (!r.ok || r.json?.status === "error") {
+          return new Response(JSON.stringify({
+            error: `Falha ao sincronizar cliente com GestaoClick: ${r.json?.message || r.json?.mensagem || JSON.stringify(r.json)}`,
+          }), { status: 502, headers: corsHeaders });
+        }
+        gcClientId = String(r.json?.data?.id);
+        if (client?.id) {
+          await adminClient.from("clients").update({ gestaoclick_id: gcClientId }).eq("id", client.id);
+        }
+      } else {
+        // Cliente já existe → PUT atualiza endereço (corrige registros antigos
+        // com endereço incompleto). Não-fatal: se o PUT falhar, segue com o
+        // que o GestaoClick já tem — a emissão dirá se algo essencial falta.
+        const u = await gcFetch(`/clientes/${gcClientId}`, { method: "PUT", body: JSON.stringify(payload) });
+        if (!u.ok || u.json?.status === "error") {
+          console.warn(`[emit-nfe] PUT /clientes/${gcClientId} falhou:`, u.json?.message || u.json?.mensagem || JSON.stringify(u.json));
+        }
       }
     }
 
