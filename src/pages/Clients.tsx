@@ -121,6 +121,17 @@ export default function Clients() {
     return groups;
   }, [filteredClients, economicGroups]);
 
+  // KPI strip — design system "Novidade". Derivado dos dados reais
+  // (sem campos inventados): total/ativos da carteira, grupos econômicos,
+  // favoritos e crédito agregado.
+  const clientStats = useMemo(() => ({
+    total: clients.length,
+    ativos: clients.filter(c => c.active).length,
+    favoritos: clients.filter(c => c.is_favorite).length,
+    grupos: economicGroups.length,
+    creditoTotal: clients.reduce((s, c) => s + (Number(c.credit_limit) || 0), 0),
+  }), [clients, economicGroups]);
+
   const openAddClient = () => { setEditingClient(null); setForm(emptyClient); setClientDialog(true); };
   const openEditClient = (c: Client) => {
     setEditingClient(c);
@@ -261,6 +272,22 @@ export default function Clients() {
           </TabsList>
 
           <TabsContent value="clients" className="space-y-4 mt-4">
+            {/* KPI strip — design system Novidade (eyebrow + display + sub) */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: 'Clientes', value: clientStats.total.toLocaleString('pt-BR'), sub: `${clientStats.ativos} ativos` },
+                { label: 'Grupos econômicos', value: clientStats.grupos.toLocaleString('pt-BR'), sub: 'carteira agrupada' },
+                { label: 'Favoritos', value: clientStats.favoritos.toLocaleString('pt-BR'), sub: 'marcados' },
+                { label: 'Crédito total', value: clientStats.creditoTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }), sub: 'limite agregado' },
+              ].map((k) => (
+                <Card key={k.label} className="p-4">
+                  <div className="eyebrow text-[8px]">{k.label}</div>
+                  <div className="display text-2xl mt-1.5 text-foreground tabular-nums">{k.value}</div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">{k.sub}</div>
+                </Card>
+              ))}
+            </div>
+
             <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
               <div className="relative flex-1 max-w-md">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
