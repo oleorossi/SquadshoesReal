@@ -237,7 +237,7 @@ Deno.serve(async (req) => {
 
     // CFOP por código (GestaoClick aceita `codigo_cfop` diretamente).
     const isInterstate = !!(client?.estado && fiscal.uf && client.estado.toUpperCase() !== String(fiscal.uf).toUpperCase());
-    const defaultCfop = isInterstate ? "6102" : "5102";
+    const defaultCfop = isInterstate ? "6101" : "5101";
     const cfopConfigured = fiscal.cfop ? String(fiscal.cfop) : "";
     let resolvedCfop = cfopConfigured || defaultCfop;
     if (cfopConfigured && /^[56]\d{3}$/.test(cfopConfigured)) {
@@ -491,13 +491,49 @@ Deno.serve(async (req) => {
       weightWarning,
     ].filter(Boolean).join(" | ") || undefined;
 
+    // ---------- Monta as duplicatas (campo `pagamento` da NF) ----------
+    // A NF-e precisa da fatura/duplicata pra ficar completa (a NF de
+    // referência emitida pelo painel tem). Derivamos as parcelas da
+    // `payment_condition` do PV: ela pode ser "60", "30/60/90", "à vista"…
+    // — extraímos os prazos em dias; cada um vira uma parcela com
+    // vencimento = data de emissão + prazo. forma_pagamento_id 6519268 =
+    // "Boleto Bancário" (tipo BB) no GestaoClick — padrão da Squad Shoes.
+    const FORMA_PAGAMENTO_BOLETO = "6519268";
+    const buildPagamento = (): any[] => {
+      const cond = String(order.payment_condition || "").trim();
+      const prazos = (cond.match(/\d+/g) || []).map(Number).filter((n) => n >= 0);
+      const lista = prazos.length > 0 ? prazos : [0]; // sem prazo → à vista
+      const n = lista.length;
+      const totalCent = Math.round(sumItems * 100);
+      const baseCent = Math.floor(totalCent / n);
+      const hoje = new Date();
+      return lista.map((dias, i) => {
+        const venc = new Date(hoje);
+        venc.setDate(venc.getDate() + dias);
+        const dd = String(venc.getDate()).padStart(2, "0");
+        const mm = String(venc.getMonth() + 1).padStart(2, "0");
+        const yyyy = venc.getFullYear();
+        // última parcela absorve o resto do arredondamento
+        const cent = i === n - 1 ? totalCent - baseCent * (n - 1) : baseCent;
+        return {
+          numero_duplicata: String(i + 1),
+          forma_pagamento_id: FORMA_PAGAMENTO_BOLETO,
+          data_vencimento: `${dd}/${mm}/${yyyy}`,
+          valor_pagamento: (cent / 100).toFixed(2),
+          tipo_pagamento: "BB",
+        };
+      });
+    };
+    const pagamentoArr = buildPagamento();
+
     // ---------- Cria a NF-e no GestaoClick (rascunho) ----------
     // Natureza de operação fixa "Venda de Produção do Estabelecimento" — é a
     // natureza configurada no painel GestaoClick e a correta pra uma indústria
     // de calçados vendendo produção própria. O painel GestaoClick é a fonte da
-    // verdade pra consumidor_final / indicador_destinatario / CFOP (campos do
-    // payload da API são ignorados — testado). Configuração fiscal por tipo de
-    // cliente é responsabilidade do cadastro da natureza no painel.
+    // verdade pra consumidor_final / indicador_destinatario / CFOP e para a
+    // tributação (IPI/PIS/COFINS/CSOSN) — campos do payload da API são ignorados.
+    // Os CSTs (IPI 99/enq.999, PIS 49, COFINS 49) e o CSOSN saem do cadastro da
+    // natureza no painel GestaoClick (a API não tem endpoint de tributação).
     const naturezaEsperada = "Venda de Produção do Estabelecimento";
 
     const nfePayload = {
@@ -511,6 +547,7 @@ Deno.serve(async (req) => {
       indicador_final: isContribuinte ? 0 : 1,
       informacoes_complementares: informacoesComplementares,
       produtos: produtosGC,
+      ...(pagamentoArr.length ? { pagamento: pagamentoArr } : {}),
       ...(pesoBrutoStr ? { peso_bruto: pesoBrutoStr } : {}),
       ...(pesoLiquidoStr ? { peso_liquido: pesoLiquidoStr } : {}),
       ...(qtdVolumesStr ? { quantidade_volumes: qtdVolumesStr } : {}),
