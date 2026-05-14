@@ -456,10 +456,12 @@ Deno.serve(async (req) => {
 
     // ---------- Cria a NF-e no GestaoClick (rascunho) ----------
     // SEFAZ Rejeição 696: "Operação com não contribuinte deve indicar operação
-    // com consumidor final". isContribuinte foi calculado acima (a partir da
-    // IE do destinatário) e já definiu o tipo_contribuinte do cliente no
-    // GestaoClick — aqui ele só decide o consumidor_final da NF-e.
-    const consumidorFinal = isContribuinte ? "0" : "1";
+    // com consumidor final". O campo CORRETO no payload de cadastro do
+    // GestaoClick é `indicador_final` (NÃO `consumidor_final` — esse só existe
+    // na resposta de leitura e era ignorado no POST):
+    //   indicador_final = 1 → consumidor final (obrigatório p/ não contribuinte)
+    //   indicador_final = 0 → operação normal (contribuinte/revenda)
+    const indicadorFinal = isContribuinte ? 0 : 1;
 
     const nfePayload = {
       tipo_nf: "1",
@@ -469,7 +471,7 @@ Deno.serve(async (req) => {
       modelo: "55",
       serie: fiscal.serie_nfe || "1",
       finalidade_nf: "1",
-      consumidor_final: consumidorFinal,
+      indicador_final: indicadorFinal,
       informacoes_complementares: informacoesComplementares,
       produtos: produtosGC,
       ...(pesoBrutoStr ? { peso_bruto: pesoBrutoStr } : {}),
