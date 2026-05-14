@@ -377,31 +377,51 @@ Deno.serve(async (req) => {
       const price = effectivePrice(it);
       const baseName = ts?.name || prod?.name || "Produto";
       const desc = (variant?.description_override || (it.color ? `${baseName} - ${it.color}` : baseName)).trim();
-      const codigo = variant?.sku || ts?.code || prod?.sku || `ITEM-${ts?.id || prod?.id || it.reference_id}`;
       const unidade = (prod?.unit || "PAR").toUpperCase();
 
-      let gcProductId = ts?.gestaoclick_id || prod?.gestaoclick_id || null;
+      // codigo ÚNICO POR COR. BUG CRÍTICO corrigido aqui: antes o codigo caía
+      // em `ts.code` (que é por REFERÊNCIA, não por cor) e o gestaoclick_id era
+      // cacheado em `technical_sheets` — uma ficha tem N cores. A 1ª cor emitida
+      // criava o produto no GestaoClick e gravava o id na ficha; as outras cores
+      // reusavam o MESMO produto → a NF saía inteira com a cor errada.
+      // variant.sku e products.sku já são por cor; ts.code precisa sufixar a cor.
+      const colorSuffix = (it.color || "").trim().replace(/\s+/g, "-");
+      const codigo = variant?.sku
+        || prod?.sku
+        || (ts?.code ? (colorSuffix ? `${ts.code}-${colorSuffix}` : ts.code) : null)
+        || `ITEM-${ts?.id || prod?.id || it.reference_id}${colorSuffix ? "-" + colorSuffix : ""}`;
+
+      // products.gestaoclick_id é seguro de cachear (1 product = 1 cor).
+      // technical_sheets.gestaoclick_id NÃO — então pra item com ficha
+      // resolvemos SEMPRE pelo `codigo` único: busca no GestaoClick, cria
+      // se não existir. Nunca mais grava id de produto na ficha técnica.
+      let gcProductId: string | null = isStandalone ? (prod?.gestaoclick_id || null) : null;
       if (!gcProductId) {
-        const r = await gcFetch("/produtos", {
-          method: "POST",
-          body: JSON.stringify({
-            nome: desc.slice(0, 120),
-            codigo,
-            valor_venda: price.toFixed(2),
-            unidade: isStandalone ? unidade : "PAR",
-            ncm,
-            tipo: "P",
-          }),
-        });
-        if (!r.ok || r.json?.status === "error") {
-          return new Response(JSON.stringify({
-            error: `Falha ao sincronizar produto "${codigo}" com GestaoClick: ${r.json?.message || r.json?.mensagem || JSON.stringify(r.json)}`,
-          }), { status: 502, headers: corsHeaders });
+        const lookup = await gcFetch(`/produtos?codigo=${encodeURIComponent(String(codigo))}`);
+        const foundList = Array.isArray(lookup.json?.data) ? lookup.json.data : [];
+        const match = foundList.find((p: any) => String(p.codigo) === String(codigo));
+        if (match?.id) {
+          gcProductId = String(match.id);
+        } else {
+          const r = await gcFetch("/produtos", {
+            method: "POST",
+            body: JSON.stringify({
+              nome: desc.slice(0, 120),
+              codigo,
+              valor_venda: price.toFixed(2),
+              unidade: isStandalone ? unidade : "PAR",
+              ncm,
+              tipo: "P",
+            }),
+          });
+          if (!r.ok || r.json?.status === "error") {
+            return new Response(JSON.stringify({
+              error: `Falha ao sincronizar produto "${codigo}" com GestaoClick: ${r.json?.message || r.json?.mensagem || JSON.stringify(r.json)}`,
+            }), { status: 502, headers: corsHeaders });
+          }
+          gcProductId = String(r.json?.data?.id);
         }
-        gcProductId = String(r.json?.data?.id);
-        if (ts?.id) {
-          await adminClient.from("technical_sheets").update({ gestaoclick_id: gcProductId }).eq("id", ts.id);
-        } else if (prod?.id) {
+        if (isStandalone && prod?.id) {
           await adminClient.from("products").update({ gestaoclick_id: gcProductId }).eq("id", prod.id);
         }
       }
