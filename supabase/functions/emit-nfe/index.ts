@@ -236,19 +236,43 @@ Deno.serve(async (req) => {
     }
 
     // ---------- Sync lazy: cliente no GestaoClick ----------
-    // SEMPRE re-sincroniza o endereço completo. Histórico do bug:
-    //  v17: só criava (POST) se gestaoclick_id ausente — clientes antigos com
-    //       endereço incompleto ficavam quebrados pra sempre.
-    //  v18: passou a fazer PUT, mas SEM o id do endereço — o GestaoClick
-    //       ADICIONA um endereço novo em vez de atualizar; o endereço primário
-    //       (antigo, sem cidade) continuava sendo usado na NF-e.
-    //  v19: lê o cliente atual, pega o id do 1º endereço e manda no PUT pra
-    //       UPDATE in-place. Se o PUT não resolver (cidade ainda ausente),
-    //       cria um cliente NOVO do zero (POST) e re-aponta o gestaoclick_id.
+    // O GestaoClick NÃO aceita cidade por nome — exige `cidade_id` (id interno
+    // da tabela de cidades deles). E o endereço vai aninhado: enderecos[].endereco.
+    // Histórico do bug "É necessário informar a cidade do destinatário":
+    //  v17-v19: mandavam `cidade_nome` num endereço flat → GestaoClick ignorava
+    //           o campo e gravava cidade_id="" → NF-e rejeitada.
+    //  v20: resolve o cidade_id via GET /cidades?codigo=<IBGE> usando o
+    //       codigo_municipio do cliente, e manda o endereço no formato
+    //       aninhado correto { endereco: { cidade_id, ... } }.
     let gcClientId: string | null = client?.gestaoclick_id || null;
     {
       const isPj = cnpjDestRaw.length === 14;
-      const buildPayload = (addrId?: string) => ({
+      const ibge = (client.codigo_municipio || "").replace(/\D/g, "");
+
+      // Resolve o id interno da cidade no GestaoClick (por código IBGE, fallback nome)
+      let gcCidadeId = "";
+      try {
+        let cidResp = ibge ? await gcFetch(`/cidades?codigo=${ibge}`) : { ok: false, json: null };
+        if ((!cidResp.ok || !cidResp.json?.data?.length) && client.cidade) {
+          cidResp = await gcFetch(`/cidades?nome=${encodeURIComponent(client.cidade)}`);
+        }
+        const found = Array.isArray(cidResp.json?.data) ? cidResp.json.data : [];
+        // Se buscou por nome e voltou mais de um, prioriza match pela UF
+        const pick = found.length === 1
+          ? found[0]
+          : found.find((c: any) => !ibge || String(c.codigo) === ibge) || found[0];
+        gcCidadeId = pick?.id ? String(pick.id) : "";
+      } catch (e) {
+        console.warn("[emit-nfe] lookup /cidades falhou:", e instanceof Error ? e.message : String(e));
+      }
+      if (!gcCidadeId) {
+        return new Response(JSON.stringify({
+          error: `Não foi possível resolver a cidade "${client.cidade}" (cód. IBGE ${ibge || "—"}) no GestaoClick. ` +
+                 `Verifique o cadastro do cliente: cidade e Cód. Município (IBGE) precisam estar corretos.`,
+        }), { status: 400, headers: corsHeaders });
+      }
+
+      const buildPayload = () => ({
         tipo_pessoa: isPj ? "PJ" : "PF",
         nome: order.client_name || client?.razao_social || client?.nome,
         ...(isPj
@@ -256,22 +280,25 @@ Deno.serve(async (req) => {
           : { cpf: cnpjDestRaw }),
         ...(client.telefone ? { telefone: client.telefone } : {}),
         ...(client.email ? { email: client.email } : {}),
+        // Formato GestaoClick: array de objetos { endereco: {...} }, cidade por id.
         enderecos: [{
-          ...(addrId ? { id: addrId } : {}),
-          logradouro: client.endereco,
-          numero: (client as any).numero || "S/N",
-          ...(client.complemento ? { complemento: client.complemento } : {}),
-          bairro: client.bairro,
-          cep: (client.cep || "").replace(/\D/g, ""),
-          cidade_nome: client.cidade,
-          estado: client.estado,
+          endereco: {
+            cep: (client.cep || "").replace(/\D/g, ""),
+            logradouro: client.endereco,
+            numero: (client as any).numero || "S/N",
+            ...(client.complemento ? { complemento: client.complemento } : {}),
+            bairro: client.bairro,
+            cidade_id: gcCidadeId,
+            estado: client.estado,
+          },
         }],
       });
 
-      // cidade preenchida no endereço retornado pelo GestaoClick?
+      // cidade_id preenchido no endereço retornado pelo GestaoClick?
       const hasCidade = (gcData: any): boolean => {
-        const e = Array.isArray(gcData?.enderecos) ? gcData.enderecos[0] : null;
-        return !!(e && String(e.cidade_nome || e.cidade || e.municipio || "").trim());
+        const wrap = Array.isArray(gcData?.enderecos) ? gcData.enderecos[0] : null;
+        const e = wrap?.endereco || wrap;
+        return !!(e && String(e.cidade_id || "").trim());
       };
 
       const createFresh = async (): Promise<string> => {
@@ -287,27 +314,18 @@ Deno.serve(async (req) => {
           gcClientId = await createFresh();
           if (client?.id) await adminClient.from("clients").update({ gestaoclick_id: gcClientId }).eq("id", client.id);
         } else {
-          // 1) Lê o cliente atual pra pegar o id do endereço existente
-          const cur = await gcFetch(`/clientes/${gcClientId}`);
-          const curData = cur.json?.data;
-          const existingAddrId = Array.isArray(curData?.enderecos) && curData.enderecos[0]?.id
-            ? String(curData.enderecos[0].id)
-            : undefined;
-
-          // 2) PUT atualizando o endereço IN-PLACE (com id) — não cria duplicado
+          // PUT atualiza o cliente (e endereço) in-place com o formato correto
           const u = await gcFetch(`/clientes/${gcClientId}`, {
             method: "PUT",
-            body: JSON.stringify(buildPayload(existingAddrId)),
+            body: JSON.stringify(buildPayload()),
           });
           if (!u.ok || u.json?.status === "error") {
             console.warn(`[emit-nfe] PUT /clientes/${gcClientId} falhou:`, u.json?.message || u.json?.mensagem || JSON.stringify(u.json));
           }
-
-          // 3) Re-lê e valida: se a cidade AINDA não foi pro GestaoClick,
-          //    o registro está corrompido — cria um cliente novo do zero.
+          // Verifica: se mesmo assim ficou sem cidade_id, recria do zero
           const verify = await gcFetch(`/clientes/${gcClientId}`);
           if (!hasCidade(verify.json?.data)) {
-            console.warn(`[emit-nfe] cliente ${gcClientId} sem cidade após PUT — recriando do zero`);
+            console.warn(`[emit-nfe] cliente ${gcClientId} sem cidade_id após PUT — recriando do zero`);
             gcClientId = await createFresh();
             if (client?.id) await adminClient.from("clients").update({ gestaoclick_id: gcClientId }).eq("id", client.id);
           }
