@@ -39,6 +39,8 @@ import {
   useAddBankHoursMovement,
   useDeleteBankHoursMovement,
 } from '@/hooks/useRH';
+import { PayBankHoursDialog } from '@/components/timesheet/PayBankHoursDialog';
+import { Wallet } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 
 type Summary = {
@@ -175,6 +177,7 @@ export default function BankHours() {
   const [sectorFilter, setSectorFilter] = useState<string>('all');
   const [selectedEmployee, setSelectedEmployee] = useState<EmployeeBalance | null>(null);
   const [movementDialogOpen, setMovementDialogOpen] = useState(false);
+  const [payDialogOpen, setPayDialogOpen] = useState(false);
 
   const summaryQ = useSummary();
   const sectorsQ = useSectors();
@@ -579,6 +582,15 @@ export default function BankHours() {
                       <div className={cn('display text-5xl mt-3 tabular-nums', balanceClass(detailQ.data.balance_min))}>
                         {formatHours(detailQ.data.balance_min)}
                       </div>
+                      {detailQ.data.balance_min > 0 && (
+                        <Button
+                          className="mt-4 gap-2"
+                          onClick={() => setPayDialogOpen(true)}
+                        >
+                          <Wallet className="h-4 w-4" />
+                          Realizar pagamento
+                        </Button>
+                      )}
                     </CardContent>
                   </Card>
 
@@ -676,6 +688,21 @@ export default function BankHours() {
             </div>
           </SheetContent>
         </Sheet>
+
+        <PayBankHoursDialog
+          open={payDialogOpen}
+          onOpenChange={setPayDialogOpen}
+          employee={selectedEmployee && detailQ.data && !detailQ.data.error ? {
+            employee_id: selectedEmployee.employee_id,
+            employee_name: selectedEmployee.employee_name,
+            balance_min: detailQ.data.balance_min,
+            hourly_rate: (() => {
+              const emp = allEmployees.find((e: any) => e.id === selectedEmployee.employee_id);
+              return emp?.hourly_rate ?? (emp?.salary ? emp.salary / 220 : null);
+            })(),
+            overtime_multiplier: allEmployees.find((e: any) => e.id === selectedEmployee.employee_id)?.overtime_multiplier ?? 1.2,
+          } : null}
+        />
       </div>
     </AppLayout>
   );

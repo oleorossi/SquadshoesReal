@@ -137,7 +137,57 @@ export function useDeleteBankHoursMovement() {
   });
 }
 
-// ── absences ─────────────────────────────────────────────────────────
+// ── pagamento de banco de horas ──────────────────────────────────────
+// Saca horas do saldo acumulado: débito no banco + despesa no financeiro.
+// Valor = (min/60) × hourly_rate × overtime_multiplier (calculado no RPC).
+export interface PayBankHoursResult {
+  employee_id: string;
+  employee_name: string;
+  paid_minutes: number;
+  paid_hours: number;
+  hourly_rate: number;
+  multiplier: number;
+  pay_amount: number;
+  balance_before_min: number;
+  balance_after_min: number;
+  financial_entry_id: string;
+  bank_movement_id: string;
+}
+
+export function usePayBankHours() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ employeeId, payMinutes, notes }: {
+      employeeId: string;
+      payMinutes: number;
+      notes?: string;
+    }): Promise<PayBankHoursResult> => {
+      if (!Number.isFinite(payMinutes) || payMinutes <= 0) {
+        throw new Error('Informe uma quantidade de horas positiva pra pagar.');
+      }
+      const { data, error } = await (supabase as any).rpc('pay_bank_hours_balance', {
+        p_employee_id: employeeId,
+        p_pay_minutes: Math.round(payMinutes),
+        p_notes: notes ?? null,
+      });
+      if (error) throw error;
+      return data as PayBankHoursResult;
+    },
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['bank_hours_movements'] });
+      qc.invalidateQueries({ queryKey: ['bank_hours_balance'] });
+      qc.invalidateQueries({ queryKey: ['employee_bank_detail'] });
+      qc.invalidateQueries({ queryKey: ['financial_entries'] });
+      toast.success(
+        `Pagamento registrado: ${res.paid_hours}h por ${res.pay_amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}. ` +
+        `Saldo restante: ${(res.balance_after_min / 60).toFixed(1)}h.`,
+      );
+    },
+    onError: (err: any) => toast.error(`Erro ao pagar banco de horas: ${err.message}`),
+  });
+}
+
+
 export type AbsenceType =
   | 'atestado' | 'licenca_maternidade' | 'licenca_paternidade'
   | 'licenca_obito' | 'licenca_casamento' | 'falta_justificada'
