@@ -14,6 +14,7 @@ import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
 import MrpProjectionsTab from '@/components/mrp/MrpProjectionsTab';
 import { MaterialNeedsReport } from '@/components/mrp/MaterialNeedsReport';
 import { useMaterialNeedsReport } from '@/hooks/useMaterialNeedsReport';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 const PRIORITY_COLORS: Record<string, string> = {
   rush: 'bg-destructive/15 text-destructive border-destructive/30',
@@ -75,12 +76,11 @@ export default function MrpPage() {
   return (
     
       <div className="space-y-5 page-enter">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="display text-xl tracking-tight">MRP — Planejamento de Materiais</h1>
-            <p className="text-sm text-muted-foreground">Necessidades de produção, sugestões de compra e análise de disponibilidade</p>
-          </div>
-        </div>
+        <EditorialPageHeader
+          sectionLabel="SUPRIMENTOS · MRP"
+          title="MRP — Planejamento de Materiais"
+          description="Necessidades de produção, sugestões de compra e análise de disponibilidade"
+        />
 
         {/* KPI Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

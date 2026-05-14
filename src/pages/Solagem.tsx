@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { addDays, endOfMonth, startOfWeek, endOfWeek, isWithinInterval, parseISO, startOfMonth } from 'date-fns';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Footprints, Printer, Funnel as Filter, Stack as Layers, ListChecks, CheckCircle as CheckCircle2, CircleNotch as Loader2 } from '@phosphor-icons/react';
+import { Printer, Funnel as Filter, Stack as Layers, ListChecks, CheckCircle as CheckCircle2, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { WorkSheetSettingsButton } from '@/components/production/WorkSheetSettingsDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -23,6 +23,7 @@ import OrderSearchBar from '@/components/production/OrderSearchBar';
 import { useOrderStraps } from '@/hooks/useOrderStraps';
 import { useProductionTransitions } from '@/hooks/useProductionTransitions';
 import { supabase } from '@/integrations/supabase/client';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 
 
@@ -417,17 +418,11 @@ export default function Solagem() {
   return (
     
       <div className="space-y-5 page-enter">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div>
-            <h1 className="display text-xl tracking-tight flex items-center gap-2">
-              <Footprints className="h-6 w-6 text-primary" />
-              Setor de Solagem
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Grade de solados por cor e numeração
-            </p>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
+        <EditorialPageHeader
+          sectionLabel="PRODUÇÃO · Solagem"
+          title="Setor de Solagem"
+          description="Grade de solados por cor e numeração"
+          actions={<>
             {selectedOrders.size > 0 && (
               <Button 
                 size="sm" 
@@ -566,8 +561,8 @@ export default function Solagem() {
               <Printer className="h-3.5 w-3.5 mr-1" /> Fichas Operador {selectedOrders.size > 0 ? `(${selectedOrders.size})` : ''}
             </Button>
             </div>
-          </div>
-        </div>
+          </>}
+        />
 
         {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">

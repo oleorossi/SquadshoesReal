@@ -11,6 +11,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { CheckCircle as CheckCircle2, XCircle, Warning as AlertTriangle, MagnifyingGlass as Search, ArrowsClockwise as RefreshCw, CaretDown as ChevronDown, CaretUp as ChevronUp, ShoppingCart, ClipboardText as ClipboardList, Package, Factory, Sparkle as Sparkles, CurrencyDollar as DollarSign, FileText, CircleNotch as Loader2, ClockCounterClockwise as History, Stack as Layers } from '@phosphor-icons/react';
 import { format, parseISO, differenceInDays } from 'date-fns';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 type StepStatus = 'ok' | 'warning' | 'error' | 'pending';
 
@@ -458,19 +459,16 @@ export default function OrderFlowAudit() {
   return (
     <AppLayout>
       <div className="w-full space-y-6">
-        <div className="flex items-center justify-between flex-wrap gap-4 border-b pb-6">
-          <div className="space-y-1">
-            <h1 className="display text-xl tracking-tight flex items-center gap-2">
-              <Layers className="h-6 w-6 text-primary" /> Auditoria de Fluxo
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Monitoramento Inteligente de Processos Industriais
-            </p>
-          </div>
-          <Button variant="outline" size="sm" onClick={() => refetch()}>
-            <RefreshCw className="h-3 w-3 mr-2" /> Sincronizar Dados
-          </Button>
-        </div>
+        <EditorialPageHeader
+          sectionLabel="SISTEMA · Auditoria"
+          title="Auditoria de Fluxo"
+          description="Monitoramento Inteligente de Processos Industriais"
+          actions={
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              <RefreshCw className="h-3 w-3 mr-2" /> Sincronizar Dados
+            </Button>
+          }
+        />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="bg-muted/50 p-1 h-12 inline-flex">

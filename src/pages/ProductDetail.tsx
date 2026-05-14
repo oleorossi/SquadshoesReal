@@ -21,7 +21,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { NumberInput } from '@/components/ui/number-input';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
- import { ArrowLeft, FloppyDisk as Save, Trash as Trash2, Package, CircleNotch as Loader2, Image as ImageIcon, X, Stack as Layers, Footprints, ClockCounterClockwise as History, PlusCircle, MinusCircle, Warning as AlertTriangle } from '@phosphor-icons/react';
+ import { ArrowLeft, FloppyDisk as Save, Trash as Trash2, CircleNotch as Loader2, Image as ImageIcon, X, Stack as Layers, Footprints, ClockCounterClockwise as History, PlusCircle, MinusCircle, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { cn, stripColorFromName } from '@/lib/utils';
 import { toast } from 'sonner';
 import { z } from 'zod';
@@ -30,6 +30,7 @@ import { SoleTechnicalDetails } from "@/components/technical-sheets/SoleTechnica
  import { SoleStandardItemsPanel } from "@/components/technical-sheets/SoleStandardItemsPanel";
  import { SoleSilkPanel } from "@/components/technical-sheets/SoleSilkPanel";
  import StockHistory from './StockHistory';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 const SOLADO_COLORS = ['Preto', 'Caramelo'];
 const ADULT_SIZES = [34, 35, 36, 37, 38, 39, 40];
@@ -307,26 +308,24 @@ export default function ProductDetail() {
      <AppLayout>
        <div className="space-y-6 max-w-5xl">
          {/* Header */}
-         <div className="flex items-center gap-4 flex-wrap mb-2">
-          <Button variant="ghost" size="sm" onClick={() => navigate('/estoque')}>
-            <ArrowLeft className="h-4 w-4 mr-1" /> Estoque
-          </Button>
-          <div className="flex-1 min-w-0">
-            <h1 className="display text-xl tabular-nums flex items-center gap-2 truncate">
-              <Package className="h-5 w-5 text-primary shrink-0" />
-              {stripColorFromName(product.name, product.color)}
-              {product.color && <Badge variant="secondary">{product.color}</Badge>}
-            </h1>
-            <p className="text-sm text-muted-foreground font-mono">{product.sku}</p>
-          </div>
-          <div className="flex gap-2">
-            <Button onClick={handleSave} disabled={saving} className="gap-1.5">
-              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-              Salvar
-            </Button>
-            <DeleteConfirmButton onConfirm={handleDelete} title="Excluir material?" />
-          </div>
-        </div>
+         <Button variant="ghost" size="sm" onClick={() => navigate('/estoque')} className="-ml-2 mb-1">
+           <ArrowLeft className="h-4 w-4 mr-1" /> Estoque
+         </Button>
+         <EditorialPageHeader
+           sectionLabel="ENGENHARIA · Material"
+           title={stripColorFromName(product.name, product.color)}
+           description={product.sku}
+           actions={
+             <>
+               {product.color && <Badge variant="secondary">{product.color}</Badge>}
+               <Button onClick={handleSave} disabled={saving} className="gap-1.5">
+                 {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                 Salvar
+               </Button>
+               <DeleteConfirmButton onConfirm={handleDelete} title="Excluir material?" />
+             </>
+           }
+         />
 
          <Tabs defaultValue="details" className="w-full">
            <TabsList className="grid w-full grid-cols-2 mb-6">

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import PageShell from '@/components/layout/PageShell';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -230,20 +230,23 @@ export default function SystemDiagnostics() {
   };
 
   return (
-    <PageShell
-      title="Diagnóstico do Sistema"
-      subtitle="Status do banco, migrations aplicadas e diagnóstico de carregamento"
-      actions={
-        <>
-          <Button variant="outline" size="sm" onClick={() => { refetchMig(); refetchSchema(); }}>
-            <RefreshCw className="h-4 w-4 mr-2" /> Recarregar
-          </Button>
-          <Button variant="outline" size="sm" onClick={copyDiagnostics}>
-            <Copy className="h-4 w-4 mr-2" /> Copiar
-          </Button>
-        </>
-      }
-    >
+    <div className="flex flex-col gap-5 page-enter">
+      <EditorialPageHeader
+        sectionLabel="SISTEMA · Diagnóstico"
+        title="Diagnóstico do Sistema"
+        description="Status do banco, migrations aplicadas e diagnóstico de carregamento"
+        actions={
+          <>
+            <Button variant="outline" size="sm" onClick={() => { refetchMig(); refetchSchema(); }}>
+              <RefreshCw className="h-4 w-4 mr-2" /> Recarregar
+            </Button>
+            <Button variant="outline" size="sm" onClick={copyDiagnostics}>
+              <Copy className="h-4 w-4 mr-2" /> Copiar
+            </Button>
+          </>
+        }
+      />
+
       {/* Resumo schema */}
       {!schemaLoading && (
         <Alert variant={allOk ? 'default' : 'destructive'}>
@@ -385,6 +388,6 @@ export default function SystemDiagnostics() {
           </Card>
         </TabsContent>
       </Tabs>
-    </PageShell>
+    </div>
   );
 }

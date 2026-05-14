@@ -14,6 +14,7 @@ import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { useSaleOrdersWeightBatch } from '@/hooks/useSaleOrderWeight';
 import { IncompleteWeightWarning } from '@/components/weight/IncompleteWeightWarning';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 type MdfeStatus = 'rascunho' | 'autorizado' | 'encerrado' | 'cancelado';
 
@@ -105,21 +106,16 @@ export default function MDFe() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <FileText className="h-7 w-7 text-primary mt-1" />
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">MDF-e · Manifesto Eletrônico</h1>
-            <p className="text-sm text-muted-foreground">
-              Documento fiscal pra transporte rodoviário com múltiplas NF-es / CT-es por viagem.
-              Esta UI grava o rascunho e registra protocolo após emissão externa.
-            </p>
-          </div>
-        </div>
-        <Button onClick={() => setCreating(true)} className="gap-1.5">
-          <Plus className="h-4 w-4" /> Novo MDF-e
-        </Button>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="FISCAL · MDF-e"
+        title="MDF-e · Manifesto Eletrônico"
+        description="Documento fiscal pra transporte rodoviário com múltiplas NF-es / CT-es por viagem. Esta UI grava o rascunho e registra protocolo após emissão externa."
+        actions={
+          <Button onClick={() => setCreating(true)} className="gap-1.5">
+            <Plus className="h-4 w-4" /> Novo MDF-e
+          </Button>
+        }
+      />
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Carregando…</p>

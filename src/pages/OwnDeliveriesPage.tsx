@@ -12,6 +12,7 @@ import { useVehicles, useDrivers } from '@/hooks/useFleet';
 import RoutePlannerOwn from '@/components/own-delivery/RoutePlannerOwn';
 import FleetTab from '@/components/own-delivery/FleetTab';
 import { Link } from 'react-router-dom';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 const formatBrl = (n: number | null | undefined) =>
   n == null
@@ -40,17 +41,11 @@ const STATUS_COLOR: Record<RouteStatus, string> = {
 export default function OwnDeliveriesPage() {
   return (
     <div className="container mx-auto p-4 lg:p-6 space-y-4">
-      <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Truck className="h-6 w-6 text-primary" />
-            Entregas — Frete Próprio
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Planeje rotas com a frota da empresa, otimize ordem de paradas e veja a projeção de combustível e desgaste.
-          </p>
-        </div>
-      </header>
+      <EditorialPageHeader
+        sectionLabel="LOGÍSTICA · Entregas Próprias"
+        title="Entregas — Frete Próprio"
+        description="Planeje rotas com a frota da empresa, otimize ordem de paradas e veja a projeção de combustível e desgaste."
+      />
 
       <Tabs defaultValue="orders">
         <TabsList>

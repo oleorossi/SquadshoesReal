@@ -4,6 +4,7 @@ import { FileText, Stack as Layers } from '@phosphor-icons/react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import TechnicalSheetsContent from '@/pages/TechnicalSheets';
 import ComponentSheetsContent from '@/pages/ComponentSheets';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 export default function Products() {
   const [tab, setTab] = useState('sheets');
@@ -11,12 +12,11 @@ export default function Products() {
   return (
     
       <div className="space-y-5 page-enter">
-        <div>
-          <h1 className="display text-xl tracking-tight flex items-center gap-2">
-            <FileText className="h-6 w-6" /> Produtos
-          </h1>
-          <p className="text-sm text-muted-foreground">Fichas técnicas (referências) e fichas de componentes</p>
-        </div>
+        <EditorialPageHeader
+          sectionLabel="ENGENHARIA · Produtos"
+          title="Produtos"
+          description="Fichas técnicas (referências) e fichas de componentes"
+        />
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList>
             <TabsTrigger value="sheets" className="gap-1"><FileText className="h-3.5 w-3.5" /> Fichas Técnicas</TabsTrigger>

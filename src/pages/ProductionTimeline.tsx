@@ -21,6 +21,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { useOrders } from '@/hooks/useOrders';
 import { useAllOrderStages, OrderStage } from '@/hooks/useOrderStages';
 import { cn } from '@/lib/utils';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 type Order = {
   id: string;
@@ -121,11 +122,10 @@ export default function ProductionTimeline() {
   return (
     <AppLayout>
       <div className="space-y-5 pb-12">
-        {/* Header */}
-        <div>
-          <div className="eyebrow">Produção · linha do tempo</div>
-          <h1 className="display text-3xl mt-2">Onde está cada ordem</h1>
-        </div>
+        <EditorialPageHeader
+          sectionLabel="PCP · Timeline"
+          title="Onde está cada ordem"
+        />
 
         <Card>
           <CardContent className="p-6">

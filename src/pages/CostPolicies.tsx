@@ -17,6 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { FloppyDisk as Save, ArrowsClockwise as RefreshCw, Calculator, Cube as Box, Truck, Receipt, Percent, WarningCircle as AlertCircle } from '@phosphor-icons/react';
 
 function fmt(v: number) {
@@ -80,15 +81,11 @@ export default function CostPolicies() {
 
   return (
     <div className="space-y-5 page-enter max-w-4xl">
-      {/* Header */}
-      <div>
-        <div className="eyebrow">Financeiro · Configuração</div>
-        <h1 className="display text-2xl mt-1.5 sm:text-3xl">Políticas de Custo</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Defaults usados pelo simulador Markup, cálculo de custo de OP e indicadores financeiros.
-          Mudanças aqui afetam novos cálculos imediatamente; simulações já salvas mantêm o snapshot original.
-        </p>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="CUSTOS · Políticas"
+        title="Políticas de Custo"
+        description="Defaults usados pelo simulador Markup, cálculo de custo de OP e indicadores financeiros. Mudanças aqui afetam novos cálculos imediatamente; simulações já salvas mantêm o snapshot original."
+      />
 
       {isLoading || !policy ? (
         <Skeleton className="h-96" />

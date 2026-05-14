@@ -20,6 +20,8 @@ import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useState, useMemo } from 'react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { RefChip } from '@/components/ui/ref-chip';
 
 const STATUS_COLORS: Record<string, string> = {
   'Rascunho': 'bg-muted text-muted-foreground border-border',
@@ -160,20 +162,16 @@ export default function OrderEdit() {
     <AppLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/orders')} aria-label="Voltar para Ordens de Produção">
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <h2 className="display text-xl tracking-tight">
-              {saleOrder ? `Pedido ${saleOrder.order_number}` : `OP ${(displayOrders[0] as any).order_number}`}
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              {saleOrder ? saleOrder.client_name : (displayOrders[0] as any).technical_sheets?.name || '—'}
-              {' · '}{displayOrders.length} OP(s) · {totalPairs} pares
-            </p>
-          </div>
-        </div>
+        <EditorialPageHeader
+          sectionLabel="PEDIDOS · Edição"
+          title={saleOrder ? `Pedido ${saleOrder.order_number}` : `OP ${(displayOrders[0] as any).order_number}`}
+          description={`${saleOrder ? saleOrder.client_name : (displayOrders[0] as any).technical_sheets?.name || '—'} · ${displayOrders.length} OP(s) · ${totalPairs} pares`}
+          actions={
+            <Button variant="ghost" size="icon" onClick={() => navigate('/orders')} aria-label="Voltar para Ordens de Produção">
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+          }
+        />
 
         <ProductionPipeline orderId={id || ''} currentStep={currentPipelineStep} />
 
@@ -229,7 +227,9 @@ export default function OrderEdit() {
                     {ref && (
                       <div className="space-y-1">
                         <p className="text-xs text-muted-foreground">Referência</p>
-                        <p className="text-lg font-semibold">{ref.code} — {ref.name}</p>
+                        <p className="text-lg font-semibold flex items-center gap-2">
+                          {ref.code && <RefChip code={ref.code} />} {ref.name}
+                        </p>
                       </div>
                     )}
                     {saleOrder?.delivery_deadline && (
@@ -307,7 +307,7 @@ export default function OrderEdit() {
                               to="/fichas-tecnicas"
                               className="text-sm text-primary hover:underline flex items-center gap-1"
                             >
-                              {ref?.code} — {ref?.name} <ExternalLink className="h-3 w-3" />
+                              {ref?.code && <RefChip code={ref.code} />} {ref?.name} <ExternalLink className="h-3 w-3" />
                             </Link>
                             {(order as any).color && (
                               <span className="text-sm text-muted-foreground">Cor: {(order as any).color}</span>

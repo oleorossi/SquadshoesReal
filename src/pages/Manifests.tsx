@@ -14,6 +14,7 @@ import { format } from 'date-fns';
 import { useSaleOrderWeight } from '@/hooks/useSaleOrderWeight';
 import { IncompleteWeightWarning } from '@/components/weight/IncompleteWeightWarning';
 import { toast } from 'sonner';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 type ManifestStatus = 'em_montagem' | 'liberado' | 'em_transito' | 'entregue' | 'cancelado';
 
@@ -61,20 +62,16 @@ function ManifestsList({ onOpen, onCreate }: { onOpen: (id: string) => void; onC
 
   return (
     <>
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <FileCheck2 className="h-7 w-7 text-primary mt-1" />
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Romaneios de Carga</h1>
-            <p className="text-sm text-muted-foreground">
-              Controle interno de viagens — agrupa volumes por veículo/motorista, com destinos múltiplos.
-            </p>
-          </div>
-        </div>
-        <Button onClick={onCreate} className="gap-1.5">
-          <Plus className="h-4 w-4" /> Novo Romaneio
-        </Button>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="FISCAL · Manifestos"
+        title="Romaneios de Carga"
+        description="Controle interno de viagens — agrupa volumes por veículo/motorista, com destinos múltiplos."
+        actions={
+          <Button onClick={onCreate} className="gap-1.5">
+            <Plus className="h-4 w-4" /> Novo Romaneio
+          </Button>
+        }
+      />
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Carregando…</p>

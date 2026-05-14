@@ -14,6 +14,7 @@ import {
 } from '@/hooks/useSectorBottlenecks';
 import { BulkAssignServiceOrderDialog } from '@/components/bottlenecks/BulkAssignServiceOrderDialog';
 import { cn } from '@/lib/utils';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 const SECTOR_ICON: Record<SectorKey, React.ElementType> = {
   costura: Pen,
@@ -74,14 +75,11 @@ export default function BottlenecksPage() {
 
   return (
     <div className="space-y-5 page-enter">
-      <div>
-        <h2 className="display text-xl tracking-tight">Monitoramento de Gargalos</h2>
-        <p className="text-sm text-muted-foreground">
-          Setores que estão sobrecarregados em alguma semana. Use o botão "Gerar OS"
-          para transferir OPs específicas pra uma costureira terceirizada antes que
-          atrase a Montagem.
-        </p>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="PRODUÇÃO · Gargalos"
+        title="Monitoramento de Gargalos"
+        description={'Setores que estão sobrecarregados em alguma semana. Use o botão "Gerar OS" para transferir OPs específicas pra uma costureira terceirizada antes que atrase a Montagem.'}
+      />
 
       {/* KPI cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

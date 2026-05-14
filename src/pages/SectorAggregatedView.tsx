@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Scissors, Stack as Layers, Hand, Pen, Printer, Flame, Hammer, Footprints, Sparkle as Sparkles } from '@phosphor-icons/react';
+import { Scissors, Stack as Layers, Hand, Pen, Printer, Flame, Hammer, Footprints } from '@phosphor-icons/react';
 import { SectorWorkloadAggregated } from '@/components/production/SectorWorkloadAggregated';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 interface SectorConfig {
   key: string;
@@ -64,18 +65,11 @@ export default function SectorAggregatedView() {
 
   return (
     <div className="space-y-5 page-enter">
-      <div>
-        <h1 className="display text-xl tracking-tight flex items-center gap-2">
-          <Sparkles className="h-5 w-5 text-primary" />
-          Visão Agregada por Setor
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Carga ativa de cada setor consolidada por modelo (e cor onde faz sentido).
-          Em vez de N cartões individuais de 12 pares, o operador vê o LOTE
-          consolidado — costura faz a grade inteira sem trocar setup, corte usa
-          o mesmo molde por todas as cores.
-        </p>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="PRODUÇÃO · Visão Agregada"
+        title="Visão Agregada por Setor"
+        description="Carga ativa de cada setor consolidada por modelo (e cor onde faz sentido). Em vez de N cartões individuais de 12 pares, o operador vê o LOTE consolidado — costura faz a grade inteira sem trocar setup, corte usa o mesmo molde por todas as cores."
+      />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList className="grid grid-cols-4 lg:grid-cols-8 h-auto">

@@ -29,6 +29,7 @@ import CreateUserDialog from '@/components/settings/CreateUserDialog';
 import FinanceConfigPanel from '@/components/settings/FinanceConfigPanel';
 import { CurrencyDollar as DollarSign } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 const ROLE_ICONS: Record<string, React.ReactNode> = {
   admin: <Crown className="h-3.5 w-3.5" />,
@@ -424,12 +425,11 @@ export default function SettingsPage() {
   return (
     
       <div className="space-y-5 page-enter">
-        <div>
-          <h1 className="display text-xl tracking-tight flex items-center gap-2">
-            <Settings className="h-6 w-6" /> Configurações
-          </h1>
-          <p className="text-sm text-muted-foreground">Gestão de usuários, permissões e configurações do sistema</p>
-        </div>
+        <EditorialPageHeader
+          sectionLabel="SISTEMA · Configurações"
+          title="Configurações"
+          description="Gestão de usuários, permissões e configurações do sistema"
+        />
 
         {/* Stats cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { FileXls as FileSpreadsheet, Plus, Trash as Trash2, CircleNotch as Loader2, CaretRight as ChevronRight, Trophy, Package, Users, ArrowLeft, CheckCircle as CheckCircle2 } from '@phosphor-icons/react';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -65,20 +66,16 @@ function QuotationsList({ onOpen, onCreate }: { onOpen: (id: string) => void; on
 
   return (
     <>
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <FileSpreadsheet className="h-7 w-7 text-primary mt-1" />
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Cotações (RFQ)</h1>
-            <p className="text-sm text-muted-foreground">
-              Cotação multifornecedor — registre itens, respostas e escolha o vencedor.
-            </p>
-          </div>
-        </div>
-        <Button onClick={onCreate} className="gap-1.5">
-          <Plus className="h-4 w-4" /> Nova Cotação
-        </Button>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="COMERCIAL · Cotações"
+        title="Cotações (RFQ)"
+        description="Cotação multifornecedor — registre itens, respostas e escolha o vencedor."
+        actions={
+          <Button onClick={onCreate} className="gap-1.5">
+            <Plus className="h-4 w-4" /> Nova Cotação
+          </Button>
+        }
+      />
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Carregando…</p>

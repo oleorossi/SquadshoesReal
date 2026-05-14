@@ -14,6 +14,7 @@ import { Warning as AlertTriangle, Pulse as Activity, Truck, CircleNotch as Load
 import { format, parseISO, addWeeks, startOfWeek, getISOWeek, getISOWeekYear, differenceInBusinessDays, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 // ─── Setores monitorados ───────────────────────────────────────────────────
 
@@ -332,20 +333,16 @@ export default function ProductionControlCenter() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <Activity className="h-7 w-7 text-primary mt-1" />
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Centro de Controle de Produção</h1>
-            <p className="text-sm text-muted-foreground">
-              Capacidade por ficha · Alertas automáticos via WhatsApp · Terceirização com 1 clique.
-            </p>
-          </div>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)} className="gap-1.5">
-          <Settings className="h-4 w-4" /> Configurações
-        </Button>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="PRODUÇÃO · Controle"
+        title="Centro de Controle de Produção"
+        description="Capacidade por ficha · Alertas automáticos via WhatsApp · Terceirização com 1 clique."
+        actions={
+          <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)} className="gap-1.5">
+            <Settings className="h-4 w-4" /> Configurações
+          </Button>
+        }
+      />
 
       <Tabs defaultValue="dashboard">
         <TabsList>

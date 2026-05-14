@@ -15,6 +15,7 @@ import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { computeSectorLeadTimeDays } from '@/lib/leadTime';
 import { computeParallelWindows } from '@/lib/sectorCapacity';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 // ─── TYPES & CONFIG ──────────────────────────────────────────────────────────
 
@@ -424,12 +425,11 @@ export default function CapacityPlanning() {
 
   return (
     <div className="space-y-5 page-enter">
-      <div>
-        <h2 className="display text-xl tracking-tight">Capacidade por Setor</h2>
-        <p className="text-sm text-muted-foreground">
-          Carga real calculada a partir das fichas técnicas × OPs ativas — pares/dia por setor
-        </p>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="PRODUÇÃO · Capacidade"
+        title="Capacidade por Setor"
+        description="Carga real calculada a partir das fichas técnicas × OPs ativas — pares/dia por setor"
+      />
 
       {/* ── KPI CARDS ──────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-9 gap-3">

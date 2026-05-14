@@ -16,6 +16,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { format, parseISO, isWithinInterval } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { printHtml } from '@/lib/printOrder';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 const SIZES_ALL = ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
 
@@ -323,21 +324,23 @@ export default function OrdersSummary() {
     
       <div className="space-y-5 page-enter print:space-y-4">
         {/* Header */}
-        <div className="flex items-center justify-between gap-4 flex-wrap print:hidden">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/orders')} aria-label="Voltar para Ordens de Produção">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <div>
-              <h2 className="display text-xl tracking-tight">Resumo de Produção</h2>
-              <p className="text-sm text-muted-foreground">{totalOPs} OPs • {totalPairs} pares no filtro atual</p>
-            </div>
-          </div>
-          <Button onClick={handlePrint} className="gap-2">
-            <Save className="h-4 w-4" />
-            Salvar PDF
-          </Button>
-        </div>
+        <EditorialPageHeader
+          className="print:hidden"
+          sectionLabel="PEDIDOS · Resumo"
+          title="Resumo de Produção"
+          description={`${totalOPs} OPs • ${totalPairs} pares no filtro atual`}
+          actions={
+            <>
+              <Button variant="ghost" size="icon" onClick={() => navigate('/orders')} aria-label="Voltar para Ordens de Produção">
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+              <Button onClick={handlePrint} className="gap-2">
+                <Save className="h-4 w-4" />
+                Salvar PDF
+              </Button>
+            </>
+          }
+        />
 
         {/* Print header */}
         <div className="hidden print:block">

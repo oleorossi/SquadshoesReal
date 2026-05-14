@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
  import StockHistory from "./StockHistory";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 interface Product {
   id: string;
@@ -595,10 +596,16 @@ export default function StockAdjustmentPage() {
   return (
     <div className="flex flex-col h-[calc(100vh-80px)] page-enter">
 
+      <EditorialPageHeader
+        sectionLabel="ESTOQUE · Ajustes"
+        title="Ajuste de Estoque"
+        description="Edição rápida de quantidades em planilha, com motivo padronizado e trilha de auditoria."
+        className="shrink-0"
+      />
+
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2 pb-3 border-b border-border shrink-0">
         <SlidersHorizontal className="h-4 w-4 text-primary shrink-0" />
-        <h1 className="text-base font-semibold mr-2 shrink-0">Ajuste de Estoque</h1>
 
         <div className="relative w-52">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />

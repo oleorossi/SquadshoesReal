@@ -15,6 +15,7 @@ import { CircleNotch as Loader2, Package, Lock, Factory, CheckCircle as CheckCir
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ProductReservationDetailsDialog from '@/components/inventory/ProductReservationDetailsDialog';
 import { SmartSearch, SmartSearchSuggestion } from '@/components/ui/smart-search';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 interface StockRow {
   id: string;
@@ -215,35 +216,34 @@ export default function StockReservations() {
 
   return (
     <div className="container mx-auto p-4 md:p-6 space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-        <div>
-          <h1 className="display text-2xl md:text-3xl tracking-tight">Reservas e Em Produção</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Visão consolidada de estoque por produto: reservado, já em produção e realmente disponível.
-          </p>
-        </div>
-        <div className="flex items-center gap-3 shrink-0">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span>Atualizado: {lastUpdate}</span>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-7 w-7"
-              onClick={() => refetch()}
-              disabled={isFetching}
-              aria-label="Atualizar agora"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
-            </Button>
-          </div>
-          <div className="flex items-center gap-2">
-            <Switch id="auto-refresh" checked={autoRefresh} onCheckedChange={setAutoRefresh} />
-            <Label htmlFor="auto-refresh" className="text-xs cursor-pointer whitespace-nowrap">
-              Auto-atualizar ({refreshSeconds}s)
-            </Label>
-          </div>
-        </div>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="ESTOQUE · Reservas"
+        title="Reservas e Em Produção"
+        description="Visão consolidada de estoque por produto: reservado, já em produção e realmente disponível."
+        actions={
+          <>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>Atualizado: {lastUpdate}</span>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7"
+                onClick={() => refetch()}
+                disabled={isFetching}
+                aria-label="Atualizar agora"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
+              </Button>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch id="auto-refresh" checked={autoRefresh} onCheckedChange={setAutoRefresh} />
+              <Label htmlFor="auto-refresh" className="text-xs cursor-pointer whitespace-nowrap">
+                Auto-atualizar ({refreshSeconds}s)
+              </Label>
+            </div>
+          </>
+        }
+      />
 
       {alertCount > 0 && (
         <div className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">

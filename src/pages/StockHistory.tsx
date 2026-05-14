@@ -11,6 +11,7 @@ import { useTableSelection } from '@/hooks/useTableSelection';
  import { Label } from '@/components/ui/label';
  import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
  import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
+ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
   export default function StockHistory({ filterProductId, hideHeader = false }: { filterProductId?: string; hideHeader?: boolean }) {
     const { data: allMovements = [] as StockMovementWithProduct[], isLoading, isError, refetch } = useStockMovements();
@@ -103,10 +104,11 @@ import { useTableSelection } from '@/hooks/useTableSelection';
    return (
      <div className="space-y-5 page-enter">
        {!hideHeader && (
-         <div>
-           <h2 className="display text-xl tracking-tight">Histórico de Movimentações</h2>
-           <p className="text-sm text-muted-foreground">Registro de todas as entradas e saídas de estoque</p>
-         </div>
+         <EditorialPageHeader
+           sectionLabel="ESTOQUE · Histórico"
+           title="Histórico de Movimentações"
+           description="Registro de todas as entradas e saídas de estoque"
+         />
        )}
 
        <div className="flex flex-wrap gap-3 items-end">

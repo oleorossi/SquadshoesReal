@@ -37,6 +37,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { CircleNotch as Loader2, CaretLeft as ChevronLeft, CaretRight as ChevronRight, ArrowsClockwise as RefreshCw, CalendarBlank as CalendarDays, ChartBar as BarChart3, Stack as Layers, TrendDown as TrendingDown } from '@phosphor-icons/react';
 import { format, startOfWeek, addDays, addWeeks } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -686,33 +687,28 @@ export default function ProductionDailySchedule() {
   return (
     <TooltipProvider>
       <div className="space-y-5">
-        {/* Header */}
-        <div className="flex flex-wrap gap-3 items-start justify-between">
-          <div>
-            <h2 className="text-lg font-bold flex items-center gap-2">
-              <TrendingDown className="h-5 w-5 text-primary" />
-              Programação por Campanha
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Campanha = solado × material — sequência claro→escuro dentro de cada campanha para minimizar setups
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex rounded-md border overflow-hidden">
-              <button onClick={() => { setViewMode('daily'); setOffset(0); }}
-                className={`px-3 py-1.5 text-xs font-medium transition-colors flex items-center gap-1.5 ${viewMode === 'daily' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted/40 text-muted-foreground'}`}>
-                <CalendarDays className="h-3 w-3" /> Diário
-              </button>
-              <button onClick={() => { setViewMode('weekly'); setOffset(0); }}
-                className={`px-3 py-1.5 text-xs font-medium transition-colors flex items-center gap-1.5 ${viewMode === 'weekly' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted/40 text-muted-foreground'}`}>
-                <BarChart3 className="h-3 w-3" /> Semanal
-              </button>
-            </div>
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => refetch()} disabled={isFetching} aria-label="Atualizar dados">
-              <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
-            </Button>
-          </div>
-        </div>
+        <EditorialPageHeader
+          sectionLabel="PCP · Programação"
+          title="Programação por Campanha"
+          description="Campanha = solado × material — sequência claro→escuro dentro de cada campanha para minimizar setups"
+          actions={
+            <>
+              <div className="flex rounded-md border overflow-hidden">
+                <button onClick={() => { setViewMode('daily'); setOffset(0); }}
+                  className={`px-3 py-1.5 text-xs font-medium transition-colors flex items-center gap-1.5 ${viewMode === 'daily' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted/40 text-muted-foreground'}`}>
+                  <CalendarDays className="h-3 w-3" /> Diário
+                </button>
+                <button onClick={() => { setViewMode('weekly'); setOffset(0); }}
+                  className={`px-3 py-1.5 text-xs font-medium transition-colors flex items-center gap-1.5 ${viewMode === 'weekly' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted/40 text-muted-foreground'}`}>
+                  <BarChart3 className="h-3 w-3" /> Semanal
+                </button>
+              </div>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => refetch()} disabled={isFetching} aria-label="Atualizar dados">
+                <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+              </Button>
+            </>
+          }
+        />
 
         {/* Setup summary */}
         <SetupSummaryCards stats={setupStats} />

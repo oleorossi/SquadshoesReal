@@ -11,6 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Truck, Plus, PencilSimple as Edit2, Power, CircleNotch as Loader2, Phone, Envelope as Mail, MapPin } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 const SERVICE_MODES = ['rodoviario', 'aereo', 'aquaviario', 'ferroviario', 'sedex', 'pac', 'fracionado', 'dedicado'];
 
@@ -78,20 +79,16 @@ export default function Transporters() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <Truck className="h-7 w-7 text-primary mt-1" />
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Transportadoras</h1>
-            <p className="text-sm text-muted-foreground">
-              Cadastro de empresas de frete (rodoviário, sedex, dedicado) usadas em CT-e e expedição.
-            </p>
-          </div>
-        </div>
-        <Button onClick={() => setCreating(true)} className="gap-1.5">
-          <Plus className="h-4 w-4" /> Nova Transportadora
-        </Button>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="LOGÍSTICA · Transportadoras"
+        title="Transportadoras"
+        description="Cadastro de empresas de frete (rodoviário, sedex, dedicado) usadas em CT-e e expedição."
+        actions={
+          <Button onClick={() => setCreating(true)} className="gap-1.5">
+            <Plus className="h-4 w-4" /> Nova Transportadora
+          </Button>
+        }
+      />
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Carregando…</p>

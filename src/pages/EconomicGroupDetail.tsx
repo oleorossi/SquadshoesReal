@@ -25,6 +25,8 @@ import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { ArrowLeft, Buildings as Building2, Users, ShoppingCart, CurrencyDollar as DollarSign, Phone, Note as StickyNote, Paperclip, ClockCounterClockwise as HistoryIcon, Warning as AlertTriangle, Crown, Plus, Trash as Trash2, PencilSimple as Edit3, Upload, ArrowSquareOut as ExternalLink, TrendUp as TrendingUp, Calendar, ShieldWarning as ShieldAlert, CheckCircle as CheckCircle2, FileText, ChatText as MessageSquare, FloppyDisk as Save } from '@phosphor-icons/react';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { RefChip } from '@/components/ui/ref-chip';
 
 import {
   useEconomicGroupById, useEconomicGroupKpis, useEconomicGroupCredit,
@@ -102,22 +104,25 @@ function Header({ group }: { group: any }) {
   const overLimit = credit && Number(credit.ar_open_total) > Number(group.credit_limit) && Number(group.credit_limit) > 0;
 
   return (
-    <div className="flex items-start justify-between gap-3 flex-wrap">
-      <div className="flex items-start gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/clients')} aria-label="Voltar">
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        {group.logo_url ? (
-          <img src={group.logo_url} alt={group.name} className="h-12 w-12 rounded-lg object-cover border border-border" />
-        ) : (
-          <div className="h-12 w-12 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-            <Building2 className="h-6 w-6" />
-          </div>
-        )}
-        <div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-2xl font-bold tracking-tight">{group.name}</h1>
-            {group.group_number && <Badge variant="outline" className="text-xs font-mono">{group.group_number}</Badge>}
+    <div className="flex items-start gap-3">
+      <Button variant="ghost" size="icon" className="mt-1 shrink-0" onClick={() => navigate('/clients')} aria-label="Voltar">
+        <ArrowLeft className="h-4 w-4" />
+      </Button>
+      {group.logo_url ? (
+        <img src={group.logo_url} alt={group.name} className="h-12 w-12 rounded-lg object-cover border border-border mt-1 shrink-0" />
+      ) : (
+        <div className="h-12 w-12 rounded-lg bg-primary/10 text-primary flex items-center justify-center mt-1 shrink-0">
+          <Building2 className="h-6 w-6" />
+        </div>
+      )}
+      <EditorialPageHeader
+        className="flex-1"
+        sectionLabel="COMERCIAL · Grupo Econômico"
+        title={group.name}
+        description={group.description || undefined}
+        actions={
+          <>
+            {group.group_number && <RefChip code={group.group_number} prefix="" />}
             {group.block_new_orders && (
               <Badge variant="destructive" className="gap-1">
                 <ShieldAlert className="h-3 w-3" /> Bloqueado
@@ -128,10 +133,9 @@ function Header({ group }: { group: any }) {
                 <AlertTriangle className="h-3 w-3" /> Limite estourado
               </Badge>
             )}
-          </div>
-          {group.description && <p className="text-sm text-muted-foreground mt-0.5">{group.description}</p>}
-        </div>
-      </div>
+          </>
+        }
+      />
     </div>
   );
 }

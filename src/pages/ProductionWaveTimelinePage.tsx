@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle as CheckCircle2, Clock, Factory, CircleDashed, Ban, Stack as Layers } from '@phosphor-icons/react';
+import { ArrowLeft, CheckCircle as CheckCircle2, Clock, Factory, CircleDashed, Ban } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +10,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import { useWaveDetail } from '@/hooks/useProductionWaves';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import {
   STAGE_LABEL, STAGE_ORDER,
   type ProductionStage, type StageStatus, type WaveStage, type WaveItem,
@@ -181,28 +182,22 @@ export default function ProductionWaveTimelinePage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <Button asChild variant="ghost" size="sm" className="-ml-2 mb-2">
-            <Link to="/pcp/ondas"><ArrowLeft className="w-4 h-4 mr-1" /> Ondas de Produção</Link>
-          </Button>
-          <h1 className="display text-2xl flex items-center gap-2">
-            <Layers className="w-6 h-6" /> Linha do Tempo — {detail.code}
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Semana {fmtDateTime(detail.week_start).slice(0, 8)} → {fmtDateTime(detail.week_end).slice(0, 8)}
-            {' · '}{detail.total_pairs} pares · {detail.total_items} itens
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {detail.current_stage && (
+      <Button asChild variant="ghost" size="sm" className="-ml-2">
+        <Link to="/pcp/ondas"><ArrowLeft className="w-4 h-4 mr-1" /> Ondas de Produção</Link>
+      </Button>
+      <EditorialPageHeader
+        sectionLabel="PCP · Timeline"
+        title={`Linha do Tempo — ${detail.code}`}
+        description={`Semana ${fmtDateTime(detail.week_start).slice(0, 8)} → ${fmtDateTime(detail.week_end).slice(0, 8)} · ${detail.total_pairs} pares · ${detail.total_items} itens`}
+        actions={
+          detail.current_stage ? (
             <Badge variant="outline" className="gap-1 bg-primary/10 text-primary border-primary/30">
               <Clock className="w-3 h-3" />
               Estágio atual: {STAGE_LABEL[detail.current_stage]}
             </Badge>
-          )}
-        </div>
-      </div>
+          ) : undefined
+        }
+      />
 
       <section className="space-y-3">
         <h2 className="text-sm font-bold uppercase text-muted-foreground tracking-wide">

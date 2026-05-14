@@ -23,6 +23,7 @@ import {
   exportTemplateExcel, exportTemplatePDF, exportDashboardExcel,
   exportDashboardPDF, type ReportData,
 } from '@/lib/exportReports';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 const CHART_COLORS = ['#0EA5E9', '#F59E0B', '#10B981', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#F97316'];
 
@@ -248,29 +249,30 @@ export default function Reports() {
   return (
     <div className="space-y-5 page-enter p-1">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="display text-xl tracking-tight">Analytics & Relatórios</h1>
-          <p className="text-sm text-muted-foreground">Métricas em tempo real e geração inteligente de relatórios</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-[130px] h-9 text-xs">
-              <Calendar className="h-3.5 w-3.5 mr-1.5" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="7d">7 dias</SelectItem>
-              <SelectItem value="30d">30 dias</SelectItem>
-              <SelectItem value="90d">90 dias</SelectItem>
-              <SelectItem value="365d">12 meses</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button variant="outline" size="sm" onClick={() => { r1(); r2(); r3(); toast.success('Dados atualizados'); }}>
-            <RefreshCw className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="RELATÓRIOS · Geral"
+        title="Analytics & Relatórios"
+        description="Métricas em tempo real e geração inteligente de relatórios"
+        actions={
+          <>
+            <Select value={period} onValueChange={setPeriod}>
+              <SelectTrigger className="w-[130px] h-9 text-xs">
+                <Calendar className="h-3.5 w-3.5 mr-1.5" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7d">7 dias</SelectItem>
+                <SelectItem value="30d">30 dias</SelectItem>
+                <SelectItem value="90d">90 dias</SelectItem>
+                <SelectItem value="365d">12 meses</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="sm" onClick={() => { r1(); r2(); r3(); toast.success('Dados atualizados'); }}>
+              <RefreshCw className="h-3.5 w-3.5" />
+            </Button>
+          </>
+        }
+      />
 
       <Tabs defaultValue="dashboard" className="space-y-4">
         <TabsList>

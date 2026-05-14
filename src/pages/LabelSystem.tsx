@@ -8,6 +8,7 @@ import { OptimizationPanel } from '@/components/label-system/OptimizationPanel';
 import { PrinterManagementTab } from '@/components/label-system/PrinterManagementTab';
 import { LabelAnalyticsDashboard } from '@/components/label-system/LabelAnalyticsDashboard';
 import { LabelManualTab } from '@/components/label-system/LabelManualTab';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import type { LabelTemplate } from '@/types/label-system';
 
 const DEMO_TEMPLATE: LabelTemplate = {
@@ -28,12 +29,11 @@ export default function LabelSystem() {
 
   return (
     <div className="p-4 md:p-6 space-y-5 page-enter">
-      <div>
-        <h1 className="display text-xl tabular-nums tracking-tight text-foreground">Sistema de Etiquetas</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Gerencie etiquetas, gere impressões e acompanhe a fila — integrado às ordens de produção
-        </p>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="SISTEMA · Etiquetas"
+        title="Sistema de Etiquetas"
+        description="Gerencie etiquetas, gere impressões e acompanhe a fila — integrado às ordens de produção"
+      />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="flex-wrap">

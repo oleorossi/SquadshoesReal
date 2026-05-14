@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useLowStockAlerts } from '@/hooks/useLowStockAlerts';
 import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 /**
  * Página de Alertas de Estoque
@@ -52,38 +53,31 @@ export default function StockAlerts() {
   return (
     <AppLayout>
       <div className="space-y-5 page-enter">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="display text-xl tracking-tight flex items-center gap-2">
-              <BellRing className="h-5 w-5 text-primary" />
-              Alertas de Estoque
-            </h1>
-            <p className="text-sm text-muted-foreground max-w-3xl">
-              Produtos abaixo do estoque mínimo e solados com déficit por numeração. Configure
-              os limites em <span className="font-medium">min_stock</span> (geral) ou{' '}
-              <span className="font-medium">min_stock_grade</span> (por numeração) no cadastro
-              de cada produto.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Badge variant={totalAlerts > 0 ? 'destructive' : 'outline'} className="gap-1">
-              <AlertTriangle className="h-3 w-3" />
-              {totalAlerts} alerta{totalAlerts === 1 ? '' : 's'}
-            </Badge>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                qc.invalidateQueries({ queryKey: ['low-stock-alerts'] });
-                refetch();
-              }}
-              disabled={isFetching}
-            >
-              <RefreshCw className={cn('h-3.5 w-3.5 mr-1.5', isFetching && 'animate-spin')} />
-              Atualizar
-            </Button>
-          </div>
-        </div>
+        <EditorialPageHeader
+          sectionLabel="ESTOQUE · Alertas"
+          title="Alertas de Estoque"
+          description="Produtos abaixo do estoque mínimo e solados com déficit por numeração. Configure os limites em min_stock (geral) ou min_stock_grade (por numeração) no cadastro de cada produto."
+          actions={
+            <>
+              <Badge variant={totalAlerts > 0 ? 'destructive' : 'outline'} className="gap-1">
+                <AlertTriangle className="h-3 w-3" />
+                {totalAlerts} alerta{totalAlerts === 1 ? '' : 's'}
+              </Badge>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  qc.invalidateQueries({ queryKey: ['low-stock-alerts'] });
+                  refetch();
+                }}
+                disabled={isFetching}
+              >
+                <RefreshCw className={cn('h-3.5 w-3.5 mr-1.5', isFetching && 'animate-spin')} />
+                Atualizar
+              </Button>
+            </>
+          }
+        />
 
         <Card>
           <CardHeader className="pb-3">

@@ -12,6 +12,7 @@ import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
 import { useOrderStraps } from '@/hooks/useOrderStraps';
  import { buildGroupedReportSummary } from '@/lib/groupedReportSummary';
 import { SignedImage } from '@/components/ui/signed-image';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
  // Ordem canônica pós PR1-PR3. Setores legacy ('corte','mesa') mapeados para
  // os canônicos via alias abaixo. Todos backPath agora apontam para o hub
@@ -246,25 +247,22 @@ ${styles}
   return (
     <AppLayout printMode>
       <div className="mx-auto max-w-7xl space-y-6 print:space-y-2 print-a4-portrait">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between print:hidden">
-          <div className="flex items-center gap-3">
-            <Button variant="outline" size="icon" onClick={() => navigate(sector.backPath)} aria-label={`Voltar para ${sector.label}`}>
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <div>
-              <h1 className="display text-xl tracking-tight">
-                {sector.emoji} Resumo Agrupado — {sector.label}
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                Visualize o agrupamento antes de imprimir.
-              </p>
-            </div>
-          </div>
-
-          <Button onClick={handlePrint} className="gap-2">
-            <Printer className="h-4 w-4" />
-            Imprimir
+        <div className="print:hidden flex items-start gap-3">
+          <Button variant="outline" size="icon" className="mt-1 shrink-0" onClick={() => navigate(sector.backPath)} aria-label={`Voltar para ${sector.label}`}>
+            <ArrowLeft className="h-4 w-4" />
           </Button>
+          <EditorialPageHeader
+            className="flex-1"
+            sectionLabel={`RELATÓRIOS · ${sector.label}`}
+            title={`${sector.emoji} Resumo Agrupado — ${sector.label}`}
+            description="Visualize o agrupamento antes de imprimir."
+            actions={
+              <Button onClick={handlePrint} className="gap-2">
+                <Printer className="h-4 w-4" />
+                Imprimir
+              </Button>
+            }
+          />
         </div>
 
         <div className="hidden print:block border-b border-border pb-4">

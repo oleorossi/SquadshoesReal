@@ -26,6 +26,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Funnel as Filter, Plus } from '@phosphor-icons/react';
 import { Corte, Costura, Montagem, Acabamento, Embalagem } from '@/components/icons/SectorIcons';
 import { Button } from '@/components/ui/button';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 const STAGES = [
   { key: 'CORTE',      icon: Corte,      colorVar: 'var(--stage-cut)',  label: 'Corte' },
@@ -116,18 +117,11 @@ export default function ProductionFlow() {
   return (
     <div className="space-y-5 page-enter">
       {/* Header editorial */}
-      <div className="flex items-end justify-between gap-4 flex-wrap">
-        <div>
-          <div className="eyebrow flex items-center gap-2">
-            <span className="live-dot" />
-            Operações · Fluxo de Produção
-          </div>
-          <h1 className="display text-2xl mt-2 sm:text-3xl">Onde está cada ordem</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Quadro tipo kanban: cada OP cai na coluna do seu estágio atual. Vermelho = atraso.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
+      <EditorialPageHeader
+        sectionLabel="PRODUÇÃO · Fluxo"
+        title="Onde está cada ordem"
+        description="Quadro tipo kanban: cada OP cai na coluna do seu estágio atual. Vermelho = atraso."
+        actions={<>
           <Button variant="outline" size="sm" className="gap-1.5">
             <Filter className="h-3.5 w-3.5" /> Filtrar
           </Button>
@@ -135,8 +129,8 @@ export default function ProductionFlow() {
           <Button size="sm" className="gap-1.5">
             <Plus className="h-3.5 w-3.5" /> Nova OP
           </Button>
-        </div>
-      </div>
+        </>}
+      />
 
       {/* KPIs por estágio */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">

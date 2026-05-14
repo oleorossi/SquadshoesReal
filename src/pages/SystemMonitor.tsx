@@ -18,6 +18,7 @@ import { intelligentCache } from '@/services/cacheService';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 const CHART_COLORS = ['#0EA5E9', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
 
@@ -115,17 +116,16 @@ export default function SystemMonitor() {
 
   return (
     <div className="space-y-5 page-enter">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="display text-xl tracking-tight flex items-center gap-2">
-            <Activity className="h-6 w-6 text-primary" />Monitor do Sistema
-          </h1>
-          <p className="text-sm text-muted-foreground">Performance, segurança e auditoria em tempo real</p>
-        </div>
-        <Button variant="outline" size="sm" className="gap-1.5" onClick={() => refetchAudit()}>
-          <RefreshCw className="h-3.5 w-3.5" />Atualizar
-        </Button>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="SISTEMA · Monitor"
+        title="Monitor do Sistema"
+        description="Performance, segurança e auditoria em tempo real"
+        actions={
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => refetchAudit()}>
+            <RefreshCw className="h-3.5 w-3.5" />Atualizar
+          </Button>
+        }
+      />
 
       <Tabs defaultValue="performance" className="space-y-4">
         <TabsList>

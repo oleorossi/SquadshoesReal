@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import PageHeader from '@/components/layout/PageHeader';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -183,22 +184,12 @@ export default function LeadTime() {
 
   return (
     <div className="space-y-5 page-enter">
-      <div className="flex items-center justify-between">
-        <div className="space-y-1">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-primary/10 rounded-lg">
-              <Clock className="h-6 w-6 text-primary" />
-            </div>
-            <div>
-              <h2 className="display text-xl">Configuração de Lead Times Padrão</h2>
-              <p className="text-sm text-muted-foreground">
-                Tempos de produção por categoria, usados como fallback quando a Ficha Técnica não possui tempos definidos.
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="flex justify-end">
-        <Dialog open={open} onOpenChange={(v) => (v ? setOpen(true) : handleClose())}>
+      <EditorialPageHeader
+        sectionLabel="PRODUÇÃO · Lead Time"
+        title="Configuração de Lead Times Padrão"
+        description="Tempos de produção por categoria, usados como fallback quando a Ficha Técnica não possui tempos definidos."
+        actions={
+          <Dialog open={open} onOpenChange={(v) => (v ? setOpen(true) : handleClose())}>
             <DialogTrigger asChild>
               <Button onClick={handleOpenNew}>
                 <Plus className="h-4 w-4 mr-2" /> Novo padrão
@@ -396,8 +387,8 @@ export default function LeadTime() {
               </form>
             </DialogContent>
           </Dialog>
-        </div>
-      </div>
+        }
+      />
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Como o sistema decide os dias</CardTitle>

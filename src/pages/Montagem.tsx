@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { SignedImage } from '@/components/ui/signed-image';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Wrench, Printer, Funnel as Filter, CheckSquare, Stack as Layers } from '@phosphor-icons/react';
+import { Printer, Funnel as Filter, CheckSquare, Stack as Layers } from '@phosphor-icons/react';
 import { WorkSheetSettingsButton } from '@/components/production/WorkSheetSettingsDialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -22,6 +22,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import OrderSearchBar from '@/components/production/OrderSearchBar';
 import { useOrderStraps } from '@/hooks/useOrderStraps';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 const SIZES = ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
 
@@ -217,17 +218,11 @@ export default function Montagem() {
 
   return (
     <div className="space-y-5 page-enter">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="display text-xl tracking-tight flex items-center gap-2">
-            <Wrench className="h-6 w-6 text-primary" />
-            Setor de Montagem
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Gestão e controle das ordens de produção na etapa de montagem
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
+      <EditorialPageHeader
+        sectionLabel="PRODUÇÃO · Montagem"
+        title="Setor de Montagem"
+        description="Gestão e controle das ordens de produção na etapa de montagem"
+        actions={<>
           {selectedOrders.size > 0 && (
             <>
               <Button
@@ -273,8 +268,8 @@ export default function Montagem() {
             <Printer className="h-3.5 w-3.5 mr-1" /> Fichas Operador {selectedOrders.size > 0 ? `(${selectedOrders.size})` : ''}
           </Button>
           <OrderSearchBar value={searchQuery} onChange={setSearchQuery} />
-        </div>
-      </div>
+        </>}
+      />
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">

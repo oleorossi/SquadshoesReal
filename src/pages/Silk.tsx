@@ -23,6 +23,7 @@ import OrderSearchBar from '@/components/production/OrderSearchBar';
 import { useOrderStraps } from '@/hooks/useOrderStraps';
 import { useProductionTransitions } from '@/hooks/useProductionTransitions';
 import { supabase } from '@/integrations/supabase/client';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 
 
@@ -412,17 +413,11 @@ export default function Silk() {
   return (
     
       <div className="space-y-5 page-enter">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div>
-            <h1 className="display text-xl tracking-tight flex items-center gap-2">
-              <span className="text-2xl">{SECTOR_EMOJI}</span>
-              Setor de Silk
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Demanda de silks por arte e cor de solado
-            </p>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
+        <EditorialPageHeader
+          sectionLabel="PRODUÇÃO · Silk"
+          title="Setor de Silk"
+          description="Demanda de silks por arte e cor de solado"
+          actions={<>
             {selectedOrders.size > 0 && (
               <Button 
                 size="sm" 
@@ -561,8 +556,8 @@ export default function Silk() {
               <Printer className="h-3.5 w-3.5 mr-1" /> Fichas Operador {selectedOrders.size > 0 ? `(${selectedOrders.size})` : ''}
             </Button>
             </div>
-          </div>
-        </div>
+          </>}
+        />
 
         {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">

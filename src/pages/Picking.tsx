@@ -13,6 +13,7 @@ import { Progress } from '@/components/ui/progress';
 import { ClipboardText as ClipboardCheck, Plus, ArrowLeft, Scan as ScanLine, CircleNotch as Loader2, CheckCircle as CheckCircle2, Trash as Trash2, Warning as AlertTriangle, Play, X, CaretRight as ChevronRight } from '@phosphor-icons/react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 type PickingStatus = 'aberta' | 'em_separacao' | 'conferida' | 'divergencia' | 'concluida' | 'cancelada';
 
@@ -61,20 +62,16 @@ function PickingList({ onOpen, onCreate }: { onOpen: (id: string) => void; onCre
 
   return (
     <>
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <ClipboardCheck className="h-7 w-7 text-primary mt-1" />
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Picking · Separação</h1>
-            <p className="text-sm text-muted-foreground">
-              Sessões de separação com bipagem EAN. Selecione um pedido pra começar.
-            </p>
-          </div>
-        </div>
-        <Button onClick={onCreate} className="gap-1.5">
-          <Plus className="h-4 w-4" /> Nova Sessão
-        </Button>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="LOGÍSTICA · Separação"
+        title="Picking · Separação"
+        description="Sessões de separação com bipagem EAN. Selecione um pedido pra começar."
+        actions={
+          <Button onClick={onCreate} className="gap-1.5">
+            <Plus className="h-4 w-4" /> Nova Sessão
+          </Button>
+        }
+      />
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Carregando…</p>

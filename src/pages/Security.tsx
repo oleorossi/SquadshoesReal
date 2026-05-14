@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { ShieldCheck, Lock, Eye, Key as KeyRound, ArrowsClockwise as RefreshCcw } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 export default function Security() {
   const qc = useQueryClient();
@@ -61,13 +62,11 @@ export default function Security() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start gap-3">
-        <ShieldCheck className="h-7 w-7 text-primary mt-1" />
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Segurança</h1>
-          <p className="text-sm text-muted-foreground">Política de senhas · MFA · mascaramento</p>
-        </div>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="SISTEMA · Segurança"
+        title="Segurança"
+        description="Política de senhas · MFA · mascaramento"
+      />
 
       <Card>
         <CardHeader className="pb-2">

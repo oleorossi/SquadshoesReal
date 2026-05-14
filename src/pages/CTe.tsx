@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Truck, Plus, CheckCircle, Trash as Trash2, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 type CteStatus = 'rascunho' | 'autorizado' | 'rejeitado' | 'cancelado';
 
@@ -99,21 +100,16 @@ export default function CTe() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <Truck className="h-7 w-7 text-primary mt-1" />
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">CT-e · Conhecimento de Transporte</h1>
-            <p className="text-sm text-muted-foreground">
-              Documento fiscal de frete contratado. Esta UI grava o rascunho;
-              a autorização junto à SEFAZ é registrada manualmente após transmissão.
-            </p>
-          </div>
-        </div>
-        <Button onClick={() => setCreating(true)} className="gap-1.5">
-          <Plus className="h-4 w-4" /> Novo CT-e
-        </Button>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="FISCAL · CT-e"
+        title="CT-e · Conhecimento de Transporte"
+        description="Documento fiscal de frete contratado. Esta UI grava o rascunho; a autorização junto à SEFAZ é registrada manualmente após transmissão."
+        actions={
+          <Button onClick={() => setCreating(true)} className="gap-1.5">
+            <Plus className="h-4 w-4" /> Novo CT-e
+          </Button>
+        }
+      />
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Carregando…</p>

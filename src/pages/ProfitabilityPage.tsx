@@ -4,6 +4,7 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { EditorialPageHeader } from "@/components/layout/EditorialPageHeader";
 
 const BRL = (n: number) =>
   (n ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -13,7 +14,10 @@ export default function ProfitabilityPage() {
 
   return (
     <div className="p-6 space-y-5 page-enter">
-      <h1 className="text-xl font-semibold">Lucratividade por Pedido</h1>
+      <EditorialPageHeader
+        sectionLabel="CUSTOS · Rentabilidade"
+        title="Lucratividade por Pedido"
+      />
       <Card>
         <CardHeader>
           <CardTitle>Últimos pedidos com custo calculado</CardTitle>

@@ -5,6 +5,7 @@ import { ShoppingCart, ChartBar as BarChart3, Calculator, CalendarBlank as Calen
 import { lazy, Suspense } from 'react';
 import { CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { useSearchParams } from 'react-router-dom';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 const PurchasePlanningWizard = lazy(() => import('@/components/financial/PurchasePlanningWizard'));
 const CostAnalyticsPanel = lazy(() => import('@/components/financial/CostAnalyticsPanel'));
@@ -31,10 +32,11 @@ export default function PurchasePlanning() {
 
   return (
     <div className="space-y-5 page-enter">
-      <div>
-        <h1 className="display text-xl tracking-tight">Planejamento de Compras</h1>
-        <p className="text-muted-foreground">Análise de demanda, plano semanal, projeções MRP e analytics de custos — tudo em um só lugar</p>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="SUPRIMENTOS · Planejamento de Compras"
+        title="Planejamento de Compras"
+        description="Análise de demanda, plano semanal, projeções MRP e analytics de custos — tudo em um só lugar"
+      />
 
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <HubTabsList tabs={[

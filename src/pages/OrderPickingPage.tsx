@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { READY_TO_SHIP_STATUSES } from '@/lib/logistics/routeManagement';
 import { getISOWeekFromString, fmtDayMonthBR } from '@/lib/isoWeek';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -264,26 +265,22 @@ export default function OrderPickingPage() {
   return (
     <div className="space-y-5 page-enter p-6">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="display text-xl tracking-tight flex items-center gap-2">
-            <PackageCheck className="w-6 h-6 text-primary" />
-            Conferência de Saída
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Pedidos com produção concluída aguardando conferência e expedição
-          </p>
-        </div>
-        {selected.size > 0 && (
-          <Button
-            onClick={() => confirmShipment.mutate(Array.from(selected))}
-            disabled={confirmShipment.isPending}
-          >
-            <Truck className="w-4 h-4 mr-1.5" />
-            Registrar expedição ({selected.size})
-          </Button>
-        )}
-      </div>
+      <EditorialPageHeader
+        sectionLabel="LOGÍSTICA · Separação"
+        title="Conferência de Saída"
+        description="Pedidos com produção concluída aguardando conferência e expedição"
+        actions={
+          selected.size > 0 ? (
+            <Button
+              onClick={() => confirmShipment.mutate(Array.from(selected))}
+              disabled={confirmShipment.isPending}
+            >
+              <Truck className="w-4 h-4 mr-1.5" />
+              Registrar expedição ({selected.size})
+            </Button>
+          ) : undefined
+        }
+      />
 
       {/* KPI strip */}
       <div className="flex gap-3 flex-wrap">

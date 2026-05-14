@@ -10,9 +10,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Lock } from '@phosphor-icons/react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 const REQ_STATUS: Record<string, string> = {
   aberta: 'bg-blue-100 text-blue-700',
@@ -63,13 +63,11 @@ export default function LGPD() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start gap-3">
-        <Lock className="h-7 w-7 text-primary mt-1" />
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">LGPD</h1>
-          <p className="text-sm text-muted-foreground">Consentimentos, retenção, acesso, retificação, exclusão e portabilidade</p>
-        </div>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="SISTEMA · LGPD"
+        title="LGPD"
+        description="Consentimentos, retenção, acesso, retificação, exclusão e portabilidade"
+      />
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>

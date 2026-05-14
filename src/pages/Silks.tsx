@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { PaintBrush as Paintbrush, Footprints, User, Users as UsersIcon } from '@phosphor-icons/react';
+import { Footprints, User, Users as UsersIcon } from '@phosphor-icons/react';
 import { SilkGlobalPanel } from '@/components/technical-sheets/SilkGlobalPanel';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { cn } from '@/lib/utils';
 
 type Scope = 'default' | 'client' | 'economic_group';
@@ -44,16 +45,11 @@ export default function Silks() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start gap-3">
-        <Paintbrush className="h-7 w-7 text-primary mt-1" />
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Silks</h1>
-          <p className="text-sm text-muted-foreground">
-            Gerencie as silks (estampas que vão coladas na forração) por solado, por cliente ou por
-            grupo econômico. Cliente {'>'} Grupo {'>'} Solado na hora de aplicar nas fichas.
-          </p>
-        </div>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="ENGENHARIA · Silks"
+        title="Silks"
+        description="Gerencie as silks (estampas que vão coladas na forração) por solado, por cliente ou por grupo econômico. Cliente > Grupo > Solado na hora de aplicar nas fichas."
+      />
 
       <div className="grid grid-cols-[220px_1fr] gap-4">
         {/* Aba lateral */}

@@ -17,6 +17,7 @@ import { SoleTechnicalEditDialog } from '@/components/inventory/SoleTechnicalEdi
 import { SoleConsumptionExportButton } from '@/components/technical-sheets/SoleConsumptionExportButton';
 import { SoleConsumptionHistoryDrawer, HistoryButton } from '@/components/technical-sheets/SoleConsumptionHistoryDrawer';
 import { PackagingTab } from '@/components/technical-sheets/PackagingTab';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { cn } from '@/lib/utils';
 import { productGroupingKey, normalizeProductName } from '@/lib/productNameNormalization';
 
@@ -89,33 +90,28 @@ export default function BaseConsumption() {
 
   return (
     <div className="space-y-5 page-enter">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="display text-xl tracking-tight flex items-center gap-2">
-            <Footprints className="h-5 w-5 text-primary" />
-            Gestão de Solados
-          </h1>
-          <p className="text-sm text-muted-foreground max-w-3xl">
-            Configure em um só lugar o consumo base, especificações por numeração, artes de silk e
-            dados técnicos de cada modelo de solado.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5 text-xs"
-            onClick={() => setSilkGlobalOpen(true)}
-          >
-            <Layers className="h-3.5 w-3.5" />
-            Silk Global
-          </Button>
-          <Badge variant="outline" className="gap-1.5 text-xs">
-            <Info className="h-3 w-3" />
-            {soleModels.length} modelo{soleModels.length === 1 ? '' : 's'} de solado
-          </Badge>
-        </div>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="ENGENHARIA · Solados"
+        title="Gestão de Solados"
+        description="Configure em um só lugar o consumo base, especificações por numeração, artes de silk e dados técnicos de cada modelo de solado."
+        actions={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-xs"
+              onClick={() => setSilkGlobalOpen(true)}
+            >
+              <Layers className="h-3.5 w-3.5" />
+              Silk Global
+            </Button>
+            <Badge variant="outline" className="gap-1.5 text-xs">
+              <Info className="h-3 w-3" />
+              {soleModels.length} modelo{soleModels.length === 1 ? '' : 's'} de solado
+            </Badge>
+          </>
+        }
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-[300px,1fr] gap-4">
         {/* Sidebar: lista de modelos */}

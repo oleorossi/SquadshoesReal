@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { CircleNotch as Loader2, Users, TrendUp as TrendingUp, TrendDown as TrendingDown } from '@phosphor-icons/react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend } from 'recharts';
 import { useEmployees } from '@/hooks/useEmployees';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 function monthKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -100,22 +101,18 @@ export default function HeadcountReport() {
 
   return (
     <div className="space-y-5 page-enter">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="display text-xl tracking-tight flex items-center gap-2">
-            <Users className="h-5 w-5 text-primary" />
-            Headcount evolutivo
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Evolução do quadro de funcionários por mês — admitidos, dispensados, saldo líquido.
-          </p>
-        </div>
-        <div className="flex gap-2 items-center">
-          <Input type="month" value={from} onChange={e => setFrom(e.target.value)} className="w-40" />
-          <span className="text-muted-foreground">→</span>
-          <Input type="month" value={to} onChange={e => setTo(e.target.value)} className="w-40" />
-        </div>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="RH · Headcount"
+        title="Headcount evolutivo"
+        description="Evolução do quadro de funcionários por mês — admitidos, dispensados, saldo líquido."
+        actions={
+          <>
+            <Input type="month" value={from} onChange={e => setFrom(e.target.value)} className="w-40" />
+            <span className="text-muted-foreground">→</span>
+            <Input type="month" value={to} onChange={e => setTo(e.target.value)} className="w-40" />
+          </>
+        }
+      />
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Warning as AlertTriangle, CheckCircle as CheckCircle2, ArrowsClockwise as RefreshCw, Database, Info } from '@phosphor-icons/react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 interface ExampleRow {
   id: string;
@@ -67,18 +68,17 @@ export default function UnitAudit() {
   return (
     <AppLayout>
       <div className="space-y-5 page-enter">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div>
-            <h1 className="display text-xl tracking-tight">Auditoria de Unidades</h1>
-            <p className="text-sm text-muted-foreground">
-              Detecta divergências de unidade de medida entre o frontend e o backend, com exemplos de registros afetados.
-            </p>
-          </div>
-          <Button onClick={load} disabled={loading} size="sm" className="gap-1.5">
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-            Reexecutar
-          </Button>
-        </div>
+        <EditorialPageHeader
+          sectionLabel="ESTOQUE · Auditoria de Unidades"
+          title="Auditoria de Unidades"
+          description="Detecta divergências de unidade de medida entre o frontend e o backend, com exemplos de registros afetados."
+          actions={
+            <Button onClick={load} disabled={loading} size="sm" className="gap-1.5">
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+              Reexecutar
+            </Button>
+          }
+        />
 
         {error && (
           <Alert variant="destructive">

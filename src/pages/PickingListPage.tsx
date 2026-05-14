@@ -15,6 +15,7 @@ import { usePersistedState } from '@/hooks/usePersistedState';
 import { cn } from '@/lib/utils';
 import { calculateBomForOrders, type ConsumptionRow, COMPONENT_ORDER, formatUnit } from '@/lib/bomConsumption';
 import { toast } from 'sonner';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
@@ -325,29 +326,29 @@ export default function PickingListPage() {
   return (
     <div className="w-full space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-2">
-          <ClipboardList className="h-6 w-6 text-primary" />
-          <h1 className="display text-xl">Lista de Separação</h1>
-          {reportTitle && (
-            <Badge variant="secondary" className="text-xs max-w-xs truncate">{reportTitle}</Badge>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {pickedItems > 0 && (
-            <Button size="sm" variant="outline" className="gap-1.5 text-muted-foreground" onClick={clearPicked}>
-              <RotateCcw className="h-3.5 w-3.5" />
-              Limpar progresso
-            </Button>
-          )}
-          {rows.length > 0 && (
-            <Button size="sm" variant="outline" className="gap-1.5" onClick={handlePrint}>
-              <Printer className="h-4 w-4" />
-              Imprimir
-            </Button>
-          )}
-        </div>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="LOGÍSTICA · Separação"
+        title="Lista de Separação"
+        actions={
+          <>
+            {reportTitle && (
+              <Badge variant="secondary" className="text-xs max-w-xs truncate">{reportTitle}</Badge>
+            )}
+            {pickedItems > 0 && (
+              <Button size="sm" variant="outline" className="gap-1.5 text-muted-foreground" onClick={clearPicked}>
+                <RotateCcw className="h-3.5 w-3.5" />
+                Limpar progresso
+              </Button>
+            )}
+            {rows.length > 0 && (
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={handlePrint}>
+                <Printer className="h-4 w-4" />
+                Imprimir
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {/* Filter modes */}
       <Card>

@@ -15,6 +15,7 @@ import { useProducts } from '@/hooks/useProducts';
 import { Switch } from '@/components/ui/switch';
 import SupplierPanel from '@/components/groups/SupplierPanel';
 import GroupEditDialog from '@/components/groups/GroupEditDialog';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 export default function Groups() {
   const { data: groups = [], isLoading, isError } = useGroups();
@@ -72,16 +73,17 @@ export default function Groups() {
   return (
     <AppLayout>
       <div className="space-y-5 page-enter">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="display text-xl tracking-tight">Grupos de Produtos</h2>
-            <p className="text-sm text-muted-foreground">Organize produtos em grupos com fornecedores, materiais e informações técnicas</p>
-          </div>
-          <Button onClick={openAdd} className="gap-2">
-            <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">Novo Grupo</span>
-          </Button>
-        </div>
+        <EditorialPageHeader
+          sectionLabel="ENGENHARIA · Grupos"
+          title="Grupos de Produtos"
+          description="Organize produtos em grupos com fornecedores, materiais e informações técnicas"
+          actions={
+            <Button onClick={openAdd} className="gap-2">
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">Novo Grupo</span>
+            </Button>
+          }
+        />
 
         <div className="rounded-lg border bg-card overflow-hidden">
           <Table>

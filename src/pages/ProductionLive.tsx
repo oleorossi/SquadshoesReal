@@ -22,6 +22,7 @@ import { useOrders } from '@/hooks/useOrders';
 import { useAllOrderStages, OrderStage } from '@/hooks/useOrderStages';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 type Order = {
   id: string;
@@ -137,18 +138,15 @@ export default function ProductionLive() {
   return (
     <AppLayout>
       <div className="space-y-5 pb-12">
-        {/* Header */}
-        <div className="flex items-baseline justify-between gap-4">
-          <div>
-            <div className="eyebrow flex items-center gap-2">
-              <span className="live-dot" /> Produção · ao vivo
+        <EditorialPageHeader
+          sectionLabel="PRODUÇÃO · Ao Vivo"
+          title="Monitor de chão"
+          actions={
+            <div className="text-xs text-muted-foreground font-mono">
+              {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
             </div>
-            <h1 className="display text-3xl mt-2">Monitor de chão</h1>
-          </div>
-          <div className="text-xs text-muted-foreground font-mono">
-            {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-          </div>
-        </div>
+          }
+        />
 
         {/* Hero: ritmo agregado */}
         <Card className="slash-top">

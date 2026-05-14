@@ -14,6 +14,8 @@ import { useSaleOrders } from '@/hooks/useSaleOrders';
 import { useProductionTransitions } from '@/hooks/useProductionTransitions';
 import { toast } from 'sonner';
 import OrderSearchBar from '@/components/production/OrderSearchBar';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { RefChip } from '@/components/ui/ref-chip';
 
 const SECTOR_NAME = 'Costura';
 const SECTOR_EMOJI = '🪡';
@@ -109,16 +111,11 @@ export default function SetorCostura() {
 
   return (
     <div className="space-y-5 page-enter">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="display text-xl tracking-tight flex items-center gap-2">
-            {SECTOR_EMOJI} Setor de {SECTOR_NAME}
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Costura palmilha + forração e costura do cabedal.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+      <EditorialPageHeader
+        sectionLabel="PRODUÇÃO · Costura"
+        title={`Setor de ${SECTOR_NAME}`}
+        description="Costura palmilha + forração e costura do cabedal."
+        actions={<>
           <Button
             size="sm"
             onClick={handleFinish}
@@ -139,8 +136,8 @@ export default function SetorCostura() {
             </SelectContent>
           </Select>
           <OrderSearchBar value={searchQuery} onChange={setSearchQuery} />
-        </div>
-      </div>
+        </>}
+      />
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <Card>
@@ -194,8 +191,10 @@ export default function SetorCostura() {
                         onCheckedChange={() => toggleOrder(order.id)}
                       />
                       <div>
-                        <CardTitle className="text-sm">
-                          {order.order_number} — {ref?.code} {ref?.name}
+                        <CardTitle className="text-sm flex items-center gap-2">
+                          <span>{order.order_number}</span>
+                          {ref?.code && <RefChip code={ref.code} />}
+                          <span className="font-normal text-muted-foreground">{ref?.name}</span>
                         </CardTitle>
                         {so && (
                           <p className="text-[10px] text-muted-foreground mt-0.5">

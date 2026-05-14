@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { CircleNotch as Loader2, ShoppingCart, Warning as AlertTriangle, TrendUp as TrendingUp, Package } from '@phosphor-icons/react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 function useAllSheetMaterials() {
   return useQuery({
@@ -114,12 +115,11 @@ export default function WeeklyPurchasingPlan() {
 
   return (
     <div className="space-y-5 page-enter">
-      <div>
-        <h1 className="display text-xl tracking-tight">Plano Semanal de Compras</h1>
-        <p className="text-muted-foreground">
-          Motor cascata: simula consumo semana a semana e indica o que comprar
-        </p>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="SUPRIMENTOS · Planejamento de Compras"
+        title="Plano Semanal de Compras"
+        description="Motor cascata: simula consumo semana a semana e indica o que comprar"
+      />
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

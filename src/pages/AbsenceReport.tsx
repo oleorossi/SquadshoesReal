@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { CircleNotch as Loader2, Warning as AlertTriangle, Plus, Trash as Trash2 } from '@phosphor-icons/react';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { useEmployees } from '@/hooks/useEmployees';
 import {
   useAbsences, useUpsertAbsence, useDeleteAbsence,
@@ -116,25 +117,20 @@ export default function AbsenceReport() {
 
   return (
     <div className="space-y-5 page-enter">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="display text-xl tracking-tight flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-primary" />
-            Absenteísmo
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Atestados, faltas e licenças. Taxa = (dias ausentes / dias úteis × ativos) × 100.
-          </p>
-        </div>
-        <div className="flex gap-2 items-center">
-          <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="w-40" />
-          <span className="text-muted-foreground">→</span>
-          <Input type="date" value={to} onChange={e => setTo(e.target.value)} className="w-40" />
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button><Plus className="h-4 w-4 mr-2" />Nova ausência</Button>
-            </DialogTrigger>
-            <DialogContent>
+      <EditorialPageHeader
+        sectionLabel="RH · Absenteísmo"
+        title="Absenteísmo"
+        description="Atestados, faltas e licenças. Taxa = (dias ausentes / dias úteis × ativos) × 100."
+        actions={
+          <>
+            <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="w-40" />
+            <span className="text-muted-foreground">→</span>
+            <Input type="date" value={to} onChange={e => setTo(e.target.value)} className="w-40" />
+            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+              <DialogTrigger asChild>
+                <Button><Plus className="h-4 w-4 mr-2" />Nova ausência</Button>
+              </DialogTrigger>
+              <DialogContent>
               <DialogHeader><DialogTitle>Registrar ausência</DialogTitle></DialogHeader>
               <div className="space-y-3">
                 <div>
@@ -176,10 +172,11 @@ export default function AbsenceReport() {
                   Salvar
                 </Button>
               </div>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
+              </DialogContent>
+            </Dialog>
+          </>
+        }
+      />
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

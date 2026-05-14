@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { SignedImage } from '@/components/ui/signed-image';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Sparkle as Sparkles, Printer, Funnel as Filter, CheckSquare, Stack as Layers } from '@phosphor-icons/react';
+import { Printer, Funnel as Filter, CheckSquare, Stack as Layers } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,6 +22,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useProductionTransitions } from '@/hooks/useProductionTransitions';
 import OrderSearchBar from '@/components/production/OrderSearchBar';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 import { useOrderStraps } from '@/hooks/useOrderStraps';
 
@@ -438,17 +439,11 @@ export default function Acabamento() {
   return (
     
       <div className="space-y-5 page-enter">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div>
-            <h1 className="display text-xl tracking-tight flex items-center gap-2">
-              <Sparkles className="h-6 w-6 text-primary" />
-              Setor de Acabamento
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Fichas de controle com checklist de pares para acabamento
-            </p>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
+        <EditorialPageHeader
+          sectionLabel="PRODUÇÃO · Acabamento"
+          title="Setor de Acabamento"
+          description="Fichas de controle com checklist de pares para acabamento"
+          actions={<>
             {selectedOrders.size > 0 && (
               <>
                 <Button
@@ -483,8 +478,8 @@ export default function Acabamento() {
               </SelectContent>
             </Select>
            <OrderSearchBar value={searchQuery} onChange={setSearchQuery} />
-          </div>
-        </div>
+          </>}
+        />
 
         {/* Stats - dynamic based on selection */}
         {(() => {

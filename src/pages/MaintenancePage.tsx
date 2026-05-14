@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Wrench, Plus, Warning as AlertTriangle, CheckCircle as CheckCircle2, Clock, Gear as Settings2, ClockCounterClockwise as History, ClipboardText as ClipboardList, Download, FileText } from '@phosphor-icons/react';
+import { Plus, Warning as AlertTriangle, CheckCircle as CheckCircle2, Clock, Gear as Settings2, ClockCounterClockwise as History, ClipboardText as ClipboardList, Download, FileText } from '@phosphor-icons/react';
 import { format, differenceInDays, isPast, isWithinInterval, startOfDay, endOfDay, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -18,6 +18,7 @@ import {
   type Equipment, type MaintenancePlan,
 } from "@/hooks/useMaintenance";
 import { exportCSV, exportPDF } from "@/lib/exportUtils";
+import { EditorialPageHeader } from "@/components/layout/EditorialPageHeader";
 
 function statusBadge(status: string) {
   const map: Record<string, { label: string; cls: string }> = {
@@ -247,14 +248,11 @@ export default function MaintenancePage() {
 
   return (
     <div className="space-y-5 page-enter">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="display text-xl tracking-tight flex items-center gap-2">
-            <Wrench className="h-6 w-6" /> Manutenção Preventiva
-          </h1>
-          <p className="text-sm text-muted-foreground">Controle de equipamentos e planos de manutenção</p>
-        </div>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="SISTEMA · Manutenção"
+        title="Manutenção Preventiva"
+        description="Controle de equipamentos e planos de manutenção"
+      />
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

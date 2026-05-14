@@ -17,6 +17,7 @@ import {
   Warning as AlertTriangle, ChartBar as BarChart3, ArrowRight,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 type ReportEntry = {
   slug: string;
@@ -113,15 +114,11 @@ export default function RelatoriosHub() {
   return (
     <div className="space-y-6 page-enter">
       {/* Header */}
-      <div>
-        <div className="eyebrow">Documentos · A4 print-ready</div>
-        <h1 className="display text-2xl mt-1.5 sm:text-3xl">Relatórios</h1>
-        <p className="text-sm text-muted-foreground mt-1 max-w-3xl">
-          Os 6 relatórios oficiais do redesign Novidade. Cada um abre em layout A4 pronto pra impressão
-          (botão "Imprimir" no topo dispara <code>window.print()</code> com regras <code>@page</code>).
-          Hoje todos com dados de exemplo — substituir por hooks reais quando necessário.
-        </p>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="RELATÓRIOS · Hub"
+        title="Relatórios"
+        description="Os 6 relatórios oficiais do redesign Novidade. Cada um abre em layout A4 pronto pra impressão — botão Imprimir no topo dispara window.print() com regras @page. Hoje todos com dados de exemplo."
+      />
 
       {/* Cards agrupados */}
       {Object.entries(grouped).map(([groupKey, items]) => (

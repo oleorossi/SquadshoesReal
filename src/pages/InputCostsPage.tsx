@@ -19,6 +19,7 @@ import {
   Tooltip, TooltipContent, TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { TrendUp as TrendingUp, TrendDown as TrendingDown, Minus, MagnifyingGlass as Search, CircleNotch as Loader2, Warning as AlertTriangle, ArrowsClockwise as RefreshCw, Package as PackageSearch } from '@phosphor-icons/react';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -217,27 +218,25 @@ export default function InputCostsPage() {
   return (
     <AppLayout>
       <div className="p-6 space-y-5 max-w-[1600px] mx-auto">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <h1 className="display text-xl">Custos de Insumos</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Valores de cada material — clique no custo atual para editar. Atualiza automaticamente com cada compra lançada.
-            </p>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-2 shrink-0"
-            onClick={() => {
-              qc.invalidateQueries({ queryKey: ['products'] });
-              qc.invalidateQueries({ queryKey: ['product_price_summary'] });
-            }}
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-            Atualizar
-          </Button>
-        </div>
+        <EditorialPageHeader
+          sectionLabel="CUSTOS · Insumos"
+          title="Custos de Insumos"
+          description="Valores de cada material — clique no custo atual para editar. Atualiza automaticamente com cada compra lançada."
+          actions={
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 shrink-0"
+              onClick={() => {
+                qc.invalidateQueries({ queryKey: ['products'] });
+                qc.invalidateQueries({ queryKey: ['product_price_summary'] });
+              }}
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Atualizar
+            </Button>
+          }
+        />
 
         {/* Filters */}
         <div className="flex flex-wrap gap-3 items-center">

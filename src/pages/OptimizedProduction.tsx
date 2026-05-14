@@ -8,6 +8,7 @@ import { apiService } from '@/lib/apiService';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { CircleNotch as Loader2 } from '@phosphor-icons/react';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 // Schema de validação robusto
 const ProductionSystemSchema = z.object({
@@ -251,12 +252,13 @@ const OptimizedProductionSystem: React.FC = () => {
     >
       
         <div className="space-y-6">
-          <div className="flex justify-between items-center">
-            <h1 className="display text-xl tracking-tight">Sistema de Produção Otimizado</h1>
-            <div className="flex gap-2">
+          <EditorialPageHeader
+            sectionLabel="PRODUÇÃO · Sistema"
+            title="Sistema de Produção Otimizado"
+            actions={
               <Button onClick={() => refetch()} variant="outline">Atualizar</Button>
-            </div>
-          </div>
+            }
+          />
 
           <Tabs value={selectedTab} onValueChange={(v: any) => setSelectedTab(v)}>
             <TabsList>

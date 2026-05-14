@@ -9,6 +9,7 @@ import {
   type NavigationIssue 
 } from '@/lib/navigationAudit';
 import { Badge } from '@/components/ui/badge';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 export default function NavigationAuditPage() {
   const [issues, setIssues] = useState<NavigationIssue[]>([]);
@@ -41,29 +42,28 @@ export default function NavigationAuditPage() {
 
   return (
     <div className="container mx-auto py-8 max-w-5xl space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" asChild className="-ml-2 h-8 px-2">
-              <Link to="/settings">
-                <ArrowLeft className="h-4 w-4 mr-1" />
-                Voltar
-              </Link>
-            </Button>
-          </div>
-          <h1 className="display text-3xl tracking-tight">Auditoria de Navegação</h1>
-          <p className="text-muted-foreground">
-            Verificação de consistência entre itens do menu lateral e regras de permissões.
-          </p>
-        </div>
-        <Button 
-          onClick={runAudit} 
-          disabled={isScanning}
-          className="gap-2"
-        >
-          <RefreshCw className={`h-4 w-4 ${isScanning ? 'animate-spin' : ''}`} />
-          Reexecutar Auditoria
+      <div>
+        <Button variant="ghost" size="sm" asChild className="-ml-2 h-8 px-2 mb-1">
+          <Link to="/settings">
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            Voltar
+          </Link>
         </Button>
+        <EditorialPageHeader
+          sectionLabel="SISTEMA · Auditoria"
+          title="Auditoria de Navegação"
+          description="Verificação de consistência entre itens do menu lateral e regras de permissões."
+          actions={
+            <Button
+              onClick={runAudit}
+              disabled={isScanning}
+              className="gap-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${isScanning ? 'animate-spin' : ''}`} />
+              Reexecutar Auditoria
+            </Button>
+          }
+        />
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">

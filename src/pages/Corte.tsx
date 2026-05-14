@@ -2,7 +2,7 @@
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import { SignedImage } from '@/components/ui/signed-image';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Scissors, Printer, Funnel as Filter, CheckCircle as CheckCircle2, Stack as Layers } from '@phosphor-icons/react';
+import { Printer, Funnel as Filter, CheckCircle as CheckCircle2, Stack as Layers } from '@phosphor-icons/react';
 import { WorkSheetSettingsButton } from '@/components/production/WorkSheetSettingsDialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -26,6 +26,8 @@ import { printCuttingGroupedReport } from '@/lib/printCuttingGroupedReport';
 import OrderSearchBar from '@/components/production/OrderSearchBar';
 import { useOrderStraps } from '@/hooks/useOrderStraps';
 import { getGradeTotal, getOrderTotalPairs } from '@/lib/cuttingCounts';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { RefChip } from '@/components/ui/ref-chip';
 
 const SIZES = ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
 
@@ -528,7 +530,9 @@ if (totalPairsAll !== palmTotal) {
                     <div>
                       <CardTitle className="text-sm flex items-center gap-2">
                         <span className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
-                        {order.order_number} — {ref?.code} {ref?.name}
+                        <span>{order.order_number}</span>
+                        {ref?.code && <RefChip code={ref.code} />}
+                        <span className="font-normal text-muted-foreground">{ref?.name}</span>
                         {(() => {
                           const info = getDeliveryInfo(order);
                           return info.deadline ? (
@@ -855,17 +859,11 @@ if (totalPairsAll !== palmTotal) {
     
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex flex-col xl:flex-row items-start xl:items-center justify-between gap-3">
-          <div className="shrink-0">
-            <h1 className="text-xl font-bold tracking-tight flex items-center gap-2 whitespace-nowrap">
-              <Scissors className="h-6 w-6 text-primary shrink-0" />
-              Setor de Corte Palmilha
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Demanda de corte por material, cor e numeração
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto">
+        <EditorialPageHeader
+          sectionLabel="PRODUÇÃO · Corte Palmilha"
+          title="Setor de Corte Palmilha"
+          description="Demanda de corte por material, cor e numeração"
+          actions={<>
             <Select value={filterStatus} onValueChange={setFilterStatus}>
               <SelectTrigger className="w-[140px] h-9 text-xs">
                 <Filter className="h-3.5 w-3.5 mr-1" />
@@ -1272,8 +1270,8 @@ if (totalPairsAll !== palmTotal) {
               Finalizar OP's selecionadas {selectedOrders.size > 0 && `(${selectedOrders.size})`}
             </Button>
             <OrderSearchBar value={searchQuery} onChange={setSearchQuery} />
-          </div>
-        </div>
+          </>}
+        />
 
         {/* Stats */}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-5">

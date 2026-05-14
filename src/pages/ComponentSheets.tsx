@@ -27,6 +27,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { SoleTechnicalDetails } from "@/components/technical-sheets/SoleTechnicalDetails";
 import { SolesComponentSheetTab } from "@/components/technical-sheets/SolesComponentSheetTab";
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 const SIZES_INFANTIL = [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36];
 const SIZES_ADULTO = [34, 35, 36, 37, 38, 39, 40];
@@ -224,27 +225,23 @@ const formatCurrency = (v: number) =>
       <div className="space-y-5 page-enter">
         {/* Header */}
         {!embedded && (
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="h-11 w-11 rounded-xl bg-primary/10 flex items-center justify-center">
-                <Layers className="h-6 w-6 text-primary" />
-              </div>
-              <div>
-                <h1 className="display text-xl tracking-tight text-foreground">Fichas de Componentes</h1>
-                <p className="text-sm text-muted-foreground">Consumo por par, dimensões e perdas de cada material</p>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setGroupEditOpen(true)} className="gap-2 shadow-sm">
-                <FolderEdit className="h-4 w-4" />
-                Edita Grupo
-              </Button>
-              <Button onClick={() => setDialogOpen(true)} className="gap-2 shadow-sm">
-                <Plus className="h-4 w-4" />
-                Nova Ficha
-              </Button>
-            </div>
-          </div>
+          <EditorialPageHeader
+            sectionLabel="ENGENHARIA · Fichas de Componente"
+            title="Fichas de Componentes"
+            description="Consumo por par, dimensões e perdas de cada material"
+            actions={
+              <>
+                <Button variant="outline" onClick={() => setGroupEditOpen(true)} className="gap-2 shadow-sm">
+                  <FolderEdit className="h-4 w-4" />
+                  Edita Grupo
+                </Button>
+                <Button onClick={() => setDialogOpen(true)} className="gap-2 shadow-sm">
+                  <Plus className="h-4 w-4" />
+                  Nova Ficha
+                </Button>
+              </>
+            }
+          />
         )}
 
          <Tabs 

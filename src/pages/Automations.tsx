@@ -15,6 +15,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Lightning as Zap, Plus, Play, Trash as Trash2, PencilSimple as Pencil, Copy, ShoppingCart, Package, CurrencyDollar as DollarSign, Truck, Factory, CheckCircle as CheckCircle2, XCircle, ArrowRight, Funnel as Filter, Bell, Envelope as Mail, FileText, ArrowsClockwise as RefreshCw, Gear as Settings2, Pulse as Activity, Stack as Layers, Eye, Warning as AlertTriangle, Clock, Webhook, BookOpen, TrendDown as TrendingDown, ArrowCounterClockwise as RotateCcw } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import {
   useAutomationWorkflows,
   useAddWorkflow,
@@ -289,17 +290,16 @@ export default function Automations() {
     <div className="p-4 md:p-6 space-y-5 page-enter">
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="display text-xl tracking-tight flex items-center gap-2">
-            <Zap className="h-6 w-6 text-primary" />Automações
-          </h1>
-          <p className="text-sm text-muted-foreground">Workflows inteligentes com gatilhos e ações configuráveis</p>
-        </div>
-        <Button onClick={openNew} className="gap-2">
-          <Plus className="h-4 w-4" />Nova Automação
-        </Button>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="SISTEMA · Automações"
+        title="Automações"
+        description="Workflows inteligentes com gatilhos e ações configuráveis"
+        actions={
+          <Button onClick={openNew} className="gap-2">
+            <Plus className="h-4 w-4" />Nova Automação
+          </Button>
+        }
+      />
 
       {/* Error banner when DB table not yet created */}
       {error && (

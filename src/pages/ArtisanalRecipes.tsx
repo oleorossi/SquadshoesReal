@@ -18,6 +18,7 @@ import {
 import { useContractors } from '@/hooks/useContractors';
  import { useProducts, getBaseName } from '@/hooks/useProducts';
  import { useGroups } from '@/hooks/useGroups';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 const emptyRecipe: Partial<ArtisanalRecipe> = {
   name: '',
@@ -120,19 +121,16 @@ export default function ArtisanalRecipes() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <h2 className="display text-2xl tracking-tight flex items-center gap-2">
-            <Sparkles className="h-6 w-6 text-primary" /> Produtos Artesanais
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Receitas de transformação de matéria-prima em produtos artesanais via terceirizados
-          </p>
-        </div>
-        <Button onClick={openNew} className="gap-1.5">
-          <Plus className="h-4 w-4" /> Nova Receita
-        </Button>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="ENGENHARIA · Receitas"
+        title="Produtos Artesanais"
+        description="Receitas de transformação de matéria-prima em produtos artesanais via terceirizados"
+        actions={
+          <Button onClick={openNew} className="gap-1.5">
+            <Plus className="h-4 w-4" /> Nova Receita
+          </Button>
+        }
+      />
 
       {/* How-to card */}
       <Card className="border-primary/20 bg-primary/5">

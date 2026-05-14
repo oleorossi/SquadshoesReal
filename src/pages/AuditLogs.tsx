@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -60,21 +61,16 @@ export default function AuditLogs() {
   return (
     <AppLayout>
       <div className="space-y-6 page-enter">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="display text-2xl tracking-tight flex items-center gap-2">
-              <History className="h-6 w-6 text-primary" /> Auditoria do Sistema
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Rastreamento completo de todas as alterações e ações realizadas no sistema.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
+        <EditorialPageHeader
+          sectionLabel="SISTEMA · Auditoria"
+          title="Auditoria do Sistema"
+          description="Rastreamento completo de todas as alterações e ações realizadas no sistema."
+          actions={
             <Badge variant="outline" className="px-3 py-1">
               {filteredLogs.length} registros exibidos
             </Badge>
-          </div>
-        </div>
+          }
+        />
 
         <Card>
           <CardHeader className="pb-3">

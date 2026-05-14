@@ -440,6 +440,15 @@ Deno.serve(async (req) => {
     ].filter(Boolean).join(" | ") || undefined;
 
     // ---------- Cria a NF-e no GestaoClick (rascunho) ----------
+    // SEFAZ Rejeição 696: "Operação com não contribuinte deve indicar operação
+    // com consumidor final". Destinatário SEM Inscrição Estadual = não
+    // contribuinte de ICMS → consumidor_final precisa ser "1". Com IE válida
+    // (contribuinte/revenda) → "0".
+    const ieDestDigits = (client.inscricao_estadual || "").replace(/\D/g, "");
+    const ieDestRaw = (client.inscricao_estadual || "").trim().toUpperCase();
+    const isContribuinte = ieDestDigits.length > 0 && ieDestRaw !== "ISENTO";
+    const consumidorFinal = isContribuinte ? "0" : "1";
+
     const nfePayload = {
       tipo_nf: "1",
       natureza_operacao: fiscal.natureza_operacao || "Venda",
@@ -448,7 +457,7 @@ Deno.serve(async (req) => {
       modelo: "55",
       serie: fiscal.serie_nfe || "1",
       finalidade_nf: "1",
-      consumidor_final: "0",
+      consumidor_final: consumidorFinal,
       informacoes_complementares: informacoesComplementares,
       produtos: produtosGC,
       ...(pesoBrutoStr ? { peso_bruto: pesoBrutoStr } : {}),

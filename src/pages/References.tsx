@@ -24,6 +24,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { ColorsMultiSelect } from '@/components/references/ColorsMultiSelect';
 import { SHOE_CATEGORIES } from '@/lib/shoeCategories';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { RefChip } from '@/components/ui/ref-chip';
 const REF_STATUSES = ['Ativo', 'Em desenvolvimento', 'Descontinuado'] as const;
 
 const COMPONENT_CATEGORIES = [
@@ -140,16 +142,17 @@ export default function References({ embedded }: { embedded?: boolean } = {}) {
   return (
     <>
       <div className="space-y-5 page-enter">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="display text-xl tracking-tight">Referências de Calçados</h2>
-            <p className="text-sm text-muted-foreground">Modelos, fichas técnicas e custos de produção</p>
-          </div>
-          <Button onClick={openAdd} className="gap-2">
-            <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">Nova Referência</span>
-          </Button>
-        </div>
+        <EditorialPageHeader
+          sectionLabel="ENGENHARIA · Modelos"
+          title="Referências de Calçados"
+          description="Modelos, fichas técnicas e custos de produção"
+          actions={
+            <Button onClick={openAdd} className="gap-2">
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">Nova Referência</span>
+            </Button>
+          }
+        />
 
         {references.length === 0 ? (
           <Card>
@@ -176,7 +179,7 @@ export default function References({ embedded }: { embedded?: boolean } = {}) {
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <CardTitle className="text-base">{ref.name}</CardTitle>
-                          {ref.code && <Badge variant="outline" className="font-mono text-xs">{ref.code}</Badge>}
+                          {ref.code && <RefChip code={ref.code} size="md" />}
                           {ref.shoe_category && <Badge variant="secondary" className="text-xs">{ref.shoe_category}</Badge>}
                           <Badge variant={ref.status === 'Ativo' ? 'default' : ref.status === 'Descontinuado' ? 'destructive' : 'secondary'} className="text-xs">
                             {ref.status || 'Ativo'}
@@ -564,9 +567,9 @@ function MaterialsList({ referenceId, imageUrl, shoeCategory }: { referenceId: s
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto">
             {otherRefs.map(r => (
               <Button key={r.id} variant="ghost" size="sm" className="justify-start h-auto py-2 text-left" onClick={() => handleCopyFrom(r.id)}>
-                <div>
+                <div className="flex items-center gap-2">
                   <span className="text-sm font-medium">{r.name}</span>
-                  {r.code && <span className="text-xs text-muted-foreground ml-2 font-mono">{r.code}</span>}
+                  {r.code && <RefChip code={r.code} size="sm" />}
                 </div>
               </Button>
             ))}

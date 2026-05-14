@@ -20,6 +20,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { cn } from '@/lib/utils';
 import {
   useContractors, useServiceOrders, useCreateContractor, useUpdateContractor, useDeleteContractor,
@@ -1092,12 +1093,11 @@ export default function Contractors() {
     <AppLayout>
       <div className="space-y-5 page-enter">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="display text-xl tracking-tight flex items-center gap-2"><Handshake className="h-6 w-6 text-primary" /> Terceirizados</h1>
-            <p className="text-sm text-muted-foreground">Gestão de prestadores, ordens de serviço e recibos</p>
-          </div>
-        </div>
+        <EditorialPageHeader
+          sectionLabel="RH · Terceiros"
+          title="Terceirizados"
+          description="Gestão de prestadores, ordens de serviço e recibos"
+        />
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">

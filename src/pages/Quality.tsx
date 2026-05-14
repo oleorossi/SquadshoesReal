@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
  import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
  import LotTestingTab from '@/components/quality/LotTestingTab';
 import { useAllQualityRecords, useResolveQualityRecord } from '@/hooks/useQualityRecords';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -75,12 +76,11 @@ export default function Quality() {
   return (
     <AppLayout>
       <div className="space-y-5 page-enter">
-        <div>
-          <h1 className="display text-xl tracking-tight flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-primary" /> Qualidade & Auditorias
-          </h1>
-          <p className="text-sm text-muted-foreground">Defeitos registrados por setor — rastreamento por OP e plano de ação</p>
-        </div>
+        <EditorialPageHeader
+          sectionLabel="QUALIDADE · Inspeções"
+          title="Qualidade & Auditorias"
+          description="Defeitos registrados por setor — rastreamento por OP e plano de ação"
+        />
 
          <Tabs defaultValue="defects" className="space-y-5">
            <TabsList>

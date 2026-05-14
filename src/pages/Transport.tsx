@@ -24,6 +24,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { calculatePacking } from '@/lib/packingCalculator';
  import type { BoxType, TransportCompany, PackingItem, PackingSummary } from '@/types/transport';
 import { BRAZILIAN_STATES } from '@/types/transport';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 export default function Transport() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -36,15 +37,11 @@ export default function Transport() {
   return (
     
       <div className="space-y-5 page-enter">
-        <div>
-          <h1 className="display text-xl tracking-tight flex items-center gap-2">
-            <Truck className="h-6 w-6 text-primary" />
-            Logística e Transporte
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Gestão de baús, embalagens e transportadoras
-          </p>
-        </div>
+        <EditorialPageHeader
+          sectionLabel="LOGÍSTICA · Transporte"
+          title="Logística e Transporte"
+          description="Gestão de baús, embalagens e transportadoras"
+        />
 
         <Tabs value={currentTab} onValueChange={handleTabChange} className="space-y-4">
           <TabsList>

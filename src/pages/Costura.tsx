@@ -23,6 +23,8 @@ import { printHtml, openPrintWindow, writePrintWindow } from '@/lib/printOrder';
 import { getClientLogoUrl } from '@/lib/getClientLogo';
 import OrderSearchBar from '@/components/production/OrderSearchBar';
 import { useOrderStraps } from '@/hooks/useOrderStraps';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { RefChip } from '@/components/ui/ref-chip';
 
 const SIZES = ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
 
@@ -269,17 +271,11 @@ export default function Costura() {
 
   return (
     <div className="space-y-5 page-enter">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="display text-xl tracking-tight flex items-center gap-2">
-            {SECTOR_EMOJI}
-            Setor de {SECTOR_NAME}
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Fichas de controle com checklist de pares para costura
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+      <EditorialPageHeader
+        sectionLabel="PRODUÇÃO · Corte Forração"
+        title={`Setor de ${SECTOR_NAME}`}
+        description="Fichas de controle com checklist de pares para costura"
+        actions={<>
           {selectedOrders.size > 0 && (
             <Button size="sm" variant="outline" onClick={() => {
               const ids = costuraOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
@@ -309,8 +305,8 @@ export default function Costura() {
               <SelectItem value="all">Todas</SelectItem>
             </SelectContent>
           </Select>
-        </div>
-      </div>
+        </>}
+      />
 
       <OrderSearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Buscar por PV, OP, cliente..." />
 
@@ -386,7 +382,7 @@ export default function Costura() {
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span className="font-mono text-xs font-bold">{order.order_number}</span>
-                                    <Badge variant="outline" className="text-[10px]">{ref?.code || ''}</Badge>
+                                    {ref?.code && <RefChip code={ref.code} />}
                                     <Badge variant="secondary" className="text-[10px]">{order.color || '—'}</Badge>
                                     {strapsLabel && <Badge variant="outline" className="text-[10px]">🔗 {strapsLabel}</Badge>}
                                   </div>
