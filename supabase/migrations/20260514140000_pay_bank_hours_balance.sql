@@ -4,8 +4,14 @@
 --   - funcionário tem ex. 24h acumuladas
 --   - usuário escolhe pagar 10h → 14h permanecem no banco
 --   - débito de 10h em bank_hours_movements (movement_type='payment')
---   - lançamento de despesa em financial_entries (vai pro financeiro)
+--   - lançamento de despesa em financial_entries (status pendente → contas a pagar)
 --   - valor = (min/60) × hourly_rate × overtime_multiplier
+
+-- 'payment' precisa ser aceito como movement_type
+ALTER TABLE public.bank_hours_movements DROP CONSTRAINT IF EXISTS bank_hours_movements_movement_type_check;
+ALTER TABLE public.bank_hours_movements ADD CONSTRAINT bank_hours_movements_movement_type_check
+  CHECK (movement_type = ANY (ARRAY['credit','debit','compensation','timesheet_auto','adjustment','manual','payment']));
+
 CREATE OR REPLACE FUNCTION public.pay_bank_hours_balance(
   p_employee_id uuid,
   p_pay_minutes integer,
@@ -54,19 +60,22 @@ BEGIN
     RAISE EXCEPTION 'Valor calculado inválido — verifique hourly_rate/salary do funcionário';
   END IF;
 
+  -- Despesa no financeiro (status 'pendente' = entra no contas a pagar)
   INSERT INTO public.financial_entries (
-    type, category, amount, status, description,
-    reference_id, reference_type, entry_date, created_by
+    type, amount, status, description,
+    reference_id, reference_type, entry_date, notes
   )
   VALUES (
-    'despesa', 'folha_horas_extras', v_pay_amount, 'confirmed',
+    'despesa', v_pay_amount, 'pendente',
     'Pagamento de banco de horas — ' || v_emp.name || ' — ' ||
       (p_pay_minutes / 60.0)::numeric(8,2) || 'h x R$ ' || v_hourly_rate::numeric(10,2) ||
-      ' x ' || v_multiplier || COALESCE(' — ' || p_notes, ''),
-    p_employee_id, 'bank_hours_payment', CURRENT_DATE, v_user
+      ' x ' || v_multiplier,
+    p_employee_id::text, 'bank_hours_payment', CURRENT_DATE,
+    COALESCE(p_notes, '')
   )
   RETURNING id INTO v_fin_id;
 
+  -- Débito no banco de horas (baixa)
   INSERT INTO public.bank_hours_movements (
     employee_id, movement_type, minutes, movement_date, description,
     reference_id, reference_type, created_by

@@ -94,6 +94,8 @@ const TYPE_LABELS: Record<string, string> = {
   adjustment: 'Ajuste manual',
   compensation: 'Compensação',
   manual: 'Manual',
+  payment: 'Pagamento de HE',
+  timesheet_auto: 'Automático (batidas)',
   timesheet_auto: 'Auto (batidas)',
 };
 
