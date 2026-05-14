@@ -37,6 +37,23 @@ if (import.meta.env.DEV) {
    window.location.reload();
  };
 
+// Recuperação automática de chunk obsoleto: quando um deploy novo remove os
+// .js hasheados antigos, uma aba aberta no deploy anterior falha o import
+// dinâmico de rota ("Importing a module script failed"). O Vite dispara
+// `vite:preloadError` nesse caso — recarregamos a página 1x pra pegar o
+// index.html novo. O flag em sessionStorage evita loop infinito caso o erro
+// persista por outro motivo (ex.: chunk realmente quebrado).
+window.addEventListener("vite:preloadError", (e) => {
+  const KEY = "vite-preload-reload";
+  if (sessionStorage.getItem(KEY)) return; // já tentamos — deixa o erro aparecer
+  sessionStorage.setItem(KEY, String(Date.now()));
+  e.preventDefault();
+  window.location.reload();
+});
+// Após um carregamento bem-sucedido, limpa o flag pra liberar futuras
+// recuperações (deploys seguintes).
+setTimeout(() => sessionStorage.removeItem("vite-preload-reload"), 8000);
+
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("Failed to find the root element");
 

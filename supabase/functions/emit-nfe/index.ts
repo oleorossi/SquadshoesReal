@@ -525,12 +525,28 @@ Deno.serve(async (req) => {
     let chave = "";
     let protocolo = "";
     let situacao = "";
+    let numeroNf = "";
+    let serieNf = "";
+    let dataEmissao = "";
     if (emitOk) {
       const detail = await gcFetch(`/notas_fiscais_produtos/${gcNfeId}`);
       const d = detail.json?.data || {};
       chave = d.chave || "";
       protocolo = d.protocolo || "";
       situacao = d.situacao_nf || "";
+      // numero_nf / serie só vêm no detalhe — sem isso o registro local
+      // ficava com numero/serie vazios (quebrava a aba "NF-es Emitidas" e
+      // a devolução, que referencia nfeOriginal.numero).
+      numeroNf = d.numero_nf ? String(d.numero_nf) : "";
+      serieNf = d.serie ? String(d.serie) : "";
+      // data_emissao real da SEFAZ — sem isso a coluna assumia o default
+      // now() do insert e a janela de 24h pra cancelamento ficava imprecisa.
+      if (d.data_emissao) {
+        const t = d.hora_emissao ? `${d.data_emissao}T${d.hora_emissao}` : String(d.data_emissao);
+        const norm = /Z$|[+-]\d{2}:\d{2}$/.test(t) ? t : t + "-03:00";
+        const ts = new Date(norm).getTime();
+        if (!Number.isNaN(ts) && ts > 0 && ts < Date.now() + 86_400_000) dataEmissao = norm;
+      }
     }
     const finalStatus = emitOk
       ? (situacao?.toLowerCase().includes("aprovada") ? "autorizada" : "processando")
@@ -546,6 +562,9 @@ Deno.serve(async (req) => {
       chave_acesso: chave || null,
       protocolo: protocolo || null,
       provider_nfe_id: gcNfeId,
+      ...(numeroNf ? { numero: numeroNf } : {}),
+      ...(serieNf ? { serie: serieNf } : {}),
+      ...(dataEmissao ? { data_emissao: dataEmissao } : {}),
     };
     if (resolvedCompanyId) nfeRecord.company_id = resolvedCompanyId;
 
