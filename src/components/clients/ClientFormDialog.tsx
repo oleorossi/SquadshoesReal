@@ -172,6 +172,45 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
                     <Input value={form.inscricao_estadual} onChange={e => setForm(f => ({ ...f, inscricao_estadual: e.target.value }))} className="mt-1 h-9 font-mono" />
                   </div>
                   <div>
+                    <Label className="text-xs">Indicador de IE (NF-e) *</Label>
+                    <Select
+                      value={form.indicador_ie != null ? String(form.indicador_ie) : ''}
+                      onValueChange={v => {
+                        const ind = Number(v);
+                        // consumidor_final default coerente: contribuinte revende (0),
+                        // não-contribuinte é consumidor final (1). Usuário pode trocar.
+                        setForm(f => ({
+                          ...f,
+                          indicador_ie: ind,
+                          consumidor_final: ind === 1 ? 0 : ind === 9 ? 1 : f.consumidor_final,
+                        }));
+                      }}
+                    >
+                      <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Classificar..." /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">Contribuinte de ICMS</SelectItem>
+                        <SelectItem value="2">Isento de IE</SelectItem>
+                        <SelectItem value="9">Não-contribuinte</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Obrigatório pra emitir NF-e. Contribuinte exige Inscrição Estadual preenchida.
+                    </p>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Consumidor final (NF-e)</Label>
+                    <Select
+                      value={form.consumidor_final != null ? String(form.consumidor_final) : ''}
+                      onValueChange={v => setForm(f => ({ ...f, consumidor_final: Number(v) }))}
+                    >
+                      <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Definir..." /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0">Não (revenda)</SelectItem>
+                        <SelectItem value="1">Sim (consumidor final)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
                     <Label className="text-xs">Código da Filial</Label>
                     <Input
                       value={form.branch_code ?? ''}

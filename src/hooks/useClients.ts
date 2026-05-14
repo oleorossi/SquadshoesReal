@@ -10,6 +10,11 @@ export type Client = {
   nome_fantasia: string;
   cnpj: string;
   inscricao_estadual: string;
+  /** Indicador de IE do destinatário (NF-e indIEDest): 1=Contribuinte ICMS,
+   *  2=Isento de IE, 9=Não-contribuinte. null = não classificado. */
+  indicador_ie: number | null;
+  /** Operação destinada a consumidor final (NF-e indFinal): 0=Não, 1=Sim. */
+  consumidor_final: number | null;
   endereco: string;
   cidade: string;
   estado: string;
