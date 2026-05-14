@@ -379,35 +379,33 @@ Deno.serve(async (req) => {
       const desc = (variant?.description_override || (it.color ? `${baseName} - ${it.color}` : baseName)).trim();
       const unidade = (prod?.unit || "PAR").toUpperCase();
 
-      // codigo ÚNICO POR COR. BUG CRÍTICO corrigido aqui: antes o codigo caía
-      // em `ts.code` (que é por REFERÊNCIA, não por cor) e o gestaoclick_id era
-      // cacheado em `technical_sheets` — uma ficha tem N cores. A 1ª cor emitida
-      // criava o produto no GestaoClick e gravava o id na ficha; as outras cores
-      // reusavam o MESMO produto → a NF saía inteira com a cor errada.
-      // variant.sku e products.sku já são por cor; ts.code precisa sufixar a cor.
-      const colorSuffix = (it.color || "").trim().replace(/\s+/g, "-");
-      const codigo = variant?.sku
-        || prod?.sku
-        || (ts?.code ? (colorSuffix ? `${ts.code}-${colorSuffix}` : ts.code) : null)
-        || `ITEM-${ts?.id || prod?.id || it.reference_id}${colorSuffix ? "-" + colorSuffix : ""}`;
-
-      // products.gestaoclick_id é seguro de cachear (1 product = 1 cor).
-      // technical_sheets.gestaoclick_id NÃO — então pra item com ficha
-      // resolvemos SEMPRE pelo `codigo` único: busca no GestaoClick, cria
-      // se não existir. Nunca mais grava id de produto na ficha técnica.
+      // Resolução do produto no GestaoClick — POR NOME.
+      // BUG CRÍTICO da cor (e do duplicado) corrigido aqui:
+      //  - O `codigo` que mandamos no POST /produtos é IGNORADO pelo
+      //    GestaoClick (ele gera um codigo_interno próprio) → busca por
+      //    código nunca acha nada.
+      //  - POST /produtos com nome JÁ EXISTENTE → erro 404 "URL do produto
+      //    já está sendo utilizada".
+      //  - O `nome` ("SP117 - CARAMELO") já é único por cor e a busca
+      //    /produtos?nome= funciona.
+      // Logo: buscamos por nome exato; se achar, reusa; senão cria.
+      // technical_sheets.gestaoclick_id NUNCA é usado (uma ficha = N cores).
+      // products.gestaoclick_id (NF avulsa) continua sendo cache válido.
+      const nomeProduto = desc.slice(0, 120);
       let gcProductId: string | null = isStandalone ? (prod?.gestaoclick_id || null) : null;
       if (!gcProductId) {
-        const lookup = await gcFetch(`/produtos?codigo=${encodeURIComponent(String(codigo))}`);
+        const lookup = await gcFetch(`/produtos?nome=${encodeURIComponent(nomeProduto)}`);
         const foundList = Array.isArray(lookup.json?.data) ? lookup.json.data : [];
-        const match = foundList.find((p: any) => String(p.codigo) === String(codigo));
+        const match = foundList.find(
+          (p: any) => String(p.nome || "").trim().toUpperCase() === nomeProduto.trim().toUpperCase(),
+        );
         if (match?.id) {
           gcProductId = String(match.id);
         } else {
           const r = await gcFetch("/produtos", {
             method: "POST",
             body: JSON.stringify({
-              nome: desc.slice(0, 120),
-              codigo,
+              nome: nomeProduto,
               valor_venda: price.toFixed(2),
               unidade: isStandalone ? unidade : "PAR",
               ncm,
@@ -416,7 +414,7 @@ Deno.serve(async (req) => {
           });
           if (!r.ok || r.json?.status === "error") {
             return new Response(JSON.stringify({
-              error: `Falha ao sincronizar produto "${codigo}" com GestaoClick: ${r.json?.message || r.json?.mensagem || JSON.stringify(r.json)}`,
+              error: `Falha ao sincronizar produto "${nomeProduto}" com GestaoClick: ${r.json?.data?.mensagem || r.json?.message || r.json?.mensagem || JSON.stringify(r.json)}`,
             }), { status: 502, headers: corsHeaders });
           }
           gcProductId = String(r.json?.data?.id);
