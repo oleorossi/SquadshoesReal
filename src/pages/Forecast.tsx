@@ -3,6 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { TrendUp as TrendingUp } from '@phosphor-icons/react';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { RefChip } from '@/components/ui/ref-chip';
 
 export default function Forecast() {
   const { data: summary = [] } = useQuery({
@@ -26,12 +28,11 @@ export default function Forecast() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Forecast de Demanda</h1>
-        <p className="text-sm text-muted-foreground">
-          Média móvel 6 meses × sazonalidade por SKU (referência × cor × numeração)
-        </p>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="Comercial · Planejamento"
+        title="Forecast de Demanda"
+        description="Média móvel 6 meses × sazonalidade por SKU (referência × cor × numeração)"
+      />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Card><CardContent className="p-3">
@@ -70,9 +71,12 @@ export default function Forecast() {
               </div>
               {summary.map((r: any) => (
                 <div key={`${r.reference_id}-${r.color}`} className="grid grid-cols-[1fr_80px_80px_80px_80px] gap-3 p-3 text-sm items-center">
-                  <div>
-                    <p className="font-semibold">{r.reference_code} · {r.reference_name}</p>
-                    <p className="text-xs text-muted-foreground">{r.color || 'sem cor'}</p>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <RefChip code={r.reference_code} />
+                      <p className="font-semibold truncate">{r.reference_name}</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">{r.color || 'sem cor'}</p>
                   </div>
                   <Badge variant="outline" className="justify-self-end font-mono">{r.sizes_count}</Badge>
                   <span className="text-right font-mono">{Number(r.total_sold_6m).toFixed(0)}</span>

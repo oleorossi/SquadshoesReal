@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ShoppingCart, Users, TrendUp as TrendingUp, Medal as Award, CurrencyDollar as DollarSign, Package, Palette, CircleNotch as Loader2 } from '@phosphor-icons/react';
+import { RefChip } from '@/components/ui/ref-chip';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -267,7 +268,7 @@ export default function ComercialDashboard() {
                       <span className={`text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${i === 0 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>{i + 1}</span>
                       <div className="min-w-0">
                         <p className="text-sm font-medium truncate">{r.name}</p>
-                        <p className="text-xs text-muted-foreground">{r.code}</p>
+                        {r.code && <RefChip code={r.code} className="mt-0.5" />}
                       </div>
                     </div>
                     <div className="text-right shrink-0">

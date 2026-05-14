@@ -10,6 +10,7 @@ import { Plus, ChatText as MessageSquare, ClockCounterClockwise as History, Care
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 const STATUS_COLORS: Record<string, string> = {
   aberto: 'bg-blue-100 text-blue-700 border-blue-300',
@@ -77,15 +78,16 @@ export default function SAC() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">SAC · Troca · Garantia</h1>
-          <p className="text-sm text-muted-foreground">Workflow de atendimento pós-venda</p>
-        </div>
-        <Button size="sm" className="gap-1.5" onClick={() => setShowNew(true)}>
-          <Plus className="h-4 w-4" /> Novo Atendimento
-        </Button>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="Comercial · Pós-venda"
+        title="SAC · Troca · Garantia"
+        description="Workflow de atendimento pós-venda"
+        actions={
+          <Button size="sm" className="gap-1.5" onClick={() => setShowNew(true)}>
+            <Plus className="h-4 w-4" /> Novo Atendimento
+          </Button>
+        }
+      />
 
       <div className="grid grid-cols-3 gap-3">
         <Card><CardContent className="p-3"><p className="text-[10px] font-bold text-muted-foreground uppercase">Abertos</p><p className="text-2xl font-bold text-amber-600">{counts.abertos}</p></CardContent></Card>

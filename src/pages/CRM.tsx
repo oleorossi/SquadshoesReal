@@ -14,6 +14,7 @@ import { Plus, Phone, Envelope as Mail, ChatText as MessageSquare, Calendar, Cak
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 const CHANNEL_ICONS: Record<string, any> = {
   ligacao: Phone, email: Mail, whatsapp: MessageSquare, sms: MessageSquare,
@@ -121,15 +122,16 @@ export default function CRM() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">CRM</h1>
-          <p className="text-sm text-muted-foreground">Histórico, campanhas, recompra prevista, NPS</p>
-        </div>
-        <Button size="sm" className="gap-1.5" onClick={() => setNewOpen(true)}>
-          <Plus className="h-4 w-4" /> Nova Interação
-        </Button>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="Comercial · Relacionamento"
+        title="CRM"
+        description="Histórico, campanhas, recompra prevista, NPS"
+        actions={
+          <Button size="sm" className="gap-1.5" onClick={() => setNewOpen(true)}>
+            <Plus className="h-4 w-4" /> Nova Interação
+          </Button>
+        }
+      />
 
       <Dialog open={newOpen} onOpenChange={setNewOpen}>
         <DialogContent className="max-w-md">

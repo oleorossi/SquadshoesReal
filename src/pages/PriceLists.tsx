@@ -10,6 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, CurrencyDollar as DollarSign, Calendar, Tag, PencilSimple as Pencil } from '@phosphor-icons/react';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -117,17 +118,16 @@ export default function PriceLists() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Tabelas de Preço</h1>
-          <p className="text-sm text-muted-foreground">
-            Preços por canal, região, cliente e vigência
-          </p>
-        </div>
-        <Button size="sm" className="gap-1.5" onClick={openNew}>
-          <Plus className="h-4 w-4" /> Nova Tabela
-        </Button>
-      </div>
+      <EditorialPageHeader
+        sectionLabel="Comercial · Preços"
+        title="Tabelas de Preço"
+        description="Preços por canal, região, cliente e vigência"
+        actions={
+          <Button size="sm" className="gap-1.5" onClick={openNew}>
+            <Plus className="h-4 w-4" /> Nova Tabela
+          </Button>
+        }
+      />
 
       {isLoading && <p className="text-sm text-muted-foreground">Carregando...</p>}
 
