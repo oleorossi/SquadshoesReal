@@ -23,6 +23,9 @@ interface Product {
   stock_grade: Record<string, any> | null;
   group_id: string | null;
   active: boolean;
+  /** Parte do estoque já reservada por OPs aguardando picking. Não está
+   *  livre — exibida em azul pra evitar que se mexa achando que é tudo. */
+  reserved_stock: number | null;
 }
 
 interface SoleConjugationRow {
@@ -188,7 +191,7 @@ export default function StockAdjustmentPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("id, name, sku, category, color, quantity, unit, min_stock, stock_grade, group_id, active")
+        .select("id, name, sku, category, color, quantity, unit, min_stock, stock_grade, group_id, active, reserved_stock")
         .order("category")
         .order("name")
         .order("color");
@@ -205,6 +208,7 @@ export default function StockAdjustmentPage() {
         stock_grade: p.stock_grade ?? null,
         group_id: p.group_id ?? null,
         active: p.active !== false,
+        reserved_stock: p.reserved_stock != null ? Number(p.reserved_stock) : null,
       }));
     },
   });
@@ -895,7 +899,17 @@ export default function StockAdjustmentPage() {
                         <td className="px-2 py-1.5 text-[12px] text-muted-foreground border-r border-border/30 truncate">{product.category ?? "—"}</td>
                         <td className="text-[11px] text-muted-foreground text-center border-r border-border/30">{product.unit}</td>
                         <td className="px-3 py-1.5 text-right font-mono text-[13px] border-r border-border/30 tabular-nums select-none">
-                          <span className={isLow ? "text-amber-600 font-semibold" : "text-foreground"}>{product.quantity.toLocaleString("pt-BR")}</span>
+                          <div className="flex flex-col items-end gap-0.5">
+                            <span className={isLow ? "text-amber-600 font-semibold" : "text-foreground"}>{product.quantity.toLocaleString("pt-BR")}</span>
+                            {Number(product.reserved_stock ?? 0) > 0 && (
+                              <span
+                                className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 whitespace-nowrap"
+                                title="Parte já reservada por OPs aguardando picking — não está livre pra uso"
+                              >
+                                reservado: {Number(product.reserved_stock).toLocaleString("pt-BR")} {product.unit}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         {/* Sole: toggle expand instead of a quantity input */}
                         <td className="py-0 border-r border-border/30">
@@ -1099,11 +1113,21 @@ export default function StockAdjustmentPage() {
                       <td className="px-2 py-1.5 text-[12px] text-muted-foreground border-r border-border/30 truncate">{product.category ?? "—"}</td>
                       <td className="text-[11px] text-muted-foreground text-center border-r border-border/30">{product.unit}</td>
                       <td className="px-3 py-1.5 text-right font-mono text-[13px] border-r border-border/30 tabular-nums select-none">
-                        <span className={isLow ? "text-amber-600 font-semibold" : "text-foreground"}>
-                          {product.quantity % 1 === 0
-                            ? product.quantity.toLocaleString("pt-BR")
-                            : product.quantity.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
-                        </span>
+                        <div className="flex flex-col items-end gap-0.5">
+                          <span className={isLow ? "text-amber-600 font-semibold" : "text-foreground"}>
+                            {product.quantity % 1 === 0
+                              ? product.quantity.toLocaleString("pt-BR")
+                              : product.quantity.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                          </span>
+                          {Number(product.reserved_stock ?? 0) > 0 && (
+                            <span
+                              className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 whitespace-nowrap"
+                              title="Parte já reservada por OPs aguardando picking — não está livre pra uso"
+                            >
+                              reservado: {Number(product.reserved_stock).toLocaleString("pt-BR")} {product.unit}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-0 border-r border-border/30 p-0">
                         <input

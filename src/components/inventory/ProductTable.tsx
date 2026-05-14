@@ -298,7 +298,7 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
                        </div>
                      )}
                      {reserved > 0 && (
-                       <div className="text-[10px] text-primary/80 font-medium whitespace-nowrap" title="Reservado por OPs aguardando picking">
+                       <div className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold whitespace-nowrap" title="Parte já reservada por OPs aguardando picking — não está livre pra uso">
                          Reservado: {reserved.toLocaleString('pt-BR')} {product.unit}
                        </div>
                      )}
