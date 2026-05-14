@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -23,6 +22,9 @@ import {
 import ClientFormDialog from '@/components/clients/ClientFormDialog';
 import ExcelImportDialog from '@/components/clients/ExcelImportDialog';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 import ClientLogoTab from '@/components/clients/ClientLogoTab';
 import RepresentativeTab from '@/components/clients/RepresentativeTab';
 import { toast } from 'sonner';
@@ -272,21 +274,31 @@ export default function Clients() {
           </TabsList>
 
           <TabsContent value="clients" className="space-y-4 mt-4">
-            {/* KPI strip — design system Novidade (eyebrow + display + sub) */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {[
-                { label: 'Clientes', value: clientStats.total.toLocaleString('pt-BR'), sub: `${clientStats.ativos} ativos` },
-                { label: 'Grupos econômicos', value: clientStats.grupos.toLocaleString('pt-BR'), sub: 'carteira agrupada' },
-                { label: 'Favoritos', value: clientStats.favoritos.toLocaleString('pt-BR'), sub: 'marcados' },
-                { label: 'Crédito total', value: clientStats.creditoTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }), sub: 'limite agregado' },
-              ].map((k) => (
-                <Card key={k.label} className="p-4">
-                  <div className="eyebrow text-[8px]">{k.label}</div>
-                  <div className="display text-2xl mt-1.5 text-foreground tabular-nums">{k.value}</div>
-                  <div className="text-[10px] text-muted-foreground mt-0.5">{k.sub}</div>
-                </Card>
-              ))}
-            </div>
+            {/* KPI strip — kit editorial (StatCard) derivado de dados reais */}
+            <StatGrid>
+              <StatCard
+                label="Clientes"
+                value={clientStats.total.toLocaleString('pt-BR')}
+                hint={`${clientStats.ativos} ativos`}
+              />
+              <StatCard
+                label="Grupos econômicos"
+                value={clientStats.grupos.toLocaleString('pt-BR')}
+                hint="carteira agrupada"
+              />
+              <StatCard
+                label="Favoritos"
+                value={clientStats.favoritos.toLocaleString('pt-BR')}
+                hint="marcados"
+                tone="warning"
+              />
+              <StatCard
+                label="Crédito total"
+                value={clientStats.creditoTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
+                hint="limite agregado"
+                tone="primary"
+              />
+            </StatGrid>
 
             <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
               <div className="relative flex-1 max-w-md">
@@ -308,12 +320,14 @@ export default function Clients() {
             </div>
 
             {filteredClients.length === 0 ? (
-              <Card>
-                <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                  <Users className="h-10 w-10 mb-3 opacity-50" />
-                  <p>Nenhum cliente cadastrado</p>
-                </CardContent>
-              </Card>
+              <Panel flush>
+                <EmptyState
+                  icon={Users}
+                  title={search ? 'Nenhum cliente encontrado' : 'Nenhum cliente cadastrado'}
+                  description={search ? 'Ajuste a busca ou cadastre um novo cliente.' : 'Cadastre o primeiro lojista da carteira.'}
+                  action={<Button onClick={openAddClient} className="gap-2"><Plus className="h-4 w-4" />Novo Cliente</Button>}
+                />
+              </Panel>
             ) : (
               <div className="space-y-4">
                 {groupedClients.map(({ group, clients: gc }) => {
@@ -327,11 +341,11 @@ export default function Clients() {
                   const cities = new Set(gc.map(c => c.cidade).filter(Boolean));
                   return (
                     <div key={key} className={cn(
-                      "rounded-xl border overflow-hidden bg-card shadow-sm",
-                      group ? "border-primary/30" : "border-dashed"
+                      "rounded-lg border overflow-hidden bg-card",
+                      group ? "border-border" : "border-dashed border-border"
                     )}>
                       {group ? (
-                        <button onClick={() => toggleGroup(key)} className="w-full flex items-center gap-3 px-4 py-3 bg-gradient-to-r from-primary/5 to-transparent hover:from-primary/10 transition-colors text-left">
+                        <button onClick={() => toggleGroup(key)} className="w-full flex items-center gap-3 px-4 py-3 border-l-2 border-foreground bg-muted/30 hover:bg-muted/50 transition-colors text-left">
                           <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform shrink-0", isCollapsed && "-rotate-90")} />
                           <div className="bg-primary/15 p-1.5 rounded-md shrink-0">
                             <Building2 className="h-4 w-4 text-primary" />
@@ -365,15 +379,15 @@ export default function Clients() {
                       {(!group || !isCollapsed) && (
                         <Table>
                           <TableHeader>
-                            <TableRow className="bg-muted/50 hover:bg-muted/50">
-                              <TableHead className="font-semibold w-24">Nº</TableHead>
-                              <TableHead className="font-semibold">Razão Social</TableHead>
-                              <TableHead className="font-semibold">CNPJ</TableHead>
-                              <TableHead className="font-semibold">Cidade/UF</TableHead>
-                              <TableHead className="font-semibold">Telefone</TableHead>
-                              <TableHead className="font-semibold">Email</TableHead>
-                              <TableHead className="font-semibold text-right">Limite Crédito</TableHead>
-                              <TableHead className="font-semibold text-right">Ações</TableHead>
+                            <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground [&_th]:h-9">
+                              <TableHead className="w-24">Nº</TableHead>
+                              <TableHead>Razão Social</TableHead>
+                              <TableHead>CNPJ</TableHead>
+                              <TableHead>Cidade/UF</TableHead>
+                              <TableHead>Telefone</TableHead>
+                              <TableHead>Email</TableHead>
+                              <TableHead className="text-right">Limite Crédito</TableHead>
+                              <TableHead className="text-right">Ações</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -419,29 +433,31 @@ export default function Clients() {
           </TabsContent>
 
           <TabsContent value="groups" className="space-y-4 mt-4">
-            <div className="flex justify-end">
-              <Button onClick={openAddGroup} className="gap-2">
-                <Plus className="h-4 w-4" />Novo Grupo
-              </Button>
-            </div>
-
             {economicGroups.length === 0 ? (
-              <Card>
-                <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                  <Building2 className="h-10 w-10 mb-3 opacity-50" />
-                  <p>Nenhum grupo econômico cadastrado</p>
-                </CardContent>
-              </Card>
+              <Panel flush>
+                <EmptyState
+                  icon={Building2}
+                  title="Nenhum grupo econômico cadastrado"
+                  description="Agrupe lojas da mesma rede para visão consolidada da carteira."
+                  action={<Button onClick={openAddGroup} className="gap-2"><Plus className="h-4 w-4" />Novo Grupo</Button>}
+                />
+              </Panel>
             ) : (
-              <div className="rounded-lg border bg-card overflow-hidden">
+              <Panel
+                eyebrow="COMERCIAL · CARTEIRA"
+                title="Grupos Econômicos"
+                subtitle={`${economicGroups.length} ${economicGroups.length === 1 ? 'grupo' : 'grupos'}`}
+                actions={<Button onClick={openAddGroup} size="sm" className="gap-2"><Plus className="h-4 w-4" />Novo Grupo</Button>}
+                flush
+              >
                 <Table>
                   <TableHeader>
-                    <TableRow className="bg-muted/50 hover:bg-muted/50">
-                      <TableHead className="font-semibold w-24">Nº</TableHead>
-                      <TableHead className="font-semibold">Nome</TableHead>
-                      <TableHead className="font-semibold">Descrição</TableHead>
-                      <TableHead className="font-semibold text-center">Lojas</TableHead>
-                      <TableHead className="font-semibold text-right">Ações</TableHead>
+                    <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground [&_th]:h-9">
+                      <TableHead className="w-24">Nº</TableHead>
+                      <TableHead>Nome</TableHead>
+                      <TableHead>Descrição</TableHead>
+                      <TableHead className="text-center">Lojas</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -475,7 +491,7 @@ export default function Clients() {
                     })}
                   </TableBody>
                 </Table>
-              </div>
+              </Panel>
             )}
           </TabsContent>
         </Tabs>
