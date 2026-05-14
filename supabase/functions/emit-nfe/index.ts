@@ -455,23 +455,28 @@ Deno.serve(async (req) => {
     ].filter(Boolean).join(" | ") || undefined;
 
     // ---------- Cria a NF-e no GestaoClick (rascunho) ----------
-    // SEFAZ Rejeição 696: "Operação com não contribuinte deve indicar operação
-    // com consumidor final". O campo CORRETO no payload de cadastro do
-    // GestaoClick é `indicador_final` (NÃO `consumidor_final` — esse só existe
-    // na resposta de leitura e era ignorado no POST):
-    //   indicador_final = 1 → consumidor final (obrigatório p/ não contribuinte)
-    //   indicador_final = 0 → operação normal (contribuinte/revenda)
-    const indicadorFinal = isContribuinte ? 0 : 1;
+    // IMPORTANTE: o GestaoClick controla consumidor_final / indicador_destinatario
+    // / CFOP pela NATUREZA DE OPERAÇÃO configurada no painel deles — NÃO por
+    // campos do payload da API (testado: indicador_final, consumidor_final e
+    // natureza_operacao são todos ignorados se a natureza não existe no painel).
+    //
+    // Mandamos o nome padronizado (a doc lista "Venda para contribuinte" /
+    // "Venda para não contribuinte"). Se a natureza estiver configurada lá,
+    // o GestaoClick respeita; senão cai na default e a checagem pós-criação
+    // abaixo aborta com instrução clara (em vez de Rejeição 696 críptica).
+    const naturezaEsperada = isContribuinte
+      ? "Venda para contribuinte"
+      : "Venda para não contribuinte";
 
     const nfePayload = {
       tipo_nf: "1",
-      natureza_operacao: fiscal.natureza_operacao || "Venda",
+      natureza_operacao: naturezaEsperada,
       id_destinatario: gcClientId,
       codigo_cfop: resolvedCfop,
       modelo: "55",
       serie: fiscal.serie_nfe || "1",
       finalidade_nf: "1",
-      indicador_final: indicadorFinal,
+      indicador_final: isContribuinte ? 0 : 1,
       informacoes_complementares: informacoesComplementares,
       produtos: produtosGC,
       ...(pesoBrutoStr ? { peso_bruto: pesoBrutoStr } : {}),
@@ -498,6 +503,32 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: `Falha ao cadastrar NF-e no GestaoClick: ${msg}` }), { status: 422, headers: corsHeaders });
     }
     const gcNfeId = String(createResp.json?.data?.dados || createResp.json?.data?.id);
+
+    // ---------- Pré-validação: consumidor_final coerente com o destinatário ----------
+    // O GestaoClick já cadastrou a NF-e (rascunho). ANTES de emitir pra SEFAZ,
+    // confere se a natureza aplicada bate com o tipo do destinatário. Se o
+    // cliente é não-contribuinte mas a NF-e saiu como consumidor_final="0",
+    // a SEFAZ vai dar Rejeição 696 — então abortamos aqui com instrução de
+    // configuração, em vez de gastar numeração e mostrar erro críptico.
+    {
+      const draftDetail = await gcFetch(`/notas_fiscais_produtos/${gcNfeId}`);
+      const dd = draftDetail.json?.data || {};
+      const draftConsumidorFinal = String(dd.consumidor_final ?? "");
+      const draftNatureza = String(dd.natureza_operacao ?? "");
+      if (!isContribuinte && draftConsumidorFinal === "0") {
+        // Apaga o rascunho pra não deixar lixo no GestaoClick
+        await gcFetch(`/notas_fiscais_produtos/${gcNfeId}`, { method: "DELETE" }).catch(() => {});
+        return new Response(JSON.stringify({
+          error:
+            `Cliente "${order.client_name}" é NÃO CONTRIBUINTE (sem Inscrição Estadual), mas o GestaoClick ` +
+            `aplicou a natureza de operação "${draftNatureza}" (consumidor final = não). A SEFAZ rejeitaria ` +
+            `(Rejeição 696).\n\n` +
+            `AÇÃO NECESSÁRIA: no painel GestaoClick, vá em Configurações → Natureza de Operação e cadastre ` +
+            `uma natureza chamada exatamente "Venda para não contribuinte" (com consumidor final = Sim). ` +
+            `Depois disso a emissão funciona automaticamente.`,
+        }), { status: 422, headers: corsHeaders });
+      }
+    }
 
     // ---------- Emite a NF-e (envia pra SEFAZ) ----------
     const emitResp = await gcFetch(`/notas_fiscais_produtos/emitir/${gcNfeId}`, { method: "POST" });
