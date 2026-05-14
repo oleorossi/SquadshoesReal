@@ -6,7 +6,6 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { cn } from '@/lib/utils';
 import { useOrders } from '@/hooks/useOrders';
 import { useSaleOrders } from '@/hooks/useSaleOrders';
 import { useProducts } from '@/hooks/useProducts';
@@ -24,6 +23,9 @@ import {
   exportDashboardPDF, type ReportData,
 } from '@/lib/exportReports';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 
 const CHART_COLORS = ['#0EA5E9', '#F59E0B', '#10B981', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#F97316'];
 
@@ -54,38 +56,15 @@ function KpiCard({ title, value, icon: Icon, trend, trendLabel, variant = 'defau
   trend?: 'up' | 'down' | 'neutral'; trendLabel?: string;
   variant?: 'default' | 'warning' | 'success' | 'destructive';
 }) {
-  const iconBg: Record<string, string> = {
-    default: 'bg-primary/10 text-primary',
-    warning: 'bg-warning/15 text-warning',
-    success: 'bg-success/15 text-success',
-    destructive: 'bg-destructive/15 text-destructive',
-  };
   return (
-    <Card className={cn(
-      'hover:shadow-md transition-all',
-      variant === 'destructive' && 'border-destructive/30 bg-destructive/5',
-      variant === 'warning' && 'border-warning/30 bg-warning/5',
-      variant === 'success' && 'border-success/30 bg-success/5',
-    )}>
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between">
-          <div className="space-y-1">
-            <p className="eyebrow">{title}</p>
-            <p className="display text-2xl tabular-nums">{value}</p>
-            {trendLabel && (
-              <div className="flex items-center gap-1">
-                {trend === 'up' && <ArrowUpRight className="h-3 w-3 text-success" />}
-                {trend === 'down' && <ArrowDownRight className="h-3 w-3 text-destructive" />}
-                <p className="text-[11px] text-muted-foreground">{trendLabel}</p>
-              </div>
-            )}
-          </div>
-          <div className={cn('rounded-xl p-2.5', iconBg[variant])}>
-            <Icon className="h-5 w-5" />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+    <StatCard
+      label={title}
+      value={value}
+      icon={Icon}
+      tone={variant === 'default' ? 'primary' : variant}
+      hint={trendLabel}
+      deltaTone={trend}
+    />
   );
 }
 
@@ -287,7 +266,7 @@ export default function Reports() {
         {/* ========== DASHBOARD TAB ========== */}
         <TabsContent value="dashboard" className="space-y-6">
           {/* KPI Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatGrid>
             <KpiCard title="Pedidos no Período" value={metrics.ordersToday} icon={ShoppingCart}
               trend="up" trendLabel={`últimos ${periodDays}d`} variant="default" />
             <KpiCard title="Faturamento" value={formatCurrency(metrics.revenueToday)} icon={DollarSign}
@@ -296,7 +275,7 @@ export default function Reports() {
               trendLabel="por pedido" variant="default" />
             <KpiCard title="Taxa de Conclusão" value={`${metrics.conversionRate.toFixed(1)}%`} icon={Percent}
               trendLabel="OPs concluídas" variant={metrics.conversionRate > 50 ? 'success' : 'warning'} />
-          </div>
+          </StatGrid>
 
           {/* Alerts Banner */}
           {(alerts.lowStock > 0 || alerts.delayedOrders > 0 || alerts.overduePayables > 0) && (
@@ -340,13 +319,7 @@ export default function Reports() {
           {/* Charts Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* Orders Trend */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Activity className="h-4 w-4 text-primary" />Tendência de Pedidos
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+            <Panel title={<span className="flex items-center gap-2"><Activity className="h-4 w-4 text-primary" />Tendência de Pedidos</span>}>
                 <ResponsiveContainer width="100%" height={240}>
                   <AreaChart data={ordersTrend}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
@@ -356,17 +329,10 @@ export default function Reports() {
                     <Area type="monotone" dataKey="pedidos" stroke="hsl(var(--stage-cut-fg))" fill="hsl(var(--stage-cut-fg))" fillOpacity={0.15} name="Pedidos" />
                   </AreaChart>
                 </ResponsiveContainer>
-              </CardContent>
-            </Card>
+            </Panel>
 
             {/* Revenue Trend */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-success" />Faturamento por Semana
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+            <Panel title={<span className="flex items-center gap-2"><TrendingUp className="h-4 w-4 text-success" />Faturamento por Semana</span>}>
                 <ResponsiveContainer width="100%" height={240}>
                   <BarChart data={ordersTrend}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
@@ -376,17 +342,10 @@ export default function Reports() {
                     <Bar dataKey="faturamento" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} name="Faturamento" />
                   </BarChart>
                 </ResponsiveContainer>
-              </CardContent>
-            </Card>
+            </Panel>
 
             {/* Production Status */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <PieChartIcon className="h-4 w-4 text-primary" />Status de Produção
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+            <Panel title={<span className="flex items-center gap-2"><PieChartIcon className="h-4 w-4 text-primary" />Status de Produção</span>}>
                 <ResponsiveContainer width="100%" height={240}>
                   <PieChart>
                     <Pie data={productionStatus} cx="50%" cy="50%" innerRadius={50} outerRadius={85}
@@ -398,17 +357,10 @@ export default function Reports() {
                     <Tooltip />
                   </PieChart>
                 </ResponsiveContainer>
-              </CardContent>
-            </Card>
+            </Panel>
 
             {/* Client Segments */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Map className="h-4 w-4 text-primary" />Distribuição por Estado
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+            <Panel title={<span className="flex items-center gap-2"><Map className="h-4 w-4 text-primary" />Distribuição por Estado</span>}>
                 {clientSegments.length > 0 ? (
                   <ResponsiveContainer width="100%" height={240}>
                     <BarChart data={clientSegments} layout="vertical">
@@ -424,19 +376,12 @@ export default function Reports() {
                     Sem dados de distribuição geográfica
                   </div>
                 )}
-              </CardContent>
-            </Card>
+            </Panel>
           </div>
 
           {/* Top Products */}
           {topProducts.length > 0 && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <BarChart3 className="h-4 w-4 text-primary" />Top Produtos
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+            <Panel title={<span className="flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" />Top Produtos</span>}>
                 <ResponsiveContainer width="100%" height={200}>
                   <BarChart data={topProducts}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
@@ -446,8 +391,7 @@ export default function Reports() {
                     <Bar dataKey="qty" fill="hsl(var(--warning))" radius={[4, 4, 0, 0]} name="Quantidade" />
                   </BarChart>
                 </ResponsiveContainer>
-              </CardContent>
-            </Card>
+            </Panel>
           )}
         </TabsContent>
 
@@ -477,10 +421,14 @@ export default function Reports() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {filteredTemplates.length === 0 ? (
-              <div className="col-span-full flex flex-col items-center justify-center py-16 gap-3 text-center">
-                <SearchX className="h-10 w-10 text-muted-foreground/30" />
-                <p className="font-semibold text-foreground">Nenhum relatório encontrado</p>
-                <p className="text-sm text-muted-foreground">Tente ajustar os filtros de categoria ou busca.</p>
+              <div className="col-span-full">
+                <Panel flush>
+                  <EmptyState
+                    icon={SearchX}
+                    title="Nenhum relatório encontrado"
+                    description="Tente ajustar os filtros de categoria ou busca."
+                  />
+                </Panel>
               </div>
             ) : filteredTemplates.map(template => {
               const Icon = template.icon;
@@ -508,11 +456,7 @@ export default function Reports() {
           </div>
 
           {/* Export Options */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">Opções de Exportação</CardTitle>
-            </CardHeader>
-            <CardContent>
+          <Panel eyebrow="RELATÓRIOS · GERAL" title="Opções de Exportação">
               <div className="flex flex-wrap gap-2">
                 <Button variant="outline" size="sm" className="gap-1.5" onClick={() => {
                   try { exportDashboardPDF(reportData, { ordersToday: metrics.ordersToday, revenueToday: metrics.revenueToday, conversionRate: metrics.conversionRate }); toast.success('PDF gerado!'); }
@@ -539,8 +483,7 @@ export default function Reports() {
                   <Mail className="h-3.5 w-3.5" />Email
                 </Button>
               </div>
-            </CardContent>
-          </Card>
+          </Panel>
         </TabsContent>
       </Tabs>
     </div>

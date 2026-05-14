@@ -15,6 +15,8 @@ import { format, parseISO, addWeeks, startOfWeek, getISOWeek, getISOWeekYear, di
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
 
 // ─── Setores monitorados ───────────────────────────────────────────────────
 
@@ -363,68 +365,52 @@ export default function ProductionControlCenter() {
         {/* ── Tab: Visão geral ── */}
         <TabsContent value="dashboard" className="mt-4 space-y-4">
           {/* KPIs */}
-          <div className="grid sm:grid-cols-4 gap-3">
-            <Card>
-              <CardContent className="p-3">
-                <p className="text-[10px] font-bold text-muted-foreground uppercase">OPs em risco</p>
-                <p className="text-2xl font-bold text-destructive">{opsAtRisk}</p>
-                <p className="text-[10px] text-muted-foreground">{bottlenecks.length} gargalos (per-ficha)</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-3">
-                <p className="text-[10px] font-bold text-muted-foreground uppercase">Maior gargalo</p>
-                {worstCell.loadPct === 0 ? (
-                  <>
-                    <p className="text-lg font-bold text-emerald-600 truncate">Sem gargalo</p>
-                    <p className="text-[10px] text-muted-foreground">Capacidade folgada nas próximas semanas</p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-lg font-bold text-amber-600 truncate">{worstCell.sector}</p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {worstCell.weekLabel && worstCell.weekLabel !== '—' ? `${worstCell.weekLabel} · ` : ''}
-                      {Math.round(worstCell.loadPct)}%
-                    </p>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-3">
-                <p className="text-[10px] font-bold text-muted-foreground uppercase">Alertas críticos</p>
-                <p className="text-2xl font-bold text-destructive">{criticalAlerts}</p>
-                <p className="text-[10px] text-muted-foreground">{activeAlerts.length} alertas ativos</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-3">
-                <p className="text-[10px] font-bold text-muted-foreground uppercase">OSes terceirizadas</p>
-                <p className="text-2xl font-bold">{activeOutsourceOses.length}</p>
-                <p className="text-[10px] text-muted-foreground">ativas</p>
-              </CardContent>
-            </Card>
-          </div>
+          <StatGrid>
+            <StatCard
+              label="OPs em risco"
+              value={opsAtRisk}
+              tone={opsAtRisk > 0 ? 'destructive' : 'default'}
+              hint={`${bottlenecks.length} gargalos (per-ficha)`}
+            />
+            <StatCard
+              label="Maior gargalo"
+              value={worstCell.loadPct === 0 ? 'Sem gargalo' : worstCell.sector}
+              tone={worstCell.loadPct === 0 ? 'success' : 'warning'}
+              hint={
+                worstCell.loadPct === 0
+                  ? 'Capacidade folgada nas próximas semanas'
+                  : `${worstCell.weekLabel && worstCell.weekLabel !== '—' ? `${worstCell.weekLabel} · ` : ''}${Math.round(worstCell.loadPct)}%`
+              }
+            />
+            <StatCard
+              label="Alertas críticos"
+              value={criticalAlerts}
+              tone={criticalAlerts > 0 ? 'destructive' : 'default'}
+              hint={`${activeAlerts.length} alertas ativos`}
+            />
+            <StatCard
+              label="OSes terceirizadas"
+              value={activeOutsourceOses.length}
+              hint="ativas"
+            />
+          </StatGrid>
 
           {/* Heatmap */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-bold flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-primary" /> Capacidade × Demanda · próximas {WEEKS_TO_SHOW} semanas
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="overflow-x-auto">
+          <Panel
+            title={`Capacidade × Demanda · próximas ${WEEKS_TO_SHOW} semanas`}
+            bodyClassName="overflow-x-auto"
+          >
               {isLoading ? (
                 <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
               ) : (
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="border-b">
-                      <th className="text-left p-2 sticky left-0 bg-card">Setor</th>
+                    <tr className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                      <th className="text-left p-2 sticky left-0 bg-muted/40">Setor</th>
                       {weeks.map(w => (
                         <th key={isoWeekKey(w)} className="text-center p-2 min-w-[68px]">
-                          <p className="font-bold">{weekHeader(w)}</p>
-                          <p className="text-[9px] text-muted-foreground font-normal">{format(w, 'dd/MM', { locale: ptBR })}</p>
+                          <p>{weekHeader(w)}</p>
+                          <p className="text-[9px] text-muted-foreground font-normal normal-case tracking-normal">{format(w, 'dd/MM', { locale: ptBR })}</p>
                         </th>
                       ))}
                     </tr>
@@ -458,21 +444,14 @@ export default function ProductionControlCenter() {
                   </tbody>
                 </table>
               )}
-            </CardContent>
-          </Card>
+          </Panel>
 
           {/* Gargalos per-ficha */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-bold flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-amber-500" />
-                Gargalos por ficha técnica ({bottlenecks.length})
-                <span className="text-[10px] text-muted-foreground font-normal ml-2">
-                  Detecção compara demanda diária da OP com capacidade real da sua ficha
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
+          <Panel
+            title={`Gargalos por ficha técnica (${bottlenecks.length})`}
+            subtitle="Detecção compara demanda diária da OP com capacidade real da sua ficha"
+            flush
+          >
               {bottlenecks.length === 0 ? (
                 <p className="text-xs text-muted-foreground text-center py-6 italic">
                   Nenhum gargalo per-ficha detectado nas próximas {WEEKS_TO_SHOW} semanas. 🎉
@@ -509,17 +488,10 @@ export default function ProductionControlCenter() {
                   )}
                 </div>
               )}
-            </CardContent>
-          </Card>
+          </Panel>
 
           {/* OSes terceirizadas ativas */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-bold flex items-center gap-2">
-                <Truck className="h-4 w-4 text-primary" /> OSes terceirizadas ativas ({activeOutsourceOses.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
+          <Panel title={`OSes terceirizadas ativas (${activeOutsourceOses.length})`} flush>
               {activeOutsourceOses.length === 0 ? (
                 <p className="text-xs text-muted-foreground text-center py-6 italic">Sem OSes em aberto.</p>
               ) : (
@@ -529,8 +501,7 @@ export default function ProductionControlCenter() {
                   ))}
                 </div>
               )}
-            </CardContent>
-          </Card>
+          </Panel>
         </TabsContent>
 
         {/* ── Tab: Alertas ── */}

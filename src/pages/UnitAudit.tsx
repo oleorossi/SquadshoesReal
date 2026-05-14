@@ -8,6 +8,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Warning as AlertTriangle, CheckCircle as CheckCircle2, ArrowsClockwise as RefreshCw, Database, Info } from '@phosphor-icons/react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 
 interface ExampleRow {
   id: string;
@@ -96,32 +99,15 @@ export default function UnitAudit() {
 
         {data && (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-xs text-muted-foreground font-medium">Verificações</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="display text-2xl tabular-nums">{data.checks.length}</div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-xs text-muted-foreground font-medium">Com divergência</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="display text-2xl tabular-nums text-destructive">{failingChecks.length}</div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-xs text-muted-foreground font-medium">Registros afetados</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="display text-2xl tabular-nums">{totalIssues}</div>
-                </CardContent>
-              </Card>
-            </div>
+            <StatGrid>
+              <StatCard label="Verificações" value={data.checks.length} />
+              <StatCard
+                label="Com divergência"
+                value={failingChecks.length}
+                tone={failingChecks.length > 0 ? 'destructive' : 'default'}
+              />
+              <StatCard label="Registros afetados" value={totalIssues} />
+            </StatGrid>
 
             <Alert>
               <Info className="h-4 w-4" />
@@ -132,15 +118,13 @@ export default function UnitAudit() {
             </Alert>
 
             {failingChecks.length === 0 ? (
-              <Card>
-                <CardContent className="py-10 flex flex-col items-center gap-2 text-center">
-                  <CheckCircle2 className="h-10 w-10 text-green-500" />
-                  <h3 className="font-semibold">Nenhuma divergência detectada</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Todas as verificações de unidade passaram com sucesso.
-                  </p>
-                </CardContent>
-              </Card>
+              <Panel flush>
+                <EmptyState
+                  icon={CheckCircle2}
+                  title="Nenhuma divergência detectada"
+                  description="Todas as verificações de unidade passaram com sucesso."
+                />
+              </Panel>
             ) : (
               <div className="space-y-3">
                 <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
@@ -242,13 +226,11 @@ function AdditionalValidationHelpers() {
   useEffect(() => { load(); }, []);
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm flex items-center gap-2">
-          <Database className="h-4 w-4" /> Validações complementares
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <Panel
+      eyebrow="ESTOQUE · AUDITORIA"
+      title="Validações complementares"
+    >
+      <div className="space-y-4">
         <div>
           <div className="flex items-center justify-between mb-1">
             <span className="text-sm font-medium">Materiais lineares sem largura cadastrada</span>
@@ -296,7 +278,7 @@ function AdditionalValidationHelpers() {
           <RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`} />
           Reexecutar
         </Button>
-      </CardContent>
-    </Card>
+      </div>
+    </Panel>
   );
 }

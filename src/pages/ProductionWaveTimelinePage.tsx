@@ -11,6 +11,8 @@ import {
 } from '@/components/ui/table';
 import { useWaveDetail } from '@/hooks/useProductionWaves';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
   STAGE_LABEL, STAGE_ORDER,
   type ProductionStage, type StageStatus, type WaveStage, type WaveItem,
@@ -200,29 +202,32 @@ export default function ProductionWaveTimelinePage() {
       />
 
       <section className="space-y-3">
-        <h2 className="text-sm font-bold uppercase text-muted-foreground tracking-wide">
-          Estágios da onda
-        </h2>
         {orderedStages.length === 0 ? (
-          <Card><CardContent className="p-6 text-sm text-muted-foreground">
-            Nenhum estágio registrado para esta onda.
-          </CardContent></Card>
+          <Panel eyebrow="PCP · ONDA" title="Estágios da onda" flush>
+            <EmptyState
+              icon={CircleDashed}
+              title="Nenhum estágio registrado"
+              description="Esta onda ainda não possui estágios de produção registrados."
+            />
+          </Panel>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {orderedStages.map((s) => <StageTimelineCard key={s.stage} stage={s} />)}
-          </div>
+          <Panel eyebrow="PCP · ONDA" title="Estágios da onda">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {orderedStages.map((s) => <StageTimelineCard key={s.stage} stage={s} />)}
+            </div>
+          </Panel>
         )}
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-bold uppercase text-muted-foreground tracking-wide">
-          Itens da onda ({detail.items?.length ?? 0})
-        </h2>
-        <Card>
-          <CardContent className="p-0">
+        <Panel
+          eyebrow="PCP · ONDA"
+          title={`Itens da onda (${detail.items?.length ?? 0})`}
+          flush
+        >
             <Table>
               <TableHeader>
-                <TableRow>
+                <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <TableHead>Referência</TableHead>
                   <TableHead>Cor</TableHead>
                   <TableHead>Solado</TableHead>
@@ -250,8 +255,7 @@ export default function ProductionWaveTimelinePage() {
                 )}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
+        </Panel>
       </section>
     </div>
   );

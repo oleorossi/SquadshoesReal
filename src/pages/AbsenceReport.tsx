@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -9,6 +8,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Badge } from '@/components/ui/badge';
 import { CircleNotch as Loader2, Warning as AlertTriangle, Plus, Trash as Trash2 } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 import { useEmployees } from '@/hooks/useEmployees';
 import {
   useAbsences, useUpsertAbsence, useDeleteAbsence,
@@ -179,122 +181,108 @@ export default function AbsenceReport() {
       />
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-muted-foreground uppercase">Dias ausentes</p>
-          <p className="display text-2xl tabular-nums">{stats.totalAbsentDays}</p>
-        </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-muted-foreground uppercase">Justificadas</p>
-          <p className="display text-2xl tabular-nums text-emerald-600">{stats.justificadas}</p>
-        </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-muted-foreground uppercase">Injustificadas</p>
-          <p className="display text-2xl tabular-nums text-destructive">{stats.injustificadas}</p>
-        </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-muted-foreground uppercase">Taxa de absenteísmo</p>
-          <p className="display text-2xl tabular-nums text-primary">{stats.taxa.toFixed(2)}%</p>
-        </CardContent></Card>
-      </div>
+      <StatGrid>
+        <StatCard label="Dias ausentes" value={stats.totalAbsentDays} hint="no período" />
+        <StatCard label="Justificadas" value={stats.justificadas} hint="ocorrências" tone="success" />
+        <StatCard label="Injustificadas" value={stats.injustificadas} hint="ocorrências" tone="destructive" />
+        <StatCard label="Taxa de absenteísmo" value={`${stats.taxa.toFixed(2)}%`} hint="dias ausentes / dias úteis" tone="primary" />
+      </StatGrid>
 
       {/* Top tipos */}
       <div className="grid md:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader><CardTitle className="text-sm">Por tipo de ausência</CardTitle></CardHeader>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow><TableHead>Tipo</TableHead><TableHead className="text-right">Ocorrências</TableHead><TableHead className="text-right">Dias</TableHead></TableRow>
-              </TableHeader>
-              <TableBody>
-                {byType.map(([t, v]) => (
-                  <TableRow key={t}>
-                    <TableCell>{ABSENCE_TYPE_LABELS[t as AbsenceType] || t}</TableCell>
-                    <TableCell className="text-right font-mono">{v.count}</TableCell>
-                    <TableCell className="text-right font-mono font-bold">{v.days}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader><CardTitle className="text-sm">Top 10 — funcionários com mais dias ausentes</CardTitle></CardHeader>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow><TableHead>Funcionário</TableHead><TableHead className="text-right">Dias</TableHead></TableRow>
-              </TableHeader>
-              <TableBody>
-                {byEmployee.length === 0 ? (
-                  <TableRow><TableCell colSpan={2} className="text-center text-muted-foreground py-6">Nenhum dado.</TableCell></TableRow>
-                ) : byEmployee.map(e => (
-                  <TableRow key={e.id}>
-                    <TableCell>{e.name}</TableCell>
-                    <TableCell className="text-right font-mono font-bold">{e.days}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Lista detalhada */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Ausências do período</CardTitle>
-            <Select value={filterType} onValueChange={setFilterType}>
-              <SelectTrigger className="w-52"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os tipos</SelectItem>
-                {Object.entries(ABSENCE_TYPE_LABELS).map(([k, v]) => (
-                  <SelectItem key={k} value={k}>{v}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
+        <Panel title="Por tipo de ausência" flush>
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>Funcionário</TableHead>
-                <TableHead>Tipo</TableHead>
-                <TableHead>Período</TableHead>
-                <TableHead className="text-right">Dias</TableHead>
-                <TableHead>Pago?</TableHead>
-                <TableHead>Observação</TableHead>
-                <TableHead></TableHead>
+              <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                <TableHead>Tipo</TableHead><TableHead className="text-right">Ocorrências</TableHead><TableHead className="text-right">Dias</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.length === 0 ? (
-                <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">Nenhuma ausência no período.</TableCell></TableRow>
-              ) : filtered.map(a => (
-                <TableRow key={a.id}>
-                  <TableCell>{empMap.get(a.employee_id)?.name || '—'}</TableCell>
-                  <TableCell><Badge variant="secondary" className="text-xs">{ABSENCE_TYPE_LABELS[a.absence_type] || a.absence_type}</Badge></TableCell>
-                  <TableCell className="font-mono text-xs">
-                    {new Date(a.start_date + 'T00:00:00').toLocaleDateString('pt-BR')} → {new Date(a.end_date + 'T00:00:00').toLocaleDateString('pt-BR')}
-                  </TableCell>
-                  <TableCell className="text-right font-mono font-bold">{daysBetween(a.start_date, a.end_date)}</TableCell>
-                  <TableCell>{a.paid ? <span className="text-emerald-600 text-xs">Sim</span> : <span className="text-destructive text-xs">Não</span>}</TableCell>
-                  <TableCell className="text-muted-foreground truncate max-w-[200px]">{a.notes || '—'}</TableCell>
-                  <TableCell>
-                    <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => remove.mutate(a.id)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </TableCell>
+              {byType.map(([t, v]) => (
+                <TableRow key={t}>
+                  <TableCell>{ABSENCE_TYPE_LABELS[t as AbsenceType] || t}</TableCell>
+                  <TableCell className="text-right font-mono">{v.count}</TableCell>
+                  <TableCell className="text-right font-mono font-bold">{v.days}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
-        </CardContent>
-      </Card>
+        </Panel>
+
+        <Panel title="Top 10 — funcionários com mais dias ausentes" flush>
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                <TableHead>Funcionário</TableHead><TableHead className="text-right">Dias</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {byEmployee.length === 0 ? (
+                <TableRow><TableCell colSpan={2} className="text-center text-muted-foreground py-6">Nenhum dado.</TableCell></TableRow>
+              ) : byEmployee.map(e => (
+                <TableRow key={e.id}>
+                  <TableCell>{e.name}</TableCell>
+                  <TableCell className="text-right font-mono font-bold">{e.days}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Panel>
+      </div>
+
+      {/* Lista detalhada */}
+      <Panel
+        title="Ausências do período"
+        actions={
+          <Select value={filterType} onValueChange={setFilterType}>
+            <SelectTrigger className="w-52"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os tipos</SelectItem>
+              {Object.entries(ABSENCE_TYPE_LABELS).map(([k, v]) => (
+                <SelectItem key={k} value={k}>{v}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        }
+        flush
+      >
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+              <TableHead>Funcionário</TableHead>
+              <TableHead>Tipo</TableHead>
+              <TableHead>Período</TableHead>
+              <TableHead className="text-right">Dias</TableHead>
+              <TableHead>Pago?</TableHead>
+              <TableHead>Observação</TableHead>
+              <TableHead></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtered.length === 0 ? (
+              <TableRow><TableCell colSpan={7} className="p-0">
+                <EmptyState icon={AlertTriangle} title="Nenhuma ausência no período" description="Ajuste o período ou registre uma nova ausência." />
+              </TableCell></TableRow>
+            ) : filtered.map(a => (
+              <TableRow key={a.id}>
+                <TableCell>{empMap.get(a.employee_id)?.name || '—'}</TableCell>
+                <TableCell><Badge variant="secondary" className="text-xs">{ABSENCE_TYPE_LABELS[a.absence_type] || a.absence_type}</Badge></TableCell>
+                <TableCell className="font-mono text-xs">
+                  {new Date(a.start_date + 'T00:00:00').toLocaleDateString('pt-BR')} → {new Date(a.end_date + 'T00:00:00').toLocaleDateString('pt-BR')}
+                </TableCell>
+                <TableCell className="text-right font-mono font-bold">{daysBetween(a.start_date, a.end_date)}</TableCell>
+                <TableCell>{a.paid ? <span className="text-emerald-600 text-xs">Sim</span> : <span className="text-destructive text-xs">Não</span>}</TableCell>
+                <TableCell className="text-muted-foreground truncate max-w-[200px]">{a.notes || '—'}</TableCell>
+                <TableCell>
+                  <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => remove.mutate(a.id)}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </Panel>
     </div>
   );
 }

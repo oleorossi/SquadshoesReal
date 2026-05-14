@@ -28,6 +28,8 @@ import { toast } from 'sonner';
 import { SoleTechnicalDetails } from "@/components/technical-sheets/SoleTechnicalDetails";
 import { SolesComponentSheetTab } from "@/components/technical-sheets/SolesComponentSheetTab";
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { EmptyState } from '@/components/ui/empty-state';
 
 const SIZES_INFANTIL = [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36];
 const SIZES_ADULTO = [34, 35, 36, 37, 38, 39, 40];
@@ -271,41 +273,11 @@ const formatCurrency = (v: number) =>
           <TabsContent value="general" className="mt-4 space-y-6">
 
         {!embedded && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Card className="border-none shadow-sm bg-card">
-              <CardContent className="flex items-center gap-4 p-4">
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                  <Package className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <p className="display text-2xl tabular-nums text-foreground">{totalSheets}</p>
-                  <p className="text-xs text-muted-foreground">Fichas Cadastradas</p>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="border-none shadow-sm bg-card">
-              <CardContent className="flex items-center gap-4 p-4">
-                <div className="h-10 w-10 rounded-lg bg-accent/40 flex items-center justify-center shrink-0">
-                  <Layers className="h-5 w-5 text-accent-foreground" />
-                </div>
-                <div>
-                  <p className="display text-2xl tabular-nums text-foreground">{totalGroups}</p>
-                  <p className="text-xs text-muted-foreground">Grupos de Materiais</p>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="border-none shadow-sm bg-card">
-              <CardContent className="flex items-center gap-4 p-4">
-                <div className="h-10 w-10 rounded-lg bg-destructive/10 flex items-center justify-center shrink-0">
-                  <Percent className="h-5 w-5 text-destructive" />
-                </div>
-                <div>
-                  <p className="display text-2xl tabular-nums text-foreground">{avgWaste}%</p>
-                  <p className="text-xs text-muted-foreground">Perda Média</p>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+          <StatGrid>
+            <StatCard icon={Package} label="Fichas Cadastradas" value={totalSheets} />
+            <StatCard icon={Layers} label="Grupos de Materiais" value={totalGroups} />
+            <StatCard icon={Percent} label="Perda Média" value={avgWaste} unit="%" tone="destructive" />
+          </StatGrid>
         )}
 
         {/* Search & Filter Bar */}
@@ -338,15 +310,17 @@ const formatCurrency = (v: number) =>
         {/* Component List */}
         {filtered.length === 0 ? (
           <Card className="border-dashed">
-            <CardContent className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-              <div className="h-16 w-16 rounded-2xl bg-muted/50 flex items-center justify-center mb-4">
-                <Layers className="h-8 w-8 opacity-40" />
-              </div>
-              <p className="font-medium text-foreground">Nenhuma ficha encontrada</p>
-              <p className="text-xs mt-1">Cadastre o consumo por par de cada material para cálculo automático de custos</p>
-              <Button onClick={() => setDialogOpen(true)} variant="outline" className="mt-4 gap-2">
-                <Plus className="h-4 w-4" /> Criar primeira ficha
-              </Button>
+            <CardContent className="p-0">
+              <EmptyState
+                icon={Layers}
+                title="Nenhuma ficha encontrada"
+                description="Cadastre o consumo por par de cada material para cálculo automático de custos."
+                action={
+                  <Button onClick={() => setDialogOpen(true)} variant="outline" className="gap-2">
+                    <Plus className="h-4 w-4" /> Criar primeira ficha
+                  </Button>
+                }
+              />
             </CardContent>
           </Card>
         ) : (

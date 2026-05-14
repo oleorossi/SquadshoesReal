@@ -19,6 +19,8 @@ import { useContractors } from '@/hooks/useContractors';
  import { useProducts, getBaseName } from '@/hooks/useProducts';
  import { useGroups } from '@/hooks/useGroups';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 
 const emptyRecipe: Partial<ArtisanalRecipe> = {
   name: '',
@@ -160,27 +162,31 @@ export default function ArtisanalRecipes() {
       </div>
 
       {/* Table */}
-      <Card className="shadow-sm">
-        <CardContent className="p-0">
-          <div className="rounded-md border-0 overflow-auto">
+      <Panel flush>
             <Table>
               <TableHeader>
-                <TableRow className="bg-muted/40">
-                  <TableHead className="text-xs font-semibold">Receita</TableHead>
-                  <TableHead className="text-xs font-semibold">Transformação</TableHead>
-                  <TableHead className="text-xs font-semibold w-[120px] text-right">Rendimento</TableHead>
-                  <TableHead className="text-xs font-semibold w-[120px] text-right">Custo MO/m</TableHead>
-                  <TableHead className="text-xs font-semibold w-[110px] text-right">Tempo base</TableHead>
-                  <TableHead className="text-xs font-semibold">Terceirizado padrão</TableHead>
-                  <TableHead className="text-xs font-semibold w-[80px]">Status</TableHead>
-                  <TableHead className="text-xs font-semibold w-[80px] text-right">Ações</TableHead>
+                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                  <TableHead>Receita</TableHead>
+                  <TableHead>Transformação</TableHead>
+                  <TableHead className="w-[120px] text-right">Rendimento</TableHead>
+                  <TableHead className="w-[120px] text-right">Custo MO/m</TableHead>
+                  <TableHead className="w-[110px] text-right">Tempo base</TableHead>
+                  <TableHead>Terceirizado padrão</TableHead>
+                  <TableHead className="w-[80px]">Status</TableHead>
+                  <TableHead className="w-[80px] text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-sm text-muted-foreground py-12">
-                      Nenhuma receita cadastrada. Clique em <strong>Nova Receita</strong> para começar.
+                    <TableCell colSpan={8} className="p-0">
+                      <EmptyState
+                        icon={Sparkles}
+                        title={search ? 'Nenhuma receita encontrada' : 'Nenhuma receita cadastrada'}
+                        description={search ? 'Ajuste a busca ou crie uma nova receita.' : 'Crie a primeira receita de transformação artesanal.'}
+                        action={<Button onClick={openNew} className="gap-1.5"><Plus className="h-4 w-4" />Nova Receita</Button>}
+                        size="sm"
+                      />
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -267,9 +273,7 @@ export default function ArtisanalRecipes() {
                 )}
               </TableBody>
             </Table>
-          </div>
-        </CardContent>
-      </Card>
+      </Panel>
 
       {/* Recipe Dialog */}
       <Dialog

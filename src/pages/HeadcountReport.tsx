@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -7,6 +6,8 @@ import { CircleNotch as Loader2, Users, TrendUp as TrendingUp, TrendDown as Tren
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend } from 'recharts';
 import { useEmployees } from '@/hooks/useEmployees';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
 
 function monthKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -115,34 +116,22 @@ export default function HeadcountReport() {
       />
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-muted-foreground uppercase">Funcionários hoje</p>
-          <p className="display text-2xl tabular-nums">{last?.active ?? 0}</p>
-        </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-muted-foreground uppercase">Saldo no período</p>
-          <p className={`display text-2xl tabular-nums flex items-center gap-1 ${totalGrowth >= 0 ? 'text-emerald-600' : 'text-destructive'}`}>
-            {totalGrowth >= 0 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
-            {totalGrowth >= 0 ? '+' : ''}{totalGrowth}
-          </p>
-        </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-muted-foreground uppercase">Admissões</p>
-          <p className="display text-2xl tabular-nums text-emerald-600">{totalAdmitted}</p>
-        </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-muted-foreground uppercase">Desligamentos</p>
-          <p className="display text-2xl tabular-nums text-destructive">{totalDismissed}</p>
-        </CardContent></Card>
-      </div>
+      <StatGrid>
+        <StatCard label="Funcionários hoje" value={last?.active ?? 0} hint="quadro ativo" />
+        <StatCard
+          label="Saldo no período"
+          value={`${totalGrowth >= 0 ? '+' : ''}${totalGrowth}`}
+          hint="admissões − desligamentos"
+          tone={totalGrowth >= 0 ? 'success' : 'destructive'}
+        />
+        <StatCard label="Admissões" value={totalAdmitted} hint="no período" tone="success" />
+        <StatCard label="Desligamentos" value={totalDismissed} hint="no período" tone="destructive" />
+      </StatGrid>
 
       <div className="grid lg:grid-cols-2 gap-4">
         {/* Linha — evolução do total */}
-        <Card>
-          <CardHeader><CardTitle className="text-sm">Evolução do quadro ativo</CardTitle></CardHeader>
-          <CardContent>
-            <div className="h-72">
+        <Panel title="Evolução do quadro ativo">
+          <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={series} margin={{ top: 8, right: 12, left: -10, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.4)" />
@@ -153,14 +142,11 @@ export default function HeadcountReport() {
                 </LineChart>
               </ResponsiveContainer>
             </div>
-          </CardContent>
-        </Card>
+        </Panel>
 
         {/* Barras — admissões vs desligamentos */}
-        <Card>
-          <CardHeader><CardTitle className="text-sm">Movimentações por mês</CardTitle></CardHeader>
-          <CardContent>
-            <div className="h-72">
+        <Panel title="Movimentações por mês">
+          <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={series} margin={{ top: 8, right: 12, left: -10, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.4)" />
@@ -173,19 +159,16 @@ export default function HeadcountReport() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
-          </CardContent>
-        </Card>
+        </Panel>
       </div>
 
       <div className="grid lg:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader><CardTitle className="text-sm">Detalhamento mês a mês</CardTitle></CardHeader>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow><TableHead>Mês</TableHead><TableHead className="text-right">Ativos</TableHead><TableHead className="text-right">Admitidos</TableHead><TableHead className="text-right">Dispensados</TableHead><TableHead className="text-right">Saldo</TableHead></TableRow>
-              </TableHeader>
-              <TableBody>
+        <Panel title="Detalhamento mês a mês" flush>
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground"><TableHead>Mês</TableHead><TableHead className="text-right">Ativos</TableHead><TableHead className="text-right">Admitidos</TableHead><TableHead className="text-right">Dispensados</TableHead><TableHead className="text-right">Saldo</TableHead></TableRow>
+            </TableHeader>
+            <TableBody>
                 {series.map(p => (
                   <TableRow key={p.month}>
                     <TableCell className="font-medium">{p.label}</TableCell>
@@ -199,32 +182,28 @@ export default function HeadcountReport() {
                 ))}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
+        </Panel>
 
-        <Card>
-          <CardHeader><CardTitle className="text-sm">Headcount por setor (atual)</CardTitle></CardHeader>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow><TableHead>Setor</TableHead><TableHead className="text-right">Funcionários</TableHead><TableHead className="text-right">% do total</TableHead></TableRow>
-              </TableHeader>
-              <TableBody>
-                {byDepartment.map(d => {
-                  const total = byDepartment.reduce((s, x) => s + x.count, 0);
-                  const pct = total > 0 ? (d.count / total) * 100 : 0;
-                  return (
-                    <TableRow key={d.name}>
-                      <TableCell><Badge variant="secondary">{d.name}</Badge></TableCell>
-                      <TableCell className="text-right font-mono font-bold">{d.count}</TableCell>
-                      <TableCell className="text-right font-mono text-muted-foreground">{pct.toFixed(1)}%</TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        <Panel title="Headcount por setor (atual)" flush>
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground"><TableHead>Setor</TableHead><TableHead className="text-right">Funcionários</TableHead><TableHead className="text-right">% do total</TableHead></TableRow>
+            </TableHeader>
+            <TableBody>
+              {byDepartment.map(d => {
+                const total = byDepartment.reduce((s, x) => s + x.count, 0);
+                const pct = total > 0 ? (d.count / total) * 100 : 0;
+                return (
+                  <TableRow key={d.name}>
+                    <TableCell><Badge variant="secondary">{d.name}</Badge></TableCell>
+                    <TableCell className="text-right font-mono font-bold">{d.count}</TableCell>
+                    <TableCell className="text-right font-mono text-muted-foreground">{pct.toFixed(1)}%</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </Panel>
       </div>
     </div>
   );

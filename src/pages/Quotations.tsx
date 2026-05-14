@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { FileXls as FileSpreadsheet, Plus, Trash as Trash2, CircleNotch as Loader2, CaretRight as ChevronRight, Trophy, Package, Users, ArrowLeft, CheckCircle as CheckCircle2 } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -80,13 +82,14 @@ function QuotationsList({ onOpen, onCreate }: { onOpen: (id: string) => void; on
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Carregando…</p>
       ) : items.length === 0 ? (
-        <Card>
-          <CardContent className="py-10 text-center space-y-2">
-            <FileSpreadsheet className="h-10 w-10 mx-auto text-muted-foreground/30" />
-            <p className="text-sm text-muted-foreground">Nenhuma cotação criada</p>
-            <Button variant="outline" size="sm" onClick={onCreate}>Criar primeira RFQ</Button>
-          </CardContent>
-        </Card>
+        <Panel flush>
+          <EmptyState
+            icon={FileSpreadsheet}
+            title="Nenhuma cotação criada"
+            description="Crie uma RFQ para cotar materiais com múltiplos fornecedores."
+            action={<Button variant="outline" size="sm" onClick={onCreate}>Criar primeira RFQ</Button>}
+          />
+        </Panel>
       ) : (
         <div className="space-y-2">
           {items.map((r: any) => (
@@ -261,8 +264,7 @@ function QuotationDetail({ id, onBack }: { id: string; onBack: () => void }) {
         </TabsContent>
 
         <TabsContent value="comparison" className="mt-4">
-          <Card>
-            <CardContent className="pt-4 overflow-x-auto">
+          <Panel title="Comparativo de fornecedores" subtitle="Preços, frete e total por resposta" bodyClassName="overflow-x-auto">
               {responses.length === 0 || items.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-8">
                   Cadastre itens e respostas para gerar o comparativo.
@@ -270,7 +272,7 @@ function QuotationDetail({ id, onBack }: { id: string; onBack: () => void }) {
               ) : (
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="border-b">
+                    <tr className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                       <th className="text-left p-2">Produto</th>
                       <th className="text-right p-2">Qtd</th>
                       {responses.map((r: any) => (
@@ -341,8 +343,7 @@ function QuotationDetail({ id, onBack }: { id: string; onBack: () => void }) {
                   </tbody>
                 </table>
               )}
-            </CardContent>
-          </Card>
+          </Panel>
         </TabsContent>
       </Tabs>
     </div>

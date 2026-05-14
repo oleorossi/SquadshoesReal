@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -24,6 +23,9 @@ import { useBenefitsConfig } from '@/hooks/useRH';
 import { toast } from 'sonner';
 import AppLayout from '@/components/layout/AppLayout';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 
 const emptyEmployee = {
   name: '', external_id: '', role: '', department: '', salary: 0, overtime_hourly_rate: null as number | null,
@@ -135,48 +137,24 @@ export default function Employees() {
         />
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Card className="border-0 bg-muted/40">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                <Users2 className="h-4 w-4" />
-                <span className="eyebrow">Total</span>
-              </div>
-              <div className="display text-2xl tabular-nums">{employees.length}</div>
-              <div className="text-xs text-muted-foreground">funcionários</div>
-            </CardContent>
-          </Card>
-          <Card className="border-0 bg-muted/40">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 text-success mb-1">
-                <UserCheck className="h-4 w-4" />
-                <span className="eyebrow">Ativos</span>
-              </div>
-              <div className="display text-2xl tabular-nums text-success">{activeEmployees.length}</div>
-              <div className="text-xs text-muted-foreground">{employees.length - activeEmployees.length} inativos</div>
-            </CardContent>
-          </Card>
-          <Card className="border-0 bg-muted/40">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                <DollarSign className="h-4 w-4" />
-                <span className="eyebrow">Folha Mensal</span>
-              </div>
-              <div className="display text-lg tabular-nums">{fmt(totalMonthlyPayroll)}</div>
-              <div className="text-xs text-muted-foreground">ativos</div>
-            </CardContent>
-          </Card>
-          <Card className="border-0 bg-muted/40">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 text-warning mb-1">
-                <DollarSign className="h-4 w-4" />
-                <span className="eyebrow">Adiantamentos</span>
-              </div>
-              <div className="display text-lg tabular-nums text-warning">{fmt(totalAdvances)}</div>
-              <div className="text-xs text-muted-foreground">{advances.length} registros</div>
-            </CardContent>
-          </Card>
-        </div>
+        <StatGrid>
+          <StatCard label="Total" value={employees.length} hint="funcionários" icon={Users2} />
+          <StatCard
+            label="Ativos"
+            value={activeEmployees.length}
+            hint={`${employees.length - activeEmployees.length} inativos`}
+            tone="success"
+            icon={UserCheck}
+          />
+          <StatCard label="Folha Mensal" value={fmt(totalMonthlyPayroll)} hint="ativos" icon={DollarSign} />
+          <StatCard
+            label="Adiantamentos"
+            value={fmt(totalAdvances)}
+            hint={`${advances.length} registros`}
+            tone="warning"
+            icon={DollarSign}
+          />
+        </StatGrid>
 
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList>
@@ -217,10 +195,10 @@ export default function Employees() {
               <span className="text-xs text-muted-foreground ml-1">{filteredEmployees.length} resultado{filteredEmployees.length !== 1 ? 's' : ''}</span>
             </div>
 
-            <div className="rounded-lg border bg-card overflow-hidden">
+            <Panel flush>
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/50">
+                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <TableHead>Nome</TableHead>
                     <TableHead>Cargo / Depto</TableHead>
                     <TableHead>Admissão</TableHead>
@@ -235,7 +213,9 @@ export default function Employees() {
                 <TableBody>
                   {filteredEmployees.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-10 text-muted-foreground text-sm">Nenhum funcionário encontrado</TableCell>
+                      <TableCell colSpan={9} className="p-0">
+                        <EmptyState icon={Users2} title="Nenhum funcionário encontrado" description="Ajuste os filtros ou cadastre um novo funcionário." />
+                      </TableCell>
                     </TableRow>
                   )}
                   {filteredEmployees.map(e => {
@@ -311,7 +291,7 @@ export default function Employees() {
                   ); })}
                 </TableBody>
               </Table>
-            </div>
+            </Panel>
 
             {/* Payroll summary for filtered set */}
             {filteredEmployees.length > 0 && (
@@ -324,10 +304,10 @@ export default function Employees() {
           </TabsContent>
 
           <TabsContent value="advances" className="mt-4 space-y-3">
-            <div className="rounded-lg border bg-card overflow-hidden">
+            <Panel flush>
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/50">
+                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <TableHead>Data</TableHead>
                     <TableHead>Funcionário</TableHead>
                     <TableHead>Descrição</TableHead>
@@ -338,7 +318,9 @@ export default function Employees() {
                 <TableBody>
                   {advances.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center py-10 text-muted-foreground text-sm">Nenhum adiantamento registrado</TableCell>
+                      <TableCell colSpan={5} className="p-0">
+                        <EmptyState icon={DollarSign} title="Nenhum adiantamento registrado" description="Registre um adiantamento para a equipe." />
+                      </TableCell>
                     </TableRow>
                   )}
                   {advances.map(a => {
@@ -364,12 +346,11 @@ export default function Employees() {
                   )}
                 </TableBody>
               </Table>
-            </div>
+            </Panel>
 
             {/* Per-employee advance summary */}
             {advances.length > 0 && (
-              <div className="rounded-lg border bg-card p-4">
-                <h3 className="text-sm font-semibold mb-3">Resumo por Funcionário</h3>
+              <Panel title="Resumo por Funcionário">
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                   {Array.from(advancesByEmp.entries())
                     .sort((a, b) => b[1] - a[1])
@@ -383,7 +364,7 @@ export default function Employees() {
                       );
                     })}
                 </div>
-              </div>
+              </Panel>
             )}
           </TabsContent>
         </Tabs>

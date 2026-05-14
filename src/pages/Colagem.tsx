@@ -6,6 +6,8 @@ import { usePersistedState } from '@/hooks/usePersistedState';
 import { Scissors, Printer, Funnel as Filter, CheckCircle as CheckCircle2, CaretDown as ChevronDown, CaretRight as ChevronRight, Storefront as Store, Buildings as Building2, Stack as Layers } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -547,28 +549,25 @@ export default function Colagem() {
         />
 
         {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="display text-2xl tabular-nums text-primary">{aviamentoOrders.length}</p>
-              <p className="text-xs text-muted-foreground">OPs p/ Aviamento</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="display text-2xl tabular-nums text-foreground">
-                {aviamentoOrders.reduce((s, o) => s + (o.quantity || 0), 0)}
-              </p>
-              <p className="text-xs text-muted-foreground">Total de Pares</p>
-            </CardContent>
-          </Card>
-        </div>
+        <StatGrid>
+          <StatCard
+            label="OPs p/ Aviamento"
+            value={aviamentoOrders.length}
+            tone="primary"
+          />
+          <StatCard
+            label="Total de Pares"
+            value={aviamentoOrders.reduce((s, o) => s + (o.quantity || 0), 0)}
+          />
+        </StatGrid>
 
         {/* Orders list */}
         {aviamentoOrders.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground text-sm">
-            Nenhuma OP com aviamento pendente.
-          </div>
+          <EmptyState
+            icon={Scissors}
+            title="Nenhuma OP com aviamento pendente"
+            description="Não há ordens de produção aguardando aviamento no momento."
+          />
         ) : (
           <div className="space-y-3">
             {/* Select all button */}
@@ -719,12 +718,12 @@ export default function Colagem() {
                             <div className="overflow-x-auto">
                               <Table>
                                 <TableHeader>
-                                  <TableRow>
-                                    <TableHead className="text-xs"></TableHead>
+                                  <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                                    <TableHead></TableHead>
                                     {activeSizes.map(s => (
-                                      <TableHead key={s} className="text-xs text-center w-14">{s}</TableHead>
+                                      <TableHead key={s} className="text-center w-14">{s}</TableHead>
                                     ))}
-                                    <TableHead className="text-xs text-center font-bold bg-muted">Total</TableHead>
+                                    <TableHead className="text-center bg-muted">Total</TableHead>
                                   </TableRow>
                                 </TableHeader>
                                 <TableBody>

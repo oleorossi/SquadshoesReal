@@ -1,6 +1,7 @@
 import { Package, Truck, ChartBar as BarChart3 } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, AreaChart, Area,
@@ -53,14 +54,10 @@ export default function DashboardCharts({ monthlyData, categoryData, topModels, 
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Monthly Trend */}
-        <Card className="lg:col-span-2">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <BarChart3 className="h-4 w-4 text-primary" />
-              Vendas vs Produção — 6 meses
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+        <Panel
+          className="lg:col-span-2"
+          title={<span className="flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" />Vendas vs Produção — 6 meses</span>}
+        >
             <ResponsiveContainer width="100%" height={220}>
               <AreaChart data={monthlyData} margin={{ top: 10, right: 10, bottom: 0, left: -10 }}>
                 <defs>
@@ -81,20 +78,15 @@ export default function DashboardCharts({ monthlyData, categoryData, topModels, 
                 <Area type="monotone" dataKey="producao" name="Produção (pares)" stroke={chartColors[2]} fillOpacity={1} fill="url(#gProd)" strokeWidth={2.5} />
               </AreaChart>
             </ResponsiveContainer>
-          </CardContent>
-        </Card>
+        </Panel>
 
         {/* Category Pie */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Package className="h-4 w-4 text-primary" />
-              Distribuição de Estoque
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex items-center justify-center">
+        <Panel
+          title={<span className="flex items-center gap-2"><Package className="h-4 w-4 text-primary" />Distribuição de Estoque</span>}
+          bodyClassName="flex items-center justify-center"
+        >
             {categoryData.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-8">Sem dados</p>
+              <EmptyState size="sm" icon={Package} title="Sem dados" />
             ) : (
               <ResponsiveContainer width="100%" height={220}>
                 <PieChart>
@@ -107,8 +99,7 @@ export default function DashboardCharts({ monthlyData, categoryData, topModels, 
                 </PieChart>
               </ResponsiveContainer>
             )}
-          </CardContent>
-        </Card>
+        </Panel>
       </div>
 
       {/* Section header: Top Modelos */}
@@ -118,16 +109,9 @@ export default function DashboardCharts({ monthlyData, categoryData, topModels, 
       </div>
 
       {/* Top Models */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            <Truck className="h-4 w-4 text-primary" />
-            Top Modelos Produzidos
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+      <Panel title={<span className="flex items-center gap-2"><Truck className="h-4 w-4 text-primary" />Top Modelos Produzidos</span>}>
           {topModels.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-6 text-center">Sem dados</p>
+            <EmptyState size="sm" icon={Truck} title="Sem dados" />
           ) : (
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={topModels} layout="vertical" margin={{ left: 0, right: 10 }}>
@@ -139,8 +123,7 @@ export default function DashboardCharts({ monthlyData, categoryData, topModels, 
               </BarChart>
             </ResponsiveContainer>
           )}
-        </CardContent>
-      </Card>
+      </Panel>
     </div>
   );
 }

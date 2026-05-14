@@ -1,13 +1,11 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Progress } from '@/components/ui/progress';
 import { Pulse as Activity, Shield, Database, Cpu, Users, Clock, MagnifyingGlass as Search, CheckCircle as CheckCircle2, XCircle, Warning as AlertTriangle, Eye, ArrowsClockwise as RefreshCw, ChartBar as BarChart3, Lightning as Zap, HardDrive, WifiHigh as Wifi } from '@phosphor-icons/react';
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -19,6 +17,9 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 
 const CHART_COLORS = ['#0EA5E9', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
 
@@ -142,61 +143,15 @@ export default function SystemMonitor() {
 
         {/* ═══ PERFORMANCE TAB ═══ */}
         <TabsContent value="performance" className="space-y-4">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Tempo Resposta</p>
-                    <p className="display text-2xl tabular-nums font-mono mt-1">{perfMetrics.responseTime.toFixed(0)}ms</p>
-                  </div>
-                  <div className="bg-success/10 rounded-xl p-2.5"><Zap className="h-5 w-5 text-success" /></div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="border-success/30 bg-success/5">
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Uptime</p>
-                    <p className="display text-2xl tabular-nums font-mono mt-1">{perfMetrics.uptime}%</p>
-                  </div>
-                  <div className="bg-success/10 rounded-xl p-2.5"><Wifi className="h-5 w-5 text-success" /></div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className={perfMetrics.errorRate > 1 ? 'border-destructive/30 bg-destructive/5' : ''}>
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Taxa de Erro</p>
-                    <p className="display text-2xl tabular-nums font-mono mt-1">{perfMetrics.errorRate.toFixed(2)}%</p>
-                  </div>
-                  <div className="bg-warning/10 rounded-xl p-2.5"><AlertTriangle className="h-5 w-5 text-warning" /></div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Usuários Ativos</p>
-                    <p className="display text-2xl tabular-nums font-mono mt-1">{perfMetrics.activeUsers}</p>
-                  </div>
-                  <div className="bg-primary/10 rounded-xl p-2.5"><Users className="h-5 w-5 text-primary" /></div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+          <StatGrid>
+            <StatCard label="Tempo Resposta" value={`${perfMetrics.responseTime.toFixed(0)}ms`} icon={Zap} tone="success" />
+            <StatCard label="Uptime" value={`${perfMetrics.uptime}%`} icon={Wifi} tone="success" />
+            <StatCard label="Taxa de Erro" value={`${perfMetrics.errorRate.toFixed(2)}%`} icon={AlertTriangle} tone={perfMetrics.errorRate > 1 ? 'destructive' : 'warning'} />
+            <StatCard label="Usuários Ativos" value={perfMetrics.activeUsers} icon={Users} tone="primary" />
+          </StatGrid>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Activity className="h-4 w-4 text-primary" />Requisições & Erros (24h)
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+            <Panel title={<span className="flex items-center gap-2"><Activity className="h-4 w-4 text-primary" />Requisições & Erros (24h)</span>}>
                 <ResponsiveContainer width="100%" height={220}>
                   <AreaChart data={timeSeries}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
@@ -207,16 +162,9 @@ export default function SystemMonitor() {
                     <Area type="monotone" dataKey="errors" stroke="hsl(var(--destructive))" fill="hsl(var(--destructive))" fillOpacity={0.15} name="Erros" />
                   </AreaChart>
                 </ResponsiveContainer>
-              </CardContent>
-            </Card>
+            </Panel>
 
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-warning" />Latência (ms)
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+            <Panel title={<span className="flex items-center gap-2"><Clock className="h-4 w-4 text-warning" />Latência (ms)</span>}>
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={timeSeries}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
@@ -226,42 +174,22 @@ export default function SystemMonitor() {
                     <Bar dataKey="latency" fill="hsl(var(--warning))" radius={[3, 3, 0, 0]} name="Latência" />
                   </BarChart>
                 </ResponsiveContainer>
-              </CardContent>
-            </Card>
+            </Panel>
           </div>
         </TabsContent>
 
         {/* ═══ AUDIT TAB ═══ */}
         <TabsContent value="audit" className="space-y-4">
           {/* Audit KPIs */}
-          <div className="grid grid-cols-3 gap-3">
-            <Card>
-              <CardContent className="p-4 text-center">
-                <p className="display text-2xl tabular-nums font-mono">{auditStats.total}</p>
-                <p className="text-xs text-muted-foreground">Eventos totais</p>
-              </CardContent>
-            </Card>
-            <Card className="border-success/30 bg-success/5">
-              <CardContent className="p-4 text-center">
-                <p className="display text-2xl tabular-nums font-mono text-success">{auditStats.successful}</p>
-                <p className="text-xs text-muted-foreground">Bem-sucedidos</p>
-              </CardContent>
-            </Card>
-            <Card className={auditStats.failed > 0 ? 'border-destructive/30 bg-destructive/5' : ''}>
-              <CardContent className="p-4 text-center">
-                <p className="display text-2xl tabular-nums font-mono text-destructive">{auditStats.failed}</p>
-                <p className="text-xs text-muted-foreground">Falhas</p>
-              </CardContent>
-            </Card>
-          </div>
+          <StatGrid>
+            <StatCard label="Eventos totais" value={auditStats.total} />
+            <StatCard label="Bem-sucedidos" value={auditStats.successful} tone="success" />
+            <StatCard label="Falhas" value={auditStats.failed} tone={auditStats.failed > 0 ? 'destructive' : 'default'} />
+          </StatGrid>
 
           {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Eventos por Recurso</CardTitle>
-              </CardHeader>
-              <CardContent>
+            <Panel title="Eventos por Recurso">
                 {auditStats.topResources.length > 0 ? (
                   <ResponsiveContainer width="100%" height={200}>
                     <PieChart>
@@ -280,14 +208,9 @@ export default function SystemMonitor() {
                     Sem dados de auditoria
                   </div>
                 )}
-              </CardContent>
-            </Card>
+            </Panel>
 
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Top Ações</CardTitle>
-              </CardHeader>
-              <CardContent>
+            <Panel title="Top Ações">
                 {auditStats.topActions.length > 0 ? (
                   <ResponsiveContainer width="100%" height={200}>
                     <BarChart data={auditStats.topActions} layout="vertical">
@@ -303,42 +226,40 @@ export default function SystemMonitor() {
                     Sem dados
                   </div>
                 )}
-              </CardContent>
-            </Card>
+            </Panel>
           </div>
 
           {/* Audit Log Table */}
-          <Card>
-            <CardHeader className="pb-2">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <CardTitle className="text-sm">Log de Auditoria</CardTitle>
-                <div className="flex items-center gap-2">
-                  <div className="relative">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                    <Input value={auditSearch} onChange={e => setAuditSearch(e.target.value)}
-                      placeholder="Buscar..." className="pl-8 h-8 text-xs w-48" />
-                  </div>
-                  <Select value={auditFilter} onValueChange={setAuditFilter}>
-                    <SelectTrigger className="h-8 w-32 text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all" className="text-xs">Todos</SelectItem>
-                      <SelectItem value="success" className="text-xs">Sucesso</SelectItem>
-                      <SelectItem value="failed" className="text-xs">Falhas</SelectItem>
-                    </SelectContent>
-                  </Select>
+          <Panel
+            title="Log de Auditoria"
+            actions={
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input value={auditSearch} onChange={e => setAuditSearch(e.target.value)}
+                    placeholder="Buscar..." className="pl-8 h-8 text-xs w-48" />
                 </div>
+                <Select value={auditFilter} onValueChange={setAuditFilter}>
+                  <SelectTrigger className="h-8 w-32 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="text-xs">Todos</SelectItem>
+                    <SelectItem value="success" className="text-xs">Sucesso</SelectItem>
+                    <SelectItem value="failed" className="text-xs">Falhas</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            </CardHeader>
-            <CardContent className="p-0">
+            }
+            flush
+          >
               <div className="max-h-[400px] overflow-auto">
                 <Table>
                   <TableHeader>
-                    <TableRow className="bg-muted/50">
-                      <TableHead className="text-xs">Data/Hora</TableHead>
-                      <TableHead className="text-xs">Ação</TableHead>
-                      <TableHead className="text-xs">Recurso</TableHead>
-                      <TableHead className="text-xs">Status</TableHead>
-                      <TableHead className="text-xs">Usuário</TableHead>
+                    <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                      <TableHead>Data/Hora</TableHead>
+                      <TableHead>Ação</TableHead>
+                      <TableHead>Recurso</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Usuário</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -350,8 +271,8 @@ export default function SystemMonitor() {
                       </TableRow>
                     ) : filteredAudit.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center py-8 text-muted-foreground text-sm">
-                          Nenhum evento encontrado
+                        <TableCell colSpan={5} className="p-0">
+                          <EmptyState icon={Shield} title="Nenhum evento encontrado" size="sm" />
                         </TableCell>
                       </TableRow>
                     ) : (
@@ -380,54 +301,23 @@ export default function SystemMonitor() {
                   </TableBody>
                 </Table>
               </div>
-            </CardContent>
-          </Card>
+          </Panel>
         </TabsContent>
 
         {/* ═══ CACHE TAB ═══ */}
         <TabsContent value="cache" className="space-y-4">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <Card>
-              <CardContent className="p-4">
-                <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Entradas</p>
-                <p className="display text-2xl tabular-nums font-mono mt-1">{perfMetrics.cache.entries}</p>
-                <p className="text-[11px] text-muted-foreground">de {perfMetrics.cache.maxEntries} máx</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Cache Hits</p>
-                <p className="display text-2xl tabular-nums font-mono mt-1">{perfMetrics.cache.totalHits}</p>
-                <p className="text-[11px] text-muted-foreground">total acumulado</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Inflight</p>
-                <p className="display text-2xl tabular-nums font-mono mt-1">{perfMetrics.cache.inflight}</p>
-                <p className="text-[11px] text-muted-foreground">requisições ativas</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Uso</p>
-                <div className="mt-2">
-                  <Progress value={(perfMetrics.cache.entries / perfMetrics.cache.maxEntries) * 100} className="h-2" />
-                  <p className="text-[11px] text-muted-foreground mt-1">
-                    {((perfMetrics.cache.entries / perfMetrics.cache.maxEntries) * 100).toFixed(1)}%
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+          <StatGrid>
+            <StatCard label="Entradas" value={perfMetrics.cache.entries} hint={`de ${perfMetrics.cache.maxEntries} máx`} />
+            <StatCard label="Cache Hits" value={perfMetrics.cache.totalHits} hint="total acumulado" />
+            <StatCard label="Inflight" value={perfMetrics.cache.inflight} hint="requisições ativas" />
+            <StatCard
+              label="Uso"
+              value={`${((perfMetrics.cache.entries / perfMetrics.cache.maxEntries) * 100).toFixed(1)}%`}
+              hint="da capacidade"
+            />
+          </StatGrid>
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <HardDrive className="h-4 w-4 text-primary" />Estratégia de Cache
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
+          <Panel title={<span className="flex items-center gap-2"><HardDrive className="h-4 w-4 text-primary" />Estratégia de Cache</span>} bodyClassName="space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="p-3 rounded-lg border bg-muted/30">
                   <p className="text-xs font-semibold">Evição</p>
@@ -449,8 +339,7 @@ export default function SystemMonitor() {
                 }}>
                 <RefreshCw className="h-3.5 w-3.5" />Limpar Cache
               </Button>
-            </CardContent>
-          </Card>
+          </Panel>
         </TabsContent>
       </Tabs>
     </div>

@@ -3,6 +3,9 @@ import { usePersistedState } from '@/hooks/usePersistedState';
 import { Funnel as Filter, CheckCircle as CheckCircle2, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -139,25 +142,28 @@ export default function SetorCostura() {
         </>}
       />
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <Card>
-          <CardContent className="p-4 text-center">
-            <p className="display text-2xl tabular-nums text-primary">{costuraOrders.length}</p>
-            <p className="text-xs text-muted-foreground">OPs p/ {SECTOR_NAME}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <p className="display text-2xl tabular-nums text-foreground">{totalPairs}</p>
-            <p className="text-xs text-muted-foreground">Total de Pares</p>
-          </CardContent>
-        </Card>
-      </div>
+      <StatGrid>
+        <StatCard
+          label={`OPs p/ ${SECTOR_NAME}`}
+          value={costuraOrders.length.toLocaleString('pt-BR')}
+          hint="na fila do setor"
+          tone="primary"
+        />
+        <StatCard
+          label="Total de pares"
+          value={totalPairs.toLocaleString('pt-BR')}
+          hint="somatório das OPs"
+        />
+      </StatGrid>
 
       {costuraOrders.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground text-sm">
-          Nenhuma OP com {SECTOR_NAME.toLowerCase()} pendente.
-        </div>
+        <Panel flush>
+          <EmptyState
+            icon={CheckCircle2}
+            title={`Nenhuma OP com ${SECTOR_NAME.toLowerCase()} pendente`}
+            description="As OPs aparecerão aqui quando o setor estiver configurado na ficha técnica."
+          />
+        </Panel>
       ) : (
         <div className="space-y-2">
           <div className="flex items-center gap-2 px-1">

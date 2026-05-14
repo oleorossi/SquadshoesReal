@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -16,6 +15,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import ProductReservationDetailsDialog from '@/components/inventory/ProductReservationDetailsDialog';
 import { SmartSearch, SmartSearchSuggestion } from '@/components/ui/smart-search';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 
 interface StockRow {
   id: string;
@@ -271,52 +273,40 @@ export default function StockReservations() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Card>
-          <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="eyebrow">Produtos</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="display text-2xl tabular-nums">{fmt(totals.products)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Total na visão</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="eyebrow">Reservado</CardTitle>
-            <Lock className="h-4 w-4 text-warning" />
-          </CardHeader>
-          <CardContent>
-            <div className="display text-2xl tabular-nums text-warning">{fmt(totals.reserved)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Reservas ativas</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="eyebrow">Em Produção</CardTitle>
-            <Factory className="h-4 w-4 text-info" />
-          </CardHeader>
-          <CardContent>
-            <div className="display text-2xl tabular-nums text-info">{fmt(totals.inProd)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Debitado em OPs ativas</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="eyebrow">Disponível</CardTitle>
-            <CheckCircle2 className="h-4 w-4 text-success" />
-          </CardHeader>
-          <CardContent>
-            <div className="display text-2xl tabular-nums text-success">{fmt(totals.available)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Livre após reservas</p>
-          </CardContent>
-        </Card>
-      </div>
+      <StatGrid>
+        <StatCard
+          label="Produtos"
+          value={fmt(totals.products)}
+          hint="Total na visão"
+          icon={Package}
+        />
+        <StatCard
+          label="Reservado"
+          value={fmt(totals.reserved)}
+          hint="Reservas ativas"
+          tone="warning"
+          icon={Lock}
+        />
+        <StatCard
+          label="Em Produção"
+          value={fmt(totals.inProd)}
+          hint="Debitado em OPs ativas"
+          tone="primary"
+          icon={Factory}
+        />
+        <StatCard
+          label="Disponível"
+          value={fmt(totals.available)}
+          hint="Livre após reservas"
+          tone="success"
+          icon={CheckCircle2}
+        />
+      </StatGrid>
 
-      <Card>
-        <CardHeader className="space-y-3">
-          <CardTitle className="text-base">Detalhamento por produto</CardTitle>
+      <Panel
+        eyebrow="ESTOQUE · RESERVAS"
+        title="Detalhamento por produto"
+        actions={
           <div className="flex flex-col sm:flex-row gap-2">
             <SmartSearch
               className="flex-1"
@@ -373,8 +363,8 @@ export default function StockReservations() {
               />
             </div>
           </div>
-        </CardHeader>
-        <CardContent>
+        }
+      >
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -384,14 +374,16 @@ export default function StockReservations() {
               Erro ao carregar dados. Verifique sua conexão e tente novamente.
             </div>
           ) : filtered.length === 0 ? (
-            <div className="text-sm text-muted-foreground py-12 text-center">
-              Nenhum produto encontrado para os filtros selecionados.
-            </div>
+            <EmptyState
+              icon={Package}
+              title="Nenhum produto encontrado"
+              description="Nenhum produto corresponde aos filtros selecionados."
+            />
           ) : (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <TableHead
                       onClick={() => toggleSort('name')}
                       className="cursor-pointer select-none hover:bg-muted/40 transition-colors"
@@ -503,8 +495,7 @@ export default function StockReservations() {
               </div>
             </div>
           )}
-        </CardContent>
-      </Card>
+      </Panel>
 
       <ProductReservationDetailsDialog
         open={!!detailsProduct}

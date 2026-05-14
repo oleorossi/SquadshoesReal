@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { EmptyState } from "@/components/ui/empty-state";
 
 interface Product {
   id: string;
@@ -782,43 +783,51 @@ export default function StockAdjustmentPage() {
                <col style={{ width: 76 }} />
             </colgroup>
             <thead className="sticky top-0 z-10">
-              <tr className="bg-muted/80 backdrop-blur-sm border-b border-border">
-                 <th className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground text-center py-2 border-r border-border/40">#</th>
-                 <th className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground text-center py-2 border-r border-border/40">Hist.</th>
-                <th className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground text-left px-3 py-2 border-r border-border/40">Produto</th>
-                <th className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground text-left px-2 py-2 border-r border-border/40">Cor</th>
-                <th className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground text-left px-2 py-2 border-r border-border/40">SKU</th>
-                <th className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground text-left px-2 py-2 border-r border-border/40">Categoria</th>
-                <th className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground text-center py-2 border-r border-border/40">Un.</th>
-                <th className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground text-right px-3 py-2 border-r border-border/40">Atual</th>
-                <th className="text-[10px] font-semibold uppercase tracking-wider text-primary text-right px-3 py-2 border-r border-border/40">Nova Qtd ✎</th>
-                <th className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground text-right px-3 py-2">Variação</th>
+              <tr className="bg-muted/40 backdrop-blur-sm border-b border-border [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                 <th className="text-center py-2 border-r border-border/40">#</th>
+                 <th className="text-center py-2 border-r border-border/40">Hist.</th>
+                <th className="text-left px-3 py-2 border-r border-border/40">Produto</th>
+                <th className="text-left px-2 py-2 border-r border-border/40">Cor</th>
+                <th className="text-left px-2 py-2 border-r border-border/40">SKU</th>
+                <th className="text-left px-2 py-2 border-r border-border/40">Categoria</th>
+                <th className="text-center py-2 border-r border-border/40">Un.</th>
+                <th className="text-right px-3 py-2 border-r border-border/40">Atual</th>
+                <th className="!text-primary text-right px-3 py-2 border-r border-border/40">Nova Qtd ✎</th>
+                <th className="text-right px-3 py-2">Variação</th>
               </tr>
             </thead>
 
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="text-center py-16 text-muted-foreground text-sm">
+                  <td colSpan={10}>
                     {/* E8 (audit): empty state distingue "nenhum produto cadastrado"
                         de "filtros zeraram resultado". Hint pra reset rápido se for filtro. */}
                     {(search || categoryFilter !== 'all' || statusFilter !== 'all') ? (
-                      <>
-                        <p>Nenhum produto bate com os filtros atuais.</p>
-                        <button
-                          type="button"
-                          className="mt-2 text-xs text-primary hover:underline"
-                          onClick={() => {
-                            setSearch('');
-                            setCategoryFilter('all');
-                            setStatusFilter('all');
-                          }}
-                        >
-                          Limpar todos os filtros
-                        </button>
-                      </>
+                      <EmptyState
+                        icon={SlidersHorizontal}
+                        title="Nenhum produto bate com os filtros"
+                        description="Ajuste a busca ou os filtros para ver os produtos."
+                        action={
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setSearch('');
+                              setCategoryFilter('all');
+                              setStatusFilter('all');
+                            }}
+                          >
+                            Limpar todos os filtros
+                          </Button>
+                        }
+                      />
                     ) : (
-                      'Nenhum produto cadastrado.'
+                      <EmptyState
+                        icon={SlidersHorizontal}
+                        title="Nenhum produto cadastrado"
+                        description="Cadastre produtos para ajustar o estoque."
+                      />
                     )}
                   </td>
                 </tr>

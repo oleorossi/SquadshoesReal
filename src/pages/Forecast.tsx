@@ -1,10 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { TrendUp as TrendingUp } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { RefChip } from '@/components/ui/ref-chip';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 
 export default function Forecast() {
   const { data: summary = [] } = useQuery({
@@ -34,32 +36,34 @@ export default function Forecast() {
         description="Média móvel 6 meses × sazonalidade por SKU (referência × cor × numeração)"
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <Card><CardContent className="p-3">
-          <p className="text-[10px] font-bold text-muted-foreground uppercase">Forecast Médio Mensal</p>
-          <p className="text-2xl font-bold">{totalMonthly.toFixed(0)}</p>
-          <p className="text-xs text-muted-foreground">pares projetados / mês</p>
-        </CardContent></Card>
-        <Card><CardContent className="p-3">
-          <p className="text-[10px] font-bold text-muted-foreground uppercase">Forecast Mês Atual (sazonal)</p>
-          <p className="text-2xl font-bold text-primary">{totalCurrent.toFixed(0)}</p>
-          <p className="text-xs text-muted-foreground">ajustado por sazonalidade</p>
-        </CardContent></Card>
-        <Card><CardContent className="p-3">
-          <p className="text-[10px] font-bold text-muted-foreground uppercase">SKUs Ativos no Forecast</p>
-          <p className="text-2xl font-bold">{detailed.length}</p>
-        </CardContent></Card>
-      </div>
+      <StatGrid>
+        <StatCard
+          label="Forecast Médio Mensal"
+          value={totalMonthly.toFixed(0)}
+          unit="pares"
+          hint="projetados / mês"
+        />
+        <StatCard
+          label="Forecast Mês Atual (sazonal)"
+          value={totalCurrent.toFixed(0)}
+          unit="pares"
+          hint="ajustado por sazonalidade"
+          tone="primary"
+        />
+        <StatCard
+          label="SKUs Ativos no Forecast"
+          value={detailed.length}
+          hint="referência × cor × numeração"
+        />
+      </StatGrid>
 
-      <Card>
-        <CardContent className="p-0">
+      <Panel flush>
           {summary.length === 0 ? (
-            <div className="py-10 text-center">
-              <TrendingUp className="h-10 w-10 mx-auto text-muted-foreground/30 mb-2" />
-              <p className="text-sm text-muted-foreground">
-                Sem dados históricos suficientes (precisa &ge; 6 meses de PVs aprovados)
-              </p>
-            </div>
+            <EmptyState
+              icon={TrendingUp}
+              title="Sem dados históricos suficientes"
+              description="É necessário ≥ 6 meses de PVs aprovados para projetar a demanda."
+            />
           ) : (
             <div className="divide-y">
               <div className="grid grid-cols-[1fr_80px_80px_80px_80px] gap-3 p-3 bg-muted/30 text-[10px] font-bold uppercase text-muted-foreground">
@@ -86,8 +90,7 @@ export default function Forecast() {
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
+      </Panel>
     </div>
   );
 }

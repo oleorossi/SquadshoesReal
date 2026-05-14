@@ -2,7 +2,9 @@ import { useState, useMemo, useCallback, useEffect } from 'react';
 import { escapeHtml } from '@/lib/htmlUtils';
 import { ClipboardText as ClipboardList, Package, Printer, Calendar, MagnifyingGlass as Search, CheckSquare, Square, ArrowCounterClockwise as RotateCcw, TrendUp as TrendingUp, CheckCircle as CheckCircle2, CircleNotch as Loader2, FileText, Hash } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Panel } from '@/components/ui/panel';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -351,8 +353,7 @@ export default function PickingListPage() {
       />
 
       {/* Filter modes */}
-      <Card>
-        <CardContent className="pt-4 pb-3 space-y-3">
+      <Panel bodyClassName="space-y-3">
           <Tabs value={filterMode} onValueChange={v => { setFilterMode(v as FilterMode); setRows([]); }}>
             <TabsList className="h-8">
               <TabsTrigger value="week" className="gap-1.5 text-xs h-7">
@@ -422,8 +423,7 @@ export default function PickingListPage() {
               </Button>
             </div>
           )}
-        </CardContent>
-      </Card>
+      </Panel>
 
       {/* Loading */}
       {isCalculating && (
@@ -433,42 +433,33 @@ export default function PickingListPage() {
         </div>
       )}
 
-      {/* KPIs */}
+      {/* KPIs — kit editorial (StatCard) derivado de dados reais */}
       {!isCalculating && totalItems > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Card>
-            <CardContent className="p-3">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">Total de Itens</p>
-              <p className="display text-xl tabular-nums font-mono mt-0.5">{totalItems}</p>
-            </CardContent>
-          </Card>
-          <Card className={cn(allDone ? 'border-green-500/40 bg-green-500/5' : '')}>
-            <CardContent className="p-3">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">Separados</p>
-              <p className={cn('display text-xl tabular-nums font-mono mt-0.5', pickedItems > 0 ? 'text-green-600' : '')}>
-                {pickedItems}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">Pendentes</p>
-              <p className={cn('display text-xl tabular-nums font-mono mt-0.5', totalItems - pickedItems > 0 ? 'text-amber-600' : 'text-green-600')}>
-                {totalItems - pickedItems}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3">
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">Progresso</p>
-                <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
-              </div>
-              <p className="display text-xl tabular-nums font-mono">{completionPct}%</p>
-              <Progress value={completionPct} className="h-1.5 mt-1" />
-            </CardContent>
-          </Card>
-        </div>
+        <StatGrid>
+          <StatCard
+            label="Total de Itens"
+            value={totalItems}
+            hint="no relatório"
+          />
+          <StatCard
+            label="Separados"
+            value={pickedItems}
+            hint={allDone ? 'tudo separado' : 'marcados'}
+            tone={pickedItems > 0 ? 'success' : 'default'}
+          />
+          <StatCard
+            label="Pendentes"
+            value={totalItems - pickedItems}
+            hint="a separar"
+            tone={totalItems - pickedItems > 0 ? 'warning' : 'success'}
+          />
+          <StatCard
+            label="Progresso"
+            value={`${completionPct}%`}
+            hint="separação concluída"
+            icon={TrendingUp}
+          />
+        </StatGrid>
       )}
 
       {/* Totals by unit */}
@@ -488,11 +479,13 @@ export default function PickingListPage() {
 
       {/* Empty state */}
       {!isCalculating && rows.length === 0 && reportTitle && (
-        <div className="text-center py-16 text-muted-foreground">
-          <Package className="h-12 w-12 mx-auto mb-2 opacity-40" />
-          <p>Nenhum consumo de material calculado para esta seleção.</p>
-          <p className="text-xs mt-1">Verifique se os pedidos possuem fichas técnicas cadastradas.</p>
-        </div>
+        <Panel flush>
+          <EmptyState
+            icon={Package}
+            title="Nenhum consumo de material calculado para esta seleção"
+            description="Verifique se os pedidos possuem fichas técnicas cadastradas."
+          />
+        </Panel>
       )}
 
       {/* Results grouped by component */}
@@ -506,12 +499,11 @@ export default function PickingListPage() {
             const compDone = compPicked === componentRows.length;
 
             return (
-              <Card
+              <Panel
                 key={componentType}
                 className={cn('border-l-4', compDone ? 'border-l-green-500' : 'border-l-primary')}
-              >
-                <CardHeader className="pb-2 pt-3">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                title={
+                  <span className="flex items-center gap-2">
                     {compDone
                       ? <CheckCircle2 className="h-4 w-4 text-green-600" />
                       : <Package className="h-4 w-4 text-primary" />}
@@ -519,19 +511,20 @@ export default function PickingListPage() {
                     <Badge variant="outline" className="text-xs ml-1">
                       {componentRows.length} item(ns)
                     </Badge>
-                    <span className="text-xs text-muted-foreground font-normal">
-                      {compPicked}/{componentRows.length} separados
-                    </span>
-                  </CardTitle>
+                  </span>
+                }
+                subtitle={`${compPicked}/${componentRows.length} separados`}
+                flush
+              >
+                <div className="px-4 pt-3">
                   <Progress
                     value={componentRows.length > 0 ? Math.round((compPicked / componentRows.length) * 100) : 0}
                     className={cn('h-1', compDone ? '[&>div]:bg-green-500' : '')}
                   />
-                </CardHeader>
-                <CardContent className="pt-0">
+                </div>
                   <Table>
                     <TableHeader>
-                      <TableRow className="bg-muted/30">
+                      <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                         <TableHead className="w-10 py-2">✓</TableHead>
                         <TableHead className="py-2">Grupo de Material</TableHead>
                         <TableHead className="py-2">Aplicação</TableHead>
@@ -580,8 +573,7 @@ export default function PickingListPage() {
                       })}
                     </TableBody>
                   </Table>
-                </CardContent>
-              </Card>
+              </Panel>
             );
           })}
         </div>

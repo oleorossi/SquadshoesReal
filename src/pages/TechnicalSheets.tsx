@@ -188,6 +188,7 @@ import { getShoeSizeMappings } from '@/utils/shoeUtils';
 import { SHOE_CATEGORIES } from '@/lib/shoeCategories';
 import { AppErrorBoundary } from '@/components/ErrorBoundary';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { EmptyState } from '@/components/ui/empty-state';
 const STATUSES = ['Ativo', 'Em desenvolvimento', 'Descontinuado'] as const;
 const STATUS_FICHA = ['rascunho', 'em_revisao', 'validada', 'publicada'] as const;
 const STATUS_FICHA_LABELS: Record<string, string> = { rascunho: 'Rascunho', em_revisao: 'Em Revisão', validada: 'Validada', publicada: 'Publicada' };
@@ -590,12 +591,13 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
         {/* Empty State */}
         {filteredSheets.length === 0 ? (
           <Card className="border-dashed">
-            <CardContent className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-              <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-4">
-                <FileText className="h-6 w-6 opacity-50" />
-              </div>
-              <p className="font-medium">{sheets.length === 0 ? 'Nenhuma ficha técnica cadastrada' : 'Nenhuma ficha encontrada'}</p>
-              {sheets.length > 0 && <Button variant="link" onClick={() => { setCategoryFilter('all'); setSearchTerm(''); }}>Limpar filtros</Button>}
+            <CardContent className="p-0">
+              <EmptyState
+                icon={FileText}
+                title={sheets.length === 0 ? 'Nenhuma ficha técnica cadastrada' : 'Nenhuma ficha encontrada'}
+                description={sheets.length === 0 ? undefined : 'Ajuste a busca ou os filtros de categoria.'}
+                action={sheets.length > 0 ? <Button variant="link" onClick={() => { setCategoryFilter('all'); setSearchTerm(''); }}>Limpar filtros</Button> : undefined}
+              />
             </CardContent>
           </Card>
         ) : expandedId ? (
@@ -3361,10 +3363,13 @@ function PhotosByColorTab({ sheetId, form, groups, products }: {
   if (availableColors.length === 0) {
     return (
       <Card className="border-dashed">
-        <CardContent className="flex flex-col items-center justify-center py-10 text-muted-foreground">
-          <ImagePlus className="h-8 w-8 mb-2 opacity-40" />
-          <p className="text-sm font-medium">Nenhuma cor disponível</p>
-          <p className="text-xs">Configure os grupos de material em Forro / Forração na aba "Materiais & BOM" para que as cores apareçam aqui.</p>
+        <CardContent className="p-0">
+          <EmptyState
+            icon={ImagePlus}
+            title="Nenhuma cor disponível"
+            description='Configure os grupos de material em Forro / Forração na aba "Materiais & BOM" para que as cores apareçam aqui.'
+            size="sm"
+          />
         </CardContent>
       </Card>
     );

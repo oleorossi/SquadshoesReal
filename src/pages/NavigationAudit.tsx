@@ -2,14 +2,16 @@ import { useState, useEffect } from 'react';
 import { Warning as AlertTriangle, CheckCircle as CheckCircle2, ArrowsClockwise as RefreshCw, Gear as Settings, ArrowLeft, ArrowSquareOut as ExternalLink, ShieldCheck } from '@phosphor-icons/react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { 
-  auditNavigation, 
-  describeIssue, 
-  type NavigationIssue 
+import {
+  auditNavigation,
+  describeIssue,
+  type NavigationIssue
 } from '@/lib/navigationAudit';
 import { Badge } from '@/components/ui/badge';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 
 export default function NavigationAuditPage() {
   const [issues, setIssues] = useState<NavigationIssue[]>([]);
@@ -66,73 +68,44 @@ export default function NavigationAuditPage() {
         />
       </div>
 
-      <div className="grid gap-6 md:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Status Geral</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              {issues.length === 0 ? (
-                <>
-                  <ShieldCheck className="h-5 w-5 text-green-500" />
-                  <span className="display text-2xl tabular-nums">Saudável</span>
-                </>
-              ) : (
-                <>
-                  <AlertTriangle className="h-5 w-5 text-destructive" />
-                  <span className="display text-2xl tabular-nums text-destructive">{issues.length} Issues</span>
-                </>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {lastScan ? `Último scan: ${lastScan.toLocaleTimeString()}` : 'Aguardando primeiro scan...'}
-            </p>
-          </CardContent>
-        </Card>
+      <StatGrid>
+        <StatCard
+          label="Status Geral"
+          value={issues.length === 0 ? 'Saudável' : `${issues.length} Issues`}
+          tone={issues.length === 0 ? 'success' : 'destructive'}
+          icon={issues.length === 0 ? ShieldCheck : AlertTriangle}
+          hint={lastScan ? `Último scan: ${lastScan.toLocaleTimeString()}` : 'Aguardando primeiro scan...'}
+        />
+      </StatGrid>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Acesso Rápido</CardTitle>
-          </CardHeader>
-          <CardContent className="flex gap-2">
-            <Button variant="outline" size="sm" asChild className="w-full justify-start">
-              <Link to="/settings">
-                <Settings className="h-4 w-4 mr-2 text-muted-foreground" />
-                Permissões
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Inconsistências Detectadas</CardTitle>
-          <CardDescription>
-            Abaixo estão listadas as rotas que apresentam divergência entre o menu e o mapeamento de módulos.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      <Panel
+        eyebrow="SISTEMA · AUDITORIA"
+        title="Inconsistências Detectadas"
+        subtitle="Abaixo estão listadas as rotas que apresentam divergência entre o menu e o mapeamento de módulos."
+        actions={
+          <Button variant="outline" size="sm" asChild>
+            <Link to="/settings">
+              <Settings className="h-4 w-4 mr-2 text-muted-foreground" />
+              Permissões
+            </Link>
+          </Button>
+        }
+        flush={issues.length > 0}
+      >
           {issues.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center mb-4">
-                <CheckCircle2 className="h-6 w-6 text-green-600" />
-              </div>
-              <h3 className="text-lg font-medium">Tudo certo!</h3>
-              <p className="text-muted-foreground max-w-sm">
-                Não foram encontradas inconsistências. Todos os itens de menu estão corretamente mapeados para seus respectivos módulos de permissão.
-              </p>
-            </div>
+            <EmptyState
+              icon={CheckCircle2}
+              title="Tudo certo!"
+              description="Não foram encontradas inconsistências. Todos os itens de menu estão corretamente mapeados para seus respectivos módulos de permissão."
+            />
           ) : (
-            <div className="rounded-md border overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-muted/50 border-b">
-                  <tr>
-                    <th className="px-4 py-3 text-left font-medium">Tipo</th>
-                    <th className="px-4 py-3 text-left font-medium">Item / Rota</th>
-                    <th className="px-4 py-3 text-left font-medium">Descrição</th>
-                    <th className="px-4 py-3 text-right font-medium">Ações</th>
+                <thead className="bg-muted/40 border-b border-border">
+                  <tr className="[&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                    <th className="px-4 py-3 text-left">Tipo</th>
+                    <th className="px-4 py-3 text-left">Item / Rota</th>
+                    <th className="px-4 py-3 text-left">Descrição</th>
+                    <th className="px-4 py-3 text-right">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -163,10 +136,8 @@ export default function NavigationAuditPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
           )}
-        </CardContent>
-      </Card>
+      </Panel>
 
       <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-sm text-blue-800 flex gap-3">
         <Settings className="h-5 w-5 shrink-0 text-blue-500" />

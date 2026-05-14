@@ -2,6 +2,9 @@ import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
+import { Panel } from '@/components/ui/panel';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -76,13 +79,14 @@ function PickingList({ onOpen, onCreate }: { onOpen: (id: string) => void; onCre
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Carregando…</p>
       ) : items.length === 0 ? (
-        <Card>
-          <CardContent className="py-10 text-center space-y-2">
-            <ClipboardCheck className="h-10 w-10 mx-auto text-muted-foreground/30" />
-            <p className="text-sm text-muted-foreground">Nenhuma sessão de picking</p>
-            <Button variant="outline" size="sm" onClick={onCreate}>Criar primeira sessão</Button>
-          </CardContent>
-        </Card>
+        <Panel flush>
+          <EmptyState
+            icon={ClipboardCheck}
+            title="Nenhuma sessão de picking"
+            description="Crie a primeira sessão de separação para começar a bipagem."
+            action={<Button variant="outline" size="sm" onClick={onCreate}>Criar primeira sessão</Button>}
+          />
+        </Panel>
       ) : (
         <div className="space-y-2">
           {items.map((r: any) => {
@@ -391,23 +395,28 @@ function PickingItemsTable({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold">Itens da separação ({items.length})</h2>
-        {editable && (
+      <Panel
+        eyebrow="LOGÍSTICA · SEPARAÇÃO"
+        title={`Itens da separação (${items.length})`}
+        actions={editable && (
           <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setAdding(true)}>
             <Plus className="h-3.5 w-3.5" /> Adicionar item
           </Button>
         )}
-      </div>
-
+        flush
+      >
       {items.length === 0 ? (
-        <p className="text-sm text-muted-foreground text-center py-4">Nenhum item — adicione o que precisa ser separado.</p>
+        <EmptyState
+          icon={ClipboardCheck}
+          title="Nenhum item"
+          description="Adicione o que precisa ser separado."
+          size="sm"
+        />
       ) : (
-        <Card>
-          <CardContent className="pt-4 overflow-x-auto">
+          <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b">
+                <tr className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <th className="text-left p-2">Produto</th>
                   <th className="text-left p-2">Cor / Tam</th>
                   <th className="text-left p-2">Bin</th>
@@ -512,9 +521,9 @@ function PickingItemsTable({
                 })}
               </tbody>
             </table>
-          </CardContent>
-        </Card>
+          </div>
       )}
+      </Panel>
 
       <AddItemDialog
         sessionId={sessionId}

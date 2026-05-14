@@ -11,6 +11,9 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 
 const STATUS_COLORS: Record<string, string> = {
   aberto: 'bg-blue-100 text-blue-700 border-blue-300',
@@ -89,11 +92,11 @@ export default function SAC() {
         }
       />
 
-      <div className="grid grid-cols-3 gap-3">
-        <Card><CardContent className="p-3"><p className="text-[10px] font-bold text-muted-foreground uppercase">Abertos</p><p className="text-2xl font-bold text-amber-600">{counts.abertos}</p></CardContent></Card>
-        <Card><CardContent className="p-3"><p className="text-[10px] font-bold text-muted-foreground uppercase">Aguardando</p><p className="text-2xl font-bold text-blue-600">{counts.aguardando}</p></CardContent></Card>
-        <Card><CardContent className="p-3"><p className="text-[10px] font-bold text-muted-foreground uppercase">Resolvidos</p><p className="text-2xl font-bold text-emerald-600">{counts.resolvidos}</p></CardContent></Card>
-      </div>
+      <StatGrid>
+        <StatCard label="Abertos" value={counts.abertos} hint="aguardando análise" tone="warning" />
+        <StatCard label="Aguardando" value={counts.aguardando} hint="em andamento" tone="primary" />
+        <StatCard label="Resolvidos" value={counts.resolvidos} hint="concluídos" tone="success" />
+      </StatGrid>
 
       <div className="flex gap-2 flex-wrap">
         {['todos', 'aberto', 'em_analise', 'aprovado', 'aguarda_coleta', 'recebido', 'resolvido'].map(s => (
@@ -110,12 +113,13 @@ export default function SAC() {
       </div>
 
       {isLoading ? <p className="text-sm text-muted-foreground">Carregando...</p> : tickets.length === 0 ? (
-        <Card>
-          <CardContent className="py-10 text-center space-y-2">
-            <MessageSquare className="h-10 w-10 mx-auto text-muted-foreground/30" />
-            <p className="text-sm text-muted-foreground">Nenhum atendimento {filterStatus !== 'todos' ? `com status "${filterStatus}"` : ''}</p>
-          </CardContent>
-        </Card>
+        <Panel flush>
+          <EmptyState
+            icon={MessageSquare}
+            title="Nenhum atendimento"
+            description={filterStatus !== 'todos' ? `Nenhum atendimento com status "${filterStatus.replace('_', ' ')}".` : 'Nenhum atendimento pós-venda registrado.'}
+          />
+        </Panel>
       ) : (
         <div className="space-y-2">
           {tickets.map((t: any) => (

@@ -19,13 +19,15 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { todayISO, todayPlusDaysISO } from '@/lib/date';
-import { TrendUp as TrendingUp, TrendDown as TrendingDown, WarningCircle as AlertCircle, CreditCard, Receipt, ArrowUpRight, ArrowDownRight, CurrencyDollar as DollarSign, Wallet, FileXls as FileSpreadsheet, CaretRight as ChevronRight, CircleNotch as Loader2 } from '@phosphor-icons/react';
+import { TrendUp as TrendingUp, TrendDown as TrendingDown, CreditCard, Receipt, ArrowUpRight, ArrowDownRight, CurrencyDollar as DollarSign, Wallet, FileXls as FileSpreadsheet, CaretRight as ChevronRight, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import AppLayout from '@/components/layout/AppLayout';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
 import { SmartDashboard } from '@/components/finance/SmartDashboard';
 import { NetMarginChart } from '@/components/finance/NetMarginChart';
 import { supabase } from '@/integrations/supabase/client';
@@ -116,75 +118,39 @@ export default function FinanceiroDashboard() {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <Card className="slash-top">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Wallet className="h-3.5 w-3.5" />
-                  <span className="eyebrow">Saldo bancos</span>
-                </div>
-                <div className={cn(
-                  'display text-3xl mt-2 tabular-nums',
-                  data.totalBalance < 0 ? 'text-primary' :
-                  data.totalBalance < 5000 ? 'text-amber-600 dark:text-amber-400' :
-                  'text-emerald-600 dark:text-emerald-400',
-                )}>
-                  {fmt(data.totalBalance)}
-                </div>
-                <div className="text-[10px] text-muted-foreground mt-1">
-                  {data.banks.length} {data.banks.length === 1 ? 'conta' : 'contas'} ativa{data.banks.length !== 1 && 's'}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
-                  <ArrowUpRight className="h-3.5 w-3.5" />
-                  <span className="eyebrow">A Receber</span>
-                </div>
-                <div className="display text-3xl mt-2 tabular-nums text-emerald-600 dark:text-emerald-400">
-                  {fmt(data.totalReceivable)}
-                </div>
-                <div className="text-[10px] text-muted-foreground mt-1">
-                  {data.overdueReceivables.length} vencidos
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2 text-primary">
-                  <ArrowDownRight className="h-3.5 w-3.5" />
-                  <span className="eyebrow">A Pagar</span>
-                </div>
-                <div className="display text-3xl mt-2 tabular-nums text-primary">
-                  {fmt(data.totalPayable)}
-                </div>
-                <div className="text-[10px] text-muted-foreground mt-1">
-                  {data.overduePayables.length} vencidos · {data.upcomingPayables.length} em 7 dias
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  {data.netPosition >= 0 ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
-                  <span className="eyebrow">Saldo líquido</span>
-                </div>
-                <div className={cn(
-                  'display text-3xl mt-2 tabular-nums',
-                  data.netPosition >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-primary',
-                )}>
-                  {fmt(data.netPosition)}
-                </div>
-                <div className="text-[10px] text-muted-foreground mt-1">
-                  Saldo + AR − AP
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+          <StatGrid>
+            <StatCard
+              label="Saldo bancos"
+              value={fmt(data.totalBalance)}
+              icon={Wallet}
+              tone={
+                data.totalBalance < 0 ? 'destructive' :
+                data.totalBalance < 5000 ? 'warning' : 'success'
+              }
+              hint={`${data.banks.length} ${data.banks.length === 1 ? 'conta' : 'contas'} ativa${data.banks.length !== 1 ? 's' : ''}`}
+            />
+            <StatCard
+              label="A Receber"
+              value={fmt(data.totalReceivable)}
+              icon={ArrowUpRight}
+              tone="success"
+              hint={`${data.overdueReceivables.length} vencidos`}
+            />
+            <StatCard
+              label="A Pagar"
+              value={fmt(data.totalPayable)}
+              icon={ArrowDownRight}
+              tone="destructive"
+              hint={`${data.overduePayables.length} vencidos · ${data.upcomingPayables.length} em 7 dias`}
+            />
+            <StatCard
+              label="Saldo líquido"
+              value={fmt(data.netPosition)}
+              icon={data.netPosition >= 0 ? TrendingUp : TrendingDown}
+              tone={data.netPosition >= 0 ? 'success' : 'destructive'}
+              hint="Saldo + AR − AP"
+            />
+          </StatGrid>
         )}
 
         {/* Section header: Alertas */}
@@ -214,17 +180,16 @@ export default function FinanceiroDashboard() {
         {/* Vencidos + Próximos Vencimentos */}
         {data && (
           <div className="grid sm:grid-cols-1 md:grid-cols-2 gap-4">
-            <Card>
-              <CardHeader className="pb-3 flex flex-row items-center justify-between">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <AlertCircle className="h-4 w-4 text-primary" />
-                  Vencidos
-                </CardTitle>
+            <Panel
+              eyebrow="FINANCEIRO · VENCIMENTOS"
+              title="Vencidos"
+              actions={
                 <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => navigate('/finance?tab=payable')}>
                   Ver todos <ChevronRight className="h-3 w-3" />
                 </Button>
-              </CardHeader>
-              <CardContent className="p-0">
+              }
+              flush
+            >
                 {data.overduePayables.length === 0 && data.overdueReceivables.length === 0 ? (
                   <EmptyState
                     icon={CreditCard}
@@ -262,20 +227,18 @@ export default function FinanceiroDashboard() {
                     ))}
                   </div>
                 )}
-              </CardContent>
-            </Card>
+            </Panel>
 
-            <Card>
-              <CardHeader className="pb-3 flex flex-row items-center justify-between">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <CreditCard className="h-4 w-4 text-primary" />
-                  Próximos vencimentos · 7 dias
-                </CardTitle>
+            <Panel
+              eyebrow="FINANCEIRO · VENCIMENTOS"
+              title="Próximos vencimentos · 7 dias"
+              actions={
                 <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => navigate('/finance?tab=payable')}>
                   Ver todos <ChevronRight className="h-3 w-3" />
                 </Button>
-              </CardHeader>
-              <CardContent className="p-0">
+              }
+              flush
+            >
                 {data.upcomingPayables.length === 0 ? (
                   <EmptyState
                     icon={DollarSign}
@@ -300,8 +263,7 @@ export default function FinanceiroDashboard() {
                     ))}
                   </div>
                 )}
-              </CardContent>
-            </Card>
+            </Panel>
           </div>
         )}
 
@@ -312,11 +274,8 @@ export default function FinanceiroDashboard() {
         </div>
 
         {/* Atalhos para sub-módulos */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Atalhos</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-0">
+        <Panel eyebrow="FINANCEIRO · NAVEGAÇÃO" title="Atalhos">
+          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3">
             <button
               onClick={() => navigate('/finance')}
               className="flex flex-col items-start gap-1.5 p-3 rounded-lg border hover:bg-muted/40 transition-colors text-left"
@@ -349,8 +308,8 @@ export default function FinanceiroDashboard() {
               <p className="text-sm font-semibold">Fluxo de Caixa</p>
               <p className="text-xs text-muted-foreground">Projeção 30/60/90 dias</p>
             </button>
-          </CardContent>
-        </Card>
+          </div>
+        </Panel>
       </div>
     </AppLayout>
   );

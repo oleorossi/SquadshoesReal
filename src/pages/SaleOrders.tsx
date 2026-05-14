@@ -16,7 +16,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SmartSearch, SmartSearchSuggestion } from '@/components/ui/smart-search';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -44,6 +43,9 @@ import { todayISO, todayPlusDaysISO } from '@/lib/date';
 import logoImg from '@/assets/logo-squad-shoes.jpg';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { getValidNextStatuses } from '@/lib/saleOrderStateMachine';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 
 // TODOS os status canônicos do sale_orders (saleOrderStateMachine.ts).
 // Antes faltavam 'Pendente', 'Expedido' e 'Concluído' — PVs nesses status
@@ -1424,56 +1426,35 @@ export default function SaleOrders() {
         </div>
 
         {/* KPI Cards — Novidade editorial */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Card className="border-border/50 slash-top">
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                <ShoppingCart className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <p className="eyebrow">Total Pedidos</p>
-                <p className="display text-2xl tabular-nums mt-1">{kpis.count}</p>
-                <p className="text-[10px] text-muted-foreground">{totalPares.toLocaleString('pt-BR')} pares</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-border/50 slash-top">
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0">
-                <Clock className="h-5 w-5 text-amber-600" />
-              </div>
-              <div>
-                <p className="eyebrow">Pendentes</p>
-                <p className="display text-2xl tabular-nums mt-1">{kpis.pending}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-border/50 slash-top">
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
-                <Package className="h-5 w-5 text-emerald-600" />
-              </div>
-              <div>
-                <p className="eyebrow">Aprovados</p>
-                <p className="display text-2xl tabular-nums mt-1">{kpis.approved}</p>
-                <p className="text-[10px] text-muted-foreground">{kpis.inProduction} em produção</p>
-              </div>
-            </CardContent>
-          </Card>
+        <StatGrid>
+          <StatCard
+            label="Total Pedidos"
+            value={kpis.count}
+            hint={`${totalPares.toLocaleString('pt-BR')} pares`}
+            icon={ShoppingCart}
+          />
+          <StatCard
+            label="Pendentes"
+            value={kpis.pending}
+            icon={Clock}
+            tone="warning"
+          />
+          <StatCard
+            label="Aprovados"
+            value={kpis.approved}
+            hint={`${kpis.inProduction} em produção`}
+            icon={Package}
+            tone="success"
+          />
           {canSeeFinancialValues && (
-            <Card className="border-border/50">
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
-                  <DollarSign className="h-5 w-5 text-violet-600" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground font-medium">Valor Total</p>
-                  <p className="text-lg font-bold font-mono">{formatCurrency(kpis.total)}</p>
-                </div>
-              </CardContent>
-            </Card>
+            <StatCard
+              label="Valor Total"
+              value={formatCurrency(kpis.total)}
+              icon={DollarSign}
+              tone="primary"
+            />
           )}
-        </div>
+        </StatGrid>
 
         {/* Search & Filter Bar */}
         <div className="flex flex-col gap-3">
@@ -1576,15 +1557,14 @@ export default function SaleOrders() {
 
         {/* Table */}
         {filteredOrders.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-              <ShoppingCart className="h-10 w-10 mb-3 opacity-50" />
-              <p>{orders.length === 0 ? 'Nenhum pedido de venda' : 'Nenhum pedido encontrado com os filtros atuais'}</p>
-              {activeFiltersCount > 0 && (
-                <Button variant="link" size="sm" onClick={clearFilters} className="mt-2">Limpar filtros</Button>
-              )}
-            </CardContent>
-          </Card>
+          <Panel flush>
+            <EmptyState
+              icon={ShoppingCart}
+              title={orders.length === 0 ? 'Nenhum pedido de venda' : 'Nenhum pedido encontrado'}
+              description={orders.length === 0 ? 'Crie o primeiro pedido de venda.' : 'Nenhum pedido encontrado com os filtros atuais.'}
+              action={activeFiltersCount > 0 ? <Button variant="link" size="sm" onClick={clearFilters}>Limpar filtros</Button> : undefined}
+            />
+          </Panel>
         ) : (
           <div
             ref={sel.containerRef}
@@ -1594,22 +1574,22 @@ export default function SaleOrders() {
           >
             <Table>
               <TableHeader>
-                <TableRow className="bg-muted/50 hover:bg-muted/50">
+                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <TableHead className="w-10">
                     <Checkbox
                       checked={selectedIds.size === filteredOrders.length && filteredOrders.length > 0}
                       onCheckedChange={toggleSelectAll}
                     />
                   </TableHead>
-                  <TableHead className="font-semibold">Nº Pedido</TableHead>
-                  <TableHead className="font-semibold">Nº Cliente</TableHead>
-                  <TableHead className="font-semibold">Cliente</TableHead>
-                  <TableHead className="font-semibold">Cidade</TableHead>
-                  {canSeeFinancialValues && <TableHead className="font-semibold text-right">Total</TableHead>}
-                  <TableHead className="font-semibold">Status</TableHead>
-                  <TableHead className="font-semibold text-right">Pares</TableHead>
-                  <TableHead className="font-semibold">Entrega / Fat.</TableHead>
-                  <TableHead className="font-semibold text-right">Ações</TableHead>
+                  <TableHead>Nº Pedido</TableHead>
+                  <TableHead>Nº Cliente</TableHead>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead>Cidade</TableHead>
+                  {canSeeFinancialValues && <TableHead className="text-right">Total</TableHead>}
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Pares</TableHead>
+                  <TableHead>Entrega / Fat.</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

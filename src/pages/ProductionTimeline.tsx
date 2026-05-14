@@ -15,7 +15,7 @@
 import { useMemo, useState } from 'react';
 import { CircleNotch as Loader2, ClipboardText as ClipboardList } from '@phosphor-icons/react';
 import AppLayout from '@/components/layout/AppLayout';
-import { Card, CardContent } from '@/components/ui/card';
+import { Panel } from '@/components/ui/panel';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useOrders } from '@/hooks/useOrders';
@@ -127,31 +127,25 @@ export default function ProductionTimeline() {
           title="Onde está cada ordem"
         />
 
-        <Card>
-          <CardContent className="p-6">
-            {/* Toolbar */}
-            <div className="flex items-baseline justify-between mb-6 flex-wrap gap-3">
-              <div>
-                <div className="eyebrow">Visão de chão</div>
-                <div className="display text-xl mt-1">
-                  {filtered.length} ordens · {totalPairs.toLocaleString('pt-BR')} pares
-                </div>
-              </div>
-              <div className="inline-flex rounded-md border bg-muted/30 p-0.5">
-                {(['hoje', 'semana', 'mes'] as const).map(s => (
-                  <Button
-                    key={s}
-                    variant={scope === s ? 'default' : 'ghost'}
-                    size="sm"
-                    onClick={() => setScope(s)}
-                    className="h-8 px-3 text-xs capitalize"
-                  >
-                    {s === 'mes' ? 'Mês' : s}
-                  </Button>
-                ))}
-              </div>
+        <Panel
+          eyebrow="Visão de chão"
+          title={`${filtered.length} ordens · ${totalPairs.toLocaleString('pt-BR')} pares`}
+          actions={
+            <div className="inline-flex rounded-md border bg-muted/30 p-0.5">
+              {(['hoje', 'semana', 'mes'] as const).map(s => (
+                <Button
+                  key={s}
+                  variant={scope === s ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setScope(s)}
+                  className="h-8 px-3 text-xs capitalize"
+                >
+                  {s === 'mes' ? 'Mês' : s}
+                </Button>
+              ))}
             </div>
-
+          }
+        >
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -279,8 +273,7 @@ export default function ProductionTimeline() {
                 </div>
               </>
             )}
-          </CardContent>
-        </Card>
+        </Panel>
       </div>
     </AppLayout>
   );

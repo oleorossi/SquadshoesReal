@@ -3,6 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -93,13 +95,14 @@ export default function Transporters() {
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Carregando…</p>
       ) : items.length === 0 ? (
-        <Card>
-          <CardContent className="py-10 text-center space-y-2">
-            <Truck className="h-10 w-10 mx-auto text-muted-foreground/30" />
-            <p className="text-sm text-muted-foreground">Nenhuma transportadora cadastrada</p>
-            <Button variant="outline" size="sm" onClick={() => setCreating(true)}>Cadastrar primeira</Button>
-          </CardContent>
-        </Card>
+        <Panel flush>
+          <EmptyState
+            icon={Truck}
+            title="Nenhuma transportadora cadastrada"
+            description="Cadastre empresas de frete usadas em CT-e e expedição."
+            action={<Button variant="outline" size="sm" onClick={() => setCreating(true)}>Cadastrar primeira</Button>}
+          />
+        </Panel>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {items.map((r: any) => (

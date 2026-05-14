@@ -7,6 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -134,15 +137,15 @@ function InvoiceItemsRow({ invoice, supplierName }: { invoice: Invoice; supplier
       <div className="rounded-md border overflow-x-auto">
         <Table>
           <TableHeader>
-            <TableRow className="bg-muted/20 hover:bg-muted/20">
-              <TableHead className="text-xs">Código</TableHead>
-              <TableHead className="text-xs">Produto</TableHead>
-              <TableHead className="text-xs">NCM</TableHead>
-              <TableHead className="text-xs">Un</TableHead>
-              <TableHead className="text-xs text-right">Qtd</TableHead>
-              <TableHead className="text-xs text-right">Vl. Unit.</TableHead>
-              <TableHead className="text-xs text-right">Total</TableHead>
-              <TableHead className="text-xs text-center">Estoque</TableHead>
+            <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+              <TableHead>Código</TableHead>
+              <TableHead>Produto</TableHead>
+              <TableHead>NCM</TableHead>
+              <TableHead>Un</TableHead>
+              <TableHead className="text-right">Qtd</TableHead>
+              <TableHead className="text-right">Vl. Unit.</TableHead>
+              <TableHead className="text-right">Total</TableHead>
+              <TableHead className="text-center">Estoque</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -246,14 +249,14 @@ function SupplierPriceHistory({ supplierId }: { supplierId: string }) {
          <div className="overflow-x-auto">
            <Table>
              <TableHeader>
-               <TableRow className="bg-muted/30 hover:bg-muted/30">
-                 <TableHead className="text-[11px] uppercase">Material</TableHead>
-                 <TableHead className="text-[11px] uppercase text-right">Último Preço</TableHead>
-                 <TableHead className="text-[11px] uppercase text-right">Anterior</TableHead>
-                 <TableHead className="text-[11px] uppercase text-right">Variação</TableHead>
-                 <TableHead className="text-[11px] uppercase text-right">Mín / Máx</TableHead>
-                 <TableHead className="text-[11px] uppercase text-center">Compras</TableHead>
-                 <TableHead className="text-[11px] uppercase">Última compra</TableHead>
+               <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                 <TableHead>Material</TableHead>
+                 <TableHead className="text-right">Último Preço</TableHead>
+                 <TableHead className="text-right">Anterior</TableHead>
+                 <TableHead className="text-right">Variação</TableHead>
+                 <TableHead className="text-right">Mín / Máx</TableHead>
+                 <TableHead className="text-center">Compras</TableHead>
+                 <TableHead>Última compra</TableHead>
                </TableRow>
              </TableHeader>
              <TableBody>
@@ -398,24 +401,12 @@ export default function Suppliers() {
           }
         />
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <Card><CardContent className="p-4 text-center">
-            <p className="display text-2xl tabular-nums">{suppliers.length}</p>
-            <p className="text-xs text-muted-foreground">Total</p>
-          </CardContent></Card>
-          <Card><CardContent className="p-4 text-center">
-            <p className="display text-2xl tabular-nums text-success">{suppliers.filter(s => s.active).length}</p>
-            <p className="text-xs text-muted-foreground">Ativos</p>
-          </CardContent></Card>
-          <Card><CardContent className="p-4 text-center">
-            <p className="display text-2xl tabular-nums text-warning">{suppliers.filter(s => !s.active).length}</p>
-            <p className="text-xs text-muted-foreground">Inativos</p>
-          </CardContent></Card>
-          <Card><CardContent className="p-4 text-center">
-            <p className="display text-2xl tabular-nums text-primary">{suppliers.filter(s => s.cnpj).length}</p>
-            <p className="text-xs text-muted-foreground">Com CNPJ</p>
-          </CardContent></Card>
-        </div>
+        <StatGrid>
+          <StatCard label="Total" value={suppliers.length} hint="fornecedores" />
+          <StatCard label="Ativos" value={suppliers.filter(s => s.active).length} hint="em operação" tone="success" />
+          <StatCard label="Inativos" value={suppliers.filter(s => !s.active).length} hint="desativados" tone="warning" />
+          <StatCard label="Com CNPJ" value={suppliers.filter(s => s.cnpj).length} hint="cadastro completo" tone="primary" />
+        </StatGrid>
 
         <div className="relative max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -424,12 +415,14 @@ export default function Suppliers() {
 
         <div className="space-y-3">
           {filtered.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center text-muted-foreground">
-                <Truck className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                {search ? 'Nenhum fornecedor encontrado' : 'Nenhum fornecedor cadastrado'}
-              </CardContent>
-            </Card>
+            <Panel flush>
+              <EmptyState
+                icon={Truck}
+                title={search ? 'Nenhum fornecedor encontrado' : 'Nenhum fornecedor cadastrado'}
+                description={search ? 'Ajuste a busca ou cadastre um novo fornecedor.' : 'Cadastre o primeiro fornecedor.'}
+                action={<Button onClick={openAdd} className="gap-2"><Plus className="h-4 w-4" />Novo Fornecedor</Button>}
+              />
+            </Panel>
           ) : (
             filtered.map(s => {
               const isExpanded = expandedId === s.id;
@@ -566,14 +559,14 @@ function SupplierItemsDialog({ supplier, onOpenChange }: { supplier: Supplier | 
             <div className="rounded-md border overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/20 hover:bg-muted/20">
-                    <TableHead className="text-xs">SKU</TableHead>
-                    <TableHead className="text-xs">Nome</TableHead>
-                    <TableHead className="text-xs">Categoria</TableHead>
-                    <TableHead className="text-xs">Cor</TableHead>
-                    <TableHead className="text-xs text-right">Estoque</TableHead>
-                    <TableHead className="text-xs text-right">Custo Médio</TableHead>
-                    <TableHead className="text-xs text-right">Valor Total</TableHead>
+                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                    <TableHead>SKU</TableHead>
+                    <TableHead>Nome</TableHead>
+                    <TableHead>Categoria</TableHead>
+                    <TableHead>Cor</TableHead>
+                    <TableHead className="text-right">Estoque</TableHead>
+                    <TableHead className="text-right">Custo Médio</TableHead>
+                    <TableHead className="text-right">Valor Total</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

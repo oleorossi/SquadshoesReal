@@ -3,6 +3,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Panel } from '@/components/ui/panel';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -76,13 +79,14 @@ function ManifestsList({ onOpen, onCreate }: { onOpen: (id: string) => void; onC
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Carregando…</p>
       ) : items.length === 0 ? (
-        <Card>
-          <CardContent className="py-10 text-center space-y-2">
-            <FileCheck2 className="h-10 w-10 mx-auto text-muted-foreground/30" />
-            <p className="text-sm text-muted-foreground">Nenhum romaneio</p>
-            <Button variant="outline" size="sm" onClick={onCreate}>Criar primeiro</Button>
-          </CardContent>
-        </Card>
+        <Panel flush>
+          <EmptyState
+            icon={FileCheck2}
+            title="Nenhum romaneio"
+            description="Crie um romaneio para agrupar volumes por veículo e motorista."
+            action={<Button variant="outline" size="sm" onClick={onCreate}>Criar primeiro</Button>}
+          />
+        </Panel>
       ) : (
         <div className="space-y-2">
           {items.map((r: any) => (
@@ -246,22 +250,19 @@ function ManifestDetail({ id, onBack }: { id: string; onBack: () => void }) {
         </div>
       </div>
 
-      <div className="grid sm:grid-cols-4 gap-3">
-        <Card><CardContent className="p-3"><p className="text-[10px] font-bold text-muted-foreground uppercase">Volumes</p><p className="text-2xl font-bold">{manifest.total_volumes}</p></CardContent></Card>
-        <Card><CardContent className="p-3"><p className="text-[10px] font-bold text-muted-foreground uppercase">Pares</p><p className="text-2xl font-bold">{manifest.total_pairs}</p></CardContent></Card>
-        <Card><CardContent className="p-3"><p className="text-[10px] font-bold text-muted-foreground uppercase">Peso (kg)</p><p className="text-2xl font-bold">{Number(manifest.total_weight_kg).toFixed(1)}</p></CardContent></Card>
-        <Card><CardContent className="p-3"><p className="text-[10px] font-bold text-muted-foreground uppercase">Destinos</p><p className="text-2xl font-bold">{manifest.destinations_count}</p></CardContent></Card>
-      </div>
+      <StatGrid>
+        <StatCard label="Volumes" value={manifest.total_volumes} />
+        <StatCard label="Pares" value={manifest.total_pairs} />
+        <StatCard label="Peso" value={Number(manifest.total_weight_kg).toFixed(1)} unit="kg" />
+        <StatCard label="Destinos" value={manifest.destinations_count} />
+      </StatGrid>
 
       <VolumesTab manifestId={id} volumes={volumes} editable={editable} onVolumeChange={() => computeTotals.mutate()} onDelete={(vid) => delVolume.mutate(vid)} />
 
       {manifest.notes && (
-        <Card>
-          <CardContent className="p-3 text-xs whitespace-pre-wrap text-muted-foreground">
-            <strong className="text-foreground block mb-1">Observações</strong>
-            {manifest.notes}
-          </CardContent>
-        </Card>
+        <Panel title="Observações">
+          <p className="text-xs whitespace-pre-wrap text-muted-foreground">{manifest.notes}</p>
+        </Panel>
       )}
     </div>
   );
@@ -280,23 +281,28 @@ function VolumesTab({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold">Volumes ({volumes.length})</h2>
-        {editable && (
+      <Panel
+        eyebrow="FISCAL · ROMANEIO"
+        title={`Volumes (${volumes.length})`}
+        actions={editable && (
           <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setAdding(true)}>
             <Plus className="h-3.5 w-3.5" /> Adicionar volume
           </Button>
         )}
-      </div>
-
+        flush
+      >
       {volumes.length === 0 ? (
-        <p className="text-sm text-muted-foreground text-center py-4">Nenhum volume — adicione os volumes que vão na viagem.</p>
+        <EmptyState
+          icon={Package}
+          title="Nenhum volume"
+          description="Adicione os volumes que vão na viagem."
+          size="sm"
+        />
       ) : (
-        <Card>
-          <CardContent className="pt-4 overflow-x-auto">
+          <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b">
+                <tr className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <th className="text-left p-2">#</th>
                   <th className="text-left p-2">Pedido</th>
                   <th className="text-left p-2">Destino</th>
@@ -340,9 +346,9 @@ function VolumesTab({
                 ))}
               </tbody>
             </table>
-          </CardContent>
-        </Card>
+          </div>
       )}
+      </Panel>
 
       <AddVolumeDialog
         manifestId={manifestId}

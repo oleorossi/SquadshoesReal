@@ -54,6 +54,7 @@ import { FinanceReportsTab } from '@/components/finance/FinanceReportsTab';
 import { SmartDashboard } from '@/components/finance/SmartDashboard';
 import { NetMarginChart } from '@/components/finance/NetMarginChart';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { Panel } from '@/components/ui/panel';
 
 const fmt = (v: number | null | undefined) => {
   const n = Number(v);
@@ -1202,27 +1203,28 @@ export default function Finance() {
                 );
 
                 const payableContent = (
-                  <Card>
-                    <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-3">
-                      <div>
-                        <CardTitle className="text-base">Contas a Pagar</CardTitle>
-                        <p className="text-xs text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3">
-                          <span>{filteredP.length} conta(s)</span>
-                          {filteredPSums.overdue > 0 && (
-                            <span className="text-destructive">Vencido: {fmt(filteredPSums.overdue)}</span>
-                          )}
-                          {filteredPSums.pending > 0 && (
-                            <span>À vencer: {fmt(filteredPSums.pending)}</span>
-                          )}
-                          <span>Total: {fmt(filteredPSums.total)}</span>
-                        </p>
-                      </div>
-                      <div className="flex gap-2">
+                  <Panel
+                    eyebrow="FINANCEIRO · CONTAS A PAGAR"
+                    title="Contas a Pagar"
+                    subtitle={
+                      <span className="flex flex-wrap items-center gap-x-3">
+                        <span>{filteredP.length} conta(s)</span>
+                        {filteredPSums.overdue > 0 && (
+                          <span className="text-destructive">Vencido: {fmt(filteredPSums.overdue)}</span>
+                        )}
+                        {filteredPSums.pending > 0 && (
+                          <span>À vencer: {fmt(filteredPSums.pending)}</span>
+                        )}
+                        <span>Total: {fmt(filteredPSums.total)}</span>
+                      </span>
+                    }
+                    actions={
+                      <>
                         <Button size="sm" variant="outline" onClick={() => exportPayablesBatch(filteredP)}><FileDown className="h-4 w-4 mr-1" /> CSV</Button>
                         <Button size="sm" onClick={() => { setEditingPayable(null); setPayableDialog(true); }}><Plus className="h-4 w-4 mr-1" /> Nova Conta</Button>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
+                      </>
+                    }
+                  >
                       <div className="flex flex-wrap gap-2 mb-3">
                         <div className="relative">
                           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -1253,7 +1255,7 @@ export default function Finance() {
                       <Table>
                         {/* F10: sticky header — usuário não perde contexto da
                             coluna ao rolar tabelas longas */}
-                        <TableHeader className="sticky top-0 z-10 bg-background"><TableRow>
+                        <TableHeader className="sticky top-0 z-10 bg-background"><TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                           <SortableTableHead sortKey="description" currentSortKey={payableSort.sortKey} currentDirection={payableSort.sortDirection} onSort={payableSort.handleSort}>Descrição</SortableTableHead>
                           <TableHead className="hidden md:table-cell">Fornecedor</TableHead>
                           <TableHead className="hidden lg:table-cell">Categ.</TableHead>
@@ -1354,15 +1356,15 @@ export default function Finance() {
                         </TableBody>
                       </Table>
                       </div>
-                    </CardContent>
-                  </Card>
+                  </Panel>
                 );
 
                 const receivableContent = (
-                  <Card>
-                    <CardHeader className="flex flex-row items-center justify-between pb-3">
-                      <CardTitle className="text-base">Contas a Receber</CardTitle>
-                      <div className="flex gap-2">
+                  <Panel
+                    eyebrow="FINANCEIRO · CONTAS A RECEBER"
+                    title="Contas a Receber"
+                    actions={
+                      <>
                         {selectedReceivables.size > 0 && (<>
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
@@ -1382,16 +1384,16 @@ export default function Finance() {
                           </AlertDialog>
                         </>)}
                         <Button size="sm" onClick={() => { setEditingReceivable(null); setReceivableDialog(true); }}><Plus className="h-4 w-4 mr-1" /> Nova Conta</Button>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
+                      </>
+                    }
+                  >
                       <div className="mb-3 relative w-full max-w-sm">
                         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                         <Input value={receivableSearch} onChange={e => setReceivableSearch(e.target.value)} placeholder="Buscar cliente, grupo, cidade..." className="pl-8 pr-8 h-9 text-xs" />
                         {receivableSearch && <Button variant="ghost" size="sm" className="absolute right-0.5 top-1/2 -translate-y-1/2 h-7 w-7 p-0" onClick={() => setReceivableSearch('')}><X className="h-3.5 w-3.5" /></Button>}
                       </div>
                       <Table>
-                        <TableHeader><TableRow>
+                        <TableHeader><TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                           <TableHead className="w-10">
                             <Checkbox
                               checked={filteredR.length > 0 && filteredR.every(r => selectedReceivables.has(r.id))}
@@ -1474,8 +1476,7 @@ export default function Finance() {
                           })}
                         </TableBody>
                       </Table>
-                    </CardContent>
-                  </Card>
+                  </Panel>
                 );
 
                 return (

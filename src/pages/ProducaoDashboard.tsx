@@ -2,10 +2,12 @@ import AppLayout from "@/components/layout/AppLayout";
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Factory, Package, Warning as AlertTriangle, ClipboardText as ClipboardList, TrendDown as TrendingDown, Stack as Layers, CheckCircle as CheckCircle2, ArrowCircleDown as ArrowDownCircle, ArrowCircleUp as ArrowUpCircle, ChartBar as BarChart3, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { StockHistoryTab } from '@/components/production/StockHistoryTab';
 import ProducaoKPIsTab from '@/components/production/ProducaoKPIsTab';
@@ -104,52 +106,12 @@ export default function ProducaoDashboard() {
             </div>
 
             {/* KPIs */}
-            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Card>
-                <CardContent className="pt-5 pb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center"><ClipboardList className="h-5 w-5 text-primary" /></div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">OPs Ativas</p>
-                      <p className="text-lg font-bold">{data.opProgress.length}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-5 pb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center"><Factory className="h-5 w-5 text-primary" /></div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Pares em Produção</p>
-                      <p className="text-lg font-bold">{data.totalPairsInProduction.toLocaleString('pt-BR')}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-5 pb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-lg bg-destructive/10 flex items-center justify-center"><AlertTriangle className="h-5 w-5 text-destructive" /></div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Estoque Baixo</p>
-                      <p className="text-lg font-bold">{data.lowStock.length}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-5 pb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center"><Package className="h-5 w-5 text-primary" /></div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Valor em Estoque</p>
-                      <p className="text-lg font-bold">{fmt(data.totalStockValue)}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+            <StatGrid>
+              <StatCard label="OPs Ativas" value={data.opProgress.length} icon={ClipboardList} />
+              <StatCard label="Pares em Produção" value={data.totalPairsInProduction.toLocaleString('pt-BR')} icon={Factory} tone="primary" />
+              <StatCard label="Estoque Baixo" value={data.lowStock.length} icon={AlertTriangle} tone="destructive" />
+              <StatCard label="Valor em Estoque" value={fmt(data.totalStockValue)} icon={Package} tone="primary" />
+            </StatGrid>
 
             {/* Section header: OPs */}
             <div className="flex items-baseline gap-3 pt-2">
@@ -158,11 +120,7 @@ export default function ProducaoDashboard() {
             </div>
 
             <div className="grid sm:grid-cols-1 md:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2"><ClipboardList className="h-4 w-4 text-primary" /> Ordens em Andamento</CardTitle>
-                </CardHeader>
-                <CardContent>
+              <Panel title={<span className="flex items-center gap-2"><ClipboardList className="h-4 w-4 text-primary" /> Ordens em Andamento</span>}>
                   <div className="space-y-4">
                     {data.opProgress.length === 0 ? <p className="text-sm text-muted-foreground">Nenhuma OP ativa</p> : data.opProgress.map(op => (
                       <div key={op.id} className="space-y-1.5">
@@ -179,19 +137,17 @@ export default function ProducaoDashboard() {
                       </div>
                     ))}
                   </div>
-                </CardContent>
-              </Card>
+              </Panel>
 
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-destructive" /> Alertas de Estoque</CardTitle>
-                </CardHeader>
-                <CardContent>
+              <Panel title={<span className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-destructive" /> Alertas de Estoque</span>}>
                   <div className="space-y-3">
                     {data.lowStock.length === 0 ? (
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <CheckCircle2 className="h-4 w-4 text-green-600" /> Todos os materiais com estoque adequado
-                      </div>
+                      <EmptyState
+                        size="sm"
+                        icon={CheckCircle2}
+                        title="Estoque adequado"
+                        description="Todos os materiais estão acima do mínimo."
+                      />
                     ) : data.lowStock.slice(0, 10).map(p => (
                       <div key={p.id} className="flex items-center justify-between">
                         <div className="min-w-0">
@@ -207,14 +163,9 @@ export default function ProducaoDashboard() {
                       </div>
                     ))}
                   </div>
-                </CardContent>
-              </Card>
+              </Panel>
 
-              <Card className="md:col-span-2">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2"><Layers className="h-4 w-4 text-primary" /> Distribuição de OPs</CardTitle>
-                </CardHeader>
-                <CardContent>
+              <Panel className="md:col-span-2" title={<span className="flex items-center gap-2"><Layers className="h-4 w-4 text-primary" /> Distribuição de OPs</span>}>
                   <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-4">
                     {Object.entries(data.statusCount).map(([status, count]) => (
                       <div key={status} className="rounded-lg border p-3 text-center">
@@ -223,8 +174,7 @@ export default function ProducaoDashboard() {
                       </div>
                     ))}
                   </div>
-                </CardContent>
-              </Card>
+              </Panel>
             </div>
           </TabsContent>
 

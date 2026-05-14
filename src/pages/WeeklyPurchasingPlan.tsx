@@ -6,13 +6,15 @@ import { useComponentSheets } from '@/hooks/useComponentSheets';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { generateWeeklyPurchasingPlan, WeeklyOrder, SheetMaterial, MaterialPlanRow } from '@/lib/weeklyPurchasingPlan';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { CircleNotch as Loader2, ShoppingCart, Warning as AlertTriangle, TrendUp as TrendingUp, Package } from '@phosphor-icons/react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 
 function useAllSheetMaterials() {
   return useQuery({
@@ -121,45 +123,31 @@ export default function WeeklyPurchasingPlan() {
         description="Motor cascata: simula consumo semana a semana e indica o que comprar"
       />
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <Package className="h-8 w-8 text-primary" />
-            <div>
-              <p className="eyebrow">Materiais com Necessidade</p>
-              <p className="display text-2xl tabular-nums mt-0.5">{totals.materials}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <TrendingUp className="h-8 w-8 text-primary" />
-            <div>
-              <p className="eyebrow">Custo Estimado Total</p>
-              <p className="display text-2xl tabular-nums mt-0.5">{formatCurrency(totals.cost)}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <AlertTriangle className="h-8 w-8 text-destructive" />
-            <div>
-              <p className="eyebrow">Estoque Zerado</p>
-              <p className="display text-2xl tabular-nums mt-0.5">{totals.criticalCount}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <ShoppingCart className="h-8 w-8 text-primary" />
-            <div>
-              <p className="eyebrow">Semanas Planejadas</p>
-              <p className="display text-2xl tabular-nums mt-0.5">{result?.sortedWeeks.length || 0}</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      {/* KPI strip — kit editorial */}
+      <StatGrid>
+        <StatCard
+          label="Materiais com Necessidade"
+          value={totals.materials}
+          icon={Package}
+        />
+        <StatCard
+          label="Custo Estimado Total"
+          value={formatCurrency(totals.cost)}
+          tone="primary"
+          icon={TrendingUp}
+        />
+        <StatCard
+          label="Estoque Zerado"
+          value={totals.criticalCount}
+          tone="destructive"
+          icon={AlertTriangle}
+        />
+        <StatCard
+          label="Semanas Planejadas"
+          value={result?.sortedWeeks.length || 0}
+          icon={ShoppingCart}
+        />
+      </StatGrid>
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3">
@@ -182,22 +170,25 @@ export default function WeeklyPurchasingPlan() {
 
       {/* Main Table */}
       {filteredPlan.length === 0 ? (
-        <Card>
-          <CardContent className="p-8 text-center text-muted-foreground">
-            Nenhuma necessidade de compra identificada para os filtros selecionados.
-          </CardContent>
-        </Card>
+        <Panel flush>
+          <EmptyState
+            icon={ShoppingCart}
+            title="Nenhuma necessidade de compra"
+            description="Nenhuma necessidade de compra identificada para os filtros selecionados."
+          />
+        </Panel>
       ) : (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg">Matriz de Compras por Semana</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
+        <Panel
+          eyebrow="SUPRIMENTOS · PLANO SEMANAL"
+          title="Matriz de Compras por Semana"
+          subtitle={`${filteredPlan.length} material(is) · ${result?.sortedWeeks.length || 0} semana(s)`}
+          flush
+        >
             <div className="overflow-auto max-h-[70vh]">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead className="sticky left-0 bg-background z-10 min-w-[200px]">Material</TableHead>
+                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                    <TableHead className="sticky left-0 bg-muted/40 z-10 min-w-[200px]">Material</TableHead>
                     <TableHead className="text-right">Unid.</TableHead>
                     <TableHead className="text-right">Estoque Atual</TableHead>
                     {result?.sortedWeeks.map((w) => (
@@ -205,8 +196,8 @@ export default function WeeklyPurchasingPlan() {
                         Sem. {w}
                       </TableHead>
                     ))}
-                    <TableHead className="text-right font-bold">Total Comprar</TableHead>
-                    <TableHead className="text-right font-bold">Custo Est.</TableHead>
+                    <TableHead className="text-right">Total Comprar</TableHead>
+                    <TableHead className="text-right">Custo Est.</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -251,8 +242,7 @@ export default function WeeklyPurchasingPlan() {
                 </TableBody>
               </Table>
             </div>
-          </CardContent>
-        </Card>
+        </Panel>
       )}
     </div>
   );

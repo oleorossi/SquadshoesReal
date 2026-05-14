@@ -2,7 +2,9 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import AppLayout from '@/components/layout/AppLayout';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { HubTabsList } from '@/components/layout/HubTabs';
 import { Input } from '@/components/ui/input';
@@ -129,12 +131,14 @@ export default function SolesHub() {
         {/* Layout: lista esquerda + detalhe direita */}
         <div className="grid grid-cols-12 gap-4 min-h-[600px]">
           {/* Lista de solados (esquerda) */}
-          <Card className="col-span-12 md:col-span-4 lg:col-span-3 flex flex-col">
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between gap-2">
-                <CardTitle className="text-sm">Solados ativos</CardTitle>
-                <Badge variant="secondary" className="text-[10px]">{filtered.length}</Badge>
-              </div>
+          <Panel
+            className="col-span-12 md:col-span-4 lg:col-span-3 flex flex-col"
+            title="Solados ativos"
+            actions={<Badge variant="secondary" className="text-[10px]">{filtered.length}</Badge>}
+            flush
+            bodyClassName="flex flex-col flex-1 min-h-0"
+          >
+            <div className="p-3 pb-2 border-b border-border">
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input
@@ -144,17 +148,19 @@ export default function SolesHub() {
                   onChange={e => setSearch(e.target.value)}
                 />
               </div>
-            </CardHeader>
-            <CardContent className="p-0 flex-1">
+            </div>
+            <div className="flex-1 min-h-0">
               {isLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
               ) : grouped.length === 0 ? (
-                <div className="text-center py-12 text-sm text-muted-foreground">
-                  <Package className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                  Nenhum solado encontrado
-                </div>
+                <EmptyState
+                  size="sm"
+                  icon={Package}
+                  title="Nenhum solado encontrado"
+                  description="Ajuste a busca para localizar um solado."
+                />
               ) : (
                 <ScrollArea className="h-[600px]">
                   <div className="divide-y">
@@ -194,39 +200,37 @@ export default function SolesHub() {
                   </div>
                 </ScrollArea>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </Panel>
 
           {/* Detalhe do solado selecionado (direita) */}
           <div className="col-span-12 md:col-span-8 lg:col-span-9">
             {!selected ? (
-              <Card className="h-full flex items-center justify-center">
-                <CardContent className="text-center py-16">
-                  <ListPlus className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
-                  <p className="text-sm text-muted-foreground">
-                    Selecione um solado da lista pra ver e editar suas configurações.
-                  </p>
-                </CardContent>
-              </Card>
+              <Panel className="h-full" bodyClassName="h-full flex items-center justify-center">
+                <EmptyState
+                  icon={ListPlus}
+                  title="Nenhum solado selecionado"
+                  description="Selecione um solado da lista pra ver e editar suas configurações."
+                />
+              </Panel>
             ) : (
-              <Card className="h-full">
-                <CardHeader className="pb-3 border-b">
-                  <div className="flex items-start justify-between gap-3 flex-wrap">
-                    <div>
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        {selected.name}
-                        {selected.color && (
-                          <Badge variant="secondary" className="text-xs">{selected.color}</Badge>
-                        )}
-                      </CardTitle>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {selected.sku && <>SKU: <span className="font-mono">{selected.sku}</span> · </>}
-                        Total em estoque: <span className="font-mono font-medium">{gradeTotal(selected.stock_grade)}</span> pares
-                      </p>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-4">
+              <Panel
+                className="h-full"
+                title={
+                  <span className="flex items-center gap-2 text-base">
+                    {selected.name}
+                    {selected.color && (
+                      <Badge variant="secondary" className="text-xs">{selected.color}</Badge>
+                    )}
+                  </span>
+                }
+                subtitle={
+                  <>
+                    {selected.sku && <>SKU: <span className="font-mono">{selected.sku}</span> · </>}
+                    Total em estoque: <span className="font-mono font-medium">{gradeTotal(selected.stock_grade)}</span> pares
+                  </>
+                }
+              >
                   <Tabs value={tab} onValueChange={setTab} className="w-full">
                     <HubTabsList tabs={[
                       { value: 'cadastro',  label: 'Cadastro',   icon: Settings2 },
@@ -251,8 +255,7 @@ export default function SolesHub() {
                       <SolesHistoricoTab key={selected.id} sole={selected} />
                     </TabsContent>
                   </Tabs>
-                </CardContent>
-              </Card>
+              </Panel>
             )}
           </div>
         </div>

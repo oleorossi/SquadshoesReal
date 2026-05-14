@@ -1,8 +1,9 @@
 import { useMemo } from 'react';
 import { ChartBar as BarChart3, TrendUp as TrendingUp, Clock, Warning as AlertTriangle, Factory, Package, CheckCircle as CheckCircle2, XCircle } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
 import { useOrders } from '@/hooks/useOrders';
 import { useAllOrderStages } from '@/hooks/useOrderStages';
 import { useAllQualityRecords } from '@/hooks/useQualityRecords';
@@ -132,50 +133,43 @@ export default function PCPDashboard() {
         </div>
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          <Card>
-            <CardContent className="p-3 text-center">
-              <Factory className="h-5 w-5 mx-auto text-primary mb-1" />
-              <p className="display text-3xl tabular-nums">{productionOrders.length}</p>
-              <p className="eyebrow mt-1">OPs Ativas</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3 text-center">
-              <Package className="h-5 w-5 mx-auto text-warning mb-1" />
-              <p className="display text-3xl tabular-nums">{productionOrders.reduce((s, o) => s + (o.quantity || 0), 0)}</p>
-              <p className="eyebrow mt-1">Total Pares</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3 text-center">
-              <TrendingUp className="h-5 w-5 mx-auto text-success mb-1" />
-              <p className="display text-3xl tabular-nums">{yieldStats.rate.toFixed(1)}%</p>
-              <p className="eyebrow mt-1">Rendimento</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3 text-center">
-              <XCircle className="h-5 w-5 mx-auto text-destructive mb-1" />
-              <p className="display text-3xl tabular-nums">{defectStats.rate.toFixed(1)}%</p>
-              <p className="eyebrow mt-1">Taxa Rejeito</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3 text-center">
-              <Clock className="h-5 w-5 mx-auto text-accent mb-1" />
-              <p className="display text-3xl tabular-nums">{avgLeadTime}h</p>
-              <p className="eyebrow mt-1">Lead Time Médio</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3 text-center">
-              <AlertTriangle className="h-5 w-5 mx-auto text-warning mb-1" />
-              <p className="display text-3xl tabular-nums">{materialStats.pending}</p>
-              <p className="eyebrow mt-1">Materiais Reservados</p>
-            </CardContent>
-          </Card>
-        </div>
+        <StatGrid>
+          <StatCard
+            label="OPs Ativas"
+            value={productionOrders.length}
+            icon={Factory}
+          />
+          <StatCard
+            label="Total Pares"
+            value={productionOrders.reduce((s, o) => s + (o.quantity || 0), 0).toLocaleString('pt-BR')}
+            icon={Package}
+            tone="warning"
+          />
+          <StatCard
+            label="Rendimento"
+            value={`${yieldStats.rate.toFixed(1)}%`}
+            icon={TrendingUp}
+            tone="success"
+          />
+          <StatCard
+            label="Taxa Rejeito"
+            value={`${defectStats.rate.toFixed(1)}%`}
+            icon={XCircle}
+            tone="destructive"
+          />
+          <StatCard
+            label="Lead Time Médio"
+            value={avgLeadTime}
+            unit="h"
+            icon={Clock}
+          />
+          <StatCard
+            label="Materiais Reservados"
+            value={materialStats.pending}
+            icon={AlertTriangle}
+            tone="warning"
+          />
+        </StatGrid>
 
         {/* Section header: Charts */}
         <div className="flex items-baseline gap-3 pt-2">
@@ -186,11 +180,7 @@ export default function PCPDashboard() {
         {/* Charts */}
         <div className="grid sm:grid-cols-1 md:grid-cols-2 gap-4">
           {/* WIP by Sector */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">WIP por Setor (pares)</CardTitle>
-            </CardHeader>
-            <CardContent>
+          <Panel title="WIP por Setor (pares)">
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={wipBySector} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
@@ -201,15 +191,10 @@ export default function PCPDashboard() {
                   <Bar dataKey="inProgress" stackId="a" fill={CHART_COLORS[0]} name="Em andamento" radius={[4, 4, 0, 0]} barSize={30} />
                 </BarChart>
               </ResponsiveContainer>
-            </CardContent>
-          </Card>
+          </Panel>
 
           {/* Status Distribution */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Distribuição de OPs</CardTitle>
-            </CardHeader>
-            <CardContent>
+          <Panel title="Distribuição de OPs">
               <ResponsiveContainer width="100%" height={280}>
                 <PieChart>
                   <Pie 
@@ -230,8 +215,7 @@ export default function PCPDashboard() {
                   <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
                 </PieChart>
               </ResponsiveContainer>
-            </CardContent>
-          </Card>
+          </Panel>
         </div>
 
         {/* Section header: Detalhamento */}
@@ -241,15 +225,11 @@ export default function PCPDashboard() {
         </div>
 
         {/* Sector Detail Table */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Detalhamento por Setor</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <Panel title="Detalhamento por Setor" flush>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b">
+                  <tr className="bg-muted/40 border-b [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <th className="text-left p-2">Setor</th>
                     <th className="text-center p-2">Pendentes</th>
                     <th className="text-center p-2">Em Andamento</th>
@@ -276,8 +256,7 @@ export default function PCPDashboard() {
                 </tbody>
               </table>
             </div>
-          </CardContent>
-        </Card>
+        </Panel>
 
         {/* Section header: Qualidade */}
         {qualityRecords.length > 0 && (
@@ -289,14 +268,7 @@ export default function PCPDashboard() {
 
         {/* Recent Quality Issues */}
         {qualityRecords.length > 0 && (
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-destructive" />
-                Últimos Registros de Qualidade
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
+          <Panel title={<span className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-destructive" />Últimos Registros de Qualidade</span>}>
               <div className="space-y-2">
                 {qualityRecords.slice(0, 10).map((qr: any) => (
                   <div key={qr.id} className="flex items-center justify-between border rounded-md p-2 text-sm">
@@ -312,10 +284,9 @@ export default function PCPDashboard() {
                   </div>
                 ))}
               </div>
-            </CardContent>
-          </Card>
+          </Panel>
         )}
       </div>
-    
+
   );
 }

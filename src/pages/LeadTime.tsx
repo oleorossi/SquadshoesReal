@@ -3,7 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import PageHeader from '@/components/layout/PageHeader';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,7 +22,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
- import { Clock, Plus, PencilSimple as Pencil, Trash as Trash2, CircleNotch as Loader2, Info, Lightning as Zap, ChartBar as BarChart2 } from '@phosphor-icons/react';
+ import { Clock, Plus, PencilSimple as Pencil, Trash as Trash2, CircleNotch as Loader2, Info, Lightning as Zap } from '@phosphor-icons/react';
 import { SHOE_CATEGORIES } from '@/lib/shoeCategories';
  import { useCapacityDrivenLeadTimes } from '@/hooks/usePurchaseOrders';
 
@@ -389,41 +390,35 @@ export default function LeadTime() {
           </Dialog>
         }
       />
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Como o sistema decide os dias</CardTitle>
-          <CardDescription>
-               Para cada Ordem de Produção, o cronograma reverso utiliza esta hierarquia: 1) valor da Ficha Técnica do modelo (se preenchido), 2) padrão configurado aqui pela categoria, 3) valor global de fallback (Corte 2d · Forração 3d · Silk 1d · Colagem 1d · Montagem 2d · Acabamento 1d · Expedição 2d).
-          </CardDescription>
-        </CardHeader>
-      </Card>
+      <Panel title="Como o sistema decide os dias">
+        <p className="text-sm text-muted-foreground">
+          Para cada Ordem de Produção, o cronograma reverso utiliza esta hierarquia: 1) valor da Ficha Técnica do modelo (se preenchido), 2) padrão configurado aqui pela categoria, 3) valor global de fallback (Corte 2d · Forração 3d · Silk 1d · Colagem 1d · Montagem 2d · Acabamento 1d · Expedição 2d).
+        </p>
+      </Panel>
 
-      <Card>
-        <CardContent className="p-0">
+      <Panel eyebrow="PRODUÇÃO · LEAD TIME" title="Lead Times Padrão por Categoria" flush>
           {isLoading ? (
             <div className="py-12 flex items-center justify-center">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           ) : leadTimes.length === 0 ? (
-            <div className="py-12 text-center text-muted-foreground space-y-2">
-              <Clock className="h-8 w-8 mx-auto opacity-50" />
-              <p>Nenhum lead time padrão cadastrado.</p>
-              <p className="text-xs">
-                Cadastre tempos padrão para cada categoria de modelo (ex.: Sandália, Infantil).
-              </p>
-            </div>
+            <EmptyState
+              icon={Clock}
+              title="Nenhum lead time padrão cadastrado"
+              description="Cadastre tempos padrão para cada categoria de modelo (ex.: Sandália, Infantil)."
+            />
           ) : (
             <Table>
               <TableHeader>
-                <TableRow>
+                <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <TableHead>Categoria</TableHead>
-                  <TableHead className="text-center text-xs">Corte</TableHead>
-                  <TableHead className="text-center text-xs">Forração</TableHead>
-                  <TableHead className="text-center text-xs">Silk</TableHead>
-                  <TableHead className="text-center text-xs">Colagem</TableHead>
-                  <TableHead className="text-center text-xs">Montagem</TableHead>
-                  <TableHead className="text-center text-xs">Acabamento</TableHead>
-                  <TableHead className="text-center text-xs">Exped.</TableHead>
+                  <TableHead className="text-center">Corte</TableHead>
+                  <TableHead className="text-center">Forração</TableHead>
+                  <TableHead className="text-center">Silk</TableHead>
+                  <TableHead className="text-center">Colagem</TableHead>
+                  <TableHead className="text-center">Montagem</TableHead>
+                  <TableHead className="text-center">Acabamento</TableHead>
+                  <TableHead className="text-center">Exped.</TableHead>
                   <TableHead className="text-center">Total</TableHead>
                   <TableHead className="text-center">Capacidades (prs/dia)</TableHead>
                   <TableHead>Observações</TableHead>
@@ -486,19 +481,15 @@ export default function LeadTime() {
               </TableBody>
             </Table>
           )}
-        </CardContent>
-       </Card>
+       </Panel>
 
       <div className="space-y-3 pt-4">
-        <div className="flex items-center gap-2">
-          <div className="p-1.5 bg-amber-100 rounded-md">
-            <BarChart2 className="h-5 w-5 text-amber-600" />
-          </div>
-          <h3 className="font-bold text-lg">Lead Time Dinâmico (Projeção por Backlog)</h3>
-        </div>
-        
-        <Card>
-          <CardContent className="p-0">
+        <Panel
+          eyebrow="PRODUÇÃO · LEAD TIME"
+          title="Lead Time Dinâmico (Projeção por Backlog)"
+          subtitle="Projeção de dias por setor a partir do backlog atual de ordens"
+          flush
+        >
             {loadingDynamic ? (
               <div className="py-8 flex items-center justify-center">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -506,7 +497,7 @@ export default function LeadTime() {
             ) : (
               <Table>
                 <TableHeader>
-                   <TableRow className="bg-amber-50/50">
+                   <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                      <TableHead>Categoria</TableHead>
                      <TableHead className="text-center">Corte</TableHead>
                      <TableHead className="text-center">Forração</TableHead>
@@ -515,7 +506,7 @@ export default function LeadTime() {
                      <TableHead className="text-center">Montagem</TableHead>
                      <TableHead className="text-center">Acabamento</TableHead>
                      <TableHead className="text-center">Expedição</TableHead>
-                     <TableHead className="text-center font-bold text-amber-900">Total</TableHead>
+                     <TableHead className="text-center">Total</TableHead>
                    </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -567,8 +558,7 @@ export default function LeadTime() {
                 </TableBody>
               </Table>
             )}
-          </CardContent>
-        </Card>
+        </Panel>
         <p className="text-xs text-muted-foreground px-1 italic">
           * O cálculo dinâmico projeta quantos dias levará para processar todo o backlog atual + 1 novo pedido, 
           dividindo a carga pendente pela capacidade diária de cada setor.

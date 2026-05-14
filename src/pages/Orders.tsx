@@ -21,6 +21,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { Panel } from '@/components/ui/panel';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { StatusPill, canonicalStatusToKey } from '@/components/ui/badges';
@@ -1385,15 +1386,13 @@ function getWeekOptions() {
           className="relative"
         >
         {filteredOrders.length === 0 ? (
-          <Card>
-            <CardContent className="p-0">
-              <EmptyState
-                icon={ClipboardList}
-                title="Nenhuma ordem de produção"
-                description="Crie OPs a partir de pedidos aprovados ou ajuste os filtros acima."
-              />
-            </CardContent>
-          </Card>
+          <Panel flush>
+            <EmptyState
+              icon={ClipboardList}
+              title="Nenhuma ordem de produção"
+              description="Crie OPs a partir de pedidos aprovados ou ajuste os filtros acima."
+            />
+          </Panel>
         ) : viewMode === 'kanban' ? (
           <OrdersKanbanBoard
             orders={filteredOrders as any}

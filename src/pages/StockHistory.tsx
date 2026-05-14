@@ -75,15 +75,15 @@ import { useTableSelection } from '@/hooks/useTableSelection';
 
   const headers = useMemo(() => (
     <>
-      <TableHead className="font-semibold">Tipo</TableHead>
-      <TableHead className="font-semibold">Material</TableHead>
-      <TableHead className="font-semibold">SKU</TableHead>
-      <TableHead className="font-semibold text-right">Quantidade</TableHead>
-      <TableHead className="font-semibold text-right">Estoque Anterior</TableHead>
-      <TableHead className="font-semibold text-right">Estoque Atual</TableHead>
-      <TableHead className="font-semibold">Descrição</TableHead>
-      <TableHead className="font-semibold">Data</TableHead>
-       <TableHead className="font-semibold">Responsável</TableHead>
+      <TableHead>Tipo</TableHead>
+      <TableHead>Material</TableHead>
+      <TableHead>SKU</TableHead>
+      <TableHead className="text-right">Quantidade</TableHead>
+      <TableHead className="text-right">Estoque Anterior</TableHead>
+      <TableHead className="text-right">Estoque Atual</TableHead>
+      <TableHead>Descrição</TableHead>
+      <TableHead>Data</TableHead>
+      <TableHead>Responsável</TableHead>
     </>
   ), []);
 
@@ -191,6 +191,7 @@ import { useTableSelection } from '@/hooks/useTableSelection';
          items={paginatedMovements}
         getId={(mov) => mov.id}
         headers={headers}
+        headerClassName="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground"
         emptyMessage="Nenhuma movimentação registrada"
        renderRow={(mov: StockMovementWithProduct) => {
          const prod = mov.products;

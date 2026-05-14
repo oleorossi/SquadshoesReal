@@ -27,6 +27,7 @@ import { Funnel as Filter, Plus } from '@phosphor-icons/react';
 import { Corte, Costura, Montagem, Acabamento, Embalagem } from '@/components/icons/SectorIcons';
 import { Button } from '@/components/ui/button';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
 
 const STAGES = [
   { key: 'CORTE',      icon: Corte,      colorVar: 'var(--stage-cut)',  label: 'Corte' },
@@ -133,26 +134,18 @@ export default function ProductionFlow() {
       />
 
       {/* KPIs por estágio */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        {stageStats.map((s) => {
-          const Icon = s.icon;
-          return (
-            <div key={s.key} className="bg-card border border-border rounded-lg p-4 slash-top">
-              <div className="flex items-center gap-2.5">
-                <Icon className="h-5 w-5" style={{ color: s.colorVar }} />
-                <span className="eyebrow">{s.key}</span>
-              </div>
-              <div className="flex items-baseline gap-1.5 mt-3">
-                <span className="display text-3xl tabular-nums">{s.count}</span>
-                <span className="text-[11px] font-mono text-muted-foreground">OPs</span>
-              </div>
-              <div className="text-[10.5px] font-mono text-muted-foreground tabular-nums mt-0.5">
-                {s.pairs.toLocaleString('pt-BR')} pares
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      <StatGrid>
+        {stageStats.map((s) => (
+          <StatCard
+            key={s.key}
+            label={s.key}
+            value={s.count.toLocaleString('pt-BR')}
+            unit="OPs"
+            hint={`${s.pairs.toLocaleString('pt-BR')} pares`}
+            icon={s.icon}
+          />
+        ))}
+      </StatGrid>
 
       {/* Quadro de fluxo (5 colunas) */}
       <div className="bg-card border border-border rounded-lg p-5">

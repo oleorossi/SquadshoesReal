@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Panel } from '@/components/ui/panel';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -271,15 +271,11 @@ export default function SystemDiagnostics() {
 
         {/* DIAGNÓSTICO */}
         <TabsContent value="diagnostics" className="space-y-4">
-          <Card>
-            <CardHeader className="flex flex-row items-start justify-between gap-4">
-              <div>
-                <CardTitle className="text-base">Diagnóstico automático</CardTitle>
-                <CardDescription>
-                  Verifica as causas mais comuns do erro <strong>"Importing a module script failed"</strong>:
-                  versão do build defasada, Service Worker antigo, Cache Storage poluído, conectividade e storage do navegador.
-                </CardDescription>
-              </div>
+          <Panel
+            eyebrow="SISTEMA · DIAGNÓSTICO"
+            title="Diagnóstico automático"
+            subtitle={'Verifica as causas mais comuns do erro "Importing a module script failed": versão do build defasada, Service Worker antigo, Cache Storage poluído, conectividade e storage do navegador.'}
+            actions={
               <div className="flex gap-2 shrink-0">
                 <Button size="sm" onClick={runDiagnostics} disabled={running}>
                   {running ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Stethoscope className="h-4 w-4 mr-2" />}
@@ -292,8 +288,9 @@ export default function SystemDiagnostics() {
                   <HardDrive className="h-4 w-4 mr-2" /> Limpar cache
                 </Button>
               </div>
-            </CardHeader>
-            <CardContent className="space-y-2">
+            }
+            bodyClassName="space-y-2"
+          >
               {diag.length === 0 && !running && (
                 <p className="text-sm text-muted-foreground">Nenhum diagnóstico executado ainda.</p>
               )}
@@ -310,31 +307,29 @@ export default function SystemDiagnostics() {
                   </div>
                 </div>
               ))}
-            </CardContent>
-          </Card>
+          </Panel>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Causas comuns do erro de import de módulo</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm text-muted-foreground">
+          <Panel
+            eyebrow="SISTEMA · DIAGNÓSTICO"
+            title="Causas comuns do erro de import de módulo"
+            bodyClassName="space-y-2 text-sm text-muted-foreground"
+          >
               <p><strong className="text-foreground">1. Build novo no servidor.</strong> O HTML antigo da aba referencia chunks que já não existem. Solução: recarregar (Ctrl+Shift+R).</p>
               <p><strong className="text-foreground">2. Service Worker servindo cache obsoleto.</strong> Use "Limpar cache" para desregistrar o SW e apagar todos os caches.</p>
               <p><strong className="text-foreground">3. Conexão instável.</strong> O fetch do chunk JS falha durante a navegação por lazy import.</p>
               <p><strong className="text-foreground">4. Bloqueio por extensão/proxy.</strong> Antivírus/proxy corporativo pode rejeitar arquivos .js do sandbox.</p>
               <p><strong className="text-foreground">5. localStorage indisponível.</strong> Navegação anônima estrita pode bloquear armazenamento e impedir hidratação.</p>
-            </CardContent>
-          </Card>
+          </Panel>
         </TabsContent>
 
         {/* SCHEMA */}
         <TabsContent value="schema">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Objetos críticos do schema</CardTitle>
-              <CardDescription>Validação de tabelas e funções essenciais para o cálculo de solados.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
+          <Panel
+            eyebrow="SISTEMA · DIAGNÓSTICO"
+            title="Objetos críticos do schema"
+            subtitle="Validação de tabelas e funções essenciais para o cálculo de solados."
+            bodyClassName="space-y-2"
+          >
               {schemaLoading && <p className="text-sm text-muted-foreground">Carregando…</p>}
               {(schemaObjects ?? []).map((o) => (
                 <div key={o.name} className="flex items-start gap-3 p-3 rounded-lg border border-border bg-muted/30">
@@ -355,20 +350,16 @@ export default function SystemDiagnostics() {
                   </div>
                 </div>
               ))}
-            </CardContent>
-          </Card>
+          </Panel>
         </TabsContent>
 
         {/* MIGRATIONS */}
         <TabsContent value="migrations">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Migrations aplicadas</CardTitle>
-              <CardDescription>
-                {migLoading ? 'Carregando…' : `${migrations?.length ?? 0} migration(s) aplicada(s) — exibindo as 200 mais recentes.`}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
+          <Panel
+            eyebrow="SISTEMA · DIAGNÓSTICO"
+            title="Migrations aplicadas"
+            subtitle={migLoading ? 'Carregando…' : `${migrations?.length ?? 0} migration(s) aplicada(s) — exibindo as 200 mais recentes.`}
+          >
               <ScrollArea className="h-[480px] rounded-md border border-border">
                 <div className="divide-y divide-border">
                   {(migrations ?? []).map((m) => (
@@ -384,8 +375,7 @@ export default function SystemDiagnostics() {
                   ))}
                 </div>
               </ScrollArea>
-            </CardContent>
-          </Card>
+          </Panel>
         </TabsContent>
       </Tabs>
     </div>

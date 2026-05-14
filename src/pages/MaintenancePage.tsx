@@ -1,6 +1,5 @@
 import { useState, useMemo } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,6 +18,9 @@ import {
 } from "@/hooks/useMaintenance";
 import { exportCSV, exportPDF } from "@/lib/exportUtils";
 import { EditorialPageHeader } from "@/components/layout/EditorialPageHeader";
+import { StatCard, StatGrid } from "@/components/ui/stat-card";
+import { Panel } from "@/components/ui/panel";
+import { EmptyState } from "@/components/ui/empty-state";
 
 function statusBadge(status: string) {
   const map: Record<string, { label: string; cls: string }> = {
@@ -255,28 +257,12 @@ export default function MaintenancePage() {
       />
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card><CardContent className="pt-4 text-center">
-          <Settings2 className="h-5 w-5 mx-auto text-muted-foreground" />
-          <p className="display text-2xl tabular-nums mt-1">{equipment.length}</p>
-          <p className="text-xs text-muted-foreground">Equipamentos</p>
-        </CardContent></Card>
-        <Card><CardContent className="pt-4 text-center">
-          <ClipboardList className="h-5 w-5 mx-auto text-muted-foreground" />
-          <p className="display text-2xl tabular-nums mt-1">{plans.filter(p => p.is_active).length}</p>
-          <p className="text-xs text-muted-foreground">Planos Ativos</p>
-        </CardContent></Card>
-        <Card><CardContent className="pt-4 text-center">
-          <AlertTriangle className="h-5 w-5 mx-auto text-red-500" />
-          <p className="display text-2xl tabular-nums mt-1 text-red-600">{overdueCount}</p>
-          <p className="text-xs text-muted-foreground">Atrasados</p>
-        </CardContent></Card>
-        <Card><CardContent className="pt-4 text-center">
-          <Clock className="h-5 w-5 mx-auto text-amber-500" />
-          <p className="display text-2xl tabular-nums mt-1 text-amber-600">{upcomingCount}</p>
-          <p className="text-xs text-muted-foreground">Próximos 7 dias</p>
-        </CardContent></Card>
-      </div>
+      <StatGrid>
+        <StatCard label="Equipamentos" value={equipment.length} icon={Settings2} />
+        <StatCard label="Planos Ativos" value={plans.filter(p => p.is_active).length} icon={ClipboardList} />
+        <StatCard label="Atrasados" value={overdueCount} icon={AlertTriangle} tone="destructive" />
+        <StatCard label="Próximos 7 dias" value={upcomingCount} icon={Clock} tone="warning" />
+      </StatGrid>
 
       <Tabs defaultValue="equipamentos">
         <TabsList>
@@ -287,15 +273,15 @@ export default function MaintenancePage() {
 
         {/* ─── Equipamentos ─── */}
         <TabsContent value="equipamentos">
-          <Card>
-            <CardHeader className="flex-row items-center justify-between py-3">
-              <CardTitle className="text-base">Equipamentos</CardTitle>
-              <EquipmentFormDialog><Button size="sm"><Plus className="h-4 w-4 mr-1" />Novo</Button></EquipmentFormDialog>
-            </CardHeader>
-            <CardContent className="p-0">
+          <Panel
+            eyebrow="SISTEMA · MANUTENÇÃO"
+            title="Equipamentos"
+            actions={<EquipmentFormDialog><Button size="sm"><Plus className="h-4 w-4 mr-1" />Novo</Button></EquipmentFormDialog>}
+            flush
+          >
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <TableHead>Nome</TableHead>
                     <TableHead>Código</TableHead>
                     <TableHead>Setor</TableHead>
@@ -317,28 +303,31 @@ export default function MaintenancePage() {
                     </TableRow>
                   ))}
                   {equipment.length === 0 && !loadingEq && (
-                    <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">Nenhum equipamento cadastrado</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={5} className="p-0">
+                      <EmptyState icon={Settings2} title="Nenhum equipamento cadastrado" size="sm" />
+                    </TableCell></TableRow>
                   )}
                 </TableBody>
               </Table>
-            </CardContent>
-          </Card>
+          </Panel>
         </TabsContent>
 
         {/* ─── Planos ─── */}
         <TabsContent value="planos">
-          <Card>
-            <CardHeader className="flex-row items-center justify-between py-3">
-              <CardTitle className="text-base">Planos de Manutenção</CardTitle>
+          <Panel
+            eyebrow="SISTEMA · MANUTENÇÃO"
+            title="Planos de Manutenção"
+            actions={
               <div className="flex gap-2">
                 <LogFormDialog equipmentList={equipment} plans={plans}><Button size="sm" variant="outline"><CheckCircle2 className="h-4 w-4 mr-1" />Registrar Manutenção</Button></LogFormDialog>
                 <PlanFormDialog equipmentList={equipment}><Button size="sm"><Plus className="h-4 w-4 mr-1" />Novo Plano</Button></PlanFormDialog>
               </div>
-            </CardHeader>
-            <CardContent className="p-0">
+            }
+            flush
+          >
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <TableHead>Equipamento</TableHead>
                     <TableHead>Descrição</TableHead>
                     <TableHead>Frequência</TableHead>
@@ -357,30 +346,34 @@ export default function MaintenancePage() {
                     </TableRow>
                   ))}
                   {plans.length === 0 && !loadingPlans && (
-                    <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">Nenhum plano cadastrado</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={5} className="p-0">
+                      <EmptyState icon={ClipboardList} title="Nenhum plano cadastrado" size="sm" />
+                    </TableCell></TableRow>
                   )}
                 </TableBody>
               </Table>
-            </CardContent>
-          </Card>
+          </Panel>
         </TabsContent>
 
         {/* ─── Histórico ─── */}
         <TabsContent value="historico">
-          <Card>
-            <CardHeader className="py-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Histórico de Manutenções</CardTitle>
-                <div className="flex gap-1">
-                  <Button size="sm" variant="outline" onClick={() => exportCSV(logHeaders, logRows, `manutencao_${dateFrom}_${dateTo}.csv`)}>
-                    <Download className="h-3.5 w-3.5 mr-1" />CSV
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => exportPDF("Relatório de Manutenção", logHeaders, logRows, "manutencao.pdf")}>
-                    <FileText className="h-3.5 w-3.5 mr-1" />PDF
-                  </Button>
-                </div>
+          <Panel
+            eyebrow="SISTEMA · MANUTENÇÃO"
+            title="Histórico de Manutenções"
+            subtitle={`${filteredLogs.length} registros`}
+            actions={
+              <div className="flex gap-1">
+                <Button size="sm" variant="outline" onClick={() => exportCSV(logHeaders, logRows, `manutencao_${dateFrom}_${dateTo}.csv`)}>
+                  <Download className="h-3.5 w-3.5 mr-1" />CSV
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => exportPDF("Relatório de Manutenção", logHeaders, logRows, "manutencao.pdf")}>
+                  <FileText className="h-3.5 w-3.5 mr-1" />PDF
+                </Button>
               </div>
-              <div className="flex gap-2 flex-wrap items-end">
+            }
+            flush
+          >
+              <div className="flex gap-2 flex-wrap items-end p-4 border-b border-border">
                 <div>
                   <Label className="text-xs">De</Label>
                   <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-8 w-36 text-xs" />
@@ -400,13 +393,10 @@ export default function MaintenancePage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <span className="text-xs text-muted-foreground pb-1">{filteredLogs.length} registros</span>
               </div>
-            </CardHeader>
-            <CardContent className="p-0">
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <TableHead>Data</TableHead>
                     <TableHead>Equipamento</TableHead>
                     <TableHead>Tipo</TableHead>
@@ -431,12 +421,13 @@ export default function MaintenancePage() {
                     </TableRow>
                   ))}
                   {filteredLogs.length === 0 && (
-                    <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">Nenhuma manutenção no período</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={6} className="p-0">
+                      <EmptyState icon={History} title="Nenhuma manutenção no período" size="sm" />
+                    </TableCell></TableRow>
                   )}
                 </TableBody>
               </Table>
-            </CardContent>
-          </Card>
+          </Panel>
         </TabsContent>
       </Tabs>
     </div>

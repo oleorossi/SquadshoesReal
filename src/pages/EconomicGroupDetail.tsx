@@ -14,7 +14,10 @@ import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -151,22 +154,16 @@ function ResumoTab({ groupId, group }: { groupId: string; group: any }) {
   return (
     <div className="space-y-4 pt-4">
       {/* KPI cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <StatGrid>
         <KpiCard label="Receita 12m" value={fmtCurrency(kpis?.revenue_12m || 0)} icon={DollarSign} accent="emerald" />
         <KpiCard label="Pedidos 12m" value={String(kpis?.orders_12m || 0)} icon={ShoppingCart} accent="indigo" />
         <KpiCard label="Ticket médio" value={fmtCurrency(kpis?.avg_ticket || 0)} icon={TrendingUp} accent="indigo" />
         <KpiCard label="Dias médio pgto" value={`${Number(kpis?.avg_days_to_pay || 0).toFixed(0)} dias`} icon={Calendar} accent="amber" />
-      </div>
+      </StatGrid>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {/* Crédito */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <DollarSign className="h-4 w-4 text-primary" /> Crédito consolidado
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
+        <Panel title={<span className="flex items-center gap-2"><DollarSign className="h-4 w-4 text-primary" /> Crédito consolidado</span>} bodyClassName="space-y-2 text-sm">
             <Row label="Limite do grupo" value={fmtCurrency(group.credit_limit || 0)} />
             <Row label="AR em aberto" value={fmtCurrency(credit?.ar_open_total || 0)} />
             <Row label="Crédito disponível" value={fmtCurrency(credit?.credit_available || 0)} highlight={Number(credit?.credit_available || 0) > 0 ? 'green' : 'red'} />
@@ -177,17 +174,10 @@ function ResumoTab({ groupId, group }: { groupId: string; group: any }) {
             <Row label="Em atraso 30-60 dias" value={fmtCurrency(credit?.ar_atraso_30_60 || 0)} highlight={Number(credit?.ar_atraso_30_60 || 0) > 0 ? 'amber' : undefined} />
             <Row label="Em atraso 60-90 dias" value={fmtCurrency(credit?.ar_atraso_60_90 || 0)} highlight={Number(credit?.ar_atraso_60_90 || 0) > 0 ? 'red' : undefined} />
             <Row label="Em atraso +90 dias" value={fmtCurrency(credit?.ar_atraso_90_mais || 0)} highlight={Number(credit?.ar_atraso_90_mais || 0) > 0 ? 'red' : undefined} />
-          </CardContent>
-        </Card>
+        </Panel>
 
         {/* Composição */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Users className="h-4 w-4 text-primary" /> Composição do grupo
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
+        <Panel title={<span className="flex items-center gap-2"><Users className="h-4 w-4 text-primary" /> Composição do grupo</span>} bodyClassName="space-y-2 text-sm">
             <Row label="Clientes vinculados" value={String(credit?.total_clients || 0)} />
             <Row label="Matriz definida?" value={Number(credit?.total_matriz || 0) > 0 ? 'Sim' : 'Não'} highlight={Number(credit?.total_matriz || 0) === 0 ? 'amber' : undefined} />
             <Row label="Share of wallet" value={`${Number(kpis?.share_of_wallet_pct || 0).toFixed(1)}%`} />
@@ -198,8 +188,7 @@ function ResumoTab({ groupId, group }: { groupId: string; group: any }) {
             <Row label="Condição pgto default" value={group.default_payment_condition || '—'} />
             <Row label="Desconto default" value={`${Number(group.default_discount_pct || 0).toFixed(1)}%`} />
             <Row label="Modalidade frete" value={group.default_modalidade_frete || '—'} />
-          </CardContent>
-        </Card>
+        </Panel>
       </div>
 
       {group.important_info && (
@@ -220,27 +209,13 @@ function ResumoTab({ groupId, group }: { groupId: string; group: any }) {
 }
 
 function KpiCard({ label, value, icon: Icon, accent }: { label: string; value: string; icon: any; accent: 'emerald' | 'indigo' | 'amber' | 'rose' }) {
-  const map = {
-    emerald: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20',
-    indigo: 'bg-indigo-500/10 text-indigo-700 border-indigo-500/20',
-    amber: 'bg-amber-500/10 text-amber-700 border-amber-500/20',
-    rose: 'bg-rose-500/10 text-rose-700 border-rose-500/20',
-  };
-  return (
-    <Card>
-      <CardContent className="pt-4">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-bold mb-1">{label}</p>
-            <p className="text-xl font-black tracking-tight">{value}</p>
-          </div>
-          <div className={`h-8 w-8 rounded-lg flex items-center justify-center border ${map[accent]}`}>
-            <Icon className="h-4 w-4" />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
+  const toneMap = {
+    emerald: 'success',
+    indigo: 'primary',
+    amber: 'warning',
+    rose: 'destructive',
+  } as const;
+  return <StatCard label={label} value={value} icon={Icon} tone={toneMap[accent]} />;
 }
 
 function Row({ label, value, highlight }: { label: string; value: string; highlight?: 'green' | 'red' | 'amber' }) {
@@ -306,11 +281,7 @@ function ComercialTab({ group }: { group: any }) {
 
   return (
     <div className="space-y-4 pt-4">
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm">Identificação</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <Panel eyebrow="COMERCIAL · GRUPO ECONÔMICO" title="Identificação" bodyClassName="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="space-y-1">
             <Label>Nome do grupo *</Label>
             <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
@@ -339,17 +310,13 @@ function ComercialTab({ group }: { group: any }) {
             <Label>Informação importante (alerta vermelho)</Label>
             <Textarea value={form.important_info} onChange={e => setForm({ ...form, important_info: e.target.value })} rows={3} placeholder="Ex.: Boleto sempre vencendo na semana do dia 15, exige nota com observação X..." />
           </div>
-        </CardContent>
-      </Card>
+      </Panel>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <DollarSign className="h-4 w-4 text-primary" /> Condições comerciais default
-          </CardTitle>
-          <p className="text-xs text-muted-foreground">Aplicadas ao criar PV pra qualquer cliente do grupo (cliente pode sobrescrever individualmente).</p>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <Panel
+        title={<span className="flex items-center gap-2"><DollarSign className="h-4 w-4 text-primary" /> Condições comerciais default</span>}
+        subtitle="Aplicadas ao criar PV pra qualquer cliente do grupo (cliente pode sobrescrever individualmente)."
+        bodyClassName="grid grid-cols-1 md:grid-cols-2 gap-3"
+      >
           <div className="space-y-1">
             <Label>Tabela de preço default</Label>
             <Select value={form.default_price_list_id || '__none__'} onValueChange={v => setForm({ ...form, default_price_list_id: v === '__none__' ? '' : v })}>
@@ -401,16 +368,9 @@ function ComercialTab({ group }: { group: any }) {
               </SelectContent>
             </Select>
           </div>
-        </CardContent>
-      </Card>
+      </Panel>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <ShieldAlert className="h-4 w-4 text-primary" /> Crédito + bloqueio comercial
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <Panel title={<span className="flex items-center gap-2"><ShieldAlert className="h-4 w-4 text-primary" /> Crédito + bloqueio comercial</span>} bodyClassName="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="space-y-1">
             <Label>Limite de crédito do grupo (R$)</Label>
             <Input type="number" min={0} step={100} value={form.credit_limit} onChange={e => setForm({ ...form, credit_limit: Number(e.target.value) })} />
@@ -433,8 +393,7 @@ function ComercialTab({ group }: { group: any }) {
               <Textarea value={form.block_reason} onChange={e => setForm({ ...form, block_reason: e.target.value })} rows={2} placeholder="Ex.: Inadimplência > 90 dias na matriz" />
             </div>
           )}
-        </CardContent>
-      </Card>
+      </Panel>
 
       <div className="flex justify-end">
         <Button onClick={handleSave} disabled={update.isPending} className="gap-2">
@@ -455,27 +414,26 @@ function ClientesTab({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-3 pt-4">
-      <Card>
-        <CardContent className="pt-4">
+      <Panel eyebrow="COMERCIAL · GRUPO ECONÔMICO" title="Clientes vinculados" flush>
           {isLoading ? (
-            <p className="text-sm text-muted-foreground">Carregando…</p>
+            <p className="text-sm text-muted-foreground p-4">Carregando…</p>
           ) : clients.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground text-sm space-y-2">
-              <Building2 className="h-10 w-10 mx-auto opacity-30" />
-              <p>Nenhum cliente vinculado a este grupo</p>
-              <p className="text-xs">Edite um cliente em /clients e selecione este grupo no campo "Grupo econômico"</p>
-            </div>
+            <EmptyState
+              icon={Building2}
+              title="Nenhum cliente vinculado a este grupo"
+              description='Edite um cliente em /clients e selecione este grupo no campo "Grupo econômico"'
+            />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-muted/40 text-xs">
+                <thead className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <tr>
-                    <th className="text-left p-2 font-semibold">Cliente</th>
-                    <th className="text-left p-2 font-semibold">CNPJ</th>
-                    <th className="text-left p-2 font-semibold">Cidade/UF</th>
-                    <th className="text-right p-2 font-semibold">Limite</th>
-                    <th className="text-center p-2 font-semibold">Status</th>
-                    <th className="text-right p-2 font-semibold">Ações</th>
+                    <th className="text-left p-2">Cliente</th>
+                    <th className="text-left p-2">CNPJ</th>
+                    <th className="text-left p-2">Cidade/UF</th>
+                    <th className="text-right p-2">Limite</th>
+                    <th className="text-center p-2">Status</th>
+                    <th className="text-right p-2">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -517,8 +475,7 @@ function ClientesTab({ groupId }: { groupId: string }) {
               </table>
             </div>
           )}
-        </CardContent>
-      </Card>
+      </Panel>
     </div>
   );
 }
@@ -541,26 +498,25 @@ function PedidosTab({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-3 pt-4">
-      <div className="grid grid-cols-3 gap-3">
+      <StatGrid>
         <KpiCard label="Total PVs (recentes)" value={String(summary.count)} icon={ShoppingCart} accent="indigo" />
         <KpiCard label="Soma valores" value={fmtCurrency(summary.total)} icon={DollarSign} accent="emerald" />
         <KpiCard label="PVs cancelados" value={String(summary.byStatus['Cancelado'] || 0)} icon={AlertTriangle} accent="rose" />
-      </div>
+      </StatGrid>
 
-      <Card>
-        <CardContent className="pt-4">
-          {isLoading ? <p className="text-sm text-muted-foreground">Carregando…</p> :
-           orders.length === 0 ? <p className="text-sm text-muted-foreground text-center py-8">Sem pedidos para este grupo</p> :
+      <Panel eyebrow="COMERCIAL · GRUPO ECONÔMICO" title="Pedidos do grupo" flush>
+          {isLoading ? <p className="text-sm text-muted-foreground p-4">Carregando…</p> :
+           orders.length === 0 ? <EmptyState icon={ShoppingCart} title="Sem pedidos para este grupo" size="sm" /> :
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-muted/40 text-xs">
+                <thead className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <tr>
-                    <th className="text-left p-2 font-semibold">PV</th>
-                    <th className="text-left p-2 font-semibold">Cliente</th>
-                    <th className="text-left p-2 font-semibold">Status</th>
-                    <th className="text-left p-2 font-semibold">Entrega</th>
-                    <th className="text-left p-2 font-semibold">NF</th>
-                    <th className="text-right p-2 font-semibold">Valor</th>
+                    <th className="text-left p-2">PV</th>
+                    <th className="text-left p-2">Cliente</th>
+                    <th className="text-left p-2">Status</th>
+                    <th className="text-left p-2">Entrega</th>
+                    <th className="text-left p-2">NF</th>
+                    <th className="text-right p-2">Valor</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -582,8 +538,7 @@ function PedidosTab({ groupId }: { groupId: string }) {
               </table>
             </div>
           }
-        </CardContent>
-      </Card>
+      </Panel>
     </div>
   );
 }
@@ -606,11 +561,7 @@ function FinanceiroTab({ groupId }: { groupId: string }) {
   return (
     <div className="space-y-3 pt-4">
       {credit && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Aging Consolidado</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <Panel eyebrow="COMERCIAL · GRUPO ECONÔMICO" title="Aging Consolidado">
             <div className="grid grid-cols-5 gap-2">
               <AgingBox label="A vencer" value={credit.ar_a_vencer} color="emerald" />
               <AgingBox label="0-30d" value={credit.ar_atraso_0_30} color="amber" />
@@ -618,13 +569,12 @@ function FinanceiroTab({ groupId }: { groupId: string }) {
               <AgingBox label="60-90d" value={credit.ar_atraso_60_90} color="rose" />
               <AgingBox label="+90d" value={credit.ar_atraso_90_mais} color="red" />
             </div>
-          </CardContent>
-        </Card>
+        </Panel>
       )}
 
-      <Card>
-        <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
-          <CardTitle className="text-sm">Contas a Receber</CardTitle>
+      <Panel
+        title="Contas a Receber"
+        actions={
           <Select value={statusFilter} onValueChange={v => setStatusFilter(v as any)}>
             <SelectTrigger className="w-44 h-8 text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -633,20 +583,21 @@ function FinanceiroTab({ groupId }: { groupId: string }) {
               <SelectItem value="all">Todas</SelectItem>
             </SelectContent>
           </Select>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? <p className="text-sm text-muted-foreground">Carregando…</p> :
-           filtered.length === 0 ? <p className="text-sm text-muted-foreground text-center py-6">Nada por aqui</p> :
+        }
+        flush
+      >
+          {isLoading ? <p className="text-sm text-muted-foreground p-4">Carregando…</p> :
+           filtered.length === 0 ? <EmptyState icon={DollarSign} title="Nada por aqui" size="sm" /> :
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-muted/40 text-xs">
+                <thead className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <tr>
-                    <th className="text-left p-2 font-semibold">Cliente</th>
-                    <th className="text-left p-2 font-semibold">Descrição</th>
-                    <th className="text-left p-2 font-semibold">Vencimento</th>
-                    <th className="text-right p-2 font-semibold">Valor</th>
-                    <th className="text-right p-2 font-semibold">Recebido</th>
-                    <th className="text-left p-2 font-semibold">Status</th>
+                    <th className="text-left p-2">Cliente</th>
+                    <th className="text-left p-2">Descrição</th>
+                    <th className="text-left p-2">Vencimento</th>
+                    <th className="text-right p-2">Valor</th>
+                    <th className="text-right p-2">Recebido</th>
+                    <th className="text-left p-2">Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -667,8 +618,7 @@ function FinanceiroTab({ groupId }: { groupId: string }) {
               </table>
             </div>
           }
-        </CardContent>
-      </Card>
+      </Panel>
     </div>
   );
 }
@@ -714,17 +664,18 @@ function ContatosTab({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-3 pt-4">
-      <div className="flex justify-end">
-        <Button size="sm" onClick={handleNew} className="gap-2"><Plus className="h-4 w-4" /> Novo contato</Button>
-      </div>
-      <Card>
-        <CardContent className="pt-4">
+      <Panel
+        eyebrow="COMERCIAL · GRUPO ECONÔMICO"
+        title="Contatos"
+        actions={<Button size="sm" onClick={handleNew} className="gap-2"><Plus className="h-4 w-4" /> Novo contato</Button>}
+        flush={contacts.length === 0}
+      >
           {contacts.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground text-sm space-y-2">
-              <Phone className="h-10 w-10 mx-auto opacity-30" />
-              <p>Nenhum contato cadastrado</p>
-              <p className="text-xs">Adicione contatos por papel (Comprador, Financeiro, Logística, Diretor, Comercial)</p>
-            </div>
+            <EmptyState
+              icon={Phone}
+              title="Nenhum contato cadastrado"
+              description="Adicione contatos por papel (Comprador, Financeiro, Logística, Diretor, Comercial)"
+            />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {contacts.map(c => (
@@ -756,8 +707,7 @@ function ContatosTab({ groupId }: { groupId: string }) {
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
+      </Panel>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md">
@@ -849,9 +799,7 @@ function NotasAnexosTab({ groupId }: { groupId: string }) {
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 pt-4">
       {/* Notas (timeline) */}
       <div className="lg:col-span-2 space-y-3">
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><MessageSquare className="h-4 w-4" /> Nova nota</CardTitle></CardHeader>
-          <CardContent className="space-y-2">
+        <Panel title={<span className="flex items-center gap-2"><MessageSquare className="h-4 w-4" /> Nova nota</span>} bodyClassName="space-y-2">
             <div className="flex gap-2 items-center">
               <Label className="text-xs">Tipo:</Label>
               <Select value={type} onValueChange={v => setType(v as NoteType)}>
@@ -865,12 +813,9 @@ function NotasAnexosTab({ groupId }: { groupId: string }) {
                 <Plus className="h-4 w-4" /> Adicionar
               </Button>
             </div>
-          </CardContent>
-        </Card>
+        </Panel>
 
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm">Timeline ({notes.length})</CardTitle></CardHeader>
-          <CardContent>
+        <Panel title={`Timeline (${notes.length})`}>
             {notes.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-6">Sem notas. Use o CRM-style: registre toda interação.</p>
             ) : (
@@ -891,15 +836,12 @@ function NotasAnexosTab({ groupId }: { groupId: string }) {
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
+        </Panel>
       </div>
 
       {/* Anexos */}
       <div>
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Paperclip className="h-4 w-4" /> Anexos</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
+        <Panel title={<span className="flex items-center gap-2"><Paperclip className="h-4 w-4" /> Anexos</span>} bodyClassName="space-y-3">
             <label className="block">
               <div className="border-2 border-dashed border-border/60 rounded-lg p-4 text-center hover:bg-muted/30 cursor-pointer transition-colors">
                 <Upload className="h-5 w-5 mx-auto text-muted-foreground" />
@@ -922,8 +864,7 @@ function NotasAnexosTab({ groupId }: { groupId: string }) {
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
+        </Panel>
       </div>
     </div>
   );
@@ -947,12 +888,11 @@ function HistoricoTab({ groupId }: { groupId: string }) {
   };
 
   return (
-    <Card className="mt-4">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm flex items-center gap-2"><HistoryIcon className="h-4 w-4" /> Histórico de mudanças</CardTitle>
-        <p className="text-xs text-muted-foreground">Últimas 100 alterações em campos críticos.</p>
-      </CardHeader>
-      <CardContent>
+    <Panel
+      className="mt-4"
+      title={<span className="flex items-center gap-2"><HistoryIcon className="h-4 w-4" /> Histórico de mudanças</span>}
+      subtitle="Últimas 100 alterações em campos críticos."
+    >
         {log.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-6">Sem alterações registradas</p>
         ) : (
@@ -972,7 +912,6 @@ function HistoricoTab({ groupId }: { groupId: string }) {
             ))}
           </div>
         )}
-      </CardContent>
-    </Card>
+    </Panel>
   );
 }

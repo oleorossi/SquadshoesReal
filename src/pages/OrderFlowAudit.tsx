@@ -1,6 +1,5 @@
 import AppLayout from "@/components/layout/AppLayout";
 import { useState, useMemo } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +11,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { CheckCircle as CheckCircle2, XCircle, Warning as AlertTriangle, MagnifyingGlass as Search, ArrowsClockwise as RefreshCw, CaretDown as ChevronDown, CaretUp as ChevronUp, ShoppingCart, ClipboardText as ClipboardList, Package, Factory, Sparkle as Sparkles, CurrencyDollar as DollarSign, FileText, CircleNotch as Loader2, ClockCounterClockwise as History, Stack as Layers } from '@phosphor-icons/react';
 import { format, parseISO, differenceInDays } from 'date-fns';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 
 type StepStatus = 'ok' | 'warning' | 'error' | 'pending';
 
@@ -355,31 +357,29 @@ function OrderAuditRow({ audit }: { audit: OrderAudit }) {
 function ProductionAuditTab({ stages }: { stages: any[] }) {
   return (
     <div className="space-y-5 page-enter">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-          <History className="h-4 w-4" /> Histórico de Finalização de Setores
-        </h3>
-        <Badge variant="outline">{stages.length} registros</Badge>
-      </div>
-
-      <div className="border rounded-xl overflow-hidden bg-card shadow-sm">
+      <Panel
+        eyebrow="SISTEMA · AUDITORIA"
+        title={<span className="flex items-center gap-2"><History className="h-4 w-4" /> Histórico de Finalização de Setores</span>}
+        subtitle={`${stages.length} registros`}
+        flush
+      >
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b bg-muted/50 text-muted-foreground">
-                <th className="text-left p-3 font-bold uppercase text-[10px]">Data/Hora</th>
-                <th className="text-left p-3 font-bold uppercase text-[10px]">OP</th>
-                <th className="text-left p-3 font-bold uppercase text-[10px]">Setor</th>
-                <th className="text-left p-3 font-bold uppercase text-[10px]">Cliente</th>
-                <th className="text-center p-3 font-bold uppercase text-[10px]">Qtd</th>
-                <th className="text-right p-3 font-bold uppercase text-[10px]">Status</th>
+              <tr className="bg-muted/40 border-b border-border [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                <th className="text-left p-3">Data/Hora</th>
+                <th className="text-left p-3">OP</th>
+                <th className="text-left p-3">Setor</th>
+                <th className="text-left p-3">Cliente</th>
+                <th className="text-center p-3">Qtd</th>
+                <th className="text-right p-3">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {stages.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-12 text-center text-muted-foreground italic">
-                    Nenhum setor finalizado recentemente.
+                  <td colSpan={6} className="p-0">
+                    <EmptyState icon={History} title="Nenhum setor finalizado recentemente" size="sm" />
                   </td>
                 </tr>
               ) : (
@@ -417,7 +417,7 @@ function ProductionAuditTab({ stages }: { stages: any[] }) {
             </tbody>
           </table>
         </div>
-      </div>
+      </Panel>
     </div>
   );
 }
@@ -482,52 +482,27 @@ export default function OrderFlowAudit() {
 
           <TabsContent value="flow" className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
             {/* Summary Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              <Card className="border-none shadow-sm bg-muted/20">
-                <CardContent className="p-4 text-center">
-                  <div className="text-2xl font-black font-mono">{summary.total}</div>
-                  <div className="text-[10px] font-bold text-muted-foreground uppercase">Total Pedidos</div>
-                </CardContent>
-              </Card>
-              <Card className="border-none shadow-sm bg-green-50">
-                <CardContent className="p-4 text-center">
-                  <div className="text-2xl font-black font-mono text-green-600">{summary.ok}</div>
-                  <div className="text-[10px] font-bold text-green-700/70 uppercase">Fluxo OK</div>
-                </CardContent>
-              </Card>
-              <Card className="border-none shadow-sm bg-amber-50">
-                <CardContent className="p-4 text-center">
-                  <div className="text-2xl font-black font-mono text-amber-500">{summary.warn}</div>
-                  <div className="text-[10px] font-bold text-amber-700/70 uppercase">Alertas</div>
-                </CardContent>
-              </Card>
-              <Card className="border-none shadow-sm bg-red-50">
-                <CardContent className="p-4 text-center">
-                  <div className="text-2xl font-black font-mono text-red-600">{summary.error}</div>
-                  <div className="text-[10px] font-bold text-red-700/70 uppercase">Erros</div>
-                </CardContent>
-              </Card>
-              <Card className="bg-primary text-primary-foreground shadow-lg border-none ring-4 ring-primary/10">
-                <CardContent className="p-4 text-center">
-                  <div className="text-2xl font-black font-mono">{summary.avgScore}%</div>
-                  <div className="text-[10px] font-black opacity-80 uppercase">Process Score</div>
-                </CardContent>
-              </Card>
-            </div>
+            <StatGrid>
+              <StatCard label="Total Pedidos" value={summary.total} />
+              <StatCard label="Fluxo OK" value={summary.ok} tone="success" />
+              <StatCard label="Alertas" value={summary.warn} tone="warning" />
+              <StatCard label="Erros" value={summary.error} tone="destructive" />
+              <StatCard label="Process Score" value={`${summary.avgScore}%`} tone="primary" />
+            </StatGrid>
 
             {/* Filters */}
-            <div className="flex gap-3 flex-wrap bg-card p-4 rounded-2xl border shadow-sm">
+            <div className="flex gap-3 flex-wrap bg-card p-4 rounded-lg border border-border">
               <div className="relative flex-1 min-w-[280px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Pesquisar por pedido, cliente ou OP..."
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  className="pl-10 h-10 rounded-xl border-muted bg-muted/10 focus:bg-background transition-all"
+                  className="pl-10"
                 />
               </div>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[200px] h-10 rounded-xl font-medium">
+                <SelectTrigger className="w-[200px] font-medium">
                   <SelectValue placeholder="Status do Fluxo" />
                 </SelectTrigger>
                 <SelectContent>
@@ -550,10 +525,9 @@ export default function OrderFlowAudit() {
                   <OrderAuditRow key={audit.saleOrderId} audit={audit} />
                 ))}
                 {filtered.length === 0 && (
-                  <div className="text-center py-32 border-2 border-dashed rounded-3xl bg-muted/5">
-                    <History className="h-12 w-12 text-muted-foreground/20 mx-auto mb-4" />
-                    <p className="text-sm font-bold text-muted-foreground uppercase tracking-tight">Nenhum registro encontrado para a busca.</p>
-                  </div>
+                  <Panel flush>
+                    <EmptyState icon={History} title="Nenhum registro encontrado para a busca" />
+                  </Panel>
                 )}
               </div>
             )}

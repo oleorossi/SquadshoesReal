@@ -4,7 +4,9 @@ import { getSignedUrl } from '@/lib/getSignedUrl';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Printer, Package, Stack as Layers, Calendar, FloppyDisk as Save, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Panel } from '@/components/ui/panel';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { CircleNotch as Loader2 } from '@phosphor-icons/react';
@@ -348,52 +350,25 @@ export default function OrdersSummary() {
           <p className="text-sm text-muted-foreground">Gerado em {new Date().toLocaleString('pt-BR')} • {totalOPs} OPs • {totalPairs} pares</p>
         </div>
 
-        {/* KPI Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 print:grid-cols-5">
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="eyebrow">Total de OPs</p>
-              <p className="display text-3xl tabular-nums text-primary mt-1">{totalOPs}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="eyebrow">Total de Pares</p>
-              <p className="display text-3xl tabular-nums text-primary mt-1">{totalPairs.toLocaleString('pt-BR')}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="eyebrow">Referências</p>
-              <p className="display text-3xl tabular-nums text-primary mt-1">{refColorGroups.length}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="eyebrow">Lojas</p>
-              <p className="display text-3xl tabular-nums text-primary mt-1">{storesSummary.length}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="eyebrow">Valor Total</p>
-              <p className="display text-3xl tabular-nums text-primary mt-1">R$ {totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-            </CardContent>
-          </Card>
-        </div>
+        {/* KPI Cards — kit editorial (StatCard) derivado de dados reais */}
+        <StatGrid>
+          <StatCard label="Total de OPs" value={totalOPs} tone="primary" />
+          <StatCard label="Total de Pares" value={totalPairs.toLocaleString('pt-BR')} tone="primary" />
+          <StatCard label="Referências" value={refColorGroups.length} tone="primary" />
+          <StatCard label="Lojas" value={storesSummary.length} tone="primary" />
+          <StatCard label="Valor Total" value={`R$ ${totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} tone="primary" />
+        </StatGrid>
 
         {/* Resumo por Cor + Lojas */}
         <div className="grid md:grid-cols-2 gap-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Layers className="h-4 w-4" /> Quantidade por Cor
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
+          <Panel
+            eyebrow="PEDIDOS · RESUMO"
+            title={<span className="flex items-center gap-2"><Layers className="h-4 w-4" /> Quantidade por Cor</span>}
+            flush
+          >
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <TableHead>Cor</TableHead>
                     <TableHead className="text-right">Quantidade</TableHead>
                   </TableRow>
@@ -411,15 +386,11 @@ export default function OrdersSummary() {
                   </TableRow>
                 </TableBody>
               </Table>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Package className="h-4 w-4" /> Lojas ({storesSummary.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
+          </Panel>
+          <Panel
+            eyebrow="PEDIDOS · RESUMO"
+            title={<span className="flex items-center gap-2"><Package className="h-4 w-4" /> Lojas ({storesSummary.length})</span>}
+          >
               {storesSummary.length > 0 ? (
                 <ol className="list-decimal list-inside space-y-1 text-sm">
                   {storesSummary.map((name, i) => (
@@ -427,20 +398,16 @@ export default function OrdersSummary() {
                   ))}
                 </ol>
               ) : (
-                <p className="text-sm text-muted-foreground">Nenhuma loja vinculada</p>
+                <EmptyState icon={Package} title="Nenhuma loja vinculada" size="sm" />
               )}
-            </CardContent>
-          </Card>
+          </Panel>
         </div>
 
         {/* Status breakdown */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Package className="h-4 w-4" /> Status das OPs
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+        <Panel
+          eyebrow="PEDIDOS · RESUMO"
+          title={<span className="flex items-center gap-2"><Package className="h-4 w-4" /> Status das OPs</span>}
+        >
             <div className="flex flex-wrap gap-3">
               {statusBreakdown.map(([status, count]) => (
                 <Badge key={status} variant="outline" className={`${STATUS_COLORS[status] || ''} text-sm px-3 py-1`}>
@@ -448,20 +415,18 @@ export default function OrdersSummary() {
                 </Badge>
               ))}
             </div>
-          </CardContent>
-        </Card>
+        </Panel>
 
         {/* Grade consolidada por referência + cor */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Layers className="h-4 w-4" /> Grade Consolidada por Referência / Cor
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="overflow-x-auto">
+        <Panel
+          eyebrow="PEDIDOS · RESUMO"
+          title={<span className="flex items-center gap-2"><Layers className="h-4 w-4" /> Grade Consolidada por Referência / Cor</span>}
+          flush
+          bodyClassName="overflow-x-auto"
+        >
             <Table>
               <TableHeader>
-                <TableRow>
+                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <TableHead className="min-w-[140px]">Referência</TableHead>
                   <TableHead className="min-w-[100px]">Cor</TableHead>
                   <TableHead className="text-center">OPs</TableHead>
@@ -499,17 +464,14 @@ export default function OrdersSummary() {
                 </TableRow>
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
+        </Panel>
 
         {/* Lista por pedido de venda */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Calendar className="h-4 w-4" /> Detalhamento por Pedido de Venda
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <Panel
+          eyebrow="PEDIDOS · RESUMO"
+          title={<span className="flex items-center gap-2"><Calendar className="h-4 w-4" /> Detalhamento por Pedido de Venda</span>}
+          bodyClassName="space-y-4"
+        >
             {saleOrderGroups.map((group, gIdx) => (
               <div key={gIdx} className="border rounded-lg p-3">
                 <div className="flex items-center justify-between mb-2">
@@ -522,7 +484,7 @@ export default function OrdersSummary() {
                 </div>
                 <Table>
                   <TableHeader>
-                    <TableRow>
+                    <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                       <TableHead>OP</TableHead>
                       <TableHead>Referência</TableHead>
                       <TableHead>Cor</TableHead>
@@ -556,9 +518,8 @@ export default function OrdersSummary() {
                 </Table>
               </div>
             ))}
-          </CardContent>
-        </Card>
+        </Panel>
       </div>
-    
+
   );
 }

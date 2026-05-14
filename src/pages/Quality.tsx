@@ -6,11 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
- import { Card, CardContent } from '@/components/ui/card';
  import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
  import LotTestingTab from '@/components/quality/LotTestingTab';
 import { useAllQualityRecords, useResolveQualityRecord } from '@/hooks/useQualityRecords';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -19,29 +21,6 @@ const SEVERITY_CONFIG: Record<string, { label: string; variant: 'default' | 'sec
   major:    { label: 'Maior',    variant: 'secondary',    className: 'bg-orange-500/15 text-orange-700 border-orange-400/40' },
   critical: { label: 'Crítico',  variant: 'destructive',  className: '' },
 };
-
-function KpiCard({ icon: Icon, title, value, sub, variant = 'default' }: { icon: any; title: string; value: number | string; sub?: string; variant?: string }) {
-  const colors: Record<string, string> = {
-    default:     'bg-primary/10 text-primary',
-    destructive: 'bg-destructive/10 text-destructive',
-    warning:     'bg-amber-500/10 text-amber-600',
-    success:     'bg-emerald-500/10 text-emerald-600',
-  };
-  return (
-    <Card className="p-4">
-      <div className="flex items-start gap-3">
-        <div className={`p-2 rounded-lg ${colors[variant] || colors.default}`}>
-          <Icon className="h-4 w-4" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-xs text-muted-foreground">{title}</p>
-          <p className="display text-xl tabular-nums">{value}</p>
-          {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
-        </div>
-      </div>
-    </Card>
-  );
-}
 
 export default function Quality() {
   const { data: records = [], isLoading } = useAllQualityRecords();
@@ -93,13 +72,13 @@ export default function Quality() {
            </TabsList>
  
            <TabsContent value="defects" className="space-y-5">
-             {/* KPI cards */}
-             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-               <KpiCard icon={ShieldCheck}    title="Total de Registros"    value={stats.total}      sub="todos os períodos"       variant="default" />
-               <KpiCard icon={Clock}          title="Não Resolvidos"        value={stats.unresolved} sub="aguardando ação"          variant="warning" />
-               <KpiCard icon={XCircle}        title="Críticos em Aberto"   value={stats.critical}   sub="requer atenção imediata" variant={stats.critical > 0 ? 'destructive' : 'default'} />
-               <KpiCard icon={CheckCircle2}   title="Com Retrabalho"       value={stats.reworkable} sub="podem ser recuperados"    variant="success" />
-             </div>
+             {/* KPI strip — kit editorial (StatCard) derivado de dados reais */}
+             <StatGrid>
+               <StatCard icon={ShieldCheck}  label="Total de Registros"  value={stats.total}      hint="todos os períodos" />
+               <StatCard icon={Clock}        label="Não Resolvidos"      value={stats.unresolved} hint="aguardando ação"          tone="warning" />
+               <StatCard icon={XCircle}      label="Críticos em Aberto"  value={stats.critical}   hint="requer atenção imediata"  tone={stats.critical > 0 ? 'destructive' : 'default'} />
+               <StatCard icon={CheckCircle2} label="Com Retrabalho"      value={stats.reworkable} hint="podem ser recuperados"    tone="success" />
+             </StatGrid>
  
              {/* Filters */}
              <div className="flex flex-col sm:flex-row gap-3">
@@ -127,10 +106,10 @@ export default function Quality() {
              </div>
  
              {/* Table */}
-             <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
+             <Panel flush>
                <Table>
                  <TableHeader>
-                   <TableRow className="bg-muted/30">
+                   <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                      <TableHead>Setor</TableHead>
                      <TableHead>Tipo</TableHead>
                      <TableHead>Severidade</TableHead>
@@ -146,7 +125,9 @@ export default function Quality() {
                    {isLoading ? (
                      <TableRow><TableCell colSpan={9} className="text-center py-10 text-muted-foreground">Carregando...</TableCell></TableRow>
                    ) : filtered.length === 0 ? (
-                     <TableRow><TableCell colSpan={9} className="text-center py-10 text-muted-foreground">Nenhum registro encontrado</TableCell></TableRow>
+                     <TableRow><TableCell colSpan={9} className="p-0">
+                       <EmptyState icon={ShieldCheck} title="Nenhum registro encontrado" description="Ajuste os filtros ou aguarde novos registros de qualidade." size="sm" />
+                     </TableCell></TableRow>
                    ) : filtered.map((r: any) => {
                      const sev = SEVERITY_CONFIG[r.severity] || SEVERITY_CONFIG.minor;
                      return (
@@ -195,8 +176,8 @@ export default function Quality() {
                    })}
                  </TableBody>
                </Table>
-             </div>
- 
+             </Panel>
+
              {filtered.length > 0 && (
                <p className="text-xs text-muted-foreground text-right">{filtered.length} registro(s)</p>
              )}

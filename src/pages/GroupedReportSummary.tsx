@@ -13,6 +13,7 @@ import { useOrderStraps } from '@/hooks/useOrderStraps';
  import { buildGroupedReportSummary } from '@/lib/groupedReportSummary';
 import { SignedImage } from '@/components/ui/signed-image';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { EmptyState } from '@/components/ui/empty-state';
 
  // Ordem canônica pós PR1-PR3. Setores legacy ('corte','mesa') mapeados para
  // os canônicos via alias abaixo. Todos backPath agora apontam para o hub
@@ -185,13 +186,13 @@ ${styles}
       <AppLayout printMode>
         <div className="mx-auto max-w-3xl">
           <Card>
-            <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
-              <Layers className="h-10 w-10 text-muted-foreground" />
-              <div className="space-y-1">
-                <h1 className="display text-xl tracking-tight">Resumo agrupado inválido</h1>
-                <p className="text-muted-foreground">O setor informado não é válido.</p>
-              </div>
-              <Button onClick={() => navigate('/dashboard')}>Voltar</Button>
+            <CardContent className="p-0">
+              <EmptyState
+                icon={Layers}
+                title="Resumo agrupado inválido"
+                description="O setor informado não é válido."
+                action={<Button onClick={() => navigate('/dashboard')}>Voltar</Button>}
+              />
             </CardContent>
           </Card>
         </div>
@@ -230,13 +231,13 @@ ${styles}
       <AppLayout printMode>
         <div className="mx-auto max-w-3xl">
           <Card>
-            <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
-              <Layers className="h-10 w-10 text-muted-foreground" />
-              <div className="space-y-1">
-                <h1 className="display text-xl tracking-tight">Nenhuma OP selecionada</h1>
-                <p className="text-muted-foreground">Selecione as OPs no setor e clique em Agrupar novamente.</p>
-              </div>
-              <Button onClick={() => navigate(sector.backPath)}>Voltar para {sector.label}</Button>
+            <CardContent className="p-0">
+              <EmptyState
+                icon={Layers}
+                title="Nenhuma OP selecionada"
+                description="Selecione as OPs no setor e clique em Agrupar novamente."
+                action={<Button onClick={() => navigate(sector.backPath)}>Voltar para {sector.label}</Button>}
+              />
             </CardContent>
           </Card>
         </div>

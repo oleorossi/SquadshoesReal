@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
- import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
  import { Button } from '@/components/ui/button';
+ import { Panel } from '@/components/ui/panel';
+ import { EmptyState } from '@/components/ui/empty-state';
  import { Slider } from '@/components/ui/slider';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -194,14 +195,11 @@ function CapacityTab() {
       {/* Left Column - Configuration */}
       <div className="space-y-4">
         {/* Baú Selection */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Truck className="h-5 w-5" />
-              Baú do Veículo
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
+        <Panel
+          eyebrow="LOGÍSTICA · CAPACIDADE"
+          title="Baú do Veículo"
+        >
+          <div className="space-y-3">
             <div className="flex gap-2">
               <Select value={selectedBauId} onValueChange={setSelectedBauId}>
                 <SelectTrigger className="flex-1">
@@ -231,24 +229,20 @@ function CapacityTab() {
                 </Badge>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </Panel>
 
         {/* Box Types */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Box className="h-5 w-5" />
-                Tipos de Caixa
-              </CardTitle>
-              <Button variant="outline" size="sm" onClick={() => setBoxDialog(true)}>
-                <Plus className="h-4 w-4 mr-1" />
-                Nova
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
+        <Panel
+          eyebrow="LOGÍSTICA · CAPACIDADE"
+          title="Tipos de Caixa"
+          actions={
+            <Button variant="outline" size="sm" onClick={() => setBoxDialog(true)}>
+              <Plus className="h-4 w-4 mr-1" />
+              Nova
+            </Button>
+          }
+        >
             <ScrollArea className="h-[200px]">
               <div className="space-y-2">
                 {boxTypes.map(box => (
@@ -275,24 +269,19 @@ function CapacityTab() {
                 )}
               </div>
             </ScrollArea>
-          </CardContent>
-        </Card>
+        </Panel>
 
         {/* Item Types */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Package className="h-5 w-5" />
-                Itens Individuais
-              </CardTitle>
-              <Button variant="outline" size="sm" onClick={() => setItemDialog(true)}>
-                <Plus className="h-4 w-4 mr-1" />
-                Novo
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
+        <Panel
+          eyebrow="LOGÍSTICA · CAPACIDADE"
+          title="Itens Individuais"
+          actions={
+            <Button variant="outline" size="sm" onClick={() => setItemDialog(true)}>
+              <Plus className="h-4 w-4 mr-1" />
+              Novo
+            </Button>
+          }
+        >
             <ScrollArea className="h-[150px]">
               <div className="space-y-2">
                 {itemTypes.map(item => (
@@ -318,39 +307,34 @@ function CapacityTab() {
                 )}
               </div>
             </ScrollArea>
-          </CardContent>
-        </Card>
+        </Panel>
       </div>
 
       {/* Right Column - Calculation */}
       <div className="space-y-4">
         {/* Selected Items for Calculation */}
-        <Card>
-           <CardHeader className="pb-3">
-             <div className="flex items-center justify-between">
-               <CardTitle className="text-lg flex items-center gap-2">
-                 <Calculator className="h-5 w-5" />
-                 Itens para Cálculo
-               </CardTitle>
-               <div className="flex items-center gap-2">
-                 <div className="flex items-center gap-2 mr-4 px-3 py-1 bg-muted rounded-md">
-                   <span className="text-xs text-muted-foreground whitespace-nowrap">Eficiência: {efficiency}%</span>
-                   <Slider 
-                     value={[efficiency]} 
-                     onValueChange={([v]) => setEfficiency(v)} 
-                     max={100} 
-                     min={50} 
-                     step={1} 
-                     className="w-24"
-                   />
-                 </div>
-                 <Button onClick={handleCalculate} disabled={!selectedBau || selectedItems.length === 0}>
-                   Calcular
-                 </Button>
-               </div>
-             </div>
-           </CardHeader>
-          <CardContent>
+        <Panel
+          eyebrow="LOGÍSTICA · CAPACIDADE"
+          title="Itens para Cálculo"
+          actions={
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 mr-2 px-3 py-1 bg-muted rounded-md">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">Eficiência: {efficiency}%</span>
+                <Slider
+                  value={[efficiency]}
+                  onValueChange={([v]) => setEfficiency(v)}
+                  max={100}
+                  min={50}
+                  step={1}
+                  className="w-24"
+                />
+              </div>
+              <Button size="sm" onClick={handleCalculate} disabled={!selectedBau || selectedItems.length === 0}>
+                Calcular
+              </Button>
+            </div>
+          }
+        >
             {selectedItems.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">
                 Adicione itens clicando no botão + ao lado de cada tipo
@@ -375,16 +359,15 @@ function CapacityTab() {
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
+        </Panel>
 
         {/* Results */}
         {packingResult && (
-          <Card className="border-primary">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Resultado do Cálculo</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
+          <Panel
+            eyebrow="LOGÍSTICA · CAPACIDADE"
+            title="Resultado do Cálculo"
+            bodyClassName="space-y-4"
+          >
               {/* Summary */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="p-3 rounded-md bg-muted">
@@ -408,7 +391,7 @@ function CapacityTab() {
               {/* Detailed Results */}
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <TableHead>Item</TableHead>
                     <TableHead className="text-center">Arranjo</TableHead>
                     <TableHead className="text-center">Qtd Max</TableHead>
@@ -442,8 +425,7 @@ function CapacityTab() {
                   ))}
                 </TableBody>
               </Table>
-            </CardContent>
-          </Card>
+          </Panel>
         )}
       </div>
 
@@ -681,10 +663,10 @@ function CarriersTab() {
         </Button>
       </div>
 
-      <Card>
+      <Panel flush>
         <Table>
           <TableHeader>
-            <TableRow>
+            <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
               <TableHead>Nome</TableHead>
               <TableHead>CNPJ/CPF</TableHead>
               <TableHead>Contato</TableHead>
@@ -730,14 +712,18 @@ function CarriersTab() {
             ))}
             {filteredCompanies.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                  {search ? 'Nenhuma transportadora encontrada' : 'Nenhuma transportadora cadastrada'}
+                <TableCell colSpan={5} className="p-0">
+                  <EmptyState
+                    icon={Building2}
+                    title={search ? 'Nenhuma transportadora encontrada' : 'Nenhuma transportadora cadastrada'}
+                    description={search ? 'Ajuste a busca ou cadastre uma nova transportadora.' : 'Cadastre a primeira transportadora.'}
+                  />
                 </TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
-      </Card>
+      </Panel>
 
       {/* Company Form Dialog */}
       <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setEditingCompany(null); setForm({ nome: '', tipo_pessoa: 'JURIDICA', documento: '', telefone: '', email: '', responsavel: '', condicoes_pagamento: '', seguro: false, observacoes: '', endereco: { rua: '', numero: '', bairro: '', cidade: '', estado: '', cep: '' } }); } }}>
@@ -1034,14 +1020,11 @@ function SimulatorTab() {
 
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Calculator className="h-5 w-5" />
-            Simulador de Transporte
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <Panel
+        eyebrow="LOGÍSTICA · SIMULADOR"
+        title="Simulador de Transporte"
+        bodyClassName="space-y-4"
+      >
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Quantidade de Pares</Label>
@@ -1109,8 +1092,7 @@ function SimulatorTab() {
               </Select>
             </div>
           </div>
-        </CardContent>
-      </Card>
+      </Panel>
 
       <OrderTransportCalculator
         orderQuantity={quantity}

@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Truck, Path as RouteIcon, ListChecks, Plus, MapPin, Coins, GasPump as Fuel, Wrench, Calendar, WarningCircle as AlertCircle, Trash as Trash2 } from '@phosphor-icons/react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -86,9 +88,10 @@ function OrdersTab() {
 
   return (
     <div className="space-y-4">
-      <Card className="border-border/60">
-        <CardHeader className="py-3 flex-row items-center justify-between">
-          <CardTitle className="text-sm">Disponíveis para roteirizar ({available.length})</CardTitle>
+      <Panel
+        eyebrow="LOGÍSTICA · ENTREGAS PRÓPRIAS"
+        title={`Disponíveis para roteirizar (${available.length})`}
+        actions={
           <div className="flex items-center gap-2">
             {selected.size > 0 && (
               <>
@@ -107,17 +110,17 @@ function OrdersTab() {
               <Plus className="h-3.5 w-3.5 mr-1" />Criar rota
             </Button>
           </div>
-        </CardHeader>
-        <CardContent className="pt-0">
+        }
+        flush
+      >
           {isLoading && <p className="text-sm text-muted-foreground py-6 text-center">Carregando…</p>}
           {!isLoading && available.length === 0 && (
-            <div className="py-10 text-center">
-              <AlertCircle className="h-6 w-6 text-muted-foreground mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">
-                Nenhum pedido com "frete próprio" disponível.<br />
-                Marque a opção em <Link to="/sales" className="text-primary underline">Pedidos de Venda</Link> ao criar/editar um PV.
-              </p>
-            </div>
+            <EmptyState
+              icon={AlertCircle}
+              title='Nenhum pedido com "frete próprio" disponível'
+              description="Marque a opção em Pedidos de Venda ao criar/editar um PV."
+              action={<Link to="/sales" className="text-primary underline text-sm">Ir para Pedidos de Venda</Link>}
+            />
           )}
           {available.length > 0 && (
             <ScrollArea className="max-h-[60vh]">
@@ -160,17 +163,14 @@ function OrdersTab() {
               </ul>
             </ScrollArea>
           )}
-        </CardContent>
-      </Card>
+      </Panel>
 
       {inRoute.length > 0 && (
-        <Card className="border-border/60">
-          <CardHeader className="py-3">
-            <CardTitle className="text-sm text-muted-foreground">
-              Já em rota ({inRoute.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
+        <Panel
+          eyebrow="LOGÍSTICA · ENTREGAS PRÓPRIAS"
+          title={`Já em rota (${inRoute.length})`}
+          flush
+        >
             <ul className="divide-y border-y text-sm">
               {inRoute.map((o) => (
                 <li key={o.id} className="px-3 py-2 flex items-center justify-between">
@@ -182,8 +182,7 @@ function OrdersTab() {
                 </li>
               ))}
             </ul>
-          </CardContent>
-        </Card>
+        </Panel>
       )}
 
       <RoutePlannerOwn
@@ -232,14 +231,13 @@ function RoutesTab() {
 
       {isLoading && <p className="text-sm text-muted-foreground text-center py-6">Carregando…</p>}
       {!isLoading && routes.length === 0 && (
-        <Card className="border-dashed">
-          <CardContent className="py-10 text-center">
-            <RouteIcon className="h-6 w-6 text-muted-foreground mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground">
-              Nenhuma rota encontrada. Vá na aba <strong>Pedidos prontos</strong> e crie uma.
-            </p>
-          </CardContent>
-        </Card>
+        <Panel flush>
+          <EmptyState
+            icon={RouteIcon}
+            title="Nenhuma rota encontrada"
+            description="Vá na aba Pedidos prontos e crie uma rota."
+          />
+        </Panel>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

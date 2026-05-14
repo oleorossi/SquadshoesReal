@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Gear as Settings, UserCheck, UserMinus as UserX, Shield, CircleNotch as Loader2, CaretDown as ChevronDown, CaretUp as ChevronUp, Users, Eye, PencilSimple as Pencil, Lock, LockOpen as Unlock, MagnifyingGlass as Search, Envelope as Mail, Calendar, ShieldCheck, ShieldWarning as ShieldAlert, Crown, Briefcase, Factory, Warehouse, Storefront as Store, BookOpen, Receipt, UserGear as UserCog, Trash as Trash2 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
   AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
@@ -30,6 +30,9 @@ import FinanceConfigPanel from '@/components/settings/FinanceConfigPanel';
 import { CurrencyDollar as DollarSign } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 
 const ROLE_ICONS: Record<string, React.ReactNode> = {
   admin: <Crown className="h-3.5 w-3.5" />,
@@ -432,52 +435,12 @@ export default function SettingsPage() {
         />
 
         {/* Stats cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Card className="p-3">
-            <div className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-lg bg-primary/15 flex items-center justify-center">
-                <Users className="h-4 w-4 text-primary" />
-              </div>
-              <div>
-                <p className="text-lg font-bold">{profiles.length}</p>
-                <p className="text-[10px] text-muted-foreground">Total Usuários</p>
-              </div>
-            </div>
-          </Card>
-          <Card className="p-3">
-            <div className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-lg bg-success/15 flex items-center justify-center">
-                <ShieldCheck className="h-4 w-4 text-success" />
-              </div>
-              <div>
-                <p className="text-lg font-bold">{profiles.filter(p => p.approved).length}</p>
-                <p className="text-[10px] text-muted-foreground">Aprovados</p>
-              </div>
-            </div>
-          </Card>
-          <Card className="p-3">
-            <div className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-lg bg-warning/15 flex items-center justify-center">
-                <ShieldAlert className="h-4 w-4 text-warning" />
-              </div>
-              <div>
-                <p className="text-lg font-bold">{pendingCount}</p>
-                <p className="text-[10px] text-muted-foreground">Pendentes</p>
-              </div>
-            </div>
-          </Card>
-          <Card className="p-3">
-            <div className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-lg bg-violet-500/15 flex items-center justify-center">
-                <Crown className="h-4 w-4 text-violet-500" />
-              </div>
-              <div>
-                <p className="text-lg font-bold">{allRoles.filter(r => r.role === 'admin').length}</p>
-                <p className="text-[10px] text-muted-foreground">Admins</p>
-              </div>
-            </div>
-          </Card>
-        </div>
+        <StatGrid>
+          <StatCard label="Total Usuários" value={profiles.length} icon={Users} />
+          <StatCard label="Aprovados" value={profiles.filter(p => p.approved).length} icon={ShieldCheck} tone="success" />
+          <StatCard label="Pendentes" value={pendingCount} icon={ShieldAlert} tone="warning" />
+          <StatCard label="Admins" value={allRoles.filter(r => r.role === 'admin').length} icon={Crown} tone="primary" />
+        </StatGrid>
 
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList>
@@ -531,24 +494,21 @@ export default function SettingsPage() {
                 />
               ))}
               {filteredProfiles.length === 0 && (
-                <div className="text-center py-12 text-muted-foreground">
-                  <Users className="h-10 w-10 mx-auto mb-2 opacity-30" />
-                  <p className="text-sm">Nenhum usuário encontrado</p>
-                </div>
+                <Panel flush>
+                  <EmptyState icon={Users} title="Nenhum usuário encontrado" />
+                </Panel>
               )}
             </div>
           </TabsContent>
 
           <TabsContent value="representatives" className="mt-4">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Representantes Comerciais</CardTitle>
-                <CardDescription>Gerencie os representantes e suas comissões</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <RepresentativesPanel />
-              </CardContent>
-            </Card>
+            <Panel
+              eyebrow="SISTEMA · CONFIGURAÇÕES"
+              title="Representantes Comerciais"
+              subtitle="Gerencie os representantes e suas comissões"
+            >
+              <RepresentativesPanel />
+            </Panel>
           </TabsContent>
 
           <TabsContent value="finance-config" className="mt-4">

@@ -1,4 +1,4 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -11,6 +11,9 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 
 export default function ExpedicaoHub() {
   const navigate = useNavigate();
@@ -93,46 +96,43 @@ export default function ExpedicaoHub() {
           {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20" />)}
         </div>
       ) : stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <SummaryCard
-            icon={<ClipboardList className="h-4 w-4" />}
+        <StatGrid>
+          <StatCard
+            icon={ClipboardList}
             label="Pedidos p/ Expedir"
             value={stats.pendingOrders}
           />
-          <SummaryCard
-            icon={<Box className="h-4 w-4" />}
+          <StatCard
+            icon={Box}
             label="Pares a Expedir"
             value={stats.pendingPairs.toLocaleString('pt-BR')}
           />
-          <SummaryCard
-            icon={<XCircle className="h-4 w-4" />}
+          <StatCard
+            icon={XCircle}
             label="Atrasados"
             value={stats.overdueOrders}
-            variant={stats.overdueOrders > 0 ? 'danger' : 'default'}
+            tone={stats.overdueOrders > 0 ? 'destructive' : 'default'}
           />
-          <SummaryCard
-            icon={<CalendarClock className="h-4 w-4" />}
+          <StatCard
+            icon={CalendarClock}
             label="Vencem Hoje"
             value={stats.dueTodayOrders}
-            variant={stats.dueTodayOrders > 0 ? 'warning' : 'default'}
+            tone={stats.dueTodayOrders > 0 ? 'warning' : 'default'}
           />
-        </div>
+        </StatGrid>
       )}
 
       {/* Capacity utilization bar */}
       {!isLoading && stats && stats.totalCapacidadeM3 > 0 && (
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium flex items-center gap-1.5">
-                <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                Ocupação da Frota
-              </span>
-              <span className="text-sm text-muted-foreground">
-                {stats.estimatedVolumeM3} m³ / {stats.totalCapacidadeM3} m³ ·{' '}
-                {stats.estimatedWeightKg.toLocaleString('pt-BR')} kg estimados
-              </span>
-            </div>
+        <Panel
+          title={<span className="flex items-center gap-1.5"><TrendingUp className="h-4 w-4 text-muted-foreground" />Ocupação da Frota</span>}
+          actions={
+            <span className="text-sm text-muted-foreground">
+              {stats.estimatedVolumeM3} m³ / {stats.totalCapacidadeM3} m³ ·{' '}
+              {stats.estimatedWeightKg.toLocaleString('pt-BR')} kg estimados
+            </span>
+          }
+        >
             <Progress
               value={Math.min((stats.estimatedVolumeM3 / stats.totalCapacidadeM3) * 100, 100)}
               className="h-2.5"
@@ -143,8 +143,7 @@ export default function ExpedicaoHub() {
                 Volume excede a capacidade da frota — múltiplas viagens ou terceirização necessária
               </p>
             )}
-          </CardContent>
-        </Card>
+        </Panel>
       )}
 
       {/* Flow indicator */}
@@ -214,18 +213,18 @@ export default function ExpedicaoHub() {
 
       {/* Pending orders table */}
       {!isLoading && stats && stats.pendingOrdersList.length === 0 && (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12 gap-3 text-center">
-            <ClipboardList className="h-10 w-10 text-muted-foreground/30" />
-            <p className="font-semibold text-foreground">Nenhum pedido pendente de expedição</p>
-            <p className="text-sm text-muted-foreground">Todos os pedidos foram despachados ou ainda não há OPs prontas.</p>
-          </CardContent>
-        </Card>
+        <Panel flush>
+          <EmptyState
+            icon={ClipboardList}
+            title="Nenhum pedido pendente de expedição"
+            description="Todos os pedidos foram despachados ou ainda não há OPs prontas."
+          />
+        </Panel>
       )}
       {!isLoading && stats && stats.pendingOrdersList.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
+        <Panel
+          title={
+            <span className="flex items-center gap-2">
               <ClipboardList className="h-4 w-4" />
               Pedidos Pendentes de Expedição
               {stats.overdueOrders > 0 && (
@@ -234,12 +233,13 @@ export default function ExpedicaoHub() {
                   {stats.overdueOrders} atrasado{stats.overdueOrders !== 1 ? 's' : ''}
                 </Badge>
               )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
+            </span>
+          }
+          flush
+        >
             <Table>
               <TableHeader>
-                <TableRow>
+                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <TableHead className="pl-4">Pedido</TableHead>
                   <TableHead>Cliente</TableHead>
                   <TableHead>Pares</TableHead>
@@ -259,8 +259,7 @@ export default function ExpedicaoHub() {
                 Exibindo 15 de {stats.pendingOrdersList.length} pedidos
               </p>
             )}
-          </CardContent>
-        </Card>
+        </Panel>
       )}
     </div>
   );
@@ -331,39 +330,3 @@ function OrderRow({ order, onSimulate }: { order: PendingOrderItem; onSimulate: 
   );
 }
 
-type SummaryVariant = 'default' | 'danger' | 'warning';
-
-function SummaryCard({
-  icon, label, value, variant = 'default',
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string | number;
-  variant?: SummaryVariant;
-}) {
-  const iconBg =
-    variant === 'danger'
-      ? 'bg-destructive/10 text-destructive'
-      : variant === 'warning'
-      ? 'bg-amber-500/10 text-amber-600'
-      : 'bg-primary/10 text-primary';
-
-  const valueCls =
-    variant === 'danger'
-      ? 'text-destructive'
-      : variant === 'warning'
-      ? 'text-amber-600'
-      : '';
-
-  return (
-    <Card>
-      <CardContent className="p-3 flex items-center gap-3">
-        <div className={cn('p-2 rounded-lg', iconBg)}>{icon}</div>
-        <div>
-          <p className="text-[10px] text-muted-foreground leading-tight">{label}</p>
-          <p className={cn('text-lg font-bold', valueCls)}>{value}</p>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}

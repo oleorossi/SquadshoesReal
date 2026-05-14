@@ -3,13 +3,14 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { ClockCounterClockwise as History, MagnifyingGlass as Search, Funnel as Filter, CheckCircle as CheckCircle2, XCircle, Info, Calendar, User, Database, ArrowRight } from '@phosphor-icons/react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -72,16 +73,16 @@ export default function AuditLogs() {
           }
         />
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Filtros de Busca</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-3">
+        <Panel
+          eyebrow="SISTEMA · AUDITORIA"
+          title="Filtros de Busca"
+        >
+          <div className="flex flex-wrap gap-3">
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input 
-                placeholder="Buscar por recurso, ação ou dados..." 
-                className="pl-9" 
+              <Input
+                placeholder="Buscar por recurso, ação ou dados..."
+                className="pl-9"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
               />
@@ -108,13 +109,13 @@ export default function AuditLogs() {
                 ))}
               </SelectContent>
             </Select>
-          </CardContent>
-        </Card>
+          </div>
+        </Panel>
 
-        <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
+        <Panel flush>
           <Table>
             <TableHeader>
-              <TableRow className="bg-muted/50">
+              <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                 <TableHead className="w-[180px]">Timestamp</TableHead>
                 <TableHead className="w-[120px]">Recurso</TableHead>
                 <TableHead className="w-[120px]">Ação</TableHead>
@@ -130,8 +131,12 @@ export default function AuditLogs() {
                 </TableRow>
               ) : filteredLogs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
-                    Nenhum registro encontrado para os filtros selecionados.
+                  <TableCell colSpan={6} className="p-0">
+                    <EmptyState
+                      icon={History}
+                      title="Nenhum registro encontrado"
+                      description="Nenhum registro encontrado para os filtros selecionados."
+                    />
                   </TableCell>
                 </TableRow>
               ) : (
@@ -189,7 +194,7 @@ export default function AuditLogs() {
               )}
             </TableBody>
           </Table>
-        </div>
+        </Panel>
       </div>
     </AppLayout>
   );

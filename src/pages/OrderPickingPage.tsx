@@ -1,7 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Panel } from '@/components/ui/panel';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -282,25 +284,29 @@ export default function OrderPickingPage() {
         }
       />
 
-      {/* KPI strip */}
-      <div className="flex gap-3 flex-wrap">
-        <Badge variant="outline" className="gap-1.5 px-3 py-1.5 text-sm">
-          <PackageCheck className="h-3.5 w-3.5" />
-          {orders.length} prontos
-        </Badge>
-        {overdue > 0 && (
-          <Badge variant="outline" className="gap-1.5 px-3 py-1.5 text-sm bg-destructive/10 text-destructive border-destructive/20">
-            <XCircle className="h-3.5 w-3.5" />
-            {overdue} atrasado{overdue !== 1 ? 's' : ''}
-          </Badge>
-        )}
-        {dueToday > 0 && (
-          <Badge variant="outline" className="gap-1.5 px-3 py-1.5 text-sm bg-amber-500/10 text-amber-600 border-amber-500/20">
-            <Clock className="h-3.5 w-3.5" />
-            {dueToday} vencem hoje
-          </Badge>
-        )}
-      </div>
+      {/* KPI strip — kit editorial (StatCard) derivado de dados reais */}
+      <StatGrid>
+        <StatCard
+          label="Prontos"
+          value={orders.length}
+          hint="aguardando expedição"
+          icon={PackageCheck}
+        />
+        <StatCard
+          label="Atrasados"
+          value={overdue}
+          hint="prazo vencido"
+          icon={XCircle}
+          tone={overdue > 0 ? 'destructive' : 'default'}
+        />
+        <StatCard
+          label="Vencem hoje"
+          value={dueToday}
+          hint="prazo é hoje"
+          icon={Clock}
+          tone={dueToday > 0 ? 'warning' : 'default'}
+        />
+      </StatGrid>
 
       {/* Tabs por janela de pickup (semana ISO + Ter/Sex) */}
       {pickupGroups.length > 0 && (
@@ -352,32 +358,30 @@ export default function OrderPickingPage() {
           Carregando pedidos...
         </div>
       ) : filtered.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16 gap-3 text-center">
-            <CheckCircle2 className="h-10 w-10 text-success/40" />
-            <p className="font-semibold">Nenhum pedido aguardando expedição</p>
-            <p className="text-sm text-muted-foreground">
-              Todos os pedidos finalizados foram despachados.
-            </p>
-          </CardContent>
-        </Card>
+        <Panel flush>
+          <EmptyState
+            icon={CheckCircle2}
+            title="Nenhum pedido aguardando expedição"
+            description="Todos os pedidos finalizados foram despachados."
+          />
+        </Panel>
       ) : (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <span className="flex items-center gap-2">
-                <Checkbox
-                  checked={selected.size === filtered.length && filtered.length > 0}
-                  onCheckedChange={toggleAll}
-                />
-                Selecionar todos ({filtered.length})
-              </span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
+        <Panel
+          eyebrow="LOGÍSTICA · SEPARAÇÃO"
+          title={
+            <span className="flex items-center gap-2">
+              <Checkbox
+                checked={selected.size === filtered.length && filtered.length > 0}
+                onCheckedChange={toggleAll}
+              />
+              Selecionar todos ({filtered.length})
+            </span>
+          }
+          flush
+        >
             <Table>
               <TableHeader>
-                <TableRow>
+                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <TableHead className="w-10 pl-4" />
                   <TableHead className="w-8" />
                   <TableHead>Pedido</TableHead>
@@ -487,8 +491,7 @@ export default function OrderPickingPage() {
                 })}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
+        </Panel>
       )}
     </div>
   );

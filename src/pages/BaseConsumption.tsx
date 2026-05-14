@@ -18,6 +18,7 @@ import { SoleConsumptionExportButton } from '@/components/technical-sheets/SoleC
 import { SoleConsumptionHistoryDrawer, HistoryButton } from '@/components/technical-sheets/SoleConsumptionHistoryDrawer';
 import { PackagingTab } from '@/components/technical-sheets/PackagingTab';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils';
 import { productGroupingKey, normalizeProductName } from '@/lib/productNameNormalization';
 
@@ -290,12 +291,12 @@ export default function BaseConsumption() {
           </div>
         ) : (
           <Card>
-            <CardContent className="flex flex-col items-center justify-center py-16 gap-3 text-center">
-              <Footprints className="h-10 w-10 text-muted-foreground/30" />
-              <p className="text-sm text-muted-foreground">Selecione um modelo à esquerda para começar.</p>
-              <p className="text-xs text-muted-foreground/70 max-w-sm">
-                Aqui você gerencia consumo, especificações por numeração, artes de silk e dados técnicos.
-              </p>
+            <CardContent className="p-0">
+              <EmptyState
+                icon={Footprints}
+                title="Selecione um modelo à esquerda para começar"
+                description="Aqui você gerencia consumo, especificações por numeração, artes de silk e dados técnicos."
+              />
             </CardContent>
           </Card>
         )}

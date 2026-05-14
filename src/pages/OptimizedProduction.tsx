@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
 
 // Schema de validação robusto
 const ProductionSystemSchema = z.object({
@@ -269,20 +270,21 @@ const OptimizedProductionSystem: React.FC = () => {
             </TabsList>
 
             {dashboardMetrics && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div className="p-4 border rounded bg-card">
-                  <h3 className="text-sm font-medium text-muted-foreground">Estoque Crítico</h3>
-                  <p className="display text-2xl tabular-nums">{dashboardMetrics.inventory.criticalItems}</p>
-                </div>
-                <div className="p-4 border rounded bg-card">
-                  <h3 className="text-sm font-medium text-muted-foreground">Ordens Ativas</h3>
-                  <p className="display text-2xl tabular-nums">{dashboardMetrics.production.activeOrders}</p>
-                </div>
-                <div className="p-4 border rounded bg-card">
-                  <h3 className="text-sm font-medium text-muted-foreground">Taxa de Defeitos</h3>
-                  <p className="display text-2xl tabular-nums">{dashboardMetrics.quality.defectRate.toFixed(2)}%</p>
-                </div>
-              </div>
+              <StatGrid className="mb-6 mt-6">
+                <StatCard
+                  label="Estoque Crítico"
+                  value={dashboardMetrics.inventory.criticalItems}
+                  tone={dashboardMetrics.inventory.criticalItems > 0 ? 'destructive' : 'default'}
+                />
+                <StatCard
+                  label="Ordens Ativas"
+                  value={dashboardMetrics.production.activeOrders}
+                />
+                <StatCard
+                  label="Taxa de Defeitos"
+                  value={`${dashboardMetrics.quality.defectRate.toFixed(2)}%`}
+                />
+              </StatGrid>
             )}
 
             {isDataLoading ? (

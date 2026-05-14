@@ -31,6 +31,7 @@ import { SoleTechnicalDetails } from "@/components/technical-sheets/SoleTechnica
  import { SoleSilkPanel } from "@/components/technical-sheets/SoleSilkPanel";
  import StockHistory from './StockHistory';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { Panel } from '@/components/ui/panel';
 
 const SOLADO_COLORS = ['Preto', 'Caramelo'];
 const ADULT_SIZES = [34, 35, 36, 37, 38, 39, 40];
@@ -358,9 +359,7 @@ export default function ProductDetail() {
           </Card>
 
           {/* Basic Info */}
-          <Card className="lg:col-span-2">
-            <CardHeader className="pb-3"><CardTitle className="text-base">Informações Básicas</CardTitle></CardHeader>
-            <CardContent>
+          <Panel title="Informações Básicas" className="lg:col-span-2">
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
                   <Label>Nome *</Label>
@@ -478,34 +477,27 @@ export default function ProductDetail() {
                   <Label htmlFor="active">Material Ativo</Label>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+          </Panel>
         </div>
 
         {/* Solado-specific */}
         {isSolado && (
-          <Card>
-            <CardHeader className="pb-3"><CardTitle className="text-base">Cor do Solado</CardTitle></CardHeader>
-            <CardContent>
+          <Panel title="Cor do Solado">
               <Select value={soladoColor} onValueChange={setSoladoColor}>
                 <SelectTrigger className="w-48"><SelectValue placeholder="Selecione a cor" /></SelectTrigger>
                 <SelectContent>
                   {SOLADO_COLORS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                 </SelectContent>
               </Select>
-            </CardContent>
-          </Card>
+          </Panel>
         )}
 
         {/* Grade de numeração */}
         {hasGrade && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Footprints className="h-4 w-4 text-primary" /> Grade de Numeração
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
+          <Panel
+            title={<span className="flex items-center gap-2"><Footprints className="h-4 w-4 text-primary" /> Grade de Numeração</span>}
+            bodyClassName="space-y-4"
+          >
               <div className="flex gap-2">
                 <Button type="button" variant={shoeCategory === 'adulto' ? 'default' : 'outline'} size="sm" onClick={() => setShoeCategory('adulto')}>
                   Adulto (34-40)
@@ -530,14 +522,11 @@ export default function ProductDetail() {
                   Total: <span className="font-semibold text-foreground">{Object.values(soladoGrade).reduce((s, v) => s + (v || 0), 0)} pares</span>
                 </p>
               </div>
-            </CardContent>
-          </Card>
+          </Panel>
         )}
 
         {/* Estoque & Custo */}
-        <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-base">Estoque & Custo</CardTitle></CardHeader>
-          <CardContent>
+        <Panel title="Estoque & Custo">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {!hasGrade && (
                 <div>
@@ -568,13 +557,10 @@ export default function ProductDetail() {
                 <NumberInput value={form.lead_time_days ?? 7} onChange={v => update('lead_time_days', v)} min={0} step="1" className="mt-1" />
               </div>
             </div>
-          </CardContent>
-        </Card>
+        </Panel>
 
         {/* Dimensões */}
-        <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-base">Dimensões do Material</CardTitle></CardHeader>
-          <CardContent>
+        <Panel title="Dimensões do Material">
             <div className="grid grid-cols-4 gap-4">
               <div>
                 <Label className="text-xs text-muted-foreground">Altura</Label>
@@ -600,17 +586,13 @@ export default function ProductDetail() {
                 </Select>
               </div>
             </div>
-          </CardContent>
-        </Card>
+        </Panel>
 
         {/* Rendimento Técnico */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Layers className="h-4 w-4 text-primary" /> Rendimento Técnico (dm²/par por numeração)
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <Panel
+          title={<span className="flex items-center gap-2"><Layers className="h-4 w-4 text-primary" /> Rendimento Técnico (dm²/par por numeração)</span>}
+          bodyClassName="space-y-4"
+        >
             <p className="text-xs text-muted-foreground">
               Consumo em dm² por par para cada numeração. Usado no cálculo de pares estimados no estoque.
             </p>
@@ -646,69 +628,44 @@ export default function ProductDetail() {
                 }
               </div>
             </div>
-          </CardContent>
-        </Card>
-        
+        </Panel>
+
         {isSolado && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Footprints className="h-4 w-4 text-primary" /> Grade e Consumos de Forração / Palmilha
-              </CardTitle>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Define as numerações deste solado e os consumos de forração e palmilha por par.
-              </p>
-            </CardHeader>
-            <CardContent>
+          <Panel
+            title={<span className="flex items-center gap-2"><Footprints className="h-4 w-4 text-primary" /> Grade e Consumos de Forração / Palmilha</span>}
+            subtitle="Define as numerações deste solado e os consumos de forração e palmilha por par."
+          >
               <SoleTechnicalDetails
                 soleId={product.id}
                 soleName={stripColorFromName(product.name, product.color)}
               />
-            </CardContent>
-          </Card>
+          </Panel>
         )}
 
         {isSolado && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Footprints className="h-4 w-4 text-primary" /> Itens Padrão por Numeração
-              </CardTitle>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Configure o consumo de cola, EVA, linha, solado, palmilha e outros itens comuns a todos os calçados com este solado.
-                Esses valores são usados automaticamente como base na ficha técnica.
-              </p>
-            </CardHeader>
-            <CardContent>
+          <Panel
+            title={<span className="flex items-center gap-2"><Footprints className="h-4 w-4 text-primary" /> Itens Padrão por Numeração</span>}
+            subtitle="Configure o consumo de cola, EVA, linha, solado, palmilha e outros itens comuns a todos os calçados com este solado. Esses valores são usados automaticamente como base na ficha técnica."
+          >
               <SoleStandardItemsPanel soleProductId={product.id} />
-            </CardContent>
-          </Card>
+          </Panel>
         )}
 
         {isSolado && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Layers className="h-4 w-4 text-primary" /> Cadastro de Silk por Solado
-              </CardTitle>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Artes de silk vinculadas a este solado. Podem ser diferenciadas por cliente ou grupo econômico.
-              </p>
-            </CardHeader>
-            <CardContent>
+          <Panel
+            title={<span className="flex items-center gap-2"><Layers className="h-4 w-4 text-primary" /> Cadastro de Silk por Solado</span>}
+            subtitle="Artes de silk vinculadas a este solado. Podem ser diferenciadas por cliente ou grupo econômico."
+          >
               <SoleSilkPanel
                 soleProductId={product.id}
                 soleName={stripColorFromName(product.name, product.color)}
               />
-            </CardContent>
-          </Card>
+          </Panel>
         )}
 
         {/* Conversão Industrial */}
 
-        <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-base">Conversão Industrial & Reposição</CardTitle></CardHeader>
-          <CardContent>
+        <Panel title="Conversão Industrial & Reposição">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div>
                 <Label className="text-xs text-muted-foreground">Unidade de Compra</Label>
@@ -749,13 +706,10 @@ export default function ProductDetail() {
                 <NumberInput value={form.min_order_quantity ?? 1} onChange={v => update('min_order_quantity', v)} min={0} step="1" className="mt-1" />
               </div>
             </div>
-          </CardContent>
-        </Card>
+        </Panel>
 
              {/* Lote & Químico */}
-             <Card>
-               <CardHeader className="pb-3"><CardTitle className="text-base">Rastreabilidade</CardTitle></CardHeader>
-               <CardContent>
+             <Panel title="Rastreabilidade">
                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                    <div>
                      <Label>Nº do Lote</Label>
@@ -770,23 +724,17 @@ export default function ProductDetail() {
                      <Label htmlFor="is_chemical">Produto Químico</Label>
                    </div>
                  </div>
-               </CardContent>
-             </Card>
+             </Panel>
            </TabsContent>
- 
+
             <TabsContent value="history" className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <StockMovementForm product={product} type="in" />
                 <StockMovementForm product={product} type="out" />
               </div>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Histórico de Movimentações</CardTitle>
-                </CardHeader>
-                <CardContent>
+              <Panel title="Histórico de Movimentações">
                   <StockHistory filterProductId={product.id} hideHeader={true} />
-                </CardContent>
-              </Card>
+              </Panel>
             </TabsContent>
           </Tabs>
  

@@ -20,6 +20,8 @@ import {
 } from '@/components/ui/tooltip';
 import { TrendUp as TrendingUp, TrendDown as TrendingDown, Minus, MagnifyingGlass as Search, CircleNotch as Loader2, Warning as AlertTriangle, ArrowsClockwise as RefreshCw, Package as PackageSearch } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -284,15 +286,18 @@ export default function InputCostsPage() {
             Carregando…
           </div>
         ) : rows.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
-            <PackageSearch className="h-10 w-10 opacity-30" />
-            <p className="text-sm">Nenhum insumo encontrado.</p>
-          </div>
+          <Panel flush>
+            <EmptyState
+              icon={PackageSearch}
+              title="Nenhum insumo encontrado"
+              description="Ajuste a busca ou os filtros de categoria."
+            />
+          </Panel>
         ) : (
-          <div className="rounded-lg border overflow-x-auto">
+          <Panel flush bodyClassName="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="bg-muted/30">
+                <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <TableHead className="min-w-[220px]">Material</TableHead>
                   <TableHead className="w-[110px]">Categoria</TableHead>
                   <TableHead className="w-[110px] text-center">Un. Consumo</TableHead>
@@ -444,7 +449,7 @@ export default function InputCostsPage() {
                 })}
               </TableBody>
             </Table>
-          </div>
+          </Panel>
         )}
       </div>
     </AppLayout>

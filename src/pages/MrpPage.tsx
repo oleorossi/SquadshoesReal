@@ -2,7 +2,6 @@ import AppLayout from "@/components/layout/AppLayout";
 import { useState, useMemo, lazy, Suspense } from 'react';
 import { Warning as AlertTriangle, Package, ShoppingCart, CheckCircle as CheckCircle2, Clock, ArrowsDownUp as ArrowUpDown, Funnel as Filter } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -15,6 +14,9 @@ import MrpProjectionsTab from '@/components/mrp/MrpProjectionsTab';
 import { MaterialNeedsReport } from '@/components/mrp/MaterialNeedsReport';
 import { useMaterialNeedsReport } from '@/hooks/useMaterialNeedsReport';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 
 const PRIORITY_COLORS: Record<string, string> = {
   rush: 'bg-destructive/15 text-destructive border-destructive/30',
@@ -82,51 +84,33 @@ export default function MrpPage() {
           description="Necessidades de produção, sugestões de compra e análise de disponibilidade"
         />
 
-        {/* KPI Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="pt-4 pb-3">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-destructive" />
-                <span className="text-sm text-muted-foreground">Alertas Estoque</span>
-              </div>
-              <p className="display text-2xl tabular-nums mt-1">{stockAlerts.length}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4 pb-3">
-              <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4 text-warning" />
-                <span className="text-sm text-muted-foreground">Sugestões Abertas</span>
-              </div>
-              <p className="display text-2xl tabular-nums mt-1">
-                {(suggestions as any[]).filter(s => s.status === 'open').length}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4 pb-3">
-              <div className="flex items-center gap-2">
-                <Package className="h-4 w-4 text-primary" />
-                <span className="text-sm text-muted-foreground">OPs Ativas</span>
-              </div>
-              <p className="display text-2xl tabular-nums mt-1">
-                {orders.filter(o => o.status === 'Em Produção').length}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4 pb-3">
-              <div className="flex items-center gap-2">
-                <ShoppingCart className="h-4 w-4 text-success" />
-                <span className="text-sm text-muted-foreground">Compras Sugeridas</span>
-              </div>
-              <p className="display text-2xl tabular-nums mt-1">
-                {(suggestions as any[]).filter(s => s.suggestion_type === 'purchase' && s.status === 'open').length}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
+        {/* KPI strip — kit editorial */}
+        <StatGrid>
+          <StatCard
+            label="Alertas Estoque"
+            value={stockAlerts.length}
+            tone="destructive"
+            icon={AlertTriangle}
+          />
+          <StatCard
+            label="Sugestões Abertas"
+            value={(suggestions as any[]).filter(s => s.status === 'open').length}
+            tone="warning"
+            icon={Clock}
+          />
+          <StatCard
+            label="OPs Ativas"
+            value={orders.filter(o => o.status === 'Em Produção').length}
+            tone="primary"
+            icon={Package}
+          />
+          <StatCard
+            label="Compras Sugeridas"
+            value={(suggestions as any[]).filter(s => s.suggestion_type === 'purchase' && s.status === 'open').length}
+            tone="success"
+            icon={ShoppingCart}
+          />
+        </StatGrid>
 
         <Tabs defaultValue="projections">
           <TabsList>
@@ -151,11 +135,24 @@ export default function MrpPage() {
           </TabsContent>
 
           <TabsContent value="alerts" className="space-y-4">
-            <Card>
-              <CardContent className="p-0">
+            {stockAlerts.length === 0 ? (
+              <Panel flush>
+                <EmptyState
+                  icon={AlertTriangle}
+                  title="Nenhum alerta de estoque"
+                  description="Todos os materiais estão acima do estoque mínimo."
+                />
+              </Panel>
+            ) : (
+            <Panel
+              eyebrow="SUPRIMENTOS · MRP"
+              title="Alertas de Estoque"
+              subtitle={`${stockAlerts.length} material(is) abaixo do mínimo`}
+              flush
+            >
                 <Table>
                   <TableHeader>
-                    <TableRow>
+                    <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                       <TableHead>Material</TableHead>
                       <TableHead>SKU</TableHead>
                       <TableHead className="text-right">Estoque</TableHead>
@@ -165,13 +162,7 @@ export default function MrpPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {stockAlerts.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                          Nenhum alerta de estoque
-                        </TableCell>
-                      </TableRow>
-                    ) : stockAlerts.map((alert, i) => (
+                    {stockAlerts.map((alert, i) => (
                       <TableRow key={i}>
                         <TableCell className="font-medium">{alert.product.name}</TableCell>
                         <TableCell className="text-muted-foreground">{alert.product.sku}</TableCell>
@@ -187,8 +178,8 @@ export default function MrpPage() {
                     ))}
                   </TableBody>
                 </Table>
-              </CardContent>
-            </Card>
+            </Panel>
+            )}
           </TabsContent>
 
           <TabsContent value="suggestions" className="space-y-4">
@@ -212,11 +203,24 @@ export default function MrpPage() {
               </Select>
             </div>
 
-            <Card>
-              <CardContent className="p-0">
+            {filteredSuggestions.length === 0 ? (
+              <Panel flush>
+                <EmptyState
+                  icon={Package}
+                  title="Nenhuma sugestão encontrada"
+                  description="Ajuste os filtros de status e tipo acima."
+                />
+              </Panel>
+            ) : (
+            <Panel
+              eyebrow="SUPRIMENTOS · MRP"
+              title="Sugestões MRP"
+              subtitle={`${filteredSuggestions.length} sugestão(ões)`}
+              flush
+            >
                 <Table>
                   <TableHeader>
-                    <TableRow>
+                    <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                       <TableHead>Tipo</TableHead>
                       <TableHead>Material</TableHead>
                       <TableHead className="text-right">Necessário</TableHead>
@@ -228,13 +232,7 @@ export default function MrpPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredSuggestions.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
-                          Nenhuma sugestão encontrada
-                        </TableCell>
-                      </TableRow>
-                    ) : filteredSuggestions.map((s: any) => (
+                    {filteredSuggestions.map((s: any) => (
                       <TableRow key={s.id}>
                         <TableCell>
                           <Badge variant="outline">
@@ -271,11 +269,11 @@ export default function MrpPage() {
                     ))}
                   </TableBody>
                 </Table>
-              </CardContent>
-            </Card>
+            </Panel>
+            )}
           </TabsContent>
         </Tabs>
       </div>
-    
+
   );
 }

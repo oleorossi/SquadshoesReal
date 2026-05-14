@@ -3,8 +3,7 @@ import { Plus, TrendUp as TrendingUp, Gauge, ClipboardText as ClipboardList, Clo
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { KPICard } from "@/components/dashboard/KPICard";
-import { FinCard } from "@/components/dashboard/FinCard";
+import { StatCard, StatGrid } from "@/components/ui/stat-card";
 import { ChartsRow } from "@/components/dashboard/ChartsRow";
 import { BottomRow } from "@/components/dashboard/BottomRow";
 import { ConsumptionErrorAlert } from "@/components/dashboard/ConsumptionErrorAlert";
@@ -169,56 +168,53 @@ export default function Dashboard() {
       </div>
 
       {/* KPIs — Produção */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2.5">
-        <KPICard
+      <StatGrid>
+        <StatCard
           label="Produtos"
           value={productionStats?.products ?? "..."}
-          sub="Itens cadastrados"
-          status="info"
+          hint="Itens cadastrados"
           icon={TrendingUp}
           onClick={() => navigate('/estoque')}
         />
-        <KPICard
+        <StatCard
           label="OEE Global"
           value="81%"
-          sub="Eficiência global"
-          status="info"
+          hint="Eficiência global"
           icon={Gauge}
           onClick={() => navigate('/producao')}
         />
-        <KPICard
+        <StatCard
           label="OPs Ativas"
           value={productionStats?.activeOps ?? "..."}
-          sub={`Em curso · ${range.label}`}
-          status="good"
+          hint={`Em curso · ${range.label}`}
+          tone="success"
           icon={ClipboardList}
           onClick={() => navigate('/orders')}
         />
-        <KPICard
+        <StatCard
           label="OPs em Atraso"
           value="0"
-          sub="Prazo OK"
-          status="neutral"
+          hint="Prazo OK"
           icon={Clock}
           onClick={() => navigate('/orders')}
         />
-        <KPICard
+        <StatCard
           label="Estoque Crítico"
           value={productionStats?.critical ?? "..."}
-          sub="Itens abaixo do mín."
-          status="danger"
+          hint="Itens abaixo do mín."
+          tone="destructive"
           icon={AlertTriangle}
           onClick={() => navigate('/estoque?tab=alerts')}
         />
-        <KPICard
+        <StatCard
           label="PVs Pendentes"
           value={productionStats?.pendingSales ?? "..."}
-          sub={`Aguardando · ${range.label}`}
-          status="warning"
+          hint={`Aguardando · ${range.label}`}
+          tone="warning"
           icon={ShoppingBag}
           onClick={() => navigate('/sales')}
         />
-      </div>
+      </StatGrid>
 
       {/* Section label antes do bloco financeiro */}
       <div className="flex items-baseline gap-3 pt-2">
@@ -227,38 +223,40 @@ export default function Dashboard() {
       </div>
 
       {/* KPIs — Financeiro (Faturamento filtra por período; A Receber/Pagar globais) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-        <div onClick={() => navigate('/finance')} className="cursor-pointer">
-          <FinCard label={`Faturamento · ${range.label}`} value={formatCurrency(financialStats?.revenue ?? 0)} sub="Total PVs" subColor="up" trendIcon={TrendingUp} />
-        </div>
-        <div onClick={() => navigate('/finance')} className="cursor-pointer">
-          <FinCard
-            label="A Receber"
-            value={formatCurrency(financialStats?.receivable ?? 0)}
-            sub={`${financialStats?.receivableOverdue ?? 0} vencidos`}
-            subColor={(financialStats?.receivableOverdue ?? 0) > 0 ? 'warning' : 'up'}
-            trendIcon={TrendingUp}
-          />
-        </div>
-        <div onClick={() => navigate('/finance')} className="cursor-pointer">
-          <FinCard
-            label="A Pagar"
-            value={formatCurrency(financialStats?.payable ?? 0)}
-            sub={`${financialStats?.payableOverdue ?? 0} vencidos`}
-            subColor={(financialStats?.payableOverdue ?? 0) > 0 ? 'down' : 'muted'}
-            trendIcon={TrendingDown}
-          />
-        </div>
-        <div onClick={() => navigate('/finance')} className="cursor-pointer">
-          <FinCard
-            label="Saldo Líquido"
-            value={formatCurrency(financialStats?.netBalance ?? 0)}
-            sub="A Receber − A Pagar"
-            subColor="muted"
-            highlight
-          />
-        </div>
-      </div>
+      <StatGrid>
+        <StatCard
+          label={`Faturamento · ${range.label}`}
+          value={formatCurrency(financialStats?.revenue ?? 0)}
+          hint="Total PVs"
+          tone="success"
+          icon={TrendingUp}
+          onClick={() => navigate('/finance')}
+        />
+        <StatCard
+          label="A Receber"
+          value={formatCurrency(financialStats?.receivable ?? 0)}
+          hint={`${financialStats?.receivableOverdue ?? 0} vencidos`}
+          tone={(financialStats?.receivableOverdue ?? 0) > 0 ? 'warning' : 'success'}
+          icon={TrendingUp}
+          onClick={() => navigate('/finance')}
+        />
+        <StatCard
+          label="A Pagar"
+          value={formatCurrency(financialStats?.payable ?? 0)}
+          hint={`${financialStats?.payableOverdue ?? 0} vencidos`}
+          tone={(financialStats?.payableOverdue ?? 0) > 0 ? 'destructive' : 'default'}
+          icon={TrendingDown}
+          onClick={() => navigate('/finance')}
+        />
+        <StatCard
+          label="Saldo Líquido"
+          value={formatCurrency(financialStats?.netBalance ?? 0)}
+          hint="A Receber − A Pagar"
+          tone="primary"
+          icon={DollarSign}
+          onClick={() => navigate('/finance')}
+        />
+      </StatGrid>
 
       {/* Section label antes dos gráficos */}
       <div className="flex items-baseline gap-3 pt-2">

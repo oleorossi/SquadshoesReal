@@ -1,6 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
@@ -9,6 +8,8 @@ import { ShieldCheck, Lock, Eye, Key as KeyRound, ArrowsClockwise as RefreshCcw 
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 
 export default function Security() {
   const qc = useQueryClient();
@@ -48,15 +49,13 @@ export default function Security() {
   if (loadingSettings) return <p className="p-6 text-muted-foreground">Carregando configurações...</p>;
   if (!settings) return (
     <div className="p-6">
-      <Card>
-        <CardContent className="py-10 text-center space-y-2">
-          <ShieldCheck className="h-10 w-10 mx-auto text-muted-foreground/30" />
-          <p className="text-sm text-muted-foreground">
-            Não foi possível criar a row inicial de <code>security_settings</code>.
-            Verifique as permissões/RLS da tabela.
-          </p>
-        </CardContent>
-      </Card>
+      <Panel flush>
+        <EmptyState
+          icon={ShieldCheck}
+          title="Configuração indisponível"
+          description="Não foi possível criar a row inicial de security_settings. Verifique as permissões/RLS da tabela."
+        />
+      </Panel>
     </div>
   );
 
@@ -68,11 +67,8 @@ export default function Security() {
         description="Política de senhas · MFA · mascaramento"
       />
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-bold flex items-center gap-2"><Lock className="h-4 w-4 text-primary" /> Política de senhas</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm">
+      <Panel title={<span className="flex items-center gap-2"><Lock className="h-4 w-4 text-primary" /> Política de senhas</span>}>
+        <div className="space-y-3 text-sm">
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label className="text-[10px] uppercase font-bold">Tamanho mínimo</Label>
@@ -117,17 +113,16 @@ export default function Security() {
                 onCheckedChange={v => update.mutate({ password_require_special: v })} />
             </label>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </Panel>
 
       <MfaCard />
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-bold flex items-center gap-2"><Eye className="h-4 w-4 text-primary" /> Campos sensíveis (mascaramento)</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
+      <Panel title={<span className="flex items-center gap-2"><Eye className="h-4 w-4 text-primary" /> Campos sensíveis (mascaramento)</span>} flush>
           <div className="divide-y">
+            {sensitive.length === 0 && (
+              <EmptyState icon={Eye} title="Nenhum campo sensível registrado" size="sm" />
+            )}
             {sensitive.map((s: any) => (
               <div key={s.id} className="p-3 flex items-center gap-3 text-sm">
                 <Badge variant="outline" className={`text-[10px] capitalize ${
@@ -143,8 +138,7 @@ export default function Security() {
               </div>
             ))}
           </div>
-        </CardContent>
-      </Card>
+      </Panel>
     </div>
   );
 }
@@ -210,13 +204,8 @@ function MfaCard() {
   const codes: string[] = mfa?.backup_codes ?? [];
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-bold flex items-center gap-2">
-          <KeyRound className="h-4 w-4 text-primary" /> Autenticação em duas etapas (MFA)
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3 text-sm">
+    <Panel title={<span className="flex items-center gap-2"><KeyRound className="h-4 w-4 text-primary" /> Autenticação em duas etapas (MFA)</span>}>
+      <div className="space-y-3 text-sm">
         {isLoading ? (
           <p className="text-xs text-muted-foreground">Carregando…</p>
         ) : (
@@ -305,7 +294,7 @@ function MfaCard() {
             )}
           </>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </Panel>
   );
 }

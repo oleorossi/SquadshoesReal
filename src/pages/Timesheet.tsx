@@ -42,6 +42,9 @@ import { getBatchDateRange, resolveTimeControlFilters } from '@/lib/timeControlF
 import { calculateWeeklyPeriod } from '@/lib/weeklyTimeCalculation';
 import { findEmployeeMatch, resolveEmployeeName } from '@/lib/employeeMatching';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
@@ -124,13 +127,13 @@ function WorkScheduleTab() {
       </div>
 
       {schedules.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-            <Clock className="h-10 w-10 mb-3 opacity-50" />
-            <p>Nenhum horário cadastrado</p>
-            <p className="text-xs mt-1">Cadastre o horário padrão CLT para calcular horas extras e faltas</p>
-          </CardContent>
-        </Card>
+        <Panel flush>
+          <EmptyState
+            icon={Clock}
+            title="Nenhum horário cadastrado"
+            description="Cadastre o horário padrão CLT para calcular horas extras e faltas."
+          />
+        </Panel>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {schedules.map(s => {
@@ -329,18 +332,19 @@ function HolidaysTab() {
       )}
 
       {holidays.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-            <Calendar className="h-10 w-10 mb-3 opacity-50" />
-            <p>Nenhum feriado cadastrado</p>
-          </CardContent>
-        </Card>
+        <Panel flush>
+          <EmptyState
+            icon={Calendar}
+            title="Nenhum feriado cadastrado"
+            description="Cadastre os feriados para cálculo correto de horas extras."
+          />
+        </Panel>
       ) : (
-        <Card>
+        <Panel flush>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow>
+                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <TableHead>Nome</TableHead>
                   <TableHead>Data</TableHead>
                   <TableHead>Recorrente</TableHead>
@@ -363,7 +367,7 @@ function HolidaysTab() {
               </TableBody>
             </Table>
           </div>
-        </Card>
+        </Panel>
       )}
     </div>
   );
@@ -1098,14 +1102,11 @@ function TimesheetRecordsTab() {
 
       {/* All employees summary table */}
       {selectedEmployee === '__all__' && allEmployeeSummaries.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Resumo Geral — Todos os Funcionários</CardTitle>
-          </CardHeader>
+        <Panel title="Resumo Geral — Todos os Funcionários" flush>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow>
+                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <TableHead>Funcionário</TableHead>
                   <TableHead className="text-right">Dias</TableHead>
                   <TableHead className="text-right">Trabalhadas</TableHead>
@@ -1146,48 +1147,22 @@ function TimesheetRecordsTab() {
               </TableBody>
             </Table>
           </div>
-        </Card>
+        </Panel>
       )}
 
       {/* Summary cards */}
       {selectedEmployee && selectedEmployee !== '__all__' && summaries.length > 0 && (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
-            <Card><CardContent className="p-3 text-center">
-              <p className="text-[10px] text-muted-foreground uppercase">Trabalhadas</p>
-              <p className="text-lg font-bold font-mono">{minutesToDisplay(totalWorked)}</p>
-            </CardContent></Card>
-            <Card><CardContent className="p-3 text-center">
-              <p className="text-[10px] text-muted-foreground uppercase">Esperadas</p>
-              <p className="text-lg font-bold font-mono">{minutesToDisplay(totalExpected)}</p>
-            </CardContent></Card>
-            <Card><CardContent className="p-3 text-center">
-              <p className="text-[10px] text-muted-foreground uppercase">HE Brutas</p>
-              <p className="text-lg font-bold font-mono text-amber-600">{minutesToDisplay(totalOvertime)}</p>
-            </CardContent></Card>
-            <Card><CardContent className="p-3 text-center">
-              <p className="text-[10px] text-muted-foreground uppercase">Déficit</p>
-              <p className="text-lg font-bold font-mono text-destructive">{minutesToDisplay(deficitMinutes)}</p>
-            </CardContent></Card>
-            <Card className={compensatedOvertime > 0 ? 'ring-1 ring-green-500/30' : ''}>
-              <CardContent className="p-3 text-center">
-                <p className="text-[10px] text-muted-foreground uppercase">HE Líquida</p>
-                <p className="text-lg font-bold font-mono text-green-600">{minutesToDisplay(compensatedOvertime)}</p>
-              </CardContent>
-            </Card>
-            <Card><CardContent className="p-3 text-center">
-              <p className="text-[10px] text-muted-foreground uppercase">Déf. Restante</p>
-              <p className="text-lg font-bold font-mono text-destructive">{remainingDeficit > 0 ? minutesToDisplay(remainingDeficit) : '—'}</p>
-            </CardContent></Card>
-            <Card><CardContent className="p-3 text-center">
-              <p className="text-[10px] text-muted-foreground uppercase">Faltas</p>
-              <p className="text-lg font-bold text-destructive">{absences}</p>
-            </CardContent></Card>
-            <Card><CardContent className="p-3 text-center">
-              <p className="text-[10px] text-muted-foreground uppercase">Feriados Trab.</p>
-              <p className="text-lg font-bold text-blue-600">{holidayWorked}</p>
-            </CardContent></Card>
-          </div>
+          <StatGrid>
+            <StatCard label="Trabalhadas" value={minutesToDisplay(totalWorked)} />
+            <StatCard label="Esperadas" value={minutesToDisplay(totalExpected)} />
+            <StatCard label="HE Brutas" value={minutesToDisplay(totalOvertime)} tone="warning" />
+            <StatCard label="Déficit" value={minutesToDisplay(deficitMinutes)} tone="destructive" />
+            <StatCard label="HE Líquida" value={minutesToDisplay(compensatedOvertime)} tone="success" />
+            <StatCard label="Déf. Restante" value={remainingDeficit > 0 ? minutesToDisplay(remainingDeficit) : '—'} tone="destructive" />
+            <StatCard label="Faltas" value={absences} tone="destructive" />
+            <StatCard label="Feriados Trab." value={holidayWorked} tone="primary" />
+          </StatGrid>
 
           {/* Overtime value calculation */}
           {getHourlySalary(selectedEmployee) > 0 && (compensatedOvertime > 0 || remainingDeficit > 0) && (
@@ -1226,16 +1201,14 @@ function TimesheetRecordsTab() {
 
           {/* Overtime days detail */}
           {overtimeDays.length > 0 && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-amber-500" /> Dias com Hora Extra ({overtimeDays.length})
-                </CardTitle>
-              </CardHeader>
+            <Panel
+              title={<span className="flex items-center gap-2"><Clock className="h-4 w-4 text-amber-500" /> Dias com Hora Extra ({overtimeDays.length})</span>}
+              flush
+            >
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
-                    <TableRow>
+                    <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                       <TableHead>Data</TableHead>
                       <TableHead>Dia</TableHead>
                       <TableHead>Batidas</TableHead>
@@ -1269,18 +1242,15 @@ function TimesheetRecordsTab() {
                   </TableBody>
                 </Table>
               </div>
-            </Card>
+            </Panel>
           )}
 
           {/* Day-by-day table */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Registro Diário Completo</CardTitle>
-            </CardHeader>
+          <Panel title="Registro Diário Completo" flush>
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <TableHead className="w-10"></TableHead>
                     <TableHead>Data</TableHead>
                     <TableHead>Dia</TableHead>
@@ -1322,18 +1292,18 @@ function TimesheetRecordsTab() {
                 </TableBody>
               </Table>
             </div>
-          </Card>
+          </Panel>
         </>
       )}
 
       {records.length === 0 && !preview && (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-            <FileSpreadsheet className="h-10 w-10 mb-3 opacity-50" />
-            <p>Nenhum registro de ponto importado</p>
-            <p className="text-xs mt-1">Importe o arquivo .xlsx ou .txt (AGL) gerado pelo relógio de ponto</p>
-          </CardContent>
-        </Card>
+        <Panel flush>
+          <EmptyState
+            icon={FileSpreadsheet}
+            title="Nenhum registro de ponto importado"
+            description="Importe o arquivo .xlsx ou .txt (AGL) gerado pelo relógio de ponto."
+          />
+        </Panel>
       )}
 
       {/* Individual employee report dialog */}

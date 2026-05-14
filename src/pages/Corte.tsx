@@ -8,6 +8,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -400,13 +402,13 @@ if (totalPairsAll !== palmTotal) {
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead className="text-xs">Material</TableHead>
-                <TableHead className="text-xs text-center">Cor</TableHead>
+              <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                <TableHead>Material</TableHead>
+                <TableHead className="text-center">Cor</TableHead>
                 {activeSizes.map(s => (
-                  <TableHead key={s} className="text-xs text-center w-14">{s}</TableHead>
+                  <TableHead key={s} className="text-center w-14">{s}</TableHead>
                 ))}
-                <TableHead className="text-xs text-center font-bold bg-muted">Total</TableHead>
+                <TableHead className="text-center bg-muted">Total</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -444,7 +446,13 @@ if (totalPairsAll !== palmTotal) {
   // Per-order detail view
   const renderOrderDetail = () => {
     if (cuttingOrders.length === 0) {
-      return <div className="text-center py-12 text-muted-foreground">Nenhuma OP com corte pendente.</div>;
+      return (
+        <EmptyState
+          icon={Layers}
+          title="Nenhuma OP com corte pendente"
+          description="Não há ordens de produção aguardando corte no momento."
+        />
+      );
     }
 
     // Group orders by sale_order_id
@@ -598,12 +606,12 @@ if (totalPairsAll !== palmTotal) {
                       <div className="overflow-x-auto">
                         <Table>
                           <TableHeader>
-                            <TableRow>
-                              <TableHead className="text-xs"></TableHead>
+                            <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                              <TableHead></TableHead>
                               {activeSizes.map(s => (
-                                <TableHead key={s} className="text-xs text-center w-14">{s}</TableHead>
+                                <TableHead key={s} className="text-center w-14">{s}</TableHead>
                               ))}
-                              <TableHead className="text-xs text-center font-bold bg-muted">Total</TableHead>
+                              <TableHead className="text-center bg-muted">Total</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -1274,40 +1282,32 @@ if (totalPairsAll !== palmTotal) {
         />
 
         {/* Stats */}
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="display text-2xl tabular-nums text-primary">{cuttingOrders.length}</p>
-              <p className="text-xs text-muted-foreground">OPs p/ Corte Palmilha</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="display text-2xl tabular-nums text-primary">
-                {cuttingOrders.reduce((sum, order) => sum + getOrderTotalPairs(order), 0)}
-              </p>
-              <p className="text-xs text-muted-foreground">Total do setor (pares)</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="display text-2xl tabular-nums text-warning">{consolidatedCabedal.reduce((s, r) => s + r.total, 0)}</p>
-              <p className="text-xs text-muted-foreground">Cabedal (demanda)</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="display text-2xl tabular-nums text-accent-foreground">{consolidatedPalmilha.reduce((s, r) => s + r.total, 0)}</p>
-              <p className="text-xs text-muted-foreground">Palmilha (demanda)</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="display text-2xl tabular-nums text-success">{consolidatedForro.reduce((s, r) => s + r.total, 0)}</p>
-              <p className="text-xs text-muted-foreground">Forro (demanda)</p>
-            </CardContent>
-          </Card>
-        </div>
+        <StatGrid>
+          <StatCard
+            label="OPs p/ Corte Palmilha"
+            value={cuttingOrders.length}
+            tone="primary"
+          />
+          <StatCard
+            label="Total do setor (pares)"
+            value={cuttingOrders.reduce((sum, order) => sum + getOrderTotalPairs(order), 0)}
+            tone="primary"
+          />
+          <StatCard
+            label="Cabedal (demanda)"
+            value={consolidatedCabedal.reduce((s, r) => s + r.total, 0)}
+            tone="warning"
+          />
+          <StatCard
+            label="Palmilha (demanda)"
+            value={consolidatedPalmilha.reduce((s, r) => s + r.total, 0)}
+          />
+          <StatCard
+            label="Forro (demanda)"
+            value={consolidatedForro.reduce((s, r) => s + r.total, 0)}
+            tone="success"
+          />
+        </StatGrid>
 
         {/* Order list */}
         {loading ? (

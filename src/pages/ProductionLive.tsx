@@ -17,6 +17,7 @@ import { useQuery } from '@tanstack/react-query';
 import { CircleNotch as Loader2, Warning as AlertTriangle, Pulse as Activity } from '@phosphor-icons/react';
 import AppLayout from '@/components/layout/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
+import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useOrders } from '@/hooks/useOrders';
 import { useAllOrderStages, OrderStage } from '@/hooks/useOrderStages';
@@ -185,17 +186,10 @@ export default function ProductionLive() {
         </Card>
 
         {/* Linhas em produção */}
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-baseline justify-between mb-5">
-              <div>
-                <div className="eyebrow">Linhas · status atual</div>
-                <h2 className="display text-xl mt-1">
-                  {stats.running} OPs · {stats.running - stats.late} rodando
-                </h2>
-              </div>
-            </div>
-
+        <Panel
+          eyebrow="Linhas · status atual"
+          title={`${stats.running} OPs · ${stats.running - stats.late} rodando`}
+        >
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -303,8 +297,7 @@ export default function ProductionLive() {
                 })}
               </div>
             )}
-          </CardContent>
-        </Card>
+        </Panel>
       </div>
     </AppLayout>
   );

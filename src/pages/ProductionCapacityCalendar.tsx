@@ -6,8 +6,9 @@ import type { SectorKey } from '@/lib/leadTime';
 import { computeParallelWindows } from '@/lib/sectorCapacity';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { CircleNotch as Loader2, CaretLeft as ChevronLeft, CaretRight as ChevronRight, CalendarBlank as CalendarDays, ChartBar as BarChart3, Info, ArrowsClockwise as RefreshCw } from '@phosphor-icons/react';
 import {
   format, startOfWeek, addDays, addWeeks,
@@ -389,33 +390,24 @@ function SectorSummaryCards({
   if (active.length === 0) return null;
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <StatGrid>
       {active.map(({ key, label }) => {
         const { peakQtyPerDay, peakCapPerDay } = summary[key];
         const pct = peakCapPerDay > 0 ? Math.min(100, Math.round((peakQtyPerDay / peakCapPerDay) * 100)) : 0;
-        const variant = pct >= 90 ? 'destructive' : pct >= 70 ? 'secondary' : 'outline';
         return (
-          <Card key={key} className="border">
-            <CardContent className="p-3">
-              <p className="text-xs text-muted-foreground">{label}</p>
-              <p className="text-lg font-bold leading-tight">{Math.round(peakQtyPerDay)}<span className="text-xs font-normal text-muted-foreground">/{peakCapPerDay > 0 ? peakCapPerDay : '?'} par/dia</span></p>
-              {peakCapPerDay > 0 && (
-                <div className="flex items-center gap-1.5 mt-1">
-                  <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full ${pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-amber-500' : 'bg-emerald-500'}`}
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                  <Badge variant={variant} className="text-[10px] px-1 py-0">{pct}%</Badge>
-                </div>
-              )}
-              <p className="text-[10px] text-muted-foreground mt-0.5">pico (próx. 14 dias)</p>
-            </CardContent>
-          </Card>
+          <StatCard
+            key={key}
+            label={label}
+            value={Math.round(peakQtyPerDay)}
+            unit={`/${peakCapPerDay > 0 ? peakCapPerDay : '?'} par/dia`}
+            tone={pct >= 90 ? 'destructive' : pct >= 70 ? 'warning' : 'default'}
+            delta={peakCapPerDay > 0 ? `${pct}%` : undefined}
+            deltaTone={pct >= 90 ? 'down' : pct >= 70 ? 'neutral' : 'up'}
+            hint="pico (próx. 14 dias)"
+          />
         );
       })}
-    </div>
+    </StatGrid>
   );
 }
 
@@ -542,19 +534,19 @@ export default function ProductionCapacityCalendar() {
 
         {/* Grid */}
         {blocks.length === 0 ? (
-          <Card>
-            <CardContent className="py-16 text-center text-muted-foreground">
-              <CalendarDays className="h-10 w-10 mx-auto mb-3 opacity-30" />
-              <p className="font-medium">Nenhuma onda em planejamento ou produção</p>
-              <p className="text-sm mt-1">Crie ondas de produção com data de entrega para visualizar o calendário.</p>
-            </CardContent>
-          </Card>
+          <div className="rounded-lg border border-border">
+            <EmptyState
+              icon={CalendarDays}
+              title="Nenhuma onda em planejamento ou produção"
+              description="Crie ondas de produção com data de entrega para visualizar o calendário."
+            />
+          </div>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-border">
             <table className="w-full border-collapse min-w-[600px]">
               <thead>
                 <tr>
-                  <th className="sticky left-0 z-10 bg-muted/60 border-b border-r border-border px-3 py-2 text-left text-xs font-semibold text-muted-foreground w-36 min-w-[140px]">
+                  <th className="sticky left-0 z-10 bg-muted/40 border-b border-r border-border px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground w-36 min-w-[140px]">
                     Setor
                   </th>
                   {columns.map((col, ci) => {
@@ -562,7 +554,7 @@ export default function ProductionCapacityCalendar() {
                     return (
                       <th
                         key={ci}
-                        className={`border-b border-r border-border px-2 py-2 text-center text-xs font-semibold min-w-[120px]
+                        className={`border-b border-r border-border px-2 py-2 text-center text-[10px] font-bold uppercase tracking-wider min-w-[120px]
                           ${isToday ? 'bg-primary/10 text-primary' : 'bg-muted/40 text-muted-foreground'}`}
                       >
                         <div className="capitalize">{col.label}</div>

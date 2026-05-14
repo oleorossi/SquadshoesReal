@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -24,6 +23,9 @@ import { calculatePayroll, PAYROLL_TAX_YEAR, type BenefitsConfig, type PayrollDa
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -292,64 +294,48 @@ export default function Payroll() {
       })()}
 
       {/* Totais */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-muted-foreground uppercase">Funcionários</p>
-          <p className="display text-2xl tabular-nums">{runs.length}</p>
-        </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-muted-foreground uppercase">Total proventos</p>
-          <p className="display text-xl tabular-nums text-emerald-600">{fmt(totals.proventos)}</p>
-        </CardContent></Card>
-        <Card className={totals.advances > 0 ? 'border-amber-500/40 bg-amber-500/5' : ''}>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground uppercase flex items-center gap-1">
-              <Wallet className="h-3 w-3" /> Adiantamentos
-            </p>
-            <p className="text-xl font-bold text-amber-600">{fmt(totals.advances)}</p>
-            {totals.advances > 0 && (
-              <p className="text-[10px] text-amber-700 mt-0.5">
-                {totals.advancesCount} func. com vale
-              </p>
-            )}
-          </CardContent>
-        </Card>
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-muted-foreground uppercase">Total descontos</p>
-          <p className="display text-xl tabular-nums text-destructive">{fmt(totals.descontos)}</p>
-        </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-muted-foreground uppercase">Total líquido</p>
-          <p className="display text-xl tabular-nums text-primary">{fmt(totals.liquido)}</p>
-        </CardContent></Card>
-      </div>
+      <StatGrid>
+        <StatCard label="Funcionários" value={runs.length} hint="na folha do período" />
+        <StatCard label="Total proventos" value={fmt(totals.proventos)} tone="success" />
+        <StatCard
+          label="Adiantamentos"
+          value={fmt(totals.advances)}
+          hint={totals.advances > 0 ? `${totals.advancesCount} func. com vale` : undefined}
+          tone="warning"
+          icon={Wallet}
+        />
+        <StatCard label="Total descontos" value={fmt(totals.descontos)} tone="destructive" />
+        <StatCard label="Total líquido" value={fmt(totals.liquido)} tone="primary" />
+      </StatGrid>
 
-      <Card>
-        <CardHeader><CardTitle>Folha de {period}</CardTitle></CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
+      <Panel title={`Folha de ${period}`} flush>
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+              <TableHead>Funcionário</TableHead>
+              <TableHead className="text-right">Salário base</TableHead>
+              <TableHead className="text-right">HE</TableHead>
+              <TableHead className="text-right">Noturno</TableHead>
+              <TableHead className="text-right">DSR</TableHead>
+              <TableHead className="text-right">Adiantamentos</TableHead>
+              <TableHead className="text-right">Descontos</TableHead>
+              <TableHead className="text-right">Líquido</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {runs.length === 0 ? (
               <TableRow>
-                <TableHead>Funcionário</TableHead>
-                <TableHead className="text-right">Salário base</TableHead>
-                <TableHead className="text-right">HE</TableHead>
-                <TableHead className="text-right">Noturno</TableHead>
-                <TableHead className="text-right">DSR</TableHead>
-                <TableHead className="text-right text-amber-700">Adiantamentos</TableHead>
-                <TableHead className="text-right">Descontos</TableHead>
-                <TableHead className="text-right">Líquido</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead></TableHead>
+                <TableCell colSpan={10} className="p-0">
+                  <EmptyState
+                    icon={Calculator}
+                    title="Nenhuma folha calculada"
+                    description={`Não há folha para ${period}. Clique em "Calcular folha" para gerar.`}
+                  />
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {runs.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={10} className="text-center text-muted-foreground py-12">
-                    Nenhuma folha calculada para este período. Clique em "Calcular folha".
-                  </TableCell>
-                </TableRow>
-              ) : runs.map(r => {
+            ) : runs.map(r => {
                 const emp = employeeMap.get(r.employee_id);
                 const heValue = (r.overtime_50_value || 0) + (r.overtime_100_value || 0);
                 const sb = STATUS_BADGES[r.status] || STATUS_BADGES.rascunho;
@@ -407,8 +393,7 @@ export default function Payroll() {
               })}
             </TableBody>
           </Table>
-        </CardContent>
-      </Card>
+      </Panel>
 
       {/* Confirmação de aprovação quando há adiantamento */}
       <AlertDialog open={!!approveRun} onOpenChange={(o) => !o && setApproveRun(null)}>

@@ -12,13 +12,13 @@
  */
 import { useState, useEffect, useMemo } from 'react';
 import { useCostPolicies, useUpdateCostPolicy } from '@/hooks/useCostPolicies';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
-import { FloppyDisk as Save, ArrowsClockwise as RefreshCw, Calculator, Cube as Box, Truck, Receipt, Percent, WarningCircle as AlertCircle } from '@phosphor-icons/react';
+import { Panel } from '@/components/ui/panel';
+import { FloppyDisk as Save, ArrowsClockwise as RefreshCw, Cube as Box, Truck, Percent, WarningCircle as AlertCircle } from '@phosphor-icons/react';
 
 function fmt(v: number) {
   return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -92,17 +92,12 @@ export default function CostPolicies() {
       ) : (
         <div className="space-y-4">
           {/* Overhead */}
-          <Card className="slash-top">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Calculator className="h-4 w-4 text-primary" />
-                Overhead operacional
-              </CardTitle>
-              <CardDescription className="text-xs">
-                Custos fixos mensais (aluguel, energia, administrativo) rateados por capacidade de produção.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid sm:grid-cols-2 gap-3">
+          <Panel
+            eyebrow="CUSTOS · OVERHEAD"
+            title="Overhead operacional"
+            subtitle="Custos fixos mensais (aluguel, energia, administrativo) rateados por capacidade de produção."
+          >
+            <div className="grid sm:grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">Total mensal de overhead (R$)</Label>
                 <Input
@@ -130,18 +125,15 @@ export default function CostPolicies() {
                   Total ÷ capacidade. Atualiza ao mudar os campos acima.
                 </p>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </Panel>
 
           {/* Embalagem + Frete */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Box className="h-4 w-4 text-primary" />
-                Embalagem & Frete
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="grid sm:grid-cols-2 gap-3">
+          <Panel
+            eyebrow="CUSTOS · EMBALAGEM"
+            title="Embalagem & Frete"
+          >
+            <div className="grid sm:grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs flex items-center gap-1.5">
                   <Box className="h-3 w-3" /> Custo de embalagem por par (R$)
@@ -170,21 +162,16 @@ export default function CostPolicies() {
                   Referência de frete sobre receita — usada como hint no Markup.
                 </p>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </Panel>
 
           {/* Defaults fiscais */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Receipt className="h-4 w-4 text-primary" />
-                Defaults fiscais (Markup)
-              </CardTitle>
-              <CardDescription className="text-xs">
-                Pré-preenchem os campos do simulador Markup. Vazio = sem auto-fill.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid sm:grid-cols-2 gap-3">
+          <Panel
+            eyebrow="CUSTOS · FISCAL"
+            title="Defaults fiscais (Markup)"
+            subtitle="Pré-preenchem os campos do simulador Markup. Vazio = sem auto-fill."
+          >
+            <div className="grid sm:grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs flex items-center gap-1.5">
                   <Percent className="h-3 w-3" /> Imposto total padrão (%)
@@ -209,12 +196,11 @@ export default function CostPolicies() {
                   className="mt-1"
                 />
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </Panel>
 
           {/* Resumo + Ações */}
-          <Card className="bg-primary/5 border-primary/20">
-            <CardContent className="p-4 flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+          <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
               <div className="text-xs space-y-0.5">
                 <div className="flex items-center gap-2">
                   <AlertCircle className="h-3.5 w-3.5 text-primary shrink-0" />
@@ -240,8 +226,7 @@ export default function CostPolicies() {
                   <><Save className="h-3.5 w-3.5" /> Salvar políticas</>
                 )}
               </Button>
-            </CardContent>
-          </Card>
+          </div>
         </div>
       )}
     </div>

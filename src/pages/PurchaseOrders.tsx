@@ -23,6 +23,7 @@ import { format } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { Panel } from '@/components/ui/panel';
 
 const STATUS_MAP: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
   pending: { label: 'Pendente', variant: 'outline' },
@@ -246,10 +247,10 @@ export default function PurchaseOrders() {
             )}
 
             {/* Table */}
-            <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
+            <Panel flush>
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/30">
+                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <TableHead className="w-10">
                       <Checkbox
                         checked={allFilteredSelected}
@@ -362,7 +363,7 @@ export default function PurchaseOrders() {
                   })}
                 </TableBody>
               </Table>
-            </div>
+            </Panel>
           </TabsContent>
 
           <TabsContent value="solados">
@@ -713,7 +714,7 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
           <div className="rounded-lg border overflow-hidden">
             <Table>
               <TableHeader>
-                <TableRow className="bg-muted/30">
+                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <TableHead>Material</TableHead>
                   <TableHead className="text-center">Estoque Atual</TableHead>
                   <TableHead className="text-center">Mín</TableHead>
@@ -1053,7 +1054,7 @@ function PendingSummaryDialog({ orderIds, orders, onClose }: { orderIds: string[
                   <div className="rounded-lg border overflow-hidden">
                     <Table>
                       <TableHeader>
-                        <TableRow className="bg-muted/30">
+                        <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                           <TableHead>Material</TableHead>
                           <TableHead>SKU</TableHead>
                           <TableHead className="text-center">Qtd Total</TableHead>

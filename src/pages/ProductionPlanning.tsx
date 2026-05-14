@@ -5,12 +5,13 @@
  import { CircleNotch as Loader2, Warning as AlertTriangle, Clock, TrendUp as TrendingUp, Scissors, PencilLine as PenLine, Hammer, Sparkle as Sparkles, Hand } from '@phosphor-icons/react';
  import { Progress } from "@/components/ui/progress";
  import { cn } from "@/lib/utils";
- import { 
-   Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
+ import {
+   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
  } from "@/components/ui/table";
  import { format, parseISO } from "date-fns";
  import { ptBR } from "date-fns/locale";
  import { EditorialPageHeader } from "@/components/layout/EditorialPageHeader";
+ import { Panel } from "@/components/ui/panel";
 
  const SECTOR_ICONS: Record<string, any> = {
    'Corte': Scissors,
@@ -90,28 +91,24 @@
        </div>
  
        {/* Timeline Section */}
-       <Card>
-         <CardHeader>
-           <CardTitle className="text-base flex items-center gap-2">
-             <Clock className="h-4 w-4" />
-             Datas Planejadas (Timeline de Produção)
-           </CardTitle>
-         </CardHeader>
-         <CardContent>
-           <div className="rounded-md border overflow-hidden">
+       <Panel
+         eyebrow="PRODUÇÃO · TIMELINE"
+         title="Datas Planejadas (Timeline de Produção)"
+         flush
+       >
              <Table>
-               <TableHeader className="bg-muted/50">
-                 <TableRow>
-                   <TableHead className="text-xs">OP / Ref</TableHead>
-                   <TableHead className="text-xs">Limite Compra</TableHead>
-                     <TableHead className="text-xs">Início Corte</TableHead>
-                    <TableHead className="text-xs">Início Forr.</TableHead>
-                    <TableHead className="text-xs">Silk</TableHead>
-                    <TableHead className="text-xs">Colagem</TableHead>
-                    <TableHead className="text-xs">Montagem</TableHead>
-                    <TableHead className="text-xs">Acabamento</TableHead>
-                    <TableHead className="text-xs">Exped.</TableHead>
-                   <TableHead className="text-xs">Entrega</TableHead>
+               <TableHeader>
+                 <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                   <TableHead>OP / Ref</TableHead>
+                   <TableHead>Limite Compra</TableHead>
+                     <TableHead>Início Corte</TableHead>
+                    <TableHead>Início Forr.</TableHead>
+                    <TableHead>Silk</TableHead>
+                    <TableHead>Colagem</TableHead>
+                    <TableHead>Montagem</TableHead>
+                    <TableHead>Acabamento</TableHead>
+                    <TableHead>Exped.</TableHead>
+                   <TableHead>Entrega</TableHead>
                  </TableRow>
                </TableHeader>
                <TableBody>
@@ -136,20 +133,12 @@
                  ))}
                </TableBody>
              </Table>
-           </div>
-         </CardContent>
-       </Card>
- 
+       </Panel>
+
        {/* Alerts & Risks */}
        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-         <Card>
-           <CardHeader>
-             <CardTitle className="text-sm flex items-center gap-2">
-               <AlertTriangle className="h-4 w-4 text-warning" />
-               Riscos de Materiais e Terceirizados
-             </CardTitle>
-           </CardHeader>
-           <CardContent className="space-y-3">
+         <Panel title="Riscos de Materiais e Terceirizados">
+           <div className="space-y-3">
              <div className="flex items-center justify-between p-2 border rounded-md text-xs bg-muted/20">
                <span>Itens Artesanais Pendentes</span>
                <Badge variant="secondary">Ver em Receitas</Badge>
@@ -158,8 +147,8 @@
                <span>Atrasos Críticos em Matéria-Prima</span>
                <Badge variant="destructive">{timeline.filter((r: any) => r.data_limite_compra < new Date().toISOString()).length} OPs</Badge>
              </div>
-           </CardContent>
-         </Card>
+           </div>
+         </Panel>
        </div>
      </div>
    );

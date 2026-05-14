@@ -3,11 +3,12 @@ import {
   Warning as AlertTriangle, Pen, Hand, Scissors, Stack as Layers,
   Calendar, Buildings, Package as Boxes,
 } from '@phosphor-icons/react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { EmptyState } from '@/components/ui/empty-state';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
 import {
   useSectorBottlenecks, useActiveBottlenecks, SECTOR_LABEL, SectorKey,
   type SectorBottleneck,
@@ -82,48 +83,34 @@ export default function BottlenecksPage() {
       />
 
       {/* KPI cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card className={cn('border-l-4', summary.critical > 0 ? 'border-l-red-500' : 'border-l-green-500')}>
-          <CardContent className="py-3 px-4">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Críticos</span>
-              <AlertTriangle className={cn('h-4 w-4', summary.critical > 0 ? 'text-red-600' : 'text-muted-foreground')} />
-            </div>
-            <div className="display text-2xl tabular-nums font-mono">{summary.critical}</div>
-            <p className="text-[10px] text-muted-foreground">utilização &gt; 150%</p>
-          </CardContent>
-        </Card>
-        <Card className={cn('border-l-4', summary.warning > 0 ? 'border-l-amber-500' : 'border-l-green-500')}>
-          <CardContent className="py-3 px-4">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Atenção</span>
-              <AlertTriangle className={cn('h-4 w-4', summary.warning > 0 ? 'text-amber-600' : 'text-muted-foreground')} />
-            </div>
-            <div className="display text-2xl tabular-nums font-mono">{summary.warning}</div>
-            <p className="text-[10px] text-muted-foreground">100% &lt; util &lt; 150%</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-3 px-4">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">OPs em gargalo</span>
-              <Boxes className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <div className="display text-2xl tabular-nums font-mono">{summary.totalOps}</div>
-            <p className="text-[10px] text-muted-foreground">total agregado</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-3 px-4">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Pares planejados</span>
-              <Boxes className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <div className="display text-2xl tabular-nums font-mono">{summary.totalPairs.toLocaleString('pt-BR')}</div>
-            <p className="text-[10px] text-muted-foreground">nas semanas com gargalo</p>
-          </CardContent>
-        </Card>
-      </div>
+      <StatGrid>
+        <StatCard
+          label="Críticos"
+          value={summary.critical}
+          icon={AlertTriangle}
+          tone={summary.critical > 0 ? 'destructive' : 'default'}
+          hint="utilização > 150%"
+        />
+        <StatCard
+          label="Atenção"
+          value={summary.warning}
+          icon={AlertTriangle}
+          tone={summary.warning > 0 ? 'warning' : 'default'}
+          hint="100% < util < 150%"
+        />
+        <StatCard
+          label="OPs em gargalo"
+          value={summary.totalOps}
+          icon={Boxes}
+          hint="total agregado"
+        />
+        <StatCard
+          label="Pares planejados"
+          value={summary.totalPairs.toLocaleString('pt-BR')}
+          icon={Boxes}
+          hint="nas semanas com gargalo"
+        />
+      </StatGrid>
 
       {/* Lista de gargalos ativos */}
       {active.length === 0 ? (
@@ -138,43 +125,40 @@ export default function BottlenecksPage() {
             const Icon = SECTOR_ICON[b.sector];
             const style = SEVERITY_STYLE[b.severity];
             return (
-              <Card key={`${b.sector}-${b.week_start}`} className={cn('border-l-4', style.border)}>
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="bg-muted p-2 rounded-lg">
-                        <Icon className={cn('h-5 w-5', style.icon)} />
-                      </div>
-                      <div>
-                        <CardTitle className="text-base">
-                          {SECTOR_LABEL[b.sector]} · Semana {formatWeekLabel(b.week_start)}
-                        </CardTitle>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {b.ops_count} OPs acumuladas · {b.total_pairs_planned.toLocaleString('pt-BR')} pares planejados ·
-                          capacidade total da semana: {b.total_capacity_week.toLocaleString('pt-BR')} pares
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className={cn(style.badge, 'text-[11px]')}>
-                        {b.utilization_pct}% utilizado
-                      </Badge>
-                      <Button
-                        size="sm"
-                        variant="default"
-                        className="h-7 text-[11px] gap-1"
-                        onClick={() => openBulkDialog(b)}
-                      >
-                        <Buildings className="h-3 w-3" />
-                        Encaminhar todas
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
+              <Panel
+                key={`${b.sector}-${b.week_start}`}
+                className={cn('border-l-4', style.border)}
+                title={
+                  <span className="flex items-center gap-3">
+                    <span className="bg-muted p-2 rounded-lg">
+                      <Icon className={cn('h-5 w-5', style.icon)} />
+                    </span>
+                    <span>{SECTOR_LABEL[b.sector]} · Semana {formatWeekLabel(b.week_start)}</span>
+                  </span>
+                }
+                subtitle={
+                  `${b.ops_count} OPs acumuladas · ${b.total_pairs_planned.toLocaleString('pt-BR')} pares planejados · capacidade total da semana: ${b.total_capacity_week.toLocaleString('pt-BR')} pares`
+                }
+                actions={
+                  <>
+                    <Badge variant="outline" className={cn(style.badge, 'text-[11px]')}>
+                      {b.utilization_pct}% utilizado
+                    </Badge>
+                    <Button
+                      size="sm"
+                      variant="default"
+                      className="h-7 text-[11px] gap-1"
+                      onClick={() => openBulkDialog(b)}
+                    >
+                      <Buildings className="h-3 w-3" />
+                      Encaminhar todas
+                    </Button>
+                  </>
+                }
+              >
                   <Table>
                     <TableHeader>
-                      <TableRow>
+                      <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                         <TableHead>OP</TableHead>
                         <TableHead>Modelo / Cor</TableHead>
                         <TableHead className="text-right">Pares</TableHead>
@@ -200,8 +184,7 @@ export default function BottlenecksPage() {
                       ))}
                     </TableBody>
                   </Table>
-                </CardContent>
-              </Card>
+              </Panel>
             );
           })}
         </div>
@@ -209,14 +192,10 @@ export default function BottlenecksPage() {
 
       {/* Tabela geral (todos os setores × semanas, incluindo não-gargalo) */}
       {all.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Carga por setor × semana (todos)</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <Panel title="Carga por setor × semana (todos)" flush>
             <Table>
               <TableHeader>
-                <TableRow>
+                <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <TableHead>Setor</TableHead>
                   <TableHead>Semana</TableHead>
                   <TableHead className="text-right">OPs</TableHead>
@@ -243,8 +222,7 @@ export default function BottlenecksPage() {
                 })}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
+        </Panel>
       )}
 
       {bulkBottleneck && (

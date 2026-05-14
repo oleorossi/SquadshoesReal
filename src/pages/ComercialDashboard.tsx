@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ShoppingCart, Users, TrendUp as TrendingUp, Medal as Award, CurrencyDollar as DollarSign, Package, Palette, CircleNotch as Loader2 } from '@phosphor-icons/react';
+import { ShoppingCart, TrendUp as TrendingUp, CurrencyDollar as DollarSign, Package, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { RefChip } from '@/components/ui/ref-chip';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -125,52 +126,30 @@ export default function ComercialDashboard() {
         </div>
 
         {/* KPIs */}
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="pt-5 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center"><DollarSign className="h-5 w-5 text-primary" /></div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Faturamento Total</p>
-                  <p className="text-lg font-bold">{fmt(data.totalRevenue)}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-5 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center"><ShoppingCart className="h-5 w-5 text-primary" /></div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Pedidos</p>
-                  <p className="text-lg font-bold">{data.totalOrders}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-5 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center"><Package className="h-5 w-5 text-primary" /></div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Pares Vendidos</p>
-                  <p className="text-lg font-bold">{data.totalPairs.toLocaleString('pt-BR')}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-5 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-destructive/10 flex items-center justify-center"><TrendingUp className="h-5 w-5 text-destructive" /></div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Pendentes</p>
-                  <p className="text-lg font-bold">{data.pendingOrders}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        <StatGrid>
+          <StatCard
+            label="Faturamento Total"
+            value={fmt(data.totalRevenue)}
+            icon={DollarSign}
+            tone="primary"
+          />
+          <StatCard
+            label="Pedidos"
+            value={data.totalOrders}
+            icon={ShoppingCart}
+          />
+          <StatCard
+            label="Pares Vendidos"
+            value={data.totalPairs.toLocaleString('pt-BR')}
+            icon={Package}
+          />
+          <StatCard
+            label="Pendentes"
+            value={data.pendingOrders}
+            icon={TrendingUp}
+            tone="destructive"
+          />
+        </StatGrid>
 
          {/* Section header: Rankings */}
          <div className="flex items-baseline gap-3 pt-2">
@@ -180,11 +159,7 @@ export default function ComercialDashboard() {
 
          <div className="grid sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6">
            {/* Top Colors */}
-           <Card>
-             <CardHeader className="pb-3">
-               <CardTitle className="text-base flex items-center gap-2"><Palette className="h-4 w-4 text-primary" /> Cores Mais Vendidas</CardTitle>
-             </CardHeader>
-             <CardContent>
+           <Panel title="Cores Mais Vendidas">
                <div className="space-y-3">
                  {data.topColors.length === 0 ? (
                    <p className="text-sm text-muted-foreground">Sem dados</p>
@@ -203,15 +178,10 @@ export default function ComercialDashboard() {
                    ))
                  )}
                </div>
-             </CardContent>
-           </Card>
- 
+           </Panel>
+
           {/* Top Groups */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2"><Award className="h-4 w-4 text-primary" /> Principais Grupos Econômicos</CardTitle>
-            </CardHeader>
-            <CardContent>
+          <Panel title="Principais Grupos Econômicos">
               <div className="space-y-3">
                 {data.topGroups.length === 0 ? <p className="text-sm text-muted-foreground">Sem dados</p> : data.topGroups.map((g, i) => (
                   <div key={g.name} className="flex items-center justify-between">
@@ -226,15 +196,10 @@ export default function ComercialDashboard() {
                   </div>
                 ))}
               </div>
-            </CardContent>
-          </Card>
+          </Panel>
 
           {/* Top Clients */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2"><Users className="h-4 w-4 text-primary" /> Top Clientes (Lojas)</CardTitle>
-            </CardHeader>
-            <CardContent>
+          <Panel title="Top Clientes (Lojas)">
               <div className="space-y-3">
                 {data.topClients.slice(0, 8).map((c, i) => (
                   <div key={c.name} className="flex items-center justify-between">
@@ -252,15 +217,10 @@ export default function ComercialDashboard() {
                   </div>
                 ))}
               </div>
-            </CardContent>
-          </Card>
+          </Panel>
 
           {/* Top References */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2"><Package className="h-4 w-4 text-primary" /> Modelos Mais Vendidos</CardTitle>
-            </CardHeader>
-            <CardContent>
+          <Panel title="Modelos Mais Vendidos">
               <div className="space-y-3">
                 {data.topRefs.slice(0, 8).map((r, i) => (
                   <div key={r.code} className="flex items-center justify-between">
@@ -278,15 +238,10 @@ export default function ComercialDashboard() {
                   </div>
                 ))}
               </div>
-            </CardContent>
-          </Card>
+          </Panel>
 
           {/* Top Representatives */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2"><TrendingUp className="h-4 w-4 text-primary" /> Performance Representantes</CardTitle>
-            </CardHeader>
-            <CardContent>
+          <Panel title="Performance Representantes">
               <div className="space-y-3">
                 {data.topReps.map((r, i) => (
                   <div key={r.name} className="flex items-center justify-between">
@@ -301,10 +256,9 @@ export default function ComercialDashboard() {
                   </div>
                 ))}
               </div>
-            </CardContent>
-          </Card>
+          </Panel>
         </div>
       </div>
-    
+
   );
 }

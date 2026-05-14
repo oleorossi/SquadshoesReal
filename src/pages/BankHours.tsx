@@ -32,6 +32,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EmptyState } from '@/components/ui/empty-state';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { useEmployees } from '@/hooks/useEmployees';
@@ -321,66 +323,35 @@ export default function BankHours() {
         />
 
         {/* KPIs */}
-        {/* R8 (audit): em telas sm (640-768px) o grid quebrava feio com 2 cards
-            por linha em viewport estreito. sm:grid-cols-3 + md:grid-cols-4 dá
-            um intermediário (2 → 3 → 4) que respeita a leitura. */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-          <Card className="slash-top">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Users className="h-3.5 w-3.5" />
-                <span className="eyebrow">Funcionários</span>
-              </div>
-              <div className="display text-3xl mt-2 tabular-nums">{summary?.total_employees ?? '—'}</div>
-              <div className="text-xs text-muted-foreground mt-1">em {summary?.sector_count ?? 0} setores</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
-                <TrendingUp className="h-3.5 w-3.5" />
-                <span className="eyebrow">Crédito total</span>
-              </div>
-              <div className="display text-3xl mt-2 tabular-nums text-emerald-600 dark:text-emerald-400">
-                {summary ? formatHours(summary.total_credit_min) : '—'}
-              </div>
-              <div className="text-xs text-muted-foreground mt-1">
-                {summary?.employees_with_credit ?? 0} func. positivo
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 text-primary">
-                <TrendingDown className="h-3.5 w-3.5" />
-                <span className="eyebrow">Débito total</span>
-              </div>
-              <div className="display text-3xl mt-2 tabular-nums text-primary">
-                {summary ? formatHours(summary.total_debit_min) : '—'}
-              </div>
-              <div className="text-xs text-muted-foreground mt-1">
-                {summary?.employees_with_debit ?? 0} func. negativo
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Scale className="h-3.5 w-3.5" />
-                <span className="eyebrow">Saldo líquido</span>
-              </div>
-              <div className={cn('display text-3xl mt-2 tabular-nums', summary && balanceClass(summary.total_balance_min))}>
-                {summary ? formatHours(summary.total_balance_min) : '—'}
-              </div>
-              <div className="text-xs text-muted-foreground mt-1">
-                {summary?.employees_balanced ?? 0} equilibrados
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        <StatGrid>
+          <StatCard
+            label="Funcionários"
+            value={summary?.total_employees ?? '—'}
+            hint={`em ${summary?.sector_count ?? 0} setores`}
+            icon={Users}
+          />
+          <StatCard
+            label="Crédito total"
+            value={summary ? formatHours(summary.total_credit_min) : '—'}
+            hint={`${summary?.employees_with_credit ?? 0} func. positivo`}
+            tone="success"
+            icon={TrendingUp}
+          />
+          <StatCard
+            label="Débito total"
+            value={summary ? formatHours(summary.total_debit_min) : '—'}
+            hint={`${summary?.employees_with_debit ?? 0} func. negativo`}
+            tone="primary"
+            icon={TrendingDown}
+          />
+          <StatCard
+            label="Saldo líquido"
+            value={summary ? formatHours(summary.total_balance_min) : '—'}
+            hint={`${summary?.employees_balanced ?? 0} equilibrados`}
+            tone={summary && summary.total_balance_min > 0 ? 'success' : summary && summary.total_balance_min < 0 ? 'primary' : 'default'}
+            icon={Scale}
+          />
+        </StatGrid>
 
         {/* Tabs */}
         <Tabs defaultValue="employees" className="space-y-4">
@@ -395,40 +366,39 @@ export default function BankHours() {
 
           {/* Tab Funcionários */}
           <TabsContent value="employees" className="space-y-3">
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <CardTitle className="text-base">Saldo por funcionário</CardTitle>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <select
-                      value={sectorFilter}
-                      onChange={e => setSectorFilter(e.target.value)}
-                      className="h-9 px-3 rounded-md border bg-background text-sm"
-                      aria-label="Filtrar por setor"
-                    >
-                      <option value="all">Todos os setores</option>
-                      {(sectorsQ.data || []).map(s => (
-                        <option key={s.department || '__none__'} value={s.department || '__none__'}>
-                          {s.department || 'Sem setor'} ({s.employee_count})
-                        </option>
-                      ))}
-                    </select>
-                    {/* R6 (audit): input de busca em mobile (<400px) extrapolava
-                        a largura disponível e quebrava o card. w-full em mobile,
-                        w-56 em sm+ — permite encolher sem espremer o select. */}
-                    <div className="relative w-full sm:w-auto">
-                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                      <Input
-                        value={search}
-                        onChange={e => setSearch(e.target.value)}
-                        placeholder="Buscar funcionário..."
-                        className="pl-8 h-9 w-full sm:w-56"
-                      />
-                    </div>
+            <Panel
+              title="Saldo por funcionário"
+              actions={
+                <div className="flex items-center gap-2 flex-wrap">
+                  <select
+                    value={sectorFilter}
+                    onChange={e => setSectorFilter(e.target.value)}
+                    className="h-9 px-3 rounded-md border bg-background text-sm"
+                    aria-label="Filtrar por setor"
+                  >
+                    <option value="all">Todos os setores</option>
+                    {(sectorsQ.data || []).map(s => (
+                      <option key={s.department || '__none__'} value={s.department || '__none__'}>
+                        {s.department || 'Sem setor'} ({s.employee_count})
+                      </option>
+                    ))}
+                  </select>
+                  {/* R6 (audit): input de busca em mobile (<400px) extrapolava
+                      a largura disponível e quebrava o card. w-full em mobile,
+                      w-56 em sm+ — permite encolher sem espremer o select. */}
+                  <div className="relative w-full sm:w-auto">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                    <Input
+                      value={search}
+                      onChange={e => setSearch(e.target.value)}
+                      placeholder="Buscar funcionário..."
+                      className="pl-8 h-9 w-full sm:w-56"
+                    />
                   </div>
                 </div>
-              </CardHeader>
-              <CardContent className="p-0">
+              }
+              flush
+            >
                 {employeesQ.isLoading ? (
                   /* R13 (audit): skeleton da lista de funcionários — dá noção
                       visual de qtd antes do query terminar, evita flash de altura. */
@@ -491,17 +461,12 @@ export default function BankHours() {
                     ))}
                   </div>
                 )}
-              </CardContent>
-            </Card>
+            </Panel>
           </TabsContent>
 
           {/* Tab Setores */}
           <TabsContent value="sectors" className="space-y-3">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Saldo por setor</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
+            <Panel title="Saldo por setor" flush>
                 {sectorsQ.isLoading ? (
                   <div className="flex items-center justify-center py-12">
                     <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -548,8 +513,7 @@ export default function BankHours() {
                     ))}
                   </div>
                 )}
-              </CardContent>
-            </Card>
+            </Panel>
           </TabsContent>
         </Tabs>
 

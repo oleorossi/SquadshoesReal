@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
 import { Scissors, Stack as Layers, Hammer, Sparkle as Sparkles, Warning as AlertTriangle, TrendUp as TrendingUp, Hand, Pen, Printer, Flame, Footprints, Package } from '@phosphor-icons/react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -505,24 +507,22 @@ export default function CapacityPlanning() {
         <TabsContent value="sectors" className="space-y-4 mt-4">
 
           {/* Tabela resumo */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                Resumo de Capacidade
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
+          <Panel
+            eyebrow="PRODUÇÃO · CAPACIDADE"
+            title="Resumo de Capacidade"
+            subtitle="Fila, capacidade diária e ocupação por setor"
+            flush
+          >
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/30">
-                    <TableHead className="text-[11px]">Setor</TableHead>
-                    <TableHead className="text-[11px] text-right">OPs Ativas</TableHead>
-                    <TableHead className="text-[11px] text-right">Fila (pares)</TableHead>
-                    <TableHead className="text-[11px] text-right">Cap./Dia</TableHead>
-                    <TableHead className="text-[11px] text-right">Dias p/ Zerar</TableHead>
-                    <TableHead className="text-[11px]">Ocupação (semana)</TableHead>
-                    <TableHead className="text-[11px]">Status</TableHead>
+                  <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                    <TableHead>Setor</TableHead>
+                    <TableHead className="text-right">OPs Ativas</TableHead>
+                    <TableHead className="text-right">Fila (pares)</TableHead>
+                    <TableHead className="text-right">Cap./Dia</TableHead>
+                    <TableHead className="text-right">Dias p/ Zerar</TableHead>
+                    <TableHead>Ocupação (semana)</TableHead>
+                    <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -580,8 +580,7 @@ export default function CapacityPlanning() {
                   })}
                 </TableBody>
               </Table>
-            </CardContent>
-          </Card>
+          </Panel>
 
           {/* Gráficos por setor */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -597,19 +596,15 @@ export default function CapacityPlanning() {
                 .slice(0, 10);
 
               return (
-                <Card key={kpi.key}>
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-sm flex items-center gap-2">
-                        <kpi.icon className="h-4 w-4 text-muted-foreground" />
-                        {kpi.label}
-                      </CardTitle>
-                      <span className="text-[10px] text-muted-foreground">
-                        {kpi.avgCap} pares/dia (média)
-                      </span>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
+                <Panel
+                  key={kpi.key}
+                  title={kpi.label}
+                  actions={
+                    <span className="text-[10px] text-muted-foreground">
+                      {kpi.avgCap} pares/dia (média)
+                    </span>
+                  }
+                >
                     <div className="h-[220px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={chartData} layout="vertical" margin={{ left: 4, right: 36 }}>
@@ -636,15 +631,17 @@ export default function CapacityPlanning() {
                     <p className="text-[10px] text-muted-foreground mt-1 text-center">
                       — linha vermelha = capacidade/dia ({kpi.avgCap} pares)
                     </p>
-                  </CardContent>
-                </Card>
+                </Panel>
               );
             })}
 
             {sectorKPIs.every(k => k.inSector.length === 0) && (
-              <div className="lg:col-span-2 py-12 text-center text-muted-foreground text-sm">
-                Nenhuma OP com etapas de produção registradas.
-                Inicie setores nas OPs para visualizar a carga por setor.
+              <div className="lg:col-span-2">
+                <EmptyState
+                  icon={TrendingUp}
+                  title="Nenhuma OP com etapas registradas"
+                  description="Inicie setores nas OPs para visualizar a carga por setor."
+                />
               </div>
             )}
           </div>
@@ -672,14 +669,10 @@ export default function CapacityPlanning() {
           </div>
 
           {/* Gráfico consolidado */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Demanda por Setor — Média Diária (pares/dia)</CardTitle>
-              <p className="text-[10px] text-muted-foreground">
-                Calculado a partir de OPs com data de entrega planejada + lead times das fichas técnicas
-              </p>
-            </CardHeader>
-            <CardContent>
+          <Panel
+            title="Demanda por Setor — Média Diária (pares/dia)"
+            subtitle="Calculado a partir de OPs com data de entrega planejada + lead times das fichas técnicas"
+          >
               <div className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={timelineData} margin={{ bottom: 5 }}>
@@ -694,22 +687,14 @@ export default function CapacityPlanning() {
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-            </CardContent>
-          </Card>
+          </Panel>
 
           {/* Gráficos individuais: demanda vs capacidade */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {SECTORS.map(sc => {
               const kpiCap = sectorKPIs.find(k => k.key === sc.key)?.avgCap ?? sc.defaultCap;
               return (
-              <Card key={sc.key}>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <sc.icon className="h-4 w-4 text-muted-foreground" />
-                    {sc.label} — Demanda vs Capacidade
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
+              <Panel key={sc.key} title={`${sc.label} — Demanda vs Capacidade`}>
                   <div className="h-[200px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <ComposedChart data={timelineData}>
@@ -733,8 +718,7 @@ export default function CapacityPlanning() {
                       </ComposedChart>
                     </ResponsiveContainer>
                   </div>
-                </CardContent>
-              </Card>
+              </Panel>
               );
             })}
           </div>
@@ -785,19 +769,18 @@ export default function CapacityPlanning() {
             </div>
           )}
 
-          <Card>
-            <CardContent className="p-0">
+          <Panel flush>
               <div className="max-h-[520px] overflow-y-auto">
                 <Table>
                   <TableHeader>
-                    <TableRow className="bg-muted/30">
-                      <TableHead className="text-[11px]">OP</TableHead>
-                      <TableHead className="text-[11px]">Referência / Cor</TableHead>
-                      <TableHead className="text-[11px] text-right">Qtd</TableHead>
-                      <TableHead className="text-[11px]">Setor Atual</TableHead>
-                      <TableHead className="text-[11px]">Status OP</TableHead>
-                      <TableHead className="text-[11px]">Entrega Planejada</TableHead>
-                      <TableHead className="text-[11px] text-right">Cap/Dia</TableHead>
+                    <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                      <TableHead>OP</TableHead>
+                      <TableHead>Referência / Cor</TableHead>
+                      <TableHead className="text-right">Qtd</TableHead>
+                      <TableHead>Setor Atual</TableHead>
+                      <TableHead>Status OP</TableHead>
+                      <TableHead>Entrega Planejada</TableHead>
+                      <TableHead className="text-right">Cap/Dia</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -880,8 +863,7 @@ export default function CapacityPlanning() {
                   </TableBody>
                 </Table>
               </div>
-            </CardContent>
-          </Card>
+          </Panel>
         </TabsContent>
       </Tabs>
     </div>

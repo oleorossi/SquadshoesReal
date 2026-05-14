@@ -3,6 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -120,13 +122,14 @@ export default function MDFe() {
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Carregando…</p>
       ) : items.length === 0 ? (
-        <Card>
-          <CardContent className="py-10 text-center space-y-2">
-            <FileText className="h-10 w-10 mx-auto text-muted-foreground/30" />
-            <p className="text-sm text-muted-foreground">Nenhum MDF-e emitido</p>
-            <Button variant="outline" size="sm" onClick={() => setCreating(true)}>Criar primeiro rascunho</Button>
-          </CardContent>
-        </Card>
+        <Panel flush>
+          <EmptyState
+            icon={FileText}
+            title="Nenhum MDF-e emitido"
+            description="Crie o primeiro rascunho de Manifesto Eletrônico de Documentos Fiscais."
+            action={<Button variant="outline" size="sm" onClick={() => setCreating(true)}>Criar primeiro rascunho</Button>}
+          />
+        </Panel>
       ) : (
         <div className="space-y-2">
           {items.map((r: any) => (

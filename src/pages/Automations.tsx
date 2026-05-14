@@ -16,6 +16,9 @@ import { Lightning as Zap, Plus, Play, Trash as Trash2, PencilSimple as Pencil, 
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
   useAutomationWorkflows,
   useAddWorkflow,
@@ -317,36 +320,12 @@ export default function Automations() {
       )}
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Total</p>
-            <p className="display text-2xl tabular-nums font-mono mt-1">{workflows.length}</p>
-            <p className="text-[11px] text-muted-foreground">automações</p>
-          </CardContent>
-        </Card>
-        <Card className="border-success/30 bg-success/5">
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Ativas</p>
-            <p className="display text-2xl tabular-nums font-mono mt-1 text-success">{activeCount}</p>
-            <p className="text-[11px] text-muted-foreground">habilitadas</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Execuções</p>
-            <p className="display text-2xl tabular-nums font-mono mt-1">{totalExecutions}</p>
-            <p className="text-[11px] text-muted-foreground">total acumulado</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Taxa de Sucesso</p>
-            <p className="display text-2xl tabular-nums font-mono mt-1">{avgSuccess}%</p>
-            <p className="text-[11px] text-muted-foreground">média geral</p>
-          </CardContent>
-        </Card>
-      </div>
+      <StatGrid>
+        <StatCard label="Total" value={workflows.length} hint="automações" />
+        <StatCard label="Ativas" value={activeCount} hint="habilitadas" tone="success" />
+        <StatCard label="Execuções" value={totalExecutions} hint="total acumulado" />
+        <StatCard label="Taxa de Sucesso" value={avgSuccess} unit="%" hint="média geral" />
+      </StatGrid>
 
       {/* Tabs */}
       <Tabs defaultValue="workflows" className="space-y-4">
@@ -479,36 +458,35 @@ export default function Automations() {
             })}
 
             {!isLoading && filtered.length === 0 && (
-              <Card>
-                <CardContent className="py-12 text-center text-muted-foreground">
-                  <Zap className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                  <p className="text-sm">Nenhuma automação encontrada</p>
-                  <Button variant="outline" className="mt-3 gap-2 text-xs" onClick={openNew}>
-                    <Plus className="h-3.5 w-3.5" />Criar primeira automação
-                  </Button>
-                </CardContent>
-              </Card>
+              <Panel flush>
+                <EmptyState
+                  icon={Zap}
+                  title="Nenhuma automação encontrada"
+                  action={
+                    <Button variant="outline" className="gap-2 text-xs" onClick={openNew}>
+                      <Plus className="h-3.5 w-3.5" />Criar primeira automação
+                    </Button>
+                  }
+                />
+              </Panel>
             )}
           </div>
         </TabsContent>
 
         {/* ── History tab ────────────────────────────────────────────────────── */}
         <TabsContent value="history" className="space-y-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Activity className="h-4 w-4" />
-                Histórico de Execuções
-                <Badge variant="secondary" className="text-xs font-mono ml-auto">{executions.length} registros</Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
+          <Panel
+            eyebrow="SISTEMA · AUTOMAÇÕES"
+            title="Histórico de Execuções"
+            subtitle={`${executions.length} registros`}
+            flush
+          >
               {executions.length === 0 ? (
-                <div className="py-10 text-center text-muted-foreground text-sm">
-                  <Clock className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                  Nenhuma execução registrada ainda.<br />
-                  <span className="text-xs">Use o botão "Executar" em qualquer automação para criar o primeiro registro.</span>
-                </div>
+                <EmptyState
+                  icon={Clock}
+                  title="Nenhuma execução registrada ainda"
+                  description='Use o botão "Executar" em qualquer automação para criar o primeiro registro.'
+                />
               ) : (
                 <ScrollArea className="h-[420px]">
                   <div className="divide-y">
@@ -548,8 +526,7 @@ export default function Automations() {
                   </div>
                 </ScrollArea>
               )}
-            </CardContent>
-          </Card>
+          </Panel>
         </TabsContent>
       </Tabs>
 

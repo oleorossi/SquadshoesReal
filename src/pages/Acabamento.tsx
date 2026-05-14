@@ -7,6 +7,8 @@ import { Printer, Funnel as Filter, CheckSquare, Stack as Layers } from '@phosph
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -491,42 +493,41 @@ export default function Acabamento() {
             return (so as any)?.client_name || 'Sem Cliente';
           }));
           return (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <Card className={hasSelection ? 'ring-2 ring-primary/30' : ''}>
-                <CardContent className="p-4 text-center">
-                  <p className="display text-2xl tabular-nums text-primary">{statsOrders.length}</p>
-                  <p className="text-xs text-muted-foreground">{hasSelection ? 'OPs Selecionadas' : 'OPs p/ Acabamento'}</p>
-                </CardContent>
-              </Card>
-              <Card className={hasSelection ? 'ring-2 ring-primary/30' : ''}>
-                <CardContent className="p-4 text-center">
-                  <p className="display text-2xl tabular-nums text-foreground">{totalPares}</p>
-                  <p className="text-xs text-muted-foreground">Total de Pares</p>
-                </CardContent>
-              </Card>
-              <Card className={hasSelection ? 'ring-2 ring-primary/30' : ''}>
-                <CardContent className="p-4 text-center">
-                  <p className="display text-2xl tabular-nums text-foreground">{clientSet.size}</p>
-                  <p className="text-xs text-muted-foreground">Clientes</p>
-                </CardContent>
-              </Card>
+            <StatGrid>
+              <StatCard
+                label={hasSelection ? 'OPs Selecionadas' : 'OPs p/ Acabamento'}
+                value={statsOrders.length}
+                tone="primary"
+                className={hasSelection ? 'ring-2 ring-primary/30' : ''}
+              />
+              <StatCard
+                label="Total de Pares"
+                value={totalPares}
+                className={hasSelection ? 'ring-2 ring-primary/30' : ''}
+              />
+              <StatCard
+                label="Clientes"
+                value={clientSet.size}
+                className={hasSelection ? 'ring-2 ring-primary/30' : ''}
+              />
               {hasSelection && (
-                <Card className="ring-2 ring-primary/30">
-                  <CardContent className="p-4 text-center">
-                    <p className="display text-2xl tabular-nums text-muted-foreground">{acabamentoOrders.length - statsOrders.length}</p>
-                    <p className="text-xs text-muted-foreground">Não selecionadas</p>
-                  </CardContent>
-                </Card>
+                <StatCard
+                  label="Não selecionadas"
+                  value={acabamentoOrders.length - statsOrders.length}
+                  className="ring-2 ring-primary/30"
+                />
               )}
-            </div>
+            </StatGrid>
           );
         })()}
 
         {/* Orders list */}
         {acabamentoOrders.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground text-sm">
-            Nenhuma OP com acabamento pendente.
-          </div>
+          <EmptyState
+            icon={Layers}
+            title="Nenhuma OP com acabamento pendente"
+            description="Não há ordens de produção aguardando acabamento no momento."
+          />
         ) : (
           <div className="space-y-3">
             <div className="flex items-center gap-2 px-1">
@@ -628,12 +629,12 @@ export default function Acabamento() {
                           <div className="overflow-x-auto">
                             <Table>
                               <TableHeader>
-                                <TableRow>
-                                  <TableHead className="text-xs"></TableHead>
+                                <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                                  <TableHead></TableHead>
                                   {activeSizes.map(s => (
-                                    <TableHead key={s} className="text-xs text-center w-14">{s}</TableHead>
+                                    <TableHead key={s} className="text-center w-14">{s}</TableHead>
                                   ))}
-                                  <TableHead className="text-xs text-center font-bold bg-muted">Total</TableHead>
+                                  <TableHead className="text-center bg-muted">Total</TableHead>
                                 </TableRow>
                               </TableHeader>
                               <TableBody>

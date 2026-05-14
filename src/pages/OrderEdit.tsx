@@ -7,7 +7,7 @@ import { useColorVariants } from '@/hooks/useColorVariants';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { SignedImage } from '@/components/ui/signed-image';
-import { Card, CardContent } from '@/components/ui/card';
+import { Panel } from '@/components/ui/panel';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -187,9 +187,7 @@ export default function OrderEdit() {
 
           <TabsContent value="production" className="space-y-6">
             {/* Summary Card */}
-            <Card>
-              <CardContent className="p-6 space-y-4">
-                <h3 className="text-lg font-semibold">Resumo</h3>
+            <Panel eyebrow="PEDIDOS · EDIÇÃO" title="Resumo">
                 <div className="flex gap-6">
                   {/* Product Image */}
                   <div className="shrink-0">
@@ -248,14 +246,15 @@ export default function OrderEdit() {
                     )}
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+            </Panel>
 
             {/* Sector Completion Buttons */}
-            <Card>
-              <CardContent className="p-6 space-y-4">
-                <h3 className="text-lg font-semibold">Finalizar Setores</h3>
-                <p className="text-sm text-muted-foreground">Clique em um setor para marcar todas as OPs como finalizadas naquele setor.</p>
+            <Panel
+              eyebrow="PEDIDOS · EDIÇÃO"
+              title="Finalizar Setores"
+              subtitle="Clique em um setor para marcar todas as OPs como finalizadas naquele setor."
+              bodyClassName="space-y-4"
+            >
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {SECTORS.map(sector => {
                     const status = getSectorStatus(sector.name);
@@ -282,13 +281,10 @@ export default function OrderEdit() {
                     );
                   })}
                 </div>
-              </CardContent>
-            </Card>
+            </Panel>
 
             {/* Orders List */}
-            <Card>
-              <CardContent className="p-6 space-y-4">
-                <h3 className="text-lg font-semibold">Ordens de Produção</h3>
+            <Panel eyebrow="PEDIDOS · EDIÇÃO" title="Ordens de Produção">
                 <div className="space-y-3">
                   {displayOrders.map(order => {
                     const ref = references.find(r => r.id === order.reference_id);
@@ -355,11 +351,11 @@ export default function OrderEdit() {
                           <div className="overflow-x-auto">
                             <Table>
                               <TableHeader>
-                                <TableRow className="bg-muted/30">
+                                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                                   {activeSizes.map(s => (
-                                    <TableHead key={s} className="text-center text-xs px-2">{s}</TableHead>
+                                    <TableHead key={s} className="text-center px-2">{s}</TableHead>
                                   ))}
-                                  <TableHead className="text-center text-xs px-2 font-bold">Total</TableHead>
+                                  <TableHead className="text-center px-2">Total</TableHead>
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
@@ -399,8 +395,7 @@ export default function OrderEdit() {
                     );
                   })}
                 </div>
-              </CardContent>
-            </Card>
+            </Panel>
           </TabsContent>
 
           <TabsContent value="transport">

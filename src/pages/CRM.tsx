@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,6 +14,9 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 
 const CHANNEL_ICONS: Record<string, any> = {
   ligacao: Phone, email: Mail, whatsapp: MessageSquare, sms: MessageSquare,
@@ -194,34 +196,30 @@ export default function CRM() {
         </DialogContent>
       </Dialog>
 
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-        <Card>
-          <CardContent className="p-3">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Interações 30d</p>
-            <p className="text-2xl font-bold tracking-tight">{interactions.length}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-3">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Inativos &gt;90d</p>
-            <p className="text-2xl font-bold tracking-tight text-amber-600">{inactive.length}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-3">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Aniversariantes</p>
-            <p className="text-2xl font-bold tracking-tight">{birthdays.length}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-3">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">NPS Score</p>
-            <p className={`text-2xl font-bold tracking-tight ${
-              npsScore >= 70 ? 'text-emerald-600' : npsScore >= 30 ? 'text-amber-600' : 'text-destructive'
-            }`}>{npsScore}</p>
-          </CardContent>
-        </Card>
-      </div>
+      <StatGrid>
+        <StatCard
+          label="Interações 30d"
+          value={interactions.length}
+          hint="registradas"
+        />
+        <StatCard
+          label="Inativos >90d"
+          value={inactive.length}
+          hint="sem pedido"
+          tone="warning"
+        />
+        <StatCard
+          label="Aniversariantes"
+          value={birthdays.length}
+          hint="este mês"
+        />
+        <StatCard
+          label="NPS Score"
+          value={npsScore}
+          hint="últimas respostas"
+          tone={npsScore >= 70 ? 'success' : npsScore >= 30 ? 'warning' : 'destructive'}
+        />
+      </StatGrid>
 
       <Tabs defaultValue="interactions">
         <TabsList>
@@ -233,11 +231,14 @@ export default function CRM() {
         </TabsList>
 
         <TabsContent value="interactions">
-          <Card>
-            <CardContent className="p-0">
-              {interactions.length === 0 ? (
-                <p className="p-6 text-sm text-muted-foreground text-center">Sem interações registradas</p>
-              ) : (
+          <Panel flush>
+            {interactions.length === 0 ? (
+              <EmptyState
+                icon={MessageSquare}
+                title="Sem interações registradas"
+                description="Registre a primeira interação com um cliente."
+              />
+            ) : (
                 <div className="divide-y">
                   {interactions.map((i: any) => {
                     const Icon = CHANNEL_ICONS[i.interaction_type] || Calendar;
@@ -257,16 +258,18 @@ export default function CRM() {
                   })}
                 </div>
               )}
-            </CardContent>
-          </Card>
+          </Panel>
         </TabsContent>
 
         <TabsContent value="inactive">
-          <Card>
-            <CardContent className="p-0">
-              {inactive.length === 0 ? (
-                <p className="p-6 text-sm text-muted-foreground text-center">Nenhum cliente inativo &gt;90 dias</p>
-              ) : (
+          <Panel flush>
+            {inactive.length === 0 ? (
+              <EmptyState
+                icon={AlertCircle}
+                title="Nenhum cliente inativo >90 dias"
+                description="Toda a carteira teve pedidos recentes."
+              />
+            ) : (
                 <div className="divide-y">
                   {inactive.map((c: any) => (
                     <div key={c.client_id} className="p-3 flex items-center gap-3 text-sm">
@@ -284,16 +287,17 @@ export default function CRM() {
                   ))}
                 </div>
               )}
-            </CardContent>
-          </Card>
+          </Panel>
         </TabsContent>
 
         <TabsContent value="birthdays">
-          <Card>
-            <CardContent className="p-0">
-              {birthdays.length === 0 ? (
-                <p className="p-6 text-sm text-muted-foreground text-center">Sem aniversariantes este mês</p>
-              ) : (
+          <Panel flush>
+            {birthdays.length === 0 ? (
+              <EmptyState
+                icon={Cake}
+                title="Sem aniversariantes este mês"
+              />
+            ) : (
                 <div className="divide-y">
                   {birthdays.map((b: any) => (
                     <div key={b.client_id} className="p-3 flex items-center gap-3 text-sm">
@@ -307,16 +311,18 @@ export default function CRM() {
                   ))}
                 </div>
               )}
-            </CardContent>
-          </Card>
+          </Panel>
         </TabsContent>
 
         <TabsContent value="repurchase">
-          <Card>
-            <CardContent className="p-0">
-              {repurchase.length === 0 ? (
-                <p className="p-6 text-sm text-muted-foreground text-center">Sem dados de recompra (precisa &ge; 2 pedidos por cliente)</p>
-              ) : (
+          <Panel flush>
+            {repurchase.length === 0 ? (
+              <EmptyState
+                icon={Repeat}
+                title="Sem dados de recompra"
+                description="É necessário ≥ 2 pedidos por cliente para projetar o ciclo."
+              />
+            ) : (
                 <div className="divide-y">
                   {repurchase.map((r: any) => (
                     <div key={r.client_id} className="p-3 flex items-center gap-3 text-sm">
@@ -337,16 +343,17 @@ export default function CRM() {
                   ))}
                 </div>
               )}
-            </CardContent>
-          </Card>
+          </Panel>
         </TabsContent>
 
         <TabsContent value="nps">
-          <Card>
-            <CardContent className="p-0">
-              {nps.length === 0 ? (
-                <p className="p-6 text-sm text-muted-foreground text-center">Nenhuma resposta NPS coletada ainda</p>
-              ) : (
+          <Panel flush>
+            {nps.length === 0 ? (
+              <EmptyState
+                icon={MessageSquare}
+                title="Nenhuma resposta NPS coletada ainda"
+              />
+            ) : (
                 <div className="divide-y">
                   {nps.map((n: any) => (
                     <div key={n.id} className="p-3 flex items-center gap-3 text-sm">
@@ -364,8 +371,7 @@ export default function CRM() {
                   ))}
                 </div>
               )}
-            </CardContent>
-          </Card>
+          </Panel>
         </TabsContent>
       </Tabs>
     </div>

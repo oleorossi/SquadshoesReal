@@ -16,6 +16,8 @@ import { Switch } from '@/components/ui/switch';
 import SupplierPanel from '@/components/groups/SupplierPanel';
 import GroupEditDialog from '@/components/groups/GroupEditDialog';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 
 export default function Groups() {
   const { data: groups = [], isLoading, isError } = useGroups();
@@ -85,26 +87,33 @@ export default function Groups() {
           }
         />
 
-        <div className="rounded-lg border bg-card overflow-hidden">
+        {groups.length === 0 ? (
+          <Panel flush>
+            <EmptyState
+              icon={FolderOpen}
+              title="Nenhum grupo cadastrado"
+              description="Crie o primeiro grupo de produtos para organizar fornecedores e materiais."
+              action={<Button onClick={openAdd} className="gap-2"><Plus className="h-4 w-4" />Novo Grupo</Button>}
+            />
+          </Panel>
+        ) : (
+        <Panel
+          eyebrow="ENGENHARIA · GRUPOS"
+          title="Grupos de Produtos"
+          subtitle={`${groups.length} ${groups.length === 1 ? 'grupo' : 'grupos'}`}
+          flush
+        >
           <Table>
             <TableHeader>
-              <TableRow className="bg-muted/50 hover:bg-muted/50">
-                <TableHead className="font-semibold">Nome</TableHead>
-                <TableHead className="font-semibold">Descrição</TableHead>
-                <TableHead className="font-semibold text-center">Produtos</TableHead>
-                <TableHead className="font-semibold text-right">Ações</TableHead>
+              <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                <TableHead>Nome</TableHead>
+                <TableHead>Descrição</TableHead>
+                <TableHead className="text-center">Produtos</TableHead>
+                <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {groups.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center py-12 text-muted-foreground">
-                    <FolderOpen className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                    Nenhum grupo cadastrado
-                  </TableCell>
-                </TableRow>
-              ) : (
-                groups.map(g => {
+              {groups.map(g => {
                   const isExpanded = expandedGroup === g.id;
                   return (
                     <Collapsible key={g.id} asChild open={isExpanded} onOpenChange={() => setExpandedGroup(isExpanded ? null : g.id)}>
@@ -139,11 +148,11 @@ export default function Groups() {
                       </>
                     </Collapsible>
                   );
-                })
-              )}
+                })}
             </TableBody>
           </Table>
-        </div>
+        </Panel>
+        )}
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setEditing(null); setForm(emptyForm); } }}>

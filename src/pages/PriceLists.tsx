@@ -11,6 +11,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, CurrencyDollar as DollarSign, Calendar, Tag, PencilSimple as Pencil } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -132,12 +134,14 @@ export default function PriceLists() {
       {isLoading && <p className="text-sm text-muted-foreground">Carregando...</p>}
 
       {!isLoading && lists.length === 0 && (
-        <Card>
-          <CardContent className="py-10 text-center space-y-2">
-            <DollarSign className="h-10 w-10 mx-auto text-muted-foreground/30" />
-            <p className="text-sm text-muted-foreground">Nenhuma tabela de preço cadastrada</p>
-          </CardContent>
-        </Card>
+        <Panel flush>
+          <EmptyState
+            icon={DollarSign}
+            title="Nenhuma tabela de preço cadastrada"
+            description="Crie a primeira tabela de preços por canal, região ou cliente."
+            action={<Button onClick={openNew} className="gap-2"><Plus className="h-4 w-4" />Nova Tabela</Button>}
+          />
+        </Panel>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">

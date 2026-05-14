@@ -26,6 +26,8 @@ import { ColorsMultiSelect } from '@/components/references/ColorsMultiSelect';
 import { SHOE_CATEGORIES } from '@/lib/shoeCategories';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { RefChip } from '@/components/ui/ref-chip';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 const REF_STATUSES = ['Ativo', 'Em desenvolvimento', 'Descontinuado'] as const;
 
 const COMPONENT_CATEGORIES = [
@@ -155,12 +157,14 @@ export default function References({ embedded }: { embedded?: boolean } = {}) {
         />
 
         {references.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-              <BookOpen className="h-10 w-10 mb-3 opacity-50" />
-              <p>Nenhuma referência cadastrada</p>
-            </CardContent>
-          </Card>
+          <Panel flush>
+            <EmptyState
+              icon={BookOpen}
+              title="Nenhuma referência cadastrada"
+              description="Cadastre o primeiro modelo de calçado com ficha técnica e custos."
+              action={<Button onClick={openAdd} className="gap-2"><Plus className="h-4 w-4" />Nova Referência</Button>}
+            />
+          </Panel>
         ) : (
           <div className="space-y-3">
             {references.map((ref) => (
@@ -756,17 +760,17 @@ function MaterialsList({ referenceId, imageUrl, shoeCategory }: { referenceId: s
                   </div>
                   <Table>
                     <TableHeader>
-                      <TableRow className="bg-muted/10">
-                        <TableHead className="text-[11px]">Material</TableHead>
-                        <TableHead className="text-[11px]">SKU</TableHead>
-                        <TableHead className="text-[11px]">Cor</TableHead>
-                        <TableHead className="text-[11px]">Dimensão</TableHead>
-                        <TableHead className="text-[11px]">Peso</TableHead>
-                        <TableHead className="text-[11px]">Fornecedor</TableHead>
-                        <TableHead className="text-[11px] text-right">Consumo/par</TableHead>
-                        <TableHead className="text-[11px] text-right">Custo/par</TableHead>
-                        <TableHead className="text-[11px] text-right">Estoque</TableHead>
-                        <TableHead className="text-[11px] w-10"></TableHead>
+                      <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                        <TableHead>Material</TableHead>
+                        <TableHead>SKU</TableHead>
+                        <TableHead>Cor</TableHead>
+                        <TableHead>Dimensão</TableHead>
+                        <TableHead>Peso</TableHead>
+                        <TableHead>Fornecedor</TableHead>
+                        <TableHead className="text-right">Consumo/par</TableHead>
+                        <TableHead className="text-right">Custo/par</TableHead>
+                        <TableHead className="text-right">Estoque</TableHead>
+                        <TableHead className="w-10"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -829,13 +833,13 @@ function MaterialsList({ referenceId, imageUrl, shoeCategory }: { referenceId: s
                   </div>
                   <Table>
                     <TableHeader>
-                      <TableRow className="bg-muted/10">
-                        <TableHead className="text-[11px]">Material</TableHead>
-                        <TableHead className="text-[11px]">SKU</TableHead>
-                        <TableHead className="text-[11px]">Categoria</TableHead>
-                        <TableHead className="text-[11px] text-right">Consumo/par</TableHead>
-                        <TableHead className="text-[11px] text-right">Custo/par</TableHead>
-                        <TableHead className="text-[11px] w-10"></TableHead>
+                      <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                        <TableHead>Material</TableHead>
+                        <TableHead>SKU</TableHead>
+                        <TableHead>Categoria</TableHead>
+                        <TableHead className="text-right">Consumo/par</TableHead>
+                        <TableHead className="text-right">Custo/par</TableHead>
+                        <TableHead className="w-10"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -867,11 +871,11 @@ function MaterialsList({ referenceId, imageUrl, shoeCategory }: { referenceId: s
             <div className="rounded-lg border overflow-hidden">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/30">
-                    <TableHead className="text-xs">Componente</TableHead>
-                    <TableHead className="text-xs text-center">Qtd Materiais</TableHead>
-                    <TableHead className="text-xs text-right">Custo Total</TableHead>
-                    <TableHead className="text-xs text-right">% do Custo</TableHead>
+                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                    <TableHead>Componente</TableHead>
+                    <TableHead className="text-center">Qtd Materiais</TableHead>
+                    <TableHead className="text-right">Custo Total</TableHead>
+                    <TableHead className="text-right">% do Custo</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -919,11 +923,12 @@ function MaterialsList({ referenceId, imageUrl, shoeCategory }: { referenceId: s
               const sizeMaterials = materials.filter(m => (m as any).sizes);
               if (sizeMaterials.length === 0) {
                 return (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <Footprints className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                    <p className="text-sm">Nenhum material com numeração definida</p>
-                    <p className="text-xs mt-1">Defina as numerações ao adicionar materiais</p>
-                  </div>
+                  <EmptyState
+                    icon={Footprints}
+                    title="Nenhum material com numeração definida"
+                    description="Defina as numerações ao adicionar materiais."
+                    size="sm"
+                  />
                 );
               }
 
@@ -938,14 +943,14 @@ function MaterialsList({ referenceId, imageUrl, shoeCategory }: { referenceId: s
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
-                        <TableRow className="bg-muted/30">
-                          <TableHead className="text-[11px]">Material</TableHead>
-                          <TableHead className="text-[11px]">Categoria</TableHead>
-                          <TableHead className="text-[11px]">Consumo</TableHead>
+                        <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                          <TableHead>Material</TableHead>
+                          <TableHead>Categoria</TableHead>
+                          <TableHead>Consumo</TableHead>
                           {sortedSizes.map(size => (
-                            <TableHead key={size} className="text-[11px] text-center font-mono w-10">{size}</TableHead>
+                            <TableHead key={size} className="text-center font-mono w-10">{size}</TableHead>
                           ))}
-                          <TableHead className="text-[11px] text-right">Custo/par</TableHead>
+                          <TableHead className="text-right">Custo/par</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -998,11 +1003,12 @@ function MaterialsList({ referenceId, imageUrl, shoeCategory }: { referenceId: s
       )}
 
       {materials.length === 0 && (
-        <div className="text-center py-8 text-muted-foreground">
-          <Package className="h-8 w-8 mx-auto mb-2 opacity-40" />
-          <p className="text-sm">Nenhum material na ficha técnica</p>
-          <p className="text-xs mt-1">Adicione materiais usando o botão acima</p>
-        </div>
+        <EmptyState
+          icon={Package}
+          title="Nenhum material na ficha técnica"
+          description="Adicione materiais usando o botão acima."
+          size="sm"
+        />
       )}
         </TabsContent>
 
@@ -1059,11 +1065,12 @@ function ColorsWithRecolor({
 
   if (materialColors.length === 0) {
     return (
-      <div className="text-center py-10 text-muted-foreground">
-        <Droplets className="h-8 w-8 mx-auto mb-2 opacity-40" />
-        <p className="text-sm">Nenhuma cor cadastrada nos materiais</p>
-        <p className="text-xs mt-1">As cores aparecem aqui quando definidas nos materiais da Ficha Técnica</p>
-      </div>
+      <EmptyState
+        icon={Droplets}
+        title="Nenhuma cor cadastrada nos materiais"
+        description="As cores aparecem aqui quando definidas nos materiais da Ficha Técnica."
+        size="sm"
+      />
     );
   }
 
@@ -1207,13 +1214,13 @@ function LinkedSheetView({ sheetId }: { sheetId: string }) {
       {materials.length > 0 ? (
         <Table>
           <TableHeader>
-            <TableRow className="bg-muted/10">
-              <TableHead className="text-[11px]">Material</TableHead>
-              <TableHead className="text-[11px]">Categoria</TableHead>
-              <TableHead className="text-[11px]">Cor</TableHead>
-              <TableHead className="text-[11px]">Fornecedor</TableHead>
-              <TableHead className="text-[11px] text-right">Consumo/par</TableHead>
-              <TableHead className="text-[11px] text-right">Custo/par</TableHead>
+            <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+              <TableHead>Material</TableHead>
+              <TableHead>Categoria</TableHead>
+              <TableHead>Cor</TableHead>
+              <TableHead>Fornecedor</TableHead>
+              <TableHead className="text-right">Consumo/par</TableHead>
+              <TableHead className="text-right">Custo/par</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

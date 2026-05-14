@@ -5,7 +5,9 @@ import { getISOWeekFromString, fmtDayMonthBR } from '@/lib/isoWeek';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -88,8 +90,8 @@ function ExpandedWaveRow({ waveId }: { waveId: string }) {
                 </div>
               ) : (
                 <Table>
-                  <TableHeader className="bg-muted/50 text-[10px] uppercase">
-                    <TableRow>
+                  <TableHeader>
+                    <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                       <TableHead className="px-3 py-2 h-auto">Pedido</TableHead>
                       <TableHead className="px-3 py-2 h-auto">Cliente</TableHead>
                       <TableHead className="px-3 py-2 h-auto text-right">Pares</TableHead>
@@ -143,8 +145,8 @@ function ExpandedWaveRow({ waveId }: { waveId: string }) {
                 </div>
               ) : (
                 <Table>
-                  <TableHeader className="bg-muted/50 text-[10px] uppercase">
-                    <TableRow>
+                  <TableHeader>
+                    <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                       <TableHead className="px-3 py-2 h-auto">Solado</TableHead>
                       <TableHead className="px-3 py-2 h-auto">Referência</TableHead>
                       <TableHead className="px-3 py-2 h-auto">Cor</TableHead>
@@ -434,48 +436,13 @@ export default function ProductionWavesPage() {
       />
 
       {/* Métricas */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <Card>
-          <CardContent className="p-3">
-            <div className="text-[10px] uppercase text-muted-foreground font-bold">Total</div>
-            <div className="display text-2xl tabular-nums">{metrics.total}</div>
-          </CardContent>
-        </Card>
-        <Card className="border-amber-500/30">
-          <CardContent className="p-3">
-            <div className="text-[10px] uppercase text-amber-600 font-bold flex items-center gap-1">
-              <Clock className="w-3 h-3" /> Planejadas
-            </div>
-            <div className="display text-2xl tabular-nums">{metrics.planning}</div>
-          </CardContent>
-        </Card>
-        <Card className="border-primary/30">
-          <CardContent className="p-3">
-            <div className="text-[10px] uppercase text-primary font-bold flex items-center gap-1">
-              <Factory className="w-3 h-3" /> Em produção
-            </div>
-            <div className="display text-2xl tabular-nums">{metrics.running}</div>
-          </CardContent>
-        </Card>
-        <Card className="border-green-500/30">
-          <CardContent className="p-3">
-            <div className="text-[10px] uppercase text-green-600 font-bold flex items-center gap-1">
-              <CheckCircle2 className="w-3 h-3" /> Finalizadas
-            </div>
-            <div className="display text-2xl tabular-nums">{metrics.finished}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-3">
-            <div className="text-[10px] uppercase text-muted-foreground font-bold flex items-center gap-1">
-              <Layers className="w-3 h-3" /> Pares totais
-            </div>
-            <div className="display text-2xl tabular-nums">
-              {metrics.totalPairs.toLocaleString('pt-BR')}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <StatGrid>
+        <StatCard label="Total" value={metrics.total} />
+        <StatCard label="Planejadas" value={metrics.planning} icon={Clock} tone="warning" />
+        <StatCard label="Em produção" value={metrics.running} icon={Factory} tone="primary" />
+        <StatCard label="Finalizadas" value={metrics.finished} icon={CheckCircle2} tone="success" />
+        <StatCard label="Pares totais" value={metrics.totalPairs.toLocaleString('pt-BR')} icon={Layers} />
+      </StatGrid>
 
       {/* Filtros */}
       <div className="flex flex-col sm:flex-row gap-2">
@@ -504,11 +471,10 @@ export default function ProductionWavesPage() {
       </div>
 
       {/* Tabela de ondas */}
-      <Card>
-        <CardContent className="p-0">
+      <Panel flush>
           <Table>
-            <TableHeader className="bg-muted/50 text-[10px] uppercase text-muted-foreground">
-              <TableRow>
+            <TableHeader>
+              <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                 <TableHead className="w-10 px-3 py-2 h-auto"></TableHead>
                 <TableHead className="px-3 py-2 h-auto">Código</TableHead>
                 <TableHead className="px-3 py-2 h-auto">Semana</TableHead>
@@ -532,19 +498,18 @@ export default function ProductionWavesPage() {
               {!isLoading && filtered.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={10}>
-                    <div className="p-8 text-center text-muted-foreground flex flex-col items-center gap-2">
-                      <AlertTriangle className="w-8 h-8 opacity-50" />
-                      <div className="text-sm">
-                        {waves.length === 0
-                          ? 'Nenhuma onda criada ainda.'
-                          : 'Nenhuma onda corresponde aos filtros aplicados.'}
-                      </div>
-                      {waves.length === 0 && (
+                    <EmptyState
+                      icon={AlertTriangle}
+                      title={waves.length === 0 ? 'Nenhuma onda criada ainda' : 'Nenhuma onda encontrada'}
+                      description={waves.length === 0
+                        ? 'Crie a primeira onda de produção para começar.'
+                        : 'Nenhuma onda corresponde aos filtros aplicados.'}
+                      action={waves.length === 0 ? (
                         <Button size="sm" onClick={() => setBuilderOpen(true)}>
                           <Plus className="w-4 h-4 mr-1" /> Criar primeira onda
                         </Button>
-                      )}
-                    </div>
+                      ) : undefined}
+                    />
                   </TableCell>
                 </TableRow>
               )}
@@ -582,8 +547,7 @@ export default function ProductionWavesPage() {
               ))}
             </TableBody>
           </Table>
-        </CardContent>
-      </Card>
+      </Panel>
 
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <CalendarDays className="w-3 h-3" />

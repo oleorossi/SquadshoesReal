@@ -7,7 +7,9 @@ import { usePersistedState } from '@/hooks/usePersistedState';
 import { Footprints, Printer, Funnel as Filter, Stack as Layers, ListChecks, CheckCircle as CheckCircle2, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { WorkSheetSettingsButton } from '@/components/production/WorkSheetSettingsDialog';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Panel } from '@/components/ui/panel';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -560,42 +562,50 @@ export default function Silk() {
         />
 
         {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-primary">{solagemOrders.length}</p>
-              <p className="text-xs text-muted-foreground">OPs p/ Silk</p>
-            </CardContent>
-          </Card>
+        <StatGrid>
+          <StatCard
+            label="OPs p/ Silk"
+            value={solagemOrders.length.toLocaleString('pt-BR')}
+            hint="na fila do setor"
+            tone="primary"
+          />
           {soleData.map(row => (
-              <Card key={row.color}>
-                <CardContent className="p-4 text-center">
-                  <p className="display text-2xl tabular-nums text-foreground">{row.total}</p>
-                  <p className="text-xs text-muted-foreground">{row.color} (pares)</p>
-                </CardContent>
-              </Card>
+            <StatCard
+              key={row.color}
+              label={`${row.color} (pares)`}
+              value={row.total.toLocaleString('pt-BR')}
+              hint="demanda de solado"
+            />
           ))}
-        </div>
+        </StatGrid>
 
         {/* Table */}
-        <Card>
-          <CardContent className="p-4">
-            {soleData.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground text-sm">
-                Nenhuma demanda de solado no momento.
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-xs font-bold">Cor Solado</TableHead>
-                      {activeSizes.map(s => (
-                        <TableHead key={s} className="text-xs text-center w-16">{s}</TableHead>
-                      ))}
-                      <TableHead className="text-xs text-center font-bold bg-muted">Total</TableHead>
-                    </TableRow>
-                  </TableHeader>
+        {soleData.length === 0 ? (
+          <Panel flush>
+            <EmptyState
+              icon={Footprints}
+              title="Nenhuma demanda de solado no momento"
+              description="As demandas aparecerão aqui conforme as OPs entrarem no setor de Silk."
+            />
+          </Panel>
+        ) : (
+          <Panel
+            eyebrow="PRODUÇÃO · SILK"
+            title="Grade Consolidada por Cor de Solado"
+            subtitle={`${soleData.length} ${soleData.length === 1 ? 'cor' : 'cores'} · ${grandTotal.toLocaleString('pt-BR')} pares`}
+            flush
+          >
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                    <TableHead>Cor Solado</TableHead>
+                    {activeSizes.map(s => (
+                      <TableHead key={s} className="text-center w-16">{s}</TableHead>
+                    ))}
+                    <TableHead className="text-center bg-muted">Total</TableHead>
+                  </TableRow>
+                </TableHeader>
                   <TableBody>
                     {soleData.map(row => (
                       <TableRow key={row.color}>
@@ -608,27 +618,24 @@ export default function Silk() {
                         <TableCell className="text-sm text-center font-mono font-bold bg-muted">{row.total}</TableCell>
                       </TableRow>
                     ))}
-                    <TableRow className="bg-muted/50 font-bold border-t-2">
-                      <TableCell className="text-xs text-right font-bold">TOTAL</TableCell>
-                      {activeSizes.map(s => (
-                        <TableCell key={s} className="text-sm text-center font-mono font-bold">
-                          {soleData.reduce((sum, r) => sum + (r.sizes[s] || 0), 0)}
-                        </TableCell>
-                      ))}
-                      <TableCell className="text-sm text-center font-mono font-bold bg-muted">{grandTotal}</TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  <TableRow className="bg-muted/50 font-bold border-t-2">
+                    <TableCell className="text-xs text-right font-bold">TOTAL</TableCell>
+                    {activeSizes.map(s => (
+                      <TableCell key={s} className="text-sm text-center font-mono font-bold">
+                        {soleData.reduce((sum, r) => sum + (r.sizes[s] || 0), 0)}
+                      </TableCell>
+                    ))}
+                    <TableCell className="text-sm text-center font-mono font-bold bg-muted">{grandTotal}</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+          </Panel>
+        )}
 
         {/* Per-OP sole color breakdown */}
         {showDetail && solagemOrders.length > 0 && (
-          <Card>
-            <CardContent className="p-4">
-              <h3 className="text-sm font-bold mb-3">Grade de Solado por OP</h3>
+          <Panel eyebrow="PRODUÇÃO · SILK" title="Grade de Solado por OP">
               <div className="space-y-4">
                 {solagemOrders.map(order => {
                   const ref = references.find(r => r.id === order.reference_id);
@@ -698,12 +705,12 @@ export default function Silk() {
                       <div className="overflow-x-auto">
                         <Table>
                           <TableHeader>
-                            <TableRow>
-                              <TableHead className="text-[10px]">Tipo</TableHead>
+                            <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                              <TableHead>Tipo</TableHead>
                               {orderActiveSizes.map(s => (
-                                <TableHead key={s} className="text-[10px] text-center w-14">{s}</TableHead>
+                                <TableHead key={s} className="text-center w-14">{s}</TableHead>
                               ))}
-                              <TableHead className="text-[10px] text-center font-bold bg-muted">Total</TableHead>
+                              <TableHead className="text-center bg-muted">Total</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -730,10 +737,9 @@ export default function Silk() {
                   );
                 })}
               </div>
-            </CardContent>
-          </Card>
+          </Panel>
         )}
       </div>
-    
+
   );
 }

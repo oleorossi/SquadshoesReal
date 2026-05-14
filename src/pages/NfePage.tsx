@@ -4,7 +4,7 @@ import { useAccessControl } from '@/hooks/useAccessControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -22,6 +22,9 @@ import StandaloneNfePanel from '@/components/nfe/StandaloneNfePanel';
 import { NfeBillingHealthCard } from '@/components/nfe/NfeBillingHealthCard';
 import { AppErrorBoundary } from '@/components/ErrorBoundary';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
@@ -348,21 +351,12 @@ export default function NfePage() {
       />
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {[
-          { label: 'Total emitidas', value: stats.total, className: '' },
-          { label: 'Autorizadas', value: stats.autorizadas, className: 'text-green-600' },
-          { label: 'Processando', value: stats.processando, className: 'text-amber-600' },
-          { label: 'Rejeitadas', value: stats.rejeitadas, className: 'text-red-600' },
-        ].map(s => (
-          <Card key={s.label}>
-            <CardContent className="pt-4 pb-3">
-              <p className={`display text-2xl tabular-nums ${s.className}`}>{s.value}</p>
-              <p className="text-xs text-muted-foreground">{s.label}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <StatGrid>
+        <StatCard label="Total emitidas" value={stats.total} />
+        <StatCard label="Autorizadas" value={stats.autorizadas} tone="success" />
+        <StatCard label="Processando" value={stats.processando} tone="warning" />
+        <StatCard label="Rejeitadas" value={stats.rejeitadas} tone="destructive" />
+      </StatGrid>
 
       {/* M2: PVs com inconsistência fiscal (Faturado sem NF, NF sem Faturado, etc.) */}
       <NfeBillingHealthCard />
@@ -428,31 +422,34 @@ export default function NfePage() {
             </Select>
           </div>
 
-          <Card>
-            <CardContent className="pt-4">
-              {isLoading ? (
-                <div className="flex justify-center py-12">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : filtered.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground">
-                  <FileText className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                  <p className="text-sm">Nenhuma NF-e encontrada</p>
-                  {canEmitNfe && (
-                    <Button variant="outline" size="sm" className="mt-3" onClick={() => setEmitOpen(true)}>
-                      Emitir primeira NF-e
-                    </Button>
-                  )}
-                </div>
-              ) : (
-                <div className="divide-y divide-border/50">
-                  {filtered.map((n: any) => (
-                    <NfeRow key={n.id} nfe={n} onCancel={setCancelTarget} canCancel={canEmitNfe} />
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <Panel
+            eyebrow="FISCAL · NF-e"
+            title="NF-es Emitidas"
+            subtitle={!isLoading ? `${filtered.length} ${filtered.length === 1 ? 'nota' : 'notas'}` : undefined}
+          >
+            {isLoading ? (
+              <div className="flex justify-center py-12">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : filtered.length === 0 ? (
+              <EmptyState
+                icon={FileText}
+                title="Nenhuma NF-e encontrada"
+                description="Ajuste os filtros ou emita uma nova nota fiscal."
+                action={canEmitNfe ? (
+                  <Button variant="outline" size="sm" onClick={() => setEmitOpen(true)}>
+                    Emitir primeira NF-e
+                  </Button>
+                ) : undefined}
+              />
+            ) : (
+              <div className="divide-y divide-border/50">
+                {filtered.map((n: any) => (
+                  <NfeRow key={n.id} nfe={n} onCancel={setCancelTarget} canCancel={canEmitNfe} />
+                ))}
+              </div>
+            )}
+          </Panel>
         </TabsContent>
 
         <TabsContent value="avulsa" className="mt-4">
