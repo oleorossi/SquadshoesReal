@@ -268,7 +268,10 @@ Deno.serve(async (req) => {
       produtos: itensFinal.map(it => ({
         produto_id: it.ts_gc_id,
         quantidade: it.qty.toFixed(2),
-        valor_venda: it.valor_total.toFixed(2),
+        // valor_venda é o preço UNITÁRIO — o GestaoClick multiplica por
+        // quantidade internamente. Mandar o total da linha aqui fazia o
+        // valor sair qtd² × preço (mesmo bug já corrigido no emit-nfe).
+        valor_venda: it.valor_unit.toFixed(2),
         cfop: cfopEntrada,
         unidade: "PAR",
         NCM: it.ts_ncm,

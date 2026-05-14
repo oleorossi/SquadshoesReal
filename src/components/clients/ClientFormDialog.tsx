@@ -169,8 +169,20 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
                     </div>
                   </div>
                   <div>
-                    <Label className="text-xs">Inscrição Estadual</Label>
-                    <Input value={form.inscricao_estadual} onChange={e => setForm(f => ({ ...f, inscricao_estadual: e.target.value }))} className="mt-1 h-9 font-mono" />
+                    <Label className="text-xs">
+                      Inscrição Estadual <span className="text-amber-600">*</span>
+                    </Label>
+                    <Input
+                      value={form.inscricao_estadual}
+                      onChange={e => setForm(f => ({ ...f, inscricao_estadual: e.target.value }))}
+                      className="mt-1 h-9 font-mono"
+                      placeholder='IE numérica ou "ISENTO"'
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Obrigatória pra emitir NF-e. Contribuinte de ICMS: informe a IE.
+                      Isento/não-contribuinte: escreva <span className="font-mono font-semibold">ISENTO</span>.
+                      Campo vazio = NF-e rejeitada pela SEFAZ.
+                    </p>
                   </div>
                   <div>
                     <Label className="text-xs">Código da Filial</Label>

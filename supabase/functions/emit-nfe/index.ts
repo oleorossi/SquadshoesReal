@@ -170,6 +170,28 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: `Endereço do cliente incompleto: ${missingAddrFields.join(", ")}. Atualize o cadastro antes de emitir.` }), { status: 400, headers: corsHeaders });
     }
 
+    // ---------- Validação de Inscrição Estadual do destinatário ----------
+    // A SEFAZ exige decisão explícita sobre contribuição de ICMS do destinatário:
+    //  - Contribuinte de ICMS  → IE numérica obrigatória (sem ela → Rejeição 232).
+    //  - Isento / não contribuinte → o campo precisa dizer "ISENTO" explícito,
+    //    senão o sistema não tem como saber e a NF pode sair com indicador
+    //    errado (Rejeição 696).
+    // Campo vazio é AMBÍGUO — bloqueamos aqui, antes de qualquer chamada ao
+    // GestaoClick/SEFAZ, pra forçar o cadastro correto do cliente.
+    const ieDestRaw = (client.inscricao_estadual || "").trim().toUpperCase();
+    const ieDestDigits = ieDestRaw.replace(/\D/g, "");
+    const isIsento = ieDestRaw === "ISENTO" || ieDestRaw === "ISENTA" || ieDestRaw === "NAO CONTRIBUINTE";
+    const isContribuinte = ieDestDigits.length > 0 && !isIsento;
+    if (!isContribuinte && !isIsento) {
+      const nomeCli = client.razao_social || client.nome || order.client_name || "destinatário";
+      return new Response(JSON.stringify({
+        error: `Cliente "${nomeCli}" está sem Inscrição Estadual cadastrada. ` +
+               `Se for contribuinte de ICMS, preencha a IE no cadastro do cliente. ` +
+               `Se for isento ou não-contribuinte, escreva "ISENTO" no campo Inscrição Estadual. ` +
+               `Sem essa informação a NF-e é rejeitada pela SEFAZ (Rejeição 232 ou 696).`,
+      }), { status: 400, headers: corsHeaders });
+    }
+
     const itemsInactiveVariant: string[] = [];
     const resolvedItems = (items || []).map((it: any) => {
       const v = it.reference_material_variants;
@@ -245,13 +267,8 @@ Deno.serve(async (req) => {
     //       codigo_municipio do cliente, e manda o endereço no formato
     //       aninhado correto { endereco: { cidade_id, ... } }.
     let gcClientId: string | null = client?.gestaoclick_id || null;
-    // Contribuinte de ICMS? Destinatário com IE válida (≠ ISENTO) é
-    // contribuinte/revenda. Sem IE → não contribuinte. Define tanto o
-    // tipo_contribuinte do cliente no GestaoClick quanto o consumidor_final
-    // da NF-e (SEFAZ Rejeição 696).
-    const ieDestDigits = (client.inscricao_estadual || "").replace(/\D/g, "");
-    const ieDestRaw = (client.inscricao_estadual || "").trim().toUpperCase();
-    const isContribuinte = ieDestDigits.length > 0 && ieDestRaw !== "ISENTO";
+    // isContribuinte / isIsento / ieDestDigits já foram derivados e validados
+    // logo após a checagem de endereço (campo IE vazio é bloqueado lá).
 
     {
       const isPj = cnpjDestRaw.length === 14;
@@ -283,10 +300,10 @@ Deno.serve(async (req) => {
       const buildPayload = () => ({
         tipo_pessoa: isPj ? "PJ" : "PF",
         nome: order.client_name || client?.razao_social || client?.nome,
-        // tipo_contribuinte do GestaoClick: 1=contribuinte ICMS, 9=não
-        // contribuinte. Sem isso o GestaoClick assume 1 e a NF-e sai com
-        // indicador_destinatario errado → SEFAZ Rejeição 696.
-        tipo_contribuinte: isContribuinte ? "1" : "9",
+        // tipo_contribuinte do GestaoClick: 1=contribuinte de ICMS,
+        // 2=isento de IE. O caso "sem IE e sem ISENTO" já foi bloqueado na
+        // pré-validação acima, então aqui só chega contribuinte ou isento.
+        tipo_contribuinte: isContribuinte ? "1" : "2",
         ...(isPj
           ? { cnpj: cnpjDestRaw, inscricao_estadual: (client.inscricao_estadual || "").replace(/\D/g, "") }
           : { cpf: cnpjDestRaw }),
