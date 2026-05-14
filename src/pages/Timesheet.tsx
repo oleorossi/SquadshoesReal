@@ -9,6 +9,7 @@ import PendingTimeRecordsPanel from '@/components/timesheet/PendingTimeRecordsPa
 import TimeValidationPanel from '@/components/timeControl/TimeValidationPanel';
 import ReportsPanel from '@/components/timeControl/ReportsPanel';
 import { OvertimeResolutionPanel } from '@/components/timesheet/OvertimeResolutionPanel';
+import { TimesheetPeriodSelector } from '@/components/timesheet/TimesheetPeriodSelector';
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Clock, Upload, Plus, Trash as Trash2, CircleNotch as Loader2, Calendar, Gear as Settings2, Warning as AlertTriangle, FileXls as FileSpreadsheet, CaretDown as ChevronDown, Sun, Moon, Coffee, CheckCircle as CheckCircle2, XCircle, MinusCircle, Printer, Users as Users2, CurrencyDollar as DollarSign, Link as Link2, Unlink2, Shield, FileText, Clipboard as ClipboardEdit, Alarm as AlarmClock, ClockCounterClockwise as History, Wallet } from '@phosphor-icons/react';
@@ -21,7 +22,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { HubTabsList } from '@/components/layout/HubTabs';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
@@ -382,6 +383,9 @@ function TimesheetRecordsTab() {
   const [selectedBatch, setSelectedBatch] = useState<string>('');
   const [filterStartDate, setFilterStartDate] = useState<string>(monthStart);
   const [filterEndDate, setFilterEndDate] = useState<string>(monthEnd);
+  // Período de ponto cadastrado (Bloco A da reformulação) — quando setado,
+  // preenche as datas de filtro automaticamente.
+  const [selectedPeriodId, setSelectedPeriodId] = useState<string | null>(null);
   const resolvedFilters = useMemo(() => resolveTimeControlFilters({
     selectedBatch,
     filterStartDate,
@@ -932,32 +936,53 @@ function TimesheetRecordsTab() {
 
         <div className="flex flex-wrap items-end gap-3 p-4 bg-muted/30 rounded-lg border border-border/50">
           <div className="space-y-1.5">
+            <Label className="text-xs font-medium">Período cadastrado</Label>
+            <div className="w-60">
+              <TimesheetPeriodSelector
+                value={selectedPeriodId}
+                onChange={(p) => {
+                  setSelectedPeriodId(p?.id ?? null);
+                  if (p) {
+                    setFilterStartDate(p.start_date);
+                    setFilterEndDate(p.end_date);
+                    setSelectedBatch('');
+                  }
+                }}
+                placeholder="Escolher período…"
+                className="h-9"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
             <Label className="text-xs font-medium">Data Início</Label>
-            <Input 
-              type="date" 
-              className="w-40" 
+            <Input
+              type="date"
+              className="w-40"
               value={filterStartDate}
               min={fullDateRange?.startDate}
               max={fullDateRange?.endDate}
               onChange={e => {
                 setFilterStartDate(e.target.value);
                 setSelectedBatch('');
-              }} 
+                setSelectedPeriodId(null);
+              }}
             />
           </div>
 
           <div className="space-y-1.5">
             <Label className="text-xs font-medium">Data Fim</Label>
-            <Input 
-              type="date" 
-              className="w-40" 
+            <Input
+              type="date"
+              className="w-40"
               value={filterEndDate}
               min={fullDateRange?.startDate}
               max={fullDateRange?.endDate}
               onChange={e => {
                 setFilterEndDate(e.target.value);
                 setSelectedBatch('');
-              }} 
+                setSelectedPeriodId(null);
+              }}
             />
           </div>
 
@@ -1523,6 +1548,20 @@ export default function Timesheet() {
   // Quando o Timesheet é renderizado dentro do RHHub (`/rh?tab=ponto`), o param
   // `tab` já carrega o tab do hub. A sub-aba interna usa `subtab`.
   const initialTab = searchParams.get('subtab') || searchParams.get('tab') || 'records';
+
+  // Bloco C da reformulação: as 11 abas viram 4 seções lógicas com sub-abas.
+  // O initialTab (?subtab=...) é mapeado pro grupo que o contém.
+  const SUBTAB_TO_GROUP: Record<string, string> = {
+    records: 'importacao', history: 'importacao',
+    overview: 'registros', pending: 'registros', manual: 'registros',
+    late: 'registros', occurrences: 'registros',
+    overtime: 'horas-extras', reports: 'horas-extras',
+    schedule: 'config', holidays: 'config',
+  };
+  const initialGroup = SUBTAB_TO_GROUP[initialTab] || 'importacao';
+  const subFor = (group: string, fallback: string) =>
+    initialGroup === group ? initialTab : fallback;
+
   return (
     <AppLayout>
       <div className="space-y-5 page-enter editorial-stagger">
@@ -1532,38 +1571,73 @@ export default function Timesheet() {
           description="Importação de ponto, horários, feriados e cálculo de horas extras"
         />
 
-        <Tabs defaultValue={initialTab} className="space-y-4">
+        <Tabs defaultValue={initialGroup} className="space-y-4">
           <HubTabsList tabs={[
-            { value: 'records',     label: 'Ponto',          icon: FileSpreadsheet },
-            { value: 'overview',    label: 'Visão Geral',    icon: Users2 },
-            { value: 'pending',     label: 'Pendências',     icon: AlertTriangle },
-            { value: 'manual',      label: 'Lançamento',     icon: ClipboardEdit },
-            { value: 'late',        label: 'Atrasos',        icon: AlarmClock },
-            { value: 'occurrences', label: 'Ocorrências',    icon: AlertTriangle },
-            { value: 'overtime',    label: 'Resolução HE',   icon: Wallet },
-            { value: 'reports',     label: 'Relatórios',     icon: FileText },
-            { value: 'history',     label: 'Histórico Imp.', icon: History },
-            { value: 'schedule',    label: 'Horário Padrão', icon: Clock },
-            { value: 'holidays',    label: 'Feriados',       icon: Calendar },
+            { value: 'importacao',   label: 'Importação & Período', icon: FileSpreadsheet },
+            { value: 'registros',    label: 'Registros & Pendências', icon: Users2 },
+            { value: 'horas-extras', label: 'Horas Extras & Banco', icon: Wallet },
+            { value: 'config',       label: 'Configuração', icon: Clock },
           ]} />
 
-          <TabsContent value="records"><TimesheetRecordsTab /></TabsContent>
-          <TabsContent value="overview"><OverviewTab /></TabsContent>
-          <TabsContent value="pending"><PendingTimeRecordsPanel /></TabsContent>
-          <TabsContent value="manual"><ManualEntryTab /></TabsContent>
-          <TabsContent value="late"><LateArrivalsTab /></TabsContent>
-          <TabsContent value="occurrences" className="space-y-6">
-            <DivergencesTab />
-            <Separator />
-            <ExceptionsTab />
-            <Separator />
-            <TimeValidationPanel />
+          {/* ── Seção 1: Importação & Período ── */}
+          <TabsContent value="importacao">
+            <Tabs defaultValue={subFor('importacao', 'records')} className="space-y-4">
+              <TabsList>
+                <TabsTrigger value="records" className="gap-1.5"><FileSpreadsheet className="h-3.5 w-3.5" /> Ponto</TabsTrigger>
+                <TabsTrigger value="history" className="gap-1.5"><History className="h-3.5 w-3.5" /> Histórico de Importações</TabsTrigger>
+              </TabsList>
+              <TabsContent value="records"><TimesheetRecordsTab /></TabsContent>
+              <TabsContent value="history"><ImportHistoryPanel /></TabsContent>
+            </Tabs>
           </TabsContent>
-          <TabsContent value="overtime"><OvertimeResolutionPanel /></TabsContent>
-          <TabsContent value="reports"><ReportsPanel /></TabsContent>
-          <TabsContent value="history"><ImportHistoryPanel /></TabsContent>
-          <TabsContent value="schedule"><WorkScheduleTab /></TabsContent>
-          <TabsContent value="holidays"><HolidaysTab /></TabsContent>
+
+          {/* ── Seção 2: Registros & Pendências ── */}
+          <TabsContent value="registros">
+            <Tabs defaultValue={subFor('registros', 'overview')} className="space-y-4">
+              <TabsList>
+                <TabsTrigger value="overview" className="gap-1.5"><Users2 className="h-3.5 w-3.5" /> Visão Geral</TabsTrigger>
+                <TabsTrigger value="pending" className="gap-1.5"><AlertTriangle className="h-3.5 w-3.5" /> Pendências</TabsTrigger>
+                <TabsTrigger value="manual" className="gap-1.5"><ClipboardEdit className="h-3.5 w-3.5" /> Lançamento</TabsTrigger>
+                <TabsTrigger value="late" className="gap-1.5"><AlarmClock className="h-3.5 w-3.5" /> Atrasos</TabsTrigger>
+                <TabsTrigger value="occurrences" className="gap-1.5"><AlertTriangle className="h-3.5 w-3.5" /> Ocorrências</TabsTrigger>
+              </TabsList>
+              <TabsContent value="overview"><OverviewTab /></TabsContent>
+              <TabsContent value="pending"><PendingTimeRecordsPanel /></TabsContent>
+              <TabsContent value="manual"><ManualEntryTab /></TabsContent>
+              <TabsContent value="late"><LateArrivalsTab /></TabsContent>
+              <TabsContent value="occurrences" className="space-y-6">
+                <DivergencesTab />
+                <Separator />
+                <ExceptionsTab />
+                <Separator />
+                <TimeValidationPanel />
+              </TabsContent>
+            </Tabs>
+          </TabsContent>
+
+          {/* ── Seção 3: Horas Extras & Banco ── */}
+          <TabsContent value="horas-extras">
+            <Tabs defaultValue={subFor('horas-extras', 'overtime')} className="space-y-4">
+              <TabsList>
+                <TabsTrigger value="overtime" className="gap-1.5"><Wallet className="h-3.5 w-3.5" /> Resolução de HE</TabsTrigger>
+                <TabsTrigger value="reports" className="gap-1.5"><FileText className="h-3.5 w-3.5" /> Relatórios</TabsTrigger>
+              </TabsList>
+              <TabsContent value="overtime"><OvertimeResolutionPanel /></TabsContent>
+              <TabsContent value="reports"><ReportsPanel /></TabsContent>
+            </Tabs>
+          </TabsContent>
+
+          {/* ── Seção 4: Configuração ── */}
+          <TabsContent value="config">
+            <Tabs defaultValue={subFor('config', 'schedule')} className="space-y-4">
+              <TabsList>
+                <TabsTrigger value="schedule" className="gap-1.5"><Clock className="h-3.5 w-3.5" /> Horário Padrão</TabsTrigger>
+                <TabsTrigger value="holidays" className="gap-1.5"><Calendar className="h-3.5 w-3.5" /> Feriados</TabsTrigger>
+              </TabsList>
+              <TabsContent value="schedule"><WorkScheduleTab /></TabsContent>
+              <TabsContent value="holidays"><HolidaysTab /></TabsContent>
+            </Tabs>
+          </TabsContent>
         </Tabs>
       </div>
     </AppLayout>
