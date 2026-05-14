@@ -71,6 +71,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/optimized-production': 'producao',
   '/capacity-planning': 'producao',
   '/gargalos': 'producao',
+  '/producao/visao-agregada': 'producao',
   '/inventory': 'estoque',
   '/production': 'producao',
   '/quality': 'producao',
