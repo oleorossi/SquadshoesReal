@@ -46,7 +46,6 @@ export interface Company {
   regime_tributario: string;
   serie_nfe: number;
   ambiente: string;
-  certificate_path: string;
   natureza_operacao: string;
   cfop: string;
   is_primary: boolean;
@@ -375,7 +374,7 @@ export function useEmitNfe() {
     onSuccess: (data: any) => {
       if (data?.reconciliation_needed) {
         toast.warning(
-          `NF-e aceita pelo Focus NFe (ref ${data.focus_ref ?? ''}) mas falhou ao salvar no banco. Reconcilie manualmente no painel Focus NFe.`,
+          `NF-e aceita pelo GestaoClick${data.provider_nfe_id ? ` (id ${data.provider_nfe_id})` : ''} mas falhou ao salvar no banco. Reconcilie manualmente no painel GestaoClick.`,
           { duration: 12000 }
         );
       } else {

@@ -1,21 +1,17 @@
 import { useState, useEffect } from 'react';
-import { FloppyDisk as Save, CircleNotch as Loader2, Upload, FileCheck, Buildings as Building2 } from '@phosphor-icons/react';
+import { FloppyDisk as Save, CircleNotch as Loader2, Buildings as Building2 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useFiscalConfig, useSaveFiscalConfig } from '@/hooks/useNfe';
-import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
 
 export default function FiscalConfigPanel() {
   const { data: config, isLoading } = useFiscalConfig();
   const saveConfig = useSaveFiscalConfig();
   const [form, setForm] = useState<any>({});
-  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (config) setForm(config);
@@ -28,31 +24,6 @@ export default function FiscalConfigPanel() {
     saveConfig.mutate(data);
   };
 
-  const handleCertUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.name.endsWith('.pfx') && !file.name.endsWith('.p12')) {
-      toast.error('Selecione um arquivo .pfx ou .p12');
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('Certificado deve ter no máximo 5MB.');
-      return;
-    }
-    setUploading(true);
-    // Sanitize filename to prevent path traversal — only allow alnum, dot, dash, underscore.
-    const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-    const path = `certificates/${Date.now()}-${safeName}`;
-    const { error } = await supabase.storage.from('certificates').upload(path, file);
-    if (error) {
-      toast.error('Erro ao enviar certificado: ' + error.message);
-    } else {
-      set('certificate_path', path);
-      toast.success('Certificado enviado com sucesso!');
-    }
-    setUploading(false);
-  };
-
   if (isLoading) return <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>;
 
   return (
@@ -62,7 +33,7 @@ export default function FiscalConfigPanel() {
         <CardHeader className="pb-3">
           <CardTitle className="text-sm flex items-center gap-2">
             <Building2 className="h-4 w-4" />
-            Ambiente e Certificado
+            Ambiente
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -82,22 +53,10 @@ export default function FiscalConfigPanel() {
               <Input type="number" value={form.serie_nfe || 1} onChange={e => set('serie_nfe', e.target.value)} />
             </div>
           </div>
-          <div>
-            <Label>Certificado Digital A1 (.pfx)</Label>
-            <div className="flex items-center gap-2 mt-1">
-              <label className="cursor-pointer">
-                <Input type="file" accept=".pfx,.p12" onChange={handleCertUpload} className="hidden" />
-                <Button variant="outline" size="sm" asChild disabled={uploading}>
-                  <span>{uploading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Upload className="h-4 w-4 mr-1" />} Enviar Certificado</span>
-                </Button>
-              </label>
-              {form.certificate_path && (
-                <Badge variant="outline" className="gap-1 text-xs">
-                  <FileCheck className="h-3 w-3" /> Certificado configurado
-                </Badge>
-              )}
-            </div>
-          </div>
+          <p className="text-xs text-muted-foreground">
+            O certificado digital A1 é configurado no painel GestaoClick (ClickNotas) —
+            não é gerenciado por aqui.
+          </p>
         </CardContent>
       </Card>
 

@@ -11,9 +11,12 @@ export type Client = {
   cnpj: string;
   inscricao_estadual: string;
   endereco: string;
+  numero: string;
+  bairro: string;
   cidade: string;
   estado: string;
   cep: string;
+  codigo_municipio: string;
   email: string;
   telefone: string;
   contato: string;

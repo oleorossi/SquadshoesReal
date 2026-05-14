@@ -77,8 +77,11 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
       setForm(f => ({
         ...f,
         endereco: data.logradouro || f.endereco,
+        bairro: data.bairro || f.bairro,
         cidade: data.localidade || f.cidade,
         estado: data.uf || f.estado,
+        // ViaCEP devolve o código IBGE do município — obrigatório na NF-e.
+        codigo_municipio: data.ibge || f.codigo_municipio,
       }));
       toast.success('Endereço preenchido automaticamente!');
     } else {
@@ -100,10 +103,13 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
         ...f,
         razao_social: data.razao_social || f.razao_social,
         nome_fantasia: data.nome_fantasia || f.nome_fantasia,
-        endereco: [data.descricao_tipo_de_logradouro, data.logradouro, data.numero, data.complemento].filter(Boolean).join(', ') || f.endereco,
+        endereco: [data.descricao_tipo_de_logradouro, data.logradouro].filter(Boolean).join(' ') || f.endereco,
+        numero: data.numero || f.numero,
+        bairro: data.bairro || f.bairro,
         cidade: data.municipio || f.cidade,
         estado: data.uf || f.estado,
-        cep: data.cep ? data.cep.replace(/\D/g, '').replace(/(\d{5})(\d{3})/, '$1-$2') : f.cep,
+        cep: data.cep ? String(data.cep).replace(/\D/g, '').replace(/(\d{5})(\d{3})/, '$1-$2') : f.cep,
+        codigo_municipio: data.codigo_municipio_ibge || f.codigo_municipio,
         telefone: data.ddd_telefone_1 || f.telefone,
         email: data.email || f.email,
       }));
@@ -227,9 +233,21 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
                     <Label className="text-xs">Cidade</Label>
                     <Input value={form.cidade} onChange={e => setForm(f => ({ ...f, cidade: e.target.value }))} className="mt-1 h-9" />
                   </div>
-                  <div className="md:col-span-4">
-                    <Label className="text-xs">Endereço completo</Label>
-                    <Input value={form.endereco} onChange={e => setForm(f => ({ ...f, endereco: e.target.value }))} className="mt-1 h-9" placeholder="Rua, Número, Bairro, Complemento" />
+                  <div className="md:col-span-3">
+                    <Label className="text-xs">Logradouro <span className="text-muted-foreground">(rua/av)</span></Label>
+                    <Input value={form.endereco} onChange={e => setForm(f => ({ ...f, endereco: e.target.value }))} className="mt-1 h-9" placeholder="Rua, Avenida..." />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Número</Label>
+                    <Input value={form.numero} onChange={e => setForm(f => ({ ...f, numero: e.target.value }))} className="mt-1 h-9" placeholder="123 ou S/N" />
+                  </div>
+                  <div className="md:col-span-2">
+                    <Label className="text-xs">Bairro</Label>
+                    <Input value={form.bairro} onChange={e => setForm(f => ({ ...f, bairro: e.target.value }))} className="mt-1 h-9" />
+                  </div>
+                  <div className="md:col-span-2">
+                    <Label className="text-xs">Cód. Município <span className="text-muted-foreground">(IBGE — auto via CEP)</span></Label>
+                    <Input value={form.codigo_municipio} onChange={e => setForm(f => ({ ...f, codigo_municipio: e.target.value }))} className="mt-1 h-9 font-mono" placeholder="3550308" />
                   </div>
                 </div>
               </div>

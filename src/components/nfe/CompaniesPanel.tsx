@@ -9,52 +9,26 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Separator } from '@/components/ui/separator';
-import { CircleNotch as Loader2, Plus, PencilSimple as Pencil, Trash as Trash2, Star, Buildings as Building2, Upload, FileText as FileCheck, ShieldCheck, ShieldWarning as ShieldAlert, Shield as ShieldX } from '@phosphor-icons/react';
-import { supabase } from '@/integrations/supabase/client';
+import { CircleNotch as Loader2, Plus, PencilSimple as Pencil, Trash as Trash2, Star, Buildings as Building2 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
-import { useQuery } from '@tanstack/react-query';
-import { CertificateSetupDialog } from './CertificateSetupDialog';
-import { cn } from '@/lib/utils';
+
+// Certificado A1: desde a migração pra GestaoClick (mai/2026) é gerenciado
+// 100% no painel deles. O Squad Shoes só consome a API — sem upload de .pfx
+// nem status de certificado aqui (removido todo o legado Focus NFe).
 
 const BLANK: Partial<Company> = {
   cnpj: '', inscricao_estadual: '', razao_social: '', nome_fantasia: '',
   logradouro: '', numero: '', complemento: '', bairro: '', cidade: '', uf: '',
   cep: '', codigo_municipio: '', regime_tributario: '1', serie_nfe: 1,
-  ambiente: 'homologacao', certificate_path: '', natureza_operacao: 'Venda de Mercadoria',
+  ambiente: 'homologacao', natureza_operacao: 'Venda de Mercadoria',
   cfop: '5102', is_primary: false,
 };
 
 function CompanyForm({ company, onClose }: { company?: Company; onClose: () => void }) {
   const [form, setForm] = useState<any>(company || BLANK);
-  const [uploading, setUploading] = useState(false);
   const save = useSaveCompany();
 
   const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
-
-  const handleCertUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.name.endsWith('.pfx') && !file.name.endsWith('.p12')) {
-      toast.error('Selecione um arquivo .pfx ou .p12');
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('Certificado deve ter no máximo 5MB.');
-      return;
-    }
-    setUploading(true);
-    // Sanitize filename to prevent path traversal — only allow alnum, dot, dash, underscore.
-    const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-    const path = `certificates/company-${Date.now()}-${safeName}`;
-    const { error } = await supabase.storage.from('certificates').upload(path, file);
-    if (error) {
-      toast.error('Erro ao enviar certificado: ' + error.message);
-    } else {
-      set('certificate_path', path);
-      toast.success('Certificado enviado!');
-    }
-    setUploading(false);
-  };
 
   const handleSave = async () => {
     if (!form.cnpj || !form.razao_social) {
@@ -75,9 +49,9 @@ function CompanyForm({ company, onClose }: { company?: Company; onClose: () => v
       </DialogHeader>
 
       <div className="space-y-4 py-2">
-        {/* Ambiente e Certificado */}
+        {/* Ambiente */}
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm">Ambiente e Certificado</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">Ambiente</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -95,22 +69,10 @@ function CompanyForm({ company, onClose }: { company?: Company; onClose: () => v
                 <Input type="number" value={form.serie_nfe || 1} onChange={e => set('serie_nfe', Number(e.target.value))} />
               </div>
             </div>
-            <div>
-              <Label>Certificado Digital A1 (.pfx)</Label>
-              <div className="flex items-center gap-2 mt-1">
-                <label className="cursor-pointer">
-                  <Input type="file" accept=".pfx,.p12" onChange={handleCertUpload} className="hidden" />
-                  <Button variant="outline" size="sm" asChild disabled={uploading}>
-                    <span>{uploading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Upload className="h-4 w-4 mr-1" />} Enviar Certificado</span>
-                  </Button>
-                </label>
-                {form.certificate_path && (
-                  <Badge variant="outline" className="gap-1 text-xs">
-                    <FileCheck className="h-3 w-3" /> Certificado configurado
-                  </Badge>
-                )}
-              </div>
-            </div>
+            <p className="text-xs text-muted-foreground">
+              O certificado digital A1 é configurado no painel GestaoClick (ClickNotas) —
+              não é gerenciado por aqui.
+            </p>
           </CardContent>
         </Card>
 
@@ -169,92 +131,12 @@ function CompanyForm({ company, onClose }: { company?: Company; onClose: () => v
   );
 }
 
-type CertStatusRow = {
-  id: string;
-  cnpj: string;
-  cert_status: 'pendente' | 'ativo' | 'expirado' | 'erro' | null;
-  cert_valid_until: string | null;
-  cert_subject_name: string | null;
-  cert_uploaded_at: string | null;
-  cert_focus_synced_at: string | null;
-  cert_days_until_expiry: number | null;
-  cert_severity: 'ok' | 'warning' | 'critical';
-};
-
-function useCertStatuses() {
-  return useQuery({
-    queryKey: ['companies_cert_status'],
-    staleTime: 30_000,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('v_companies_cert_status' as any)
-        .select('*');
-      if (error) throw error;
-      const map = new Map<string, CertStatusRow>();
-      for (const r of (data as any[]) || []) map.set(r.id, r as CertStatusRow);
-      return map;
-    },
-  });
-}
-
-function CertStatusBadge({ status }: { status: CertStatusRow | undefined }) {
-  if (!status || !status.cert_status) {
-    return (
-      <Badge variant="outline" className="gap-1 text-xs bg-red-500/10 text-red-700 border-red-500/40">
-        <ShieldX className="h-2.5 w-2.5" /> Sem certificado
-      </Badge>
-    );
-  }
-  const days = status.cert_days_until_expiry;
-  if (status.cert_status === 'expirado' || (days !== null && days < 0)) {
-    return (
-      <Badge variant="outline" className="gap-1 text-xs bg-red-500/10 text-red-700 border-red-500/40">
-        <ShieldX className="h-2.5 w-2.5" /> Expirado
-      </Badge>
-    );
-  }
-  if (status.cert_status === 'erro') {
-    return (
-      <Badge variant="outline" className="gap-1 text-xs bg-red-500/10 text-red-700 border-red-500/40">
-        <ShieldAlert className="h-2.5 w-2.5" /> Erro na Focus
-      </Badge>
-    );
-  }
-  if (status.cert_status === 'pendente') {
-    return (
-      <Badge variant="outline" className="gap-1 text-xs bg-amber-500/10 text-amber-700 border-amber-500/40">
-        <ShieldAlert className="h-2.5 w-2.5" /> Pendente
-      </Badge>
-    );
-  }
-  if (days !== null && days < 30) {
-    return (
-      <Badge variant="outline" className={cn(
-        'gap-1 text-xs',
-        days < 7 ? 'bg-red-500/10 text-red-700 border-red-500/40'
-                 : 'bg-amber-500/10 text-amber-700 border-amber-500/40',
-      )}>
-        <ShieldAlert className="h-2.5 w-2.5" />
-        Expira em {days}d
-      </Badge>
-    );
-  }
-  return (
-    <Badge variant="outline" className="gap-1 text-xs bg-emerald-500/10 text-emerald-700 border-emerald-500/40">
-      <ShieldCheck className="h-2.5 w-2.5" />
-      {days !== null ? `Válido (${days}d)` : 'Válido'}
-    </Badge>
-  );
-}
-
 export default function CompaniesPanel() {
   const { data: companies = [], isLoading } = useCompanies();
-  const { data: certStatuses } = useCertStatuses();
   const deleteCompany = useDeleteCompany();
   const setPrimary = useSetPrimaryCompany();
   const [editTarget, setEditTarget] = useState<Company | undefined>(undefined);
   const [formOpen, setFormOpen] = useState(false);
-  const [certDialog, setCertDialog] = useState<Company | null>(null);
 
   const openNew = () => { setEditTarget(undefined); setFormOpen(true); };
   const openEdit = (c: Company) => { setEditTarget(c); setFormOpen(true); };
@@ -301,37 +183,14 @@ export default function CompaniesPanel() {
                       <Badge variant="outline" className={`text-xs ${c.ambiente === 'producao' ? 'bg-green-500/10 text-green-600' : 'bg-amber-500/10 text-amber-600'}`}>
                         {c.ambiente === 'producao' ? 'Produção' : 'Homologação'}
                       </Badge>
-                      <CertStatusBadge status={certStatuses?.get(c.id)} />
                     </div>
                     <p className="text-sm text-muted-foreground mt-0.5">{c.razao_social}</p>
                     <p className="text-xs text-muted-foreground">
                       CNPJ: {c.cnpj} · IE: {c.inscricao_estadual || '—'} · Série {c.serie_nfe}
                     </p>
                     <p className="text-xs text-muted-foreground">{c.logradouro} {c.numero}, {c.bairro} — {c.cidade}/{c.uf}</p>
-                    {(() => {
-                      const st = certStatuses?.get(c.id);
-                      if (!st?.cert_subject_name && !st?.cert_valid_until) return null;
-                      return (
-                        <p className="text-[10px] text-muted-foreground mt-1 font-mono">
-                          {st.cert_subject_name && <>Subject: {st.cert_subject_name} · </>}
-                          {st.cert_valid_until && <>Validade: {new Date(st.cert_valid_until).toLocaleDateString('pt-BR')}</>}
-                        </p>
-                      );
-                    })()}
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCertDialog(c)}
-                      className="gap-1.5 h-8"
-                      title="Configurar / atualizar certificado A1 na Focus NFe"
-                    >
-                      <ShieldCheck className="h-3.5 w-3.5" />
-                      <span className="hidden md:inline">
-                        {certStatuses?.get(c.id)?.cert_status === 'ativo' ? 'Atualizar' : 'Certificado'}
-                      </span>
-                    </Button>
                     {!c.is_primary && (
                       <Button variant="ghost" size="icon" title="Tornar principal" onClick={() => setPrimary.mutate(c.id)} disabled={setPrimary.isPending}>
                         <Star className="h-3.5 w-3.5" />
@@ -373,16 +232,6 @@ export default function CompaniesPanel() {
       <Dialog open={formOpen} onOpenChange={closeForm}>
         {formOpen && <CompanyForm company={editTarget} onClose={closeForm} />}
       </Dialog>
-
-      {certDialog && (
-        <CertificateSetupDialog
-          open={!!certDialog}
-          onOpenChange={(v) => { if (!v) setCertDialog(null); }}
-          cnpj={certDialog.cnpj}
-          razaoSocial={certDialog.razao_social}
-          hasCert={certStatuses?.get(certDialog.id)?.cert_status === 'ativo'}
-        />
-      )}
     </div>
   );
 }

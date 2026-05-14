@@ -38,7 +38,7 @@ export default function NfeDiagnosticPanel() {
       // 1. Empresa cadastrada
       const { data: companies } = await supabase
         .from('companies')
-        .select('id, cnpj, razao_social, ambiente, regime_tributario, pis_cofins_regime, cert_status, cert_valid_until, cert_uploaded_at')
+        .select('id, cnpj, razao_social, ambiente, regime_tributario, pis_cofins_regime')
         .eq('active', true);
 
       if (!companies || companies.length === 0) {
@@ -63,20 +63,14 @@ export default function NfeDiagnosticPanel() {
             : 'Homologação — NF-es são apenas teste, sem valor fiscal',
         });
 
-        // 3. Certificado A1
-        const certSev: Severity =
-          c.cert_status === 'erro' ? 'error' :
-          c.cert_status === 'valido' ? 'ok' :
-          !c.cert_uploaded_at ? 'pending' : 'warn';
+        // 3. Certificado A1 — gerenciado no painel GestaoClick (ClickNotas).
+        // Não validamos aqui: o provedor responde se o cert estiver
+        // ausente/expirado no momento da emissão.
         items.push({
           key: 'cert', label: 'Certificado digital A1',
-          severity: certSev,
-          description:
-            certSev === 'error' ? 'Certificado com erro — re-upload necessário (provável senha errada)' :
-            certSev === 'ok' ? `Válido até ${c.cert_valid_until ?? '—'}` :
-            certSev === 'pending' ? 'Não foi feito upload ainda' :
-            'Status desconhecido — verificar com o provedor',
-          detail: c.cert_uploaded_at ? `Upload em ${new Date(c.cert_uploaded_at).toLocaleString('pt-BR')}` : undefined,
+          severity: 'ok',
+          description: 'Gerenciado no painel GestaoClick (ClickNotas)',
+          detail: 'Configure em Configurações → Certificado Digital no painel do provedor.',
         });
 
         // 4. Regime/Tributação
@@ -125,13 +119,13 @@ export default function NfeDiagnosticPanel() {
           : `${nfeCount} NF-e(s) já processadas`,
       });
 
-      // 7. Provider configurado (Spedy — em implementação)
+      // 7. Provider de emissão — GestaoClick (ClickNotas)
       items.push({
         key: 'provider',
-        label: 'Provider de emissão (Spedy)',
-        severity: 'pending',
-        description: 'Integração com Spedy ainda não foi configurada',
-        detail: 'Etapa final do setup — depende de credenciais Spedy + cert válido',
+        label: 'Provider de emissão (GestaoClick)',
+        severity: 'ok',
+        description: 'Emissão via API GestaoClick (ClickNotas)',
+        detail: 'Tokens CLICKNOTAS_ACCESS_TOKEN / CLICKNOTAS_SECRET_TOKEN configurados nas secrets do Supabase.',
       });
 
       return items;
@@ -252,15 +246,14 @@ export default function NfeDiagnosticPanel() {
         </CardContent>
       </Card>
 
-      {/* TODO: Spedy + cert flow */}
       <Card className="border-dashed border-primary/30 bg-primary/5">
         <CardContent className="pt-4 pb-4 flex items-start gap-3">
           <Wrench className="h-5 w-5 text-primary shrink-0 mt-0.5" />
           <div className="text-xs">
-            <p className="font-medium text-foreground">Próxima etapa</p>
+            <p className="font-medium text-foreground">Provedor de NF-e</p>
             <p className="text-muted-foreground mt-0.5">
-              Integração com Spedy + re-upload de certificado A1 + emissão de NF-e teste em homologação.
-              Esse fluxo será implementado depois que toda a UI estiver organizada.
+              Emissão integrada ao GestaoClick (ClickNotas). Certificado A1 e ambiente
+              (homologação/produção) são configurados no painel do provedor.
             </p>
           </div>
         </CardContent>

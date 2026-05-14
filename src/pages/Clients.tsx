@@ -31,7 +31,8 @@ import { validateCnpj } from '@/lib/validateCnpj';
 
 const emptyClient: ClientFormData = {
   razao_social: '', nome_fantasia: '', cnpj: '', inscricao_estadual: '',
-  endereco: '', cidade: '', estado: '', cep: '', email: '', telefone: '',
+  endereco: '', numero: '', bairro: '', cidade: '', estado: '', cep: '', codigo_municipio: '',
+  email: '', telefone: '',
   contato: '', notes: '', economic_group_id: null, active: true, logo_url: '', silk_url: null,
   is_favorite: false,
   accepts_bundled_packaging: true,
