@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { autoCreateSolePO } from '@/lib/soleAutoPO';
 import { autoCreateMaterialPO } from '@/lib/materialAutoPO';
+import { autoCreateMaterialOS } from '@/lib/materialAutoOS';
 import { calculateFactoringDiscount } from '@/lib/factoringCalc';
 import { isValidStatusTransition } from '@/lib/saleOrderStateMachine';
 import { logAuditEvent } from '@/services/auditService';
@@ -1598,37 +1599,79 @@ export function useUpdateSaleOrderStatus() {
             if (mrpSuggestions.length > 0) {
               await supabase.from('mrp_suggestions').insert(mrpSuggestions as any);
 
-              // Auto-create POs for materials lacking stock (grouped by product_id to avoid duplicates)
+              // Roteia cada falta pro caminho de reposição certo: material
+              // comprado → Ordem de Compra (OC); material artesanal → Ordem de
+              // Serviço (OS) pro contratado. Batch-fetch do is_artisanal pra
+              // não consultar produto por produto dentro do loop.
+              const suggestionProductIds = [...new Set(
+                mrpSuggestions.map(s => s.product_id).filter(Boolean) as string[],
+              )];
+              const artisanalSet = new Set<string>();
+              if (suggestionProductIds.length > 0) {
+                const { data: artisanalRows } = await supabase
+                  .from('products')
+                  .select('id, is_artisanal')
+                  .in('id', suggestionProductIds);
+                for (const r of artisanalRows || []) {
+                  if ((r as any).is_artisanal) artisanalSet.add(r.id);
+                }
+              }
+
               const seenProductIds = new Set<string>();
               let autoPOCount = 0;
+              let autoOSCount = 0;
               for (const s of mrpSuggestions) {
                 if (!s.product_id || seenProductIds.has(s.product_id)) continue;
                 seenProductIds.add(s.product_id);
                 try {
-                  const po = await autoCreateMaterialPO({
-                    productId: s.product_id,
-                    productName: s.product_name || 'Material',
-                    shortageQty: s.shortage_quantity,
-                    orderRef: soNumber,
-                  });
-                  if (po) {
-                    autoPOCount++;
-                    toast.warning(
-                      `Material insuficiente: "${s.product_name}" — OC ${po.poNumber} ${po.accumulated ? 'acumulada' : 'criada'} (${po.supplierName}).`,
-                      { duration: 8000 },
-                    );
+                  if (artisanalSet.has(s.product_id)) {
+                    // Material artesanal: gera Ordem de Serviço (terceirização)
+                    const os = await autoCreateMaterialOS({
+                      productId: s.product_id,
+                      productName: s.product_name || 'Material',
+                      shortageQty: s.shortage_quantity,
+                      orderRef: soNumber,
+                      saleOrderId: id,
+                    });
+                    if (os) {
+                      autoOSCount++;
+                      toast.warning(
+                        `Material artesanal insuficiente: "${s.product_name}" — OS ${os.soNumber} ${os.accumulated ? 'acumulada' : 'criada'} (${os.contractorName}).`,
+                        { duration: 8000 },
+                      );
+                    } else {
+                      toast.warning(
+                        `Material artesanal insuficiente: "${s.product_name}" — contratado não encontrado. Verifique manualmente.`,
+                        { duration: 8000 },
+                      );
+                    }
                   } else {
-                    toast.warning(
-                      `Material insuficiente: "${s.product_name}" — fornecedor não encontrado. Verifique manualmente.`,
-                      { duration: 8000 },
-                    );
+                    // Material comprado: gera Ordem de Compra
+                    const po = await autoCreateMaterialPO({
+                      productId: s.product_id,
+                      productName: s.product_name || 'Material',
+                      shortageQty: s.shortage_quantity,
+                      orderRef: soNumber,
+                    });
+                    if (po) {
+                      autoPOCount++;
+                      toast.warning(
+                        `Material insuficiente: "${s.product_name}" — OC ${po.poNumber} ${po.accumulated ? 'acumulada' : 'criada'} (${po.supplierName}).`,
+                        { duration: 8000 },
+                      );
+                    } else {
+                      toast.warning(
+                        `Material insuficiente: "${s.product_name}" — fornecedor não encontrado. Verifique manualmente.`,
+                        { duration: 8000 },
+                      );
+                    }
                   }
-                } catch (poErr: any) {
-                  console.error('Erro ao gerar OC de material:', poErr?.message);
+                } catch (repErr: any) {
+                  console.error('Erro ao gerar reposição de material:', repErr?.message);
                 }
               }
-              if (autoPOCount === 0 && totalShortageCount > 0) {
-                toast.warning(`${totalShortageCount} material(is) com estoque insuficiente — verifique fornecedores.`);
+              if (autoPOCount === 0 && autoOSCount === 0 && totalShortageCount > 0) {
+                toast.warning(`${totalShortageCount} material(is) com estoque insuficiente — verifique fornecedores/contratados.`);
               }
             }
           }
