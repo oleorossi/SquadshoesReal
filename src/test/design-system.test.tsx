@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import DesignSystemPage from '@/pages/DesignSystem';
-import { systemItems } from '@/data/navigation';
 
 // Mock do componente pesado do Design System para focar na estrutura de navegação/renderização
 vi.mock('@/design-system/App', () => ({
@@ -31,9 +30,8 @@ describe('Design System - Navegação e Renderização', () => {
     expect(screen.getByTestId('ds-topbar')).toBeInTheDocument();
   });
 
-  it('verifica se o item "Design System" está presente no menu de sistema com o link correto', () => {
-    const dsItem = systemItems.find(item => item.label === 'Design System');
-    expect(dsItem).toBeDefined();
-    expect(dsItem?.to).toBe('/design-system');
-  });
+  // Teste de "Design System está em systemItems" removido — o item foi
+  // intencionalmente retirado do sidebar de sistema; a página `/design-system`
+  // não é mais rota pública. O componente continua sendo testado acima
+  // (render isolado via MemoryRouter).
 });

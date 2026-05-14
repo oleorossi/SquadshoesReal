@@ -1300,26 +1300,70 @@ export default function SaleOrderFormPanel({
              Itens Duplicados Detectados
            </AlertDialogTitle>
            <AlertDialogDescription>
-             Os seguintes itens aparecem mais de uma vez no pedido:
+             Os seguintes itens aparecem mais de uma vez no pedido (mesma referência + mesma cor):
              <ul className="mt-2 list-disc list-inside font-medium text-foreground">
                {duplicateList.map((item, i) => (
                  <li key={i}>{item}</li>
                ))}
              </ul>
-             <p className="mt-3">Deseja prosseguir com o salvamento mesmo assim ou prefere revisar?</p>
+             <p className="mt-3 font-medium">
+               Recomendado: mesclar — somamos as quantidades e a grade num único item por (ref + cor).
+               Isso evita criar várias OPs pequenas pra uma mesma combinação na produção.
+             </p>
+             <p className="mt-2 text-xs text-muted-foreground">
+               Use "Manter separado" só se as caixas precisam mesmo ir pra destinos/lotes
+               diferentes que justifiquem OPs distintas.
+             </p>
            </AlertDialogDescription>
          </AlertDialogHeader>
-         <AlertDialogFooter>
-           <AlertDialogCancel>Revisar Itens</AlertDialogCancel>
+         <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+           <AlertDialogCancel>Revisar itens</AlertDialogCancel>
+           <Button
+             variant="outline"
+             onClick={() => {
+               setShowDuplicateDialog(false);
+               setConfirmedDuplicate(true);
+               setTimeout(() => formRef.current?.requestSubmit(), 0);
+             }}
+           >
+             Manter separado
+           </Button>
            <AlertDialogAction onClick={() => {
+             // Mescla: soma quantities + mescla grades por (ref + cor)
+             const mergedMap = new Map<string, SaleOrderItemFormData>();
+             items.forEach(item => {
+               const key = `${item.reference_id}-${item.color || ''}`;
+               if (!item.reference_id) {
+                 mergedMap.set(`__nokey__${mergedMap.size}`, item);
+                 return;
+               }
+               const existing = mergedMap.get(key);
+               if (!existing) {
+                 mergedMap.set(key, { ...item, grade: { ...(item.grade || {}) } });
+                 return;
+               }
+               // Soma quantities
+               existing.quantity = (Number(existing.quantity) || 0) + (Number(item.quantity) || 0);
+               // Mescla grade JSONB somando por tamanho
+               const eg = (existing.grade || {}) as Record<string, number>;
+               const ig = (item.grade || {}) as Record<string, number>;
+               for (const [size, qty] of Object.entries(ig)) {
+                 eg[size] = (Number(eg[size]) || 0) + (Number(qty) || 0);
+               }
+               existing.grade = eg;
+               // Preserva observação concatenando (pra manter rastreabilidade do split original)
+               if (item.observation && !existing.observation?.includes(item.observation)) {
+                 existing.observation = [existing.observation, item.observation].filter(Boolean).join(' / ');
+               }
+             });
+             const merged = Array.from(mergedMap.values());
+             setItems(merged);
              setShowDuplicateDialog(false);
-             // Re-trigger native form submit so HTML5 required-field validation still runs.
-             // confirmedDuplicate flag tells handlePreSubmit to skip the duplicate check on this pass.
              setConfirmedDuplicate(true);
-             // requestSubmit() respects required attributes; setTimeout lets the dialog unmount first.
+             toast.success(`${items.length - merged.length} item(s) mesclado(s). Total agora: ${merged.length} item(s) únicos.`);
              setTimeout(() => formRef.current?.requestSubmit(), 0);
            }}>
-             Prosseguir mesmo assim
+             Mesclar duplicatas (recomendado)
            </AlertDialogAction>
          </AlertDialogFooter>
        </AlertDialogContent>

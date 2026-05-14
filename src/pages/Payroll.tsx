@@ -256,7 +256,7 @@ export default function Payroll() {
             <Button variant="outline" onClick={() => setConfigOpen(true)}>
               <Settings className="h-4 w-4 mr-2" />Configurações
             </Button>
-            <Button variant="outline" onClick={() => navigate('/timesheet?tab=overtime')}>
+            <Button variant="outline" onClick={() => navigate('/rh?tab=ponto&subtab=overtime')}>
               <Clock className="h-4 w-4 mr-2" />
               Resolver HE
             </Button>
@@ -677,7 +677,7 @@ function PayrollPendingInputsAlert({ period }: { period: string }) {
               size="sm"
               variant="outline"
               className="h-7 text-[11px] gap-1 border-amber-500/40"
-              onClick={() => navigate('/timesheet?tab=overtime')}
+              onClick={() => navigate('/rh?tab=ponto&subtab=overtime')}
             >
               Resolver HE <ArrowRight className="h-3 w-3" />
             </Button>

@@ -17,15 +17,28 @@ const NEW_STANDARD_PRODUCT = {
 let mockProductsState: any[] = [];
 
 // Mocks dos hooks usados pelo painel.
+// IMPORTANTE: retornar SEMPRE a mesma referência de array/objeto entre renders,
+// senão o `useEffect([itemsConfigured])` do painel dispara setDrafts a cada
+// render → re-render infinito → vitest hang. (Esse era o teste que pendurava
+// o CI por ~5min até timeout.)
+const EMPTY_ROWS: any[] = [];
+const FIXED_SIZES = [34, 35, 36, 37, 38, 39, 40];
+const STABLE_HOOK_REFS = {
+  rows: { data: EMPTY_ROWS, isLoading: false },
+  sizes: { data: FIXED_SIZES, isLoading: false },
+  upsert: { mutateAsync: vi.fn(), isPending: false },
+  remove: { mutateAsync: vi.fn(), isPending: false },
+};
+
 vi.mock('@/hooks/useProducts', () => ({
   useProducts: () => ({ data: mockProductsState, isLoading: false }),
 }));
 
 vi.mock('@/hooks/useSoleStandardItems', () => ({
-  useSoleStandardItems: () => ({ data: [], isLoading: false }),
-  useSoleSizeGrade: () => ({ data: [34, 35, 36, 37, 38, 39, 40], isLoading: false }),
-  useUpsertSoleStandardItem: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useRemoveSoleStandardItem: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useSoleStandardItems: () => STABLE_HOOK_REFS.rows,
+  useSoleSizeGrade: () => STABLE_HOOK_REFS.sizes,
+  useUpsertSoleStandardItem: () => STABLE_HOOK_REFS.upsert,
+  useRemoveSoleStandardItem: () => STABLE_HOOK_REFS.remove,
 }));
 
 // scrollIntoView não existe no jsdom — stub global.
@@ -86,7 +99,11 @@ describe('SoleStandardItemsPanel — Item Padrão de Solado feedback', () => {
     });
 
     // O componente deve ter rolado a entry destacada para a viewport.
-    expect(window.HTMLElement.prototype.scrollIntoView).toHaveBeenCalled();
+    // scrollIntoView é chamado dentro de requestAnimationFrame — esperar
+    // o rAF descarregar antes de assertar.
+    await waitFor(() => {
+      expect(window.HTMLElement.prototype.scrollIntoView).toHaveBeenCalled();
+    });
   });
 
   it('localiza a entry pelo nome quando productId não está disponível', async () => {

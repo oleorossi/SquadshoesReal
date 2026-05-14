@@ -73,6 +73,8 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 const OrdersSummary = lazy(() => import("./pages/OrdersSummary"));
 const GroupedReportSummary = lazy(() => import("./pages/GroupedReportSummary"));
 const CapacityPlanning = lazy(() => import("./pages/CapacityPlanning"));
+const BottlenecksPage = lazy(() => import("./pages/Bottlenecks"));
+const SectorAggregatedView = lazy(() => import("./pages/SectorAggregatedView"));
 const ProductionControlCenter = lazy(() => import("./pages/ProductionControlCenter"));
 const PrintWorkSheets = lazy(() => import("./pages/PrintWorkSheets"));
 const LabelSystem = lazy(() => import("./pages/LabelSystem"));
@@ -568,6 +570,20 @@ const router = createBrowserRouter([
       {
         path: "picking",
         element: <PickingListPage />,
+      },
+      {
+        // Monitoramento de gargalos por setor (Costura, Aviamento, Corte).
+        // Detecta sobrecarga e oferece criar OS terceirizada pra costureira
+        // externa. Bloqueia OP de avançar pra Montagem até OS confirmar prazo.
+        path: "gargalos",
+        element: <BottlenecksPage />,
+      },
+      {
+        // Visão consolidada de carga por setor. Em vez de N OPs individuais
+        // de 12 pares, mostra o LOTE agregado por modelo (+cor onde faz
+        // sentido) — costura/corte trabalham por bloco consolidado.
+        path: "producao/visao-agregada",
+        element: <SectorAggregatedView />,
       },
       {
         path: "mrp",

@@ -3,7 +3,9 @@ import { escapeHtml } from '@/lib/htmlUtils';
 import { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, Funnel as Filter, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, Sparkle as Sparkles, ArrowRight, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, Funnel as Filter, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, Sparkle as Sparkles, ArrowRight, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock } from '@phosphor-icons/react';
+import { ReceivePiecesDialog } from '@/components/bottlenecks/ReceivePiecesDialog';
+import { SECTOR_LABEL, SectorKey } from '@/hooks/useSectorBottlenecks';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -190,6 +192,13 @@ export default function Contractors() {
   const [editingRecipe, setEditingRecipe] = useState<Partial<ArtisanalRecipe>>(emptyRecipe);
   const [isEditing, setIsEditing] = useState(false);
   const [isEditingRecipe, setIsEditingRecipe] = useState(false);
+  const [receiveDialogOpen, setReceiveDialogOpen] = useState(false);
+  const [receiveTarget, setReceiveTarget] = useState<ServiceOrder | null>(null);
+
+  const openReceiveDialog = (o: ServiceOrder) => {
+    setReceiveTarget(o);
+    setReceiveDialogOpen(true);
+  };
   const [orderTab, setOrderTab] = useState('dados');
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   // Artisanal OS state
@@ -248,7 +257,16 @@ export default function Contractors() {
     const inProgressOrders = orders.filter(o => o.status === 'Em Andamento').length;
     const completedOrders = orders.filter(o => o.status === 'Concluído').length;
     const totalValue = orders.filter(o => o.status !== 'Cancelado').reduce((s, o) => s + Number(o.total_value || 0), 0);
-    return { activeContractors, pendingOrders, inProgressOrders, completedOrders, totalValue };
+    // OS de gargalo: criadas via /gargalos, aguardando contratada confirmar prazo.
+    // Enquanto status=pending_quote E quoted_deadline=NULL, a OP vinculada está
+    // BLOQUEADA de avançar pra Montagem (trigger DB).
+    const pendingQuotes = orders.filter(o =>
+      (o.status === 'pending_quote' || o.status === 'quoted_unconfirmed') &&
+      !o.quoted_deadline
+    );
+    const blockedOps = new Set(pendingQuotes.map(o => o.order_id).filter(Boolean)).size;
+    return { activeContractors, pendingOrders, inProgressOrders, completedOrders, totalValue,
+             pendingQuotes: pendingQuotes.length, blockedOps };
   }, [contractors, orders]);
 
   const formatCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
@@ -1045,7 +1063,16 @@ export default function Contractors() {
     if (s === 'Concluído') return 'default';
     if (s === 'Em Andamento') return 'secondary';
     if (s === 'Cancelado') return 'destructive';
+    // pending_quote / quoted_unconfirmed = aguardando prazo (fluxo /gargalos)
     return 'outline';
+  };
+
+  // Labels amigáveis pros status do fluxo de gargalos (DB usa underscore)
+  const statusLabel = (s: string) => {
+    if (s === 'pending_quote') return 'Aguardando prazo';
+    if (s === 'quoted_unconfirmed') return 'Aguardando prazo';
+    if (s === 'quoted') return 'Prazo confirmado';
+    return s;
   };
 
   const handleSaveRecipe = () => {
@@ -1073,9 +1100,18 @@ export default function Contractors() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
           <StatCard icon={Users} label="Prestadores Ativos" value={stats.activeContractors} sub={`${contractors.length} total`} color="bg-blue-600" />
           <StatCard icon={Clock} label="OS Pendentes" value={stats.pendingOrders} sub={`${stats.inProgressOrders} em andamento`} color="bg-amber-500" />
+          {/* OS criadas por gargalo aguardando contratada confirmar prazo —
+              cada uma dessas mantém uma OP bloqueada de avançar pra Montagem. */}
+          <StatCard
+            icon={AlertCircle}
+            label="OS aguardando prazo"
+            value={stats.pendingQuotes}
+            sub={stats.blockedOps > 0 ? `${stats.blockedOps} OP(s) bloqueada(s)` : 'fluxo de gargalos'}
+            color={stats.pendingQuotes > 0 ? 'bg-red-600' : 'bg-muted'}
+          />
           <StatCard icon={CheckCircle2} label="OS Concluídas" value={stats.completedOrders} color="bg-emerald-600" />
           <StatCard icon={DollarSign} label="Valor Total OS" value={formatCurrency(stats.totalValue)} color="bg-violet-600" />
         </div>
@@ -1101,6 +1137,8 @@ export default function Contractors() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="pending_quote">Aguardando prazo</SelectItem>
+                  <SelectItem value="quoted">Prazo confirmado</SelectItem>
                   <SelectItem value="Pendente">Pendente</SelectItem>
                   <SelectItem value="Em Andamento">Em Andamento</SelectItem>
                   <SelectItem value="Concluído">Concluído</SelectItem>
@@ -1125,14 +1163,15 @@ export default function Contractors() {
                         <TableHead className="text-xs font-semibold">Materiais</TableHead>
                         <TableHead className="text-xs font-semibold w-[100px]">Data</TableHead>
                         <TableHead className="text-xs font-semibold text-right w-[110px]">Total</TableHead>
-                        <TableHead className="text-xs font-semibold w-[100px]">Status</TableHead>
+                        <TableHead className="text-xs font-semibold w-[140px]">Prazo / OP</TableHead>
+                        <TableHead className="text-xs font-semibold w-[130px]">Status</TableHead>
                         <TableHead className="text-xs font-semibold w-[90px]">Recibo</TableHead>
                         <TableHead className="text-xs font-semibold text-right w-[80px]">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredOrders.length === 0 ? (
-                        <TableRow><TableCell colSpan={10} className="text-center text-sm text-muted-foreground py-12">Nenhuma OS encontrada</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={11} className="text-center text-sm text-muted-foreground py-12">Nenhuma OS encontrada</TableCell></TableRow>
                       ) : filteredOrders.map(o => {
                         const mats = getMaterials(o);
                         return (
@@ -1218,7 +1257,59 @@ export default function Contractors() {
                             </TableCell>
                             <TableCell className="text-sm tabular-nums">{o.service_date ? format(new Date(o.service_date + 'T12:00:00'), 'dd/MM/yyyy') : '—'}</TableCell>
                             <TableCell className="text-sm text-right font-mono font-semibold">{formatCurrency(Number(o.total_value))}</TableCell>
-                            <TableCell><Badge variant={statusColor(o.status)} className="text-[11px]">{o.status}</Badge></TableCell>
+                            <TableCell className="text-xs">
+                              {(() => {
+                                const isBottleneckOS = !!o.target_sector;
+                                const isPendingReceive = isBottleneckOS &&
+                                  o.status !== 'received' && o.status !== 'Concluído' &&
+                                  o.status !== 'Cancelado' && o.status !== 'cancelled';
+                                const todayIso = new Date().toISOString().slice(0, 10);
+                                const isLate = o.quoted_deadline && o.quoted_deadline < todayIso && isPendingReceive;
+                                if (!isBottleneckOS) return <span className="text-muted-foreground">—</span>;
+                                return (
+                                  <div className="space-y-0.5">
+                                    <div className="flex items-center gap-1">
+                                      <Calendar className="h-3 w-3 text-muted-foreground" />
+                                      <span className={isLate ? 'text-red-600 font-semibold' : ''}>
+                                        {o.quoted_deadline
+                                          ? new Date(o.quoted_deadline + 'T00:00:00').toLocaleDateString('pt-BR')
+                                          : '—'}
+                                      </span>
+                                      {isLate && <Badge variant="outline" className="h-4 text-[9px] bg-red-500/10 text-red-700 border-red-500/30 dark:text-red-400">atrasado</Badge>}
+                                    </div>
+                                    {o.target_sector && (
+                                      <div className="text-[10px] text-muted-foreground">
+                                        Setor: {(o.target_sector in SECTOR_LABEL) ? SECTOR_LABEL[o.target_sector as SectorKey] : o.target_sector}
+                                      </div>
+                                    )}
+                                    {isPendingReceive && o.order_id && (
+                                      <div className="flex items-center gap-1 text-[10px] text-amber-700 dark:text-amber-400">
+                                        <Lock className="h-3 w-3" /> OP bloqueada
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col gap-1">
+                                <Badge variant={statusColor(o.status)} className="text-[10px] w-fit">{statusLabel(o.status)}</Badge>
+                                {/* Botão "Marcar recebido" só aparece em OS de gargalo ainda não recebidas */}
+                                {!!o.target_sector &&
+                                 o.status !== 'received' && o.status !== 'Concluído' &&
+                                 o.status !== 'Cancelado' && o.status !== 'cancelled' && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-6 px-1.5 text-[10px] gap-1"
+                                    onClick={e => { e.stopPropagation(); openReceiveDialog(o); }}
+                                  >
+                                    <CheckCircle2 className="h-3 w-3" />
+                                    Receber
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
                             <TableCell>
                               {o.receipt_number ? (
                                 <Button variant="ghost" size="sm" className="gap-1 text-xs h-7 px-2" onClick={() => printReceipt(o, contractors.find(c => c.id === o.contractor_id))}>
@@ -2197,6 +2288,23 @@ export default function Contractors() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ReceivePiecesDialog
+        open={receiveDialogOpen}
+        onOpenChange={setReceiveDialogOpen}
+        serviceOrder={receiveTarget ? {
+          id: receiveTarget.id,
+          order_number: receiveTarget.order_number,
+          target_sector: receiveTarget.target_sector ?? null,
+          quantity: receiveTarget.quantity,
+          quoted_deadline: receiveTarget.quoted_deadline ?? null,
+          bottleneck_week: receiveTarget.bottleneck_week ?? null,
+          order_id: receiveTarget.order_id ?? null,
+          description: receiveTarget.description,
+          notes: receiveTarget.notes,
+          contractors: receiveTarget.contractors ? { name: receiveTarget.contractors.name } : null,
+        } : null}
+      />
     </AppLayout>
   );
 }

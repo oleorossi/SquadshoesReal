@@ -19,7 +19,7 @@ export function useNotifications() {
     queryFn: async () => {
       // Promise.allSettled — if one source fails (e.g. notifications table is
       // unreachable), still render whatever the other call returned.
-      const [dashRes, sectorRes] = await Promise.allSettled([
+      const [dashRes, sectorRes, bottleneckRes] = await Promise.allSettled([
         apiService.getDashboardNotifications(),
         supabase
           .from('notifications')
@@ -27,6 +27,12 @@ export function useNotifications() {
           .eq('read', false)
           .order('created_at', { ascending: false })
           .limit(20),
+        (supabase as any)
+          .from('v_sector_bottlenecks')
+          .select('sector, week_start, ops_count, total_pairs_planned, severity, utilization_pct')
+          .eq('is_bottleneck', true)
+          .order('week_start', { ascending: true })
+          .limit(10),
       ]);
       const data = dashRes.status === 'fulfilled' ? dashRes.value : {
         overduePayables: [], overdueReceivables: [], lowStockProducts: [],
@@ -38,6 +44,13 @@ export function useNotifications() {
           : [];
       if (sectorRes.status === 'fulfilled' && sectorRes.value.error) {
         console.warn('[useNotifications] sector query failed:', sectorRes.value.error.message);
+      }
+      const bottlenecks =
+        bottleneckRes.status === 'fulfilled' && !bottleneckRes.value.error
+          ? (bottleneckRes.value.data || [])
+          : [];
+      if (bottleneckRes.status === 'fulfilled' && bottleneckRes.value.error) {
+        console.warn('[useNotifications] bottleneck query failed:', bottleneckRes.value.error.message);
       }
 
       const notifications: NotificationItem[] = [];
@@ -127,7 +140,7 @@ export function useNotifications() {
           severity: 'info',
           title: `${pendingAdvances.length} adiantamento(s) pendente(s)`,
           description: `Total: ${fmt(totalAdv)}`,
-          link: '/employees',
+          link: '/rh?tab=folha',
         });
       }
 
@@ -142,6 +155,36 @@ export function useNotifications() {
           link: '/orders',
         });
       }
+      // --- Gargalos de setor (Costura, Aviamento, Corte) ---
+      if (bottlenecks && bottlenecks.length > 0) {
+        const critical = bottlenecks.filter((b: any) => b.severity === 'critical');
+        const warning = bottlenecks.filter((b: any) => b.severity === 'warning');
+        if (critical.length > 0) {
+          notifications.push({
+            id: 'bottleneck-critical',
+            category: 'production',
+            severity: 'critical',
+            title: `${critical.length} gargalo(s) crítico(s) detectado(s)`,
+            description: critical.slice(0, 2).map((b: any) =>
+              `${b.sector} semana ${new Date(b.week_start + 'T00:00:00').toLocaleDateString('pt-BR')} (${b.utilization_pct}%)`
+            ).join('; '),
+            link: '/gargalos',
+          });
+        }
+        if (warning.length > 0) {
+          notifications.push({
+            id: 'bottleneck-warning',
+            category: 'production',
+            severity: 'warning',
+            title: `${warning.length} setor(es) próximo(s) da saturação`,
+            description: warning.slice(0, 2).map((b: any) =>
+              `${b.sector} semana ${new Date(b.week_start + 'T00:00:00').toLocaleDateString('pt-BR')} (${b.utilization_pct}%)`
+            ).join('; '),
+            link: '/gargalos',
+          });
+        }
+      }
+
       // --- Notificações de Setor ---
 
       if (sectorNotifications && sectorNotifications.length > 0) {
