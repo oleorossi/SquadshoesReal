@@ -11,6 +11,8 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -1150,23 +1152,22 @@ export default function Contractors() {
               </div>
             </div>
 
-            <Card className="shadow-sm">
-              <CardContent className="p-0">
+            <Panel flush>
                 <div className="rounded-md border-0 overflow-auto">
                   <Table>
                     <TableHeader>
-                      <TableRow className="bg-muted/40">
-                        <TableHead className="text-xs font-semibold w-[90px]">Nº OS</TableHead>
-                        <TableHead className="text-xs font-semibold">Prestador</TableHead>
-                        <TableHead className="text-xs font-semibold w-[100px]">Pedido (PV)</TableHead>
-                        <TableHead className="text-xs font-semibold">Descrição</TableHead>
-                        <TableHead className="text-xs font-semibold">Materiais</TableHead>
-                        <TableHead className="text-xs font-semibold w-[100px]">Data</TableHead>
-                        <TableHead className="text-xs font-semibold text-right w-[110px]">Total</TableHead>
-                        <TableHead className="text-xs font-semibold w-[140px]">Prazo / OP</TableHead>
-                        <TableHead className="text-xs font-semibold w-[130px]">Status</TableHead>
-                        <TableHead className="text-xs font-semibold w-[90px]">Recibo</TableHead>
-                        <TableHead className="text-xs font-semibold text-right w-[80px]">Ações</TableHead>
+                      <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                        <TableHead className="w-[90px]">Nº OS</TableHead>
+                        <TableHead>Prestador</TableHead>
+                        <TableHead className="w-[100px]">Pedido (PV)</TableHead>
+                        <TableHead>Descrição</TableHead>
+                        <TableHead>Materiais</TableHead>
+                        <TableHead className="w-[100px]">Data</TableHead>
+                        <TableHead className="text-right w-[110px]">Total</TableHead>
+                        <TableHead className="w-[140px]">Prazo / OP</TableHead>
+                        <TableHead className="w-[130px]">Status</TableHead>
+                        <TableHead className="w-[90px]">Recibo</TableHead>
+                        <TableHead className="text-right w-[80px]">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1335,8 +1336,7 @@ export default function Contractors() {
                     </TableBody>
                   </Table>
                 </div>
-              </CardContent>
-            </Card>
+            </Panel>
           </TabsContent>
 
           {/* ── RECIPES TAB ── */}
@@ -1359,14 +1359,18 @@ export default function Contractors() {
               </div>
             </div>
             {recipes.length === 0 ? (
-              <Card><CardContent className="flex flex-col items-center gap-2 py-12 text-muted-foreground">
-                <FlaskConical className="h-10 w-10 opacity-30" />
-                <p className="text-sm">Nenhuma receita cadastrada</p>
-                <p className="text-xs text-center">Vá em Estoque → Materiais e clique no ícone <FlaskConical className="h-3 w-3 inline-block align-middle" /> em um material para configurá-lo como artesanal.</p>
-                <Button size="sm" variant="outline" className="mt-2 gap-1.5" onClick={() => navigate('/estoque?tab=materials')}>
-                  <Package className="h-4 w-4" /> Ir para o Estoque
-                </Button>
-              </CardContent></Card>
+              <Panel flush>
+                <EmptyState
+                  icon={FlaskConical}
+                  title="Nenhuma receita cadastrada"
+                  description="Vá em Estoque → Materiais e clique no ícone de frasco em um material para configurá-lo como artesanal."
+                  action={
+                    <Button size="sm" variant="outline" className="gap-1.5" onClick={() => navigate('/estoque?tab=materials')}>
+                      <Package className="h-4 w-4" /> Ir para o Estoque
+                    </Button>
+                  }
+                />
+              </Panel>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {recipes.map(r => (
@@ -1438,20 +1442,19 @@ export default function Contractors() {
               </div>
             </div>
 
-            <Card className="shadow-sm">
-              <CardContent className="p-0">
+            <Panel flush>
                 <div className="rounded-md border-0 overflow-auto">
                   <Table>
                     <TableHeader>
-                      <TableRow className="bg-muted/40">
-                        <TableHead className="text-xs font-semibold">Nome</TableHead>
-                        <TableHead className="text-xs font-semibold">CPF/CNPJ</TableHead>
-                        <TableHead className="text-xs font-semibold">Tipo de Serviço</TableHead>
-                        <TableHead className="text-xs font-semibold">Telefone</TableHead>
-                        <TableHead className="text-xs font-semibold">Cidade/UF</TableHead>
-                        <TableHead className="text-xs font-semibold w-[80px]">Prazo Pgto</TableHead>
-                        <TableHead className="text-xs font-semibold w-[70px]">Status</TableHead>
-                        <TableHead className="text-xs font-semibold text-right w-[80px]">Ações</TableHead>
+                      <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                        <TableHead>Nome</TableHead>
+                        <TableHead>CPF/CNPJ</TableHead>
+                        <TableHead>Tipo de Serviço</TableHead>
+                        <TableHead>Telefone</TableHead>
+                        <TableHead>Cidade/UF</TableHead>
+                        <TableHead className="w-[80px]">Prazo Pgto</TableHead>
+                        <TableHead className="w-[70px]">Status</TableHead>
+                        <TableHead className="text-right w-[80px]">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1483,8 +1486,7 @@ export default function Contractors() {
                     </TableBody>
                   </Table>
                 </div>
-              </CardContent>
-            </Card>
+            </Panel>
           </TabsContent>
         </Tabs>
       </div>
