@@ -1335,180 +1335,6 @@ export type Database = {
           },
         ]
       }
-      client_addresses: {
-        Row: {
-          address_type: string
-          city: string
-          client_id: string
-          complement: string | null
-          created_at: string
-          id: string
-          ie: string | null
-          is_active: boolean
-          is_primary: boolean
-          neighborhood: string | null
-          notes: string | null
-          number: string | null
-          state: string
-          street: string
-          updated_at: string
-          zip_code: string
-        }
-        Insert: {
-          address_type?: string
-          city: string
-          client_id: string
-          complement?: string | null
-          created_at?: string
-          id?: string
-          ie?: string | null
-          is_active?: boolean
-          is_primary?: boolean
-          neighborhood?: string | null
-          notes?: string | null
-          number?: string | null
-          state: string
-          street: string
-          updated_at?: string
-          zip_code: string
-        }
-        Update: {
-          address_type?: string
-          city?: string
-          client_id?: string
-          complement?: string | null
-          created_at?: string
-          id?: string
-          ie?: string | null
-          is_active?: boolean
-          is_primary?: boolean
-          neighborhood?: string | null
-          notes?: string | null
-          number?: string | null
-          state?: string
-          street?: string
-          updated_at?: string
-          zip_code?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "client_addresses_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "clients"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "client_addresses_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "v_client_credit_exposure"
-            referencedColumns: ["client_id"]
-          },
-          {
-            foreignKeyName: "client_addresses_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "v_crm_birthdays_month"
-            referencedColumns: ["client_id"]
-          },
-          {
-            foreignKeyName: "client_addresses_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "v_crm_expected_repurchase"
-            referencedColumns: ["client_id"]
-          },
-          {
-            foreignKeyName: "client_addresses_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "v_crm_inactive_clients"
-            referencedColumns: ["client_id"]
-          },
-        ]
-      }
-      client_contacts: {
-        Row: {
-          client_id: string
-          created_at: string
-          email: string | null
-          id: string
-          is_primary: boolean
-          name: string
-          notes: string | null
-          phone: string | null
-          receives_boleto: boolean
-          receives_nfe: boolean
-          role: string
-          whatsapp: string | null
-        }
-        Insert: {
-          client_id: string
-          created_at?: string
-          email?: string | null
-          id?: string
-          is_primary?: boolean
-          name: string
-          notes?: string | null
-          phone?: string | null
-          receives_boleto?: boolean
-          receives_nfe?: boolean
-          role?: string
-          whatsapp?: string | null
-        }
-        Update: {
-          client_id?: string
-          created_at?: string
-          email?: string | null
-          id?: string
-          is_primary?: boolean
-          name?: string
-          notes?: string | null
-          phone?: string | null
-          receives_boleto?: boolean
-          receives_nfe?: boolean
-          role?: string
-          whatsapp?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "client_contacts_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "clients"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "client_contacts_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "v_client_credit_exposure"
-            referencedColumns: ["client_id"]
-          },
-          {
-            foreignKeyName: "client_contacts_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "v_crm_birthdays_month"
-            referencedColumns: ["client_id"]
-          },
-          {
-            foreignKeyName: "client_contacts_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "v_crm_expected_repurchase"
-            referencedColumns: ["client_id"]
-          },
-          {
-            foreignKeyName: "client_contacts_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "v_crm_inactive_clients"
-            referencedColumns: ["client_id"]
-          },
-        ]
-      }
       client_representatives: {
         Row: {
           client_id: string
@@ -2749,13 +2575,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_crm_inactive_clients"
             referencedColumns: ["client_id"]
-          },
-          {
-            foreignKeyName: "crm_interactions_contact_id_fkey"
-            columns: ["contact_id"]
-            isOneToOne: false
-            referencedRelation: "client_contacts"
-            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "crm_interactions_representative_id_fkey"
@@ -6029,13 +5848,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_crm_inactive_clients"
             referencedColumns: ["client_id"]
-          },
-          {
-            foreignKeyName: "lgpd_consents_contact_id_fkey"
-            columns: ["contact_id"]
-            isOneToOne: false
-            referencedRelation: "client_contacts"
-            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "lgpd_consents_employee_id_fkey"
