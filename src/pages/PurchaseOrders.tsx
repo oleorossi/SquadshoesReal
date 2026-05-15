@@ -731,82 +731,150 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
                   const edited = editingItems[item.id];
                   const qty = edited?.quantity ?? item.quantity;
                   const price = edited?.unit_price ?? item.unit_price;
-                  const grade = item.grade && Object.keys(item.grade).length > 0 ? item.grade : null;
-                  const gradeSizes = grade
-                    ? Object.keys(grade).sort((a, b) => {
-                        const na = parseFloat(a.split('/')[0]);
-                        const nb = parseFloat(b.split('/')[0]);
-                        return isNaN(na) || isNaN(nb) ? a.localeCompare(b) : na - nb;
-                      })
-                    : [];
                   return (
-                    <>
-                      <TableRow key={item.id}>
-                        <TableCell>
-                          <p className="font-medium text-sm">{item.product?.name}</p>
-                          <p className="text-xs text-muted-foreground">SKU: {item.product?.sku} • {item.unit}</p>
-                          {item.color && <p className="text-xs text-muted-foreground">Cor: {item.color}</p>}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span className={item.current_stock <= item.min_stock ? 'text-destructive font-semibold' : ''}>{item.current_stock}</span>
-                        </TableCell>
-                        <TableCell className="text-center text-muted-foreground">{item.min_stock}</TableCell>
-                        <TableCell className="text-center text-muted-foreground">{item.suggested_quantity}</TableCell>
-                        <TableCell className="text-center">
-                          {isEditable ? (
-                            <Input
-                              type="number"
-                              min={1}
-                              className="w-20 mx-auto text-center h-8"
-                              value={qty}
-                              onChange={e => handleItemChange(item.id, 'quantity', Number(e.target.value))}
-                            />
-                          ) : (
-                            <span className="font-semibold">{qty}</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {isEditable ? (
-                            <Input
-                              type="number"
-                              step="0.01"
-                              min={0}
-                              className="w-24 ml-auto text-right h-8"
-                              value={price}
-                              onChange={e => handleItemChange(item.id, 'unit_price', Number(e.target.value))}
-                            />
-                          ) : (
-                            fmt(price)
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right font-medium">{fmt(qty * price)}</TableCell>
-                      </TableRow>
-                      {/* Grade row — shows per-size quantities for sole items */}
-                      {grade && gradeSizes.length > 0 && (
-                        <TableRow key={`${item.id}-grade`} className="bg-muted/20 hover:bg-muted/30">
-                          <TableCell colSpan={7} className="py-1.5 px-4">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Numeração:</span>
-                              {gradeSizes.map(sz => (
-                                <span key={sz} className="inline-flex items-center gap-1 rounded bg-background border px-1.5 py-0.5 text-xs font-mono">
-                                  <span className="text-muted-foreground">{sz}</span>
-                                  <span className="font-bold">{grade[sz]}</span>
-                                </span>
-                              ))}
-                              <span className="text-[10px] text-muted-foreground ml-1">
-                                Total: {gradeSizes.reduce((s, sz) => s + (grade[sz] ?? 0), 0)} pares
-                              </span>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </>
+                    <TableRow key={item.id}>
+                      <TableCell>
+                        <p className="font-medium text-sm">{item.product?.name}</p>
+                        <p className="text-xs text-muted-foreground">SKU: {item.product?.sku} • {item.unit}</p>
+                        {item.color && <p className="text-xs text-muted-foreground">Cor: {item.color}</p>}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className={item.current_stock <= item.min_stock ? 'text-destructive font-semibold' : ''}>{item.current_stock}</span>
+                      </TableCell>
+                      <TableCell className="text-center text-muted-foreground">{item.min_stock}</TableCell>
+                      <TableCell className="text-center text-muted-foreground">{item.suggested_quantity}</TableCell>
+                      <TableCell className="text-center">
+                        {isEditable ? (
+                          <Input
+                            type="number"
+                            min={1}
+                            className="w-20 mx-auto text-center h-8"
+                            value={qty}
+                            onChange={e => handleItemChange(item.id, 'quantity', Number(e.target.value))}
+                          />
+                        ) : (
+                          <span className="font-semibold">{qty}</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {isEditable ? (
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min={0}
+                            className="w-24 ml-auto text-right h-8"
+                            value={price}
+                            onChange={e => handleItemChange(item.id, 'unit_price', Number(e.target.value))}
+                          />
+                        ) : (
+                          fmt(price)
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">{fmt(qty * price)}</TableCell>
+                    </TableRow>
                   );
                 })}
               </TableBody>
             </Table>
           </div>
         </div>
+
+        {/* Matriz de Numeração × Cor — exibida quando há itens com grade
+            (típico de OC auto-gerada por demanda de PV). Mesmo formato da
+            ficha de operador: colunas = numeração, linhas = cor do solado. */}
+        {(() => {
+          const gradeItems = items.filter(it => it.grade && Object.keys(it.grade as any).length > 0);
+          if (gradeItems.length === 0) return null;
+
+          const allSizesSet = new Set<string>();
+          for (const it of gradeItems) {
+            Object.keys(it.grade as any).forEach(s => allSizesSet.add(s));
+          }
+          const allSizes = Array.from(allSizesSet).sort((a, b) => {
+            const na = parseFloat(a.split('/')[0]);
+            const nb = parseFloat(b.split('/')[0]);
+            return isNaN(na) || isNaN(nb) ? a.localeCompare(b) : na - nb;
+          });
+
+          const sizeTotals: Record<string, number> = {};
+          let grandTotal = 0;
+          for (const it of gradeItems) {
+            const g = (it.grade as Record<string, number>) || {};
+            for (const s of allSizes) {
+              const v = Number(g[s]) || 0;
+              sizeTotals[s] = (sizeTotals[s] || 0) + v;
+              grandTotal += v;
+            }
+          }
+
+          return (
+            <div className="mt-4">
+              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                Demanda por Numeração × Cor
+                <Badge variant="secondary" className="text-[10px]">
+                  {grandTotal} pares · {allSizes.length} numerações · {gradeItems.length} cor{gradeItems.length !== 1 ? 'es' : ''}
+                </Badge>
+              </h3>
+              <div className="rounded-lg border overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                      <TableHead className="min-w-[180px]">Solado</TableHead>
+                      <TableHead className="min-w-[100px]">Cor</TableHead>
+                      {allSizes.map(s => (
+                        <TableHead key={s} className="text-center w-12 font-mono">{s}</TableHead>
+                      ))}
+                      <TableHead className="text-right w-20">Total</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {gradeItems.map(it => {
+                      const g = (it.grade as Record<string, number>) || {};
+                      const rowTotal = allSizes.reduce((s, sz) => s + (Number(g[sz]) || 0), 0);
+                      return (
+                        <TableRow key={`grade-${it.id}`}>
+                          <TableCell className="font-medium">{it.product?.name || '—'}</TableCell>
+                          <TableCell>
+                            {it.color
+                              ? <Badge variant="outline" className="text-xs">{it.color}</Badge>
+                              : <span className="text-muted-foreground text-xs">—</span>}
+                          </TableCell>
+                          {allSizes.map(s => {
+                            const v = Number(g[s]) || 0;
+                            return (
+                              <TableCell
+                                key={s}
+                                className={`text-center font-mono ${v > 0 ? 'font-bold' : 'text-muted-foreground/40'}`}
+                              >
+                                {v > 0 ? v : '·'}
+                              </TableCell>
+                            );
+                          })}
+                          <TableCell className="text-right font-mono font-bold">
+                            {rowTotal} <span className="text-muted-foreground text-xs font-normal">par</span>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                    <TableRow className="bg-muted/30 font-bold border-t-2">
+                      <TableCell className="text-xs uppercase tracking-wider text-muted-foreground" colSpan={2}>
+                        Total por numeração
+                      </TableCell>
+                      {allSizes.map(s => (
+                        <TableCell key={s} className="text-center font-mono font-bold">
+                          {sizeTotals[s] > 0 ? sizeTotals[s] : '·'}
+                        </TableCell>
+                      ))}
+                      <TableCell className="text-right font-mono font-bold">
+                        {grandTotal} <span className="text-muted-foreground text-xs font-normal">par</span>
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          );
+        })()}
 
         <DialogFooter className="gap-2 mt-4">
           <Button variant="outline" className="gap-1" onClick={() => printPurchaseOrderGrouped(order, items)}>
