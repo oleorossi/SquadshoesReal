@@ -33,11 +33,16 @@ async function gcFetch(path: string) {
   return { ok: res.ok, status: res.status, json };
 }
 
-function mapSituacao(situacao: string): string {
+function mapSituacao(situacao: string, motivoRej?: string): string {
   const s = (situacao || "").toLowerCase();
+  const m = (motivoRej || "").toLowerCase();
   if (s.includes("aprovada") || s.includes("autorizada")) return "autorizada";
   if (s.includes("cancelada")) return "cancelada";
   if (s.includes("rejeitada") || s.includes("denegada") || s.includes("erro")) return "rejeitada";
+  // SEFAZ pode devolver situacao_nf vazia mas com motivo_rejeicao_sefaz/mensagem
+  // preenchido — sem este check, NF rejeitada ficava eternamente "processando"
+  // (bug encontrado em 2026-05-15, 7 NFs do PV-00104 com "Rejeição 696").
+  if (m.includes("rejei") || m.includes("denegad")) return "rejeitada";
   if (s.includes("processando") || s.includes("aberta") || s.includes("aguardando")) return "processando";
   return "processando";
 }
@@ -151,7 +156,18 @@ Deno.serve(async (req) => {
         d = { ...summary, ...detail.json.data };
       }
 
-      const status = mapSituacao(d?.situacao_nf || d?.situacao || "");
+      // Coleta motivo de rejeição antes de mapear status — usado pra inferir
+      // "rejeitada" quando situacao_nf vem vazia mas SEFAZ deu mensagem.
+      // Shape confirmado via gc-diag: motivo_rejeicao_sefaz, mensagem_sefaz,
+      // mensagem_motivo. Fallback genérico pra `motivo` ou `mensagem`.
+      const motivoRejGc =
+        d?.motivo_rejeicao_sefaz ||
+        d?.mensagem_sefaz ||
+        d?.mensagem_motivo ||
+        d?.motivo ||
+        d?.mensagem ||
+        "";
+      const status = mapSituacao(d?.situacao_nf || d?.situacao || "", motivoRejGc);
       const chave = d?.chave || "";
       const protocolo = d?.protocolo || "";
       const numero = d?.numero_nf ? String(d.numero_nf) : (d?.numero ? String(d.numero) : "");
@@ -224,6 +240,10 @@ Deno.serve(async (req) => {
         company_id: companyId,
         nome_destinatario: nomeDest,
         cnpj_destinatario: cnpjDest,
+        // Mantém motivo de rejeição sincronizado com o GestaoClick — antes ficava
+        // dessincronizado quando situacao_nf vinha vazia (motivo só era setado
+        // em emit-nfe local). Em status final (autorizada/cancelada) limpa.
+        motivo_rejeicao: status === "rejeitada" ? (motivoRejGc || "Rejeitada pela SEFAZ") : "",
         updated_at: new Date().toISOString(),
       };
       if (emissaoTs) payload.data_emissao = emissaoTs;

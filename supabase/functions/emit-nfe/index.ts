@@ -605,16 +605,28 @@ Deno.serve(async (req) => {
         if (!Number.isNaN(ts) && ts > 0 && ts < Date.now() + 86_400_000) dataEmissao = norm;
       }
     }
-    const finalStatus = emitOk
-      ? (situacao?.toLowerCase().includes("aprovada") ? "autorizada" : "processando")
-      : "rejeitada";
+    // Mapeia status final considerando TODOS os terminais que a SEFAZ pode
+    // retornar via GestaoClick. Antes só checava "aprovada" → todo o resto
+    // virava "processando", e NFs claramente rejeitadas (situacao_nf =
+    // "Rejeitada" com motivo_rejeicao preenchido) ficavam eternamente como
+    // "processando" — bug encontrado em 2026-05-15 (7 NFs do mesmo PV-00104).
+    const sit = (situacao || "").toLowerCase();
+    const msg = (emitMsg || "").toLowerCase();
+    const looksRejected = sit.includes("rejeit") || sit.includes("denegada") || msg.includes("rejei");
+    const finalStatus = !emitOk || looksRejected
+      ? "rejeitada"
+      : (sit.includes("aprovada") || sit.includes("autorizada")
+          ? "autorizada"
+          : "processando");
 
     const nfeRecord: any = {
       sale_order_id,
       ref_nfe: ref,
       status: finalStatus,
       valor_total: Number(sumItems.toFixed(2)),
-      motivo_rejeicao: emitOk ? "" : emitMsg,
+      // Sempre grava o motivo quando o status é rejeitada — inclui o caso de
+      // emitOk=true mas situacao_nf="Rejeitada" (SEFAZ rejeita após emitOk).
+      motivo_rejeicao: finalStatus === "rejeitada" ? (emitMsg || situacao || "Rejeitada pela SEFAZ") : "",
       cnpj_emitente: fiscal.cnpj.replace(/\D/g, ""),
       chave_acesso: chave || null,
       protocolo: protocolo || null,
