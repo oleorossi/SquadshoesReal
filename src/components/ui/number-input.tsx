@@ -12,9 +12,17 @@ interface NumberInputProps {
   placeholder?: string;
   decimals?: number;
   disabled?: boolean;
+  /**
+   * Unidade de medida exibida dentro do campo, à direita (ex: 'kg', 'm',
+   * 'dm²', 'par', 'g/par'). Quando informada, o input ganha padding-right
+   * pra não sobrepor o texto. Documentar a unidade no input mata erros
+   * de cadastro como "14" digitado achando que era gramas mas o produto
+   * estava em kg.
+   */
+  unit?: string;
 }
 
-export function NumberInput({ value, onChange, id, className, required, min = 0, step = "0.0001", placeholder, decimals = 6, disabled }: NumberInputProps) {
+export function NumberInput({ value, onChange, id, className, required, min = 0, step = "0.0001", placeholder, decimals = 6, disabled, unit }: NumberInputProps) {
   const [displayValue, setDisplayValue] = React.useState("");
   const [justFocused, setJustFocused] = React.useState(false);
 
@@ -97,7 +105,7 @@ export function NumberInput({ value, onChange, id, className, required, min = 0,
     setDisplayValue(formatValue(value));
   };
 
-  return (
+  const input = (
     <input
       id={id}
       type="text"
@@ -111,8 +119,21 @@ export function NumberInput({ value, onChange, id, className, required, min = 0,
       placeholder={placeholder || "0"}
       className={cn(
         "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm font-mono",
+        unit && "pr-9",
         className
       )}
     />
+  );
+  if (!unit) return input;
+  return (
+    <div className="relative">
+      {input}
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 select-none font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+      >
+        {unit}
+      </span>
+    </div>
   );
 }

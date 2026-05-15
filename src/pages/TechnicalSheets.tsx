@@ -5344,9 +5344,10 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
                           quantity_per_unit: avg > 0 ? Math.round(avg * 10000) / 10000 : f.quantity_per_unit,
                         }));
                       }}
-                      className="w-[60px] h-7 text-[10px] text-center font-mono"
+                      className="w-[78px] h-7 text-[10px] text-center font-mono"
                       placeholder="0"
                       step="0.001"
+                      unit={getConsumptionUnit(form.product_id)}
                     />
                   </div>
                 );
@@ -5631,9 +5632,10 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
                             const avg = recalcAvgFromPerSize(newPerSize);
                             setEditing(ed => ed ? { ...ed, data: { ...ed.data, consumption_per_size: newPerSize, quantity_per_unit: avg > 0 ? Math.round(avg * 10000) / 10000 : ed.data.quantity_per_unit } } : null);
                           }}
-                          className="w-[60px] h-7 text-[10px] text-center font-mono"
+                          className="w-[78px] h-7 text-[10px] text-center font-mono"
                           placeholder="0"
                           step="0.001"
+                          unit={getConsumptionUnit(editing.data.product_id)}
                         />
                       </div>
                     );

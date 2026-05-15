@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Link, Package } from '@phosphor-icons/react';
+import { Link, Package, Stack as Layers } from '@phosphor-icons/react';
 import { Skeleton } from '@/components/ui/skeleton';
 
 type SoleGroup = {
