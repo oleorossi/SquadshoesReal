@@ -1,12 +1,13 @@
-# Vercel só precisa: package.json, vite.config.ts, tsconfig*, src/, public/,
-# index.html, vercel.json. Tudo abaixo é peso morto pro deploy.
+# O Vercel precisa: package.json, vite.config.ts, tsconfig*, src/, public/,
+# index.html, vercel.json, scripts/ (chamados pelo `npm run build`).
+# Aqui ficam os arquivos de PESO MORTO que não compõem build.
 
-# Bundles e zips na raiz
+# Bundles e assets pesados na raiz
 *.zip
 *.tar.gz
 AGL_001.TXT
 
-# Documentação interna (auditorias, planos, READMEs longos)
+# Documentação interna (auditorias, planos, READMEs longos) — não vai pra build
 *.md
 !README.md
 INSTRUCOES.md
@@ -15,23 +16,16 @@ INSTRUCOES.md
 .env.backup_pre_supabase_switch
 .gitlab-ci.yml
 
-# Testes que não compõem build de produção
-*.test.ts
-*.test.tsx
-
 # Migrations + edge functions ficam no Supabase, não no Vercel
 supabase/
 
-# Scripts SQL e diagnósticos
+# Diretórios auxiliares que não entram no build do app
 sql-scripts/
-
-# Diretórios auxiliares
-scripts/
 docs/
 .claude/
 .codex/
 
-# Arquivos avulsos
+# Arquivos JSX/TSX soltos na raiz (legacy, não importados pelo src/)
 App.tsx
 Navigation.test.tsx
 NavigationAccessConsistency.test.ts
@@ -39,7 +33,6 @@ SecurityIntegration.test.tsx
 
 # Sempre úteis
 .git/
-.github/
 node_modules/
 dist/
 dist-ssr/
