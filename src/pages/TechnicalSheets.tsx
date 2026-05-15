@@ -2525,7 +2525,19 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                         <GroupMaterialSelect
                           label="Opção 1 (Principal)"
                           value={form.upper_material}
-                          onChange={v => { updateField('upper_material', v); autoFillConsumption(v, 'upper_material'); }}
+                          onChange={v => {
+                            updateField('upper_material', v);
+                            autoFillConsumption(v, 'upper_material');
+                            // MUTEX Cabedal × Tiras: selecionar cabedal significa que o modelo
+                            // NÃO é de tiras. Auto-desliga has_straps + limpa strap_colors pra
+                            // não ficar dado órfão. Reverso (ligar has_straps limpar cabedal)
+                            // tá em outro handler abaixo.
+                            if (v && form.has_straps) {
+                              updateField('has_straps', false);
+                              updateField('strap_colors' as any, []);
+                              toast.info('Modelo trocado pra Cabedal — Tiras desativadas');
+                            }
+                          }}
                         />
                         {form.upper_material && (
                           <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:text-destructive" onClick={() => {
@@ -2537,6 +2549,41 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           </Button>
                         )}
                       </div>
+
+                      {/* Tabela de consumo por numeração INLINE — quando o cabedal é
+                          selecionado, o usuário precisa preencher quanto consome
+                          de material por par em cada tamanho. Antes essa tabela
+                          ficava lá embaixo numa seção separada e o usuário não
+                          achava. Renderiza imediatamente após o seletor.
+                          (A tabela completa multi-material ainda aparece abaixo
+                          como cross-check.) */}
+                      {form.upper_material && (() => {
+                        const upperUnit = getUnitForGroupName(form.upper_material);
+                        return (
+                          <div>
+                            <Label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                              Consumo de Cabedal por Numeração ({upperUnit}/par)
+                            </Label>
+                            <p className="text-[10px] text-muted-foreground mt-0.5 mb-1.5">
+                              Preencha o consumo de cabedal número a número.
+                              A média alimenta o custo do PV automaticamente.
+                            </p>
+                            {renderSizeGrid(
+                              (form as any).upper_consumption_per_size || {},
+                              upperUnit,
+                              (newPerSize) => {
+                                updateField('upper_consumption_per_size' as any, newPerSize);
+                                const filled = Object.values(newPerSize).filter((v: any) => Number(v) > 0);
+                                if (filled.length > 0) {
+                                  const avg = filled.reduce((a: number, b: any) => a + Number(b), 0) / filled.length;
+                                  updateField('upper_consumption', Math.round(avg * 10000) / 10000);
+                                }
+                              },
+                              'amber',
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {/* Acessórios alternativos de cabedal removidos da UI conforme decisão
@@ -2998,6 +3045,15 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                       { id: '2', label: 'TIRA 2', color: '' },
                       { id: '3', label: 'TIRA 3', color: '' },
                     ]);
+                  }
+                  // MUTEX Tiras × Cabedal: ativar tiras significa que o modelo
+                  // NÃO tem cabedal. Limpa upper_material + consumption pra não
+                  // ficar custo fantasma duplicado (tira + cabedal somariam).
+                  if (v && form.upper_material) {
+                    updateField('upper_material', '');
+                    updateField('upper_consumption', 0);
+                    updateField('upper_consumption_per_size' as any, {});
+                    toast.info('Modelo trocado pra Tiras — Cabedal desativado');
                   }
                   // BUG ANTIGO: ao desmarcar 'Habilitar tiras', strap_colors
                   // ficava órfão no JSON. Resultado: PV não sabia se tinha
