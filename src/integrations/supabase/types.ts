@@ -7231,6 +7231,7 @@ export type Database = {
       nfe_emitidas: {
         Row: {
           chave_acesso: string | null
+          cnpj_destinatario: string | null
           cnpj_emitente: string | null
           company_id: string | null
           created_at: string
@@ -7240,6 +7241,7 @@ export type Database = {
           id: string
           justificativa_cancelamento: string | null
           motivo_rejeicao: string | null
+          nome_destinatario: string | null
           numero: string | null
           protocolo: string | null
           provider_nfe_id: string | null
@@ -7253,6 +7255,7 @@ export type Database = {
         }
         Insert: {
           chave_acesso?: string | null
+          cnpj_destinatario?: string | null
           cnpj_emitente?: string | null
           company_id?: string | null
           created_at?: string
@@ -7262,6 +7265,7 @@ export type Database = {
           id?: string
           justificativa_cancelamento?: string | null
           motivo_rejeicao?: string | null
+          nome_destinatario?: string | null
           numero?: string | null
           protocolo?: string | null
           provider_nfe_id?: string | null
@@ -7275,6 +7279,7 @@ export type Database = {
         }
         Update: {
           chave_acesso?: string | null
+          cnpj_destinatario?: string | null
           cnpj_emitente?: string | null
           company_id?: string | null
           created_at?: string
@@ -7284,6 +7289,7 @@ export type Database = {
           id?: string
           justificativa_cancelamento?: string | null
           motivo_rejeicao?: string | null
+          nome_destinatario?: string | null
           numero?: string | null
           protocolo?: string | null
           provider_nfe_id?: string | null

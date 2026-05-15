@@ -234,15 +234,22 @@ function NfeRow({ nfe, onCancel, canCancel }: { nfe: any; onCancel: (n: NfeEmiti
   const checkStatus = useCheckNfeStatus();
   const order = (nfe as any).sale_orders;
 
+  // Quando o PV não está vinculado (ex: NF antiga sincronizada do GestaoClick),
+  // cai pro destinatário gravado direto na NF — sem isso a linha mostrava "—/—"
+  // e o operador não tinha como identificar a quem a NF foi emitida.
+  const orderLabel = order?.order_number || (nfe.numero ? `NF ${nfe.numero}` : 'NF sem vínculo');
+  const clientLabel = order?.client_name || nfe.nome_destinatario || (nfe.cnpj_destinatario ? `CNPJ ${nfe.cnpj_destinatario}` : 'Destinatário não identificado');
+
   return (
     <div className="flex items-center gap-3 py-3 border-b border-border/50 last:border-0">
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-mono text-sm font-medium">{order?.order_number || '—'}</span>
+          <span className="font-mono text-sm font-medium">{orderLabel}</span>
           <NfeStatusBadge status={nfe.status} />
-          {nfe.numero && <span className="text-xs text-muted-foreground">NF {nfe.numero}/{nfe.serie}</span>}
+          {nfe.numero && order?.order_number && <span className="text-xs text-muted-foreground">NF {nfe.numero}/{nfe.serie}</span>}
+          {!order && nfe.numero && <span className="text-xs text-muted-foreground">Série {nfe.serie || '1'}</span>}
         </div>
-        <div className="text-sm text-muted-foreground truncate">{order?.client_name || '—'}</div>
+        <div className="text-sm text-muted-foreground truncate">{clientLabel}</div>
         {nfe.motivo_rejeicao && (
           <div className="text-xs text-red-500 mt-0.5 truncate" title={nfe.motivo_rejeicao}>
             {nfe.motivo_rejeicao}
@@ -293,6 +300,10 @@ export default function NfePage() {
   const [searchText, setSearchText] = useState('');
   const [emitOpen, setEmitOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<NfeEmitida | null>(null);
+  // Default: oculta rejeições antigas de PVs que depois conseguiram emitir.
+  // Operador costuma tentar 5–10× até acertar IE/cidade do destinatário e a
+  // lista enche de "Rejeitada" duplicada do mesmo PV. Toggle pra ver tudo.
+  const [hideObsoleteRejections, setHideObsoleteRejections] = useState(true);
   const navigate = useNavigate();
   const { data: companies = [] } = useCompanies();
   const { isAdmin, roles } = useAccessControl();
@@ -304,12 +315,34 @@ export default function NfePage() {
     company_id: companyFilter || undefined,
   });
 
+  // PVs que já tiveram NF autorizada — usadas pra ocultar tentativas rejeitadas
+  // anteriores do mesmo PV (mantém só a última rejeição se nada deu certo).
+  const pvsComAutorizada = new Set<string>(
+    allNfe
+      .filter((n: any) => n.status === 'autorizada' && n.sale_order_id)
+      .map((n: any) => n.sale_order_id as string),
+  );
+
+  const obsoleteRejectionIds = (() => {
+    if (!hideObsoleteRejections) return new Set<string>();
+    const ids = new Set<string>();
+    for (const n of allNfe as any[]) {
+      if (n.status === 'rejeitada' && n.sale_order_id && pvsComAutorizada.has(n.sale_order_id)) {
+        ids.add(n.id);
+      }
+    }
+    return ids;
+  })();
+
   const filtered = allNfe.filter((n: any) => {
+    if (obsoleteRejectionIds.has(n.id)) return false;
     if (!searchText) return true;
     const q = searchText.toLowerCase();
     return (
       n.sale_orders?.order_number?.toLowerCase().includes(q) ||
       n.sale_orders?.client_name?.toLowerCase().includes(q) ||
+      n.nome_destinatario?.toLowerCase().includes(q) ||
+      n.cnpj_destinatario?.includes(q) ||
       n.numero?.toLowerCase().includes(q) ||
       n.chave_acesso?.toLowerCase().includes(q) ||
       n.cnpj_emitente?.includes(q)
@@ -420,6 +453,27 @@ export default function NfePage() {
                 <SelectItem value="rejeitada">Rejeitada</SelectItem>
               </SelectContent>
             </Select>
+            {obsoleteRejectionIds.size > 0 && hideObsoleteRejections && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setHideObsoleteRejections(false)}
+                className="h-9 gap-2 text-muted-foreground"
+                title="Mostrar tentativas rejeitadas de PVs que depois foram autorizados"
+              >
+                + Mostrar {obsoleteRejectionIds.size} {obsoleteRejectionIds.size === 1 ? 'rejeição obsoleta' : 'rejeições obsoletas'}
+              </Button>
+            )}
+            {!hideObsoleteRejections && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setHideObsoleteRejections(true)}
+                className="h-9 gap-2 text-muted-foreground"
+              >
+                − Ocultar rejeições obsoletas
+              </Button>
+            )}
           </div>
 
           <Panel

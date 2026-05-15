@@ -564,6 +564,8 @@ Deno.serve(async (req) => {
         valor_total: Number(sumItems.toFixed(2)),
         motivo_rejeicao: `Cadastro: ${msg}`,
         cnpj_emitente: fiscal.cnpj.replace(/\D/g, ""),
+        nome_destinatario: order.client_name || client?.razao_social || client?.nome || null,
+        cnpj_destinatario: cnpjDestRaw || null,
       };
       if (resolvedCompanyId) nfeRecord.company_id = resolvedCompanyId;
       await adminClient.from("nfe_emitidas").insert(nfeRecord);
@@ -617,6 +619,8 @@ Deno.serve(async (req) => {
       chave_acesso: chave || null,
       protocolo: protocolo || null,
       provider_nfe_id: gcNfeId,
+      nome_destinatario: order.client_name || client?.razao_social || client?.nome || null,
+      cnpj_destinatario: cnpjDestRaw || null,
       ...(numeroNf ? { numero: numeroNf } : {}),
       ...(serieNf ? { serie: serieNf } : {}),
       ...(dataEmissao ? { data_emissao: dataEmissao } : {}),

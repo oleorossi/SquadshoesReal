@@ -23,6 +23,8 @@ export interface NfeEmitida {
   protocolo: string | null;
   protocolo_cancelamento: string | null;
   cnpj_emitente: string | null;
+  nome_destinatario: string | null;
+  cnpj_destinatario: string | null;
   justificativa_cancelamento: string | null;
   data_cancelamento: string | null;
   created_at: string;

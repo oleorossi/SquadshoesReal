@@ -166,6 +166,26 @@ Deno.serve(async (req) => {
       const info = d?.informacoes_complementares || d?.observacao || "";
       const pvNum = extractPvNumber(info);
 
+      // Destinatário: gravado direto na NF pra identificar quando não há PV vinculado.
+      // GestaoClick varia o shape entre endpoints: `cliente` (objeto) no detalhe,
+      // `cliente_nome`/`cliente_cnpj` (string) no resumo de algumas versões da API.
+      const nomeDest =
+        d?.cliente?.nome ||
+        d?.cliente?.razao_social ||
+        d?.destinatario?.nome ||
+        d?.cliente_nome ||
+        d?.nome_cliente ||
+        null;
+      const cnpjDest = digitsOnly(
+        d?.cliente?.cnpj ||
+          d?.cliente?.cpf ||
+          d?.destinatario?.cnpj ||
+          d?.destinatario?.cpf ||
+          d?.cliente_cnpj ||
+          d?.cliente_cpf ||
+          "",
+      ) || null;
+
       // Resolve sale_order_id: 1) mantém o existente se já tem registro; 2)
       // tenta achar por número do PV mencionado nas observações; 3) deixa NULL.
       let saleOrderId: string | null = null;
@@ -203,6 +223,8 @@ Deno.serve(async (req) => {
         cnpj_emitente: cnpjEmit || "",
         sale_order_id: saleOrderId,
         company_id: companyId,
+        nome_destinatario: nomeDest,
+        cnpj_destinatario: cnpjDest,
         updated_at: new Date().toISOString(),
       };
       if (emissaoTs) payload.data_emissao = emissaoTs;
