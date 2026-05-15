@@ -8,7 +8,13 @@ import { SignatureFooter } from './worksheet/SignatureFooter';
 import { SignedImage } from '@/components/ui/signed-image';
 
 export interface SilkColorGroup {
+  /** Cor do CABEDAL (chave de agrupamento). Em todos os setores exceto
+   *  Corte Forração, é o que o operador vê no card "Cor". */
   color: string;
+  /** Cor da FORRAÇÃO mapeada pra essa cor de cabedal. Usado pelo setor
+   *  Corte Forração — o operador corta forração na cor deste campo,
+   *  não na cor do cabedal. Null quando ficha não tem o mapping. */
+  liningColor?: string | null;
   colorHex?: string;
   combinedGrid: Record<string, number>;
   /** Grade BASE de 1 ficha fechada (ex: {34:1,...,40:1} soma 12). */
@@ -256,13 +262,41 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                     <div className="w-5 h-5 shrink-0" style={{ backgroundColor: cg.colorHex, border: '1px solid #000' }} />
                   )}
                   <div className="min-w-0">
-                    <span className="section-label block" style={{ color: '#000' }}>Cor</span>
-                    <span
-                      className="text-black uppercase leading-none block"
-                      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em' }}
-                    >
-                      {cg.color}
-                    </span>
+                    {/* Em Corte Forração, a cor exibida é a da FORRAÇÃO (cor da
+                        napa a ser cortada), NÃO a do cabedal. Caso a ficha
+                        técnica não tenha o mapping, fallback pra cor do cabedal
+                        com aviso pra cadastrar. */}
+                    {sector === 'Corte Forração' && cg.liningColor ? (
+                      <>
+                        <span className="section-label block" style={{ color: '#000' }}>Cor da Forração</span>
+                        <span
+                          className="text-black uppercase leading-none block"
+                          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em' }}
+                        >
+                          {cg.liningColor}
+                        </span>
+                        <span className="font-mono text-[10px] text-black tracking-widest uppercase mt-0.5 block">
+                          (cabedal: {cg.color})
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="section-label block" style={{ color: '#000' }}>
+                          {sector === 'Corte Forração' ? 'Cor (sem mapping)' : 'Cor'}
+                        </span>
+                        <span
+                          className="text-black uppercase leading-none block"
+                          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em' }}
+                        >
+                          {cg.color}
+                        </span>
+                        {sector === 'Corte Forração' && (
+                          <span className="font-mono text-[10px] tracking-widest uppercase mt-0.5 block text-amber-700">
+                            ⚠ Mapping de forração não cadastrado
+                          </span>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-4 shrink-0">

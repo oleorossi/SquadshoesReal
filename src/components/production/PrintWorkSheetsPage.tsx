@@ -426,6 +426,32 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
     },
   });
 
+  // Cor da FORRAÇÃO por cabedal (mapping de cor). Usado na ficha de Corte
+  // Forração pra exibir qual cor de napa cortar — antes mostrava a cor do
+  // CABEDAL (ex: "OURO LIGHT") como proxy, mas o operador da forração não
+  // corta na cor do cabedal, corta na cor da FORRAÇÃO específica do modelo.
+  const { data: liningColorMappings = [] } = useQuery({
+    queryKey: ['ref_lining_colors', referenceIds],
+    enabled: referenceIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('technical_sheet_lining_colors')
+        .select('sheet_id, cabedal_color, lining_color')
+        .in('sheet_id', referenceIds);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const liningColorLookup = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const x of liningColorMappings as any[]) {
+      const key = `${x.sheet_id}::${(x.cabedal_color || '').toLowerCase().trim()}`;
+      if (x.lining_color) m.set(key, x.lining_color);
+    }
+    return m;
+  }, [liningColorMappings]);
+
   const { data: sheetLiningFlags = [] } = useQuery({
     queryKey: ['sheet_insole_lining', referenceIds],
     enabled: referenceIds.length > 0,
@@ -776,6 +802,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
 
         colorMap.set(colorName, {
           color: colorName,
+          // Cor da forração pra essa cor de cabedal (usado em Corte Forração).
+          liningColor: liningColorLookup.get(`${sheetId}::${cabedelColorLower}`) || null,
           colorHex,
           combinedGrid: {},
           baseGrid: { ...((order.grid as Record<string, number>) || {}) },
@@ -823,7 +851,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
       })
       .sort((a, b) => a.soleName.localeCompare(b.soleName, 'pt-BR'));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orders, selectedSector, printAll, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup]);
+  }, [orders, selectedSector, printAll, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, liningColorLookup, soleMaterialByRef]);
 
   // ── Solagem: consolidated by sole color ──────────────────────────────────────
   const solagemData = useMemo<{ bands: SoleColorBand[]; allSizes: string[]; grandTotal: number } | null>(() => {
