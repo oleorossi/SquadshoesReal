@@ -48,7 +48,8 @@
                  <SelectValue placeholder="Selecione Referência" />
                </SelectTrigger>
                <SelectContent>
-                 {sheets.slice(0, 50).map(s => (
+                 {/* Slice(0,50) removido — SelectContent já tem scroll nativo. */}
+                 {sheets.map(s => (
                    <SelectItem key={s.id} value={s.id}>{s.name} {s.code ? `(${s.code})` : ''}</SelectItem>
                  ))}
                </SelectContent>

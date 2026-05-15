@@ -489,6 +489,16 @@ export default function StockAdjustmentPage() {
       toast.error("Informe o motivo do ajuste antes de salvar.");
       return;
     }
+    // Confirmação extra quando salva muitos ajustes de uma vez —
+    // edição em massa de estoque é irreversível e impacta o financeiro.
+    if (totalPending >= 5) {
+      const ok = window.confirm(
+        `Confirmar ajuste de ${totalPending} produto${totalPending > 1 ? 's' : ''}?\n\n` +
+        `Motivo: ${reason.trim()}\n\n` +
+        `Esta operação registra um movimento de estoque por produto e não pode ser desfeita em massa.`,
+      );
+      if (!ok) return;
+    }
     if (conflictedIds.size > 0) {
       // E1 (audit): bloqueio explícito quando há concorrência detectada — usuário
       // tem que decidir descartar drafts ou recarregar. Antes seguia direto e

@@ -475,6 +475,13 @@ export default function SaleOrders() {
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
     const ids = Array.from(selectedIds);
+    // Confirmação obrigatória — exclusão de PV em massa cancela AR, financial_entries
+    // não-postadas, OPs vinculadas. Sem AlertDialog, um clique acidental destrói N pedidos.
+    const ok = window.confirm(
+      `Excluir ${ids.length} pedido${ids.length > 1 ? 's' : ''} selecionado${ids.length > 1 ? 's' : ''}?\n\n` +
+      `Cancela contas a receber e OPs vinculadas. Lançamentos financeiros confirmados são preservados (trilha SPED).`,
+    );
+    if (!ok) return;
     const results = await Promise.allSettled(ids.map(id => deleteOrder.mutateAsync(id)));
     const failed = results.filter(r => r.status === 'rejected').length;
     setSelectedIds(new Set());

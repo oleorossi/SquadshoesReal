@@ -224,7 +224,11 @@ function ManifestDetail({ id, onBack }: { id: string; onBack: () => void }) {
         </div>
         <div className="flex gap-1.5">
           {manifest.status === 'em_montagem' && (
-            <Button size="sm" className="gap-1.5" onClick={() => updateStatus.mutate('liberado')}>
+            <Button size="sm" className="gap-1.5" onClick={() => {
+              if (confirm('Liberar romaneio? Isso encerra a montagem e inicia o transporte — alterações nos volumes não serão mais possíveis.')) {
+                updateStatus.mutate('liberado');
+              }
+            }}>
               <Lock className="h-3.5 w-3.5" /> Liberar
             </Button>
           )}

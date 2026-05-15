@@ -597,12 +597,8 @@ function getWeekOptions() {
   };
 
   // ── Bulk action handlers (usados pela BulkActionsBar) ──────────────────
-  const handleBulkAdvance = async (ids: Set<string>) => {
-    // TODO: implementar RPC advance_op_stage (não existe ainda — só advance_wave_stage).
-    // Por ora, mostra toast informativo. Quando RPC existir, iterar:
-    // for (const id of ids) await supabase.rpc('advance_op_stage', { p_order_id: id });
-    toast.info(`Avançar setor — em implementação (${ids.size} OPs selecionadas)`);
-  };
+  // handleBulkAdvance removido: RPC advance_op_stage não existia.
+  // Avanço de setor agora só via Onda (ProductionWavesPage).
 
   const handleBulkPrintWorksheets = (ids: Set<string>) => {
     if (ids.size === 0) return;
@@ -1762,7 +1758,9 @@ function getWeekOptions() {
         onClear={sel.clear}
         itemLabel={sel.count === 1 ? 'OP selecionada' : 'OPs selecionadas'}
         actions={[
-          { label: 'Avançar Setor', icon: <ArrowRight className="h-3.5 w-3.5" />, onClick: handleBulkAdvance },
+          // "Avançar Setor" em massa removido: dependia de RPC advance_op_stage que
+          // não existe (só advance_wave_stage). Avanço de setor agora só via Onda
+          // (ProductionWavesPage). Quando a RPC for criada, restaurar aqui.
           { label: 'Imprimir Fichas', icon: <Printer className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkPrintWorksheets },
           { label: 'Cancelar OPs', icon: <X className="h-3.5 w-3.5" />, variant: 'destructive', onClick: handleBulkCancel },
           { label: 'Exportar', icon: <Download className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkExport },
