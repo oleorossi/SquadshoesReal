@@ -295,16 +295,16 @@ function NfeRow({ nfe, onCancel, onView, canCancel }: { nfe: any; onCancel: (n: 
             {checkStatus.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
           </Button>
         )}
-        {/* DANFE/XML agora baixam on-demand via edge fn nfe-download (proxy
-            GestaoClick com auth). Não dependem mais de danfe_url/xml_url
-            persistidos no DB — sempre disponíveis quando autorizada. */}
+        {/* DANFE/XML abrem viewer público (meudanfe.com.br) pela chave de
+            acesso. A API do GestaoClick não expõe os arquivos via endpoint
+            próprio (testado exaustivamente: 404 em todas as variantes). */}
         {nfe.status === 'autorizada' && (
           <>
             <Button
               variant="ghost"
               size="icon"
               title="Baixar DANFE (PDF)"
-              onClick={() => downloadFile.mutate({ nfeId: nfe.id, format: 'danfe' })}
+              onClick={() => downloadFile.mutate({ chave: nfe.chave_acesso, format: 'danfe' })}
               disabled={downloadFile.isPending}
             >
               {downloadFile.isPending && downloadFile.variables?.format === 'danfe'
@@ -315,7 +315,7 @@ function NfeRow({ nfe, onCancel, onView, canCancel }: { nfe: any; onCancel: (n: 
               variant="ghost"
               size="icon"
               title="Baixar XML"
-              onClick={() => downloadFile.mutate({ nfeId: nfe.id, format: 'xml' })}
+              onClick={() => downloadFile.mutate({ chave: nfe.chave_acesso, format: 'xml' })}
               disabled={downloadFile.isPending}
             >
               {downloadFile.isPending && downloadFile.variables?.format === 'xml'

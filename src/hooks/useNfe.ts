@@ -17,6 +17,10 @@ export interface NfeEmitida {
   chave_acesso: string | null;
   xml_url: string | null;
   danfe_url: string | null;
+  /** ID interno da NF no GestaoClick — usado pra montar URL do painel
+   *  quando precisamos abrir o DANFE/XML lá (a API REST do GC não devolve
+   *  esses arquivos, só metadados). */
+  provider_nfe_id: string | null;
   valor_total: number;
   data_emissao: string | null;
   motivo_rejeicao: string | null;
@@ -412,54 +416,41 @@ export function useEmitNfe() {
 }
 
 /**
- * Baixa DANFE (PDF) ou XML da NF-e via edge function nfe-download, que faz
- * proxy autenticado pro GestaoClick (a doc da NF-e não expõe URLs prontas).
- * Faz fetch com auth, monta blob, dispara download via <a download>.
+ * URL do visualizador público de DANFE/XML — meudanfe.com.br aceita a
+ * chave de acesso e exibe DANFE renderizado + botão de download de XML/PDF.
+ * A API do GestaoClick não expõe esses arquivos, então abrimos o viewer público
+ * em nova aba e o usuário baixa pelos botões de lá.
+ */
+export function buildMeudanfeUrl(chaveAcesso: string): string {
+  const clean = chaveAcesso.replace(/\D/g, '');
+  return `https://www.meudanfe.com.br/consulta/${clean}`;
+}
+
+/**
+ * "Baixa" DANFE / XML — na prática abre meudanfe.com.br em nova aba pra que
+ * o usuário clique em Baixar lá. A API do GestaoClick não fornece esses
+ * arquivos via endpoint próprio (probamos exaustivamente: 404 em todas as
+ * variantes de path), então usamos o viewer público que opera direto sobre a
+ * chave de acesso autorizada na SEFAZ.
  */
 export function useDownloadNfeFile() {
   return useMutation({
-    mutationFn: async ({ nfeId, format, fallbackFilename }: {
-      nfeId: string;
+    mutationFn: async ({ chave, format }: {
+      chave: string | null | undefined;
       format: 'danfe' | 'xml';
-      fallbackFilename?: string;
     }) => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Sessão expirada — faça login de novo.');
-      const SUPABASE_URL = (import.meta as any).env?.VITE_SUPABASE_URL;
-      const SUPABASE_KEY = (import.meta as any).env?.VITE_SUPABASE_PUBLISHABLE_KEY;
-      const url = `${SUPABASE_URL}/functions/v1/nfe-download?nfe_id=${encodeURIComponent(nfeId)}&format=${format}`;
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          apikey: SUPABASE_KEY,
-        },
-      });
-      if (!res.ok) {
-        const txt = await res.text().catch(() => '');
-        let parsed: any = null;
-        try { parsed = JSON.parse(txt); } catch { /* ignore */ }
-        const msg = parsed?.error || `HTTP ${res.status} ao baixar ${format.toUpperCase()}`;
-        throw new Error(msg);
+      if (!chave) {
+        throw new Error('Chave de acesso ainda não disponível — aguarde autorização da SEFAZ ou clique em "Verificar status".');
       }
-      const blob = await res.blob();
-      // Tenta extrair filename do Content-Disposition; fallback pro hint.
-      let filename = fallbackFilename || `${format}.${format === 'danfe' ? 'pdf' : 'xml'}`;
-      const cd = res.headers.get('Content-Disposition') || '';
-      const match = cd.match(/filename="([^"]+)"/);
-      if (match) filename = match[1];
-      const blobUrl = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = blobUrl;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
-      return { filename, size: blob.size };
+      const url = buildMeudanfeUrl(chave);
+      const win = window.open(url, '_blank', 'noopener,noreferrer');
+      if (!win) {
+        throw new Error('Pop-up bloqueado pelo navegador. Permita pop-ups pra abrir o visualizador da NF.');
+      }
+      return { format };
     },
     onError: (err: Error) => toast.error(err.message),
-    onSuccess: ({ filename }) => toast.success(`${filename} baixado`),
+    onSuccess: ({ format }) => toast.success(`Visualizador aberto — clique em "Baixar ${format === 'danfe' ? 'PDF' : 'XML'}" na nova aba.`),
   });
 }
 

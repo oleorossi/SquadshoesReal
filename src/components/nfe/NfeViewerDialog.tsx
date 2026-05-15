@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
@@ -6,12 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
   Download, FileText, Copy, ArrowSquareOut as ExternalLink,
-  CircleNotch as Loader2, Warning as AlertTriangle, ArrowsClockwise as RefreshCw,
+  CircleNotch as Loader2, Warning as AlertTriangle,
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import type { NfeEmitida } from '@/hooks/useNfe';
-import { useCheckNfeStatus, useDownloadNfeFile } from '@/hooks/useNfe';
-import { supabase } from '@/integrations/supabase/client';
+import { useDownloadNfeFile, buildMeudanfeUrl } from '@/hooks/useNfe';
 
 interface Props {
   nfe: NfeEmitida | null;
@@ -44,72 +42,19 @@ function formatCnpj(cnpj: string | null) {
 }
 
 /**
- * Visualizador de NF-e: abre num modal grande mostrando o DANFE (iframe PDF)
- * lado a lado com metadados + conteúdo do XML inline. Botões pra baixar
- * ambos os arquivos e abrir em aba nova.
- *
- * Se o DANFE/XML estiverem hosted em domínio com CORS restritivo, o iframe
- * mostra fallback "abrir em nova aba". Mesma coisa pro fetch do XML.
+ * Visualizador de NF-e: mostra metadados (destinatário, chave, valor, status)
+ * e oferece botões pra abrir DANFE + XML no viewer público meudanfe.com.br
+ * usando a chave de acesso. A API do GestaoClick não expõe arquivos via
+ * endpoint próprio, então o usuário baixa pelos botões da página aberta.
  */
 export function NfeViewerDialog({ nfe, open, onOpenChange, clientLabel, orderNumber }: Props) {
-  const [xmlText, setXmlText] = useState<string | null>(null);
-  const [xmlLoading, setXmlLoading] = useState(false);
-  const [xmlError, setXmlError] = useState<string | null>(null);
-  const checkStatus = useCheckNfeStatus();
   const downloadFile = useDownloadNfeFile();
-
-  // Auto-busca XML inline pra exibição quando autorizada — usa edge fn
-  // nfe-download que faz proxy autenticado pro GestaoClick.
-  useEffect(() => {
-    if (!open || !nfe || nfe.status !== 'autorizada') {
-      setXmlText(null);
-      setXmlError(null);
-      return;
-    }
-    setXmlLoading(true);
-    setXmlError(null);
-    (async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) throw new Error('Sessão expirada');
-        const SUPABASE_URL = (import.meta as any).env?.VITE_SUPABASE_URL;
-        const SUPABASE_KEY = (import.meta as any).env?.VITE_SUPABASE_PUBLISHABLE_KEY;
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/nfe-download?nfe_id=${encodeURIComponent(nfe.id)}&format=xml`, {
-          headers: { Authorization: `Bearer ${session.access_token}`, apikey: SUPABASE_KEY },
-        });
-        if (!res.ok) {
-          const txt = await res.text().catch(() => '');
-          let parsed: any = null;
-          try { parsed = JSON.parse(txt); } catch { /* ignore */ }
-          throw new Error(parsed?.error || `HTTP ${res.status}`);
-        }
-        const text = await res.text();
-        setXmlText(text);
-      } catch (e: any) {
-        setXmlError(e?.message || 'Falha ao buscar XML');
-      } finally {
-        setXmlLoading(false);
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, nfe?.id, nfe?.status]);
 
   if (!nfe) return null;
 
   const statusInfo = STATUS_VARIANT[nfe.status] || { label: nfe.status, className: 'bg-muted text-muted-foreground' };
-  // DANFE/XML disponíveis on-demand quando autorizada (via edge fn nfe-download).
-  const hasDanfe = nfe.status === 'autorizada';
-  const hasXml = nfe.status === 'autorizada' && !!xmlText;
-
-  const handleCopyXml = async () => {
-    if (!xmlText) return;
-    try {
-      await navigator.clipboard.writeText(xmlText);
-      toast.success('XML copiado');
-    } catch {
-      toast.error('Falha ao copiar — selecione manualmente');
-    }
-  };
+  const canDownload = nfe.status === 'autorizada' && !!nfe.chave_acesso;
+  const meudanfeUrl = nfe.chave_acesso ? buildMeudanfeUrl(nfe.chave_acesso) : null;
 
   const handleCopyChave = async () => {
     if (!nfe.chave_acesso) return;
@@ -123,7 +68,7 @@ export function NfeViewerDialog({ nfe, open, onOpenChange, clientLabel, orderNum
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl max-h-[92vh] flex flex-col p-0 gap-0">
+      <DialogContent className="max-w-3xl max-h-[92vh] flex flex-col p-0 gap-0">
         <DialogHeader className="px-6 pt-5 pb-3 border-b border-border/60">
           <DialogTitle className="flex items-center gap-3 flex-wrap">
             <FileText className="h-5 w-5 text-muted-foreground" />
@@ -136,11 +81,10 @@ export function NfeViewerDialog({ nfe, open, onOpenChange, clientLabel, orderNum
             )}
           </DialogTitle>
           <DialogDescription className="sr-only">
-            Visualização da NF-e com DANFE e arquivo XML.
+            Visualização da NF-e com botões para abrir DANFE e XML.
           </DialogDescription>
         </DialogHeader>
 
-        {/* Metadados em barra horizontal */}
         <div className="px-6 py-3 border-b border-border/60 bg-muted/30 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2 text-xs">
           <div>
             <div className="text-muted-foreground uppercase tracking-wider text-[10px]">Destinatário</div>
@@ -197,43 +141,23 @@ export function NfeViewerDialog({ nfe, open, onOpenChange, clientLabel, orderNum
           )}
         </div>
 
-        {/* Corpo: DANFE iframe à esquerda, XML à direita */}
-        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 min-h-0 overflow-hidden">
-          {/* DANFE */}
-          <div className="flex flex-col border-r border-border/60 min-h-0">
-            <div className="px-4 py-2 border-b border-border/60 flex items-center justify-between bg-muted/20">
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">DANFE (PDF)</span>
-              <div className="flex items-center gap-1">
-                {hasDanfe && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7"
-                    title="Baixar DANFE (PDF)"
-                    onClick={() => downloadFile.mutate({ nfeId: nfe.id, format: 'danfe' })}
-                    disabled={downloadFile.isPending}
-                  >
-                    {downloadFile.isPending && downloadFile.variables?.format === 'danfe'
-                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      : <Download className="h-3.5 w-3.5" />}
-                  </Button>
-                )}
-              </div>
-            </div>
-            <div className="flex-1 min-h-0 bg-muted/10 flex flex-col items-center justify-center p-6 text-center gap-3">
-              {nfe.status === 'rejeitada' || nfe.status === 'erro' ? (
-                <span className="text-sm text-muted-foreground">NF rejeitada — DANFE não foi gerado.</span>
-              ) : nfe.status !== 'autorizada' ? (
-                <span className="text-sm text-muted-foreground">DANFE disponível só após autorização.</span>
-              ) : (
-                <>
-                  <FileText className="h-12 w-12 text-muted-foreground/30" />
-                  <div className="text-sm font-semibold">DANFE pronto pra download</div>
-                  <div className="text-xs text-muted-foreground max-w-xs">
-                    Clique abaixo pra baixar o PDF. O arquivo é gerado pelo GestaoClick na hora.
+        <div className="flex-1 min-h-0 overflow-auto p-6 space-y-4">
+          {canDownload ? (
+            <>
+              <div className="rounded-md border border-border/60 bg-card p-4 space-y-3">
+                <div className="flex items-start gap-3">
+                  <FileText className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold">DANFE e XML</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      Abrir visualizador público (meudanfe.com.br) usando a chave de acesso da NF.
+                      Lá tem botão para baixar o PDF do DANFE e o XML autorizado direto da SEFAZ.
+                    </div>
                   </div>
+                </div>
+                <div className="flex flex-wrap gap-2 pt-1">
                   <Button
-                    onClick={() => downloadFile.mutate({ nfeId: nfe.id, format: 'danfe' })}
+                    onClick={() => downloadFile.mutate({ chave: nfe.chave_acesso, format: 'danfe' })}
                     disabled={downloadFile.isPending}
                     className="gap-1.5"
                     size="sm"
@@ -243,68 +167,60 @@ export function NfeViewerDialog({ nfe, open, onOpenChange, clientLabel, orderNum
                       : <Download className="h-4 w-4" />}
                     Baixar DANFE (PDF)
                   </Button>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* XML */}
-          <div className="flex flex-col min-h-0">
-            <div className="px-4 py-2 border-b border-border/60 flex items-center justify-between bg-muted/20">
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">XML</span>
-              <div className="flex items-center gap-1">
-                {xmlText && (
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleCopyXml} title="Copiar XML">
-                    <Copy className="h-3.5 w-3.5" />
-                  </Button>
-                )}
-                {nfe.status === 'autorizada' && (
                   <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7"
-                    title="Baixar XML"
-                    onClick={() => downloadFile.mutate({ nfeId: nfe.id, format: 'xml' })}
+                    onClick={() => downloadFile.mutate({ chave: nfe.chave_acesso, format: 'xml' })}
                     disabled={downloadFile.isPending}
+                    variant="outline"
+                    className="gap-1.5"
+                    size="sm"
                   >
                     {downloadFile.isPending && downloadFile.variables?.format === 'xml'
-                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      : <Download className="h-3.5 w-3.5" />}
+                      ? <Loader2 className="h-4 w-4 animate-spin" />
+                      : <Download className="h-4 w-4" />}
+                    Baixar XML
                   </Button>
-                )}
+                  {meudanfeUrl && (
+                    <Button asChild variant="ghost" size="sm" className="gap-1.5">
+                      <a href={meudanfeUrl} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="h-4 w-4" /> Abrir visualizador
+                      </a>
+                    </Button>
+                  )}
+                </div>
               </div>
-            </div>
-            <div className="flex-1 min-h-0 overflow-auto bg-muted/5">
-              {xmlLoading ? (
-                <div className="h-full flex items-center justify-center text-sm text-muted-foreground gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Carregando XML...
+
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-800 dark:text-amber-300 flex gap-2">
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                <div>
+                  A API do GestaoClick não disponibiliza o PDF/XML direto.
+                  Os arquivos vêm do meudanfe.com.br pela chave de acesso autorizada na SEFAZ
+                  — mesma fonte que o próprio Receita Federal usa.
                 </div>
-              ) : xmlError ? (
-                <div className="p-4 text-xs space-y-2">
-                  <div className="text-amber-700 dark:text-amber-400 flex items-start gap-2">
-                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                    <div>
-                      <div className="font-bold">Não foi possível carregar o XML inline</div>
-                      <div className="text-muted-foreground mt-0.5">{xmlError}</div>
-                      <div className="text-muted-foreground mt-1">
-                        Use os botões acima pra abrir em nova aba ou baixar o arquivo.
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : xmlText ? (
-                <pre className="p-4 text-[10px] font-mono leading-tight whitespace-pre-wrap break-all text-foreground/90">
-                  {xmlText}
-                </pre>
-              ) : (
-                <div className="h-full flex items-center justify-center text-sm text-muted-foreground p-6 text-center">
-                  {nfe.status === 'rejeitada' || nfe.status === 'erro'
-                    ? 'NF rejeitada — XML não foi gerado.'
-                    : 'XML ainda não disponível.'}
+              </div>
+            </>
+          ) : (
+            <div className="rounded-md border border-border/60 bg-muted/20 p-6 text-center text-sm text-muted-foreground">
+              {nfe.status === 'rejeitada' || nfe.status === 'erro'
+                ? 'NF rejeitada — DANFE/XML não foram gerados.'
+                : nfe.status === 'cancelada'
+                  ? 'NF cancelada — você ainda pode baixar o DANFE/XML pelo visualizador público.'
+                  : !nfe.chave_acesso
+                    ? 'Chave de acesso ainda não disponível. Aguarde a SEFAZ autorizar ou clique em "Verificar status" na lista.'
+                    : 'DANFE/XML disponíveis somente após autorização.'}
+              {nfe.status === 'cancelada' && nfe.chave_acesso && (
+                <div className="mt-3">
+                  <Button
+                    onClick={() => downloadFile.mutate({ chave: nfe.chave_acesso, format: 'danfe' })}
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5"
+                  >
+                    <Download className="h-4 w-4" /> Abrir visualizador
+                  </Button>
                 </div>
               )}
             </div>
-          </div>
+          )}
         </div>
 
         <DialogFooter className="px-6 py-3 border-t border-border/60">
