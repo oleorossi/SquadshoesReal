@@ -316,37 +316,42 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
     ].filter(Boolean).join(' · ');
     const hasFooter = footerLine1 || footerLine2;
 
-    // Alturas hardcoded por seção. Total = 140mm = altura do label-box.
-    // Distribuição: 30+8+8+66+18+10 = 140.
+    // Alturas hardcoded por seção. Total = 132mm = altura do label-box.
+    // Distribuição: 28+7+7+62+16+12 = 132.
+    // Reduzido de 140mm pra 132mm em 15/05/2026 — A4 tem 287mm úteis (5mm
+    // margem cada lado), e 2×140=280mm deixava só 7mm de gap entre labels.
+    // Qualquer overflow interno (renderização variável de impressora,
+    // line-height, padding) empurrava a 2ª label pra página seguinte.
+    // Com 2×132=264mm sobra 23mm de gap — folga real de impressão.
     return `
       <div class="label-box">
-        <div style="height:30mm;display:flex;border-bottom:1.5px solid #000;overflow:hidden;">
+        <div style="height:28mm;display:flex;border-bottom:1.5px solid #000;overflow:hidden;">
           ${headerLeft}
           ${headerRight}
         </div>
-        <div style="height:8mm;display:flex;border-bottom:1px solid #000;overflow:hidden;">
+        <div style="height:7mm;display:flex;border-bottom:1px solid #000;overflow:hidden;">
           ${subInfoCells}
         </div>
-        <div style="height:8mm;display:flex;border-bottom:1px solid #000;background:#f5f5f5;overflow:hidden;">
+        <div style="height:7mm;display:flex;border-bottom:1px solid #000;background:#f5f5f5;overflow:hidden;">
           ${statsCells}
         </div>
-        <div style="height:66mm;display:flex;border-bottom:1px solid #000;overflow:hidden;">
+        <div style="height:62mm;display:flex;border-bottom:1px solid #000;overflow:hidden;">
           ${productLeft}
           ${productImage}
           ${sizeRangeBig}
         </div>
         ${item.grade.length > 0 ? `
-        <div class="grade-block" style="height:18mm;padding:3px 10px;border-bottom:1px solid #000;overflow:hidden;page-break-inside:avoid;break-inside:avoid;display:flex;flex-direction:column;justify-content:center;gap:2px;">
+        <div class="grade-block" style="height:16mm;padding:2px 10px;border-bottom:1px solid #000;overflow:hidden;page-break-inside:avoid;break-inside:avoid;display:flex;flex-direction:column;justify-content:center;gap:1px;">
           <div style="display:flex;align-items:center;">
-            <div style="width:48px;font-size:11px;color:#000;font-weight:800;padding-right:8px;text-transform:uppercase;letter-spacing:0.4px;">Tam.</div>
+            <div style="width:48px;font-size:10px;color:#000;font-weight:800;padding-right:8px;text-transform:uppercase;letter-spacing:0.4px;">Tam.</div>
             <div style="flex:1;display:flex;">${gradeHead}</div>
           </div>
           <div style="display:flex;align-items:center;">
-            <div style="width:48px;font-size:11px;color:#000;font-weight:800;padding-right:8px;text-transform:uppercase;letter-spacing:0.4px;">Qtd.</div>
+            <div style="width:48px;font-size:10px;color:#000;font-weight:800;padding-right:8px;text-transform:uppercase;letter-spacing:0.4px;">Qtd.</div>
             <div style="flex:1;display:flex;">${gradeRow}</div>
           </div>
-        </div>` : '<div style="height:18mm;border-bottom:1px solid #000;"></div>'}
-        <div class="footer-block" style="height:10mm;padding:1mm 8mm;font-size:8.5px;color:#000;font-weight:600;text-align:center;overflow:hidden;display:flex;flex-direction:column;justify-content:center;line-height:1.25;">
+        </div>` : '<div style="height:16mm;border-bottom:1px solid #000;"></div>'}
+        <div class="footer-block" style="height:12mm;padding:1mm 8mm;font-size:8.5px;color:#000;font-weight:600;text-align:center;overflow:hidden;display:flex;flex-direction:column;justify-content:center;line-height:1.25;">
           ${hasFooter ? `
             ${footerLine1 ? `<div>${footerLine1}</div>` : ''}
             ${footerLine2 ? `<div>${footerLine2}</div>` : ''}
@@ -398,27 +403,29 @@ ${LABEL_PRINT_HARDENING}
   display:flex;flex-direction:column;
   page-break-inside:avoid !important;
   break-inside:avoid-page !important;
-  border-radius:0.5mm;overflow:hidden;height:135mm;
+  border-radius:0.5mm;overflow:hidden;height:132mm;
 }
 .label-box > *{overflow:hidden;page-break-inside:avoid;break-inside:avoid;}
 /* Layout em POSITION:ABSOLUTE — cada page-container vira um plano A4
    onde os 2 labels ficam ancorados em posições FIXAS (X,Y). Saem do
    fluxo do documento → engine de impressão não tem como "decidir"
-   quebrar entre eles. */
+   quebrar entre eles.
+   A4 útil = 287mm (5mm margem cada lado). 2 labels × 132mm = 264mm,
+   sobra 23mm pra gap entre top/bottom — folga real de impressão. */
 .page-container{
   width:198mm;height:287mm;margin:0 auto 0;
   position:relative;box-sizing:border-box;
 }
 .page-container .label-slot-top{
   position:absolute;top:0;left:0;right:0;
-  height:140mm;
+  height:132mm;
 }
 .page-container .label-slot-bottom{
   position:absolute;top:143mm;left:0;right:0;
-  height:140mm;
+  height:132mm;
 }
 .page-container .label-slot-top .label-box,
-.page-container .label-slot-bottom .label-box{height:140mm;}
+.page-container .label-slot-bottom .label-box{height:132mm;}
 .page-container.page-break{break-after:page;page-break-after:always;}
 .page-container:not(.page-break){break-after:avoid;page-break-after:avoid;}
 /* Marcador de versão pra diferenciar do cache antigo no debug */
@@ -447,12 +454,15 @@ ${LABEL_PRINT_HARDENING}
   body{padding:0;margin:0;}
   /* A4 = 297mm. Com @page margin 5mm × 2 = 287mm úteis.
      page-container ocupa o A4 útil (287mm) com posição relativa.
-     Slot top em (0, 0..140mm). Slot bottom em (143mm, +140mm).
-     143+140=283mm dentro dos 287mm úteis — 4mm de respiro. */
+     Slot top em (0, 0..132mm). Slot bottom em (143mm, +132mm).
+     143+132=275mm dentro dos 287mm úteis — 12mm de respiro garantindo
+     que a 2ª etiqueta NUNCA pula pra próxima página por overflow.
+     (Antes era 140mm cada e só sobravam 4mm — qualquer micro-overflow
+     interno empurrava pra 3 páginas em vez de 2.) */
   .page-container{width:100%;height:287mm;margin:0;}
-  .page-container .label-slot-top{height:140mm;}
-  .page-container .label-slot-bottom{height:140mm;top:143mm;}
-  .label-box{height:140mm;}
+  .page-container .label-slot-top{height:132mm;}
+  .page-container .label-slot-bottom{height:132mm;top:143mm;}
+  .label-box{height:132mm;}
   .label-box,
   .label-box *{
     page-break-inside:avoid !important;
