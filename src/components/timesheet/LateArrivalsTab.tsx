@@ -1,5 +1,8 @@
 import { useMemo, useState } from 'react';
-import { WarningCircle as AlertCircle, CaretDown as ChevronDown, CaretRight as ChevronRight, Clock, MagnifyingGlass as Search, Users as Users2 } from '@phosphor-icons/react';
+import {
+  WarningCircle as AlertCircle, CaretDown as ChevronDown, CaretRight as ChevronRight,
+  Clock, MagnifyingGlass as Search, Users as Users2, Printer, SignOut,
+} from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -7,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   useWorkSchedules, useHolidays, useTimeRecords, useImportBatches,
   WorkSchedule,
@@ -14,6 +18,8 @@ import {
 import { useEmployees } from '@/hooks/useEmployees';
 import { getBatchDateRange, resolveTimeControlFilters } from '@/lib/timeControlFilters';
 import { findEmployeeMatch, resolveEmployeeName } from '@/lib/employeeMatching';
+import { printHtml } from '@/lib/printOrder';
+import { escapeHtml } from '@/lib/htmlUtils';
 
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
@@ -39,22 +45,34 @@ function getISOWeekKey(dateStr: string): string {
   return `${d.getFullYear()}-W${String(weekNo).padStart(2, '0')}`;
 }
 
-interface LateRecord {
+type OccurrenceType = 'late' | 'early';
+
+interface Occurrence {
   employeeName: string;
   date: string;
   dayOfWeek: number;
   weekKey: string;
-  scheduledEntry: string;
-  actualEntry: string;
-  lateMinutes: number;
+  scheduledTime: string;
+  actualTime: string;
+  diffMinutes: number;
+  type: OccurrenceType;
 }
 
 interface WeekGroup {
   weekKey: string;
   weekLabel: string;
-  records: LateRecord[];
-  totalLateMinutes: number;
+  occurrences: Occurrence[];
+  totalLateMin: number;
+  totalEarlyMin: number;
   employeeCount: number;
+}
+
+interface EmployeeGroup {
+  name: string;
+  occurrences: Occurrence[];
+  totalLateMin: number;
+  totalEarlyMin: number;
+  daysAffected: number;
 }
 
 export default function LateArrivalsTab() {
@@ -64,7 +82,8 @@ export default function LateArrivalsTab() {
   const [filterEndDate, setFilterEndDate] = useState('');
   const [searchEmployee, setSearchEmployee] = useState('');
   const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(new Set());
-  const [minLateMinutes, setMinLateMinutes] = useState(5);
+  const [expandedEmployees, setExpandedEmployees] = useState<Set<string>>(new Set());
+  const [minDiffMinutes, setMinDiffMinutes] = useState(5);
 
   const resolvedFilters = useMemo(() => resolveTimeControlFilters({
     selectedBatch,
@@ -92,8 +111,8 @@ export default function LateArrivalsTab() {
   const recurringHolidayMMDD = useMemo(() => new Set(holidays.filter(h => h.recurring).map(h => h.holiday_date.slice(5))), [holidays]);
   const isHolidayDate = (d: string) => holidayDates.has(d) || recurringHolidayMMDD.has(d.slice(5));
 
-  const lateRecords = useMemo<LateRecord[]>(() => {
-    const result: LateRecord[] = [];
+  const occurrences = useMemo<Occurrence[]>(() => {
+    const result: Occurrence[] = [];
 
     for (const rec of records) {
       const punches = (rec.punches as string[]) || [];
@@ -102,59 +121,81 @@ export default function LateArrivalsTab() {
       const date = new Date(rec.record_date + 'T12:00:00');
       const dow = date.getDay();
       const isHol = isHolidayDate(rec.record_date);
-      if (isHol || dow === 0) continue; // skip holidays and sundays
+      if (isHol || dow === 0) continue;
 
-      // Resolve employee to get their schedule
       const resolvedName = resolveEmployeeName(employees, rec.employee_name, rec.employee_external_id);
       const emp = findEmployeeMatch(employees, resolvedName, rec.employee_external_id);
       const empSchedule = (emp?.work_schedule_id && schedules.find(s => s.id === emp.work_schedule_id)) || defaultSchedule;
 
       const isSaturday = dow === 6;
       const hasSaturday = !!(empSchedule.saturday_entry && empSchedule.saturday_exit);
-      if (isSaturday && !hasSaturday) continue; // skip Saturday if no Saturday schedule
+      if (isSaturday && !hasSaturday) continue;
 
       const scheduledEntry = isSaturday
         ? (empSchedule.saturday_entry || empSchedule.entry_time)
         : empSchedule.entry_time;
+      const scheduledExit = isSaturday
+        ? (empSchedule.saturday_exit || empSchedule.exit_time)
+        : empSchedule.exit_time;
 
       const tolerance = empSchedule.tolerance_minutes || 10;
-      const scheduledMin = timeToMinutes(scheduledEntry);
+      const scheduledEntryMin = timeToMinutes(scheduledEntry);
+      const scheduledExitMin = timeToMinutes(scheduledExit);
 
-      // Find first punch (entry)
       const cleanedPunches = punches.map(cleanPunch).sort();
       const firstPunchMin = timeToMinutes(cleanedPunches[0]);
+      const lastPunchMin = timeToMinutes(cleanedPunches[cleanedPunches.length - 1]);
 
-      // Only count as late if strictly beyond scheduled + tolerance
-      const lateMinutes = firstPunchMin - scheduledMin - tolerance;
-      if (lateMinutes <= 0) continue;
-      if (lateMinutes < minLateMinutes) continue;
+      // Atraso: chegou depois do horário + tolerância
+      const lateMinutes = firstPunchMin - scheduledEntryMin - tolerance;
+      if (lateMinutes > 0 && lateMinutes >= minDiffMinutes) {
+        result.push({
+          employeeName: resolvedName,
+          date: rec.record_date,
+          dayOfWeek: dow,
+          weekKey: getISOWeekKey(rec.record_date),
+          scheduledTime: scheduledEntry,
+          actualTime: cleanedPunches[0],
+          diffMinutes: lateMinutes,
+          type: 'late',
+        });
+      }
 
-      result.push({
-        employeeName: resolvedName,
-        date: rec.record_date,
-        dayOfWeek: dow,
-        weekKey: getISOWeekKey(rec.record_date),
-        scheduledEntry,
-        actualEntry: cleanedPunches[0],
-        lateMinutes,
-      });
+      // Saída antecipada: saiu antes do horário − tolerância
+      const earlyMinutes = scheduledExitMin - lastPunchMin - tolerance;
+      if (earlyMinutes > 0 && earlyMinutes >= minDiffMinutes && cleanedPunches.length >= 2) {
+        result.push({
+          employeeName: resolvedName,
+          date: rec.record_date,
+          dayOfWeek: dow,
+          weekKey: getISOWeekKey(rec.record_date),
+          scheduledTime: scheduledExit,
+          actualTime: cleanedPunches[cleanedPunches.length - 1],
+          diffMinutes: earlyMinutes,
+          type: 'early',
+        });
+      }
     }
 
-    result.sort((a, b) => a.date.localeCompare(b.date) || a.employeeName.localeCompare(b.employeeName));
+    result.sort((a, b) =>
+      a.date.localeCompare(b.date)
+      || a.employeeName.localeCompare(b.employeeName)
+      || a.type.localeCompare(b.type),
+    );
     return result;
-  }, [records, employees, schedules, defaultSchedule, holidayDates, recurringHolidayMMDD, minLateMinutes]);
+  }, [records, employees, schedules, defaultSchedule, holidayDates, recurringHolidayMMDD, minDiffMinutes]);
 
-  const filteredRecords = useMemo(() => {
-    if (!searchEmployee.trim()) return lateRecords;
+  const filteredOccurrences = useMemo(() => {
+    if (!searchEmployee.trim()) return occurrences;
     const term = searchEmployee.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-    return lateRecords.filter(r =>
+    return occurrences.filter(r =>
       r.employeeName.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes(term)
     );
-  }, [lateRecords, searchEmployee]);
+  }, [occurrences, searchEmployee]);
 
   const weekGroups = useMemo<WeekGroup[]>(() => {
-    const map = new Map<string, LateRecord[]>();
-    filteredRecords.forEach(r => {
+    const map = new Map<string, Occurrence[]>();
+    filteredOccurrences.forEach(r => {
       if (!map.has(r.weekKey)) map.set(r.weekKey, []);
       map.get(r.weekKey)!.push(r);
     });
@@ -163,21 +204,32 @@ export default function LateArrivalsTab() {
       .map(([weekKey, recs]) => ({
         weekKey,
         weekLabel: formatWeekLabel(weekKey, recs[0].date),
-        records: recs,
-        totalLateMinutes: recs.reduce((s, r) => s + r.lateMinutes, 0),
+        occurrences: recs,
+        totalLateMin: recs.filter(r => r.type === 'late').reduce((s, r) => s + r.diffMinutes, 0),
+        totalEarlyMin: recs.filter(r => r.type === 'early').reduce((s, r) => s + r.diffMinutes, 0),
         employeeCount: new Set(recs.map(r => r.employeeName)).size,
       }));
-  }, [filteredRecords]);
+  }, [filteredOccurrences]);
 
-  const topLate = useMemo(() => {
-    const map = new Map<string, number>();
-    filteredRecords.forEach(r => {
-      map.set(r.employeeName, (map.get(r.employeeName) || 0) + r.lateMinutes);
+  const employeeGroups = useMemo<EmployeeGroup[]>(() => {
+    const map = new Map<string, Occurrence[]>();
+    filteredOccurrences.forEach(r => {
+      if (!map.has(r.employeeName)) map.set(r.employeeName, []);
+      map.get(r.employeeName)!.push(r);
     });
     return [...map.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5);
-  }, [filteredRecords]);
+      .map(([name, recs]) => ({
+        name,
+        occurrences: recs,
+        totalLateMin: recs.filter(r => r.type === 'late').reduce((s, r) => s + r.diffMinutes, 0),
+        totalEarlyMin: recs.filter(r => r.type === 'early').reduce((s, r) => s + r.diffMinutes, 0),
+        daysAffected: new Set(recs.map(r => r.date)).size,
+      }))
+      .sort((a, b) =>
+        (b.totalLateMin + b.totalEarlyMin) - (a.totalLateMin + a.totalEarlyMin)
+        || a.name.localeCompare(b.name),
+      );
+  }, [filteredOccurrences]);
 
   const toggleWeek = (wk: string) => {
     setExpandedWeeks(prev => {
@@ -186,13 +238,31 @@ export default function LateArrivalsTab() {
       return next;
     });
   };
+  const toggleEmployee = (name: string) => {
+    setExpandedEmployees(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  };
 
-  const expandAll = () => setExpandedWeeks(new Set(weekGroups.map(w => w.weekKey)));
-  const collapseAll = () => setExpandedWeeks(new Set());
+  const totalOccurrences = filteredOccurrences.length;
+  const totalLateMinutes = filteredOccurrences.filter(o => o.type === 'late').reduce((s, r) => s + r.diffMinutes, 0);
+  const totalEarlyMinutes = filteredOccurrences.filter(o => o.type === 'early').reduce((s, r) => s + r.diffMinutes, 0);
+  const totalDebitMinutes = totalLateMinutes + totalEarlyMinutes;
+  const uniqueEmployees = new Set(filteredOccurrences.map(r => r.employeeName)).size;
 
-  const totalLateOccurrences = filteredRecords.length;
-  const totalLateMinutes = filteredRecords.reduce((s, r) => s + r.lateMinutes, 0);
-  const uniqueLateEmployees = new Set(filteredRecords.map(r => r.employeeName)).size;
+  const handlePrintAll = () => {
+    const periodLabel = `${filterStartDate || '—'} a ${filterEndDate || '—'}`;
+    const bodyHtml = buildPrintAllHtml(employeeGroups, periodLabel, totalDebitMinutes);
+    printHtml('Relatório de Atrasos & Saídas Antecipadas', bodyHtml);
+  };
+
+  const handlePrintEmployee = (eg: EmployeeGroup) => {
+    const periodLabel = `${filterStartDate || '—'} a ${filterEndDate || '—'}`;
+    const bodyHtml = buildPrintEmployeeHtml(eg, periodLabel);
+    printHtml(`Atrasos · ${eg.name}`, bodyHtml);
+  };
 
   if (isLoading) {
     return <div className="flex justify-center py-12 text-muted-foreground">Carregando...</div>;
@@ -200,11 +270,10 @@ export default function LateArrivalsTab() {
 
   return (
     <div className="space-y-4">
-      {/* Filters */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 text-amber-500" /> Relatório de Atrasos
+            <AlertCircle className="h-4 w-4 text-amber-500" /> Relatório de Atrasos & Saídas Antecipadas
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -243,15 +312,25 @@ export default function LateArrivalsTab() {
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Mín. atraso (min)</Label>
+              <Label className="text-xs">Mín. diferença (min)</Label>
               <Input
                 type="number"
                 min="1"
-                value={minLateMinutes}
-                onChange={e => setMinLateMinutes(Math.max(1, Number(e.target.value)))}
+                value={minDiffMinutes}
+                onChange={e => setMinDiffMinutes(Math.max(1, Number(e.target.value)))}
                 className="h-9 w-24"
               />
             </div>
+            {filteredOccurrences.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 gap-2 ml-auto"
+                onClick={handlePrintAll}
+              >
+                <Printer className="h-4 w-4" /> Imprimir relatório
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -260,168 +339,245 @@ export default function LateArrivalsTab() {
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
             <Clock className="h-8 w-8 mx-auto mb-2 opacity-40" />
-            Selecione uma importação ou intervalo de datas para visualizar os atrasos.
+            Selecione uma importação ou intervalo de datas para visualizar.
           </CardContent>
         </Card>
-      ) : filteredRecords.length === 0 ? (
+      ) : filteredOccurrences.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
             <AlertCircle className="h-8 w-8 mx-auto mb-2 opacity-40 text-green-500" />
-            <p className="font-medium text-green-600">Nenhum atraso encontrado!</p>
-            <p className="text-xs mt-1">Todos os funcionários chegaram dentro da tolerância no período.</p>
+            <p className="font-medium text-green-600">Nenhuma ocorrência!</p>
+            <p className="text-xs mt-1">Todos os funcionários dentro da tolerância no período.</p>
           </CardContent>
         </Card>
       ) : (
         <>
-          {/* KPI Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <Card>
               <CardContent className="p-4 text-center">
                 <AlertCircle className="h-5 w-5 mx-auto mb-1 text-amber-500" />
                 <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Ocorrências</p>
-                <p className="text-2xl font-black font-mono text-amber-600">{totalLateOccurrences}</p>
+                <p className="text-2xl font-black font-mono text-amber-600">{totalOccurrences}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
                 <Users2 className="h-5 w-5 mx-auto mb-1 text-destructive" />
                 <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Funcionários</p>
-                <p className="text-2xl font-black font-mono text-destructive">{uniqueLateEmployees}</p>
+                <p className="text-2xl font-black font-mono text-destructive">{uniqueEmployees}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
                 <Clock className="h-5 w-5 mx-auto mb-1 text-orange-500" />
-                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Total Atraso</p>
+                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Atrasos</p>
                 <p className="text-2xl font-black font-mono text-orange-600">{minutesToHHMM(totalLateMinutes)}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
-                <Clock className="h-5 w-5 mx-auto mb-1 text-muted-foreground" />
-                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Média/ocorr.</p>
-                <p className="text-2xl font-black font-mono">
-                  {totalLateOccurrences > 0 ? minutesToHHMM(Math.round(totalLateMinutes / totalLateOccurrences)) : '—'}
-                </p>
+                <SignOut className="h-5 w-5 mx-auto mb-1 text-orange-500" />
+                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Saídas +cedo</p>
+                <p className="text-2xl font-black font-mono text-orange-600">{minutesToHHMM(totalEarlyMinutes)}</p>
+              </CardContent>
+            </Card>
+            <Card className="border-primary/30">
+              <CardContent className="p-4 text-center">
+                <Clock className="h-5 w-5 mx-auto mb-1 text-primary" />
+                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Débito total</p>
+                <p className="text-2xl font-black font-mono text-primary">{minutesToHHMM(totalDebitMinutes)}</p>
               </CardContent>
             </Card>
           </div>
 
-          {/* Top 5 late employees */}
-          {topLate.length > 0 && (
-            <Card className="border-amber-500/20">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2 text-amber-600">
-                  <AlertCircle className="h-4 w-4" /> Funcionários com mais atraso acumulado
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <div className="space-y-2">
-                  {topLate.map(([name, totalMins], i) => (
-                    <div key={name} className="flex items-center gap-3 text-sm">
-                      <span className="text-muted-foreground font-mono w-5 text-right">{i + 1}.</span>
-                      <span className="flex-1 font-medium">{name}</span>
-                      <Badge variant="outline" className="font-mono text-xs text-amber-700 border-amber-500/40 bg-amber-500/10">
-                        {minutesToHHMM(totalMins)}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          <Tabs defaultValue="por-funcionario" className="space-y-3">
+            <TabsList>
+              <TabsTrigger value="por-funcionario" className="gap-1.5">
+                <Users2 className="h-3.5 w-3.5" /> Por funcionário
+              </TabsTrigger>
+              <TabsTrigger value="por-semana" className="gap-1.5">
+                <Clock className="h-3.5 w-3.5" /> Por semana
+              </TabsTrigger>
+            </TabsList>
 
-          {/* Week-by-week groups */}
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={expandAll}>Expandir tudo</Button>
-            <span>·</span>
-            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={collapseAll}>Recolher tudo</Button>
-          </div>
-
-          <div className="space-y-2">
-            {weekGroups.map(wg => {
-              const expanded = expandedWeeks.has(wg.weekKey);
-              return (
-                <Card key={wg.weekKey} className="overflow-hidden">
-                  <button
-                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/40 transition-colors text-left"
-                    onClick={() => toggleWeek(wg.weekKey)}
-                  >
-                    {expanded ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
-                    <span className="font-semibold text-sm flex-1">{wg.weekLabel}</span>
-                    <div className="flex items-center gap-3">
-                      <Badge variant="outline" className="text-[10px] font-mono text-amber-700 border-amber-500/30 bg-amber-500/10">
-                        {wg.records.length} atraso{wg.records.length !== 1 ? 's' : ''}
-                      </Badge>
-                      <Badge variant="outline" className="text-[10px] font-mono">
-                        {wg.employeeCount} func.
-                      </Badge>
-                      <span className="font-mono text-xs text-orange-600 font-semibold">
-                        {minutesToHHMM(wg.totalLateMinutes)}
-                      </span>
+            <TabsContent value="por-funcionario" className="space-y-2">
+              {employeeGroups.map(eg => {
+                const expanded = expandedEmployees.has(eg.name);
+                return (
+                  <Card key={eg.name} className="overflow-hidden">
+                    <div className="flex items-center gap-3 px-4 py-3 hover:bg-muted/40">
+                      <button
+                        className="flex items-center gap-2 flex-1 text-left"
+                        onClick={() => toggleEmployee(eg.name)}
+                      >
+                        {expanded
+                          ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+                          : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
+                        <span className="font-semibold text-sm flex-1">{eg.name}</span>
+                        <Badge variant="outline" className="text-[10px] font-mono">
+                          {eg.daysAffected} dia{eg.daysAffected !== 1 ? 's' : ''}
+                        </Badge>
+                        {eg.totalLateMin > 0 && (
+                          <Badge variant="outline" className="text-[10px] font-mono text-orange-700 border-orange-500/30 bg-orange-500/10">
+                            Atraso {minutesToHHMM(eg.totalLateMin)}
+                          </Badge>
+                        )}
+                        {eg.totalEarlyMin > 0 && (
+                          <Badge variant="outline" className="text-[10px] font-mono text-orange-700 border-orange-500/30 bg-orange-500/10">
+                            Saída +cedo {minutesToHHMM(eg.totalEarlyMin)}
+                          </Badge>
+                        )}
+                        <Badge variant="outline" className="text-[10px] font-mono font-bold text-primary border-primary/30">
+                          Total {minutesToHHMM(eg.totalLateMin + eg.totalEarlyMin)}
+                        </Badge>
+                      </button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 gap-1.5 text-xs"
+                        onClick={() => handlePrintEmployee(eg)}
+                      >
+                        <Printer className="h-3.5 w-3.5" /> Imprimir
+                      </Button>
                     </div>
-                  </button>
-                  {expanded && (
-                    <div className="border-t">
-                      <Table>
-                        <TableHeader>
-                          <TableRow className="bg-muted/20">
-                            <TableHead className="text-xs py-2">Funcionário</TableHead>
-                            <TableHead className="text-xs py-2">Data</TableHead>
-                            <TableHead className="text-xs py-2">Dia</TableHead>
-                            <TableHead className="text-xs py-2 text-right">Previsto</TableHead>
-                            <TableHead className="text-xs py-2 text-right">Chegada</TableHead>
-                            <TableHead className="text-xs py-2 text-right">Atraso</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {wg.records.map((r, idx) => (
-                            <TableRow key={idx} className="text-sm">
-                              <TableCell className="font-medium py-2">{r.employeeName}</TableCell>
-                              <TableCell className="font-mono py-2">
-                                {new Date(r.date + 'T12:00:00').toLocaleDateString('pt-BR')}
-                              </TableCell>
-                              <TableCell className="py-2 text-muted-foreground">{DAYS_PT[r.dayOfWeek]}</TableCell>
-                              <TableCell className="text-right font-mono py-2 text-muted-foreground">
-                                {r.scheduledEntry}
-                              </TableCell>
-                              <TableCell className="text-right font-mono py-2">
-                                {r.actualEntry}
-                              </TableCell>
-                              <TableCell className="text-right py-2">
-                                <Badge
-                                  variant="outline"
-                                  className={`font-mono text-xs ${
-                                    r.lateMinutes >= 60
-                                      ? 'text-destructive border-destructive/40 bg-destructive/10'
-                                      : r.lateMinutes >= 30
-                                      ? 'text-orange-600 border-orange-500/40 bg-orange-500/10'
-                                      : 'text-amber-600 border-amber-500/40 bg-amber-500/10'
-                                  }`}
-                                >
-                                  +{minutesToHHMM(r.lateMinutes)}
-                                </Badge>
-                              </TableCell>
+                    {expanded && (
+                      <div className="border-t">
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="bg-muted/20">
+                              <TableHead className="text-xs py-2">Data</TableHead>
+                              <TableHead className="text-xs py-2">Dia</TableHead>
+                              <TableHead className="text-xs py-2">Tipo</TableHead>
+                              <TableHead className="text-xs py-2 text-right">Previsto</TableHead>
+                              <TableHead className="text-xs py-2 text-right">Real</TableHead>
+                              <TableHead className="text-xs py-2 text-right">Diferença</TableHead>
                             </TableRow>
-                          ))}
-                          {/* Week total */}
-                          <TableRow className="bg-muted/20 font-semibold">
-                            <TableCell colSpan={4} className="text-xs py-2 text-muted-foreground">
-                              SUBTOTAL — {wg.employeeCount} funcionário{wg.employeeCount !== 1 ? 's' : ''}, {wg.records.length} ocorrência{wg.records.length !== 1 ? 's' : ''}
-                            </TableCell>
-                            <TableCell className="text-right py-2" />
-                            <TableCell className="text-right font-mono text-xs py-2 text-orange-600">
-                              +{minutesToHHMM(wg.totalLateMinutes)}
-                            </TableCell>
-                          </TableRow>
-                        </TableBody>
-                      </Table>
-                    </div>
-                  )}
-                </Card>
-              );
-            })}
-          </div>
+                          </TableHeader>
+                          <TableBody>
+                            {eg.occurrences.map((r, idx) => (
+                              <TableRow key={idx} className="text-sm">
+                                <TableCell className="font-mono py-2">
+                                  {new Date(r.date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                </TableCell>
+                                <TableCell className="py-2 text-muted-foreground">{DAYS_PT[r.dayOfWeek]}</TableCell>
+                                <TableCell className="py-2">
+                                  <Badge
+                                    variant="outline"
+                                    className={r.type === 'late'
+                                      ? 'text-xs text-amber-700 border-amber-500/40 bg-amber-500/10'
+                                      : 'text-xs text-orange-700 border-orange-500/40 bg-orange-500/10'}
+                                  >
+                                    {r.type === 'late' ? 'Atraso' : 'Saída antecipada'}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-right font-mono py-2 text-muted-foreground">
+                                  {r.scheduledTime}
+                                </TableCell>
+                                <TableCell className="text-right font-mono py-2">{r.actualTime}</TableCell>
+                                <TableCell className="text-right py-2">
+                                  <span className="font-mono text-xs font-semibold text-primary">
+                                    +{minutesToHHMM(r.diffMinutes)}
+                                  </span>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  </Card>
+                );
+              })}
+            </TabsContent>
+
+            <TabsContent value="por-semana" className="space-y-2">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setExpandedWeeks(new Set(weekGroups.map(w => w.weekKey)))}>
+                  Expandir tudo
+                </Button>
+                <span>·</span>
+                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setExpandedWeeks(new Set())}>
+                  Recolher tudo
+                </Button>
+              </div>
+              {weekGroups.map(wg => {
+                const expanded = expandedWeeks.has(wg.weekKey);
+                return (
+                  <Card key={wg.weekKey} className="overflow-hidden">
+                    <button
+                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/40 transition-colors text-left"
+                      onClick={() => toggleWeek(wg.weekKey)}
+                    >
+                      {expanded ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
+                      <span className="font-semibold text-sm flex-1">{wg.weekLabel}</span>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-[10px] font-mono">
+                          {wg.employeeCount} func.
+                        </Badge>
+                        {wg.totalLateMin > 0 && (
+                          <Badge variant="outline" className="text-[10px] font-mono text-orange-700 border-orange-500/30 bg-orange-500/10">
+                            Atraso {minutesToHHMM(wg.totalLateMin)}
+                          </Badge>
+                        )}
+                        {wg.totalEarlyMin > 0 && (
+                          <Badge variant="outline" className="text-[10px] font-mono text-orange-700 border-orange-500/30 bg-orange-500/10">
+                            Saída +cedo {minutesToHHMM(wg.totalEarlyMin)}
+                          </Badge>
+                        )}
+                      </div>
+                    </button>
+                    {expanded && (
+                      <div className="border-t">
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="bg-muted/20">
+                              <TableHead className="text-xs py-2">Funcionário</TableHead>
+                              <TableHead className="text-xs py-2">Data</TableHead>
+                              <TableHead className="text-xs py-2">Dia</TableHead>
+                              <TableHead className="text-xs py-2">Tipo</TableHead>
+                              <TableHead className="text-xs py-2 text-right">Previsto</TableHead>
+                              <TableHead className="text-xs py-2 text-right">Real</TableHead>
+                              <TableHead className="text-xs py-2 text-right">Diferença</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {wg.occurrences.map((r, idx) => (
+                              <TableRow key={idx} className="text-sm">
+                                <TableCell className="font-medium py-2">{r.employeeName}</TableCell>
+                                <TableCell className="font-mono py-2">
+                                  {new Date(r.date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                </TableCell>
+                                <TableCell className="py-2 text-muted-foreground">{DAYS_PT[r.dayOfWeek]}</TableCell>
+                                <TableCell className="py-2">
+                                  <Badge
+                                    variant="outline"
+                                    className={r.type === 'late'
+                                      ? 'text-xs text-amber-700 border-amber-500/40 bg-amber-500/10'
+                                      : 'text-xs text-orange-700 border-orange-500/40 bg-orange-500/10'}
+                                  >
+                                    {r.type === 'late' ? 'Atraso' : 'Saída +cedo'}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-right font-mono py-2 text-muted-foreground">
+                                  {r.scheduledTime}
+                                </TableCell>
+                                <TableCell className="text-right font-mono py-2">{r.actualTime}</TableCell>
+                                <TableCell className="text-right py-2">
+                                  <span className="font-mono text-xs font-semibold text-primary">
+                                    +{minutesToHHMM(r.diffMinutes)}
+                                  </span>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  </Card>
+                );
+              })}
+            </TabsContent>
+          </Tabs>
         </>
       )}
     </div>
@@ -437,4 +593,131 @@ function formatWeekLabel(weekKey: string, sampleDate: string): string {
   sunday.setDate(sunday.getDate() + 6);
   const fmtBR = (dt: Date) => dt.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
   return `Semana ${weekKey.split('-W')[1]} — ${fmtBR(monday)} a ${fmtBR(sunday)}`;
+}
+
+// ── Print helpers ────────────────────────────────────────────────────
+
+function buildPrintEmployeeHtml(eg: EmployeeGroup, periodLabel: string): string {
+  const occurrenceRows = eg.occurrences.map(r => `
+    <tr>
+      <td>${new Date(r.date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+      <td>${DAYS_PT[r.dayOfWeek]}</td>
+      <td>${r.type === 'late' ? 'Atraso' : 'Saída antecipada'}</td>
+      <td class="num">${r.scheduledTime}</td>
+      <td class="num">${r.actualTime}</td>
+      <td class="num"><strong>+${minutesToHHMM(r.diffMinutes)}</strong></td>
+    </tr>
+  `).join('');
+
+  return `
+    <style>
+      body { font-family: -apple-system, sans-serif; padding: 24px; color: #1a1a1a; }
+      h1 { font-size: 18pt; margin: 0 0 4px 0; }
+      .meta { font-size: 9pt; color: #555; margin-bottom: 16px; }
+      .summary { background: #f6f6f6; border-left: 3px solid #c54a4a; padding: 10px 14px; margin: 12px 0 18px 0; font-size: 10pt; }
+      .summary strong { font-size: 12pt; font-family: 'Courier New', monospace; }
+      table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+      th { background: #eaeaea; text-align: left; padding: 6px 8px; border-bottom: 1px solid #888; font-weight: 700; }
+      td { padding: 5px 8px; border-bottom: 1px solid #ddd; }
+      td.num { font-family: 'Courier New', monospace; text-align: right; }
+      .footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #ccc; font-size: 8pt; color: #555; }
+      .signature { display: flex; gap: 40px; margin-top: 40px; }
+      .signature > div { flex: 1; border-top: 1px solid #888; padding-top: 6px; text-align: center; font-size: 9pt; color: #555; }
+    </style>
+    <h1>Relatório de Atrasos & Saídas Antecipadas</h1>
+    <div class="meta">
+      <strong>${escapeHtml(eg.name)}</strong><br/>
+      Período: ${escapeHtml(periodLabel)}<br/>
+      Emitido em: ${new Date().toLocaleString('pt-BR')}
+    </div>
+    <div class="summary">
+      ${eg.totalLateMin > 0 ? `Atraso total: <strong>${minutesToHHMM(eg.totalLateMin)}</strong>` : ''}
+      ${eg.totalLateMin > 0 && eg.totalEarlyMin > 0 ? ' · ' : ''}
+      ${eg.totalEarlyMin > 0 ? `Saída antecipada total: <strong>${minutesToHHMM(eg.totalEarlyMin)}</strong>` : ''}
+      ${' · '}Débito total: <strong>${minutesToHHMM(eg.totalLateMin + eg.totalEarlyMin)}</strong>
+      ${' · '}Dias afetados: <strong>${eg.daysAffected}</strong>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Data</th>
+          <th>Dia</th>
+          <th>Tipo</th>
+          <th style="text-align: right;">Previsto</th>
+          <th style="text-align: right;">Real</th>
+          <th style="text-align: right;">Diferença</th>
+        </tr>
+      </thead>
+      <tbody>${occurrenceRows}</tbody>
+    </table>
+    <div class="signature">
+      <div>Funcionário</div>
+      <div>Responsável RH</div>
+    </div>
+    <div class="footer">
+      Documento gerado automaticamente pelo sistema RH · Squad Shoes.
+      Valores calculados sobre as batidas de ponto importadas, com tolerância CLT aplicada.
+    </div>
+  `;
+}
+
+function buildPrintAllHtml(groups: EmployeeGroup[], periodLabel: string, totalDebit: number): string {
+  const rows = groups.map(eg => `
+    <tr>
+      <td>${escapeHtml(eg.name)}</td>
+      <td class="num">${eg.daysAffected}</td>
+      <td class="num">${eg.totalLateMin > 0 ? minutesToHHMM(eg.totalLateMin) : '—'}</td>
+      <td class="num">${eg.totalEarlyMin > 0 ? minutesToHHMM(eg.totalEarlyMin) : '—'}</td>
+      <td class="num"><strong>${minutesToHHMM(eg.totalLateMin + eg.totalEarlyMin)}</strong></td>
+    </tr>
+  `).join('');
+
+  return `
+    <style>
+      body { font-family: -apple-system, sans-serif; padding: 24px; color: #1a1a1a; }
+      h1 { font-size: 18pt; margin: 0 0 4px 0; }
+      .meta { font-size: 9pt; color: #555; margin-bottom: 16px; }
+      .summary { background: #f6f6f6; border-left: 3px solid #c54a4a; padding: 10px 14px; margin: 12px 0 18px 0; font-size: 10pt; }
+      .summary strong { font-size: 12pt; font-family: 'Courier New', monospace; }
+      table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+      th { background: #eaeaea; text-align: left; padding: 6px 8px; border-bottom: 1px solid #888; font-weight: 700; }
+      td { padding: 5px 8px; border-bottom: 1px solid #ddd; }
+      td.num { font-family: 'Courier New', monospace; text-align: right; }
+      tfoot td { font-weight: 700; background: #eaeaea; border-top: 2px solid #555; }
+      .footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #ccc; font-size: 8pt; color: #555; }
+    </style>
+    <h1>Relatório Consolidado · Atrasos & Saídas Antecipadas</h1>
+    <div class="meta">
+      Período: ${escapeHtml(periodLabel)}<br/>
+      Emitido em: ${new Date().toLocaleString('pt-BR')}
+    </div>
+    <div class="summary">
+      Funcionários afetados: <strong>${groups.length}</strong>
+      ${' · '}Débito total acumulado: <strong>${minutesToHHMM(totalDebit)}</strong>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Funcionário</th>
+          <th style="text-align: right;">Dias afetados</th>
+          <th style="text-align: right;">Atraso total</th>
+          <th style="text-align: right;">Saída antecipada</th>
+          <th style="text-align: right;">Débito total</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+      <tfoot>
+        <tr>
+          <td>TOTAL</td>
+          <td class="num">—</td>
+          <td class="num">${minutesToHHMM(groups.reduce((s, g) => s + g.totalLateMin, 0))}</td>
+          <td class="num">${minutesToHHMM(groups.reduce((s, g) => s + g.totalEarlyMin, 0))}</td>
+          <td class="num">${minutesToHHMM(totalDebit)}</td>
+        </tr>
+      </tfoot>
+    </table>
+    <div class="footer">
+      Documento gerado automaticamente pelo sistema RH · Squad Shoes.
+    </div>
+  `;
 }
