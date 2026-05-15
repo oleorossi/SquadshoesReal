@@ -202,34 +202,50 @@ const OperatorWorkSheet = ({
         </div>
       </div>
 
-      {/* ── Produção diária / tempo estimado — KPI band ── */}
+      {/* ── Produção diária / tempo estimado / por ficha / total — KPI band ── */}
       {effectiveCapacity > 0 && (
-        <div className="grid grid-cols-3 gap-0 mb-2 border-y border-black">
+        <div className="grid grid-cols-4 gap-0 mb-2 border-y border-black">
           <div className="py-2 px-3">
             <span className="section-label block" style={{ color: '#000' }}>Produção / Dia</span>
             <span
               className="text-black leading-none mt-1 block"
-              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.02em' }}
+              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em' }}
             >
-              {effectiveCapacity} <span className="text-[10px] font-mono tracking-widest uppercase">pares</span>
+              {effectiveCapacity} <span className="text-[9px] font-mono tracking-widest uppercase">pares</span>
             </span>
           </div>
           <div className="py-2 px-3 border-l border-black">
             <span className="section-label block" style={{ color: '#000' }}>Tempo Estimado</span>
             <span
               className="text-black leading-none mt-1 block"
-              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.02em' }}
+              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em' }}
             >
-              {estimatedDays} <span className="text-[10px] font-mono tracking-widest uppercase">dia{estimatedDays !== 1 ? 's' : ''}</span>
+              {estimatedDays} <span className="text-[9px] font-mono tracking-widest uppercase">dia{estimatedDays !== 1 ? 's' : ''}</span>
             </span>
           </div>
+          {/* Por ficha fechada — quantos pares cabem em UMA ficha. Distinto
+              do total da OP (que pode ser N fichas multiplicadas). */}
           <div className="py-2 px-3 border-l border-black">
-            <span className="section-label block" style={{ color: '#000' }}>Total da Ficha</span>
+            <span className="section-label block" style={{ color: '#000' }}>Por Ficha</span>
             <span
               className="text-black leading-none mt-1 block"
-              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.02em' }}
+              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em' }}
             >
-              {totalPairs} <span className="text-[10px] font-mono tracking-widest uppercase">pares</span>
+              {gradeSum} <span className="text-[9px] font-mono tracking-widest uppercase">pares</span>
+            </span>
+            {fichas > 1 && (
+              <span className="text-[8px] font-mono tracking-widest uppercase text-black mt-0.5 block">
+                × {fichas} fichas
+              </span>
+            )}
+          </div>
+          <div className="py-2 px-3 border-l border-black">
+            <span className="section-label block" style={{ color: '#000' }}>Total da OP</span>
+            <span
+              className="text-black leading-none mt-1 block"
+              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em' }}
+            >
+              {totalPairs} <span className="text-[9px] font-mono tracking-widest uppercase">pares</span>
             </span>
           </div>
         </div>
@@ -421,30 +437,36 @@ const OperatorWorkSheet = ({
                 </tr>
               </thead>
               <tbody>
-                {/* Base row (per ficha) — show only if multiplier != 1 */}
+                {/* Linha POR FICHA — base grade. Aparece sempre, com tamanho
+                    secundário (mas legível). Quando fichas=1, ela e a linha
+                    total mostrariam o mesmo número, então omitimos. */}
                 {fichas > 1 && (
-                  <tr style={{ borderBottom: '1px solid #000' }}>
-                    <td className="py-1 text-[9px] font-mono text-black leading-tight uppercase tracking-wider" style={{ borderRight: '1px solid #000' }}>
-                      /ficha<br />({gradeSum}p)
+                  <tr style={{ borderBottom: '1.5px solid #000' }}>
+                    <td className="py-1.5 text-[10px] font-mono font-bold text-black leading-tight uppercase tracking-wider" style={{ borderRight: '1px solid #000' }}>
+                      Por Ficha<br />({gradeSum}p)
                     </td>
                     {chunk.map((s, i) => (
                       <td
                         key={s}
-                        className="py-1 font-mono text-sm text-black"
-                        style={{ borderRight: i < chunk.length - 1 ? '1px solid #000' : (ci === sizeChunks.length - 1 ? '1px solid #000' : 'none') }}
+                        className="py-1.5 font-mono font-bold text-black"
+                        style={{
+                          fontSize: '16px',
+                          borderRight: i < chunk.length - 1 ? '1px solid #000' : (ci === sizeChunks.length - 1 ? '1px solid #000' : 'none'),
+                        }}
                       >
                         {baseGrade[s] || '—'}
                       </td>
                     ))}
                     {ci === sizeChunks.length - 1 && (
-                      <td className="py-1 font-mono text-sm font-bold text-black">{gradeSum}</td>
+                      <td className="py-1.5 font-mono text-base font-bold text-black">{gradeSum}</td>
                     )}
                   </tr>
                 )}
-                {/* TOTAL row — GIANT Anton numbers */}
+                {/* TOTAL row — GIANT Anton numbers. Quando fichas=1, esse total
+                    JÁ É o conteúdo de uma ficha — label deixa claro. */}
                 <tr>
-                  <td className="py-2 text-[10px] font-mono font-bold text-black uppercase tracking-wider" style={{ borderRight: '1px solid #000' }}>
-                    {fichas > 1 ? `× ${fichas}` : 'Total'}
+                  <td className="py-2 text-[10px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
+                    {fichas > 1 ? <>Total<br />× {fichas}</> : <>Total<br />(1 ficha)</>}
                   </td>
                   {chunk.map((s, i) => (
                     <td
