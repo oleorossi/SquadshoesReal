@@ -280,7 +280,9 @@ const OperatorWorkSheet = ({
 
         {/* Product details — Anton hero for ref */}
         <div className="flex-1 flex flex-col gap-2 min-w-0">
-          {/* Hero: REFERÊNCIA */}
+          {/* Hero: REFERÊNCIA = nome do modelo (definido pelo usuário em 2026-05).
+              SKU/code não é mais exibido nas fichas; apenas o nome do modelo
+              vale como referência operacional. */}
           <div className="flex items-baseline justify-between gap-3 border-b border-black pb-1">
             <div className="min-w-0 flex-1">
               <span className="section-label block" style={{ color: '#000' }}>Referência</span>
@@ -288,12 +290,8 @@ const OperatorWorkSheet = ({
                 className="text-black uppercase leading-none mt-0.5 truncate"
                 style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em' }}
               >
-                {(order.master as any).code || order.master.reference_code || (order as any).reference_code || '—'}
+                {order.master.name || (order.master as any).reference_name || (order as any).reference_name || '—'}
               </p>
-            </div>
-            <div className="text-right shrink-0">
-              <span className="section-label block" style={{ color: '#000' }}>Modelo</span>
-              <p className="text-sm font-bold text-black leading-tight mt-0.5 max-w-[180px] truncate">{order.master.name}</p>
             </div>
           </div>
 

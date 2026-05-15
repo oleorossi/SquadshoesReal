@@ -252,12 +252,15 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
     // espaço disponível sem ficar desproporcional.
     // Cores: tudo preto puro ou cinza-muito-escuro (#222) — sem cinzas
     // claros que somem no toner laser/térmico.
+    // Referência = nome do modelo (item.refName). SKU/refCode não é mais
+    // exibido em etiquetas — definição do usuário em 2026-05.
+    const displayRef = item.refName || item.refCode || '';
     const productLeft = `
       <div style="flex:1;padding:10px 14px;display:flex;flex-direction:column;justify-content:center;gap:6px;">
-        ${item.refCode ? `
+        ${displayRef ? `
           <div style="display:flex;align-items:baseline;gap:8px;line-height:1;">
             <span style="font-size:12px;color:#222;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;">Ref.</span>
-            <span style="font-size:26px;font-weight:900;letter-spacing:0.5px;color:#000;">${escapeHtml(item.refCode)}</span>
+            <span style="font-size:22px;font-weight:900;letter-spacing:0.3px;color:#000;text-transform:uppercase;">${escapeHtml(displayRef)}</span>
           </div>` : ''}
         ${item.color ? `
           <div style="display:flex;align-items:baseline;gap:8px;line-height:1;">
@@ -269,8 +272,6 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
             <span style="font-size:12px;color:#222;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;">Tipo</span>
             <span style="font-size:15px;font-weight:700;color:#000;text-transform:uppercase;">${escapeHtml(item.shoeCategory)}</span>
           </div>` : ''}
-        ${item.refName && item.refName !== item.refCode ? `
-          <div style="font-size:11px;color:#222;font-weight:600;line-height:1.2;text-transform:uppercase;letter-spacing:0.3px;">${escapeHtml(item.refName)}</div>` : ''}
         ${item.strapsLabel ? `<div style="font-size:10px;color:#000;font-weight:600;line-height:1.2;"><strong>TIRAS:</strong> ${escapeHtml(item.strapsLabel.replace(/\|/g, ' — ').replace(/:/g, ': '))}</div>` : ''}
         ${item.mainMaterial ? `<div style="font-size:10px;color:#222;font-weight:600;font-style:italic;text-transform:uppercase;line-height:1.2;">${escapeHtml(item.mainMaterial)}</div>` : ''}
       </div>`;
@@ -651,16 +652,16 @@ export function buildThermalLabelsHtml(labels: {
   const shellBottomMm = +(+footerHeightMm + Math.max(safePadY * 0.3, 0.4)).toFixed(1);
 
   const labelHtml = labels.map((l, idx) => {
+    // Referência = nome do modelo (l.refName). SKU/refCode foi removido das
+    // etiquetas em 2026-05 — só nome aparece como referência operacional.
     const displayReference = l.refName || l.refCode || '—';
-    // Code shown in header if header is enabled; fallback to info column otherwise
-    const detailReference = !showHeader && c.showCode && l.refCode && l.refCode !== displayReference ? l.refCode : '';
 
-    const hasHeader = showHeader && !!l.refCode;
+    const hasHeader = showHeader && !!displayReference && displayReference !== '—';
     const thisShellTopMm = hasHeader ? shellTopMm : safePadY;
 
     const headerHtml = hasHeader ? `
       <header class="lbl-hdr">
-        <span class="lbl-hdr-code">${escapeHtml(l.refCode)}</span>
+        <span class="lbl-hdr-code">${escapeHtml(displayReference)}</span>
         <span class="lbl-hdr-right">${
           c.showCategory && l.shoeCategory ? escapeHtml(l.shoeCategory) :
           l.qty ? `× ${l.qty} PAR` : ''
@@ -683,7 +684,6 @@ export function buildThermalLabelsHtml(labels: {
 
         <div class="label-info">
           <p class="info-reference">${escapeHtml(displayReference)}</p>
-          ${detailReference ? `<p class="info-code">${escapeHtml(detailReference)}</p>` : ''}
           <p class="info-color"><span class="color-dot">▪</span>${escapeHtml(l.color || '—')}${l.strapsLabel ? ` <span class="info-straps">| ${escapeHtml(l.strapsLabel.replace(/\|/g, ' · ').replace(/:/g, ': '))}</span>` : ''}${!showHeader && l.qty ? ` <strong class="info-qty">×${l.qty}</strong>` : ''}</p>
           ${c.showMaterial && l.mainMaterial ? `<p class="info-material">${escapeHtml(l.mainMaterial)}</p>` : ''}
           ${c.showPedido && l.clientOrderNumber ? `<p class="info-pedido">PED. ${escapeHtml(l.clientOrderNumber)}</p>` : ''}
@@ -1115,17 +1115,18 @@ export async function buildThermalLabelsPdf(
     doc.setDrawColor(0);
     doc.rect(0.2, 0.2, W - 0.4, H - 0.4);
 
-    // ─── Header (black band) ───
-    if (l.refCode) {
+    // ─── Header (black band) — exibe nome do modelo (refName); SKU/refCode
+    // não aparece mais em etiquetas (decisão do usuário em 2026-05). ───
+    const headerName = (l.refName || l.refCode || '').toUpperCase();
+    if (headerName) {
       doc.setFillColor(0, 0, 0);
       doc.rect(0, 0, W, headerH, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7 * scale);
-      const refCodeText = (l.refCode || '').toUpperCase();
       const headerLeftX = padX;
       const headerTextY = headerH / 2 + (7 * scale) * 0.35 / 2.83;
-      doc.text(fitText(refCodeText, W * 0.55), headerLeftX, headerTextY, { baseline: 'middle' });
+      doc.text(fitText(headerName, W * 0.55), headerLeftX, headerTextY, { baseline: 'middle' });
       const headerRight = l.shoeCategory ? l.shoeCategory.toUpperCase() : (l.qty ? `× ${l.qty} PAR` : '');
       if (headerRight) {
         doc.setFont('helvetica', 'normal');
@@ -1136,7 +1137,7 @@ export async function buildThermalLabelsPdf(
     }
 
     // ─── Body layout: size box | info | barcode ───
-    const bodyTop = (l.refCode ? headerH : 0) + padY;
+    const bodyTop = (headerName ? headerH : 0) + padY;
     const bodyBottom = H - footerH - padY * 0.5;
     const bodyH = bodyBottom - bodyTop;
 
@@ -1357,8 +1358,7 @@ export function buildIndividualLabelsHtml(items: LabelData[]): string {
               </div>
             ` : ''}
             <div style="text-align:center;margin-bottom:2px;">
-              <p style="margin:0;font-size:11px;font-weight:bold;text-transform:uppercase;line-height:1.1;">${escapeHtml(item.refName)}</p>
-              ${item.refCode ? `<p style="margin:0;font-size:8px;color:#555;">REF: ${escapeHtml(item.refCode)}</p>` : ''}
+              <p style="margin:0;font-size:13px;font-weight:bold;text-transform:uppercase;line-height:1.15;">${escapeHtml(item.refName || item.refCode || '—')}</p>
             </div>
             <div style="border-top:1px dashed #999;border-bottom:1px dashed #999;padding:3px 0;margin:2px 0;text-align:center;">
               <p style="margin:0;font-size:22px;font-weight:bold;font-family:'Courier New',monospace;line-height:1;">Nº ${escapeHtml(s.size)}</p>
@@ -1464,7 +1464,7 @@ export function buildHangtagHtml(labels: {
             <div class="ht-size-circle">${escapeHtml(l.size)}</div>
           </div>
           <div class="ht-info">
-            <p class="ht-info-row"><span class="ht-info-label">Mod.</span> <span class="ht-info-value">${escapeHtml(l.refCode)}</span></p>
+            <p class="ht-info-row"><span class="ht-info-label">Mod.</span> <span class="ht-info-value">${escapeHtml(l.refName || l.refCode || '—')}</span></p>
             <p class="ht-info-row"><span class="ht-info-label">Cor</span> <span class="ht-info-value">${escapeHtml(l.color)}</span></p>
           </div>
           ${l.composition ? `<div class="ht-composition">${escapeHtml(l.composition || 'SINTÉTICO / TÊXTIL / BORRACHA')}</div>` : ''}

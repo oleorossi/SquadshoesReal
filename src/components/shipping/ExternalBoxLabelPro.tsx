@@ -149,10 +149,10 @@ export function ExternalBoxLabelPro({
           </div>
         )}
         <div className="flex flex-col justify-center min-w-0 flex-1">
-          <p className="text-[11px] font-black uppercase truncate leading-tight">{refName}</p>
+          {/* Referência = nome do modelo. SKU/refCode removido em 2026-05. */}
+          <p className="text-[11px] font-black uppercase truncate leading-tight">{refName || refCode || '—'}</p>
           <p className="text-[9px] leading-tight">
-            <span className="font-bold">Ref:</span> {refCode}
-            <span className="font-bold ml-2">Cor:</span> {colorName}
+            <span className="font-bold">Cor:</span> {colorName}
           </p>
           {strapsLabel && (
             <p className="text-[8px] text-muted-foreground truncate leading-tight">

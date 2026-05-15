@@ -1,0 +1,21 @@
+-- =============================================================================
+-- 20260515210000 — Drop adjust_stock 6-arg overload (conflito de candidato)
+-- =============================================================================
+--
+-- Bug: ajuste de estoque retornava
+--   'Could not choose the best candidate function between:
+--    public.adjust_stock(...6 args...),
+--    public.adjust_stock(...7 args com p_order_id...)'
+--
+-- Causa: existiam DUAS versões da função adjust_stock no DB:
+--   - 6 args: sem p_order_id (versão original)
+--   - 7 args: com p_order_id uuid DEFAULT NULL (versão nova com rastreio
+--     opcional pra ordem)
+--
+-- Quando o client chamava com 5-6 parâmetros (sem p_order_id), o
+-- PostgreSQL via os 2 candidatos compatíveis e abortava.
+--
+-- Fix: drop da versão de 6 args. A de 7 args cobre 100% do caso de uso
+-- da antiga porque p_order_id tem DEFAULT NULL.
+
+DROP FUNCTION IF EXISTS public.adjust_stock(uuid, numeric, numeric, numeric, text, jsonb);
