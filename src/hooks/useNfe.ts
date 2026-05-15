@@ -411,6 +411,58 @@ export function useEmitNfe() {
   });
 }
 
+/**
+ * Baixa DANFE (PDF) ou XML da NF-e via edge function nfe-download, que faz
+ * proxy autenticado pro GestaoClick (a doc da NF-e não expõe URLs prontas).
+ * Faz fetch com auth, monta blob, dispara download via <a download>.
+ */
+export function useDownloadNfeFile() {
+  return useMutation({
+    mutationFn: async ({ nfeId, format, fallbackFilename }: {
+      nfeId: string;
+      format: 'danfe' | 'xml';
+      fallbackFilename?: string;
+    }) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Sessão expirada — faça login de novo.');
+      const SUPABASE_URL = (import.meta as any).env?.VITE_SUPABASE_URL;
+      const SUPABASE_KEY = (import.meta as any).env?.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const url = `${SUPABASE_URL}/functions/v1/nfe-download?nfe_id=${encodeURIComponent(nfeId)}&format=${format}`;
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          apikey: SUPABASE_KEY,
+        },
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        let parsed: any = null;
+        try { parsed = JSON.parse(txt); } catch { /* ignore */ }
+        const msg = parsed?.error || `HTTP ${res.status} ao baixar ${format.toUpperCase()}`;
+        throw new Error(msg);
+      }
+      const blob = await res.blob();
+      // Tenta extrair filename do Content-Disposition; fallback pro hint.
+      let filename = fallbackFilename || `${format}.${format === 'danfe' ? 'pdf' : 'xml'}`;
+      const cd = res.headers.get('Content-Disposition') || '';
+      const match = cd.match(/filename="([^"]+)"/);
+      if (match) filename = match[1];
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+      return { filename, size: blob.size };
+    },
+    onError: (err: Error) => toast.error(err.message),
+    onSuccess: ({ filename }) => toast.success(`${filename} baixado`),
+  });
+}
+
 export function useCheckNfeStatus() {
   const qc = useQueryClient();
   return useMutation({

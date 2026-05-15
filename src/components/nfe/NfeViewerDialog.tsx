@@ -10,7 +10,8 @@ import {
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import type { NfeEmitida } from '@/hooks/useNfe';
-import { useCheckNfeStatus } from '@/hooks/useNfe';
+import { useCheckNfeStatus, useDownloadNfeFile } from '@/hooks/useNfe';
+import { supabase } from '@/integrations/supabase/client';
 
 interface Props {
   nfe: NfeEmitida | null;
@@ -55,42 +56,50 @@ export function NfeViewerDialog({ nfe, open, onOpenChange, clientLabel, orderNum
   const [xmlLoading, setXmlLoading] = useState(false);
   const [xmlError, setXmlError] = useState<string | null>(null);
   const checkStatus = useCheckNfeStatus();
+  const downloadFile = useDownloadNfeFile();
 
-  // Quando o dialog abre numa NF autorizada SEM danfe_url/xml_url
-  // (caso comum em emissões antigas), dispara o sync automaticamente
-  // pra puxar as URLs do GestaoClick.
+  // Auto-busca XML inline pra exibição quando autorizada — usa edge fn
+  // nfe-download que faz proxy autenticado pro GestaoClick.
   useEffect(() => {
-    if (!open || !nfe) return;
-    if (nfe.status === 'autorizada' && (!nfe.danfe_url || !nfe.xml_url)) {
-      checkStatus.mutate(nfe.id);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, nfe?.id]);
-
-  // Carrega o XML inline (best-effort — se CORS bloquear, mostra link).
-  useEffect(() => {
-    if (!open || !nfe?.xml_url) {
+    if (!open || !nfe || nfe.status !== 'autorizada') {
       setXmlText(null);
       setXmlError(null);
       return;
     }
     setXmlLoading(true);
     setXmlError(null);
-    fetch(nfe.xml_url)
-      .then(r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.text();
-      })
-      .then(text => setXmlText(text))
-      .catch(err => setXmlError(err?.message || 'Falha ao carregar XML'))
-      .finally(() => setXmlLoading(false));
-  }, [open, nfe?.xml_url]);
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('Sessão expirada');
+        const SUPABASE_URL = (import.meta as any).env?.VITE_SUPABASE_URL;
+        const SUPABASE_KEY = (import.meta as any).env?.VITE_SUPABASE_PUBLISHABLE_KEY;
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/nfe-download?nfe_id=${encodeURIComponent(nfe.id)}&format=xml`, {
+          headers: { Authorization: `Bearer ${session.access_token}`, apikey: SUPABASE_KEY },
+        });
+        if (!res.ok) {
+          const txt = await res.text().catch(() => '');
+          let parsed: any = null;
+          try { parsed = JSON.parse(txt); } catch { /* ignore */ }
+          throw new Error(parsed?.error || `HTTP ${res.status}`);
+        }
+        const text = await res.text();
+        setXmlText(text);
+      } catch (e: any) {
+        setXmlError(e?.message || 'Falha ao buscar XML');
+      } finally {
+        setXmlLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, nfe?.id, nfe?.status]);
 
   if (!nfe) return null;
 
   const statusInfo = STATUS_VARIANT[nfe.status] || { label: nfe.status, className: 'bg-muted text-muted-foreground' };
-  const hasDanfe = !!nfe.danfe_url;
-  const hasXml = !!nfe.xml_url;
+  // DANFE/XML disponíveis on-demand quando autorizada (via edge fn nfe-download).
+  const hasDanfe = nfe.status === 'autorizada';
+  const hasXml = nfe.status === 'autorizada' && !!xmlText;
 
   const handleCopyXml = async () => {
     if (!xmlText) return;
@@ -196,54 +205,45 @@ export function NfeViewerDialog({ nfe, open, onOpenChange, clientLabel, orderNum
               <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">DANFE (PDF)</span>
               <div className="flex items-center gap-1">
                 {hasDanfe && (
-                  <>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" asChild title="Abrir em nova aba">
-                      <a href={nfe.danfe_url!} target="_blank" rel="noopener noreferrer">
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" asChild title="Baixar DANFE">
-                      <a href={nfe.danfe_url!} download target="_blank" rel="noopener noreferrer">
-                        <Download className="h-3.5 w-3.5" />
-                      </a>
-                    </Button>
-                  </>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    title="Baixar DANFE (PDF)"
+                    onClick={() => downloadFile.mutate({ nfeId: nfe.id, format: 'danfe' })}
+                    disabled={downloadFile.isPending}
+                  >
+                    {downloadFile.isPending && downloadFile.variables?.format === 'danfe'
+                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      : <Download className="h-3.5 w-3.5" />}
+                  </Button>
                 )}
               </div>
             </div>
-            <div className="flex-1 min-h-0 bg-muted/10">
-              {hasDanfe ? (
-                <iframe
-                  src={nfe.danfe_url!}
-                  title="DANFE"
-                  className="w-full h-full border-0"
-                />
+            <div className="flex-1 min-h-0 bg-muted/10 flex flex-col items-center justify-center p-6 text-center gap-3">
+              {nfe.status === 'rejeitada' || nfe.status === 'erro' ? (
+                <span className="text-sm text-muted-foreground">NF rejeitada — DANFE não foi gerado.</span>
+              ) : nfe.status !== 'autorizada' ? (
+                <span className="text-sm text-muted-foreground">DANFE disponível só após autorização.</span>
               ) : (
-                <div className="h-full flex flex-col items-center justify-center text-sm text-muted-foreground p-6 text-center gap-3">
-                  {nfe.status === 'rejeitada' || nfe.status === 'erro' ? (
-                    <span>NF rejeitada — DANFE não foi gerado.</span>
-                  ) : (
-                    <>
-                      <span>
-                        {checkStatus.isPending
-                          ? 'Buscando arquivos no GestaoClick...'
-                          : 'DANFE ainda não disponível.'}
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => checkStatus.mutate(nfe.id)}
-                        disabled={checkStatus.isPending}
-                        className="gap-1.5"
-                      >
-                        {checkStatus.isPending
-                          ? <Loader2 className="h-4 w-4 animate-spin" />
-                          : <RefreshCw className="h-4 w-4" />}
-                        Buscar arquivos
-                      </Button>
-                    </>
-                  )}
-                </div>
+                <>
+                  <FileText className="h-12 w-12 text-muted-foreground/30" />
+                  <div className="text-sm font-semibold">DANFE pronto pra download</div>
+                  <div className="text-xs text-muted-foreground max-w-xs">
+                    Clique abaixo pra baixar o PDF. O arquivo é gerado pelo GestaoClick na hora.
+                  </div>
+                  <Button
+                    onClick={() => downloadFile.mutate({ nfeId: nfe.id, format: 'danfe' })}
+                    disabled={downloadFile.isPending}
+                    className="gap-1.5"
+                    size="sm"
+                  >
+                    {downloadFile.isPending && downloadFile.variables?.format === 'danfe'
+                      ? <Loader2 className="h-4 w-4 animate-spin" />
+                      : <Download className="h-4 w-4" />}
+                    Baixar DANFE (PDF)
+                  </Button>
+                </>
               )}
             </div>
           </div>
@@ -258,19 +258,19 @@ export function NfeViewerDialog({ nfe, open, onOpenChange, clientLabel, orderNum
                     <Copy className="h-3.5 w-3.5" />
                   </Button>
                 )}
-                {hasXml && (
-                  <>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" asChild title="Abrir em nova aba">
-                      <a href={nfe.xml_url!} target="_blank" rel="noopener noreferrer">
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" asChild title="Baixar XML">
-                      <a href={nfe.xml_url!} download target="_blank" rel="noopener noreferrer">
-                        <Download className="h-3.5 w-3.5" />
-                      </a>
-                    </Button>
-                  </>
+                {nfe.status === 'autorizada' && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    title="Baixar XML"
+                    onClick={() => downloadFile.mutate({ nfeId: nfe.id, format: 'xml' })}
+                    disabled={downloadFile.isPending}
+                  >
+                    {downloadFile.isPending && downloadFile.variables?.format === 'xml'
+                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      : <Download className="h-3.5 w-3.5" />}
+                  </Button>
                 )}
               </div>
             </div>

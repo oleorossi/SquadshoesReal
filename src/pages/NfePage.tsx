@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useAllNfeEmitidas, useEmitNfe, useCheckNfeStatus, useCancelNfe, useCompanies, useSyncNfeFromProvider, NfeEmitida } from '@/hooks/useNfe';
+import { useAllNfeEmitidas, useEmitNfe, useCheckNfeStatus, useCancelNfe, useCompanies, useSyncNfeFromProvider, useDownloadNfeFile, NfeEmitida } from '@/hooks/useNfe';
 import { useAccessControl } from '@/hooks/useAccessControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -232,6 +232,7 @@ function CancelDialog({ nfe, open, onClose }: { nfe: NfeEmitida | null; open: bo
 // ─── NF-e row ─────────────────────────────────────────────────────────────────
 
 function NfeRow({ nfe, onCancel, onView, canCancel }: { nfe: any; onCancel: (n: NfeEmitida) => void; onView: (n: NfeEmitida) => void; canCancel: boolean }) {
+  const downloadFile = useDownloadNfeFile();
   const checkStatus = useCheckNfeStatus();
   const order = (nfe as any).sale_orders;
 
@@ -283,30 +284,45 @@ function NfeRow({ nfe, onCancel, onView, canCancel }: { nfe: any; onCancel: (n: 
         {/* Botão refresh aparece também pra NFs autorizadas SEM URLs ainda
             persistidas (caso comum: emissão antiga onde danfe_url/xml_url
             ficaram vazios). Antes só aparecia em 'processando'. */}
-        {(nfe.status === 'processando' || (nfe.status === 'autorizada' && (!nfe.danfe_url || !nfe.xml_url))) && (
+        {nfe.status === 'processando' && (
           <Button
             variant="ghost"
             size="icon"
-            title={nfe.status === 'processando' ? 'Verificar status' : 'Buscar arquivos PDF/XML'}
+            title="Verificar status"
             onClick={() => checkStatus.mutate(nfe.id)}
             disabled={checkStatus.isPending}
           >
             {checkStatus.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
           </Button>
         )}
-        {nfe.danfe_url && (
-          <Button variant="ghost" size="icon" title="Baixar DANFE (PDF)" asChild>
-            <a href={nfe.danfe_url} target="_blank" rel="noopener noreferrer" download>
-              <Download className="h-3.5 w-3.5" />
-            </a>
-          </Button>
-        )}
-        {nfe.xml_url && (
-          <Button variant="ghost" size="icon" title="Baixar XML" asChild>
-            <a href={nfe.xml_url} target="_blank" rel="noopener noreferrer" download>
-              <FileText className="h-3.5 w-3.5" />
-            </a>
-          </Button>
+        {/* DANFE/XML agora baixam on-demand via edge fn nfe-download (proxy
+            GestaoClick com auth). Não dependem mais de danfe_url/xml_url
+            persistidos no DB — sempre disponíveis quando autorizada. */}
+        {nfe.status === 'autorizada' && (
+          <>
+            <Button
+              variant="ghost"
+              size="icon"
+              title="Baixar DANFE (PDF)"
+              onClick={() => downloadFile.mutate({ nfeId: nfe.id, format: 'danfe' })}
+              disabled={downloadFile.isPending}
+            >
+              {downloadFile.isPending && downloadFile.variables?.format === 'danfe'
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <Download className="h-3.5 w-3.5" />}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              title="Baixar XML"
+              onClick={() => downloadFile.mutate({ nfeId: nfe.id, format: 'xml' })}
+              disabled={downloadFile.isPending}
+            >
+              {downloadFile.isPending && downloadFile.variables?.format === 'xml'
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <FileText className="h-3.5 w-3.5" />}
+            </Button>
+          </>
         )}
         {nfe.status === 'autorizada' && canCancel && (
           <Button variant="ghost" size="icon" title="Cancelar NF-e" className="text-red-500 hover:text-red-600" onClick={() => onCancel(nfe)}>
