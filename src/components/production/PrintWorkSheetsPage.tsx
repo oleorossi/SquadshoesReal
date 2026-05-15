@@ -10,6 +10,7 @@ import type { SectorAlert } from '@/components/production/worksheet/SectorAlerts
 import { SolagemWorkSheet, type SoleColorBand } from '@/components/production/SolagemWorkSheet';
 import { ExpedicaoWorkSheet, type ExpedicaoCustomerGroup, type ExpedicaoOrder } from '@/components/production/ExpedicaoWorkSheet';
 import { ManagementReport, type ReportSaleOrder, type ReportOrder, type ReportStage } from '@/components/production/ManagementReport';
+import logoSquad from '@/assets/logo-squad-shoes.jpg';
 
 const printStyles = `
   @page {
@@ -284,12 +285,26 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
   });
 
   const { data: clientsInfo = [] } = useQuery({
-    queryKey: ['clients_for_expedicao_v2'],
+    queryKey: ['clients_for_expedicao_v3'],
     queryFn: async () => {
       // Endereço completo necessário pra ficha de expedição (etiqueta correta).
+      // silk_url + logo_url usados como fallback de marca na ficha de Silk.
       const { data, error } = await (supabase as any)
         .from('clients')
-        .select('id, razao_social, cnpj, inscricao_estadual, endereco, bairro, cidade, estado, cep, telefone, economic_group_id');
+        .select('id, razao_social, cnpj, inscricao_estadual, endereco, bairro, cidade, estado, cep, telefone, economic_group_id, silk_url, logo_url');
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Grupos econômicos (silk_url/logo_url) — fallback de marca quando o cliente
+  // não tem silk própria mas pertence a um grupo que tem.
+  const { data: economicGroupsInfo = [] } = useQuery({
+    queryKey: ['economic_groups_for_silk'],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('economic_groups')
+        .select('id, silk_url, logo_url');
       if (error) throw error;
       return data || [];
     },
@@ -354,12 +369,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
   }, [soleMappings]);
 
   const { data: soleGroupPackaging = [] } = useQuery({
-    queryKey: ['sole_group_packaging', soleGroupIds],
+    queryKey: ['sole_group_packaging_v2', soleGroupIds],
     enabled: soleGroupIds.length > 0,
     queryFn: async () => {
+      // silk_url do grupo do solado entra na cascata de fallback de marca
+      // pra ficha de Silk (último nível antes do logo Squad).
       const { data, error } = await (supabase as any)
         .from('product_groups')
-        .select('id, pairs_per_box_individual')
+        .select('id, pairs_per_box_individual, silk_url')
         .in('id', soleGroupIds);
       if (error) throw error;
       return data || [];
@@ -518,27 +535,58 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
   };
 
   // ── Silk lookup ───────────────────────────────────────────────────────────────
-  const getOrderSilk = (order: any) => {
+  // Cascata completa pra GARANTIR que a ficha de Silk sempre tenha imagem da marca:
+  //   1. sole_silk_registrations (cliente → grupo econômico → default)
+  //   2. clients.silk_url (cliente direto)
+  //   3. clients.logo_url (back-compat)
+  //   4. economic_groups.silk_url (grupo econômico)
+  //   5. economic_groups.logo_url (back-compat)
+  //   6. product_groups.silk_url (silk default do solado)
+  //   7. logo Squad Shoes (último fallback)
+  const getOrderSilk = (order: any): { silk_name: string; silk_url: string | null } | undefined => {
     const soleMapping = soleMappings.find((m: any) => m.sheet_id === order.reference_id && m.product_color === order.color);
     const soleProductId = soleMapping?.sole_product_id;
     const soleProductName = (soleMapping as any)?.products?.name;
+    const soleGroupId = (soleMapping as any)?.products?.group_id;
     if (!soleProductId && !soleProductName) return undefined;
+
     const saleOrder = saleOrders.find((so: any) => so.id === order.sale_order_id);
     const clientId = saleOrder?.client_id;
-    // economic_group_id está em clients (não em sale_orders) — busca via clientsInfo
     const clientRecord = clientId ? (clientsInfo as any[]).find((c: any) => c.id === clientId) : null;
     const economicGroupId = clientRecord?.economic_group_id;
     const baseSoleName = soleProductName ? getBaseName(soleProductName) : null;
-    const findSilk = (cId?: string | null, gId?: string | null) =>
+
+    // Nível 1: sole_silk_registrations — busca específica → grupo → default
+    const findSilkRegistration = (cId?: string | null, gId?: string | null) =>
       silkRegistrations.find((s: any) => {
         const matchesCtx = cId ? s.client_id === cId : (gId ? s.economic_group_id === gId : !s.client_id && !s.economic_group_id);
         const matchesProd = (soleProductId && s.sole_product_id === soleProductId) || (baseSoleName && s.sole_type && getBaseName(s.sole_type) === baseSoleName);
         return matchesProd && matchesCtx;
       });
-    let silk = findSilk(clientId);
-    if (!silk && economicGroupId) silk = findSilk(null, economicGroupId);
-    if (!silk) silk = findSilk(null, null);
-    return silk ? { silk_name: silk.silk_name, silk_url: silk.silk_url } : undefined;
+    let silk = findSilkRegistration(clientId);
+    if (!silk && economicGroupId) silk = findSilkRegistration(null, economicGroupId);
+    if (!silk) silk = findSilkRegistration(null, null);
+    if (silk?.silk_url) return { silk_name: silk.silk_name, silk_url: silk.silk_url };
+
+    // Nível 2-3: cliente direto (silk_url > logo_url)
+    if (clientRecord?.silk_url) return { silk_name: clientRecord.razao_social || 'Marca do cliente', silk_url: clientRecord.silk_url };
+    if (clientRecord?.logo_url) return { silk_name: clientRecord.razao_social || 'Marca do cliente', silk_url: clientRecord.logo_url };
+
+    // Nível 4-5: grupo econômico
+    if (economicGroupId) {
+      const groupRecord = (economicGroupsInfo as any[]).find((g: any) => g.id === economicGroupId);
+      if (groupRecord?.silk_url) return { silk_name: silk?.silk_name || 'Marca do grupo', silk_url: groupRecord.silk_url };
+      if (groupRecord?.logo_url) return { silk_name: silk?.silk_name || 'Marca do grupo', silk_url: groupRecord.logo_url };
+    }
+
+    // Nível 6: silk default do grupo do solado
+    if (soleGroupId) {
+      const soleGroup = (soleGroupPackaging as any[]).find((p: any) => p.id === soleGroupId);
+      if (soleGroup?.silk_url) return { silk_name: silk?.silk_name || baseSoleName || 'Silk padrão do solado', silk_url: soleGroup.silk_url };
+    }
+
+    // Nível 7: logo Squad — sempre exibe SOMETHING na ficha de Silk
+    return { silk_name: silk?.silk_name || 'Squad Shoes', silk_url: logoSquad };
   };
 
   const getOrderColors = (order: any) => {

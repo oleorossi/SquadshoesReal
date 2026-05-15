@@ -5,6 +5,7 @@ import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { ProductImageBlock } from './worksheet/ProductImageBlock';
 import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
 import { SignatureFooter } from './worksheet/SignatureFooter';
+import { SignedImage } from '@/components/ui/signed-image';
 
 export interface SilkColorGroup {
   color: string;
@@ -150,6 +151,23 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
       <WorksheetHeader
         sector={sector}
         icon={Icon}
+        imageSlot={
+          // Em Silk, mostra a imagem da MARCA no header (1ª silk única).
+          // O bloco "02 / Silks" abaixo continua mostrando todas as silks dessa
+          // ficha em detalhe — o header é a referência visual rápida.
+          sector === 'Silk' && uniqueSilks[0]?.silk_url ? (
+            <div
+              className="w-20 h-20 bg-white overflow-hidden shrink-0 flex items-center justify-center"
+              style={{ border: '1.5px solid #000' }}
+            >
+              <SignedImage
+                src={uniqueSilks[0].silk_url}
+                alt={uniqueSilks[0].silk_name}
+                className="w-full h-full object-contain"
+              />
+            </div>
+          ) : undefined
+        }
         identification={
           <>
             <span className="section-label block" style={{ color: '#000' }}>Solado</span>
@@ -189,19 +207,15 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
               <div key={`${silk.silk_url}-${idx}`} className="flex items-center gap-2 bg-white p-1.5" style={{ border: '1px solid #000' }}>
                 {silk.silk_url ? (
                   <div className="w-16 h-16 bg-white overflow-hidden shrink-0 flex items-center justify-center" style={{ border: '1.5px solid #000' }}>
-                    <img
+                    <SignedImage
                       src={silk.silk_url}
                       alt={silk.silk_name}
                       className="w-full h-full object-contain"
-                      onError={(e) => {
-                        const img = e.currentTarget;
-                        img.style.display = 'none';
-                      }}
                     />
                   </div>
                 ) : (
                   <div className="w-16 h-16 bg-white shrink-0 flex items-center justify-center" style={{ border: '1.5px solid #000' }}>
-                    <span className="text-[8px] text-black text-center px-1 font-mono uppercase tracking-widest">Sem imagem</span>
+                    <span className="text-[8px] text-black text-center px-1 font-mono uppercase tracking-widest">Sem marca cadastrada</span>
                   </div>
                 )}
                 <div className="min-w-0 flex-1">
@@ -213,7 +227,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                     {silk.silk_name}
                   </p>
                   {!silk.silk_url && (
-                    <p className="text-[9px] font-mono text-black mt-0.5 tracking-widest uppercase">Re-upload em /silks</p>
+                    <p className="text-[9px] font-mono text-black mt-0.5 tracking-widest uppercase">Cadastrar em /silks</p>
                   )}
                 </div>
               </div>
