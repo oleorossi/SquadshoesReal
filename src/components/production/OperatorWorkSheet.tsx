@@ -118,7 +118,7 @@ const OperatorWorkSheet = ({
 
   return (
     <div
-      className="w-[210mm] p-[8mm] print:w-full print:p-0 bg-white shadow-none print:shadow-none m-auto flex flex-col gap-0"
+      className="w-[210mm] p-[6mm] print:w-full print:p-0 bg-white shadow-none print:shadow-none m-auto flex flex-col gap-0 min-h-[297mm]"
       style={{ boxSizing: 'border-box', fontFamily: "'Inter Tight', sans-serif", color: '#000' }}
     >
       {/* ── Header — Industrial Editorial ── */}
@@ -129,7 +129,7 @@ const OperatorWorkSheet = ({
         <span className="font-mono text-[10px] text-black tracking-widest uppercase">{today}</span>
       </div>
 
-      <div className="border-t-2 border-b border-black py-3 mb-2 flex items-stretch gap-4">
+      <div className="border-t-2 border-b border-black py-2 mb-1 flex items-stretch gap-3">
         {/* Sector identity — Anton massive */}
         <div className="flex flex-col justify-center shrink-0 min-w-[140px]">
           <div className="flex items-center gap-2 mb-1">
@@ -145,7 +145,7 @@ const OperatorWorkSheet = ({
         </div>
 
         {/* OP/Pares heroes */}
-        <div className="flex-1 flex items-stretch gap-4 border-l border-black pl-4 min-w-0 flex-wrap">
+        <div className="flex-1 flex items-stretch gap-3 border-l border-black pl-3 min-w-0 flex-wrap">
           <div className="flex flex-col justify-center">
             <span className="section-label" style={{ color: '#000' }}>
               {opNumbers && opNumbers.length > 1 ? `OP × ${opNumbers.length}` : 'OP'}
@@ -1001,18 +1001,18 @@ const OperatorWorkSheet = ({
       </div>
 
       {/* ── Footer: obs + signatures — editorial close ── */}
-      <div className="mt-3 pt-2">
+      <div className="mt-auto pt-2">
         {(order.notes) && (
-          <div className="mb-2 border-t border-black pt-1.5">
+          <div className="mb-2 border-t border-black pt-1">
             <span className="section-label block mb-0.5" style={{ color: '#000' }}>Observações</span>
             <p className="text-[11px] text-black leading-tight">{order.notes}</p>
           </div>
         )}
         <div
-          className="w-full mb-3"
-          style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000', height: '4px' }}
+          className="w-full mb-2"
+          style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000', height: '3px' }}
         />
-        <div className="grid grid-cols-4 gap-3 mb-5">
+        <div className="grid grid-cols-4 gap-3 mb-3">
           <div>
             <span className="section-label block mb-0.5" style={{ color: '#000' }}>Início</span>
             <span className="font-mono text-sm text-black tracking-wider">__ : __</span>
@@ -1036,10 +1036,10 @@ const OperatorWorkSheet = ({
             </div>
           </div>
         </div>
-        <div className="flex items-end justify-between gap-6">
+        <div className="flex items-end justify-between gap-4">
           {['Operador(a)', 'Conferente', 'Supervisor(a)'].map(label => (
             <div key={label} className="flex-1">
-              <div className="border-t border-black pt-1.5 mt-8">
+              <div className="border-t border-black pt-1 mt-4">
                 <p className="section-label" style={{ color: '#000' }}>
                   Assinatura · {label}
                 </p>

@@ -38,11 +38,13 @@
   color: var(--p-ink);
   width: 794px;
   min-height: 1123px;
-  padding: 48px 56px 64px;
+  padding: 36px 48px 56px;
   position: relative;
   box-shadow: 0 1px 0 #e5e0d8, 0 12px 32px -12px rgba(20,17,14,0.18);
   font-size: 11px;
-  line-height: 1.45;
+  line-height: 1.4;
+  display: flex;
+  flex-direction: column;
 }
 .sheet-l {
   width: 1123px;
@@ -109,9 +111,10 @@
 /* A4 header band */
 .a4-head {
   display: flex; align-items: flex-start; justify-content: space-between;
-  padding-bottom: 14px;
+  padding-bottom: 10px;
   border-bottom: 2px solid var(--p-ink);
-  margin-bottom: 22px;
+  margin-bottom: 14px;
+  flex-shrink: 0;
 }
 .a4-head .brand {
   display: flex; align-items: center; gap: 12px;
@@ -145,21 +148,21 @@
 
 /* A4 footer */
 .a4-foot {
-  position: absolute; left: 56px; right: 56px; bottom: 22px;
+  position: absolute; left: 48px; right: 48px; bottom: 16px;
   display: flex; justify-content: space-between; align-items: center;
-  padding-top: 10px;
+  padding-top: 8px;
   border-top: 1px solid var(--p-line);
-  font-family: 'JetBrains Mono', monospace; font-size: 8.5px;
+  font-family: 'JetBrains Mono', monospace; font-size: 8px;
   letter-spacing: 0.12em; text-transform: uppercase; color: var(--p-mute);
 }
-.a4-foot.l { left: 48px; right: 48px; }
+.a4-foot.l { left: 40px; right: 40px; }
 
 /* Signature blocks */
 .sig {
   display: flex; flex-direction: column; align-items: stretch;
 }
 .sig-line {
-  height: 1px; background: var(--p-ink); margin-top: 44px;
+  height: 1px; background: var(--p-ink); margin-top: 28px;
 }
 .sig-cap {
   font-family: 'JetBrains Mono', monospace; font-size: 8.5px;
@@ -168,10 +171,10 @@
 }
 
 /* KPI block (print) */
-.p-kpi { padding: 12px 14px; border: 1px solid var(--p-line); background: var(--p-soft); }
-.p-kpi .lbl { font-family: 'JetBrains Mono', monospace; font-size: 8.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--p-mute); }
-.p-kpi .val { font-family: 'Anton', sans-serif; font-size: 30px; color: var(--p-ink); margin-top: 6px; line-height: 0.9; }
-.p-kpi .sub { font-size: 9.5px; color: var(--p-mute); margin-top: 2px; }
+.p-kpi { padding: 8px 10px; border: 1px solid var(--p-line); background: var(--p-soft); }
+.p-kpi .lbl { font-family: 'JetBrains Mono', monospace; font-size: 8px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--p-mute); }
+.p-kpi .val { font-family: 'Anton', sans-serif; font-size: 24px; color: var(--p-ink); margin-top: 4px; line-height: 0.9; }
+.p-kpi .sub { font-size: 9px; color: var(--p-mute); margin-top: 2px; }
 .p-kpi.red .val { color: var(--p-red); }
 
 /* Web (non-A4) light surfaces para telas comerciais (Pedidos, Ficha Técnica) */

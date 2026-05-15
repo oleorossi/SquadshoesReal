@@ -42,7 +42,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
 
   return (
     <div
-      className="w-[210mm] p-[8mm] print:w-full print:p-0 bg-white shadow-none print:shadow-none m-auto flex flex-col gap-0"
+      className="w-[210mm] p-[6mm] print:w-full print:p-0 bg-white shadow-none print:shadow-none m-auto flex flex-col gap-0 min-h-[297mm]"
       style={{ boxSizing: 'border-box', fontFamily: "'Inter Tight', sans-serif", color: '#000' }}
     >
       <WorksheetHeader
@@ -76,7 +76,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
           Nenhuma palmilha para cortar neste lote.
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {groups.map((group, idx) => {
             const cards = Math.max(1, Math.ceil(group.totalPairs / pairsPerCard));
             const alerts: SectorAlert[] = [];
@@ -247,7 +247,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
             );
           })}
 
-          <div className="flex justify-between items-baseline mt-2 pt-2" style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
+          <div className="flex justify-between items-baseline mt-1 pt-1" style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
             <span className="section-label py-1" style={{ color: '#000' }}>Total Geral</span>
             <span
               className="text-black uppercase leading-none py-1"

@@ -21,13 +21,13 @@ export const SignatureFooter = ({
   showTime = true,
 }: Props) => {
   return (
-    <div className="mt-auto pt-3 text-black">
+    <div className="mt-auto pt-2 text-black">
       <div
-        className="w-full mb-3"
-        style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000', height: '4px' }}
+        className="w-full mb-2"
+        style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000', height: '3px' }}
       />
       {showTime && (
-        <div className="grid grid-cols-4 gap-3 mb-5">
+        <div className="grid grid-cols-4 gap-3 mb-3">
           {[
             { label: 'Início', value: '__ : __' },
             { label: 'Fim',    value: '__ : __' },
@@ -46,10 +46,10 @@ export const SignatureFooter = ({
           ))}
         </div>
       )}
-      <div className="flex items-end justify-between gap-6">
+      <div className="flex items-end justify-between gap-4">
         {labels.map(label => (
           <div key={label} className="flex-1">
-            <div className="border-t border-black pt-1.5 mt-8">
+            <div className="border-t border-black pt-1 mt-4">
               <p
                 className="section-label"
                 style={{ color: '#000', fontFamily: "'Inter Tight', sans-serif" }}

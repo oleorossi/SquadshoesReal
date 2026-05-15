@@ -43,9 +43,9 @@ export const WorksheetHeader = ({
 }: Props) => {
   const editorialIndex = index || `01 / ${sector.toUpperCase()}`;
   return (
-    <div className="mb-2 text-black">
+    <div className="mb-1 text-black">
       {/* Editorial index strip */}
-      <div className="flex items-baseline justify-between mb-1">
+      <div className="flex items-baseline justify-between mb-0.5">
         <span className="section-label" style={{ color: '#000', fontFamily: "'Inter Tight', sans-serif" }}>
           {editorialIndex}
         </span>
@@ -55,7 +55,7 @@ export const WorksheetHeader = ({
       </div>
 
       {/* Hero row — top hairline rules, no fills */}
-      <div className="flex items-stretch gap-4 border-t-2 border-b border-black py-3">
+      <div className="flex items-stretch gap-3 border-t-2 border-b border-black py-2">
         {/* Sector identity — big Anton */}
         <div className="flex flex-col justify-center shrink-0 min-w-[120px]">
           <div className="flex items-center gap-2">
@@ -93,7 +93,7 @@ export const WorksheetHeader = ({
         </div>
       </div>
 
-      {alerts && <div className="mt-2">{alerts}</div>}
+      {alerts && <div className="mt-1">{alerts}</div>}
     </div>
   );
 };
