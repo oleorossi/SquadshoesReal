@@ -1,5 +1,4 @@
 import React from 'react';
-import { Warning as AlertTriangle } from '@phosphor-icons/react';
 
 export interface ReportStage {
   stage_name: string;
@@ -66,11 +65,6 @@ function normalizeStageName(name: string): string {
   return name;
 }
 
-function fmtCurrency(v?: number | null): string {
-  if (v == null) return '—';
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
 function fmtDate(d?: string | null): string {
   if (!d) return '—';
   try {
@@ -78,11 +72,6 @@ function fmtDate(d?: string | null): string {
   } catch {
     return d;
   }
-}
-
-function fmtPct(v?: number | null): string {
-  if (v == null) return '—';
-  return `${(v * 100).toFixed(1)}%`;
 }
 
 /**
@@ -96,20 +85,23 @@ function fmtPct(v?: number | null): string {
  */
 export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
   const totalPairs = orders.reduce((s, o) => s + (o.total_pairs || 0), 0);
-  const totalMaterial = orders.reduce((s, o) => s + (o.cost?.material_cost || 0), 0);
-  const totalLabor = orders.reduce((s, o) => s + (o.cost?.labor_cost || 0), 0);
-  const totalOverhead = orders.reduce((s, o) => s + (o.cost?.overhead_cost || 0), 0);
-  const totalPackaging = orders.reduce((s, o) => s + (o.cost?.packaging_cost || 0), 0);
-  const totalCost = orders.reduce((s, o) => s + (o.cost?.total_cost || 0), 0);
-  const totalRevenue = orders.reduce((s, o) => s + (o.cost?.revenue || 0), 0);
-  const margin = totalRevenue - totalCost;
-  const marginPct = totalRevenue > 0 ? margin / totalRevenue : 0;
 
-  // F7: Detecta under-reporting de receita/margem. Se há OPs sem custo carregado
-  // (o.cost null/undefined), KPIs somam só as restantes — alerta amber explícito.
-  const opsWithCost = orders.filter(o => o.cost != null).length;
-  const opsWithoutCost = orders.length - opsWithCost;
-  const isPartialReport = opsWithoutCost > 0 && opsWithCost > 0;
+  // Progresso operacional (% de stages concluídos). Substitui receita/margem
+  // como KPI "termômetro" do PV — pediu-se relatório SEM valores monetários.
+  const stageStats = orders.reduce(
+    (acc, o) => {
+      for (const s of o.stages || []) {
+        acc.total += 1;
+        if (s.status === 'concluido') acc.done += 1;
+      }
+      return acc;
+    },
+    { total: 0, done: 0 },
+  );
+  const progressPct = stageStats.total > 0 ? Math.round((stageStats.done / stageStats.total) * 100) : 0;
+  const opsConcluidas = orders.filter(o =>
+    (o.stages || []).length > 0 && (o.stages || []).every(s => s.status === 'concluido')
+  ).length;
 
   // Setores únicos presentes em qualquer OP do PV.
   // Normaliza nomes legacy (Mesa → Aviamento) pra evitar coluna duplicada.
@@ -121,7 +113,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
 
   return (
     <div
-      className="w-[210mm] p-[12mm] print:w-full print:p-[10mm] bg-white text-black m-auto editorial-stagger"
+      className="w-[210mm] p-[8mm] print:w-full print:p-[6mm] bg-white text-black m-auto editorial-stagger"
       style={{
         boxSizing: 'border-box',
         fontFamily: "'Inter Tight', 'Inter', system-ui, sans-serif",
@@ -229,15 +221,9 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
 
         <div className="grid grid-cols-4 gap-0 border-t border-b border-black">
           <KpiBlock label="OPs" value={String(orders.length)} />
+          <KpiBlock label="OPs concluídas" value={`${opsConcluidas} / ${orders.length}`} bordered />
           <KpiBlock label="Pares" value={totalPairs.toLocaleString('pt-BR')} bordered />
-          <KpiBlock label="Receita" value={fmtCurrency(totalRevenue)} bordered />
-          <KpiBlock
-            label="Margem"
-            value={fmtCurrency(margin)}
-            sub={fmtPct(marginPct)}
-            bordered
-            accent={margin >= 0 ? undefined : 'negative'}
-          />
+          <KpiBlock label="Progresso" value={`${progressPct}%`} sub={`${stageStats.done} / ${stageStats.total} setores`} bordered />
         </div>
       </section>
 
@@ -331,113 +317,9 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
         </div>
       </section>
 
-      {/* ─────────────────────────────── 04 / CUSTOS ─────────────────────────────── */}
-      {totalCost > 0 && (
-        <section className="keep-together mb-6">
-          <div className="flex items-baseline gap-3 mb-4">
-            <span
-              className="font-display"
-              style={{
-                fontFamily: "'Anton', Impact, sans-serif",
-                fontSize: '14pt',
-                color: '#000',
-              }}
-            >
-              03
-            </span>
-            <span className="section-label" style={{ color: '#000' }}>
-              Custos & Margem
-            </span>
-            <div className="flex-1 h-px bg-black" />
-          </div>
-
-          <table className="w-full" style={{ borderCollapse: 'collapse', fontSize: '8.5pt' }}>
-            <thead>
-              <tr style={{ borderBottom: '1.5px solid #000' }}>
-                <th className="text-left py-2 pr-2 section-label" style={{ width: 50, color: '#000' }}>OP</th>
-                <th className="text-left py-2 pr-2 section-label" style={{ color: '#000' }}>Ref</th>
-                <th className="text-right py-2 pr-2 section-label" style={{ color: '#000' }}>Material</th>
-                <th className="text-right py-2 pr-2 section-label" style={{ color: '#000' }}>M.Obra</th>
-                <th className="text-right py-2 pr-2 section-label" style={{ color: '#000' }}>Overhead</th>
-                <th className="text-right py-2 pr-2 section-label" style={{ color: '#000' }}>Embal.</th>
-                <th className="text-right py-2 pr-2 section-label" style={{ color: '#000' }}>Total</th>
-                <th className="text-right py-2 pr-2 section-label" style={{ color: '#000' }}>Receita</th>
-                <th className="text-right py-2 pr-2 section-label" style={{ color: '#000' }}>Margem</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.filter(o => o.cost).map(o => (
-                <tr key={o.id} style={{ borderBottom: '0.5px solid #d4d4d4' }}>
-                  <td className="py-2 pr-2 font-mono text-[9pt] text-black">{o.op_number || '—'}</td>
-                  <td className="py-2 pr-2 text-[9pt] text-black font-semibold">{o.reference_code || ''}</td>
-                  <td className="py-2 pr-2 text-right font-mono text-[9pt] text-black">{fmtCurrency(o.cost!.material_cost)}</td>
-                  <td className="py-2 pr-2 text-right font-mono text-[9pt] text-black">{fmtCurrency(o.cost!.labor_cost)}</td>
-                  <td className="py-2 pr-2 text-right font-mono text-[9pt] text-black">{fmtCurrency(o.cost!.overhead_cost)}</td>
-                  <td className="py-2 pr-2 text-right font-mono text-[9pt] text-black">{fmtCurrency(o.cost!.packaging_cost)}</td>
-                  <td className="py-2 pr-2 text-right font-mono font-bold text-[9pt] text-black">{fmtCurrency(o.cost!.total_cost)}</td>
-                  <td className="py-2 pr-2 text-right font-mono text-[9pt] text-black">{fmtCurrency(o.cost!.revenue)}</td>
-                  <td
-                    className="py-2 pr-2 text-right font-mono font-bold text-[9pt]"
-                    style={{ color: o.cost!.margin >= 0 ? '#000' : '#E11D2E' }}
-                  >
-                    {fmtCurrency(o.cost!.margin)}
-                    <span className="ml-1 font-normal opacity-60">{fmtPct(o.cost!.margin_pct)}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr style={{ borderTop: '1.5px solid #000', borderBottom: '1.5px solid #000' }}>
-                <td colSpan={2} className="py-2.5 pr-2 section-label" style={{ color: '#000', textAlign: 'right' }}>
-                  Total
-                </td>
-                <td className="py-2.5 pr-2 text-right font-mono font-bold text-[9pt] text-black">{fmtCurrency(totalMaterial)}</td>
-                <td className="py-2.5 pr-2 text-right font-mono font-bold text-[9pt] text-black">{fmtCurrency(totalLabor)}</td>
-                <td className="py-2.5 pr-2 text-right font-mono font-bold text-[9pt] text-black">{fmtCurrency(totalOverhead)}</td>
-                <td className="py-2.5 pr-2 text-right font-mono font-bold text-[9pt] text-black">{fmtCurrency(totalPackaging)}</td>
-                <td className="py-2.5 pr-2 text-right font-mono font-bold text-[10pt] text-black">{fmtCurrency(totalCost)}</td>
-                <td className="py-2.5 pr-2 text-right font-mono font-bold text-[9pt] text-black">{fmtCurrency(totalRevenue)}</td>
-                <td
-                  className="py-2.5 pr-2 text-right font-mono font-bold text-[10pt]"
-                  style={{ color: margin >= 0 ? '#000' : '#E11D2E' }}
-                >
-                  {fmtCurrency(margin)}
-                  <span className="ml-1 text-[9pt] opacity-60">{fmtPct(marginPct)}</span>
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        </section>
-      )}
-
-      {totalCost === 0 && (
-        <section className="keep-together mb-6 border-l-2 border-black pl-3 py-2">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" style={{ color: '#E11D2E' }} />
-            <div>
-              <p className="section-label mb-1" style={{ color: '#E11D2E' }}>Custos pendentes</p>
-              <p className="text-[9pt] text-black leading-snug">
-                Sem custos calculados ainda — execute "Calcular Custos" no PV pra ver material/mão de obra/margem.
-              </p>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {isPartialReport && (
-        <section className="keep-together mb-6 border-l-2 pl-3 py-2" style={{ borderColor: '#E11D2E' }}>
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" style={{ color: '#E11D2E' }} />
-            <div>
-              <p className="section-label mb-1" style={{ color: '#E11D2E' }}>Receita & margem parciais</p>
-              <p className="text-[9pt] text-black leading-snug">
-                <span className="font-mono font-bold">{opsWithCost}</span> de <span className="font-mono font-bold">{orders.length}</span> OPs com custo carregado.
-                {' '}<span className="font-mono font-bold">{opsWithoutCost}</span> OP(s) sem custo — execute "Calcular Custos" pra atualizar.
-              </p>
-            </div>
-          </div>
-        </section>
-      )}
+      {/* Seção de Custos & Margem foi REMOVIDA — relatório operacional sem
+          valores monetários, conforme pedido. Pra ver custos, abrir o PV no
+          sistema, tab "Custos & Margem". */}
 
       {/* ─────────────────────────────── FOOTER · ASSINATURAS ─────────────────────────────── */}
       <footer className="mt-auto pt-8">
