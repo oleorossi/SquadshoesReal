@@ -8,6 +8,12 @@ const corsHeaders = {
 
 const GESTAOCLICK_BASE = "https://api.gestaoclick.com";
 
+// Marca fixa de TODOS os produtos da Squad Shoes na NF-e. Aparece no XML
+// SEFAZ como <prod><xMarca>SquadShoes</xMarca></prod>. Pedido em 15/05/2026.
+// Hardcoded porque a empresa só fabrica produtos próprios — sem revenda
+// de outras marcas. Se isso mudar, virar coluna em technical_sheets.
+const SQUAD_BRAND = "SquadShoes";
+
 function gcHeaders() {
   const access = Deno.env.get("CLICKNOTAS_ACCESS_TOKEN");
   const secret = Deno.env.get("CLICKNOTAS_SECRET_TOKEN");
@@ -430,6 +436,7 @@ Deno.serve(async (req) => {
               unidade: isStandalone ? unidade : "PAR",
               ncm,
               tipo: "P",
+              marca: SQUAD_BRAND, // marca aparece no XML SEFAZ <prod><xMarca>
             }),
           });
           if (!r.ok || r.json?.status === "error") {
@@ -455,6 +462,7 @@ Deno.serve(async (req) => {
         unidade: isStandalone ? unidade : "PAR",
         NCM: ncm,
         tipo: "P",
+        marca: SQUAD_BRAND, // pedido em 15/05/2026 — sempre Squad Shoes na NF
       });
     }
 
