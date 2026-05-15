@@ -437,10 +437,11 @@ const OperatorWorkSheet = ({
                 </tr>
               </thead>
               <tbody>
-                {/* Linha POR FICHA — base grade. Aparece sempre, com tamanho
-                    secundário (mas legível). Quando fichas=1, ela e a linha
-                    total mostrariam o mesmo número, então omitimos. */}
-                {fichas > 1 && (
+                {/* Linha POR FICHA — base grade. SEMPRE aparece (user pediu
+                    explicitamente em 2026-05). Mesmo quando fichas=1 e a
+                    linha total mostra o mesmo número, o operador quer ver
+                    a distribuição da grade individual destacada. */}
+                {gradeSum > 0 && (
                   <tr style={{ borderBottom: '1.5px solid #000' }}>
                     <td className="py-1.5 text-[10px] font-mono font-bold text-black leading-tight uppercase tracking-wider" style={{ borderRight: '1px solid #000' }}>
                       Por Ficha<br />({gradeSum}p)

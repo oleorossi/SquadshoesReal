@@ -514,8 +514,9 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                     </thead>
                     <tbody>
                       {/* Linha "Por Ficha" — grade base de 1 ficha fechada.
-                          Aparece só quando há múltiplas fichas (senão Por Ficha == Pares). */}
-                      {cg.baseGrid && cg.fichas && cg.fichas > 1 && cg.baseGradeSum && (
+                          SEMPRE aparece (user pediu em 2026-05) — operador
+                          quer ver a distribuição individual destacada. */}
+                      {cg.baseGrid && cg.baseGradeSum && (
                         <tr style={{ borderBottom: '1.5px solid #000' }}>
                           <td className="py-1 text-[9px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
                             Por Ficha<br />({cg.baseGradeSum}p)
@@ -532,7 +533,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                       )}
                       <tr style={{ borderBottom: theme.showFrenteTraseiro ? '1px solid #000' : 'none' }}>
                         <td className="py-1.5 text-[10px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
-                          {cg.fichas && cg.fichas > 1 ? <>Total<br />× {cg.fichas} fichas</> : 'Pares'}
+                          {cg.fichas && cg.fichas > 1 ? <>Total<br />× {cg.fichas} fichas</> : <>Total<br />(1 ficha)</>}
                         </td>
                         {activeSizes.map(s => (
                           <td

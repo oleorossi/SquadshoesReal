@@ -93,15 +93,20 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
                     </span>
                   </div>
                   <div className="flex items-stretch gap-3 shrink-0">
-                    <div className="border-l border-black pl-3">
-                      <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
-                      <span
-                        className="text-black uppercase leading-none block mt-0.5"
-                        style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.02em' }}
-                      >
-                        {group.insoleColor}
-                      </span>
-                    </div>
+                    {/* Cor da palmilha/forração é IRRELEVANTE pro corte —
+                        mesma palmilha física serve várias cores. Esconde
+                        quando vier '—' (consolidado só por solado). */}
+                    {group.insoleColor && group.insoleColor !== '—' && (
+                      <div className="border-l border-black pl-3">
+                        <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
+                        <span
+                          className="text-black uppercase leading-none block mt-0.5"
+                          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.02em' }}
+                        >
+                          {group.insoleColor}
+                        </span>
+                      </div>
+                    )}
                     <div className="border-l border-black pl-3">
                       <span className="section-label block" style={{ color: '#000' }}>Ação</span>
                       <span className="font-mono text-[11px] font-bold text-black uppercase tracking-widest mt-1 block">
@@ -180,9 +185,8 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
                     </tr>
                   </thead>
                   <tbody>
-                    {/* Linha "Por Ficha" — grade base de 1 ficha fechada. Aparece
-                        só quando há >1 ficha (senão Por Ficha == Total). */}
-                    {group.baseGrade && group.fichas && group.fichas > 1 && group.baseGradeSum && (
+                    {/* Linha "Por Ficha" — SEMPRE aparece (user pediu em 2026-05). */}
+                    {group.baseGrade && group.baseGradeSum && (
                       <tr style={{ borderBottom: '1.5px solid #000' }}>
                         <td className="py-1 text-[9px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
                           Por Ficha<br />({group.baseGradeSum}p)
@@ -199,7 +203,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
                     )}
                     <tr>
                       <td className="py-2 text-[10px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
-                        {group.fichas && group.fichas > 1 ? <>Total<br />× {group.fichas} fichas</> : 'Pares'}
+                        {group.fichas && group.fichas > 1 ? <>Total<br />× {group.fichas} fichas</> : <>Total<br />(1 ficha)</>}
                       </td>
                       {allSizes.map(s => (
                         <td

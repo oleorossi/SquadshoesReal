@@ -654,10 +654,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
       const soleName = rawSoleName
         ? getBaseName(rawSoleName)
         : (fallbackSole ? getBaseName(fallbackSole) : 'Sem Solado');
-      const key = `${soleName}::${insoleColor}::${isReadyMade ? 'pronta' : 'cortar'}`;
+      // Agrupa apenas por solado + readyMade. Cor da forração é IRRELEVANTE
+      // pro corte da palmilha (mesma palmilha física, várias cores de forração).
+      // Antes a key incluía insoleColor → fragmentava o relatório em vários
+      // cards com a mesma palmilha por modelo. User pediu consolidação.
+      const key = `${soleName}::${isReadyMade ? 'pronta' : 'cortar'}`;
       if (!groupMap.has(key)) {
         groupMap.set(key, {
-          soleName, insoleColor, totalPairs: 0, grade: {},
+          soleName, insoleColor: '—', totalPairs: 0, grade: {},
           baseGrade: { ...((order.grid as Record<string, number>) || {}) },
           baseGradeSum: 0, fichas: 0,
           readyMade: isReadyMade,

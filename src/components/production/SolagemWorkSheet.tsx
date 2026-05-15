@@ -162,8 +162,8 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
                   </tr>
                 </thead>
                 <tbody>
-                  {/* Linha "Por Ficha" — grade base. Aparece quando há >1 ficha. */}
-                  {band.baseGrade && band.fichas && band.fichas > 1 && band.baseGradeSum && (
+                  {/* Linha "Por Ficha" — SEMPRE aparece (user pediu em 2026-05). */}
+                  {band.baseGrade && band.baseGradeSum && (
                     <tr style={{ borderBottom: '1.5px solid #000' }}>
                       <td className="py-1 text-[9px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
                         Por Ficha<br />({band.baseGradeSum}p)
@@ -180,7 +180,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
                   )}
                   <tr>
                     <td className="py-2 text-[10px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
-                      {band.fichas && band.fichas > 1 ? <>Total<br />× {band.fichas} fichas</> : 'Pares'}
+                      {band.fichas && band.fichas > 1 ? <>Total<br />× {band.fichas} fichas</> : <>Total<br />(1 ficha)</>}
                     </td>
                     {allSizes.map(s => (
                       <td
