@@ -309,19 +309,32 @@ export function LabelProductionTab() {
   const queryClient = useQueryClient();
   const { data: allOrders = [] } = useOrders();
   const { data: saleOrders = [] } = useQuery({
-    queryKey: ['sale_orders_for_labels'],
+    queryKey: ['sale_orders_for_labels_v2'],
     queryFn: async () => {
       // Endereço/cidade/UF/transportadora vêm via JOIN — usados pra preencher
       // o rótulo da caixa externa (campos opcionais que omitimos se faltarem).
+      // nfe_emitidas trazido como JOIN também: defensive fallback caso a
+      // trigger tg_sync_nfe_numero_to_sale_order não tenha rodado (ex: NF
+      // sincronizada antes da migration). Sempre preferimos o número MAIS
+      // RECENTE com status='autorizada'.
       const { data, error } = await supabase
         .from('sale_orders')
         .select(`
           *,
           clients(id, razao_social, cnpj, endereco, bairro, cidade, estado, cep, branch_code, branch_name, economic_group_id, economic_groups(name)),
-          transport_companies:transport_company_id(nome)
+          transport_companies:transport_company_id(nome),
+          nfe_emitidas(numero, serie, status, created_at)
         `);
       if (error) throw error;
-      return data || [];
+      // Pra cada PV, escolhe o número da NF: prefere a autorizada mais recente
+      // de nfe_emitidas; cai pra so.nfe (campo histórico/manual) quando vazio.
+      return (data || []).map((so: any) => {
+        const authorized = (so.nfe_emitidas || [])
+          .filter((n: any) => n.status === 'autorizada' && n.numero)
+          .sort((a: any, b: any) => (b.created_at || '').localeCompare(a.created_at || ''));
+        const resolvedNfe = authorized[0]?.numero || so.nfe || '';
+        return { ...so, nfe: resolvedNfe };
+      });
     },
     staleTime: 2 * 60 * 1000,
   });
