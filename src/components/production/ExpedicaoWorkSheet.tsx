@@ -246,8 +246,7 @@ export const ExpedicaoWorkSheet = ({ group, date }: Props) => {
                 </td>
                 <td className="py-1 px-1 font-mono text-[10px] text-black" style={{ borderRight: '1px solid #000' }}>{o.op_number || '—'}</td>
                 <td className="py-1 px-1 text-[11px] text-black" style={{ borderRight: '1px solid #000' }}>
-                  {o.reference_code ? <span className="font-bold uppercase">{o.reference_code}</span> : null}
-                  {o.reference_name ? <span className="ml-1">{o.reference_name}</span> : null}
+                  <span className="font-bold uppercase">{o.reference_name || o.reference_code || '—'}</span>
                 </td>
                 <td className="py-1 px-1 text-[11px] text-black uppercase font-semibold" style={{ borderRight: '1px solid #000' }}>{o.color || '—'}</td>
                 <td className="py-1 px-1 text-[10px] text-black" style={{ borderRight: '1px solid #000' }}>{o.sole_name || '—'}</td>

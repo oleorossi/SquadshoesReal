@@ -308,11 +308,11 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                       <div className="flex items-center gap-1 mt-0.5 justify-end flex-wrap">
                         {cg.refs.map((r) => (
                           <span
-                            key={r.code}
-                            className="inline-block bg-black text-white font-mono font-bold px-1.5 py-0.5 rounded-[2px] whitespace-nowrap"
-                            style={{ fontSize: '10px', letterSpacing: '0.08em' }}
+                            key={r.code || r.name}
+                            className="inline-block bg-black text-white font-bold px-2 py-0.5 rounded-[2px] whitespace-nowrap uppercase"
+                            style={{ fontSize: '10px', letterSpacing: '0.04em' }}
                           >
-                            REF {r.code}
+                            {r.name || r.code || '—'}
                           </span>
                         ))}
                       </div>

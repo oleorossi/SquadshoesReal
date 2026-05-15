@@ -128,10 +128,10 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
                       </div>
                       <div className="text-center leading-tight">
                         <span
-                          className="inline-block bg-black text-white font-mono font-bold px-1 py-0.5 rounded-[2px]"
-                          style={{ fontSize: '8px', letterSpacing: '0.08em' }}
+                          className="inline-block bg-black text-white font-bold px-1 py-0.5 rounded-[2px] uppercase"
+                          style={{ fontSize: '8px', letterSpacing: '0.04em' }}
                         >
-                          REF {r.code}
+                          {r.name || r.code || '—'}
                         </span>
                         {r.color && (
                           <div className="font-mono font-semibold text-black mt-0.5" style={{ fontSize: '8px' }}>

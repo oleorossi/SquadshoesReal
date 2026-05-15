@@ -276,8 +276,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
                 <tr key={o.id} style={{ borderBottom: '0.5px solid #d4d4d4' }}>
                   <td className="py-2 pr-2 font-mono text-[9pt] text-black">{o.op_number || '—'}</td>
                   <td className="py-2 pr-2 text-[9pt] text-black">
-                    {o.reference_code && <span className="font-semibold">{o.reference_code}</span>}
-                    {o.reference_name && <span className="text-neutral-500 ml-1">{o.reference_name}</span>}
+                    <span className="font-semibold">{o.reference_name || o.reference_code || '—'}</span>
                     {o.color && <span className="text-black"> · {o.color}</span>}
                   </td>
                   <td className="py-2 pr-2 text-[9pt] text-neutral-700">{o.sole_name || '—'}</td>
