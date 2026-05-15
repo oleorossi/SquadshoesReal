@@ -16,13 +16,22 @@ const SERVICE_MODES = ['rodoviario', 'aereo', 'aquaviario', 'ferroviario', 'sede
 
 type TransporterForm = {
   name: string;
+  nome_fantasia: string;
   cnpj: string;
   ie: string;
+  ie_isento: boolean;
   contact_name: string;
   contact_phone: string;
   contact_email: string;
+  endereco: string;
+  numero: string;
+  complemento: string;
+  bairro: string;
+  cep: string;
+  codigo_municipio: string;
   address_city: string;
   address_state: string;
+  rntrc: string;
   service_modes: string[];
   delivery_areas: string;
   has_api_integration: boolean;
@@ -32,13 +41,22 @@ type TransporterForm = {
 
 const emptyForm: TransporterForm = {
   name: '',
+  nome_fantasia: '',
   cnpj: '',
   ie: '',
+  ie_isento: false,
   contact_name: '',
   contact_phone: '',
   contact_email: '',
+  endereco: '',
+  numero: '',
+  complemento: '',
+  bairro: '',
+  cep: '',
+  codigo_municipio: '',
   address_city: '',
   address_state: 'RJ',
+  rntrc: '',
   service_modes: ['rodoviario'],
   delivery_areas: '',
   has_api_integration: false,
@@ -177,13 +195,22 @@ function TransporterDialog({
     if (editing) {
       return {
         name: editing.name ?? '',
+        nome_fantasia: editing.nome_fantasia ?? '',
         cnpj: editing.cnpj ?? '',
         ie: editing.ie ?? '',
+        ie_isento: editing.ie_isento ?? false,
         contact_name: editing.contact_name ?? '',
         contact_phone: editing.contact_phone ?? '',
         contact_email: editing.contact_email ?? '',
+        endereco: editing.endereco ?? '',
+        numero: editing.numero ?? '',
+        complemento: editing.complemento ?? '',
+        bairro: editing.bairro ?? '',
+        cep: editing.cep ?? '',
+        codigo_municipio: editing.codigo_municipio ?? '',
         address_city: editing.address_city ?? '',
         address_state: editing.address_state ?? 'RJ',
+        rntrc: editing.rntrc ?? '',
         service_modes: editing.service_modes ?? [],
         delivery_areas: (editing.delivery_areas ?? []).join(', '),
         has_api_integration: editing.has_api_integration ?? false,
@@ -246,8 +273,52 @@ function TransporterDialog({
             <Input value={form.cnpj} onChange={e => setForm({ ...form, cnpj: e.target.value })} placeholder="00.000.000/0000-00" />
           </div>
           <div>
+            <Label>Nome fantasia</Label>
+            <Input value={form.nome_fantasia} onChange={e => setForm({ ...form, nome_fantasia: e.target.value })} />
+          </div>
+          <div>
             <Label>Inscrição Estadual</Label>
-            <Input value={form.ie} onChange={e => setForm({ ...form, ie: e.target.value })} />
+            <Input value={form.ie} onChange={e => setForm({ ...form, ie: e.target.value, ie_isento: false })} disabled={form.ie_isento} />
+          </div>
+          <div className="flex items-end pb-1">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" checked={form.ie_isento}
+                onChange={e => setForm({ ...form, ie_isento: e.target.checked, ie: e.target.checked ? '' : form.ie })} />
+              Isento de IE
+            </label>
+          </div>
+
+          {/* ── Endereço completo (NF-e) ─────────────────────────────────── */}
+          <div className="col-span-2 mt-2 mb-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+            Endereço (NF-e — grupo X)
+          </div>
+          <div className="col-span-2">
+            <Label>Logradouro</Label>
+            <Input value={form.endereco} onChange={e => setForm({ ...form, endereco: e.target.value })} placeholder="Rua / Av / Estrada..." />
+          </div>
+          <div>
+            <Label>Número</Label>
+            <Input value={form.numero} onChange={e => setForm({ ...form, numero: e.target.value })} placeholder="S/N" />
+          </div>
+          <div>
+            <Label>Complemento</Label>
+            <Input value={form.complemento} onChange={e => setForm({ ...form, complemento: e.target.value })} />
+          </div>
+          <div>
+            <Label>Bairro</Label>
+            <Input value={form.bairro} onChange={e => setForm({ ...form, bairro: e.target.value })} />
+          </div>
+          <div>
+            <Label>CEP</Label>
+            <Input value={form.cep} onChange={e => setForm({ ...form, cep: e.target.value.replace(/\D/g,'').slice(0,8) })} placeholder="00000000" />
+          </div>
+          <div>
+            <Label>Cód. Município (IBGE)</Label>
+            <Input value={form.codigo_municipio} onChange={e => setForm({ ...form, codigo_municipio: e.target.value.replace(/\D/g,'').slice(0,7) })} placeholder="7 dígitos" className="font-mono" />
+          </div>
+          <div>
+            <Label>RNTRC (ANTT)</Label>
+            <Input value={form.rntrc} onChange={e => setForm({ ...form, rntrc: e.target.value })} placeholder="opcional" className="font-mono" />
           </div>
 
           <div>
