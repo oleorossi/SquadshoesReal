@@ -167,22 +167,21 @@ Deno.serve(async (req) => {
       const pvNum = extractPvNumber(info);
 
       // Destinatário: gravado direto na NF pra identificar quando não há PV vinculado.
-      // GestaoClick varia o shape entre endpoints: `cliente` (objeto) no detalhe,
-      // `cliente_nome`/`cliente_cnpj` (string) no resumo de algumas versões da API.
+      // GestaoClick usa prefixo `destinatario_*` no detalhe da nota (verificado
+      // via gc-diag em mai/2026): destinatario_nome, destinatario_cnpj,
+      // destinatario_cpf, destinatario_fornecedor_nome (quando é fornecedor).
+      // Fallback p/ `cliente.*` caso o shape mude em versões futuras da API.
       const nomeDest =
+        d?.destinatario_nome ||
+        d?.destinatario_fornecedor_nome ||
         d?.cliente?.nome ||
         d?.cliente?.razao_social ||
-        d?.destinatario?.nome ||
-        d?.cliente_nome ||
-        d?.nome_cliente ||
         null;
       const cnpjDest = digitsOnly(
-        d?.cliente?.cnpj ||
+        d?.destinatario_cnpj ||
+          d?.destinatario_cpf ||
+          d?.cliente?.cnpj ||
           d?.cliente?.cpf ||
-          d?.destinatario?.cnpj ||
-          d?.destinatario?.cpf ||
-          d?.cliente_cnpj ||
-          d?.cliente_cpf ||
           "",
       ) || null;
 
