@@ -1418,6 +1418,7 @@ export type Database = {
           commercial_block: boolean
           commercial_block_date: string | null
           commercial_block_reason: string | null
+          consumidor_final: number | null
           contato: string | null
           created_at: string
           credit_limit: number
@@ -1429,6 +1430,7 @@ export type Database = {
           estado: string | null
           gestaoclick_id: string | null
           id: string
+          indicador_ie: number | null
           inscricao_estadual: string | null
           is_favorite: boolean
           is_matriz: boolean
@@ -1437,6 +1439,7 @@ export type Database = {
           nome_fantasia: string | null
           notes: string | null
           numero: string | null
+          optante_simples_nacional: boolean
           preferred_transporter_id: string | null
           price_list_id: string | null
           razao_social: string
@@ -1467,6 +1470,7 @@ export type Database = {
           commercial_block?: boolean
           commercial_block_date?: string | null
           commercial_block_reason?: string | null
+          consumidor_final?: number | null
           contato?: string | null
           created_at?: string
           credit_limit?: number
@@ -1478,6 +1482,7 @@ export type Database = {
           estado?: string | null
           gestaoclick_id?: string | null
           id?: string
+          indicador_ie?: number | null
           inscricao_estadual?: string | null
           is_favorite?: boolean
           is_matriz?: boolean
@@ -1486,6 +1491,7 @@ export type Database = {
           nome_fantasia?: string | null
           notes?: string | null
           numero?: string | null
+          optante_simples_nacional?: boolean
           preferred_transporter_id?: string | null
           price_list_id?: string | null
           razao_social: string
@@ -1516,6 +1522,7 @@ export type Database = {
           commercial_block?: boolean
           commercial_block_date?: string | null
           commercial_block_reason?: string | null
+          consumidor_final?: number | null
           contato?: string | null
           created_at?: string
           credit_limit?: number
@@ -1527,6 +1534,7 @@ export type Database = {
           estado?: string | null
           gestaoclick_id?: string | null
           id?: string
+          indicador_ie?: number | null
           inscricao_estadual?: string | null
           is_favorite?: boolean
           is_matriz?: boolean
@@ -1535,6 +1543,7 @@ export type Database = {
           nome_fantasia?: string | null
           notes?: string | null
           numero?: string | null
+          optante_simples_nacional?: boolean
           preferred_transporter_id?: string | null
           price_list_id?: string | null
           razao_social?: string
@@ -3988,45 +3997,6 @@ export type Database = {
           hours_removed?: number
           id?: string
           reason?: string | null
-        }
-        Relationships: []
-      }
-      employee_payroll: {
-        Row: {
-          base_salary: number
-          created_at: string
-          deductions_amount: number
-          employee_id: string
-          id: string
-          net_salary: number
-          overtime_amount: number
-          period_date: string
-          status: string
-          updated_at: string
-        }
-        Insert: {
-          base_salary: number
-          created_at?: string
-          deductions_amount: number
-          employee_id: string
-          id?: string
-          net_salary: number
-          overtime_amount: number
-          period_date: string
-          status: string
-          updated_at?: string
-        }
-        Update: {
-          base_salary?: number
-          created_at?: string
-          deductions_amount?: number
-          employee_id?: string
-          id?: string
-          net_salary?: number
-          overtime_amount?: number
-          period_date?: string
-          status?: string
-          updated_at?: string
         }
         Relationships: []
       }
@@ -8009,6 +7979,7 @@ export type Database = {
           pay_amount: number
           pay_minutes: number
           payroll_run_id: string | null
+          period_type: string
           resolved_at: string
           resolved_by: string | null
         }
@@ -8028,6 +7999,7 @@ export type Database = {
           pay_amount?: number
           pay_minutes?: number
           payroll_run_id?: string | null
+          period_type?: string
           resolved_at?: string
           resolved_by?: string | null
         }
@@ -8047,6 +8019,7 @@ export type Database = {
           pay_amount?: number
           pay_minutes?: number
           payroll_run_id?: string | null
+          period_type?: string
           resolved_at?: string
           resolved_by?: string | null
         }
@@ -8445,25 +8418,31 @@ export type Database = {
       payroll_runs: {
         Row: {
           absence_discount: number
+          absent_days: number
           advances_total: number
           approved_at: string | null
-          base_salary: number | null
-          created_at: string | null
-          created_by: string | null
-          deductions: number | null
+          base_salary: number
+          business_days: number
+          business_days_worked: number
+          created_at: string
+          deductions_amount: number
           dsr_value: number
           employee_id: string
+          expected_minutes: number
           health_plan_discount: number
+          hourly_rate: number
           id: string
           inss_value: number
           irrf_value: number
-          net_salary: number | null
+          net_salary: number
           night_bonus_value: number
+          night_minutes: number
           notes: string | null
+          overtime_100_minutes: number
           overtime_100_value: number
+          overtime_50_minutes: number
           overtime_50_value: number
-          overtime_amount: number | null
-          overtime_minutes: number | null
+          overtime_amount: number
           overtime_paid_value: number
           paid_at: string | null
           period: string
@@ -8471,33 +8450,40 @@ export type Database = {
           total_descontos: number
           total_liquido: number
           total_proventos: number
-          updated_at: string | null
+          updated_at: string
           va_value: number
           vr_value: number
           vt_employee_discount: number
           vt_total_value: number
+          worked_minutes: number
         }
         Insert: {
           absence_discount?: number
+          absent_days?: number
           advances_total?: number
           approved_at?: string | null
-          base_salary?: number | null
-          created_at?: string | null
-          created_by?: string | null
-          deductions?: number | null
+          base_salary?: number
+          business_days?: number
+          business_days_worked?: number
+          created_at?: string
+          deductions_amount?: number
           dsr_value?: number
           employee_id: string
+          expected_minutes?: number
           health_plan_discount?: number
+          hourly_rate?: number
           id?: string
           inss_value?: number
           irrf_value?: number
-          net_salary?: number | null
+          net_salary?: number
           night_bonus_value?: number
+          night_minutes?: number
           notes?: string | null
+          overtime_100_minutes?: number
           overtime_100_value?: number
+          overtime_50_minutes?: number
           overtime_50_value?: number
-          overtime_amount?: number | null
-          overtime_minutes?: number | null
+          overtime_amount?: number
           overtime_paid_value?: number
           paid_at?: string | null
           period: string
@@ -8505,33 +8491,40 @@ export type Database = {
           total_descontos?: number
           total_liquido?: number
           total_proventos?: number
-          updated_at?: string | null
+          updated_at?: string
           va_value?: number
           vr_value?: number
           vt_employee_discount?: number
           vt_total_value?: number
+          worked_minutes?: number
         }
         Update: {
           absence_discount?: number
+          absent_days?: number
           advances_total?: number
           approved_at?: string | null
-          base_salary?: number | null
-          created_at?: string | null
-          created_by?: string | null
-          deductions?: number | null
+          base_salary?: number
+          business_days?: number
+          business_days_worked?: number
+          created_at?: string
+          deductions_amount?: number
           dsr_value?: number
           employee_id?: string
+          expected_minutes?: number
           health_plan_discount?: number
+          hourly_rate?: number
           id?: string
           inss_value?: number
           irrf_value?: number
-          net_salary?: number | null
+          net_salary?: number
           night_bonus_value?: number
+          night_minutes?: number
           notes?: string | null
+          overtime_100_minutes?: number
           overtime_100_value?: number
+          overtime_50_minutes?: number
           overtime_50_value?: number
-          overtime_amount?: number | null
-          overtime_minutes?: number | null
+          overtime_amount?: number
           overtime_paid_value?: number
           paid_at?: string | null
           period?: string
@@ -8539,11 +8532,12 @@ export type Database = {
           total_descontos?: number
           total_liquido?: number
           total_proventos?: number
-          updated_at?: string | null
+          updated_at?: string
           va_value?: number
           vr_value?: number
           vt_employee_discount?: number
           vt_total_value?: number
+          worked_minutes?: number
         }
         Relationships: [
           {
@@ -13897,8 +13891,11 @@ export type Database = {
           status: string
           total: number
           transport_company_id: string | null
+          transporter_id: string | null
           updated_at: string
           valor_frete: number | null
+          vehicle_plate: string | null
+          vehicle_uf: string | null
         }
         Insert: {
           billing_week?: string | null
@@ -13946,8 +13943,11 @@ export type Database = {
           status?: string
           total?: number
           transport_company_id?: string | null
+          transporter_id?: string | null
           updated_at?: string
           valor_frete?: number | null
+          vehicle_plate?: string | null
+          vehicle_uf?: string | null
         }
         Update: {
           billing_week?: string | null
@@ -13995,8 +13995,11 @@ export type Database = {
           status?: string
           total?: number
           transport_company_id?: string | null
+          transporter_id?: string | null
           updated_at?: string
           valor_frete?: number | null
+          vehicle_plate?: string | null
+          vehicle_uf?: string | null
         }
         Relationships: [
           {
@@ -14158,6 +14161,13 @@ export type Database = {
             columns: ["transport_company_id"]
             isOneToOne: false
             referencedRelation: "transport_companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sale_orders_transporter_id_fkey"
+            columns: ["transporter_id"]
+            isOneToOne: false
+            referencedRelation: "transporters"
             referencedColumns: ["id"]
           },
         ]
@@ -17394,6 +17404,7 @@ export type Database = {
           model: string | null
           name: string
           ncm: string | null
+          origem_mercadoria: number
           primary_sole_id: string | null
           process_difficulty: string | null
           production_sectors: Json
@@ -17403,6 +17414,7 @@ export type Database = {
           requires_sewing: boolean
           safety_margin_pct: number | null
           sale_price: number | null
+          sector_notes: Json
           sewing_capacity_per_day: number | null
           shoe_category: string | null
           shoe_category_id: string | null
@@ -17506,6 +17518,7 @@ export type Database = {
           model?: string | null
           name: string
           ncm?: string | null
+          origem_mercadoria?: number
           primary_sole_id?: string | null
           process_difficulty?: string | null
           production_sectors?: Json
@@ -17515,6 +17528,7 @@ export type Database = {
           requires_sewing?: boolean
           safety_margin_pct?: number | null
           sale_price?: number | null
+          sector_notes?: Json
           sewing_capacity_per_day?: number | null
           shoe_category?: string | null
           shoe_category_id?: string | null
@@ -17618,6 +17632,7 @@ export type Database = {
           model?: string | null
           name?: string
           ncm?: string | null
+          origem_mercadoria?: number
           primary_sole_id?: string | null
           process_difficulty?: string | null
           production_sectors?: Json
@@ -17627,6 +17642,7 @@ export type Database = {
           requires_sewing?: boolean
           safety_margin_pct?: number | null
           sale_price?: number | null
+          sector_notes?: Json
           sewing_capacity_per_day?: number | null
           shoe_category?: string | null
           shoe_category_id?: string | null
@@ -18040,17 +18056,27 @@ export type Database = {
           address_city: string | null
           address_state: string | null
           api_config: Json | null
+          bairro: string | null
+          cep: string | null
           cnpj: string | null
+          codigo_municipio: string | null
+          complemento: string | null
           contact_email: string | null
           contact_name: string | null
           contact_phone: string | null
           created_at: string
           delivery_areas: string[] | null
+          endereco: string | null
+          gestaoclick_id: string | null
           has_api_integration: boolean
           id: string
           ie: string | null
+          ie_isento: boolean
           name: string
+          nome_fantasia: string | null
           notes: string | null
+          numero: string | null
+          rntrc: string | null
           service_modes: string[] | null
           updated_at: string
         }
@@ -18059,17 +18085,27 @@ export type Database = {
           address_city?: string | null
           address_state?: string | null
           api_config?: Json | null
+          bairro?: string | null
+          cep?: string | null
           cnpj?: string | null
+          codigo_municipio?: string | null
+          complemento?: string | null
           contact_email?: string | null
           contact_name?: string | null
           contact_phone?: string | null
           created_at?: string
           delivery_areas?: string[] | null
+          endereco?: string | null
+          gestaoclick_id?: string | null
           has_api_integration?: boolean
           id?: string
           ie?: string | null
+          ie_isento?: boolean
           name: string
+          nome_fantasia?: string | null
           notes?: string | null
+          numero?: string | null
+          rntrc?: string | null
           service_modes?: string[] | null
           updated_at?: string
         }
@@ -18078,17 +18114,27 @@ export type Database = {
           address_city?: string | null
           address_state?: string | null
           api_config?: Json | null
+          bairro?: string | null
+          cep?: string | null
           cnpj?: string | null
+          codigo_municipio?: string | null
+          complemento?: string | null
           contact_email?: string | null
           contact_name?: string | null
           contact_phone?: string | null
           created_at?: string
           delivery_areas?: string[] | null
+          endereco?: string | null
+          gestaoclick_id?: string | null
           has_api_integration?: boolean
           id?: string
           ie?: string | null
+          ie_isento?: boolean
           name?: string
+          nome_fantasia?: string | null
           notes?: string | null
+          numero?: string | null
+          rntrc?: string | null
           service_modes?: string[] | null
           updated_at?: string
         }
@@ -20746,6 +20792,10 @@ export type Database = {
         }
         Returns: number
       }
+      calculate_weekly_he_breakdown: {
+        Args: { p_employee_id: string; p_week_start: string }
+        Returns: Json
+      }
       cancel_wave: {
         Args: { p_reason?: string; p_wave_id: string }
         Returns: undefined
@@ -21390,6 +21440,18 @@ export type Database = {
               product_name: string
             }[]
           }
+      resolve_weekly_overtime: {
+        Args: {
+          p_bank_minutes: number
+          p_decision: string
+          p_employee_id: string
+          p_notes?: string
+          p_pay_minutes: number
+          p_total_minutes: number
+          p_week_start: string
+        }
+        Returns: string
+      }
       restore_product_stocks_for_order: {
         Args: { p_order_id: string }
         Returns: undefined
@@ -21717,4 +21779,3 @@ export const Constants = {
     },
   },
 } as const
-
