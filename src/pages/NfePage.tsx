@@ -280,19 +280,32 @@ function NfeRow({ nfe, onCancel, onView, canCancel }: { nfe: any; onCancel: (n: 
         R$ {Number(nfe.valor_total).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
       </div>
       <div className="flex items-center gap-1 shrink-0" onClick={stop}>
-        {nfe.status === 'processando' && (
-          <Button variant="ghost" size="icon" title="Verificar status" onClick={() => checkStatus.mutate(nfe.id)} disabled={checkStatus.isPending}>
+        {/* Botão refresh aparece também pra NFs autorizadas SEM URLs ainda
+            persistidas (caso comum: emissão antiga onde danfe_url/xml_url
+            ficaram vazios). Antes só aparecia em 'processando'. */}
+        {(nfe.status === 'processando' || (nfe.status === 'autorizada' && (!nfe.danfe_url || !nfe.xml_url))) && (
+          <Button
+            variant="ghost"
+            size="icon"
+            title={nfe.status === 'processando' ? 'Verificar status' : 'Buscar arquivos PDF/XML'}
+            onClick={() => checkStatus.mutate(nfe.id)}
+            disabled={checkStatus.isPending}
+          >
             {checkStatus.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
           </Button>
         )}
         {nfe.danfe_url && (
-          <Button variant="ghost" size="icon" title="Baixar DANFE" asChild>
-            <a href={nfe.danfe_url} target="_blank" rel="noopener noreferrer"><Download className="h-3.5 w-3.5" /></a>
+          <Button variant="ghost" size="icon" title="Baixar DANFE (PDF)" asChild>
+            <a href={nfe.danfe_url} target="_blank" rel="noopener noreferrer" download>
+              <Download className="h-3.5 w-3.5" />
+            </a>
           </Button>
         )}
         {nfe.xml_url && (
           <Button variant="ghost" size="icon" title="Baixar XML" asChild>
-            <a href={nfe.xml_url} target="_blank" rel="noopener noreferrer"><FileText className="h-3.5 w-3.5" /></a>
+            <a href={nfe.xml_url} target="_blank" rel="noopener noreferrer" download>
+              <FileText className="h-3.5 w-3.5" />
+            </a>
           </Button>
         )}
         {nfe.status === 'autorizada' && canCancel && (

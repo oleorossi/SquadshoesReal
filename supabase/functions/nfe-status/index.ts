@@ -109,6 +109,14 @@ Deno.serve(async (req) => {
     if (d.numero_nf) updateData.numero = String(d.numero_nf);
     if (d.serie) updateData.serie = String(d.serie);
     if (d.protocolo) updateData.protocolo = d.protocolo;
+
+    // GestaoClick retorna URLs do DANFE/XML em campos variáveis — tenta os
+    // nomes mais comuns. Antes ficavam vazios no DB e o user não tinha como
+    // baixar PDF/XML pelo menu da NF (botões não apareciam).
+    const danfeUrl = d.url_danfe || d.danfe_url || d.url_pdf || d.link_pdf || d.url_pdf_danfe || d.link_danfe || '';
+    const xmlUrl = d.url_xml || d.xml_url || d.link_xml || d.url_xml_nfe || '';
+    if (danfeUrl) updateData.danfe_url = String(danfeUrl);
+    if (xmlUrl) updateData.xml_url = String(xmlUrl);
     if (d.data_emissao && !nfe.data_emissao) {
       const time = d.hora_emissao ? `${d.data_emissao}T${d.hora_emissao}` : d.data_emissao;
       const norm = /Z$|[+-]\d{2}:\d{2}$/.test(time) ? time : time + "-03:00";

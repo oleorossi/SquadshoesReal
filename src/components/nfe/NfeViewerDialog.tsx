@@ -6,10 +6,11 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
   Download, FileText, Copy, ArrowSquareOut as ExternalLink,
-  CircleNotch as Loader2, Warning as AlertTriangle,
+  CircleNotch as Loader2, Warning as AlertTriangle, ArrowsClockwise as RefreshCw,
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import type { NfeEmitida } from '@/hooks/useNfe';
+import { useCheckNfeStatus } from '@/hooks/useNfe';
 
 interface Props {
   nfe: NfeEmitida | null;
@@ -53,6 +54,18 @@ export function NfeViewerDialog({ nfe, open, onOpenChange, clientLabel, orderNum
   const [xmlText, setXmlText] = useState<string | null>(null);
   const [xmlLoading, setXmlLoading] = useState(false);
   const [xmlError, setXmlError] = useState<string | null>(null);
+  const checkStatus = useCheckNfeStatus();
+
+  // Quando o dialog abre numa NF autorizada SEM danfe_url/xml_url
+  // (caso comum em emissões antigas), dispara o sync automaticamente
+  // pra puxar as URLs do GestaoClick.
+  useEffect(() => {
+    if (!open || !nfe) return;
+    if (nfe.status === 'autorizada' && (!nfe.danfe_url || !nfe.xml_url)) {
+      checkStatus.mutate(nfe.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, nfe?.id]);
 
   // Carrega o XML inline (best-effort — se CORS bloquear, mostra link).
   useEffect(() => {
@@ -206,10 +219,30 @@ export function NfeViewerDialog({ nfe, open, onOpenChange, clientLabel, orderNum
                   className="w-full h-full border-0"
                 />
               ) : (
-                <div className="h-full flex items-center justify-center text-sm text-muted-foreground p-6 text-center">
-                  {nfe.status === 'rejeitada' || nfe.status === 'erro'
-                    ? 'NF rejeitada — DANFE não foi gerado.'
-                    : 'DANFE ainda não disponível. Tente verificar status.'}
+                <div className="h-full flex flex-col items-center justify-center text-sm text-muted-foreground p-6 text-center gap-3">
+                  {nfe.status === 'rejeitada' || nfe.status === 'erro' ? (
+                    <span>NF rejeitada — DANFE não foi gerado.</span>
+                  ) : (
+                    <>
+                      <span>
+                        {checkStatus.isPending
+                          ? 'Buscando arquivos no GestaoClick...'
+                          : 'DANFE ainda não disponível.'}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => checkStatus.mutate(nfe.id)}
+                        disabled={checkStatus.isPending}
+                        className="gap-1.5"
+                      >
+                        {checkStatus.isPending
+                          ? <Loader2 className="h-4 w-4 animate-spin" />
+                          : <RefreshCw className="h-4 w-4" />}
+                        Buscar arquivos
+                      </Button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
