@@ -582,6 +582,11 @@ export type SaleOrderFormData = {
    *  cálculo de combustível e desgaste do veículo da frota própria. Default
    *  false — pedido segue fluxo normal de transportadora. */
   own_delivery?: boolean;
+  /** Texto livre que aparece nas Informações Complementares da NF-e quando
+   *  o pedido for faturado. Concatenado com client_order_number (OC do
+   *  cliente) e Pedido de Venda. Separado do `notes` (notas internas que
+   *  NÃO vão pra NF). Pedido em 15/05/2026. */
+  informacoes_complementares_nf?: string | null;
 };
 
 export type SaleOrderItemFormData = {

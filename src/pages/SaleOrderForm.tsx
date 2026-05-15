@@ -39,6 +39,7 @@ const emptyForm: SaleOrderFormData = {
   shipping_rate_per_pair: 0,
   nfe_required: true,
   own_delivery: false,
+  informacoes_complementares_nf: '',
 };
 
 const emptyItem: SaleOrderItemFormData = {
@@ -312,6 +313,7 @@ export default function SaleOrderForm() {
         shipping_rate_per_pair: Number((order as any).shipping_rate_per_pair) || 0,
         nfe_required: (order as any).nfe_required !== false,
         own_delivery: (order as any).own_delivery === true,
+        informacoes_complementares_nf: (order as any).informacoes_complementares_nf || '',
       });
       setPackagingProductId((order as any).packaging_product_id || '');
       setPackagingQuantity((order as any).packaging_quantity || 0);

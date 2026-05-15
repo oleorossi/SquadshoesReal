@@ -1076,8 +1076,20 @@ export default function SaleOrderFormPanel({
                 <Textarea
                   value={form.notes}
                   onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                  className="min-h-[140px] text-sm resize-none"
-                  placeholder="Instruções de faturamento, entrega ou descontos..."
+                  className="min-h-[100px] text-sm resize-none"
+                  placeholder="Notas internas — NÃO aparecem na NF."
+                />
+              </div>
+              <div>
+                <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">
+                  Informações Complementares (NF-e)
+                  <span className="ml-2 text-[9px] font-normal normal-case text-amber-700">aparece no rodapé da NF</span>
+                </Label>
+                <Textarea
+                  value={form.informacoes_complementares_nf || ''}
+                  onChange={e => setForm(f => ({ ...f, informacoes_complementares_nf: e.target.value }))}
+                  className="min-h-[80px] text-sm resize-none"
+                  placeholder="Ex: 'Frete por conta do destinatário · Conferir embalagem antes de receber'. A OC do cliente é adicionada automaticamente."
                 />
               </div>
               {selectedRep && (

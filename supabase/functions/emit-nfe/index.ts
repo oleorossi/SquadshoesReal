@@ -482,13 +482,8 @@ Deno.serve(async (req) => {
         const wd: any = weightData;
         const net = Number(wd.net_weight_kg) || 0;
         const gross = Number(wd.gross_weight_kg) || 0;
-        const totalPairs = Number(wd.total_pairs) || 0;
         if (net > 0) pesoLiquidoStr = net.toFixed(3);
         if (gross > 0) pesoBrutoStr = gross.toFixed(3);
-        // Volume = caixas necessárias. Sem informação de pares por caixa
-        // aqui, usamos 1 volume por PV como mínimo. Refinar se GestaoClick
-        // exigir contagem precisa.
-        if (totalPairs > 0) qtdVolumesStr = "1";
         if (wd.is_complete === false && Array.isArray(wd.incomplete_items)) {
           const n = wd.incomplete_items.length;
           weightWarning = `Peso parcial: ${n} item(s) sem cadastro de peso na ficha técnica.`;
@@ -504,10 +499,74 @@ Deno.serve(async (req) => {
       );
     }
 
+    // ---------- Calcula volumes (caixas) AUTOMATICAMENTE por solado ----------
+    // Pedido em 15/05/2026: volume na NF deve refletir o número REAL de caixas
+    // que vai ser despachado. Calcula via:
+    //   volumes = SUM(CEIL(item.quantity / pairs_per_box_individual_do_solado))
+    // pairs_per_box_individual vem de product_groups (grupo do solado mapeado
+    // pra cada item em technical_sheet_sole_colors). Sem mapeamento ou grupo
+    // sem campo preenchido, usa fallback 12 (default da indústria).
+    try {
+      const { data: itemsForVol } = await adminClient
+        .from("sale_order_items")
+        .select("reference_id, color, quantity")
+        .eq("sale_order_id", sale_order_id);
+      if (itemsForVol && itemsForVol.length > 0) {
+        const refIds = [...new Set(itemsForVol.map((i: any) => i.reference_id).filter(Boolean))];
+        const { data: soleMappings } = refIds.length > 0
+          ? await adminClient
+              .from("technical_sheet_sole_colors")
+              .select("sheet_id, product_color, products:sole_product_id(group_id)")
+              .in("sheet_id", refIds)
+          : { data: [] as any[] };
+        const groupIds = [...new Set((soleMappings || []).map((m: any) => m.products?.group_id).filter(Boolean))];
+        const { data: groupsForVol } = groupIds.length > 0
+          ? await adminClient
+              .from("product_groups")
+              .select("id, pairs_per_box_individual")
+              .in("id", groupIds)
+          : { data: [] as any[] };
+        const ppbByGroup = new Map<string, number>();
+        for (const g of (groupsForVol || []) as any[]) {
+          const ppb = Number(g.pairs_per_box_individual) || 0;
+          if (ppb > 0) ppbByGroup.set(g.id, ppb);
+        }
+        let totalBoxes = 0;
+        for (const it of itemsForVol as any[]) {
+          const qty = Number(it.quantity) || 0;
+          if (qty <= 0) continue;
+          const sm = (soleMappings || []).find(
+            (m: any) => m.sheet_id === it.reference_id
+              && (m.product_color || "").toLowerCase() === (it.color || "").toLowerCase(),
+          );
+          const groupId = (sm as any)?.products?.group_id;
+          const ppb = (groupId && ppbByGroup.get(groupId)) || 12; // fallback indústria
+          totalBoxes += Math.ceil(qty / ppb);
+        }
+        if (totalBoxes > 0) qtdVolumesStr = String(totalBoxes);
+      }
+    } catch (e) {
+      console.warn("[emit-nfe] Exceção ao calcular volumes:", e instanceof Error ? e.message : String(e));
+    }
+    if (!qtdVolumesStr) qtdVolumesStr = "1"; // sempre tem ao menos 1 volume
+
+    // Informações Complementares — concatena ordem que aparece no XML:
+    //   [OC do cliente] · [Texto livre do user] · [PV interno] · [Aviso peso]
+    // OC é puxada de sale_orders.client_order_number (preenchida no PV pelo
+    // operador). Texto livre vem de sale_orders.informacoes_complementares_nf
+    // (campo dedicado que aparece SÓ aqui, não polui notes internas).
+    const ocPart = order.client_order_number
+      ? `OC do Cliente: ${String(order.client_order_number).trim()}`
+      : null;
+    const livrePart = order.informacoes_complementares_nf
+      ? String(order.informacoes_complementares_nf).trim()
+      : null;
     const informacoesComplementares = [
+      ocPart,
+      livrePart,
       order.numero_pv ? `Pedido de Venda: ${order.numero_pv}` : null,
       weightWarning,
-    ].filter(Boolean).join(" | ") || undefined;
+    ].filter(Boolean).join(" · ") || undefined;
 
     // ---------- Monta as duplicatas (campo `pagamento` da NF) ----------
     // A NF-e precisa da fatura/duplicata pra ficar completa (a NF de
@@ -559,12 +618,14 @@ Deno.serve(async (req) => {
     // se mandados no top-level — a doc deles exige dentro de
     // `transporte.volumes[]`. Mandávamos no topo até NF #244 e o XML saía com
     // <pesoB>/<pesoL> vazios. modalidade_frete: "9" = sem frete (mercadoria
-    // coletada pelo destinatário). especie: "CX" = caixa.
+    // coletada pelo destinatário). especie: "VOLUME" — pedido em 15/05/2026
+    // (era "CX"; contabilidade prefere "VOLUME" pra refletir o termo legal).
+    // Sempre envia bloco transporte (mesmo sem peso) pra carregar a contagem
+    // de volumes calculada automaticamente.
     const transporteBlock = (() => {
-      if (!pesoBrutoStr && !pesoLiquidoStr) return undefined;
       const vol: Record<string, string> = {
-        quantidade: qtdVolumesStr || "1",
-        especie: "CX",
+        quantidade: qtdVolumesStr,
+        especie: "VOLUME",
       };
       if (pesoLiquidoStr) vol.peso_liquido = pesoLiquidoStr;
       if (pesoBrutoStr) vol.peso_bruto = pesoBrutoStr;
@@ -586,7 +647,7 @@ Deno.serve(async (req) => {
       informacoes_complementares: informacoesComplementares,
       produtos: produtosGC,
       ...(pagamentoArr.length ? { pagamento: pagamentoArr } : {}),
-      ...(transporteBlock ? { transporte: transporteBlock } : {}),
+      transporte: transporteBlock,
     };
 
     const createResp = await gcFetch("/notas_fiscais_produtos", {
