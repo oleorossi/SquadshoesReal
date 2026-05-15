@@ -1,0 +1,46 @@
+# Vercel só precisa: package.json, vite.config.ts, tsconfig*, src/, public/,
+# index.html, vercel.json. Tudo abaixo é peso morto pro deploy.
+
+# Bundles e zips na raiz
+*.zip
+*.tar.gz
+AGL_001.TXT
+
+# Documentação interna (auditorias, planos, READMEs longos)
+*.md
+!README.md
+INSTRUCOES.md
+
+# Backups e configs locais
+.env.backup_pre_supabase_switch
+.gitlab-ci.yml
+
+# Testes que não compõem build de produção
+*.test.ts
+*.test.tsx
+
+# Migrations + edge functions ficam no Supabase, não no Vercel
+supabase/
+
+# Scripts SQL e diagnósticos
+sql-scripts/
+
+# Diretórios auxiliares
+scripts/
+docs/
+.claude/
+.codex/
+
+# Arquivos avulsos
+App.tsx
+Navigation.test.tsx
+NavigationAccessConsistency.test.ts
+SecurityIntegration.test.tsx
+
+# Sempre úteis
+.git/
+.github/
+node_modules/
+dist/
+dist-ssr/
+.DS_Store
