@@ -1935,17 +1935,30 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
     );
   };
 
-  // Compute material cost from BOM (uses per-size average when available)
+  // Compute material cost from BOM (uses per-size average when available).
+  //
+  // CORREÇÃO DO CUSTO INFLADO: solados, saltos, palmilhas e materiais "por par"
+  // costumam ser cadastrados como ALTERNATIVAS (uma entrada por cor/variante).
+  // Somar todos linearmente inflava o custo várias vezes — pra uma OP só 1 par
+  // de cada categoria é consumido. Agrupamos pelo nome-base (normalizado) e
+  // somamos apenas a entrada mais barata por nome-base entre os "por par".
   const materialCost = useMemo(() => {
     if (!sheetMaterials.length) return 0;
     const csMap: Record<string, any> = {};
     componentSheets.forEach((cs: any) => { csMap[cs.product_id] = cs; });
-    let total = 0;
-    sheetMaterials.forEach((m: any) => {
+
+    // Normaliza nome pra agrupar variantes (remove cor após " - " e acentos)
+    const baseName = (raw: string): string => {
+      if (!raw) return '';
+      const noColor = raw.split(/\s-\s/i)[0] || raw;
+      return noColor.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+    };
+
+    // Calcula o custo de uma linha (consumption avg × price × waste)
+    const lineCost = (m: any): number => {
       const cs = csMap[m.product_id];
       const unitPrice = Number(m.products?.unit_price || 0);
       const wastePct = cs ? (cs.waste_pct || 0) : 0;
-      // Use average from per-size consumption when available
       const perSize = m.consumption_per_size as Record<string, number> | null;
       let avgConsumption = Number(m.quantity_per_unit);
       if (perSize && Object.keys(perSize).length > 0) {
@@ -1954,8 +1967,32 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
           avgConsumption = vals.reduce((a, b) => a + Number(b), 0) / vals.length;
         }
       }
-      total += avgConsumption * unitPrice * (1 + wastePct / 100);
+      return avgConsumption * unitPrice * (1 + wastePct / 100);
+    };
+
+    // Materiais "por par" (solado, salto, palmilha pronta) são alternativas:
+    // só 1 é consumido por par de calçado. Agrupa por nome-base e mantém só o
+    // primeiro (ou o de menor custo, pra preview conservador).
+    const perPairBaseNames = new Map<string, number>();
+    let total = 0;
+    sheetMaterials.forEach((m: any) => {
+      const unit = (m.products?.unit || '').toString().toLowerCase().trim();
+      const isPerPair = unit === 'par';
+      const cost = lineCost(m);
+      if (isPerPair) {
+        const key = baseName(m.products?.name || '');
+        // Mantém o MENOR custo entre alternativas (preview conservador) —
+        // ainda pode subestimar quando a cor cadastrada é a mais cara, mas
+        // pelo menos não soma todas. O custo real por OP usa
+        // calculate_order_cost (RPC) com a cor resolvida.
+        if (!perPairBaseNames.has(key) || cost < (perPairBaseNames.get(key) || Infinity)) {
+          perPairBaseNames.set(key, cost);
+        }
+      } else {
+        total += cost;
+      }
     });
+    perPairBaseNames.forEach(v => { total += v; });
     return total;
   }, [sheetMaterials, componentSheets]);
 
