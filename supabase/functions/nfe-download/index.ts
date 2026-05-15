@@ -1,16 +1,9 @@
-// nfe-download — proxy GestaoClick → cliente pra DANFE (PDF) e XML.
+// nfe-download v3 — proxy GestaoClick → cliente pra DANFE (PDF) e XML.
 //
-// Por quê: GestaoClick não devolve URLs prontas no detalhe da NF — tem
-// endpoints separados (auth-protegidos) pra cada formato. O front não pode
-// chamar direto (precisaria expor token), então essa edge fn faz o fetch
-// no GC com header de auth e devolve o binário com Content-Disposition
-// pra forçar download no navegador.
-//
-// Tenta múltiplos caminhos comuns no GC porque a doc varia por versão da API:
-//   - /notas_fiscais_produtos/{id}/danfe
-//   - /notas_fiscais_produtos/{id}/pdf
-//   - /notas_fiscais_produtos/{id}/imprimir
-// e equivalentes pra XML.
+// V3: além de tentar paths estáticos, busca o JSON de detalhe da NF e
+// extrai recursivamente qualquer string que pareça URL (.pdf, .xml,
+// http://...) e tenta fazer fetch dela. Diagnóstico verbose no response
+// de erro.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -33,67 +26,104 @@ const DANFE_PATHS = [
   "/notas_fiscais_produtos/{id}/danfe",
   "/notas_fiscais_produtos/{id}/pdf",
   "/notas_fiscais_produtos/{id}/imprimir",
+  "/notas_fiscais_produtos/{id}/baixar/danfe",
+  "/notas_fiscais_produtos/{id}/baixar",
+  "/notas_fiscais_produtos/{id}/arquivo/pdf",
+  "/notas_fiscais_produtos/{id}/arquivo/danfe",
+  "/notas_fiscais_produtos/danfe/{id}",
+  "/notas_fiscais_produtos/pdf/{id}",
+  "/notas_fiscais/{id}/danfe",
+  "/notas_fiscais/{id}/pdf",
 ];
 const XML_PATHS = [
   "/notas_fiscais_produtos/{id}/xml",
   "/notas_fiscais_produtos/{id}/xml-autorizado",
   "/notas_fiscais_produtos/{id}/download-xml",
+  "/notas_fiscais_produtos/{id}/baixar/xml",
+  "/notas_fiscais_produtos/{id}/arquivo/xml",
+  "/notas_fiscais_produtos/xml/{id}",
+  "/notas_fiscais/{id}/xml",
 ];
 
-async function tryPaths(paths: string[], id: string): Promise<{
-  ok: boolean;
-  status: number;
-  contentType: string;
-  body: Uint8Array | null;
-  errors: string[];
-}> {
-  const errors: string[] = [];
-  for (const tmpl of paths) {
-    const url = `${GESTAOCLICK_BASE}${tmpl.replace("{id}", id)}`;
-    try {
-      const r = await fetch(url, {
-        method: "GET",
-        headers: gcHeaders(),
-        signal: AbortSignal.timeout(25_000),
-      });
-      const contentType = r.headers.get("content-type") || "application/octet-stream";
-      if (r.ok && !contentType.startsWith("text/html")) {
-        const buf = new Uint8Array(await r.arrayBuffer());
-        // Algumas APIs retornam JSON com `{ url: ... }` em vez do binário —
-        // detecta e re-fetcha a URL embutida.
-        if (contentType.includes("application/json")) {
-          try {
-            const j = JSON.parse(new TextDecoder().decode(buf));
-            const inlineUrl = j?.url || j?.data?.url || j?.link || j?.data?.link;
-            if (typeof inlineUrl === "string" && inlineUrl.startsWith("http")) {
-              const r2 = await fetch(inlineUrl, { signal: AbortSignal.timeout(25_000) });
-              if (r2.ok) {
-                return {
-                  ok: true,
-                  status: r2.status,
-                  contentType: r2.headers.get("content-type") || contentType,
-                  body: new Uint8Array(await r2.arrayBuffer()),
-                  errors,
-                };
-              }
-              errors.push(`inline-url ${inlineUrl} → ${r2.status}`);
-              continue;
-            }
-            errors.push(`${tmpl} JSON sem url: ${new TextDecoder().decode(buf).slice(0, 200)}`);
-            continue;
-          } catch {
-            // não era JSON real — assume binário
-          }
+function collectUrls(obj: any, format: "danfe" | "xml", out: string[] = []): string[] {
+  if (!obj || out.length > 50) return out;
+  if (typeof obj === "string") {
+    const s = obj.trim();
+    if (s.startsWith("http") && s.length < 2000) {
+      const lower = s.toLowerCase();
+      const wantPdf = format === "danfe" && (lower.includes(".pdf") || lower.includes("danfe") || lower.includes("pdf"));
+      const wantXml = format === "xml" && (lower.includes(".xml") || lower.includes("xml"));
+      if (wantPdf || wantXml) out.push(s);
+    }
+    return out;
+  }
+  if (Array.isArray(obj)) {
+    for (const v of obj) collectUrls(v, format, out);
+    return out;
+  }
+  if (typeof obj === "object") {
+    for (const k of Object.keys(obj)) {
+      const lower = k.toLowerCase();
+      const v = obj[k];
+      if (typeof v === "string" && v.startsWith("http")) {
+        const isDanfeKey = /danfe|pdf|imprim/.test(lower);
+        const isXmlKey = /xml/.test(lower);
+        if ((format === "danfe" && isDanfeKey) || (format === "xml" && isXmlKey)) {
+          if (!out.includes(v)) out.push(v);
         }
-        return { ok: true, status: r.status, contentType, body: buf, errors };
       }
-      const text = await r.text().catch(() => "");
-      errors.push(`${tmpl} → ${r.status}: ${text.slice(0, 200)}`);
-    } catch (e: unknown) {
-      errors.push(`${tmpl} → ${e instanceof Error ? e.message : String(e)}`);
+      collectUrls(v, format, out);
     }
   }
-  return { ok: false, status: 502, contentType: "", body: null, errors };
+  return out;
+}
+
+async function fetchBinary(url: string, errors: string[]): Promise<{
+  ok: boolean; status: number; contentType: string; body: Uint8Array | null;
+}> {
+  try {
+    const r = await fetch(url, {
+      method: "GET",
+      headers: gcHeaders(),
+      signal: AbortSignal.timeout(25_000),
+    });
+    const contentType = r.headers.get("content-type") || "application/octet-stream";
+    if (!r.ok) {
+      const text = await r.text().catch(() => "");
+      errors.push(`${url} → ${r.status}: ${text.slice(0, 200)}`);
+      return { ok: false, status: r.status, contentType, body: null };
+    }
+    if (contentType.startsWith("text/html")) {
+      errors.push(`${url} → HTML em vez de binário`);
+      return { ok: false, status: r.status, contentType, body: null };
+    }
+    const buf = new Uint8Array(await r.arrayBuffer());
+    if (contentType.includes("application/json")) {
+      try {
+        const j = JSON.parse(new TextDecoder().decode(buf));
+        const inline = j?.url || j?.data?.url || j?.link || j?.data?.link || j?.data?.url_pdf || j?.data?.url_xml;
+        if (typeof inline === "string" && inline.startsWith("http")) {
+          const r2 = await fetch(inline, { signal: AbortSignal.timeout(25_000) });
+          if (r2.ok) {
+            return {
+              ok: true,
+              status: r2.status,
+              contentType: r2.headers.get("content-type") || contentType,
+              body: new Uint8Array(await r2.arrayBuffer()),
+            };
+          }
+          errors.push(`inline ${inline} → ${r2.status}`);
+          return { ok: false, status: r2.status, contentType, body: null };
+        }
+        errors.push(`${url} JSON sem url: ${new TextDecoder().decode(buf).slice(0, 250)}`);
+        return { ok: false, status: r.status, contentType, body: null };
+      } catch { /* binário JSON-like, ignora */ }
+    }
+    return { ok: true, status: r.status, contentType, body: buf };
+  } catch (e: unknown) {
+    errors.push(`${url} → ${e instanceof Error ? e.message : String(e)}`);
+    return { ok: false, status: 0, contentType: "", body: null };
+  }
 }
 
 Deno.serve(async (req) => {
@@ -102,7 +132,7 @@ Deno.serve(async (req) => {
   try {
     const url = new URL(req.url);
     const nfeId = url.searchParams.get("nfe_id");
-    const format = (url.searchParams.get("format") || "").toLowerCase();
+    const format = (url.searchParams.get("format") || "").toLowerCase() as "danfe" | "xml";
     if (!nfeId || (format !== "danfe" && format !== "xml")) {
       return new Response(JSON.stringify({
         error: "Parâmetros obrigatórios: nfe_id (uuid) e format=danfe|xml",
@@ -135,30 +165,76 @@ Deno.serve(async (req) => {
       }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const paths = format === "danfe" ? DANFE_PATHS : XML_PATHS;
-    const result = await tryPaths(paths, nfe.provider_nfe_id);
+    const errors: string[] = [];
+    const id = String(nfe.provider_nfe_id);
 
-    if (!result.ok || !result.body) {
-      console.error("nfe-download falhas:", result.errors);
-      return new Response(JSON.stringify({
-        error: `Não foi possível baixar ${format.toUpperCase()} no GestaoClick.`,
-        attempts: result.errors,
-        hint: "Verifique a NF no painel GestaoClick. Pode ser que o endpoint da API esteja diferente do esperado — me cola os detalhes do erro pra eu ajustar.",
-      }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    // FASE 1: tenta caminhos diretos
+    const staticPaths = format === "danfe" ? DANFE_PATHS : XML_PATHS;
+    for (const tmpl of staticPaths) {
+      const u = `${GESTAOCLICK_BASE}${tmpl.replace("{id}", id)}`;
+      const res = await fetchBinary(u, errors);
+      if (res.ok && res.body) {
+        const filename = format === "danfe"
+          ? `DANFE-${nfe.numero || id}.pdf`
+          : `NFe-${nfe.numero || id}.xml`;
+        return new Response(res.body, {
+          status: 200,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": format === "danfe" ? "application/pdf" : "application/xml",
+            "Content-Disposition": `attachment; filename="${filename}"`,
+            "Cache-Control": "private, max-age=0, no-store",
+          },
+        });
+      }
     }
 
-    const filename = format === "danfe"
-      ? `DANFE-${nfe.numero || nfe.provider_nfe_id}.pdf`
-      : `NFe-${nfe.numero || nfe.provider_nfe_id}.xml`;
+    // FASE 2: busca URLs no detalhe da NF
+    let detailJson: any = null;
+    try {
+      const detailResp = await fetch(`${GESTAOCLICK_BASE}/notas_fiscais_produtos/${id}`, {
+        headers: gcHeaders(),
+        signal: AbortSignal.timeout(20_000),
+      });
+      const detailText = await detailResp.text();
+      try { detailJson = JSON.parse(detailText); } catch { /* não-JSON */ }
+    } catch (e) {
+      errors.push(`detail fetch → ${e instanceof Error ? e.message : String(e)}`);
+    }
 
-    return new Response(result.body, {
-      status: 200,
-      headers: {
-        ...corsHeaders,
-        "Content-Type": format === "danfe" ? "application/pdf" : "application/xml",
-        "Content-Disposition": `attachment; filename="${filename}"`,
-        "Cache-Control": "private, max-age=0, no-store",
-      },
+    if (detailJson) {
+      const urls = collectUrls(detailJson, format);
+      errors.push(`detail keys: ${Object.keys(detailJson?.data || detailJson || {}).slice(0, 40).join(",")}`);
+      errors.push(`urls encontradas: ${urls.join(" | ") || "nenhuma"}`);
+      for (const u of urls) {
+        const res = await fetchBinary(u, errors);
+        if (res.ok && res.body) {
+          const filename = format === "danfe"
+            ? `DANFE-${nfe.numero || id}.pdf`
+            : `NFe-${nfe.numero || id}.xml`;
+          return new Response(res.body, {
+            status: 200,
+            headers: {
+              ...corsHeaders,
+              "Content-Type": format === "danfe" ? "application/pdf" : "application/xml",
+              "Content-Disposition": `attachment; filename="${filename}"`,
+              "Cache-Control": "private, max-age=0, no-store",
+            },
+          });
+        }
+      }
+    }
+
+    console.error("nfe-download falhas:", errors);
+    return new Response(JSON.stringify({
+      error: `Não foi possível baixar ${format.toUpperCase()} no GestaoClick.`,
+      provider_nfe_id: id,
+      chave_acesso: nfe.chave_acesso,
+      attempts: errors,
+      detail_sample: detailJson ? JSON.stringify(detailJson).slice(0, 1500) : null,
+    }), {
+      status: 502,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Erro desconhecido";
