@@ -9,6 +9,7 @@ import PendingTimeRecordsPanel from '@/components/timesheet/PendingTimeRecordsPa
 import TimeValidationPanel from '@/components/timeControl/TimeValidationPanel';
 import ReportsPanel from '@/components/timeControl/ReportsPanel';
 import { OvertimeResolutionPanel } from '@/components/timesheet/OvertimeResolutionPanel';
+import { WeeklyOvertimeResolutionPanel } from '@/components/timesheet/WeeklyOvertimeResolutionPanel';
 import { TimesheetPeriodSelector } from '@/components/timesheet/TimesheetPeriodSelector';
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -1555,7 +1556,7 @@ export default function Timesheet() {
     records: 'importacao', history: 'importacao',
     overview: 'registros', pending: 'registros', manual: 'registros',
     late: 'registros', occurrences: 'registros',
-    overtime: 'horas-extras', reports: 'horas-extras',
+    weekly: 'horas-extras', overtime: 'horas-extras', reports: 'horas-extras',
     schedule: 'config', holidays: 'config',
   };
   const initialGroup = SUBTAB_TO_GROUP[initialTab] || 'importacao';
@@ -1617,11 +1618,13 @@ export default function Timesheet() {
 
           {/* ── Seção 3: Horas Extras & Banco ── */}
           <TabsContent value="horas-extras">
-            <Tabs defaultValue={subFor('horas-extras', 'overtime')} className="space-y-4">
+            <Tabs defaultValue={subFor('horas-extras', 'weekly')} className="space-y-4">
               <TabsList>
-                <TabsTrigger value="overtime" className="gap-1.5"><Wallet className="h-3.5 w-3.5" /> Resolução de HE</TabsTrigger>
+                <TabsTrigger value="weekly" className="gap-1.5"><AlarmClock className="h-3.5 w-3.5" /> Apuração Semanal</TabsTrigger>
+                <TabsTrigger value="overtime" className="gap-1.5"><Wallet className="h-3.5 w-3.5" /> Resolução Mensal</TabsTrigger>
                 <TabsTrigger value="reports" className="gap-1.5"><FileText className="h-3.5 w-3.5" /> Relatórios</TabsTrigger>
               </TabsList>
+              <TabsContent value="weekly"><WeeklyOvertimeResolutionPanel /></TabsContent>
               <TabsContent value="overtime"><OvertimeResolutionPanel /></TabsContent>
               <TabsContent value="reports"><ReportsPanel /></TabsContent>
             </Tabs>
