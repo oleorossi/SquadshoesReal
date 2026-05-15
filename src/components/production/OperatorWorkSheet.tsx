@@ -970,7 +970,7 @@ const OperatorWorkSheet = ({
               <div className="border-t border-black pt-1.5 space-y-1 text-xs">
                 <div className="flex justify-between items-baseline">
                   <span className="section-label" style={{ color: '#000' }}>Modelo</span>
-                  <span className="font-bold text-black uppercase">{order.master.name}</span>
+                  <span className="font-bold text-black uppercase">{order.master?.name || (order as any).reference_name || '—'}</span>
                 </div>
                 <div className="flex justify-between items-baseline">
                   <span className="section-label" style={{ color: '#000' }}>Cor</span>

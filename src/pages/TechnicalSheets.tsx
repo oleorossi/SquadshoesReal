@@ -649,7 +649,9 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                             <span className="bg-primary/10 text-primary px-1 rounded">{globalFormatCurrency(sheet.sale_price || 0)}</span>
                           </div>
                         </div>
-                        {sheet.code && <span className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded text-muted-foreground shrink-0">{sheet.code}</span>}
+                        {/* SKU/code removido do header em 2026-05: a referência operacional
+                            é o Nome do Modelo. SKU continua como coluna na lista, mas não
+                            aparece mais como badge ao lado do nome. */}
                         {/* Badge "tem variante de material" — sinaliza que essa ref pode ser
                             cadastrada no PV em N versões de material principal (Napa, Santorini,…) */}
                         {(materialVariantsBySheet?.get(sheet.id)?.length ?? 0) > 0 && (
@@ -1864,9 +1866,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-bold text-sm truncate">{form.name || sheet.name || '(sem nome)'}</span>
-                {form.code && form.code !== form.name && (
-                  <Badge variant="outline" className="text-[10px] h-4.5 font-mono">{form.code}</Badge>
-                )}
+                {/* SKU/code removido do header sticky em 2026-05: referência = Nome do Modelo. */}
                 {form.shoe_category && (
                   <Badge variant="secondary" className="text-[10px] h-4.5">{form.shoe_category}</Badge>
                 )}
