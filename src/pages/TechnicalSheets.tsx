@@ -2706,6 +2706,18 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   Variações de material (Napa, Santorini, …) → Tab "Variantes". */}
             </div>
 
+            {/* Forração + Palmilha REMOVIDOS da UI (user pediu em 2026-05):
+                'retirar de ficha técnica a partir de seleção de palmilha e
+                de forro — tudo isso já está contido em solados'.
+                Ambos os materiais vêm agora do cadastro do solado (Solados
+                → Consumos → Forração/Palmilha). Os campos lining_material
+                e insole_material continuam no DB pra compatibilidade com
+                fichas legacy + autoFillFromSoleSpecs que popula via puxar
+                do solado.
+                Bloco original wrapped em {false && (...)} pra preservar
+                código e reabilitar se necessário. */}
+            {false && (
+              <>
             <Separator />
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -2717,9 +2729,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                     <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Forração</span>
                   </div>
                   {form.sole_group_id && (
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
+                    <Button
+                      variant="outline"
+                      size="sm"
                       className="h-7 text-[10px] gap-1"
                       onClick={() => {
                         const soleId = products.find(p => p.group_id === form.sole_group_id)?.id;
@@ -2786,8 +2798,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             </div>
 
             <Separator />
-
-
+              </>
+            )}
 
             <Separator />
 
