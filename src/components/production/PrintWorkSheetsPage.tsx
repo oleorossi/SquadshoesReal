@@ -185,6 +185,8 @@ function groupOrdersByRefColor(orders: any[]): Array<{
   totalPairs: number;
   latestDueDate: string;
   opNumbers: string[];
+  /** Números dos PVs (pedidos de venda) que originaram as OPs deste grupo. */
+  pvNumbers: string[];
 }> {
   const map = new Map<string, ReturnType<typeof groupOrdersByRefColor>[number]>();
 
@@ -200,10 +202,14 @@ function groupOrdersByRefColor(orders: any[]): Array<{
         totalPairs: 0,
         latestDueDate: order.due_date ?? '',
         opNumbers: [],
+        pvNumbers: [],
       });
     }
     const g = map.get(key)!;
     g.opNumbers.push(order.op_number);
+    if (order.sale_order_number && !g.pvNumbers.includes(order.sale_order_number)) {
+      g.pvNumbers.push(order.sale_order_number);
+    }
     const orderTotal = Number(order.total_pairs ?? 0);
     g.totalPairs += orderTotal;
     if (order.due_date && order.due_date > g.latestDueDate) g.latestDueDate = order.due_date;
@@ -681,9 +687,17 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
           baseGradeSum: 0, fichas: 0,
           readyMade: isReadyMade,
           refs: [],
+          opNumbers: [],
+          pvNumbers: [],
         });
       }
       const group = groupMap.get(key)!;
+      if (order.op_number && !group.opNumbers.includes(order.op_number)) {
+        group.opNumbers.push(order.op_number);
+      }
+      if (order.sale_order_number && !group.pvNumbers.includes(order.sale_order_number)) {
+        group.pvNumbers.push(order.sale_order_number);
+      }
       // Acumula referências (sandálias) do grupo pra exibir RefChips + fotos no
       // header da ficha. Dedupe por code+color (mesma sandália em várias OPs
       // aparece uma vez só).
@@ -735,8 +749,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
   // Silk, Montagem, Corte Forração, Costura, Aviamento, Acabamento.
   // (Corte Palmilha = só por solado; Solagem = por cor de solado;
   //  Expedição = por cliente; Colagem ainda usa Ref+Cor.)
+  // Acabamento REMOVIDO da agregação sole+color (user pediu em 2026-05):
+  // Acabamento é individual cliente-a-cliente, não agrupa por solado. Vai
+  // direto via OperatorWorkSheet em uma seção própria.
   const SOLE_COLOR_GROUPED_SECTORS: ReadonlyArray<GroupedSector> = [
-    'Silk', 'Montagem', 'Corte Forração', 'Corte Cabedal', 'Costura', 'Aviamento', 'Acabamento',
+    'Silk', 'Montagem', 'Corte Forração', 'Corte Cabedal', 'Costura', 'Aviamento',
   ];
 
   // Lookup: variantes de cor por ref (pra foto + fallback "Preto")
@@ -837,6 +854,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
           technicalSheetImageUrl: tsImageByRef.get(sheetId) || null,
           alerts: alerts.length > 0 ? alerts : undefined,
           opNumbers: [],
+          pvNumbers: [],
           silk,
           components: strapsAsComponents.length > 0 ? strapsAsComponents : undefined,
           refs: [],
@@ -845,6 +863,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
 
       const cg = colorMap.get(colorName)!;
       cg.opNumbers.push(order.op_number);
+      if (order.sale_order_number && !cg.pvNumbers.includes(order.sale_order_number)) {
+        cg.pvNumbers.push(order.sale_order_number);
+      }
       // Acumula refs (sandálias) dessa cor+solado pra exibir o REF code no card.
       const refCode = order.reference_code || '';
       if (refCode && !cg.refs!.some((r: any) => r.code === refCode)) {
@@ -882,6 +903,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
       grade: Record<string, number>; totalPairs: number;
       baseGrade: Record<string, number>; baseGradeSum: number; fichas: number;
       refs: Array<{ key: string; code: string; name: string; color: string; image_url: string | null }>;
+      opNumbers: string[]; pvNumbers: string[];
     }>();
     const sizeSet = new Set<string>();
 
@@ -896,9 +918,16 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
           baseGrade: { ...((order.grid as Record<string, number>) || {}) },
           baseGradeSum: 0, fichas: 0,
           refs: [],
+          opNumbers: [], pvNumbers: [],
         });
       }
       const band = soleColorMap.get(soleColor)!;
+      if (order.op_number && !band.opNumbers.includes(order.op_number)) {
+        band.opNumbers.push(order.op_number);
+      }
+      if (order.sale_order_number && !band.pvNumbers.includes(order.sale_order_number)) {
+        band.pvNumbers.push(order.sale_order_number);
+      }
       // Acumula referências (sandálias) com foto pra exibir no header da ficha.
       const refCode = order.reference_code || '';
       const refColor = order.color || '';
@@ -1258,7 +1287,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
           // de Corte e podem ser executadas em paralelo.
           // Em modo normal, só o sector selecionado.
           const sectorsToRender: GroupedSector[] = printAll
-            ? ['Corte Forração', 'Corte Cabedal', 'Silk', 'Costura', 'Aviamento', 'Montagem', 'Acabamento']
+            ? ['Corte Forração', 'Corte Cabedal', 'Silk', 'Costura', 'Aviamento', 'Montagem']
             : SOLE_COLOR_GROUPED_SECTORS.includes(selectedSector as GroupedSector)
               ? [selectedSector as GroupedSector]
               : [];
@@ -1348,6 +1377,62 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
                 mesaCapacity={mesaCapacity}
                 sectorCapacityPerDay={getSheetSectorCapacity(representative.reference_id, 'Colagem')}
                 opNumbers={group.opNumbers}
+              />
+            </div>
+          );
+        })}
+
+        {/* ── Acabamento: individual cliente-a-cliente (1 OP por card) ── */}
+        {/* User pediu em 2026-05: 'Setor de acabamento não tem agrupamento
+            nenhum, é o pedido individual cliente a cliente'. Antes era
+            agregado em silkMontageGroups por solado+cor. Agora itera OP a OP
+            e renderiza OperatorWorkSheet (mesma estrutura da Colagem). */}
+        {(printAll || selectedSector === 'Acabamento') && orders.map((order) => {
+          const repColorLower = (order.color || '').toLowerCase();
+          const variantsList = variantsByRef.get(order.reference_id) || [];
+          const exactVariant = variantsList.find(v => (v.color || '').toLowerCase() === repColorLower);
+          const pretoVariant = !exactVariant?.image_url
+            ? variantsList.find(v => v.image_url && /^preto$/i.test((v.color || '').trim()))
+            : null;
+          const tsImage = tsImageByRef.get(order.reference_id) || null;
+          const resolvedImageUrl = exactVariant?.image_url || pretoVariant?.image_url || tsImage;
+          const syntheticOrder = {
+            ...order,
+            variant: {
+              ...(order.variant || {}),
+              variant_image_url: resolvedImageUrl || (order.variant?.variant_image_url ?? null),
+            },
+            master: {
+              ...(order.master || {}),
+              main_image_url: tsImage || (order.master?.main_image_url ?? null),
+            },
+          };
+          const silk = getOrderSilk(order);
+          const { soleColor, insoleColor, insoleHasLining, insoleReadyMade, hasStraps, mesaCapacity } = getOrderColors(order);
+          const strapsRaw = Array.isArray((order as any).strap_colors)
+            ? ((order as any).strap_colors as Array<any>)
+            : [];
+          const strapColorsOrdered = [...strapsRaw].sort((a: any, b: any) => {
+            const ka = parseInt(a?.id, 10);
+            const kb = parseInt(b?.id, 10);
+            if (isFinite(ka) && isFinite(kb)) return ka - kb;
+            return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
+          });
+          return (
+            <div key={`acab-${order.id}`} className="page-break">
+              <OperatorWorkSheet
+                order={syntheticOrder}
+                sector="Acabamento"
+                silk={silk}
+                soleColor={soleColor}
+                insoleColor={insoleColor}
+                insoleHasLining={insoleHasLining}
+                insoleReadyMade={insoleReadyMade}
+                hasStraps={hasStraps}
+                strapColors={strapColorsOrdered}
+                mesaCapacity={mesaCapacity}
+                sectorCapacityPerDay={getSheetSectorCapacity(order.reference_id, 'Acabamento')}
+                opNumbers={[order.op_number].filter(Boolean)}
               />
             </div>
           );

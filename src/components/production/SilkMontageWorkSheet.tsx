@@ -25,6 +25,8 @@ export interface SilkColorGroup {
   fichas?: number;
   totalPairs: number;
   opNumbers: string[];
+  /** Números de PV (pedidos de venda) que originaram as OPs do grupo. */
+  pvNumbers?: string[];
   /** Referências (sandálias) que cabem nesse grupo solado+cor. Geralmente 1
    *  ref por grupo, mas modelos diferentes podem usar mesmo solado+cor. */
   refs?: Array<{ code: string; name: string }>;
@@ -316,6 +318,14 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                       </div>
                     </div>
                   )}
+                  {cg.pvNumbers && cg.pvNumbers.length > 0 && (
+                    <div className="text-right">
+                      <span className="section-label block" style={{ color: '#000' }}>PV</span>
+                      <span className="font-mono text-[12px] font-bold text-black tracking-wider">
+                        {cg.pvNumbers.length === 1 ? cg.pvNumbers[0] : `${cg.pvNumbers[0]} +${cg.pvNumbers.length - 1}`}
+                      </span>
+                    </div>
+                  )}
                   {cg.opNumbers.length > 0 && (
                     <div className="text-right">
                       <span className="section-label block" style={{ color: '#000' }}>OP</span>
@@ -402,7 +412,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                 {/* Componentes auxiliares (Aviamento). Quando TODOS os items
                     têm label começando com 'TIRA', renderiza como tabela de
                     "Sequência de Tiras". */}
-                {theme.showMaterials === 'both' && cg.components && cg.components.length > 0 && (() => {
+                {(theme.showMaterials === 'both' || sector === 'Montagem') && cg.components && cg.components.length > 0 && (() => {
                   const isAllStraps = cg.components.every(c => /^TIRA(\s|$)/i.test(c.name || ''));
                   return (
                     <div className="mb-2 keep-together">
