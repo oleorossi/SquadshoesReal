@@ -252,9 +252,15 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
     // espaço disponível sem ficar desproporcional.
     // Cores: tudo preto puro ou cinza-muito-escuro (#222) — sem cinzas
     // claros que somem no toner laser/térmico.
-    // Referência = nome do modelo (item.refName). SKU/refCode não é mais
-    // exibido em etiquetas — definição do usuário em 2026-05.
-    const displayRef = item.refName || item.refCode || '';
+    // Referência = SOMENTE o nome do modelo (item.refName). O SKU/refCode
+    // (ex: '3213131') NUNCA é exibido na etiqueta de caixa — só o nome
+    // operacional do modelo (ex: 'DS12'). User foi explícito em 2026-05:
+    // 'É o nome do modelo'. Antes havia fallback pra refCode que mostrava
+    // o número do SKU quando o nome não estava resolvido — agora cai pra
+    // '—' pra forçar correção no cadastro em vez de mostrar dado errado.
+    const displayRef = (item.refName && item.refName.trim() && item.refName.trim() !== '—')
+      ? item.refName.trim()
+      : '—';
     const productLeft = `
       <div style="flex:1;padding:10px 14px;display:flex;flex-direction:column;justify-content:center;gap:6px;">
         ${displayRef ? `
@@ -652,9 +658,11 @@ export function buildThermalLabelsHtml(labels: {
   const shellBottomMm = +(+footerHeightMm + Math.max(safePadY * 0.3, 0.4)).toFixed(1);
 
   const labelHtml = labels.map((l, idx) => {
-    // Referência = nome do modelo (l.refName). SKU/refCode foi removido das
-    // etiquetas em 2026-05 — só nome aparece como referência operacional.
-    const displayReference = l.refName || l.refCode || '—';
+    // Referência = SOMENTE o nome do modelo. O SKU/refCode (ex: '3213131')
+    // NUNCA aparece. User explícito em 2026-05.
+    const displayReference = (l.refName && l.refName.trim() && l.refName.trim() !== '—')
+      ? l.refName.trim()
+      : '—';
 
     const hasHeader = showHeader && !!displayReference && displayReference !== '—';
     const thisShellTopMm = hasHeader ? shellTopMm : safePadY;
