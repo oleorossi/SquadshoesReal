@@ -8,11 +8,10 @@ const corsHeaders = {
 
 const GESTAOCLICK_BASE = "https://api.gestaoclick.com";
 
-// Marca fixa de TODOS os produtos da Squad Shoes na NF-e. Aparece no XML
-// SEFAZ como <prod><xMarca>SquadShoes</xMarca></prod>. Pedido em 15/05/2026.
-// Hardcoded porque a empresa só fabrica produtos próprios — sem revenda
-// de outras marcas. Se isso mudar, virar coluna em technical_sheets.
-const SQUAD_BRAND = "SquadShoes";
+// Marca default — usada quando o PV não tem brand cadastrada explícita.
+// Era hardcoded até 15/05/2026; agora é override-able via sale_orders.brand
+// (default no DB também é 'SquadShoes', então pra fluxo normal segue igual).
+const DEFAULT_BRAND = "SquadShoes";
 
 function gcHeaders() {
   const access = Deno.env.get("CLICKNOTAS_ACCESS_TOKEN");
@@ -393,6 +392,10 @@ Deno.serve(async (req) => {
     }
 
     // ---------- Sync lazy: produtos no GestaoClick + payload itens ----------
+    // Marca: vem do PV (sale_orders.brand). Default 'SquadShoes' (mesma default
+    // do DB). Vai pro xMarca do XML SEFAZ — pedido pode override quando emite
+    // pra cliente OEM/private label.
+    const orderBrand = (order.brand && String(order.brand).trim()) || DEFAULT_BRAND;
     const produtosGC: any[] = [];
     for (const it of billableItems) {
       const ts = it.technical_sheets;
@@ -436,7 +439,7 @@ Deno.serve(async (req) => {
               unidade: isStandalone ? unidade : "PAR",
               ncm,
               tipo: "P",
-              marca: SQUAD_BRAND, // marca aparece no XML SEFAZ <prod><xMarca>
+              marca: orderBrand, // marca aparece no XML SEFAZ <prod><xMarca>
             }),
           });
           if (!r.ok || r.json?.status === "error") {
@@ -462,7 +465,7 @@ Deno.serve(async (req) => {
         unidade: isStandalone ? unidade : "PAR",
         NCM: ncm,
         tipo: "P",
-        marca: SQUAD_BRAND, // pedido em 15/05/2026 — sempre Squad Shoes na NF
+        marca: orderBrand, // pedido em 15/05/2026 — sempre Squad Shoes na NF
       });
     }
 

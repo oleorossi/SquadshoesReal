@@ -587,6 +587,9 @@ export type SaleOrderFormData = {
    *  cliente) e Pedido de Venda. Separado do `notes` (notas internas que
    *  NÃO vão pra NF). Pedido em 15/05/2026. */
   informacoes_complementares_nf?: string | null;
+  /** Marca que aparece em xMarca de cada produto na NF-e. Default 'SquadShoes'
+   *  — editável por PV pra atender private label/OEM. Pedido em 15/05/2026. */
+  brand?: string;
 };
 
 export type SaleOrderItemFormData = {

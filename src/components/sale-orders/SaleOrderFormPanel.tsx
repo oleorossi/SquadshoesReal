@@ -842,10 +842,22 @@ export default function SaleOrderFormPanel({
               </CardTitle>
             </CardHeader>
             <CardContent className="p-4 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
                   <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">Nº Pedido Cliente</Label>
                   <Input value={form.client_order_number} onChange={e => setForm(f => ({ ...f, client_order_number: e.target.value }))} className="h-9" />
+                </div>
+                <div>
+                  <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">
+                    Marca (NF-e)
+                    <span className="ml-1 text-[9px] font-normal normal-case text-muted-foreground">xMarca no XML</span>
+                  </Label>
+                  <Input
+                    value={form.brand || 'SquadShoes'}
+                    onChange={e => setForm(f => ({ ...f, brand: e.target.value }))}
+                    className="h-9"
+                    placeholder="SquadShoes"
+                  />
                 </div>
                 <div>
                   <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">NF-e</Label>
