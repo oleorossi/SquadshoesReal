@@ -194,12 +194,20 @@ function groupOrdersByRefColor(orders: any[]): Array<{
     }
     const g = map.get(key)!;
     g.opNumbers.push(order.op_number);
-    g.totalPairs += order.total_pairs ?? 0;
+    const orderTotal = Number(order.total_pairs ?? 0);
+    g.totalPairs += orderTotal;
     if (order.due_date && order.due_date > g.latestDueDate) g.latestDueDate = order.due_date;
-    const grid: Record<string, number> = order.grid ?? {};
-    for (const [size, qty] of Object.entries(grid)) {
-      const n = Number(qty) || 0;
-      if (n > 0) g.combinedGrid[size] = (g.combinedGrid[size] ?? 0) + n;
+    // CRÍTICO: orders.grade vem em "grade base" (ex: {34:1,...,40:1} soma 12)
+    // e o total real é total_pairs (= base × fichas). Pra ficha de operador
+    // exibir os pares REAIS por numeração, multiplica cada size por
+    // `multiplier = total_pairs / sum(grade)` antes de acumular. Sem isso
+    // a ficha mostrava só 12p (a grade base, soma de 1 ficha só).
+    const baseGrid: Record<string, number> = order.grid ?? {};
+    const baseSum = Object.values(baseGrid).reduce((s, v) => s + (Number(v) || 0), 0);
+    const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
+    for (const [size, qty] of Object.entries(baseGrid)) {
+      const scaled = Math.round((Number(qty) || 0) * multiplier);
+      if (scaled > 0) g.combinedGrid[size] = (g.combinedGrid[size] ?? 0) + scaled;
     }
   }
 
@@ -397,12 +405,25 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
     queryFn: async () => {
       const { data, error } = await supabase
         .from('technical_sheets')
-        .select('id, insole_has_lining, insole_ready_made, has_straps, mesa_daily_capacity, cutting_capacity_per_day, sewing_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day')
+        .select('id, insole_has_lining, insole_ready_made, has_straps, sole_material, sole_color, mesa_daily_capacity, cutting_capacity_per_day, sewing_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day')
         .in('id', referenceIds);
       if (error) throw error;
       return data || [];
     },
   });
+
+  // Fallback de nome de solado quando technical_sheet_sole_colors está vazio:
+  // usa technical_sheets.sole_material (texto livre cadastrado na ficha).
+  // Sem isso, fichas que nunca passaram pelo SoleColorConjugationsEditor
+  // mostravam "Sem Solado" no setor mesmo tendo solado definido na ficha.
+  const soleMaterialByRef = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const s of sheetLiningFlags as any[]) {
+      const raw = (s.sole_material || '').toString().trim();
+      if (raw) m.set(s.id, raw);
+    }
+    return m;
+  }, [sheetLiningFlags]);
 
   // ── Lookup maps ──────────────────────────────────────────────────────────────
   const soleColorLookup = useMemo(() => {
@@ -542,16 +563,26 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
         m => m.sheet_id === sheetId && (m.product_color || '').toLowerCase() === cabedelColorLower,
       );
       const rawSoleName = (soleMapping as any)?.products?.name || '';
-      const soleName = rawSoleName ? getBaseName(rawSoleName) : 'Sem Solado';
+      // Fallback: se não houver mapeamento em technical_sheet_sole_colors,
+      // usa o sole_material textual da ficha técnica. Antes caía em "Sem
+      // Solado" mesmo com a ficha tendo solado definido.
+      const fallbackSole = soleMaterialByRef.get(sheetId) || '';
+      const soleName = rawSoleName
+        ? getBaseName(rawSoleName)
+        : (fallbackSole ? getBaseName(fallbackSole) : 'Sem Solado');
       const key = `${soleName}::${insoleColor}::${isReadyMade ? 'pronta' : 'cortar'}`;
       if (!groupMap.has(key)) {
         groupMap.set(key, { soleName, insoleColor, totalPairs: 0, grade: {}, readyMade: isReadyMade });
       }
       const group = groupMap.get(key)!;
-      const grid = order.grid || {};
-      for (const [size, qty] of Object.entries(grid)) {
-        const n = Number(qty) || 0;
-        if (n > 0) { group.grade[size] = (group.grade[size] || 0) + n; sizeSet.add(size); }
+      // Scaling igual aos outros groupBys: grade base × multiplier = pares reais.
+      const baseGrid = order.grid || {};
+      const baseSum = Object.values(baseGrid).reduce((s, v) => s + (Number(v) || 0), 0);
+      const orderTotal = Number(order.total_pairs ?? 0);
+      const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
+      for (const [size, qty] of Object.entries(baseGrid)) {
+        const scaled = Math.round((Number(qty) || 0) * multiplier);
+        if (scaled > 0) { group.grade[size] = (group.grade[size] || 0) + scaled; sizeSet.add(size); }
       }
       group.totalPairs = Object.values(group.grade).reduce((s, v) => s + v, 0);
     }
@@ -613,7 +644,13 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
         m => m.sheet_id === sheetId && (m.product_color || '').toLowerCase() === cabedelColorLower,
       );
       const rawSoleName = (soleMapping as any)?.products?.name || '';
-      const soleName = rawSoleName ? getBaseName(rawSoleName) : 'Sem Solado';
+      // Fallback: se não houver mapeamento em technical_sheet_sole_colors,
+      // usa o sole_material textual da ficha técnica. Antes caía em "Sem
+      // Solado" mesmo com a ficha tendo solado definido.
+      const fallbackSole = soleMaterialByRef.get(sheetId) || '';
+      const soleName = rawSoleName
+        ? getBaseName(rawSoleName)
+        : (fallbackSole ? getBaseName(fallbackSole) : 'Sem Solado');
 
       if (!soleMap.has(soleName)) soleMap.set(soleName, new Map());
       const colorMap = soleMap.get(soleName)!;
@@ -666,10 +703,16 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
 
       const cg = colorMap.get(colorName)!;
       cg.opNumbers.push(order.op_number);
-      const grid = order.grid || {};
-      for (const [size, qty] of Object.entries(grid)) {
-        const n = Number(qty) || 0;
-        if (n > 0) cg.combinedGrid[size] = (cg.combinedGrid[size] ?? 0) + n;
+      // Scaling igual ao groupOrdersByRefColor: grade vem base (soma=12),
+      // total_pairs é o real. Multiplica antes de acumular pra não exibir
+      // 12 pares quando o real é 420.
+      const baseGrid = order.grid || {};
+      const baseSum = Object.values(baseGrid).reduce((s, v) => s + (Number(v) || 0), 0);
+      const orderTotal = Number(order.total_pairs ?? 0);
+      const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
+      for (const [size, qty] of Object.entries(baseGrid)) {
+        const scaled = Math.round((Number(qty) || 0) * multiplier);
+        if (scaled > 0) cg.combinedGrid[size] = (cg.combinedGrid[size] ?? 0) + scaled;
       }
       cg.totalPairs = Object.values(cg.combinedGrid).reduce((s, v) => s + v, 0);
     }
@@ -699,11 +742,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
         soleColorMap.set(soleColor, { grade: {}, totalPairs: 0 });
       }
       const band = soleColorMap.get(soleColor)!;
-      const grid = order.grid || {};
-      for (const [size, qty] of Object.entries(grid)) {
-        const n = Number(qty) || 0;
-        if (n > 0) {
-          band.grade[size] = (band.grade[size] ?? 0) + n;
+      // Scaling: grade base × multiplier = pares reais (vide outros groupBys).
+      const baseGrid = order.grid || {};
+      const baseSum = Object.values(baseGrid).reduce((s, v) => s + (Number(v) || 0), 0);
+      const orderTotal = Number(order.total_pairs ?? 0);
+      const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
+      for (const [size, qty] of Object.entries(baseGrid)) {
+        const scaled = Math.round((Number(qty) || 0) * multiplier);
+        if (scaled > 0) {
+          band.grade[size] = (band.grade[size] ?? 0) + scaled;
           sizeSet.add(size);
         }
       }
@@ -861,7 +908,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
         m => m.sheet_id === sheetId && (m.product_color || '').toLowerCase() === cabedelColorLower,
       );
       const name = (mapping as any)?.products?.name;
-      return name ? getBaseName(name) : null;
+      if (name) return getBaseName(name);
+      // Fallback: usa sole_material da ficha técnica quando não há mapping.
+      const fallback = soleMaterialByRef.get(sheetId);
+      return fallback ? getBaseName(fallback) : null;
     };
 
     // Agrupa orders por sale_order_id
