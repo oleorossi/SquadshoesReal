@@ -12,6 +12,7 @@ import { MagnifyingGlass as Search, CircleNotch as Loader2, Check, FileText, Sta
  import { useAddGroup, useGroups } from "@/hooks/useGroups";
 import { useAddGroupSupplier } from "@/hooks/useGroupSuppliers";
 import { useAddSupplier, useSuppliers, type Supplier } from "@/hooks/useSuppliers";
+import { flattenGroupTree } from "@/lib/groupHierarchy";
 import { cn } from "@/lib/utils";
 
 interface GroupCreateDialogProps {
