@@ -8,6 +8,8 @@ import {
 } from '@/components/ui/dialog';
 import SaleOrderFormPanel from '@/components/sale-orders/SaleOrderFormPanel';
 import { useCreateSaleOrder, useUpdateSaleOrder, SaleOrderFormData, SaleOrderItemFormData } from '@/hooks/useSaleOrders';
+import { useCancelOrdersBatch } from '@/hooks/useOrders';
+import { CancelOpsAndEditDialog, type BlockingOp } from '@/components/sale-orders/CancelOpsAndEditDialog';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
 import { useClients } from '@/hooks/useClients';
 import { useRepresentatives } from '@/hooks/useRepresentatives';
@@ -55,8 +57,18 @@ export default function SaleOrderForm() {
   const { data: representatives = [] } = useRepresentatives();
   const createOrder = useCreateSaleOrder();
   const updateOrder = useUpdateSaleOrder();
+  const cancelOrdersBatch = useCancelOrdersBatch();
   const checkStock = useCheckStockAvailability();
   const { user } = useAuth();
+
+  // Diálogo "cancelar todas as OPs em produção e editar". Quando aberto,
+  // segura a submissão até o usuário confirmar — então faz batch cancel
+  // e re-dispara o save.
+  const [cancelOpsDialog, setCancelOpsDialog] = useState<{
+    open: boolean;
+    ops: BlockingOp[];
+    pendingStatusOverride?: string;
+  }>({ open: false, ops: [] });
 
   const { data: userRoles = [] } = useQuery({
     queryKey: ['user_roles', user?.id],
@@ -376,40 +388,20 @@ export default function SaleOrderForm() {
     }
   };
 
-  const doSubmit = (statusOverride?: string) => {
+  /**
+   * Executa de fato a mutação (sem pre-checks de OPs). Separado de doSubmit
+   * pra permitir re-disparo após confirmação do CancelOpsAndEditDialog.
+   */
+  const dispatchMutation = (statusOverride?: string) => {
     const f = formLatestRef.current;
     const validItems = items.filter(i => i.reference_id).map(normalizeItemReference);
-    if (validItems.length === 0) {
-      toast.error('Adicione pelo menos um item ao pedido.');
-      return;
-    }
-    if (validItems.some(i => !i.color?.trim())) {
-      toast.error('Selecione uma cor para todos os itens.');
-      return;
-    }
-    if (validItems.some(i => i.quantity <= 0)) {
-      toast.error('A quantidade dos itens deve ser maior que zero.');
-      return;
-    }
-    // Audit visual: factoring marcado sem config selecionada criava registro
-    // inválido (is_factoring=true, factoring_config_id='') que quebrava o
-    // syncFinancialRecords ao faturar. Bloqueia explicitamente.
-    if (f.is_factoring && !f.factoring_config_id) {
-      toast.error('Selecione qual factoring está antecipando este pedido.');
-      return;
-    }
-
     const total = validItems.reduce((s, i) => s + i.unit_price * i.quantity, 0);
     const rep = representatives.find(r => r.id === f.representative);
     const commission_value = rep ? total * (rep.commission_pct ?? 0) / 100 : 0;
-
     const orderData = { ...f, representative: rep?.name || f.representative };
     if (statusOverride) orderData.status = statusOverride;
-
-    // client_id veio do handleClientSelect (form) OU do hydrate de edit.
-    // Garante que a FK chegue na mutação — antes só o nome/CNPJ texto eram
-    // enviados, deixando sale_orders.client_id null e quebrando JOINs.
     const resolvedClientId = (f as any).client_id || selectedClientId || null;
+
     if (isEdit) {
       updateOrder.mutate({
         id: id!,
@@ -436,6 +428,70 @@ export default function SaleOrderForm() {
         onSuccess: () => navigate('/sales'),
       });
     }
+  };
+
+  const doSubmit = async (statusOverride?: string) => {
+    const f = formLatestRef.current;
+    const validItems = items.filter(i => i.reference_id).map(normalizeItemReference);
+    if (validItems.length === 0) {
+      toast.error('Adicione pelo menos um item ao pedido.');
+      return;
+    }
+    if (validItems.some(i => !i.color?.trim())) {
+      toast.error('Selecione uma cor para todos os itens.');
+      return;
+    }
+    if (validItems.some(i => i.quantity <= 0)) {
+      toast.error('A quantidade dos itens deve ser maior que zero.');
+      return;
+    }
+    // Audit visual: factoring marcado sem config selecionada criava registro
+    // inválido (is_factoring=true, factoring_config_id='') que quebrava o
+    // syncFinancialRecords ao faturar. Bloqueia explicitamente.
+    if (f.is_factoring && !f.factoring_config_id) {
+      toast.error('Selecione qual factoring está antecipando este pedido.');
+      return;
+    }
+
+    // Pre-check em edição: se existem OPs em produção avançada vinculadas a
+    // este PV, abre dialog de confirmação ao invés de deixar o guard do
+    // useUpdateSaleOrder falhar com toast genérico. O dialog oferece batch
+    // cancel + re-tentativa em 1 clique.
+    if (isEdit && id) {
+      const { data: blocking } = await supabase
+        .from('orders')
+        .select('id, order_number, status')
+        .eq('sale_order_id', id)
+        .in('status', ['Em Produção', 'Concluída', 'Finalizado']);
+      if (blocking && blocking.length > 0) {
+        setCancelOpsDialog({
+          open: true,
+          ops: blocking as BlockingOp[],
+          pendingStatusOverride: statusOverride,
+        });
+        return;
+      }
+    }
+
+    dispatchMutation(statusOverride);
+  };
+
+  const handleConfirmCancelOps = () => {
+    const ops = cancelOpsDialog.ops;
+    const pendingOverride = cancelOpsDialog.pendingStatusOverride;
+    cancelOrdersBatch.mutate(
+      ops.map(op => op.id),
+      {
+        onSuccess: () => {
+          setCancelOpsDialog({ open: false, ops: [] });
+          toast.success(`${ops.length} OP${ops.length === 1 ? '' : 's'} cancelada${ops.length === 1 ? '' : 's'} — salvando edição...`);
+          dispatchMutation(pendingOverride);
+        },
+        onError: () => {
+          // Toast já disparado pelo onError do hook. Mantém modal aberto pra retry.
+        },
+      },
+    );
   };
 
   const handleSubmit = async (
@@ -917,6 +973,16 @@ export default function SaleOrderForm() {
         materialShortfalls={minBillingSuggestion?.materialShortfalls}
         onConfirmMin={handleMinBillingConfirm}
         onPickManual={handleMinBillingManual}
+      />
+
+      <CancelOpsAndEditDialog
+        open={cancelOpsDialog.open}
+        onOpenChange={(v) => {
+          if (!v && !cancelOrdersBatch.isPending) setCancelOpsDialog({ open: false, ops: [] });
+        }}
+        ops={cancelOpsDialog.ops}
+        isCancelling={cancelOrdersBatch.isPending}
+        onConfirm={handleConfirmCancelOps}
       />
     </>
   );

@@ -18,6 +18,9 @@ export interface SoleColorBand {
   stampNumber?: boolean;
   /** Sandálias que usam essa cor de solado (ref + cor + foto). */
   refs?: Array<{ key: string; code: string; name: string; color: string; image_url: string | null }>;
+  /** Números de OP / PV pra rastreabilidade. */
+  opNumbers?: string[];
+  pvNumbers?: string[];
 }
 
 interface Props {

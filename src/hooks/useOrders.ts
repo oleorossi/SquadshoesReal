@@ -324,6 +324,81 @@ export function useUpdateOrderStatus() {
   });
 }
 
+/**
+ * Cancela em lote todas as OPs em produção avançada de um PV.
+ * Usado pelo CancelOpsAndEditDialog quando o usuário confirma "cancelar todas
+ * e editar" — libera o guard de useUpdateSaleOrder pra que o save prossiga.
+ *
+ * Cada OP é processada sequencialmente (não em paralelo) porque os RPCs de
+ * estorno tocam tabelas compartilhadas (sole_size_grade buckets, products.stock).
+ */
+export function useCancelOrdersBatch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (orderIds: string[]) => {
+      const errors: Array<{ id: string; message: string }> = [];
+      for (const id of orderIds) {
+        try {
+          const { data: current, error: currErr } = await supabase
+            .from('orders').select('status, sale_order_id, order_number').eq('id', id).single();
+          if (currErr) throw new Error(`Falha ao carregar OP: ${currErr.message}`);
+          const currentStatus = current?.status ?? '';
+          if (currentStatus === 'Cancelada') continue;
+
+          const HAD_STOCK_STATUSES = ['Reservado', 'Em Produção', 'Concluída', 'Finalizado'];
+          const hadStock = HAD_STOCK_STATUSES.includes(currentStatus);
+
+          // Atomic claim — mesma técnica do useUpdateOrderStatus pra evitar
+          // double-restore por concorrência.
+          const { data: claimed, error: claimErr } = await supabase
+            .from('orders').update({ status: 'Cancelada' })
+            .eq('id', id).eq('status', currentStatus).select('id');
+          if (claimErr) throw claimErr;
+          if (!claimed || claimed.length === 0) {
+            throw new Error('Status alterado simultaneamente — recarregue.');
+          }
+
+          if (hadStock) {
+            const { error: relErr } = await (supabase.rpc as any)('release_order_reservations', { p_order_id: id });
+            if (relErr && !/does not exist|not found/i.test(relErr.message)) {
+              await supabase.from('orders').update({ status: currentStatus }).eq('id', id).eq('status', 'Cancelada');
+              throw new Error(`release_order_reservations: ${relErr.message}`);
+            }
+            const { error: soleErr } = await (supabase.rpc as any)('restore_sole_grade_for_order', { p_order_id: id });
+            if (soleErr) {
+              await supabase.from('orders').update({ status: currentStatus }).eq('id', id).eq('status', 'Cancelada');
+              throw new Error(`restore_sole_grade_for_order: ${soleErr.message}`);
+            }
+            const { error: stockErr } = await (supabase.rpc as any)('restore_product_stocks_for_order', { p_order_id: id });
+            if (stockErr) {
+              await supabase.from('orders').update({ status: currentStatus }).eq('id', id).eq('status', 'Cancelada');
+              throw new Error(`restore_product_stocks_for_order: ${stockErr.message}`);
+            }
+          }
+        } catch (e: any) {
+          errors.push({ id, message: e?.message || String(e) });
+        }
+      }
+      if (errors.length > 0) {
+        throw new Error(
+          `Falha ao cancelar ${errors.length}/${orderIds.length} OPs: ` +
+          errors.map(e => `${e.id.slice(0, 8)}: ${e.message}`).join(' | '),
+        );
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      qc.invalidateQueries({ queryKey: ['order_stages'] });
+      qc.invalidateQueries({ queryKey: ['sale_orders'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['stock_movements'] });
+      qc.invalidateQueries({ queryKey: ['production_consumptions'] });
+      qc.invalidateQueries({ queryKey: ['production_waves'] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+}
+
 export function useDeleteOrder() {
   const qc = useQueryClient();
   return useMutation({

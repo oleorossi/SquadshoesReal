@@ -19,6 +19,9 @@ export interface PalmilhaGroup {
   readyMade?: boolean;
   /** Sandálias que usam essa palmilha (ref + cor + foto). */
   refs?: Array<{ key: string; code: string; name: string; color: string; image_url: string | null }>;
+  /** Números de OP / PV pra rastreabilidade no chão de fábrica. */
+  opNumbers?: string[];
+  pvNumbers?: string[];
 }
 
 interface Props {
