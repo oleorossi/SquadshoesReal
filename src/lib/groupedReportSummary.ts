@@ -17,6 +17,10 @@ export type GroupedReferenceData = {
   shoe_category?: string | null;
   image_url?: string | null;
   images?: unknown;
+  /** Fallback de nome de solado quando technical_sheet_sole_colors estiver
+   *  vazio pra essa ficha (cadastros antigos não passaram pelo editor de
+   *  conjugações). Vem direto de technical_sheets.sole_material. */
+  sole_material?: string | null;
 };
 
 export type IndividualOrderGrade = {
@@ -153,7 +157,11 @@ function normalizeGroupPart(value: string): string {
     const strapsKey = normalizeGroupPart(strapsLabel || '__NO_STRAPS__');
      const soleMapping = soleMappings.find(m => m.sheet_id === order.reference_id && m.product_color === order.color);
      const soleProductId = soleMapping?.sole_product_id;
-     const soleProductName = (soleMapping as any)?.products?.name;
+     // Fallback: quando technical_sheet_sole_colors está vazio pra essa ficha,
+     // usa technical_sheets.sole_material (texto livre na ficha técnica).
+     const soleProductName = (soleMapping as any)?.products?.name
+       || (reference.sole_material || '').toString().trim()
+       || undefined;
  
      const saleOrder = saleOrders.find(so => so.id === (order as any).sale_order_id);
      const clientId = saleOrder?.client_id;

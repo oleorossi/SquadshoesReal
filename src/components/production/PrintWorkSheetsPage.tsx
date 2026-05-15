@@ -844,6 +844,18 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
         ? orderVariants.find(v => v.image_url && /^preto$/i.test((v.color || '').trim()))?.image_url
         : null;
       const tsImg = tsImageByRef.get(order.reference_id) || null;
+      // Scaling: o grid da OP vem em base (soma=12); a Expedição precisa
+      // exibir os pares REAIS por numeração. Sem scale, as colunas mostram
+      // 1,2,2,3,2,1,1 mas o total mostra 420 — inconsistente pro conferente.
+      const baseGridForExp = order.grid || {};
+      const baseSumExp = Object.values(baseGridForExp).reduce((s: number, v) => s + (Number(v) || 0), 0);
+      const orderTotalExp = Number(order.total_pairs ?? 0);
+      const multExp = baseSumExp > 0 ? orderTotalExp / baseSumExp : 0;
+      const scaledGridExp: Record<string, number> = {};
+      for (const [size, qty] of Object.entries(baseGridForExp)) {
+        const s = Math.round((Number(qty) || 0) * multExp);
+        if (s > 0) scaledGridExp[size] = s;
+      }
       cust.orders.push({
         id: order.id,
         op_number: order.op_number,
@@ -852,8 +864,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
         reference_name: order.reference_name,
         image_url: exactImg || pretoImg || tsImg || null,
         color: order.color,
-        total_pairs: order.total_pairs ?? 0,
-        grid: order.grid,
+        total_pairs: orderTotalExp,
+        grid: scaledGridExp,
         sole_name: soleName,
         pairs_per_box: pairsPerBox,
       });
