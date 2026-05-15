@@ -157,6 +157,18 @@ const OperatorWorkSheet = ({
               {opNumbers && opNumbers.length > 1 ? `${opNumbers[0]}+` : order.op_number}
             </span>
           </div>
+          {/* PV (pedido de venda) — rastreabilidade pedida pelo user em 2026-05. */}
+          {(order.sale_order_number || order.pv_number) && (
+            <div className="border-l border-black pl-4 flex flex-col justify-center">
+              <span className="section-label" style={{ color: '#000' }}>PV</span>
+              <span
+                className="text-black font-mono leading-none mt-1"
+                style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '20px', fontWeight: 700, letterSpacing: '-0.02em' }}
+              >
+                {order.sale_order_number || order.pv_number}
+              </span>
+            </div>
+          )}
           <div className="border-l border-black pl-4 flex flex-col justify-center">
             <span className="section-label" style={{ color: '#000' }}>Pares</span>
             <span
