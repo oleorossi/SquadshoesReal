@@ -174,7 +174,18 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
   const [createComponentSheet, setCreateComponentSheet] = useState(false);
   const [itemPackageWeight, setItemPackageWeight] = useState(0);
   const [submitting, setSubmitting] = useState(false);
-  const [duplicateMatch, setDuplicateMatch] = useState<Product | null>(null);
+  const [duplicateMatch, setDuplicateMatch] = useState<{
+    product: Product;
+    /** Por que o sistema considerou duplicado — exibido no banner pro user
+     *  decidir. Quanto mais alto na lista, mais forte a evidência. */
+    reason:
+      | 'exact'           // mesmo nome + mesmo grupo
+      | 'sku'             // SKU idêntico (mesmo cross-grupo)
+      | 'normalized'      // mesmo nome após remover acento/caps/espaços
+      | 'cross_group'     // nome igual mas grupo diferente
+      | 'fuzzy'           // typo curto (Levenshtein ≤ 2)
+      | 'two_words';      // 2+ palavras significativas em comum
+  } | null>(null);
   const [duplicateConfirmed, setDuplicateConfirmed] = useState(false);
   const [groupConflict, setGroupConflict] = useState<Product | null>(null);
   const [propagationPrompt, setPropagationPrompt] = useState<{
@@ -903,48 +914,134 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
     toast.success(`Template aplicado: ${tpl.label}`);
   };
 
-   const checkDuplicateName = useCallback((name: string, groupId: string | null, color?: string) => {
-     if (!name.trim()) { setDuplicateMatch(null); return; }
-     const normalizedName = name.trim().toLowerCase();
-     const normalizedColor = (color || '').trim().toLowerCase();
-     
-     // 1. Check for EXACT match in the same group (original logic)
-     const exactMatch = allProducts.find(p => {
-       if (product && p.id === product.id) return false;
-       const sameGroup = (groupId && p.group_id === groupId) || (!groupId && !p.group_id);
-       if (!sameGroup || p.name.trim().toLowerCase() !== normalizedName) return false;
-       const existingColor = (p.color || '').trim().toLowerCase();
-       if (normalizedColor && existingColor && normalizedColor !== existingColor) return false;
-       return true;
-     });
- 
-     if (exactMatch && !duplicateConfirmed) {
-       setDuplicateMatch(exactMatch);
-       return;
-     }
- 
-     // 2. Check for "2 words match" logic (new requirement)
-     const words = normalizedName.split(/\s+/).filter(w => w.length >= 3);
-     if (words.length >= 2) {
-       const partialMatch = allProducts.find(p => {
-         if (product && p.id === product.id) return false;
-         const existingWords = p.name.toLowerCase().split(/\s+/);
-         const matches = words.filter(w => existingWords.includes(w));
-         return matches.length >= 2;
-       });
- 
-       if (partialMatch && !duplicateConfirmed) {
-         setDuplicateMatch(partialMatch);
-         return;
-       }
-     }
- 
-     setDuplicateMatch(null);
-   }, [allProducts, product, duplicateConfirmed]);
+  /** Normaliza nome pra comparação: lowercase + remove acentos + colapsa
+   *  espaços + remove caracteres especiais. Faz "Café Brûlée" === "cafe brulee". */
+  const normalizeForCompare = (s: string): string => {
+    return (s || '')
+      .normalize('NFD')                 // decompõe acentos (ç → c +  ̧ )
+      .replace(/[̀-ͯ]/g, '')  // remove diacríticos
+      .toLowerCase()
+      .replace(/[^\w\s]/g, ' ')         // pontuação vira espaço
+      .replace(/\s+/g, ' ')             // colapsa espaços múltiplos
+      .trim();
+  };
+
+  /** Distância de Levenshtein entre 2 strings — quantas inserções/remoções/
+   *  trocas pra transformar uma na outra. Usado pra detectar typos curtos
+   *  (ex: "Couro" vs "Coura" → distância 1). Implementação iterativa O(n*m). */
+  const levenshtein = (a: string, b: string): number => {
+    if (a === b) return 0;
+    if (!a.length) return b.length;
+    if (!b.length) return a.length;
+    const m = a.length, n = b.length;
+    let prev = Array.from({ length: n + 1 }, (_, i) => i);
+    let curr = new Array(n + 1).fill(0);
+    for (let i = 1; i <= m; i++) {
+      curr[0] = i;
+      for (let j = 1; j <= n; j++) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+        curr[j] = Math.min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+      }
+      [prev, curr] = [curr, prev];
+    }
+    return prev[n];
+  };
+
+  /** Detecta possíveis duplicados com 6 estratégias, em ordem de confiança:
+   *   1. exact      — nome igual + mesmo grupo (case sensitive)
+   *   2. sku        — SKU idêntico (mesmo cross-grupo)
+   *   3. normalized — nome igual após remover acento/caps/pontuação
+   *   4. cross_group — nome igual mas grupo diferente (avisa, não bloqueia)
+   *   5. fuzzy      — typo curto: Levenshtein ≤ 2 e tamanho parecido (>5 chars)
+   *   6. two_words  — 2+ palavras significativas em comum (legacy)
+   *  Retorna o primeiro match achado (não acumula). */
+  const checkDuplicateName = useCallback((name: string, groupId: string | null, color?: string, sku?: string) => {
+    if (!name.trim()) { setDuplicateMatch(null); return; }
+    const rawName = name.trim();
+    const normalizedName = normalizeForCompare(rawName);
+    const normalizedColor = normalizeForCompare(color || '');
+    const normalizedSku = (sku || '').trim().toLowerCase();
+    const isSelf = (p: Product) => product && p.id === product.id;
+    const sameGroup = (p: Product) => (groupId && p.group_id === groupId) || (!groupId && !p.group_id);
+
+    // 1. Match EXATO (mesmo grupo, lowercase trim — comportamento original)
+    const exactMatch = allProducts.find(p => {
+      if (isSelf(p)) return false;
+      if (!sameGroup(p) || p.name.trim().toLowerCase() !== rawName.toLowerCase()) return false;
+      const existingColor = (p.color || '').trim().toLowerCase();
+      if (normalizedColor && existingColor && normalizedColor !== existingColor) return false;
+      return true;
+    });
+    if (exactMatch) { setDuplicateMatch({ product: exactMatch, reason: 'exact' }); return; }
+
+    // 2. SKU idêntico (mais forte que nome — SKU duplicado quase sempre é erro)
+    if (normalizedSku) {
+      const skuMatch = allProducts.find(p => !isSelf(p) && (p.sku || '').trim().toLowerCase() === normalizedSku);
+      if (skuMatch) { setDuplicateMatch({ product: skuMatch, reason: 'sku' }); return; }
+    }
+
+    // 3. Nome NORMALIZADO igual (sem acento, sem pontuação, espaço colapsado)
+    //    Pega "Café com Leite" vs "cafe-com-leite", "NAPA SOFT" vs "napa  soft".
+    const normalizedMatch = allProducts.find(p => {
+      if (isSelf(p)) return false;
+      if (!sameGroup(p)) return false;
+      return normalizeForCompare(p.name) === normalizedName;
+    });
+    if (normalizedMatch) { setDuplicateMatch({ product: normalizedMatch, reason: 'normalized' }); return; }
+
+    // 4. Cross-group: mesmo nome (normalizado) em grupo diferente.
+    //    Útil pra alertar quando user cadastra "Linha Tipo 60" em Aviamentos
+    //    quando já existe em Linhas (deveria estar lá).
+    const crossGroupMatch = allProducts.find(p => {
+      if (isSelf(p)) return false;
+      if (sameGroup(p)) return false;
+      return normalizeForCompare(p.name) === normalizedName;
+    });
+    if (crossGroupMatch) { setDuplicateMatch({ product: crossGroupMatch, reason: 'cross_group' }); return; }
+
+    // 5. Fuzzy match (typo): Levenshtein ≤ 2 pra nomes >= 6 chars (no mesmo grupo).
+    //    Pega "Couro Liso" vs "Couro Lizo", "Tecido" vs "Tcido". Limita a nomes
+    //    parecidos em tamanho pra evitar falso positivo "AB" vs "Cabedal".
+    if (normalizedName.length >= 6) {
+      const fuzzyMatch = allProducts.find(p => {
+        if (isSelf(p) || !sameGroup(p)) return false;
+        const existing = normalizeForCompare(p.name);
+        if (existing.length < 6) return false;
+        if (Math.abs(existing.length - normalizedName.length) > 2) return false;
+        return levenshtein(existing, normalizedName) <= 2;
+      });
+      if (fuzzyMatch) { setDuplicateMatch({ product: fuzzyMatch, reason: 'fuzzy' }); return; }
+    }
+
+    // 6. Match por 2+ palavras significativas (lógica legacy)
+    const words = normalizedName.split(/\s+/).filter(w => w.length >= 3);
+    if (words.length >= 2) {
+      const partialMatch = allProducts.find(p => {
+        if (isSelf(p)) return false;
+        const existingWords = normalizeForCompare(p.name).split(/\s+/);
+        const matches = words.filter(w => existingWords.includes(w));
+        return matches.length >= 2;
+      });
+      if (partialMatch) { setDuplicateMatch({ product: partialMatch, reason: 'two_words' }); return; }
+    }
+
+    setDuplicateMatch(null);
+  }, [allProducts, product]);
+
+  // Debounce on-change pra checar duplicado enquanto digita (300ms após
+  // parar). Antes só checava no blur — user que clicava direto em "Salvar"
+  // depois de digitar não recebia o aviso.
+  useEffect(() => {
+    if (duplicateConfirmed) return;
+    const t = setTimeout(() => {
+      checkDuplicateName(form.name, form.group_id, form.color, form.sku);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [form.name, form.group_id, form.color, form.sku, duplicateConfirmed, checkDuplicateName]);
 
   const handleNameBlur = () => {
     tryAutoFill(form.name);
-    checkDuplicateName(form.name, form.group_id, form.color);
+    checkDuplicateName(form.name, form.group_id, form.color, form.sku);
   };
 
   return (
@@ -1014,45 +1111,58 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                   Ao digitar, dados técnicos serão preenchidos de materiais similares
                 </p>
               )}
-              {duplicateMatch && !duplicateConfirmed && (
-                <div className="mt-2 p-3 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 space-y-2">
-                  <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                    ⚠️ Já existe um item com este nome no mesmo grupo
-                  </p>
-                  <p className="text-xs text-amber-700 dark:text-amber-400">
-                    "{duplicateMatch.name}" {duplicateMatch.color ? `(Cor: ${duplicateMatch.color})` : ''} — SKU: {duplicateMatch.sku || 'N/A'}
-                    {duplicateMatch.group_id ? ` — Grupo: ${groups.find(g => g.id === duplicateMatch.group_id)?.name || ''}` : ''}
-                  </p>
-                  <p className="text-xs text-amber-700 dark:text-amber-400">É o mesmo item?</p>
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="text-xs border-amber-400 text-amber-800 hover:bg-amber-100"
-                      onClick={() => {
-                        onOpenChange(false);
-                        toast.info('Este item já está cadastrado. Localize-o na lista de materiais.', { duration: 5000 });
-                      }}
-                    >
-                      Sim, é o mesmo
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="text-xs"
-                      onClick={() => {
-                        setDuplicateConfirmed(true);
-                        setDuplicateMatch(null);
-                        toast.success('OK, continuando com o cadastro');
-                      }}
-                    >
-                      Não, é diferente
-                    </Button>
+              {duplicateMatch && !duplicateConfirmed && (() => {
+                const reasonText: Record<typeof duplicateMatch.reason, string> = {
+                  exact: 'Já existe um item com EXATAMENTE este nome no mesmo grupo',
+                  sku: 'Já existe um item com o MESMO SKU',
+                  normalized: 'Já existe um item igual (variação de acento/maiúscula/espaço)',
+                  cross_group: 'Já existe um item com este nome em OUTRO grupo',
+                  fuzzy: 'Já existe um item com nome muito parecido (possível erro de digitação)',
+                  two_words: 'Já existe um item com palavras em comum no nome',
+                };
+                const isSoftWarning = duplicateMatch.reason === 'cross_group' || duplicateMatch.reason === 'fuzzy' || duplicateMatch.reason === 'two_words';
+                return (
+                  <div className="mt-2 p-3 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 space-y-2">
+                    <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                      ⚠️ {reasonText[duplicateMatch.reason]}
+                    </p>
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      "{duplicateMatch.product.name}" {duplicateMatch.product.color ? `(Cor: ${duplicateMatch.product.color})` : ''} — SKU: {duplicateMatch.product.sku || 'N/A'}
+                      {duplicateMatch.product.group_id ? ` — Grupo: ${groups.find(g => g.id === duplicateMatch.product.group_id)?.name || ''}` : ''}
+                    </p>
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      {isSoftWarning ? 'Verifique se não é o mesmo material antes de continuar.' : 'É o mesmo item?'}
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="text-xs border-amber-400 text-amber-800 hover:bg-amber-100"
+                        onClick={() => {
+                          onOpenChange(false);
+                          toast.info('Este item já está cadastrado. Localize-o na lista de materiais.', { duration: 5000 });
+                        }}
+                      >
+                        Sim, é o mesmo
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="text-xs"
+                        onClick={() => {
+                          setDuplicateConfirmed(true);
+                          setDuplicateMatch(null);
+                          toast.success('OK, continuando com o cadastro');
+                        }}
+                      >
+                        Não, é diferente
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
              <div className="col-span-2">
                <Label htmlFor="technical_name">Nome Técnico</Label>
