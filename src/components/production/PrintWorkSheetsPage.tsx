@@ -346,12 +346,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
   });
 
   const { data: soleMappings = [] } = useQuery({
-    queryKey: ['sole_ref_mappings_v2', referenceIds],
+    queryKey: ['sole_ref_mappings_v3', referenceIds],
     enabled: referenceIds.length > 0,
     queryFn: async () => {
+      // is_fachetado vive no products do solado — necessário pra disparar
+      // alerta "Modelo com fachete" SOMENTE quando o solado é fachetado.
       const { data, error } = await (supabase as any)
         .from('technical_sheet_sole_colors')
-        .select('sheet_id, product_color, sole_product_id, products:sole_product_id(name, color, group_id)')
+        .select('sheet_id, product_color, sole_product_id, products:sole_product_id(name, color, group_id, is_fachetado)')
         .in('sheet_id', referenceIds);
       if (error) throw error;
       return data;
@@ -504,6 +506,19 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
     }
     return m;
   }, [sheetLiningFlags]);
+
+  // Solado fachetado: chave sheetId::cor (cabedal). True só quando o products
+  // do solado vinculado a esse cabedal+cor tem is_fachetado=true. Sem isso,
+  // o alerta "Modelo com fachete" seguia o flag de forração da palmilha
+  // (insole_has_lining), disparando falso-positivo em quase toda OP.
+  const soleFachetadoLookup = useMemo(() => {
+    const m = new Map<string, boolean>();
+    for (const mapping of soleMappings as any[]) {
+      const key = `${mapping.sheet_id}::${(mapping.product_color || '').toLowerCase()}`;
+      m.set(key, !!mapping?.products?.is_fachetado);
+    }
+    return m;
+  }, [soleMappings]);
 
   const readyMadeLookup = useMemo(() => {
     const m = new Map<string, boolean>();
@@ -780,10 +795,13 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
         const silk = getOrderSilk(order);
         const variants = variantsByRef.get(sheetId) || [];
         const exactVariant = variants.find(v => (v.color || '').toLowerCase() === cabedelColorLower);
-        const liningFlag = liningFlagLookup.get(sheetId);
         const alerts: SectorAlert[] = [];
-        if (liningFlag) {
-          alerts.push({ text: 'Modelo com fachete — duplicar corte de forro', variant: 'warning' });
+        // Fachete: só dispara alerta se o SOLADO vinculado ao cabedal+cor
+        // tem is_fachetado=true (definido no cadastro de Solados).
+        // Antes checava liningFlag (forração da palmilha) — falso-positivo.
+        const isSoleFachetado = soleFachetadoLookup.get(`${sheetId}::${cabedelColorLower}`) === true;
+        if (isSoleFachetado) {
+          alerts.push({ text: 'Solado fachetado — duplicar corte de forro do salto', variant: 'warning' });
         }
         // Sequência de tiras na ordem da ficha técnica (TIRA 1, TIRA 2, ...).
         // Renderizada no Aviamento pra o operador montar na ordem certa.
@@ -855,7 +873,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
       })
       .sort((a, b) => a.soleName.localeCompare(b.soleName, 'pt-BR'));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orders, selectedSector, printAll, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, liningColorLookup, soleMaterialByRef]);
+  }, [orders, selectedSector, printAll, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, liningColorLookup, soleMaterialByRef, soleFachetadoLookup, clientsInfo, economicGroupsInfo, soleGroupPackaging]);
 
   // ── Solagem: consolidated by sole color ──────────────────────────────────────
   const solagemData = useMemo<{ bands: SoleColorBand[]; allSizes: string[]; grandTotal: number } | null>(() => {
