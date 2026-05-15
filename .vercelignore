@@ -16,8 +16,13 @@ INSTRUCOES.md
 .env.backup_pre_supabase_switch
 .gitlab-ci.yml
 
-# Migrations + edge functions ficam no Supabase, não no Vercel
-supabase/
+# Migrations + edge functions ficam no Supabase, não no Vercel.
+# CRÍTICO: SEMPRE com `/` na frente. Sem isso, o pattern `supabase/`
+# pega QUALQUER pasta chamada supabase — incluindo src/integrations/supabase/
+# (que tem o client + types). Resultado: Vercel deleta client.ts → Auth.tsx
+# falha com "Could not load supabase/client" → 18 deploys consecutivos com
+# state=ERROR (15/05/2026). Mesma classe de bug do /App.tsx documentado abaixo.
+/supabase/
 
 # Diretórios auxiliares que não entram no build do app
 sql-scripts/
