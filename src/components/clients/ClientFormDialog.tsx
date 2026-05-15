@@ -67,11 +67,23 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
   // Wrapper de submit: bloqueia salvamento sem Inscrição Estadual.
   // Antes a IE só era validada na hora de emitir NF-e (emit-nfe), o que fazia
   // cliente "casca" entrar no banco e o erro só aparecer na tentativa de NF.
+  // Auditoria A7: além da checagem de vazio, valida formato — "ISENTO" ou
+  // série de dígitos (mín 6, máx 18). Evita "X12" / "abc" / "tem" que
+  // antes só falhavam na SEFAZ (Rejeição 232 com mensagem confusa).
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const ie = (form.inscricao_estadual || '').trim();
+    const ie = (form.inscricao_estadual || '').trim().toUpperCase();
     if (!ie) {
       toast.error('Inscrição Estadual é obrigatória. Preencha o número OU escreva "ISENTO".');
+      return;
+    }
+    const isIsento = ie === 'ISENTO' || ie === 'ISENTA' || ie === 'NAO CONTRIBUINTE';
+    const digits = ie.replace(/\D/g, '');
+    if (!isIsento && (digits.length < 6 || digits.length > 18)) {
+      toast.error(
+        'IE inválida. Deve ter entre 6 e 18 dígitos (ex: "123456789") ou ser "ISENTO". ' +
+        'Hífens/pontos/letras são permitidos (ex: "12.345.678-9").',
+      );
       return;
     }
     onSubmit(e);

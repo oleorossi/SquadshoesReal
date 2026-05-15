@@ -444,13 +444,32 @@ export function useDownloadNfeFile() {
       }
       const url = buildMeudanfeUrl(chave);
       const win = window.open(url, '_blank', 'noopener,noreferrer');
+      // Auditoria A12: fallback clipboard quando popup é bloqueado. Antes só
+      // mostrava erro genérico — operador não sabia que podia colar link.
       if (!win) {
-        throw new Error('Pop-up bloqueado pelo navegador. Permita pop-ups pra abrir o visualizador da NF.');
+        try {
+          await navigator.clipboard.writeText(url);
+          return { format, popupBlocked: true, url };
+        } catch {
+          throw new Error(`Pop-up bloqueado pelo navegador. Copie e cole no navegador: ${url}`);
+        }
       }
-      return { format };
+      return { format, popupBlocked: false, url };
     },
     onError: (err: Error) => toast.error(err.message),
-    onSuccess: ({ format }) => toast.success(`Visualizador aberto — clique em "Baixar ${format === 'danfe' ? 'PDF' : 'XML'}" na nova aba.`),
+    onSuccess: ({ format, popupBlocked, url }) => {
+      if (popupBlocked) {
+        toast.success('Pop-up bloqueado — link copiado pra área de transferência. Cole no navegador (Ctrl+V).', {
+          duration: 8000,
+          action: {
+            label: 'Abrir agora',
+            onClick: () => { window.location.href = url; },
+          },
+        });
+      } else {
+        toast.success(`Visualizador aberto — clique em "Baixar ${format === 'danfe' ? 'PDF' : 'XML'}" na nova aba.`);
+      }
+    },
   });
 }
 
@@ -528,6 +547,11 @@ export function getNfeCancelHoursLeft(dataEmissao: string | null | undefined): n
  * Emite NF-e de devolução (entrada modelo 55, finalidade 4) referenciando a
  * NF de saída original. Usado quando a janela de 24h pra cancelar passou.
  * Após autorizada, mercadoria volta ao estoque + AR ajustado proporcionalmente.
+ *
+ * Auditoria A2: gera idempotency_key UUID por tentativa. Se o request falha
+ * (timeout, rede) e o operador retenta, o edge function reconhece a chave
+ * idêntica e retorna o resultado original — bloqueia devolução duplicada
+ * (cada retry criava nfe_devolucoes + 2× redução de AR).
  */
 export function useEmitNfeDevolucao() {
   const qc = useQueryClient();
@@ -543,11 +567,15 @@ export function useEmitNfeDevolucao() {
       if (!payload.itens || payload.itens.length === 0) {
         throw new Error('Informe ao menos 1 item a devolver.');
       }
+      // crypto.randomUUID() padrão moderno — suporte universal navegadores recentes
+      const idempotency_key = (globalThis.crypto as any)?.randomUUID?.()
+        || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
       const { data, error } = await supabase.functions.invoke('emit-nfe-devolucao', {
         body: {
           nfe_original_id: payload.nfeOriginalId,
           itens: payload.itens,
           motivo: payload.motivo.trim(),
+          idempotency_key,
         },
       });
       if (error) throw error;

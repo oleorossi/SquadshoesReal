@@ -89,7 +89,14 @@ function EmitDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   // pra mostrar mensagem clara em vez de erro 400 do edge function.
   const isInformalOrder = foundOrder?.nfe_required === false;
 
+  // Auditoria A6: lock síncrono local pra bloquear double-click antes que
+  // emit.isPending propague pelo react. Sem isso, 2 cliques rápidos
+  // disparavam 2 mutateAsync paralelas — backend ainda bloqueia (409 no
+  // segundo), mas a request já saiu, é desperdício e pode confundir logs.
+  const [submitting, setSubmitting] = useState(false);
+
   const handleEmit = async () => {
+    if (submitting) return; // duplo clique
     if (!foundOrder) return;
     if (isInformalOrder) {
       toast.error('Este PV é informal (sem NF-e). Edite o pedido e desmarque "Pedido informal" antes de emitir.');
@@ -99,10 +106,15 @@ function EmitDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
       toast.error('Sem permissão pra emitir NF-e. Necessário admin, gerente ou operador NF-e.');
       return;
     }
-    await emit.mutateAsync({ saleOrderId: foundOrder.id, companyId: companyId || undefined });
-    onClose();
-    setFoundOrder(null);
-    setOrderNumber('');
+    setSubmitting(true);
+    try {
+      await emit.mutateAsync({ saleOrderId: foundOrder.id, companyId: companyId || undefined });
+      onClose();
+      setFoundOrder(null);
+      setOrderNumber('');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -170,8 +182,8 @@ function EmitDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button onClick={handleEmit} disabled={!foundOrder || emit.isPending || isInformalOrder || !canEmitNfe}>
-            {emit.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileText className="h-4 w-4 mr-2" />}
+          <Button onClick={handleEmit} disabled={!foundOrder || emit.isPending || submitting || isInformalOrder || !canEmitNfe}>
+            {emit.isPending || submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileText className="h-4 w-4 mr-2" />}
             Emitir NF-e
           </Button>
         </DialogFooter>
