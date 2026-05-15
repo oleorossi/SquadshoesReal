@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { FloppyDisk as Save, PencilSimple as Pencil, Gear as Settings2, Stack as Layers, Palette, Link as Link2, Plus, Info } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { SoleSizeConjugationsEditor } from '@/components/inventory/SoleSizeConjugationsEditor';
