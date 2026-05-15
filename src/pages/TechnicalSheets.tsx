@@ -3014,7 +3014,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             {form.has_straps && (
               <div className="space-y-3">
                 <p className="text-xs text-muted-foreground">
-                  Defina quantas tiras este modelo possui e o consumo por numeração (em cm). As cores de cada tira serão configuradas no lançamento do Pedido de Venda.
+                  Defina quantas tiras este modelo possui, o <strong>material</strong> de cada uma
+                  (grupo de produto, ex: "Tiras Couro 25mm") e o consumo por numeração (em cm).
+                  As <strong>cores</strong> de cada tira são escolhidas no lançamento do Pedido
+                  de Venda — o material fica fixo aqui.
                 </p>
 
                 {/* Handling time — only for strap models */}
@@ -3027,18 +3030,12 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                     : parseSafeNumber(strap.consumption);
                   return (
                     <div key={strap.id || idx} className="p-3 rounded-lg border bg-background space-y-3">
-                      <div className="flex items-center gap-4">
+                      {/* Header: numeração + ações.
+                          O MATERIAL fica em linha própria abaixo (com label
+                          explícito) — antes ficava num combobox sem label
+                          espremido entre badge e média, parecia opcional. */}
+                      <div className="flex items-center gap-3">
                         <Badge variant="outline" className="font-semibold text-xs whitespace-nowrap">{strap.label || `TIRA ${idx + 1}`}</Badge>
-                        <StrapGroupCombobox
-                          value={strap.group_id || ''}
-                          groups={groups || []}
-                          onChange={(val) => {
-                            const updated = [...(form.strap_colors || [])];
-                            const selectedGroup = groups?.find((g: any) => g.id === val);
-                            updated[idx] = { ...updated[idx], group_id: val, group_name: selectedGroup?.name || '' };
-                            updateField('strap_colors', updated);
-                          }}
-                        />
                         <span className="text-xs text-muted-foreground ml-auto">
                           Média: <strong>{safeToFixed(avgConsumption, 1)} cm</strong>/par
                         </span>
@@ -3055,6 +3052,33 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
+                        )}
+                      </div>
+                      {/* Material (grupo de produto) — campo obrigatório.
+                          Quando vazio exibe aviso vermelho pra deixar claro
+                          que precisa preencher. */}
+                      <div className="flex items-center gap-3">
+                        <Label className="text-xs font-semibold whitespace-nowrap min-w-[68px]">
+                          Material <span className="text-destructive">*</span>
+                        </Label>
+                        <StrapGroupCombobox
+                          value={strap.group_id || ''}
+                          groups={groups || []}
+                          onChange={(val) => {
+                            const updated = [...(form.strap_colors || [])];
+                            const selectedGroup = groups?.find((g: any) => g.id === val);
+                            updated[idx] = { ...updated[idx], group_id: val, group_name: selectedGroup?.name || '' };
+                            updateField('strap_colors', updated);
+                          }}
+                        />
+                        {strap.group_name ? (
+                          <span className="text-xs text-muted-foreground">
+                            <strong className="text-foreground">{strap.group_name}</strong>
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-destructive font-medium">
+                            ⚠ selecione o grupo do material desta tira
+                          </span>
                         )}
                       </div>
                       <div className="space-y-1.5">
