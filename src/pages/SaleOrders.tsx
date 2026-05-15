@@ -32,6 +32,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useAccessControl } from '@/hooks/useAccessControl';
 import { useEmitNfe, useNfeEmitidas, useCheckNfeStatus, useCancelNfe, useCompanies } from '@/hooks/useNfe';
 import { NfeDevolucaoDialog } from '@/components/nfe/NfeDevolucaoDialog';
+import { NfeViewerDialog } from '@/components/nfe/NfeViewerDialog';
+import type { NfeEmitida } from '@/hooks/useNfe';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRepresentatives } from '@/hooks/useRepresentatives';
 import { printHtml, buildSaleOrderPrintHtml } from '@/lib/printOrder';
@@ -147,6 +149,7 @@ export default function SaleOrders() {
   const [cancelNfeTarget, setCancelNfeTarget] = useState<{ id: string; numero: string | null } | null>(null);
   const [cancelJustificativa, setCancelJustificativa] = useState('');
   const [devolucaoTarget, setDevolucaoTarget] = useState<{ id: string; numero: string | null } | null>(null);
+  const [viewNfeTarget, setViewNfeTarget] = useState<NfeEmitida | null>(null);
   const resyncOPs = useResyncOPsFromSheets();
   const resyncPVOPs = useResyncOPsFromPV();
   // bulkSyncFinancial removido em 2026-05 — sync acontece automaticamente no faturamento
@@ -2136,7 +2139,15 @@ export default function SaleOrders() {
                   ) : (
                     <div className="divide-y divide-border/50">
                       {selectedOrderNfes.map((nfe: any) => (
-                        <div key={nfe.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                        <div
+                          key={nfe.id}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setViewNfeTarget(nfe as NfeEmitida)}
+                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setViewNfeTarget(nfe as NfeEmitida); } }}
+                          className="flex items-center gap-3 px-4 py-2.5 text-sm cursor-pointer hover:bg-muted/40 transition-colors"
+                          title="Clique para visualizar DANFE e XML"
+                        >
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               {nfe.status === 'autorizada' && <CheckCircle className="h-3.5 w-3.5 text-green-500" />}
@@ -2150,7 +2161,7 @@ export default function SaleOrders() {
                             {nfe.motivo_rejeicao && <p className="text-xs text-red-500 mt-0.5 truncate" title={nfe.motivo_rejeicao}>{nfe.motivo_rejeicao}</p>}
                             <p className="text-xs text-muted-foreground">{new Date(nfe.created_at).toLocaleString('pt-BR')}</p>
                           </div>
-                          <div className="flex items-center gap-1 shrink-0">
+                          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                             {nfe.status === 'processando' && (
                               <Button variant="ghost" size="icon" className="h-7 w-7" title="Verificar status" onClick={() => checkNfeStatus.mutate(nfe.id)}>
                                 {checkNfeStatus.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
@@ -2238,6 +2249,15 @@ export default function SaleOrders() {
           clientName={selectedOrder.client_name}
         />
       )}
+
+      {/* NF-e viewer (DANFE + XML) — abre quando o usuário clica numa NF da lista */}
+      <NfeViewerDialog
+        nfe={viewNfeTarget}
+        open={!!viewNfeTarget}
+        onOpenChange={(v) => { if (!v) setViewNfeTarget(null); }}
+        clientLabel={selectedOrder?.client_name || viewNfeTarget?.nome_destinatario || undefined}
+        orderNumber={selectedOrder?.order_number || undefined}
+      />
 
       {/* DUPLICATE DIALOG */}
       <Dialog open={dupDialog} onOpenChange={setDupDialog}>

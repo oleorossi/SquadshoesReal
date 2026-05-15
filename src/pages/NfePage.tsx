@@ -20,6 +20,7 @@ import NfeDiagnosticPanel from '@/components/nfe/NfeDiagnosticPanel';
 import NfeCCePanel from '@/components/nfe/NfeCCePanel';
 import StandaloneNfePanel from '@/components/nfe/StandaloneNfePanel';
 import { NfeBillingHealthCard } from '@/components/nfe/NfeBillingHealthCard';
+import { NfeViewerDialog } from '@/components/nfe/NfeViewerDialog';
 import { AppErrorBoundary } from '@/components/ErrorBoundary';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -230,7 +231,7 @@ function CancelDialog({ nfe, open, onClose }: { nfe: NfeEmitida | null; open: bo
 
 // ─── NF-e row ─────────────────────────────────────────────────────────────────
 
-function NfeRow({ nfe, onCancel, canCancel }: { nfe: any; onCancel: (n: NfeEmitida) => void; canCancel: boolean }) {
+function NfeRow({ nfe, onCancel, onView, canCancel }: { nfe: any; onCancel: (n: NfeEmitida) => void; onView: (n: NfeEmitida) => void; canCancel: boolean }) {
   const checkStatus = useCheckNfeStatus();
   const order = (nfe as any).sale_orders;
 
@@ -240,8 +241,20 @@ function NfeRow({ nfe, onCancel, canCancel }: { nfe: any; onCancel: (n: NfeEmiti
   const orderLabel = order?.order_number || (nfe.numero ? `NF ${nfe.numero}` : 'NF sem vínculo');
   const clientLabel = order?.client_name || nfe.nome_destinatario || (nfe.cnpj_destinatario ? `CNPJ ${nfe.cnpj_destinatario}` : 'Destinatário não identificado');
 
+  // Click na linha abre o visualizador (DANFE + XML). Cliques nos botões de
+  // ação param a propagação pra não disparar o viewer indesejadamente.
+  const handleRowClick = () => onView(nfe);
+  const stop = (e: React.MouseEvent) => e.stopPropagation();
+
   return (
-    <div className="flex items-center gap-3 py-3 border-b border-border/50 last:border-0">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={handleRowClick}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleRowClick(); } }}
+      className="flex items-center gap-3 py-3 border-b border-border/50 last:border-0 cursor-pointer hover:bg-muted/40 transition-colors px-2 -mx-2 rounded"
+      title="Clique para visualizar DANFE e XML"
+    >
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-mono text-sm font-medium">{orderLabel}</span>
@@ -266,7 +279,7 @@ function NfeRow({ nfe, onCancel, canCancel }: { nfe: any; onCancel: (n: NfeEmiti
       <div className="text-sm font-medium shrink-0">
         R$ {Number(nfe.valor_total).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
       </div>
-      <div className="flex items-center gap-1 shrink-0">
+      <div className="flex items-center gap-1 shrink-0" onClick={stop}>
         {nfe.status === 'processando' && (
           <Button variant="ghost" size="icon" title="Verificar status" onClick={() => checkStatus.mutate(nfe.id)} disabled={checkStatus.isPending}>
             {checkStatus.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
@@ -300,6 +313,7 @@ export default function NfePage() {
   const [searchText, setSearchText] = useState('');
   const [emitOpen, setEmitOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<NfeEmitida | null>(null);
+  const [viewTarget, setViewTarget] = useState<NfeEmitida | null>(null);
   // Default: oculta rejeições antigas de PVs que depois conseguiram emitir.
   // Operador costuma tentar 5–10× até acertar IE/cidade do destinatário e a
   // lista enche de "Rejeitada" duplicada do mesmo PV. Toggle pra ver tudo.
@@ -499,7 +513,7 @@ export default function NfePage() {
             ) : (
               <div className="divide-y divide-border/50">
                 {filtered.map((n: any) => (
-                  <NfeRow key={n.id} nfe={n} onCancel={setCancelTarget} canCancel={canEmitNfe} />
+                  <NfeRow key={n.id} nfe={n} onCancel={setCancelTarget} onView={setViewTarget} canCancel={canEmitNfe} />
                 ))}
               </div>
             )}
@@ -531,6 +545,14 @@ export default function NfePage() {
 
       <EmitDialog open={emitOpen} onClose={() => setEmitOpen(false)} />
       <CancelDialog nfe={cancelTarget} open={!!cancelTarget} onClose={() => setCancelTarget(null)} />
+
+      <NfeViewerDialog
+        nfe={viewTarget}
+        open={!!viewTarget}
+        onOpenChange={(v) => { if (!v) setViewTarget(null); }}
+        clientLabel={(viewTarget as any)?.sale_orders?.client_name || viewTarget?.nome_destinatario || undefined}
+        orderNumber={(viewTarget as any)?.sale_orders?.order_number || undefined}
+      />
     </div>
   );
 }
