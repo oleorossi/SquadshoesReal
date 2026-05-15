@@ -253,6 +253,7 @@ function HolidaysTab() {
   const deleteHoliday = useDeleteHoliday();
   const [form, setForm] = useState({ name: '', holiday_date: '', recurring: false });
   const [adding, setAdding] = useState(false);
+  const [importYear, setImportYear] = useState<number>(new Date().getFullYear());
 
   const handleAdd = () => {
     if (!form.name || !form.holiday_date) { toast.error('Preencha nome e data'); return; }
@@ -261,51 +262,108 @@ function HolidaysTab() {
     setAdding(false);
   };
 
-  const defaultHolidays = [
-    // Nacionais
-    { name: 'Confraternização Universal', date: '01-01', cat: 'Nacional' },
-    { name: 'Carnaval', date: '03-04', cat: 'Nacional' },
-    { name: 'Sexta-feira Santa', date: '04-18', cat: 'Nacional' },
-    { name: 'Tiradentes', date: '04-21', cat: 'Nacional' },
-    { name: 'Dia do Trabalho', date: '05-01', cat: 'Nacional' },
-    { name: 'Corpus Christi', date: '06-19', cat: 'Nacional' },
-    { name: 'Independência do Brasil', date: '09-07', cat: 'Nacional' },
-    { name: 'Nossa Sra. Aparecida', date: '10-12', cat: 'Nacional' },
-    { name: 'Finados', date: '11-02', cat: 'Nacional' },
-    { name: 'Proclamação da República', date: '11-15', cat: 'Nacional' },
-    { name: 'Natal', date: '12-25', cat: 'Nacional' },
-    // Estaduais RJ
-    { name: 'Dia de São Jorge (RJ)', date: '04-23', cat: 'Estadual RJ' },
-    { name: 'Dia da Consciência Negra (RJ)', date: '11-20', cat: 'Estadual RJ' },
-    // Municipais Belford Roxo
-    { name: 'Aniversário de Belford Roxo', date: '04-01', cat: 'Belford Roxo' },
-    { name: 'Dia de São Cristóvão (Belford Roxo)', date: '07-25', cat: 'Belford Roxo' },
+  // Feriados nacionais fixos (CLT/Lei 10.607/2002) + móveis baseados em Páscoa.
+  // Para móveis (Carnaval, Sexta-feira Santa, Corpus Christi), datas exatas
+  // por ano: tabela aproximada — usuário pode ajustar manualmente se preciso.
+  const nationalHolidaysFixed = [
+    { name: 'Confraternização Universal', mmdd: '01-01' },
+    { name: 'Tiradentes',                  mmdd: '04-21' },
+    { name: 'Dia do Trabalho',             mmdd: '05-01' },
+    { name: 'Independência do Brasil',     mmdd: '09-07' },
+    { name: 'Nossa Sra. Aparecida',        mmdd: '10-12' },
+    { name: 'Finados',                     mmdd: '11-02' },
+    { name: 'Proclamação da República',    mmdd: '11-15' },
+    { name: 'Natal',                       mmdd: '12-25' },
   ];
 
-  const addDefaultHolidays = () => {
-    const year = new Date().getFullYear();
-    defaultHolidays.forEach(h => {
-      addHoliday.mutate({ name: `${h.name}`, holiday_date: `${year}-${h.date}`, recurring: true });
-    });
+  // Cálculo da Páscoa pelo algoritmo de Meeus/Jones/Butcher (gregoriano)
+  const easterDate = (year: number): Date => {
+    const a = year % 19;
+    const b = Math.floor(year / 100);
+    const c = year % 100;
+    const d = Math.floor(b / 4);
+    const e = b % 4;
+    const f = Math.floor((b + 8) / 25);
+    const g = Math.floor((b - f + 1) / 3);
+    const h = (19 * a + b - d - g + 15) % 30;
+    const i = Math.floor(c / 4);
+    const k = c % 4;
+    const l = (32 + 2 * e + 2 * i - h - k) % 7;
+    const m = Math.floor((a + 11 * h + 22 * l) / 451);
+    const month = Math.floor((h + l - 7 * m + 114) / 31);
+    const day = ((h + l - 7 * m + 114) % 31) + 1;
+    return new Date(year, month - 1, day);
+  };
+
+  const toISO = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
+  };
+
+  const addNationalForYear = async () => {
+    const easter = easterDate(importYear);
+    const carnavalT = new Date(easter); carnavalT.setDate(carnavalT.getDate() - 47);
+    const goodFriday = new Date(easter); goodFriday.setDate(goodFriday.getDate() - 2);
+    const corpusChristi = new Date(easter); corpusChristi.setDate(corpusChristi.getDate() + 60);
+
+    const existing = new Set(holidays.map(h => `${h.name.toLowerCase()}|${h.holiday_date}`));
+    const toAdd = [
+      ...nationalHolidaysFixed.map(h => ({
+        name: h.name,
+        holiday_date: `${importYear}-${h.mmdd}`,
+      })),
+      { name: 'Carnaval (terça)',     holiday_date: toISO(carnavalT) },
+      { name: 'Sexta-feira Santa',    holiday_date: toISO(goodFriday) },
+      { name: 'Corpus Christi',       holiday_date: toISO(corpusChristi) },
+    ];
+
+    const novos = toAdd.filter(h => !existing.has(`${h.name.toLowerCase()}|${h.holiday_date}`));
+    if (novos.length === 0) {
+      toast.info(`Feriados de ${importYear} já estão cadastrados.`);
+      return;
+    }
+
+    for (const h of novos) {
+      await new Promise<void>((resolve) => {
+        addHoliday.mutate({ ...h, recurring: false }, {
+          onSettled: () => resolve(),
+        });
+      });
+    }
+    toast.success(`${novos.length} feriado${novos.length !== 1 ? 's' : ''} nacional${novos.length !== 1 ? 'is' : ''} de ${importYear} adicionado${novos.length !== 1 ? 's' : ''}.`);
   };
 
   if (isLoading) return <Loader2 className="h-6 w-6 animate-spin mx-auto my-8" />;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h3 className="text-lg font-semibold">Feriados</h3>
-          <p className="text-xs text-muted-foreground">Cadastre os feriados para cálculo correto de horas extras</p>
+          <p className="text-xs text-muted-foreground">
+            Cadastre feriados para cálculo correto de horas extras. Use o importador
+            de feriados nacionais e adicione manualmente os estaduais/municipais.
+          </p>
         </div>
-        <div className="flex gap-2">
-          {holidays.length === 0 && (
-            <Button variant="outline" size="sm" onClick={addDefaultHolidays} className="gap-1.5 text-xs">
-              <Calendar className="h-3.5 w-3.5" /> Adicionar Feriados (Nacionais + RJ + Belford Roxo)
-            </Button>
-          )}
-          <Button size="sm" onClick={() => setAdding(!adding)} className="gap-1.5">
-            <Plus className="h-4 w-4" /> Novo
+        <div className="flex flex-wrap gap-2 items-end">
+          <div>
+            <Label className="text-xs">Ano</Label>
+            <Input
+              type="number"
+              min="2020"
+              max="2099"
+              value={importYear}
+              onChange={e => setImportYear(Math.max(2020, Math.min(2099, Number(e.target.value || importYear))))}
+              className="h-9 w-24 text-sm"
+            />
+          </div>
+          <Button variant="outline" size="sm" onClick={addNationalForYear} className="gap-1.5 text-xs h-9">
+            <Calendar className="h-3.5 w-3.5" /> Importar nacionais
+          </Button>
+          <Button size="sm" onClick={() => setAdding(!adding)} className="gap-1.5 h-9">
+            <Plus className="h-4 w-4" /> Adicionar manual
           </Button>
         </div>
       </div>
