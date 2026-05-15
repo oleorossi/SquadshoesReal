@@ -554,6 +554,26 @@ Deno.serve(async (req) => {
     // natureza no painel GestaoClick (a API não tem endpoint de tributação).
     const naturezaEsperada = "Venda de Produção do Estabelecimento";
 
+    // ---------- Bloco `transporte` (peso bruto / líquido / volumes) ----------
+    // GestaoClick ignora `peso_bruto` / `peso_liquido` / `quantidade_volumes`
+    // se mandados no top-level — a doc deles exige dentro de
+    // `transporte.volumes[]`. Mandávamos no topo até NF #244 e o XML saía com
+    // <pesoB>/<pesoL> vazios. modalidade_frete: "9" = sem frete (mercadoria
+    // coletada pelo destinatário). especie: "CX" = caixa.
+    const transporteBlock = (() => {
+      if (!pesoBrutoStr && !pesoLiquidoStr) return undefined;
+      const vol: Record<string, string> = {
+        quantidade: qtdVolumesStr || "1",
+        especie: "CX",
+      };
+      if (pesoLiquidoStr) vol.peso_liquido = pesoLiquidoStr;
+      if (pesoBrutoStr) vol.peso_bruto = pesoBrutoStr;
+      return {
+        modalidade_frete: "9",
+        volumes: [vol],
+      };
+    })();
+
     const nfePayload = {
       tipo_nf: "1",
       natureza_operacao: naturezaEsperada,
@@ -566,9 +586,7 @@ Deno.serve(async (req) => {
       informacoes_complementares: informacoesComplementares,
       produtos: produtosGC,
       ...(pagamentoArr.length ? { pagamento: pagamentoArr } : {}),
-      ...(pesoBrutoStr ? { peso_bruto: pesoBrutoStr } : {}),
-      ...(pesoLiquidoStr ? { peso_liquido: pesoLiquidoStr } : {}),
-      ...(qtdVolumesStr ? { quantidade_volumes: qtdVolumesStr } : {}),
+      ...(transporteBlock ? { transporte: transporteBlock } : {}),
     };
 
     const createResp = await gcFetch("/notas_fiscais_produtos", {
