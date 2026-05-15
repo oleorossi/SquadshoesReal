@@ -583,6 +583,17 @@ export type SaleOrderFormData = {
    *  cálculo de combustível e desgaste do veículo da frota própria. Default
    *  false — pedido segue fluxo normal de transportadora. */
   own_delivery?: boolean;
+  // ── Transporte (alimenta o grupo X / transp da NF-e) ──────────────────────
+  /** modFrete: 0=Emitente(CIF), 1=Destinatário(FOB), 2=Terceiros,
+   *  3=Próprio remetente, 4=Próprio destinatário, 9=Sem transporte. Default 9. */
+  modalidade_frete?: number;
+  /** Transportador (FK pra transporters). Obrigatório quando modalidade_frete
+   *  in (0,1,2). Pra 3/4 fica null — emitente/destinatário são o transportador. */
+  transporter_id?: string | null;
+  /** Placa do veículo (NF-e tag veicTransp/placa). */
+  vehicle_plate?: string | null;
+  /** UF do veículo (NF-e tag veicTransp/UF). */
+  vehicle_uf?: string | null;
 };
 
 export type SaleOrderItemFormData = {

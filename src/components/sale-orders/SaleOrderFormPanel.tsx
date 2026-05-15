@@ -363,6 +363,20 @@ export default function SaleOrderFormPanel({
    const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
    const [duplicateList, setDuplicateList] = useState<string[]>([]);
    const [confirmedDuplicate, setConfirmedDuplicate] = useState(false);
+   // Transportadoras ativas pro picker da seção "Transporte da NF-e".
+   const { data: transporters = [] } = useQuery({
+     queryKey: ['transporters_picker'],
+     queryFn: async () => {
+       const { data, error } = await (supabase as any)
+         .from('transporters')
+         .select('id, name')
+         .eq('active', true)
+         .order('name');
+       if (error) throw error;
+       return (data || []) as Array<{ id: string; name: string }>;
+     },
+     staleTime: 5 * 60_000,
+   });
    // Marca true quando o user tentou submeter pela primeira vez. A partir
    // daí, campos obrigatórios vazios mostram border-destructive até serem
    // preenchidos. Antes disso, render limpo (sem ruído visual de erro).
@@ -931,6 +945,84 @@ export default function SaleOrderFormPanel({
                     </p>
                   </div>
                 </div>
+              </div>
+
+              {/* ── Transporte (NF-e grupo X / transp) ─────────────────────── */}
+              <div className="mt-4 p-3 rounded-lg bg-muted/20 border border-border/50 space-y-3">
+                <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Transporte da NF-e</Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">Modalidade do frete</Label>
+                    <Select
+                      value={String(form.modalidade_frete ?? 9)}
+                      onValueChange={v => {
+                        const m = Number(v);
+                        // modalidade 3/4 = transporte próprio: limpa transporter_id
+                        // (o emitente/destinatário é o transportador, não terceiro)
+                        // modalidade 9 = sem transporte: limpa tudo
+                        setForm(f => ({
+                          ...f,
+                          modalidade_frete: m,
+                          transporter_id: (m === 0 || m === 1 || m === 2) ? f.transporter_id : null,
+                          vehicle_plate: m === 9 ? null : f.vehicle_plate,
+                          vehicle_uf: m === 9 ? null : f.vehicle_uf,
+                        }));
+                      }}
+                    >
+                      <SelectTrigger className="mt-1 h-9 text-sm"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="9">9 — Sem ocorrência de transporte</SelectItem>
+                        <SelectItem value="0">0 — Por conta do emitente (CIF)</SelectItem>
+                        <SelectItem value="1">1 — Por conta do destinatário (FOB)</SelectItem>
+                        <SelectItem value="2">2 — Por conta de terceiros</SelectItem>
+                        <SelectItem value="3">3 — Transporte próprio (remetente)</SelectItem>
+                        <SelectItem value="4">4 — Transporte próprio (destinatário)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {[0, 1, 2].includes(form.modalidade_frete ?? 9) && (
+                    <div>
+                      <Label className="text-xs">Transportadora</Label>
+                      <Select
+                        value={form.transporter_id ?? ''}
+                        onValueChange={v => setForm(f => ({ ...f, transporter_id: v || null }))}
+                      >
+                        <SelectTrigger className="mt-1 h-9 text-sm">
+                          <SelectValue placeholder={transporters.length === 0 ? 'Cadastre em /transportadoras...' : 'Selecionar...'} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {transporters.map(t => (
+                            <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+                {form.modalidade_frete !== 9 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs">Placa do veículo (opcional)</Label>
+                      <Input
+                        value={form.vehicle_plate ?? ''}
+                        onChange={e => setForm(f => ({ ...f, vehicle_plate: e.target.value.toUpperCase() || null }))}
+                        placeholder="ABC1D23"
+                        maxLength={8}
+                        className="mt-1 h-9 text-sm font-mono uppercase"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">UF do veículo</Label>
+                      <Input
+                        value={form.vehicle_uf ?? ''}
+                        onChange={e => setForm(f => ({ ...f, vehicle_uf: e.target.value.toUpperCase().slice(0, 2) || null }))}
+                        placeholder="RJ"
+                        maxLength={2}
+                        className="mt-1 h-9 text-sm font-mono uppercase"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {onPackagingProductChange && (

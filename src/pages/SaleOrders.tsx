@@ -86,6 +86,7 @@ const emptyForm: SaleOrderFormData = {
   representative: '', payment_condition: '', delivery_deadline: '', delivery_week: '', delivery_month: '',
   notes: '', status: 'Rascunho',
   nfe: '', remessa: '', is_factoring: false, factoring_config_id: '', packaging_mode: 'individual_amarrado',
+  modalidade_frete: 9, transporter_id: null, vehicle_plate: null, vehicle_uf: null,
 };
 
 const emptyItem: SaleOrderItemFormData = {
