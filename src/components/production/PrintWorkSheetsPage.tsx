@@ -175,6 +175,12 @@ const SECTORS = ['Corte Palmilha', 'Corte Forração', 'Corte Cabedal', 'Costura
 function groupOrdersByRefColor(orders: any[]): Array<{
   representative: any;
   combinedGrid: Record<string, number>;
+  /** Grade BASE (por 1 ficha fechada). Pega da primeira OP do grupo. */
+  baseGrid: Record<string, number>;
+  /** Pares por ficha fechada (= sum(baseGrid)). */
+  baseGradeSum: number;
+  /** Quantas fichas no total (soma de fichas de cada OP). */
+  fichas: number;
   totalPairs: number;
   latestDueDate: string;
   opNumbers: string[];
@@ -187,6 +193,9 @@ function groupOrdersByRefColor(orders: any[]): Array<{
       map.set(key, {
         representative: order,
         combinedGrid: {},
+        baseGrid: { ...((order.grid as Record<string, number>) || {}) },
+        baseGradeSum: 0,
+        fichas: 0,
         totalPairs: 0,
         latestDueDate: order.due_date ?? '',
         opNumbers: [],
@@ -197,14 +206,15 @@ function groupOrdersByRefColor(orders: any[]): Array<{
     const orderTotal = Number(order.total_pairs ?? 0);
     g.totalPairs += orderTotal;
     if (order.due_date && order.due_date > g.latestDueDate) g.latestDueDate = order.due_date;
-    // CRÍTICO: orders.grade vem em "grade base" (ex: {34:1,...,40:1} soma 12)
-    // e o total real é total_pairs (= base × fichas). Pra ficha de operador
-    // exibir os pares REAIS por numeração, multiplica cada size por
-    // `multiplier = total_pairs / sum(grade)` antes de acumular. Sem isso
-    // a ficha mostrava só 12p (a grade base, soma de 1 ficha só).
+    // orders.grade é a grade BASE de 1 ficha (ex: {34:1,...,40:1} soma 12) e
+    // total_pairs é o real (= base × fichas). Pra agregação somada nos setores
+    // (SilkMontage/Palmilha/Solagem) precisamos da escalada. Pra ficha de
+    // operador exibir "Por Ficha (12p)" precisamos da base. Mantemos as duas.
     const baseGrid: Record<string, number> = order.grid ?? {};
     const baseSum = Object.values(baseGrid).reduce((s, v) => s + (Number(v) || 0), 0);
     const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
+    g.fichas += baseSum > 0 ? Math.round(orderTotal / baseSum) : 0;
+    g.baseGradeSum = baseSum > 0 ? baseSum : g.baseGradeSum;
     for (const [size, qty] of Object.entries(baseGrid)) {
       const scaled = Math.round((Number(qty) || 0) * multiplier);
       if (scaled > 0) g.combinedGrid[size] = (g.combinedGrid[size] ?? 0) + scaled;
@@ -572,14 +582,22 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
         : (fallbackSole ? getBaseName(fallbackSole) : 'Sem Solado');
       const key = `${soleName}::${insoleColor}::${isReadyMade ? 'pronta' : 'cortar'}`;
       if (!groupMap.has(key)) {
-        groupMap.set(key, { soleName, insoleColor, totalPairs: 0, grade: {}, readyMade: isReadyMade });
+        groupMap.set(key, {
+          soleName, insoleColor, totalPairs: 0, grade: {},
+          baseGrade: { ...((order.grid as Record<string, number>) || {}) },
+          baseGradeSum: 0, fichas: 0,
+          readyMade: isReadyMade,
+        });
       }
       const group = groupMap.get(key)!;
-      // Scaling igual aos outros groupBys: grade base × multiplier = pares reais.
+      // Scaling: grade base × multiplier = pares reais. Acumula também baseGrade
+      // + fichas pra worksheet exibir "Por Ficha (Np)".
       const baseGrid = order.grid || {};
       const baseSum = Object.values(baseGrid).reduce((s, v) => s + (Number(v) || 0), 0);
       const orderTotal = Number(order.total_pairs ?? 0);
       const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
+      group.fichas += baseSum > 0 ? Math.round(orderTotal / baseSum) : 0;
+      group.baseGradeSum = baseSum > 0 ? baseSum : group.baseGradeSum;
       for (const [size, qty] of Object.entries(baseGrid)) {
         const scaled = Math.round((Number(qty) || 0) * multiplier);
         if (scaled > 0) { group.grade[size] = (group.grade[size] || 0) + scaled; sizeSet.add(size); }
@@ -690,6 +708,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
           color: colorName,
           colorHex,
           combinedGrid: {},
+          baseGrid: { ...((order.grid as Record<string, number>) || {}) },
+          baseGradeSum: 0,
+          fichas: 0,
           totalPairs: 0,
           variantImageUrl: exactVariant?.image_url || null,
           alternateVariants: variants,
@@ -703,13 +724,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
 
       const cg = colorMap.get(colorName)!;
       cg.opNumbers.push(order.op_number);
-      // Scaling igual ao groupOrdersByRefColor: grade vem base (soma=12),
-      // total_pairs é o real. Multiplica antes de acumular pra não exibir
-      // 12 pares quando o real é 420.
+      // Mantém combinedGrid (escalado) pra exibir "Pares" total e baseGrid+fichas
+      // pra exibir "Por Ficha (Np)" — ambas precisam aparecer na ficha.
       const baseGrid = order.grid || {};
       const baseSum = Object.values(baseGrid).reduce((s, v) => s + (Number(v) || 0), 0);
       const orderTotal = Number(order.total_pairs ?? 0);
       const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
+      cg.fichas += baseSum > 0 ? Math.round(orderTotal / baseSum) : 0;
+      cg.baseGradeSum = baseSum > 0 ? baseSum : cg.baseGradeSum;
       for (const [size, qty] of Object.entries(baseGrid)) {
         const scaled = Math.round((Number(qty) || 0) * multiplier);
         if (scaled > 0) cg.combinedGrid[size] = (cg.combinedGrid[size] ?? 0) + scaled;
@@ -730,7 +752,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
   // ── Solagem: consolidated by sole color ──────────────────────────────────────
   const solagemData = useMemo<{ bands: SoleColorBand[]; allSizes: string[]; grandTotal: number } | null>(() => {
     if (!printAll && selectedSector !== 'Solagem') return null;
-    const soleColorMap = new Map<string, { grade: Record<string, number>; totalPairs: number }>();
+    const soleColorMap = new Map<string, {
+      grade: Record<string, number>; totalPairs: number;
+      baseGrade: Record<string, number>; baseGradeSum: number; fichas: number;
+    }>();
     const sizeSet = new Set<string>();
 
     for (const order of orders) {
@@ -739,14 +764,20 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
       const soleColor = soleColorLookup.get(`${sheetId}::${cabedelColorLower}`) || 'Sem Cor';
 
       if (!soleColorMap.has(soleColor)) {
-        soleColorMap.set(soleColor, { grade: {}, totalPairs: 0 });
+        soleColorMap.set(soleColor, {
+          grade: {}, totalPairs: 0,
+          baseGrade: { ...((order.grid as Record<string, number>) || {}) },
+          baseGradeSum: 0, fichas: 0,
+        });
       }
       const band = soleColorMap.get(soleColor)!;
-      // Scaling: grade base × multiplier = pares reais (vide outros groupBys).
+      // Scaling + baseGrade pra worksheet exibir "Por Ficha (Np)".
       const baseGrid = order.grid || {};
       const baseSum = Object.values(baseGrid).reduce((s, v) => s + (Number(v) || 0), 0);
       const orderTotal = Number(order.total_pairs ?? 0);
       const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
+      band.fichas += baseSum > 0 ? Math.round(orderTotal / baseSum) : 0;
+      band.baseGradeSum = baseSum > 0 ? baseSum : band.baseGradeSum;
       for (const [size, qty] of Object.entries(baseGrid)) {
         const scaled = Math.round((Number(qty) || 0) * multiplier);
         if (scaled > 0) {
@@ -1132,7 +1163,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
               ...(representative.master || {}),
               main_image_url: tsImage || (representative.master?.main_image_url ?? null),
             },
-            grid: group.combinedGrid,
+            // grid: passa a BASE (12p de 1 ficha) e o total real em total_pairs;
+            // OperatorWorkSheet escala internamente e calcula fichas corretamente.
+            // Antes passava combinedGrid (já escalado) → multiplier=1, fichas=1,
+            // e a linha "Por Ficha (12p)" sumia.
+            grid: group.baseGrid,
             total_pairs: group.totalPairs,
             due_date: group.latestDueDate || representative.due_date,
             op_number: group.opNumbers[0],

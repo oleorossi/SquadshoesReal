@@ -8,6 +8,10 @@ export interface SoleColorBand {
   soleColor: string;
   grade: Record<string, number>;
   totalPairs: number;
+  /** Grade BASE de 1 ficha fechada. */
+  baseGrade?: Record<string, number>;
+  baseGradeSum?: number;
+  fichas?: number;
   /** Tipo do solado (TR, PU, borracha). */
   soleType?: string;
   /** Estampar numeração no solado? */
@@ -123,8 +127,26 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
                   </tr>
                 </thead>
                 <tbody>
+                  {/* Linha "Por Ficha" — grade base. Aparece quando há >1 ficha. */}
+                  {band.baseGrade && band.fichas && band.fichas > 1 && band.baseGradeSum && (
+                    <tr style={{ borderBottom: '1.5px solid #000' }}>
+                      <td className="py-1 text-[9px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
+                        Por Ficha<br />({band.baseGradeSum}p)
+                      </td>
+                      {allSizes.map(s => (
+                        <td key={s} className="py-1 font-mono font-bold text-black" style={{ fontSize: '14px', borderRight: '1px solid #000' }}>
+                          {band.baseGrade?.[s] || '—'}
+                        </td>
+                      ))}
+                      <td className="py-1 font-mono font-bold text-black" style={{ fontSize: '14px' }}>
+                        {band.baseGradeSum}
+                      </td>
+                    </tr>
+                  )}
                   <tr>
-                    <td className="py-2 text-[10px] font-mono font-bold text-black uppercase tracking-wider" style={{ borderRight: '1px solid #000' }}>Pares</td>
+                    <td className="py-2 text-[10px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
+                      {band.fichas && band.fichas > 1 ? <>Total<br />× {band.fichas} fichas</> : 'Pares'}
+                    </td>
                     {allSizes.map(s => (
                       <td
                         key={s}

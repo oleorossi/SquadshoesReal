@@ -10,6 +10,12 @@ export interface SilkColorGroup {
   color: string;
   colorHex?: string;
   combinedGrid: Record<string, number>;
+  /** Grade BASE de 1 ficha fechada (ex: {34:1,...,40:1} soma 12). */
+  baseGrid?: Record<string, number>;
+  /** Soma da grade base = pares por 1 ficha fechada. */
+  baseGradeSum?: number;
+  /** Quantas fichas no total (= totalPairs / baseGradeSum). */
+  fichas?: number;
   totalPairs: number;
   opNumbers: string[];
   silk?: { silk_name: string; silk_url: string | null };
@@ -440,9 +446,26 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                       </tr>
                     </thead>
                     <tbody>
+                      {/* Linha "Por Ficha" — grade base de 1 ficha fechada.
+                          Aparece só quando há múltiplas fichas (senão Por Ficha == Pares). */}
+                      {cg.baseGrid && cg.fichas && cg.fichas > 1 && cg.baseGradeSum && (
+                        <tr style={{ borderBottom: '1.5px solid #000' }}>
+                          <td className="py-1 text-[9px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
+                            Por Ficha<br />({cg.baseGradeSum}p)
+                          </td>
+                          {activeSizes.map(s => (
+                            <td key={s} className="py-1 font-mono font-bold text-black" style={{ fontSize: '14px', borderRight: '1px solid #000' }}>
+                              {cg.baseGrid?.[s] || '—'}
+                            </td>
+                          ))}
+                          <td className="py-1 font-mono font-bold text-black" style={{ fontSize: '14px' }}>
+                            {cg.baseGradeSum}
+                          </td>
+                        </tr>
+                      )}
                       <tr style={{ borderBottom: theme.showFrenteTraseiro ? '1px solid #000' : 'none' }}>
-                        <td className="py-1.5 text-[10px] font-mono font-bold text-black uppercase tracking-wider" style={{ borderRight: '1px solid #000' }}>
-                          Pares
+                        <td className="py-1.5 text-[10px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
+                          {cg.fichas && cg.fichas > 1 ? <>Total<br />× {cg.fichas} fichas</> : 'Pares'}
                         </td>
                         {activeSizes.map(s => (
                           <td

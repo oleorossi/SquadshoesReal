@@ -10,6 +10,12 @@ export interface PalmilhaGroup {
   insoleColor: string;
   totalPairs: number;
   grade: Record<string, number>;
+  /** Grade BASE de 1 ficha fechada (ex: {34:1,...,40:1} soma 12). */
+  baseGrade?: Record<string, number>;
+  /** Soma da grade base = pares por 1 ficha fechada. */
+  baseGradeSum?: number;
+  /** Quantas fichas no total. */
+  fichas?: number;
   readyMade?: boolean;
 }
 
@@ -139,8 +145,27 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
                     </tr>
                   </thead>
                   <tbody>
+                    {/* Linha "Por Ficha" — grade base de 1 ficha fechada. Aparece
+                        só quando há >1 ficha (senão Por Ficha == Total). */}
+                    {group.baseGrade && group.fichas && group.fichas > 1 && group.baseGradeSum && (
+                      <tr style={{ borderBottom: '1.5px solid #000' }}>
+                        <td className="py-1 text-[9px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
+                          Por Ficha<br />({group.baseGradeSum}p)
+                        </td>
+                        {allSizes.map(s => (
+                          <td key={s} className="py-1 font-mono font-bold text-black" style={{ fontSize: '14px', borderRight: '1px solid #000' }}>
+                            {group.baseGrade?.[s] || '—'}
+                          </td>
+                        ))}
+                        <td className="py-1 font-mono font-bold text-black" style={{ fontSize: '14px' }}>
+                          {group.baseGradeSum}
+                        </td>
+                      </tr>
+                    )}
                     <tr>
-                      <td className="py-2 text-[10px] font-mono font-bold text-black uppercase tracking-wider" style={{ borderRight: '1px solid #000' }}>Pares</td>
+                      <td className="py-2 text-[10px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
+                        {group.fichas && group.fichas > 1 ? <>Total<br />× {group.fichas} fichas</> : 'Pares'}
+                      </td>
                       {allSizes.map(s => (
                         <td
                           key={s}
