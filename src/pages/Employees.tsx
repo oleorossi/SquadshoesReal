@@ -20,7 +20,8 @@ import {
   Employee, EmployeeAdvance,
 } from '@/hooks/useEmployees';
 import { useWorkSchedules } from '@/hooks/useTimesheet';
-import { useBenefitsConfig } from '@/hooks/useRH';
+// useBenefitsConfig removido (Folha de Pagamento removida — sistema não calcula
+// encargos). Usa constante 220h/mês onde antes lia benefitsConfig.monthly_hours.
 import { toast } from 'sonner';
 import AppLayout from '@/components/layout/AppLayout';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
@@ -47,8 +48,8 @@ export default function Employees() {
   const { data: employees = [], isLoading, isError } = useEmployees();
   const { data: advances = [] } = useEmployeeAdvances(null);
   const { data: schedules = [] } = useWorkSchedules();
-  const { data: benefitsConfig } = useBenefitsConfig();
-  const monthlyHours = benefitsConfig?.monthly_hours || 220;
+  // 220h/mês é o padrão CLT (44h/sem × 5 sem/mês). Usado pra mostrar valor-hora derivado.
+  const monthlyHours = 220;
   const addEmployee = useAddEmployee();
   const updateEmployee = useUpdateEmployee();
   const deleteEmployee = useDeleteEmployee();

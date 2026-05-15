@@ -162,12 +162,6 @@ export function useDeleteAdvance() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const { data: adv, error: advErr } = await supabase.from('employee_advances').select('employee_id, advance_date').eq('id', id).single();
-      if (advErr) throw new Error(`Falha ao carregar vale: ${advErr.message}`);
-      const period = (adv.advance_date as string).slice(0, 7);
-      const { data: pr, error: prErr } = await (supabase as any).from('payroll_runs').select('id, status').eq('employee_id', adv.employee_id).eq('period', period).maybeSingle();
-      if (prErr) throw new Error(`Falha ao verificar folha de pagamento: ${prErr.message}`);
-      if (pr && pr.status !== 'rascunho') throw new Error(`Folha do período ${period} já ${pr.status === 'pago' ? 'paga' : 'aprovada'} — desfaça antes de remover o vale.`);
       const { error } = await supabase.from('employee_advances').delete().eq('id', id);
       if (error) throw error;
     },

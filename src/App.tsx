@@ -733,11 +733,6 @@ const router = createBrowserRouter([
         element: <Navigate to="/rh/banco-de-horas" replace />,
       },
       {
-        // Atalho direto: Folha de Pagamento (tab dentro de /rh)
-        path: "rh/payroll",
-        element: <Navigate to="/rh?tab=folha" replace />,
-      },
-      {
         path: "transporte",
         element: <Transport />,
       },

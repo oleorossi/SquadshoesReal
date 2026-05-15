@@ -1,13 +1,14 @@
 import { lazy, Suspense } from 'react';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { HubTabsList } from '@/components/layout/HubTabs';
-import { TrendUp as TrendingUp, Warning as AlertTriangle, CurrencyDollar as DollarSign, Alarm as AlarmClock, Pulse as Activity, Target, Repeat, CircleNotch as Loader2 } from '@phosphor-icons/react';
+import { TrendUp as TrendingUp, Warning as AlertTriangle, Pulse as Activity, Target, Repeat, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 
 const HeadcountReport = lazy(() => import('@/pages/HeadcountReport'));
 const AbsenceReport = lazy(() => import('@/pages/AbsenceReport'));
-const CustoTotalReport = lazy(() => import('./reports/CustoTotalReport'));
-const HorasExtrasReport = lazy(() => import('./reports/HorasExtrasReport'));
+// Removidos: CustoTotalReport e HorasExtrasReport dependiam de payroll_runs/
+// benefits_config, removidos junto com a Folha de Pagamento (decisão do usuário:
+// sistema não faz cálculo de encargos trabalhistas).
 const PrevistasVsTrabalhadasReport = lazy(() => import('./reports/PrevistasVsTrabalhadasReport'));
 const ProdutividadeReport = lazy(() => import('./reports/ProdutividadeReport'));
 const TurnoverReport = lazy(() => import('./reports/TurnoverReport'));
@@ -19,21 +20,21 @@ const TabLoader = () => (
 );
 
 export default function RelatoriosRH() {
-  const [tab, setTab] = usePersistedState<string>('rh-relatorios-tab', 'custo');
+  // Migra tabs antigas removidas pro default novo.
+  const [tab, setTab] = usePersistedState<string>('rh-relatorios-tab', 'previstas');
+  const safeTab = (tab === 'custo' || tab === 'horas-extras') ? 'previstas' : tab;
 
   return (
     <div className="space-y-4">
       <div>
         <h2 className="text-lg font-bold tracking-tight">Relatórios RH</h2>
         <p className="text-sm text-muted-foreground">
-          Custo real, horas extras, produtividade, absenteísmo e evolução do quadro.
+          Produtividade, absenteísmo e evolução do quadro.
         </p>
       </div>
 
-      <Tabs value={tab} onValueChange={setTab} className="w-full">
+      <Tabs value={safeTab} onValueChange={setTab} className="w-full">
         <HubTabsList tabs={[
-          { value: 'custo',         label: 'Custo Total',           icon: DollarSign },
-          { value: 'horas-extras',  label: 'Horas Extras',          icon: AlarmClock },
           { value: 'previstas',     label: 'Previstas × Trabalhadas', icon: Target },
           { value: 'produtividade', label: 'Produtividade',         icon: Activity },
           { value: 'absenteismo',   label: 'Absenteísmo',           icon: AlertTriangle },
@@ -42,8 +43,6 @@ export default function RelatoriosRH() {
         ]} />
 
         <Suspense fallback={<TabLoader />}>
-          <TabsContent value="custo"><CustoTotalReport /></TabsContent>
-          <TabsContent value="horas-extras"><HorasExtrasReport /></TabsContent>
           <TabsContent value="previstas"><PrevistasVsTrabalhadasReport /></TabsContent>
           <TabsContent value="produtividade"><ProdutividadeReport /></TabsContent>
           <TabsContent value="absenteismo"><AbsenceReport /></TabsContent>

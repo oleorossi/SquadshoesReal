@@ -40,8 +40,6 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/timesheet': 'rh',
   '/time-control': 'rh',
   '/rh/bank-hours': 'rh',
-  '/rh/payroll': 'rh_folha',
-  '/payroll': 'rh_folha',
   '/purchase-orders': 'financeiro',
   '/purchase-planning': 'financeiro',
   '/pricing-calculator': 'financeiro',
@@ -90,7 +88,6 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/custos-insumos': 'estoque',
   '/imagens-cores': 'produtos',
   '/solados': 'produtos',
-  '/rh?tab=folha': 'rh_folha',
   '/rh?tab=relatorios': 'rh',
   '/rh?tab=funcionarios': 'rh',
   '/rh?tab=ponto': 'rh',
@@ -132,7 +129,7 @@ const ROLE_MODULES: Record<string, string[]> = {
   gerente: [
     'dashboard', 'estoque', 'produtos', 'ordens', 'vendas', 'clientes',
     'relatorios', 'financeiro', 'nfe', 'empresas_fiscal',
-    'fornecedores', 'terceirizados', 'rh', 'rh_folha',
+    'fornecedores', 'terceirizados', 'rh',
     'producao', 'expedicao',
   ],
   producao: [
@@ -253,8 +250,6 @@ function getAllowedModules(roles: string[]): Set<string> {
     if (mod === 'financeiro_admin') return isAdmin;
     // sistema is admin-only
     if (mod === 'sistema') return isAdmin;
-    // rh_folha (folha de pagamento): admin/gerente apenas — role 'rh' não acessa
-    if (mod === 'rh_folha') return isAdmin || roleKeys.includes('gerente');
 
     return allowedModules.has(mod);
   };
@@ -264,7 +259,6 @@ function getAllowedModules(roles: string[]): Set<string> {
     if (!user) return false;
     if (allowedModules.has('*')) return true;
     if (moduleKey === 'sistema' || moduleKey === 'financeiro_admin') return isAdmin;
-    if (moduleKey === 'rh_folha') return isAdmin || roleKeys.includes('gerente');
     return allowedModules.has(moduleKey);
   };
 

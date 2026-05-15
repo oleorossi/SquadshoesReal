@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { SquaresFour as LayoutDashboard, Users, Alarm as AlarmClock, CurrencyDollar as DollarSign, FileText, CircleNotch as Loader2 } from '@phosphor-icons/react';
+import { SquaresFour as LayoutDashboard, Users, Alarm as AlarmClock, Wallet, FileText, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
@@ -24,7 +24,7 @@ const tabs: { value: Tab; label: string; icon: typeof LayoutDashboard }[] = [
   { value: 'painel',       label: 'Painel',       icon: LayoutDashboard },
   { value: 'funcionarios', label: 'Funcionários', icon: Users },
   { value: 'ponto',        label: 'Ponto',        icon: AlarmClock },
-  { value: 'folha',        label: 'Folha',        icon: DollarSign },
+  { value: 'folha',        label: 'BH & Vales',   icon: Wallet },
   { value: 'relatorios',   label: 'Relatórios',   icon: FileText },
 ];
 
@@ -66,7 +66,7 @@ export default function RHHub() {
       <EditorialPageHeader
         sectionLabel="RH · CENTRAL"
         title="Recursos Humanos"
-        description="Painel, funcionários, ponto, folha e relatórios"
+        description="Painel, funcionários, ponto, banco de horas, vales e relatórios"
       />
       <Tabs value={activeTab} onValueChange={handleNavigateTab} className="w-full">
         <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 pb-2">
