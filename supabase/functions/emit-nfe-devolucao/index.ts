@@ -254,15 +254,24 @@ Deno.serve(async (req) => {
     const valorTotal = Number(itensFinal.reduce((s, it) => s + it.valor_total, 0).toFixed(2));
 
     const ref = `nfe-dev-${nfe_original_id}-${Date.now()}`;
+    // Configuração explícita pedida pelo user em 15/05/2026:
+    //   - Natureza: "Devolução de venda de produção do estabelecimento"
+    //   - Forma de emissão (tipo_emissao): "1" = normal
+    //   - Finalidade (finalidade_nf): "4" = devolução de mercadoria
+    //   - Consumidor final: "0" = não
+    //   - Tipo de atendimento (indicador_presenca): "9" = operação não presencial, outros
+    // Sem isso o GC defaultava algumas pra valores diferentes do exigido pela contabilidade.
     const nfePayload: any = {
       tipo_nf: "0", // 0 = entrada
-      finalidade_nf: "4", // 4 = devolução
-      natureza_operacao: "Devolução de Venda",
+      finalidade_nf: "4", // 4 = devolução de mercadoria
+      tipo_emissao: "1", // 1 = emissão normal
+      natureza_operacao: "Devolução de venda de produção do estabelecimento",
       id_destinatario: client.gestaoclick_id,
       codigo_cfop: cfopEntrada,
       modelo: "55",
       serie: fiscal.serie_nfe || "1",
-      consumidor_final: "0",
+      consumidor_final: "0", // 0 = não
+      tipo_atendimento: "9", // 9 = operação não presencial, outros
       chave_referenciada: nfeOriginal.chave_acesso,
       informacoes_complementares: `Devolução referente à NF ${nfeOriginal.numero || nfeOriginal.chave_acesso}. Motivo: ${motivo.trim()}`,
       produtos: itensFinal.map(it => ({
