@@ -25,11 +25,13 @@ docs/
 .claude/
 .codex/
 
-# Arquivos JSX/TSX soltos na raiz (legacy, não importados pelo src/)
-App.tsx
-Navigation.test.tsx
-NavigationAccessConsistency.test.ts
-SecurityIntegration.test.tsx
+# Arquivos JSX/TSX legacy soltos na RAIZ apenas (com / na frente).
+# IMPORTANTE: sem o / inicial, o pattern App.tsx pega TAMBÉM src/App.tsx
+# e quebra o build com "Could not resolve ./App.tsx from src/main.tsx".
+/App.tsx
+/Navigation.test.tsx
+/NavigationAccessConsistency.test.ts
+/SecurityIntegration.test.tsx
 
 # Sempre úteis
 .git/
