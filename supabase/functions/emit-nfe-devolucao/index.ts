@@ -99,10 +99,11 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { nfe_original_id, itens, motivo } = body as {
+    const { nfe_original_id, itens, motivo, idempotency_key } = body as {
       nfe_original_id: string;
       itens: Array<{ sale_order_item_id: string; qty: number }>;
       motivo: string;
+      idempotency_key?: string;
     };
 
     if (!nfe_original_id) {
@@ -118,9 +119,34 @@ Deno.serve(async (req) => {
     if (!UUID_RE.test(nfe_original_id)) {
       return new Response(JSON.stringify({ error: "nfe_original_id inválido" }), { status: 400, headers: corsHeaders });
     }
+    if (idempotency_key && !UUID_RE.test(idempotency_key)) {
+      return new Response(JSON.stringify({ error: "idempotency_key inválido (deve ser UUID)" }), { status: 400, headers: corsHeaders });
+    }
     for (const it of itens) {
       if (!UUID_RE.test(it.sale_order_item_id) || !Number.isFinite(Number(it.qty)) || Number(it.qty) <= 0) {
         return new Response(JSON.stringify({ error: "Item inválido na lista de devolução" }), { status: 400, headers: corsHeaders });
+      }
+    }
+
+    // Auditoria A2: se idempotency_key foi passado, checa se devolução com
+    // essa chave já existe. Bloqueia retry duplicado (clique 2x, retry de
+    // network, etc) — antes criava 2 nfe_devolucoes + 2× redução de AR.
+    if (idempotency_key) {
+      const { data: existingDev } = await adminClient
+        .from("nfe_devolucoes")
+        .select("id, status, provider_nfe_id, chave_acesso, numero")
+        .eq("idempotency_key", idempotency_key)
+        .maybeSingle();
+      if (existingDev) {
+        return new Response(JSON.stringify({
+          success: existingDev.status === "autorizada",
+          devolucao: existingDev,
+          idempotent_replay: true,
+          message: "Devolução já processada anteriormente (idempotency_key idêntico). Retornando resultado existente.",
+        }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
     }
 
@@ -253,6 +279,63 @@ Deno.serve(async (req) => {
     const cfopEntrada = cfopDevolucao(cfopOriginal);
     const valorTotal = Number(itensFinal.reduce((s, it) => s + it.valor_total, 0).toFixed(2));
 
+    // Auditoria A13: peso/volumes em devolução. Antes assumia volume=1 hardcoded
+    // sem peso → XML inconsistente (1 volume pra centenas de pares). Calcula
+    // via RPC; fallback 0.5 kg/par se ficha não tem weight_per_pair_kg.
+    let pesoBrutoStr: string | undefined;
+    let pesoLiquidoStr: string | undefined;
+    const totalPairsDev = itensFinal.reduce((s, it) => s + Number(it.qty || 0), 0);
+    try {
+      // Calcula peso real: SUM(qty × weight_per_pair_kg) por item da devolução.
+      // Não pode usar calculate_sale_order_weight direto porque devolução pode
+      // ser parcial (subset dos itens do PV original).
+      const itemRefIds = [...new Set(itensFinal.map(it => it.reference_id).filter(Boolean))];
+      if (itemRefIds.length > 0) {
+        const { data: weights } = await adminClient
+          .from("technical_sheets")
+          .select("id, weight_per_pair_kg, box_weight_kg")
+          .in("id", itemRefIds);
+        const weightById = new Map<string, { wpp: number; box: number }>();
+        for (const w of (weights || []) as any[]) {
+          weightById.set(w.id, {
+            wpp: Number(w.weight_per_pair_kg) || 0,
+            box: Number(w.box_weight_kg) || 0,
+          });
+        }
+        let netKg = 0;
+        let grossKg = 0;
+        for (const it of itensFinal) {
+          const w = weightById.get(it.reference_id);
+          const wpp = w?.wpp || 0;
+          const box = w?.box || 0;
+          netKg += wpp * it.qty;
+          grossKg += (wpp + box) * it.qty;
+        }
+        if (netKg > 0) pesoLiquidoStr = netKg.toFixed(3);
+        if (grossKg > 0) pesoBrutoStr = grossKg.toFixed(3);
+      }
+    } catch (e) {
+      console.warn("[emit-nfe-devolucao] Falha calc peso:", e instanceof Error ? e.message : String(e));
+    }
+    // Fallback 0.5 kg/par quando fichas não têm peso cadastrado
+    if ((!pesoBrutoStr || !pesoLiquidoStr) && totalPairsDev > 0) {
+      const fb = (totalPairsDev * 0.5).toFixed(3);
+      if (!pesoLiquidoStr) pesoLiquidoStr = fb;
+      if (!pesoBrutoStr) pesoBrutoStr = fb;
+    }
+    // Volumes = caixas. Como devolução pode ser de múltiplos solados, usa
+    // CEIL(totalPairs/12) como aproximação razoável (default pares/caixa).
+    const qtdVolumes = totalPairsDev > 0 ? Math.max(1, Math.ceil(totalPairsDev / 12)) : 1;
+    const transporteBlockDev = {
+      modalidade_frete: "9",
+      volumes: [{
+        quantidade: String(qtdVolumes),
+        especie: "VOLUME",
+        ...(pesoLiquidoStr ? { peso_liquido: pesoLiquidoStr } : {}),
+        ...(pesoBrutoStr ? { peso_bruto: pesoBrutoStr } : {}),
+      }],
+    };
+
     const ref = `nfe-dev-${nfe_original_id}-${Date.now()}`;
     // Configuração explícita pedida pelo user em 15/05/2026:
     //   - Natureza: "Devolução de venda de produção do estabelecimento"
@@ -286,9 +369,12 @@ Deno.serve(async (req) => {
         NCM: it.ts_ncm,
         tipo: "P",
       })),
+      transporte: transporteBlockDev,
     };
 
-    // 8) Grava rascunho local com status processando
+    // 8) Grava rascunho local com status processando.
+    // Auditoria A2: persiste idempotency_key recebido pra bloquear retries
+    // duplicados (índice unique uq_nfe_devolucoes_idempotency_key).
     const devolucaoRecord: any = {
       nfe_original_id,
       sale_order_id: nfeOriginal.sale_order_id,
@@ -300,6 +386,7 @@ Deno.serve(async (req) => {
       cnpj_emitente: nfeOriginal.cnpj_emitente,
       company_id: fiscal.id,
       created_by: userId,
+      ...(idempotency_key ? { idempotency_key } : {}),
     };
     const { data: devLocal, error: devLocalErr } = await adminClient
       .from("nfe_devolucoes").insert(devolucaoRecord).select().single();

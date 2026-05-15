@@ -91,7 +91,7 @@ Deno.serve(async (req) => {
       .update({ status: "cancelando" })
       .eq("id", nfe_id)
       .eq("status", "autorizada")
-      .select("id");
+      .select("id, data_emissao");
     if (claimErr) throw new Error(`Falha ao reservar cancelamento: ${claimErr.message}`);
     if (!claimed || claimed.length === 0) {
       return new Response(JSON.stringify({
@@ -100,13 +100,18 @@ Deno.serve(async (req) => {
     }
     _claimedNfeId = nfe_id;
 
-    if (!nfe.data_emissao) {
+    // Auditoria A1: usar data_emissao do CLAIM (UPDATE returning) ao invés do
+    // SELECT inicial. Se sync-nfe-from-provider rodou em paralelo e mudou a
+    // data, o cálculo de 24h ficaria stale. Pós-claim, o status está
+    // 'cancelando' (lockado) e o registro retornado é a fonte da verdade.
+    const dataEmissaoForCheck = (claimed[0] as any).data_emissao || nfe.data_emissao;
+    if (!dataEmissaoForCheck) {
       return new Response(JSON.stringify({
         error: "NF-e sem data de emissão registrada — impossível verificar prazo de 24h. Sincronize o status da NF-e antes de tentar cancelar.",
       }), { status: 400, headers: corsHeaders });
     }
     {
-      const raw = String(nfe.data_emissao);
+      const raw = String(dataEmissaoForCheck);
       const normalized = /Z$|[+-]\d{2}:\d{2}$/.test(raw) ? raw : raw + "Z";
       const emittedAt = new Date(normalized).getTime();
       if (Number.isNaN(emittedAt)) {
@@ -170,17 +175,11 @@ Deno.serve(async (req) => {
 
     const cleanupWarnings: string[] = [];
     if (success && nfe.sale_order_id) {
-      const { error: arErr } = await adminClient.from("accounts_receivable")
-        .update({ status: "cancelled" })
-        .eq("sale_order_id", nfe.sale_order_id)
-        .not("status", "in", "(received,cancelled)");
-      if (arErr) cleanupWarnings.push(`AR não cancelada: ${arErr.message}`);
-
-      // FIX C1: lançamentos 'confirmed/posted/reconciled/paid' são protegidos
-      // (trilha SPED). Em vez de deletar (que falha no filtro), inserimos uma
-      // entry NEGATIVA de estorno espelhando o que emit-nfe-devolucao faz.
-      // Comportamento: cancelar NF-e dentro de 24h registra estorno
-      // contábil sem violar a imutabilidade dos lançamentos já confirmados.
+      // Auditoria A3: ordem invertida — antes era AR cancel → estorno; agora
+      // estorno PRIMEIRO. Razão: se estorno falhar (FK violation, conflict),
+      // AR fica intacta (status pendente original) e operador pode tentar de
+      // novo sem ficar com AR cancelada + receita órfã. Estorno bem-sucedido
+      // pode coexistir com AR cancelada ou pendente — ambos resolvíveis.
       const { data: feToReverse, error: feFetchErr } = await adminClient.from("financial_entries")
         .select("id, amount, type, description, account_id, entry_date, due_date, status")
         .eq("reference_id", nfe.sale_order_id)
@@ -193,7 +192,9 @@ Deno.serve(async (req) => {
         const deletableIds: string[] = [];
         for (const fe of feToReverse) {
           if (protectedStatuses.has(fe.status)) {
-            // Estorno: entry com valor negativo + reference_type marcando estorno NF-e
+            // Estorno: entry com valor negativo + reference_type marcando estorno NF-e.
+            // Auditoria A15: vincula nfe_id pra rastreabilidade direta via JOIN
+            // (antes só dava pra ligar via reference_id text — sem FK formal).
             reversals.push({
               type: fe.type,
               amount: -Number(fe.amount || 0),
@@ -204,6 +205,7 @@ Deno.serve(async (req) => {
               status: "confirmed",
               reference_id: nfe_id,
               reference_type: "sale_order_cancel_nfe",
+              nfe_id,
             });
           } else {
             deletableIds.push(fe.id);
@@ -220,8 +222,17 @@ Deno.serve(async (req) => {
         }
       }
 
+      // AR cancel: depois do estorno (auditoria A3 — antes era ao contrário).
+      const { error: arErr } = await adminClient.from("accounts_receivable")
+        .update({ status: "cancelled" })
+        .eq("sale_order_id", nfe.sale_order_id)
+        .not("status", "in", "(received,cancelled)");
+      if (arErr) cleanupWarnings.push(`AR não cancelada: ${arErr.message}`);
+
       // FIX S3: reabrir PV pra 'Em Produção' quando a NF cancelada era a única ativa.
       // Antes ficava em 'Faturado' órfão sem NF-e nem AR.
+      // Auditoria A9: cleanupWarnings já cobre falhas no reopen (linhas
+      // soErr abaixo). UI deve mostrar warning pra operador conferir status do PV.
       const { data: otherActiveNfes } = await adminClient.from("nfe_emitidas")
         .select("id")
         .eq("sale_order_id", nfe.sale_order_id)
@@ -236,13 +247,13 @@ Deno.serve(async (req) => {
           .update(soUpdate)
           .eq("id", nfe.sale_order_id)
           .eq("nfe", String(nfe.numero));
-        if (soErr) cleanupWarnings.push(`Número NF-e não removido do PV: ${soErr.message}`);
+        if (soErr) cleanupWarnings.push(`PV ${nfe.sale_order_id} pode ter ficado em 'Faturado' órfão — ${soErr.message}. Conferir manualmente.`);
       } else if (reopenStatus) {
         const { error: soErr } = await adminClient.from("sale_orders")
           .update({ status: reopenStatus })
           .eq("id", nfe.sale_order_id)
           .eq("status", "Faturado");
-        if (soErr) cleanupWarnings.push(`Status do PV não restaurado: ${soErr.message}`);
+        if (soErr) cleanupWarnings.push(`PV ${nfe.sale_order_id} pode ter ficado em 'Faturado' órfão — ${soErr.message}. Conferir manualmente.`);
       }
     }
 

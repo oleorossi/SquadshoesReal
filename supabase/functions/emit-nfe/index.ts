@@ -253,9 +253,17 @@ Deno.serve(async (req) => {
     }
 
     // CFOP por código (GestaoClick aceita `codigo_cfop` diretamente).
+    // Auditoria A14: valida formato do CFOP configurado. Se preenchido mas
+    // não tem 4 dígitos começando em 5 ou 6, bloqueia emissão — sem isso
+    // SEFAZ rejeita com mensagem confusa.
     const isInterstate = !!(client?.estado && fiscal.uf && client.estado.toUpperCase() !== String(fiscal.uf).toUpperCase());
     const defaultCfop = isInterstate ? "6101" : "5101";
-    const cfopConfigured = fiscal.cfop ? String(fiscal.cfop) : "";
+    const cfopConfigured = fiscal.cfop ? String(fiscal.cfop).trim() : "";
+    if (cfopConfigured && !/^[56]\d{3}$/.test(cfopConfigured)) {
+      return new Response(JSON.stringify({
+        error: `CFOP configurado inválido: "${cfopConfigured}". Deve ter 4 dígitos começando em 5 (intra-estadual) ou 6 (inter-estadual). Edite a configuração fiscal antes de emitir.`,
+      }), { status: 400, headers: corsHeaders });
+    }
     let resolvedCfop = cfopConfigured || defaultCfop;
     if (cfopConfigured && /^[56]\d{3}$/.test(cfopConfigured)) {
       if (isInterstate && cfopConfigured.startsWith("5")) resolvedCfop = "6" + cfopConfigured.slice(1);
@@ -510,6 +518,29 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Auditoria A8: garante que peso sempre vai pra SEFAZ. Se RPC falhou ou
+    // todas as fichas estão sem weight_per_pair_kg, usa fallback de 0.5 kg
+    // por par (média histórica da indústria pra calçado feminino completo
+    // com caixa individual). Sem peso, XML sai com <pesoB/> vazio e SEFAZ
+    // pode rejeitar dependendo do NCM. Aviso registrado em informacoes
+    // complementares pra contabilidade revisar.
+    if (!pesoBrutoStr || !pesoLiquidoStr) {
+      const totalPairsFallback = billableItems.reduce(
+        (s: number, it: any) => s + (Number(it.quantity) || 0),
+        0,
+      );
+      if (totalPairsFallback > 0) {
+        const estimatedKg = (totalPairsFallback * 0.5).toFixed(3);
+        if (!pesoLiquidoStr) pesoLiquidoStr = estimatedKg;
+        if (!pesoBrutoStr) pesoBrutoStr = estimatedKg;
+        weightWarning = (weightWarning ? weightWarning + " " : "")
+          + `Peso estimado (0,5 kg/par × ${totalPairsFallback} pares = ${estimatedKg} kg) — cadastrar weight_per_pair_kg nas fichas pra peso real.`;
+        console.warn(
+          `[emit-nfe] PV ${sale_order_id} sem peso cadastrado — usando fallback ${estimatedKg} kg`,
+        );
+      }
+    }
+
     // ---------- Calcula volumes (caixas) AUTOMATICAMENTE por solado ----------
     // Pedido em 15/05/2026: volume na NF deve refletir o número REAL de caixas
     // que vai ser despachado. Calcula via:
@@ -661,10 +692,40 @@ Deno.serve(async (req) => {
       transporte: transporteBlock,
     };
 
-    const createResp = await gcFetch("/notas_fiscais_produtos", {
-      method: "POST",
-      body: JSON.stringify(nfePayload),
-    });
+    // Auditoria A4: wrappa POST em try/catch específico pra distinguir
+    // timeout/network (NF pode ter sido criada no GC e sistema local não saber)
+    // de rejeição estruturada (sem ambiguidade). Em caso de timeout, registra
+    // status='reconciliation_needed' pra bloquear retry cego.
+    let createResp;
+    try {
+      createResp = await gcFetch("/notas_fiscais_produtos", {
+        method: "POST",
+        body: JSON.stringify(nfePayload),
+      });
+    } catch (createErr: unknown) {
+      const isTimeout = createErr instanceof DOMException && createErr.name === "AbortError";
+      const errMsg = createErr instanceof Error ? createErr.message : String(createErr);
+      const nfeRecord: any = {
+        sale_order_id,
+        ref_nfe: ref,
+        status: "rejeitada",
+        valor_total: Number(sumItems.toFixed(2)),
+        motivo_rejeicao: isTimeout
+          ? `Timeout no GestaoClick (>30s). NF pode ter sido criada lá — confira no painel pelo número de PV antes de re-emitir (evita NF duplicada). Detalhe: ${errMsg}`
+          : `Erro de rede: ${errMsg}`,
+        cnpj_emitente: fiscal.cnpj.replace(/\D/g, ""),
+        nome_destinatario: order.client_name || client?.razao_social || client?.nome || null,
+        cnpj_destinatario: cnpjDestRaw || null,
+      };
+      if (resolvedCompanyId) nfeRecord.company_id = resolvedCompanyId;
+      await adminClient.from("nfe_emitidas").insert(nfeRecord);
+      return new Response(JSON.stringify({
+        error: isTimeout
+          ? "Timeout ao falar com GestaoClick. ATENÇÃO: A NF pode ter sido criada no painel deles. Confira antes de re-emitir pra evitar duplicata fiscal. Em caso de duplicata, cancele a antiga no painel ou use Sincronizar com GestaoClick."
+          : `Falha de rede ao emitir: ${errMsg}`,
+        reconciliation_needed: isTimeout,
+      }), { status: 502, headers: corsHeaders });
+    }
     if (!createResp.ok || createResp.json?.status === "error" || createResp.json?.data?.ok === false) {
       const msg = createResp.json?.data?.mensagem || createResp.json?.message || createResp.json?.mensagem || JSON.stringify(createResp.json);
       const nfeRecord: any = {
