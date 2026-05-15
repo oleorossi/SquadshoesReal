@@ -354,3 +354,133 @@ export function formatUnit(unit: string): string {
   };
   return labels[unit] || unit || 'un';
 }
+
+// ─── Sole breakdown by size + color (for Picking List) ──────────────────────
+
+export type SoleBreakdownRow = {
+  soleGroup: string;
+  soleColor: string;
+  sizes: Record<string, number>;
+  total: number;
+};
+
+export type SoleBreakdownResult = {
+  rows: SoleBreakdownRow[];
+  allSizes: string[];
+  grandTotal: number;
+};
+
+/**
+ * Retorna o consumo de solados por (grupo + cor) × numeração para uma lista de
+ * OPs. Usado na Lista de Separação pra mostrar quantos pares de cada solado
+ * em cada cor e em cada número precisam ser puxados do estoque/comprados.
+ *
+ * Resolução de cor segue o mesmo padrão do PrintWorkSheetsPage/SolagemWorkSheet:
+ * mapping em `technical_sheet_sole_colors` (cabedal_color → sole_product) tem
+ * prioridade; fallback usa `technical_sheets.sole_color` (texto livre).
+ */
+export async function calculateSoleBreakdownByGrade(orderIds: string[]): Promise<SoleBreakdownResult> {
+  if (orderIds.length === 0) return { rows: [], allSizes: [], grandTotal: 0 };
+
+  const { data: ordersData, error: ordersError } = await supabase
+    .from('orders')
+    .select('id, reference_id, color, quantity, grade')
+    .in('id', orderIds);
+
+  if (ordersError) throw ordersError;
+  if (!ordersData || ordersData.length === 0) return { rows: [], allSizes: [], grandTotal: 0 };
+
+  const refIds = [...new Set(ordersData.map(o => o.reference_id).filter(Boolean))];
+
+  const [
+    { data: sheets },
+    { data: soleMappings },
+  ] = await Promise.all([
+    supabase
+      .from('technical_sheets')
+      .select('id, sole_material, sole_color')
+      .in('id', refIds),
+    (supabase as any)
+      .from('technical_sheet_sole_colors')
+      .select('sheet_id, product_color, sole_product_id, products:sole_product_id(name, color, group_id)')
+      .in('sheet_id', refIds),
+  ]);
+
+  const sheetMap = new Map<string, any>((sheets || []).map((s: any) => [s.id, s]));
+
+  // Pré-busca de product_groups dos solados mapeados (uma única ida ao banco).
+  const groupIds = [
+    ...new Set(((soleMappings || []) as any[])
+      .map(m => m.products?.group_id)
+      .filter(Boolean) as string[]),
+  ];
+  const { data: groups } = groupIds.length > 0
+    ? await supabase.from('product_groups').select('id, name').in('id', groupIds)
+    : { data: [] as Array<{ id: string; name: string }> };
+  const groupNameById = new Map<string, string>((groups || []).map((g: any) => [g.id, g.name]));
+
+  // sheet_id::cabedal_color → { group, color }
+  const soleMap = new Map<string, { group: string; color: string }>();
+  for (const m of (soleMappings || []) as any[]) {
+    const key = `${m.sheet_id}::${(m.product_color || '').toLowerCase().trim()}`;
+    const groupName = (m.products?.group_id && groupNameById.get(m.products.group_id))
+      || m.products?.name
+      || '';
+    const colorName = m.products?.color || '';
+    if (groupName || colorName) {
+      soleMap.set(key, { group: groupName, color: colorName });
+    }
+  }
+
+  const breakdown = new Map<string, SoleBreakdownRow>();
+  const sizeSet = new Set<string>();
+
+  for (const order of ordersData) {
+    const sheet = sheetMap.get(order.reference_id);
+    if (!sheet) continue;
+    const colorLower = (order.color || '').toLowerCase().trim();
+    const mapped = soleMap.get(`${order.reference_id}::${colorLower}`);
+    const soleGroup = (mapped?.group || (sheet.sole_material || '').toString().trim() || '—').trim() || '—';
+    const soleColor = (mapped?.color || (sheet.sole_color || '').toString().trim() || '—').trim() || '—';
+
+    const grade = (order.grade as Record<string, number> | null) || {};
+    const baseSum = Object.values(grade).reduce((s, v) => s + (Number(v) || 0), 0);
+    const orderTotal = Number(order.quantity) || 0;
+    if (orderTotal <= 0) continue;
+    const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
+
+    const key = `${soleGroup}||${soleColor}`;
+    if (!breakdown.has(key)) {
+      breakdown.set(key, { soleGroup, soleColor, sizes: {}, total: 0 });
+    }
+    const row = breakdown.get(key)!;
+
+    if (baseSum > 0) {
+      for (const [size, qty] of Object.entries(grade)) {
+        const scaled = Math.round((Number(qty) || 0) * multiplier);
+        if (scaled > 0) {
+          row.sizes[size] = (row.sizes[size] || 0) + scaled;
+          sizeSet.add(size);
+        }
+      }
+    } else {
+      // Sem grade: registra como tamanho '—' pra não perder o total.
+      row.sizes['—'] = (row.sizes['—'] || 0) + orderTotal;
+      sizeSet.add('—');
+    }
+    row.total = Object.values(row.sizes).reduce((s, v) => s + v, 0);
+  }
+
+  const allSizes = Array.from(sizeSet).sort((a, b) => {
+    if (a === '—') return 1;
+    if (b === '—') return -1;
+    const na = parseFloat(a), nb = parseFloat(b);
+    return isNaN(na) || isNaN(nb) ? a.localeCompare(b) : na - nb;
+  });
+  const rows = Array.from(breakdown.values()).sort((a, b) =>
+    a.soleGroup.localeCompare(b.soleGroup, 'pt-BR') || a.soleColor.localeCompare(b.soleColor, 'pt-BR')
+  );
+  const grandTotal = rows.reduce((s, r) => s + r.total, 0);
+
+  return { rows, allSizes, grandTotal };
+}

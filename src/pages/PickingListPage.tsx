@@ -15,7 +15,14 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { cn } from '@/lib/utils';
-import { calculateBomForOrders, type ConsumptionRow, COMPONENT_ORDER, formatUnit } from '@/lib/bomConsumption';
+import {
+  calculateBomForOrders,
+  calculateSoleBreakdownByGrade,
+  type ConsumptionRow,
+  type SoleBreakdownResult,
+  COMPONENT_ORDER,
+  formatUnit,
+} from '@/lib/bomConsumption';
 import { toast } from 'sonner';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
@@ -66,6 +73,7 @@ export default function PickingListPage() {
   const [opInput, setOpInput] = useState('');
 
   const [rows, setRows] = useState<ConsumptionRow[]>([]);
+  const [soleBreakdown, setSoleBreakdown] = useState<SoleBreakdownResult>({ rows: [], allSizes: [], grandTotal: 0 });
   const [reportTitle, setReportTitle] = useState('');
   const [reportOrderCount, setReportOrderCount] = useState(0);
   const [isCalculating, setIsCalculating] = useState(false);
@@ -125,19 +133,25 @@ export default function PickingListPage() {
   const runCalculation = useCallback(async (orderIds: string[], title: string) => {
     if (orderIds.length === 0) {
       setRows([]);
+      setSoleBreakdown({ rows: [], allSizes: [], grandTotal: 0 });
       setReportTitle(title);
       setReportOrderCount(0);
       return;
     }
     setIsCalculating(true);
     try {
-      const result = await calculateBomForOrders(orderIds);
-      setRows(result);
+      const [bomResult, soleResult] = await Promise.all([
+        calculateBomForOrders(orderIds),
+        calculateSoleBreakdownByGrade(orderIds),
+      ]);
+      setRows(bomResult);
+      setSoleBreakdown(soleResult);
       setReportTitle(title);
       setReportOrderCount(orderIds.length);
     } catch (err: any) {
       toast.error('Erro ao calcular consumo', { description: err?.message });
       setRows([]);
+      setSoleBreakdown({ rows: [], allSizes: [], grandTotal: 0 });
     } finally {
       setIsCalculating(false);
     }
@@ -157,16 +171,16 @@ export default function PickingListPage() {
   useEffect(() => {
     if (filterMode !== 'week') return;
     const group = weekGroups.find(g => g.code === selectedWeek);
-    if (!group) { setRows([]); return; }
+    if (!group) { setRows([]); setSoleBreakdown({ rows: [], allSizes: [], grandTotal: 0 }); return; }
 
     const soNumbers = group.saleOrderNumbers;
-    if (soNumbers.length === 0) { setRows([]); return; }
+    if (soNumbers.length === 0) { setRows([]); setSoleBreakdown({ rows: [], allSizes: [], grandTotal: 0 }); return; }
 
     const soIds = activeSaleOrders
       .filter(so => soNumbers.includes(so.order_number || so.id))
       .map(so => so.id);
 
-    if (soIds.length === 0) { setRows([]); return; }
+    if (soIds.length === 0) { setRows([]); setSoleBreakdown({ rows: [], allSizes: [], grandTotal: 0 }); return; }
 
     let cancelled = false;
 
@@ -270,7 +284,10 @@ export default function PickingListPage() {
   // ── Print ─────────────────────────────────────────────────────────────────
 
   const handlePrint = useCallback(() => {
-    const tableRows = rows.map(row => {
+    // Solado vai pra tabela matricial separada (numeração × cor); demais
+    // componentes ficam na tabela flat normal.
+    const nonSoleRows = rows.filter(r => r.componentType !== 'Solado');
+    const tableRows = nonSoleRows.map(row => {
       const key = rowKey(row);
       const done = pickedSet.has(key);
       return `<tr${done ? ' style="background:#f0fdf4"' : ''}>
@@ -289,6 +306,51 @@ export default function PickingListPage() {
         `<span style="display:inline-block;background:#f3f4f6;padding:4px 12px;border-radius:6px;margin-right:8px;font-size:13px;font-weight:600">${total.toFixed(2)} ${formatUnit(unit)}</span>`)
       .join('');
 
+    // Matriz de solados por numeração + cor
+    let soleMatrixHtml = '';
+    if (soleBreakdown.rows.length > 0) {
+      const sizesHeader = soleBreakdown.allSizes
+        .map(s => `<th style="text-align:center;width:36px;font-family:monospace">${escapeHtml(s)}</th>`)
+        .join('');
+      const bodyRows = soleBreakdown.rows.map(srow => {
+        const key = `Solado||${srow.soleGroup}||${srow.soleColor}||par`;
+        const done = pickedSet.has(key);
+        const sizeCells = soleBreakdown.allSizes.map(s => {
+          const qty = srow.sizes[s] || 0;
+          return `<td style="text-align:center;font-family:monospace;${qty > 0 ? 'font-weight:700' : 'color:#d1d5db'};padding:4px 6px">${qty > 0 ? qty : '·'}</td>`;
+        }).join('');
+        return `<tr${done ? ' style="background:#f0fdf4"' : ''}>
+          <td style="text-align:center;font-size:14px;padding:4px 6px">${done ? '✅' : '☐'}</td>
+          <td style="padding:4px 8px;font-weight:600">${escapeHtml(srow.soleGroup)}</td>
+          <td style="padding:4px 8px">${escapeHtml(srow.soleColor)}</td>
+          ${sizeCells}
+          <td style="text-align:right;padding:4px 8px;font-family:monospace;font-weight:700">${srow.total} par</td>
+        </tr>`;
+      }).join('');
+      const totalRow = `<tr style="background:#f3f4f6;font-weight:700;border-top:2px solid #9ca3af">
+        <td></td>
+        <td style="padding:4px 8px;text-transform:uppercase;font-size:10px;color:#6b7280" colspan="2">Total por numeração</td>
+        ${soleBreakdown.allSizes.map(s => {
+          const sum = soleBreakdown.rows.reduce((acc, r) => acc + (r.sizes[s] || 0), 0);
+          return `<td style="text-align:center;font-family:monospace;font-weight:700;padding:4px 6px">${sum > 0 ? sum : '·'}</td>`;
+        }).join('')}
+        <td style="text-align:right;padding:4px 8px;font-family:monospace;font-weight:700">${soleBreakdown.grandTotal} par</td>
+      </tr>`;
+      soleMatrixHtml = `
+        <h2 style="font-size:13px;margin:18px 0 6px;text-transform:uppercase;letter-spacing:.5px">🥿 Solados — quantidade por numeração e cor</h2>
+        <table>
+          <thead><tr>
+            <th style="width:24px">✓</th>
+            <th>Solado</th>
+            <th>Cor</th>
+            ${sizesHeader}
+            <th style="text-align:right">Total</th>
+          </tr></thead>
+          <tbody>${bodyRows}${totalRow}</tbody>
+        </table>
+      `;
+    }
+
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
       <title>Lista de Separação — ${reportTitle}</title>
       <style>
@@ -305,6 +367,8 @@ export default function PickingListPage() {
       <h1>📦 Lista de Separação — ${reportTitle}</h1>
       <p class="sub">${totalItems} item(ns) · ${reportOrderCount} OP(s) · Gerado em ${new Date().toLocaleString('pt-BR')}</p>
       <div style="margin-bottom:12px">${totalsHtml}</div>
+      ${soleMatrixHtml}
+      <h2 style="font-size:13px;margin:18px 0 6px;text-transform:uppercase;letter-spacing:.5px">📋 Demais materiais</h2>
       <table>
         <thead><tr>
           <th>✓</th><th>Tipo</th><th>Grupo de Material</th><th>Aplicação</th><th>Cor</th>
@@ -319,7 +383,7 @@ export default function PickingListPage() {
 
     const w = window.open('', '_blank');
     if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 300); }
-  }, [rows, pickedSet, totalsByUnit, reportTitle, totalItems, reportOrderCount]);
+  }, [rows, pickedSet, totalsByUnit, reportTitle, totalItems, reportOrderCount, soleBreakdown]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -354,7 +418,7 @@ export default function PickingListPage() {
 
       {/* Filter modes */}
       <Panel bodyClassName="space-y-3">
-          <Tabs value={filterMode} onValueChange={v => { setFilterMode(v as FilterMode); setRows([]); }}>
+          <Tabs value={filterMode} onValueChange={v => { setFilterMode(v as FilterMode); setRows([]); setSoleBreakdown({ rows: [], allSizes: [], grandTotal: 0 }); }}>
             <TabsList className="h-8">
               <TabsTrigger value="week" className="gap-1.5 text-xs h-7">
                 <Calendar className="h-3.5 w-3.5" /> Onda Semanal
@@ -495,8 +559,15 @@ export default function PickingListPage() {
             const componentRows = grouped.get(componentType);
             if (!componentRows || componentRows.length === 0) return null;
 
-            const compPicked = componentRows.filter(r => pickedSet.has(rowKey(r))).length;
-            const compDone = compPicked === componentRows.length;
+            // Solado: usa matriz solado×numeração quando o breakdown está
+            // populado. Fallback pra tabela flat quando o breakdown veio vazio
+            // (ex: orders sem grade).
+            const useSoleMatrix = componentType === 'Solado' && soleBreakdown.rows.length > 0;
+            const effectiveCount = useSoleMatrix ? soleBreakdown.rows.length : componentRows.length;
+            const compPicked = useSoleMatrix
+              ? soleBreakdown.rows.filter(r => pickedSet.has(`Solado||${r.soleGroup}||${r.soleColor}||par`)).length
+              : componentRows.filter(r => pickedSet.has(rowKey(r))).length;
+            const compDone = compPicked === effectiveCount;
 
             return (
               <Panel
@@ -509,19 +580,109 @@ export default function PickingListPage() {
                       : <Package className="h-4 w-4 text-primary" />}
                     <span className="uppercase tracking-wide">{componentType}</span>
                     <Badge variant="outline" className="text-xs ml-1">
-                      {componentRows.length} item(ns)
+                      {effectiveCount} item(ns)
                     </Badge>
+                    {useSoleMatrix && (
+                      <Badge variant="secondary" className="text-xs">
+                        {soleBreakdown.grandTotal} pares · {soleBreakdown.allSizes.length} numerações
+                      </Badge>
+                    )}
                   </span>
                 }
-                subtitle={`${compPicked}/${componentRows.length} separados`}
+                subtitle={`${compPicked}/${effectiveCount} separados`}
                 flush
               >
                 <div className="px-4 pt-3">
                   <Progress
-                    value={componentRows.length > 0 ? Math.round((compPicked / componentRows.length) * 100) : 0}
+                    value={effectiveCount > 0 ? Math.round((compPicked / effectiveCount) * 100) : 0}
                     className={cn('h-1', compDone ? '[&>div]:bg-green-500' : '')}
                   />
                 </div>
+                {useSoleMatrix ? (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                          <TableHead className="w-10 py-2">✓</TableHead>
+                          <TableHead className="py-2 min-w-[200px]">Solado</TableHead>
+                          <TableHead className="py-2 min-w-[100px]">Cor</TableHead>
+                          {soleBreakdown.allSizes.map(s => (
+                            <TableHead key={s} className="text-center py-2 w-12 font-mono">
+                              {s}
+                            </TableHead>
+                          ))}
+                          <TableHead className="text-right py-2 w-20">Total</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {soleBreakdown.rows.map((srow) => {
+                          const key = `Solado||${srow.soleGroup}||${srow.soleColor}||par`;
+                          const isPicked = pickedSet.has(key);
+                          return (
+                            <TableRow
+                              key={key}
+                              className={cn(
+                                'cursor-pointer transition-colors',
+                                isPicked ? 'bg-green-500/5 opacity-60 hover:opacity-80' : 'hover:bg-muted/30',
+                              )}
+                              onClick={() => togglePicked(key)}
+                            >
+                              <TableCell className="py-2">
+                                {isPicked
+                                  ? <CheckSquare className="h-4 w-4 text-green-600" />
+                                  : <Square className="h-4 w-4 text-muted-foreground" />}
+                              </TableCell>
+                              <TableCell className={cn('py-2 font-medium', isPicked && 'line-through text-muted-foreground')}>
+                                {srow.soleGroup}
+                              </TableCell>
+                              <TableCell className="py-2">
+                                {srow.soleColor !== '—'
+                                  ? <Badge variant="outline" className="text-xs">{srow.soleColor}</Badge>
+                                  : <span className="text-muted-foreground text-xs">—</span>}
+                              </TableCell>
+                              {soleBreakdown.allSizes.map(s => {
+                                const qty = srow.sizes[s] || 0;
+                                return (
+                                  <TableCell
+                                    key={s}
+                                    className={cn(
+                                      'py-2 text-center font-mono',
+                                      qty > 0 ? 'font-bold' : 'text-muted-foreground/40',
+                                      isPicked && 'line-through text-muted-foreground',
+                                    )}
+                                  >
+                                    {qty > 0 ? qty : '·'}
+                                  </TableCell>
+                                );
+                              })}
+                              <TableCell className={cn('py-2 text-right font-mono font-bold', isPicked && 'line-through text-muted-foreground')}>
+                                {srow.total} <span className="text-muted-foreground text-xs font-normal">par</span>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                        {/* Linha de total por numeração */}
+                        <TableRow className="bg-muted/30 font-bold border-t-2">
+                          <TableCell className="py-2" />
+                          <TableCell className="py-2 text-xs uppercase tracking-wider text-muted-foreground" colSpan={2}>
+                            Total por numeração
+                          </TableCell>
+                          {soleBreakdown.allSizes.map(s => {
+                            const sum = soleBreakdown.rows.reduce((acc, r) => acc + (r.sizes[s] || 0), 0);
+                            return (
+                              <TableCell key={s} className="py-2 text-center font-mono font-bold">
+                                {sum > 0 ? sum : '·'}
+                              </TableCell>
+                            );
+                          })}
+                          <TableCell className="py-2 text-right font-mono font-bold">
+                            {soleBreakdown.grandTotal} <span className="text-muted-foreground text-xs font-normal">par</span>
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
@@ -573,6 +734,7 @@ export default function PickingListPage() {
                       })}
                     </TableBody>
                   </Table>
+                )}
               </Panel>
             );
           })}
