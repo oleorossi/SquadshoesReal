@@ -61,6 +61,11 @@ export interface Company {
 export function useNfeEmitidas(saleOrderId?: string) {
   return useQuery({
     queryKey: ['nfe_emitidas', saleOrderId],
+    // staleTime=0 + refetchOnMount='always': mesma estratégia da useAllNfeEmitidas.
+    // Sem isso, o card de NFs no PV ficava com cache vazio depois de emitir
+    // (user via toast 'NF enviada' mas a lista local mostrava 'nenhuma NF').
+    staleTime: 0,
+    refetchOnMount: 'always',
     queryFn: async () => {
       let query = supabase
         .from('nfe_emitidas')
@@ -380,7 +385,17 @@ export function useEmitNfe() {
           { duration: 12000 }
         );
       } else {
-        toast.success('NF-e enviada para processamento!');
+        // Toast com link pro menu de NF: alguns operadores ficavam no PV e
+        // achavam que a NF não aparecia (cache estale + olhavam só o card
+        // local do PV). Botão 'Abrir menu' navega direto pra lista global.
+        const numero = data?.numero ? `NF #${data.numero}` : 'NF-e';
+        toast.success(`${numero} emitida e salva no menu de NF!`, {
+          duration: 8000,
+          action: {
+            label: 'Abrir menu →',
+            onClick: () => { window.location.href = '/nfe'; },
+          },
+        });
       }
     },
     onError: (err: Error) => toast.error(`Erro ao emitir NF-e: ${err.message}`),
