@@ -200,6 +200,19 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
         </div>`
       : '';
 
+    // NF-e em DESTAQUE — informação fiscal mais importante da etiqueta.
+    // Atualiza automaticamente via trigger DB tg_sync_nfe_numero_to_sale_order
+    // (sale_orders.nfe = nfe_emitidas.numero quando status=autorizada).
+    // Aparece logo abaixo do Pedido em block próprio com fundo preto/branco
+    // invertido + fonte 24px pra ser a primeira coisa a saltar aos olhos
+    // de quem lê a etiqueta — exigência do user em 15/05/2026.
+    const nfeLine = item.nfe
+      ? `<div style="margin-top:4px;padding:4px 6px;background:#000;color:#fff;border-radius:2px;display:flex;justify-content:space-between;align-items:baseline;gap:6px;print-color-adjust:exact;-webkit-print-color-adjust:exact;">
+          <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.6px;">NF-e</span>
+          <span style="font-size:24px;font-weight:900;letter-spacing:0.5px;line-height:1;">${escapeHtml(item.nfe)}</span>
+        </div>`
+      : '';
+
     // Bloco esquerdo do topo (logo + barcode) — altura limitada
     const headerLeft = `
       <div style="flex:1;padding:5px 10px;display:flex;flex-direction:column;justify-content:center;border-right:1.5px solid #000;overflow:hidden;">
@@ -209,7 +222,7 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
         ` : ''}
       </div>`;
 
-    // Bloco direito do topo (QR + cliente)
+    // Bloco direito do topo (QR + cliente + NF-e em destaque)
     const headerRight = `
       <div style="width:88mm;padding:4px 8px;display:flex;gap:6px;align-items:flex-start;overflow:hidden;">
         <div style="width:16mm;height:16mm;flex-shrink:0;background:#fff;border:1px solid #555;display:flex;align-items:center;justify-content:center;font-size:7px;color:#333;text-align:center;line-height:1.1;font-weight:700;">
@@ -218,19 +231,19 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
         <div style="flex:1;font-size:10px;color:#000;line-height:1.3;overflow:hidden;">
           ${recipientBlock || '<span style="color:#555;font-size:10px;font-style:italic;font-weight:600;">Sem dados do destinatário</span>'}
           ${pedidoLine}
+          ${nfeLine}
         </div>
       </div>`;
 
-    // Linha de identificadores secundários (Remessa, Talões, Rótulo, NF-e).
-    // "Rót. Rem." era o mesmo valor de "Rót. Pedido" — removido a pedido
-    // do usuário pra não duplicar a informação.
-    // Labels em #222 + bold pra serem legíveis na impressão; valores em
-    // preto puro + 12px bold.
+    // Linha de identificadores secundários (Remessa, Talões, Rótulo).
+    // NF-e foi MOVIDA daqui pro bloco em destaque no headerRight (15/05/2026)
+    // — user pediu pra ficar bem visível, então saiu da barra fina e foi pro
+    // header em destaque (fundo preto, fonte 24px) ao lado dos dados do
+    // destinatário, logo abaixo do número do pedido.
     const subInfoCells = [
       item.remessa ? `<div style="padding:3px 10px;border-right:1px solid #000;"><strong style="font-size:10px;color:#222;font-weight:700;">Remessa:</strong> <span style="font-size:12px;font-weight:800;color:#000;margin-left:4px;">${escapeHtml(item.remessa)}</span></div>` : '',
       item.taloes ? `<div style="padding:3px 10px;border-right:1px solid #000;"><strong style="font-size:10px;color:#222;font-weight:700;">Talões:</strong> <span style="font-size:12px;font-weight:800;color:#000;margin-left:4px;">${item.taloes}</span></div>` : '',
-      `<div style="padding:3px 10px;border-right:1px solid #000;"><strong style="font-size:10px;color:#222;font-weight:700;">Rót. Pedido:</strong> <span style="font-size:12px;font-weight:800;color:#000;margin-left:4px;">${item.boxNumber}/${item.totalBoxes}</span></div>`,
-      item.nfe ? `<div style="padding:3px 10px;"><strong style="font-size:10px;color:#222;font-weight:700;">NF-e:</strong> <span style="font-size:12px;font-weight:800;color:#000;margin-left:4px;">${escapeHtml(item.nfe)}</span></div>` : '',
+      `<div style="padding:3px 10px;"><strong style="font-size:10px;color:#222;font-weight:700;">Rót. Pedido:</strong> <span style="font-size:12px;font-weight:800;color:#000;margin-left:4px;">${item.boxNumber}/${item.totalBoxes}</span></div>`,
     ].filter(Boolean).join('');
 
     // Linha de stats (Corrugado, Fáb, OP, Total) — mesma regra: tudo

@@ -356,6 +356,27 @@ export function LabelProductionTab() {
     staleTime: 30 * 60 * 1000,
   });
 
+  // Set de sale_order_ids que estão em alguma onda de produção. Usado pra
+  // GATE de impressão: o user só pode imprimir etiquetas de pedidos que já
+  // entraram em onda (decisão de 15/05/2026 — antes podia imprimir qualquer
+  // OP em produção, gerando etiquetas pra pedidos ainda não programados).
+  // Source: view v_wave_orders (mapeia wave_id ↔ sale_order_id).
+  const { data: saleOrdersInWaves = new Set<string>() } = useQuery({
+    queryKey: ['sale_orders_in_waves_for_labels'],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('v_wave_orders')
+        .select('sale_order_id');
+      if (error) throw error;
+      const set = new Set<string>();
+      for (const row of (data || []) as any[]) {
+        if (row.sale_order_id) set.add(row.sale_order_id);
+      }
+      return set;
+    },
+    staleTime: 60 * 1000,
+  });
+
   // Map CNPJ → client completo. Fallback pra PVs antigos que têm o CNPJ
   // gravado como texto mas client_id NULL (bug histórico do form, agora
   // corrigido). Sem isso, endereço/cidade/UF não aparecem na etiqueta.
@@ -526,7 +547,13 @@ export function LabelProductionTab() {
 
   const currentSize = LABEL_SIZES.find(s => s.id === labelSize) || LABEL_SIZES[0];
 
-  const productionOrders = allOrders.filter((o: any) => !!o.sale_order_id);
+  // Wave gating: só ordens cujo PV está em alguma onda podem ser impressas.
+  // User pediu (15/05/2026): "Quando pedido entrar em onda eu passa a poder
+  // ser impresso". Sem isso, a aba mostrava qualquer OP em produção mesmo
+  // se a programação ainda não tinha agendado essa onda.
+  const productionOrders = allOrders.filter((o: any) =>
+    !!o.sale_order_id && saleOrdersInWaves.has(o.sale_order_id),
+  );
   const finishedSaleOrderIds = useMemo(
     () => new Set(
       saleOrders.filter((so: any) => ['Faturado', 'Finalizado s/ NF', 'Expedido', 'Concluído'].includes(so.status)).map((so: any) => so.id)
