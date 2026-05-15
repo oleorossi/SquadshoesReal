@@ -2855,13 +2855,37 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               scalarField: 'upper_consumption' | 'lining_consumption' | 'insole_consumption';
               groupName: string;
               show: boolean;
+              hint?: string;
             };
-            // Apenas Cabedal — consumo do cabedal é exclusivo do MODELO (varia
-            // por linha/coleção). Palmilha/Forração/Fachete são especs do
-            // SOLADO (mesmo solado tem o mesmo consumo independente do modelo)
-            // e ficam centralizados em Solados → Consumos → Forração/Palmilha.
+            // Cabedal sempre vem do MODELO (varia por linha/coleção).
+            // Forração/Palmilha geralmente vêm do SOLADO (sole_technical_specs),
+            // mas o preenchimento na ficha técnica TEM PRIORIDADE — útil quando
+            // o modelo usa consumo diferente do default do solado, ou quando
+            // o solado ainda não tem specs cadastradas.
             const rows: MaterialRow[] = ([
-              { label: 'Cabedal', field: 'upper_consumption_per_size', scalarField: 'upper_consumption', groupName: form.upper_material || '', show: !!form.upper_material },
+              {
+                label: 'Cabedal',
+                field: 'upper_consumption_per_size',
+                scalarField: 'upper_consumption',
+                groupName: form.upper_material || '',
+                show: !!form.upper_material,
+              },
+              {
+                label: 'Forração',
+                field: 'lining_consumption_per_size',
+                scalarField: 'lining_consumption',
+                groupName: form.lining_material || '',
+                show: !!form.lining_material && form.insole_has_lining !== false,
+                hint: 'Se vazio, usa o consumo cadastrado no solado.',
+              },
+              {
+                label: 'Palmilha',
+                field: 'insole_consumption_per_size',
+                scalarField: 'insole_consumption',
+                groupName: form.insole_material || '',
+                show: !!form.insole_material && !form.insole_ready_made,
+                hint: 'Se vazio, usa o consumo cadastrado no solado.',
+              },
             ] as MaterialRow[]).filter(r => r.show);
  
              if (rows.length === 0) return null;
@@ -2897,16 +2921,36 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                       const filledVals = sizes.map((s: number) => Number(perSize[String(s)] || 0)).filter((v: number) => v > 0);
                       const avg = filledVals.length > 0 ? filledVals.reduce((a: number, b: number) => a + b, 0) / filledVals.length : 0;
                       const isFlashing = flashFields.has(row.field);
+                      const isEmpty = filledVals.length === 0;
+                      // Cabedal sem per-size = inflação no consumo. Forração/Palmilha
+                      // toleram vazio (cai no solado), mas Cabedal não tem fallback bom.
+                      const isCriticalEmpty = isEmpty && row.field === 'upper_consumption_per_size';
                       return (
                         <tr
                           key={row.field}
-                          className={`border-t border-border/40 transition-colors duration-700 ${isFlashing ? 'bg-green-500/10' : ''}`}
+                          className={`border-t border-border/40 transition-colors duration-700 ${isFlashing ? 'bg-green-500/10' : isCriticalEmpty ? 'bg-amber-500/5' : ''}`}
                         >
                           <td className="text-[11px] font-medium py-1.5 pr-3">
                             {row.label}
                             {isFlashing && (
                               <span className="ml-1 text-[9px] font-bold text-green-600 dark:text-green-400 animate-pulse">
                                 ✓ importado
+                              </span>
+                            )}
+                            {isCriticalEmpty && (
+                              <span
+                                className="ml-1 text-[9px] font-bold text-amber-600 dark:text-amber-400"
+                                title="Cabedal sem consumo por tamanho infla o cálculo. Preencha pelo menos 1 número e use Replicar 1º."
+                              >
+                                ⚠ vazio
+                              </span>
+                            )}
+                            {isEmpty && row.field !== 'upper_consumption_per_size' && row.hint && (
+                              <span
+                                className="ml-1 text-[9px] font-normal text-muted-foreground italic"
+                                title={row.hint}
+                              >
+                                — usa solado
                               </span>
                             )}
                             <span className="ml-1 text-[9px] font-normal text-muted-foreground">({resolveGroupUnit(row.groupName)})</span>
@@ -2962,11 +3006,13 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
 
             return (
               <div className="rounded-lg border bg-card p-4 space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
                   <div className="flex items-center gap-2">
                     <Gauge className="h-4 w-4 text-primary" />
                     <h3 className="text-sm font-semibold">Consumo por Numeração — Produção</h3>
-                    <span className="text-xs text-muted-foreground">unidade do material/par — alimenta o débito de estoque por grade</span>
+                    <span className="text-xs text-muted-foreground">
+                      Preencha o consumo por par em cada numeração. Sem isso o sistema cai num cálculo médio que costuma inflar o débito de estoque.
+                    </span>
                   </div>
                   {form.sole_group_id && (
                     <Button
