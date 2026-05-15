@@ -26,7 +26,7 @@ import { SectorOverloadDialog } from '@/components/sale-orders/SectorOverloadDia
 import { createOutsourceOrdersForOverloads } from '@/lib/outsourceOrders';
 import { computeMinBillingForNewOrder, fetchMinBillingDate, isBeforeMinDate, toISOWeek, type MinBillingResult } from '@/lib/minBillingDate';
 import { MinBillingDateSuggestionDialog } from '@/components/sale-orders/MinBillingDateSuggestionDialog';
-import { monthWeekToISODate } from '@/lib/billingWeek';
+import { monthWeekToISODate, isoToMonthWeek } from '@/lib/billingWeek';
 
 const emptyForm: SaleOrderFormData = {
   client_id: null,
@@ -614,7 +614,16 @@ export default function SaleOrderForm() {
     }
     const newISO = minBillingSuggestion.minDateISO;
     const newWeek = minBillingSuggestion.minWeekISO;
-    setForm((f) => ({ ...f, delivery_deadline: newISO, delivery_week: newWeek }));
+    // Recompõe delivery_month + delivery_week (formato "Sn") junto com o
+    // deadline ISO. Sem isso o submit subsequente caía no
+    // `if (!f.delivery_month)` e abortava silenciosamente.
+    const mw = isoToMonthWeek(newISO);
+    setForm((f) => ({
+      ...f,
+      delivery_deadline: newISO,
+      delivery_month: mw?.month ?? f.delivery_month,
+      delivery_week: mw?.week ?? f.delivery_week,
+    }));
     setMinBillingDialogOpen(false);
     toast.success(`Faturamento ajustado para ${new Date(newISO).toLocaleDateString('pt-BR')} (${newWeek}).`);
     setTimeout(() => {
@@ -646,10 +655,16 @@ export default function SaleOrderForm() {
         return;
       }
     }
+    // Recompõe month + week (formato "Sn") junto — sem isso o submit subsequente
+    // tropeça no `if (!f.delivery_month)` ou na auto-derivação que reescreve o
+    // deadline a partir de campos vazios, e o pedido nunca salva (override admin
+    // travava aqui: trava por 50ms, abre toast escondido, volta ao pedido).
+    const mw = isoToMonthWeek(newISO);
     setForm((f) => ({
       ...f,
       delivery_deadline: newISO,
-      delivery_week: toISOWeek(newISO),
+      delivery_month: mw?.month ?? f.delivery_month,
+      delivery_week: mw?.week ?? f.delivery_week,
       manual_billing_override: isOverride,
       original_min_billing_date: isOverride ? minBillingSuggestion.minDateISO : null,
       manual_override_reason: isOverride ? reason : null,
