@@ -550,6 +550,35 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
     return m;
   }, [sheetLiningFlags]);
 
+  // ATENÇÃO: variantsByRef e tsImageByRef ficam ANTES de palmilhaGroups e
+  // silkMontageGroups porque ambos memos os referenciam dentro do callback.
+  // Antes estavam declarados DEPOIS (linhas 760+) — em runtime, JS bate em
+  // TDZ (Temporal Dead Zone) no primeiro render: "Cannot access 'me' before
+  // initialization" no bundle minificado. 18/05/2026.
+
+  // Lookup: variantes de cor por ref (pra foto + fallback "Preto")
+  const variantsByRef = useMemo(() => {
+    const m = new Map<string, Array<{ color?: string; image_url?: string | null }>>();
+    for (const v of refColorVariants as any[]) {
+      const list = m.get(v.reference_id) ?? [];
+      list.push({ color: v.color, image_url: v.image_url });
+      m.set(v.reference_id, list);
+    }
+    return m;
+  }, [refColorVariants]);
+
+  // Lookup: imagem mestre da ficha técnica. Prioriza `images[0]` (campo atual)
+  // sobre `image_url` (legacy, normalmente vazio).
+  const tsImageByRef = useMemo(() => {
+    const m = new Map<string, string | null>();
+    for (const r of refTechnicalSheets as any[]) {
+      const images = Array.isArray(r.images) ? r.images : [];
+      const firstImage = images.length > 0 ? images[0] : null;
+      m.set(r.id, firstImage || r.image_url || null);
+    }
+    return m;
+  }, [refTechnicalSheets]);
+
   // Returns the capacity (pares/dia) for the given sector and sheet
   const getSheetSectorCapacity = (sheetId: string, sector: string): number => {
     const s = sheetLiningFlags.find((x: any) => x.id === sheetId) as any;
@@ -756,30 +785,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
     'Silk', 'Montagem', 'Corte Forração', 'Corte Cabedal', 'Costura', 'Aviamento',
   ];
 
-  // Lookup: variantes de cor por ref (pra foto + fallback "Preto")
-  const variantsByRef = useMemo(() => {
-    const m = new Map<string, Array<{ color?: string; image_url?: string | null }>>();
-    for (const v of refColorVariants as any[]) {
-      const list = m.get(v.reference_id) ?? [];
-      list.push({ color: v.color, image_url: v.image_url });
-      m.set(v.reference_id, list);
-    }
-    return m;
-  }, [refColorVariants]);
-
-  // Lookup: imagem mestre da ficha técnica. Prioriza `images[0]` (campo atual)
-  // sobre `image_url` (legacy, normalmente vazio).
-  const tsImageByRef = useMemo(() => {
-    const m = new Map<string, string | null>();
-    for (const r of refTechnicalSheets as any[]) {
-      const images = Array.isArray(r.images) ? r.images : [];
-      const firstImage = images.length > 0 ? images[0] : null;
-      m.set(r.id, firstImage || r.image_url || null);
-    }
-    return m;
-  }, [refTechnicalSheets]);
-
   // ── Silk / Montagem / Corte Forração / Costura / Aviamento / Acabamento ────
+  // (variantsByRef + tsImageByRef movidos pra antes de palmilhaGroups —
+  //  ver comentário lá em cima sobre TDZ)
   const silkMontageGroups = useMemo<SoleSilkGroup[] | null>(() => {
     if (!printAll && !SOLE_COLOR_GROUPED_SECTORS.includes(selectedSector as GroupedSector)) return null;
     const soleMap = new Map<string, Map<string, SilkColorGroup>>();
