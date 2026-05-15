@@ -57,6 +57,14 @@ export interface SilkColorGroup {
   pairsPerIndividualBox?: number;
   /** Lista de alertas específicos pra essa cor/setor (ex: "Modelo fachetado"). */
   alerts?: SectorAlert[];
+  /** TRUE quando a palmilha desta cor PRECISA ser forrada (insole_has_lining
+   *  E não é palmilha pronta). Usado pra filtrar Corte Forração — cores sem
+   *  forração não devem aparecer nessa ficha. */
+  requiresLiningCut?: boolean;
+  /** TRUE quando o modelo NÃO tem tiras (has_straps=false), ou seja, tem
+   *  cabedal completo a cortar. Usado pra filtrar Corte Cabedal — modelos
+   *  com tiras não passam por esse setor. */
+  requiresUpperCut?: boolean;
 }
 
 export interface SoleSilkGroup {

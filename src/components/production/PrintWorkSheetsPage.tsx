@@ -847,6 +847,17 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
           color: s?.color || '—',
         }));
 
+        // Flags pra filtrar setores de Corte:
+        //  - Corte Forração só renderiza cores cuja palmilha PRECISA ser
+        //    forrada (insole_has_lining=true E não pronta na cor)
+        //  - Corte Cabedal só renderiza modelos SEM tiras (has_straps=false)
+        // Sem isso, esses 2 setores apareciam com itens irrelevantes (ex:
+        // modelos de tira no Corte Cabedal, palmilhas prontas em Corte
+        // Forração) — confundia o cortador e quantidades ficavam infladas.
+        const requiresLiningCut = (liningFlagLookup.get(sheetId) === true)
+          && (readyMadeLookup.get(sheetId) !== true);
+        const requiresUpperCut = hasStrapsLookup.get(sheetId) !== true;
+
         colorMap.set(colorName, {
           color: colorName,
           // Cor da forração pra essa cor de cabedal (usado em Corte Forração).
@@ -866,6 +877,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
           silk,
           components: strapsAsComponents.length > 0 ? strapsAsComponents : undefined,
           refs: [],
+          requiresLiningCut,
+          requiresUpperCut,
         });
       }
 
@@ -1287,28 +1300,55 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
           </div>
         )}
 
-        {/* ── Sole+Color sectors (Silk, Corte Forração, Costura, Aviamento, Montagem, Acabamento) ── */}
+        {/* ── Sole+Color sectors (Silk, Corte Forração, Corte Cabedal, Costura, Aviamento, Montagem) ── */}
         {(() => {
           if (!silkMontageGroups || silkMontageGroups.length === 0) return null;
-          // Em printAll, renderiza os 7 setores sole+cor em sequência (ordem de fluxo).
-          // 'Corte Cabedal' fica logo após 'Corte Forração' — ambas são sub-etapas
-          // de Corte e podem ser executadas em paralelo.
-          // Em modo normal, só o sector selecionado.
+
+          // Filtro por setor: cada setor precisa de critérios específicos.
+          // Corte Forração: só cores cuja palmilha precisa de forração.
+          // Corte Cabedal: só modelos SEM tiras (que têm cabedal a cortar).
+          // Outros setores: renderizam tudo.
+          // Pedido em 15/05/2026: cada setor mostrar SÓ as quantidades que
+          // se aplicam a ele — antes ambos exibiam todas as cores, inflando
+          // os números pra cortador.
+          const filterGroupForSector = (group: SoleSilkGroup, sector: GroupedSector): SoleSilkGroup | null => {
+            let filtered = group.colorGroups;
+            if (sector === 'Corte Forração') {
+              filtered = filtered.filter(cg => cg.requiresLiningCut === true);
+            } else if (sector === 'Corte Cabedal') {
+              filtered = filtered.filter(cg => cg.requiresUpperCut === true);
+            }
+            if (filtered.length === 0) return null;
+            const totalPairs = filtered.reduce((s, g) => s + g.totalPairs, 0);
+            return { soleName: group.soleName, colorGroups: filtered, totalPairs };
+          };
+
+          // Em printAll, renderiza os setores sole+cor em sequência (ordem de fluxo).
+          // Quando o user seleciona Corte Forração OU Corte Cabedal, exibe AMBOS
+          // num só relatório (sub-etapas de Corte que rodam em paralelo) — pedido
+          // do user em 15/05/2026: 'Corte Cabedal deve estar no mesmo relatório
+          // que Corte Forração, logo na sequência'.
+          const isCorteForCab = selectedSector === 'Corte Forração' || selectedSector === 'Corte Cabedal';
           const sectorsToRender: GroupedSector[] = printAll
             ? ['Corte Forração', 'Corte Cabedal', 'Silk', 'Costura', 'Aviamento', 'Montagem']
-            : SOLE_COLOR_GROUPED_SECTORS.includes(selectedSector as GroupedSector)
-              ? [selectedSector as GroupedSector]
-              : [];
+            : isCorteForCab
+              ? ['Corte Forração', 'Corte Cabedal']
+              : SOLE_COLOR_GROUPED_SECTORS.includes(selectedSector as GroupedSector)
+                ? [selectedSector as GroupedSector]
+                : [];
           return sectorsToRender.flatMap(sectorName =>
-            silkMontageGroups.map((group, idx) => (
-              <div key={`${sectorName}-${group.soleName}`} className="page-break">
-                <SilkMontageWorkSheet
-                  group={group}
-                  sector={sectorName}
-                  date={today}
-                />
-              </div>
-            ))
+            silkMontageGroups
+              .map(group => ({ group, filtered: filterGroupForSector(group, sectorName) }))
+              .filter(x => x.filtered !== null)
+              .map(({ filtered }) => (
+                <div key={`${sectorName}-${filtered!.soleName}`} className="page-break">
+                  <SilkMontageWorkSheet
+                    group={filtered!}
+                    sector={sectorName}
+                    date={today}
+                  />
+                </div>
+              ))
           );
         })()}
 

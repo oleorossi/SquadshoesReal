@@ -4,6 +4,7 @@ import { getProductImage } from '@/utils/productUtils';
 import { ProductionOrder } from '@/types/inventory';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 import { TallyBox } from './worksheet/TallyBox';
+import { SignedImage } from '@/components/ui/signed-image';
 
 interface Props {
   order: ProductionOrder;
@@ -263,6 +264,48 @@ const OperatorWorkSheet = ({
         </div>
       )}
 
+      {/* ── Silk em destaque (Silk + Acabamento) — imagem do silk do solado
+          ou do cliente (cascata resolvida em PrintWorkSheetsPage.getOrderSilk).
+          Quando a OP do cliente tem silk própria cadastrada, ela substitui a
+          silk padrão do solado aqui. Mesmo destaque que o SilkMontageWorkSheet
+          mostra na ficha consolidada. ── */}
+      {(isSilk || isAcabamento) && silk && (
+        <div className="mb-2 keep-together">
+          <div className="flex items-baseline justify-between mb-1">
+            <span className="section-label" style={{ color: '#000' }}>
+              02 / Silk · {isSilk ? 'Estampar' : 'Conferir antes da entrega'}
+            </span>
+            <span className="font-mono text-[10px] text-black tracking-widest uppercase">
+              verificar arte antes
+            </span>
+          </div>
+          <div className="border-t border-black pt-2 flex items-center gap-3 bg-white p-2" style={{ border: '1px solid #000' }}>
+            {silk.silk_url ? (
+              <div className="w-24 h-24 bg-white overflow-hidden shrink-0 flex items-center justify-center" style={{ border: '1.5px solid #000' }}>
+                <SignedImage src={silk.silk_url} alt={silk.silk_name} className="w-full h-full object-contain" />
+              </div>
+            ) : (
+              <div className="w-24 h-24 bg-white shrink-0 flex items-center justify-center" style={{ border: '1.5px solid #000' }}>
+                <span className="text-[9px] text-black text-center px-2 font-mono uppercase tracking-widest">Sem silk cadastrada</span>
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <span className="section-label block" style={{ color: '#000' }}>Marca / Silk</span>
+              <p
+                className="text-black uppercase leading-none mt-1 truncate"
+                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.02em' }}
+                title={silk.silk_name}
+              >
+                {silk.silk_name}
+              </p>
+              {!silk.silk_url && (
+                <p className="text-[9px] font-mono text-black mt-1 tracking-widest uppercase">Cadastrar imagem em /silks</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Product info row — editorial card with hero REF ── */}
       <div className="flex gap-3 mb-2 border-b border-black pb-2">
         {/* Image — hairline framed */}
@@ -344,8 +387,9 @@ const OperatorWorkSheet = ({
               </div>
             )}
 
-            {/* Silk info inline */}
-            {silk && (
+            {/* Silk info inline — só pra setores onde silk NÃO é o destaque.
+                Silk e Acabamento já têm o bloco grande no topo da ficha. */}
+            {silk && !isSilk && !isAcabamento && (
               <div className="col-span-2">
                 <span className="section-label block" style={{ color: '#000' }}>Silk / Estampa</span>
                 <div className="flex items-center gap-2 mt-0.5">
