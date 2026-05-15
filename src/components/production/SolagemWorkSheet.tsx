@@ -16,6 +16,8 @@ export interface SoleColorBand {
   soleType?: string;
   /** Estampar numeração no solado? */
   stampNumber?: boolean;
+  /** Sandálias que usam essa cor de solado (ref + cor + foto). */
+  refs?: Array<{ key: string; code: string; name: string; color: string; image_url: string | null }>;
 }
 
 interface Props {
@@ -105,6 +107,39 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
                   </div>
                 </div>
               </div>
+
+              {/* Sandálias que usam essa cor de solado — strip de fotos + ref. */}
+              {band.refs && band.refs.length > 0 && (
+                <div className="px-3 py-2 flex items-start gap-3 flex-wrap" style={{ borderBottom: '1px solid #000' }}>
+                  <span className="section-label shrink-0 self-center" style={{ color: '#000' }}>Sandálias</span>
+                  {band.refs.map((r) => (
+                    <div key={r.key} className="flex flex-col items-center gap-1">
+                      <div className="bg-white overflow-hidden" style={{ width: 64, height: 64, border: '1.5px solid #000' }}>
+                        <img
+                          src={r.image_url || '/placeholder.svg'}
+                          alt={r.code}
+                          className="w-full h-full object-contain mix-blend-multiply"
+                          loading="eager"
+                          style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' } as React.CSSProperties}
+                        />
+                      </div>
+                      <div className="text-center leading-tight">
+                        <span
+                          className="inline-block bg-black text-white font-mono font-bold px-1 py-0.5 rounded-[2px]"
+                          style={{ fontSize: '8px', letterSpacing: '0.08em' }}
+                        >
+                          REF {r.code}
+                        </span>
+                        {r.color && (
+                          <div className="font-mono font-semibold text-black mt-0.5" style={{ fontSize: '8px' }}>
+                            {r.color}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               <table className="w-full text-center" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                 <thead>

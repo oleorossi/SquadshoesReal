@@ -18,6 +18,9 @@ export interface SilkColorGroup {
   fichas?: number;
   totalPairs: number;
   opNumbers: string[];
+  /** Referências (sandálias) que cabem nesse grupo solado+cor. Geralmente 1
+   *  ref por grupo, mas modelos diferentes podem usar mesmo solado+cor. */
+  refs?: Array<{ code: string; name: string }>;
   silk?: { silk_name: string; silk_url: string | null };
   /** URL da imagem da variante exata (se houver). */
   variantImageUrl?: string | null;
@@ -99,11 +102,11 @@ const SECTOR_THEME: Record<GroupedSector, {
 }> = {
   'Silk':           { border: 'border-pink-700',    bg: 'bg-pink-600',    bgLight: 'bg-pink-50',    border1: 'border-pink-500',   textColor: 'text-pink-900',    icon: Paintbrush, accentColor: 'pink',    showFrenteTraseiro: false, showSilkImage: true,  showProductImage: true,  showAlerts: false, showMaterials: 'none',  showStitching: false, showFinishingChecklist: false, showIndividualBox: false },
   'Montagem':       { border: 'border-blue-700',    bg: 'bg-blue-600',    bgLight: 'bg-blue-50',    border1: 'border-blue-500',   textColor: 'text-blue-900',    icon: Hammer,     accentColor: 'blue',    showFrenteTraseiro: false, showSilkImage: false, showProductImage: true,  showAlerts: false, showMaterials: 'none',  showStitching: false, showFinishingChecklist: false, showIndividualBox: false },
-  'Corte Forração': { border: 'border-cyan-700',    bg: 'bg-cyan-600',    bgLight: 'bg-cyan-50',    border1: 'border-cyan-500',   textColor: 'text-cyan-900',    icon: Cloud,      accentColor: 'cyan',    showFrenteTraseiro: false, showSilkImage: false, showProductImage: false, showAlerts: false, showMaterials: 'lining',showStitching: false, showFinishingChecklist: false, showIndividualBox: false },
+  'Corte Forração': { border: 'border-cyan-700',    bg: 'bg-cyan-600',    bgLight: 'bg-cyan-50',    border1: 'border-cyan-500',   textColor: 'text-cyan-900',    icon: Cloud,      accentColor: 'cyan',    showFrenteTraseiro: false, showSilkImage: false, showProductImage: true,  showAlerts: false, showMaterials: 'lining',showStitching: false, showFinishingChecklist: false, showIndividualBox: false },
   // Corte Cabedal — só em modelos has_straps=false. Mostra material do cabedal,
   // sem silk, sem foto do calçado (cortador só vê o cabedal por cor). Amber pra
   // distinguir visualmente dos outros 2 cortes.
-  'Corte Cabedal':  { border: 'border-orange-700',  bg: 'bg-orange-600',  bgLight: 'bg-orange-50',  border1: 'border-orange-500', textColor: 'text-orange-900', icon: Scissors,   accentColor: 'orange',  showFrenteTraseiro: false, showSilkImage: false, showProductImage: false, showAlerts: true,  showMaterials: 'upper', showStitching: false, showFinishingChecklist: false, showIndividualBox: false, showCabedalCutChecklist: true },
+  'Corte Cabedal':  { border: 'border-orange-700',  bg: 'bg-orange-600',  bgLight: 'bg-orange-50',  border1: 'border-orange-500', textColor: 'text-orange-900', icon: Scissors,   accentColor: 'orange',  showFrenteTraseiro: false, showSilkImage: false, showProductImage: true,  showAlerts: true,  showMaterials: 'upper', showStitching: false, showFinishingChecklist: false, showIndividualBox: false, showCabedalCutChecklist: true },
   'Costura':        { border: 'border-violet-700',  bg: 'bg-violet-600',  bgLight: 'bg-violet-50',  border1: 'border-violet-500', textColor: 'text-violet-900',  icon: Pen,        accentColor: 'violet',  showFrenteTraseiro: false, showSilkImage: false, showProductImage: true,  showAlerts: false, showMaterials: 'none',  showStitching: true,  showFinishingChecklist: false, showIndividualBox: false },
   'Aviamento':      { border: 'border-amber-700',   bg: 'bg-amber-600',   bgLight: 'bg-amber-50',   border1: 'border-amber-500',  textColor: 'text-amber-900',   icon: Paperclip,  accentColor: 'amber',   showFrenteTraseiro: true,  showSilkImage: false, showProductImage: true,  showAlerts: true,  showMaterials: 'both',  showStitching: false, showFinishingChecklist: false, showIndividualBox: false },
   'Acabamento':     { border: 'border-emerald-700', bg: 'bg-emerald-600', bgLight: 'bg-emerald-50', border1: 'border-emerald-500',textColor: 'text-emerald-900', icon: Sparkles,   accentColor: 'emerald', showFrenteTraseiro: false, showSilkImage: true,  showProductImage: true,  showAlerts: false, showMaterials: 'none',  showStitching: false, showFinishingChecklist: true,  showIndividualBox: true  },
@@ -249,6 +252,22 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                   </div>
                 </div>
                 <div className="flex items-center gap-4 shrink-0">
+                  {cg.refs && cg.refs.length > 0 && (
+                    <div className="text-right">
+                      <span className="section-label block" style={{ color: '#000' }}>Ref.</span>
+                      <div className="flex items-center gap-1 mt-0.5 justify-end flex-wrap">
+                        {cg.refs.map((r) => (
+                          <span
+                            key={r.code}
+                            className="inline-block bg-black text-white font-mono font-bold px-1.5 py-0.5 rounded-[2px] whitespace-nowrap"
+                            style={{ fontSize: '10px', letterSpacing: '0.08em' }}
+                          >
+                            REF {r.code}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {cg.opNumbers.length > 0 && (
                     <div className="text-right">
                       <span className="section-label block" style={{ color: '#000' }}>OP</span>

@@ -587,9 +587,31 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
           baseGrade: { ...((order.grid as Record<string, number>) || {}) },
           baseGradeSum: 0, fichas: 0,
           readyMade: isReadyMade,
+          refs: [],
         });
       }
       const group = groupMap.get(key)!;
+      // Acumula referências (sandálias) do grupo pra exibir RefChips + fotos no
+      // header da ficha. Dedupe por code+color (mesma sandália em várias OPs
+      // aparece uma vez só).
+      const refCode = order.reference_code || '';
+      const refColor = order.color || '';
+      const refKey = `${refCode}::${refColor}`;
+      if (refCode && !group.refs.some((r: any) => r.key === refKey)) {
+        const variants = variantsByRef.get(sheetId) || [];
+        const exactImg = variants.find(v => (v.color || '').toLowerCase() === cabedelColorLower)?.image_url;
+        const pretoImg = !exactImg
+          ? variants.find(v => v.image_url && /^preto$/i.test((v.color || '').trim()))?.image_url
+          : null;
+        const tsImg = tsImageByRef.get(sheetId) || null;
+        group.refs.push({
+          key: refKey,
+          code: refCode,
+          name: order.reference_name || '',
+          color: refColor,
+          image_url: exactImg || pretoImg || tsImg || null,
+        });
+      }
       // Scaling: grade base × multiplier = pares reais. Acumula também baseGrade
       // + fichas pra worksheet exibir "Por Ficha (Np)".
       const baseGrid = order.grid || {};
@@ -719,11 +741,17 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
           opNumbers: [],
           silk,
           components: strapsAsComponents.length > 0 ? strapsAsComponents : undefined,
+          refs: [],
         });
       }
 
       const cg = colorMap.get(colorName)!;
       cg.opNumbers.push(order.op_number);
+      // Acumula refs (sandálias) dessa cor+solado pra exibir o REF code no card.
+      const refCode = order.reference_code || '';
+      if (refCode && !cg.refs!.some((r: any) => r.code === refCode)) {
+        cg.refs!.push({ code: refCode, name: order.reference_name || '' });
+      }
       // Mantém combinedGrid (escalado) pra exibir "Pares" total e baseGrid+fichas
       // pra exibir "Por Ficha (Np)" — ambas precisam aparecer na ficha.
       const baseGrid = order.grid || {};
@@ -755,6 +783,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
     const soleColorMap = new Map<string, {
       grade: Record<string, number>; totalPairs: number;
       baseGrade: Record<string, number>; baseGradeSum: number; fichas: number;
+      refs: Array<{ key: string; code: string; name: string; color: string; image_url: string | null }>;
     }>();
     const sizeSet = new Set<string>();
 
@@ -768,9 +797,29 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
           grade: {}, totalPairs: 0,
           baseGrade: { ...((order.grid as Record<string, number>) || {}) },
           baseGradeSum: 0, fichas: 0,
+          refs: [],
         });
       }
       const band = soleColorMap.get(soleColor)!;
+      // Acumula referências (sandálias) com foto pra exibir no header da ficha.
+      const refCode = order.reference_code || '';
+      const refColor = order.color || '';
+      const refKey = `${refCode}::${refColor}`;
+      if (refCode && !band.refs.some(r => r.key === refKey)) {
+        const variants = variantsByRef.get(sheetId) || [];
+        const exactImg = variants.find(v => (v.color || '').toLowerCase() === cabedelColorLower)?.image_url;
+        const pretoImg = !exactImg
+          ? variants.find(v => v.image_url && /^preto$/i.test((v.color || '').trim()))?.image_url
+          : null;
+        const tsImg = tsImageByRef.get(sheetId) || null;
+        band.refs.push({
+          key: refKey,
+          code: refCode,
+          name: order.reference_name || '',
+          color: refColor,
+          image_url: exactImg || pretoImg || tsImg || null,
+        });
+      }
       // Scaling + baseGrade pra worksheet exibir "Por Ficha (Np)".
       const baseGrid = order.grid || {};
       const baseSum = Object.values(baseGrid).reduce((s, v) => s + (Number(v) || 0), 0);

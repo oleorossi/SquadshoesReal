@@ -10,12 +10,16 @@ interface Props {
   technicalSheetImageUrl?: string | null;
   /** Cor do pedido (pra detectar quando precisa fallback). */
   orderColor?: string;
-  /** Tamanho em px. Default 100. */
+  /** Tamanho em px. Default 140 (antes 100 ficava pequeno e ofuscado). */
   size?: number;
   /** Nome do produto pra alt + tooltip. */
   alt?: string;
   /** Renderiza badge "REF." quando a imagem não é da cor exata. */
   showRefBadge?: boolean;
+  /** Aplica filtro mix-blend-multiply (remove fundo branco). Default true.
+   *  Desligar quando a imagem original já tem fundo transparente — o filtro
+   *  às vezes degrada o contraste de cores escuras. */
+  multiplyBlend?: boolean;
   /** Classe extra no container. */
   className?: string;
 }
@@ -68,9 +72,10 @@ export const ProductImageBlock = ({
   alternateVariants,
   technicalSheetImageUrl,
   orderColor,
-  size = 100,
+  size = 140,
   alt = 'Produto',
   showRefBadge = true,
+  multiplyBlend = true,
   className,
 }: Props) => {
   const { url, isExactMatch } = resolveImage(variantImageUrl, alternateVariants, technicalSheetImageUrl);
@@ -84,8 +89,18 @@ export const ProductImageBlock = ({
       <img
         src={url}
         alt={alt}
-        className="w-full h-full object-contain mix-blend-multiply"
+        className={cn('w-full h-full object-contain', multiplyBlend && 'mix-blend-multiply')}
         loading="eager"
+        decoding="sync"
+        // CSS hint pro browser preferir nitidez sobre suavização em downscale —
+        // imagens de catálogo de calçado geralmente vêm em alta res e ficam
+        // borradas com bilinear default. Tipograhpic hint não afeta upscale.
+        style={{
+          imageRendering: 'auto',
+          // print-color-adjust pra impressão sair fiel
+          printColorAdjust: 'exact',
+          WebkitPrintColorAdjust: 'exact',
+        } as React.CSSProperties}
       />
       {showBadge && (
         <div
