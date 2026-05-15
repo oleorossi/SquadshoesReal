@@ -2088,8 +2088,13 @@ export default function SaleOrders() {
                 </div>
               )}
 
-              {/* NF-e panel — só pra PVs formais (nfe_required=true) ou que já têm NF emitida */}
-              {(selectedOrder as any).nfe_required !== false && (selectedOrder.status === 'Faturado' || selectedOrder.status === 'Aprovado' || selectedOrderNfes.length > 0) && (
+              {/* NF-e panel — pra qualquer PV formal (nfe_required≠false) que não esteja
+                  cancelado. Antes a condição exigia status='Faturado'|'Aprovado' o que
+                  escondia o painel inteiro pra PVs em 'Em Produção'/'Pendente'/etc, e o
+                  operador não tinha como emitir nem ver NFs prévias. O backend (emit-nfe)
+                  é quem decide se é seguro emitir agora — frontend só deve mostrar a
+                  opção. */}
+              {(selectedOrder as any).nfe_required !== false && selectedOrder.status !== 'Cancelado' && (
                 <div className="rounded-lg border bg-card overflow-hidden">
                   <div className="flex items-center justify-between px-4 py-2.5 bg-muted/30 border-b">
                     <div className="flex items-center gap-2 text-sm font-medium">
@@ -2113,7 +2118,11 @@ export default function SaleOrders() {
                           </SelectContent>
                         </Select>
                       )}
-                      {(selectedOrder.status === 'Faturado' || selectedOrder.status === 'Aprovado') && (
+                      {/* Botão Emitir aparece pra qualquer status não-cancelado SE não
+                          houver NF ativa (autorizada/processando/cancelando). Backend
+                          re-valida tudo (status, IE, NCM, etc) — esse check de UI só
+                          esconde quando claramente não faz sentido tentar. */}
+                      {!selectedOrderNfes.some((n: any) => ['autorizada', 'processando', 'cancelando'].includes(n.status)) && (
                         <Button size="sm" className="h-7 text-xs gap-1.5" disabled={emitNfe.isPending}
                           onClick={() => emitNfe.mutate({ saleOrderId: selectedOrder.id, companyId: nfeCompanyId || undefined })}>
                           {emitNfe.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Receipt className="h-3 w-3" />}
