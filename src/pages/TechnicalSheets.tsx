@@ -1828,6 +1828,113 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
   const formatCurrency = (v: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(v);
 
+  // Resolve unidade canónica de um grupo de material — reusada por Cabedal/Forro/Palmilha.
+  const resolveGroupUnitName = (groupName: string): string => {
+    if (!groupName?.trim()) return 'dm²';
+    const g: any = (groups || []).find((x: any) => (x.name || '').trim() === groupName.trim());
+    if (!g) return 'dm²';
+    const groupUnit = ((g.consumption_unit || g.dimensions_unit) || '').toString().trim();
+    if (groupUnit) return groupUnit;
+    const prod = (products || []).find((p: any) => p.group_id === g.id && p.active && (p.unit || '').trim())
+      || (products || []).find((p: any) => p.group_id === g.id && (p.unit || '').trim());
+    return (prod?.unit || '').toString().trim() || 'dm²';
+  };
+
+  /**
+   * Grade de consumo por numeração reutilizada por Cabedal/Forração/Palmilha.
+   * Cada material chama com seu próprio field/onChange; o helper cuida do
+   * input por tamanho + botões "Puxar Grade do Solado" e "Replicar 1º".
+   */
+  const renderMaterialSizeGrid = (params: {
+    perSize: Record<string, number>;
+    unit: string;
+    onChange: (next: Record<string, number>) => void;
+    highlightColor?: 'amber' | 'primary' | 'emerald';
+    showSoleGradeButton?: boolean;
+  }) => {
+    const { perSize, unit, onChange, highlightColor = 'primary', showSoleGradeButton = true } = params;
+    const sizes = parseSizesFromRange(form.sizes, form.shoe_category);
+    const colorClass = highlightColor === 'emerald'
+      ? 'border-emerald-300 dark:border-emerald-800'
+      : highlightColor === 'amber'
+      ? 'border-amber-300 dark:border-amber-800'
+      : 'border-primary/30';
+    const filledVals = sizes.map(s => Number(perSize[String(s)] || 0)).filter(v => v > 0);
+    const avg = filledVals.length > 0 ? (filledVals.reduce((a, b) => a + b, 0) / filledVals.length) : 0;
+    return (
+      <div className={`mt-2 p-2.5 rounded-md border bg-muted/30 ${colorClass}`}>
+        <div className="flex items-center justify-between mb-1.5">
+          <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Consumo por Numeração ({unit}/par)
+          </Label>
+          {!form.has_straps && (
+            <span className="text-[10px] text-muted-foreground">
+              Média: <strong>{avg.toFixed(4)}</strong>
+            </span>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {sizes.map(size => {
+            const sizeKey = String(size);
+            return (
+              <div key={size} className="flex flex-col items-center gap-0.5">
+                <span className="text-[10px] font-mono text-muted-foreground">{size}</span>
+                <NumberInput
+                  value={perSize[sizeKey] || 0}
+                  onChange={v => {
+                    const next = { ...perSize, [sizeKey]: v };
+                    onChange(next);
+                  }}
+                  className="w-[58px] h-7 text-[10px] text-center"
+                  placeholder="0"
+                  step="0.0001"
+                />
+              </div>
+            );
+          })}
+          <div className="flex flex-col gap-1 self-end">
+            {showSoleGradeButton && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 text-[10px]"
+                onClick={async () => {
+                  const grid = await fetchSoleGradeForCabedal();
+                  if (grid) {
+                    const merged = { ...grid, ...perSize };
+                    onChange(merged);
+                    toast.success("Grade do solado aplicada. Preencha os consumos por numeração.");
+                  }
+                }}
+              >
+                <RefreshCw className="h-3 w-3 mr-1" /> Puxar Grade do Solado
+              </Button>
+            )}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 text-[10px]"
+              onClick={() => {
+                const firstFilled = sizes.map(s => perSize[String(s)] || 0).find(v => v > 0);
+                if (!firstFilled || firstFilled <= 0) {
+                  toast.info("Preencha o primeiro número antes de replicar.");
+                  return;
+                }
+                const next: Record<string, number> = {};
+                sizes.forEach(s => { next[String(s)] = firstFilled; });
+                onChange(next);
+              }}
+            >
+              Replicar 1º
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Compute material cost from BOM (uses per-size average when available)
   const materialCost = useMemo(() => {
     if (!sheetMaterials.length) return 0;
@@ -2560,6 +2667,17 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           </Button>
                         )}
                       </div>
+                      {form.upper_material && renderMaterialSizeGrid({
+                        perSize: form.upper_consumption_per_size || {},
+                        unit: resolveGroupUnitName(form.upper_material),
+                        onChange: (next) => {
+                          updateField('upper_consumption_per_size' as any, next);
+                          const vals = Object.values(next).filter((v: any) => Number(v) > 0).map(Number);
+                          const avg = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+                          updateField('upper_consumption', Number(avg.toFixed(4)));
+                        },
+                        highlightColor: 'amber',
+                      })}
                     </div>
 
                     {/* Acessórios alternativos de cabedal removidos da UI conforme decisão
@@ -2710,6 +2828,18 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 <div className="space-y-3">
                   <GroupMaterialSelect label="Material Principal" value={form.lining_material} onChange={v => { updateField('lining_material', v); autoFillConsumption(v, 'lining_material'); }} />
 
+                  {form.lining_material && form.insole_has_lining !== false && renderMaterialSizeGrid({
+                    perSize: form.lining_consumption_per_size || {},
+                    unit: resolveGroupUnitName(form.lining_material),
+                    onChange: (next) => {
+                      updateField('lining_consumption_per_size' as any, next);
+                      const vals = Object.values(next).filter((v: any) => Number(v) > 0).map(Number);
+                      const avg = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+                      updateField('lining_consumption', Number(avg.toFixed(4)));
+                    },
+                    highlightColor: 'primary',
+                  })}
+
                   {/* Acessórios alternativos de forração removidos. Cada ref tem
                       APENAS um material principal de forro. Botão "Outra Opção" e
                       blocos extras escondidos (mantidos no banco pra fichas legacy). */}
@@ -2757,6 +2887,18 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                     }
                     return null;
                   })()}
+
+                  {form.insole_material && !form.insole_ready_made && renderMaterialSizeGrid({
+                    perSize: form.insole_consumption_per_size || {},
+                    unit: resolveGroupUnitName(form.insole_material),
+                    onChange: (next) => {
+                      updateField('insole_consumption_per_size' as any, next);
+                      const vals = Object.values(next).filter((v: any) => Number(v) > 0).map(Number);
+                      const avg = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+                      updateField('insole_consumption', Number(avg.toFixed(4)));
+                    },
+                    highlightColor: 'primary',
+                  })}
                 </div>
               </div>
             </div>
@@ -2822,232 +2964,6 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               </Button>
             </div>
           </div>
-
-           {/* ═══ SECTION: Consumo por Numeração para Produção ═══ */}
-          </div>
-
-          {/* ═══ SECTION: Consumo por Numeração para Produção ═══ */}
-          {false && null}
-           {(form.upper_material || form.lining_material || form.insole_material) && (() => {
-             const soleProd = form.sole_group_id ? products.find(p => p.group_id === form.sole_group_id) : null;
-             const insoleMode = (soleProd as any)?.insole_mode || 'cortar';
-             const insoleIsPronta = insoleMode === 'pronta_na_cor';
- 
-            const sizes = parseSizesFromRange(form.sizes, form.shoe_category);
-            // Resolves the measurement unit for a group name, used to label input fields.
-            // FIX: prioriza consumption_unit/dimensions_unit do grupo (unidade canônica
-            // de BOM). Antes pulava direto pro product.unit (unidade de estoque, ex:
-            // "rolo"), o que fazia o operador digitar consumo em rolo quando o
-            // cadastro era em m² — gerando prejuízo grande na BOM.
-            const resolveGroupUnit = (groupName: string): string => {
-              if (!groupName?.trim()) return 'dm²';
-              const g: any = (groups || []).find((x: any) => (x.name || '').trim() === groupName.trim());
-              if (!g) return 'dm²';
-              const groupUnit = ((g.consumption_unit || g.dimensions_unit) || '').toString().trim();
-              if (groupUnit) return groupUnit;
-              const prod = (products || []).find((p: any) => p.group_id === g.id && p.active && (p.unit || '').trim())
-                || (products || []).find((p: any) => p.group_id === g.id && (p.unit || '').trim());
-              return (prod?.unit || '').toString().trim() || 'dm²';
-            };
-            type MaterialRow = {
-              label: string;
-              field: 'upper_consumption_per_size' | 'lining_consumption_per_size' | 'insole_consumption_per_size';
-              scalarField: 'upper_consumption' | 'lining_consumption' | 'insole_consumption';
-              groupName: string;
-              show: boolean;
-              hint?: string;
-            };
-            // Cabedal sempre vem do MODELO (varia por linha/coleção).
-            // Forração/Palmilha geralmente vêm do SOLADO (sole_technical_specs),
-            // mas o preenchimento na ficha técnica TEM PRIORIDADE — útil quando
-            // o modelo usa consumo diferente do default do solado, ou quando
-            // o solado ainda não tem specs cadastradas.
-            const rows: MaterialRow[] = ([
-              {
-                label: 'Cabedal',
-                field: 'upper_consumption_per_size',
-                scalarField: 'upper_consumption',
-                groupName: form.upper_material || '',
-                show: !!form.upper_material,
-              },
-              {
-                label: 'Forração',
-                field: 'lining_consumption_per_size',
-                scalarField: 'lining_consumption',
-                groupName: form.lining_material || '',
-                show: !!form.lining_material && form.insole_has_lining !== false,
-                hint: 'Se vazio, usa o consumo cadastrado no solado.',
-              },
-              {
-                label: 'Palmilha',
-                field: 'insole_consumption_per_size',
-                scalarField: 'insole_consumption',
-                groupName: form.insole_material || '',
-                show: !!form.insole_material && !form.insole_ready_made,
-                hint: 'Se vazio, usa o consumo cadastrado no solado.',
-              },
-            ] as MaterialRow[]).filter(r => r.show);
- 
-             if (rows.length === 0) return null;
-
-            // Split sizes em faixas Infantil (<33) / Adulto (>=33). Quando ambas
-            // existem, exibe Tabs pra reduzir scroll horizontal em mobile.
-            // Conjugados aqui são raros (sizes vem como number[]), então não
-            // entram nesta divisão — ficam representados pelo número base.
-            const infantilSizes = sizes.filter((s: number) => s < 33);
-            const adultoSizes   = sizes.filter((s: number) => s >= 33);
-            const hasInfantil   = infantilSizes.length > 0;
-            const hasAdulto     = adultoSizes.length > 0;
-            const splitNeeded   = hasInfantil && hasAdulto;
-
-            const renderTable = (visibleSizes: number[]) => (
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr>
-                      <th className="text-left text-[10px] font-semibold text-muted-foreground py-1.5 pr-3 min-w-[80px]">Material</th>
-                      {visibleSizes.map(s => (
-                        <th key={s} className="text-center text-[10px] font-mono text-muted-foreground py-1.5 px-0.5 w-[62px]">{s}</th>
-                      ))}
-                      <th className="text-right text-[10px] font-semibold text-muted-foreground py-1.5 pl-3 min-w-[72px]">Média</th>
-                      <th className="min-w-[90px]"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map(row => {
-                      const perSize: Record<string, number> = form[row.field] || {};
-                      // Média calcula em CIMA DE TODAS as numerações preenchidas
-                      // (não só das visíveis), pra refletir a média real da ficha.
-                      const filledVals = sizes.map((s: number) => Number(perSize[String(s)] || 0)).filter((v: number) => v > 0);
-                      const avg = filledVals.length > 0 ? filledVals.reduce((a: number, b: number) => a + b, 0) / filledVals.length : 0;
-                      const isFlashing = flashFields.has(row.field);
-                      const isEmpty = filledVals.length === 0;
-                      // Cabedal sem per-size = inflação no consumo. Forração/Palmilha
-                      // toleram vazio (cai no solado), mas Cabedal não tem fallback bom.
-                      const isCriticalEmpty = isEmpty && row.field === 'upper_consumption_per_size';
-                      return (
-                        <tr
-                          key={row.field}
-                          className={`border-t border-border/40 transition-colors duration-700 ${isFlashing ? 'bg-green-500/10' : isCriticalEmpty ? 'bg-amber-500/5' : ''}`}
-                        >
-                          <td className="text-[11px] font-medium py-1.5 pr-3">
-                            {row.label}
-                            {isFlashing && (
-                              <span className="ml-1 text-[9px] font-bold text-green-600 dark:text-green-400 animate-pulse">
-                                ✓ importado
-                              </span>
-                            )}
-                            {isCriticalEmpty && (
-                              <span
-                                className="ml-1 text-[9px] font-bold text-amber-600 dark:text-amber-400"
-                                title="Cabedal sem consumo por tamanho infla o cálculo. Preencha pelo menos 1 número e use Replicar 1º."
-                              >
-                                ⚠ vazio
-                              </span>
-                            )}
-                            {isEmpty && row.field !== 'upper_consumption_per_size' && row.hint && (
-                              <span
-                                className="ml-1 text-[9px] font-normal text-muted-foreground italic"
-                                title={row.hint}
-                              >
-                                — usa solado
-                              </span>
-                            )}
-                            <span className="ml-1 text-[9px] font-normal text-muted-foreground">({resolveGroupUnit(row.groupName)})</span>
-                          </td>
-                          {visibleSizes.map(size => {
-                            const sizeKey = String(size);
-                            return (
-                              <td key={size} className="px-0.5 py-1">
-                                <NumberInput
-                                  value={perSize[sizeKey] || 0}
-                                  onChange={v => {
-                                    const next = { ...perSize, [sizeKey]: v };
-                                    updateField(row.field, next);
-                                    const vals = Object.values(next).filter((x: any) => Number(x) > 0).map(Number);
-                                    if (vals.length > 0) updateField(row.scalarField, Number((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(4)));
-                                  }}
-                                  className="w-[62px] h-7 text-[10px] text-center"
-                                  placeholder="0"
-                                  step="0.0001"
-                                />
-                              </td>
-                            );
-                          })}
-                          <td className="text-right text-[10px] font-mono text-muted-foreground pl-3">
-                            {avg > 0 ? avg.toFixed(4) : '—'}
-                          </td>
-                          <td className="pl-1">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 text-[10px] whitespace-nowrap"
-                              onClick={() => {
-                                const firstFilled = sizes.map((s: number) => perSize[String(s)] || 0).find((v: number) => v > 0);
-                                if (!firstFilled || firstFilled <= 0) { toast.info("Preencha o primeiro número antes de replicar."); return; }
-                                const next: Record<string, number> = {};
-                                // Replica em TODAS as numerações da ficha, não só nas visíveis
-                                sizes.forEach((s: number) => { next[String(s)] = firstFilled; });
-                                updateField(row.field, next);
-                                updateField(row.scalarField, firstFilled);
-                              }}
-                            >
-                              Replicar 1º
-                            </Button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            );
-
-            return (
-              <div className="rounded-lg border bg-card p-4 space-y-3">
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <div className="flex items-center gap-2">
-                    <Gauge className="h-4 w-4 text-primary" />
-                    <h3 className="text-sm font-semibold">Consumo por Numeração — Produção</h3>
-                    <span className="text-xs text-muted-foreground">
-                      Preencha o consumo por par em cada numeração. Sem isso o sistema cai num cálculo médio que costuma inflar o débito de estoque.
-                    </span>
-                  </div>
-                  {form.sole_group_id && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-[10px] gap-1"
-                      onClick={() => {
-                        const soleId = products.find((p: any) => p.group_id === form.sole_group_id)?.id;
-                        if (soleId) autoFillFromSoleSpecs(soleId);
-                        else toast.error("Não foi possível localizar o produto do solado.");
-                      }}
-                    >
-                      <RefreshCw className="h-3 w-3" /> Puxar do Solado
-                    </Button>
-                  )}
-                </div>
-                {splitNeeded ? (
-                  <Tabs defaultValue={adultoSizes.length >= infantilSizes.length ? 'adulto' : 'infantil'}>
-                    <TabsList className="h-8">
-                      <TabsTrigger value="infantil" className="text-xs h-7">
-                        Infantil ({infantilSizes.length})
-                      </TabsTrigger>
-                      <TabsTrigger value="adulto" className="text-xs h-7">
-                        Adulto ({adultoSizes.length})
-                      </TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="infantil" className="mt-2">{renderTable(infantilSizes)}</TabsContent>
-                    <TabsContent value="adulto" className="mt-2">{renderTable(adultoSizes)}</TabsContent>
-                  </Tabs>
-                ) : (
-                  renderTable(sizes)
-                )}
-              </div>
-            );
-          })()}
 
           {/* ═══ SECTION 2: Tiras ═══ */}
           <div className="rounded-lg border bg-card p-4 space-y-4">
