@@ -233,10 +233,13 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
       item.nfe ? `<div style="padding:3px 10px;"><strong style="font-size:10px;color:#222;font-weight:700;">NF-e:</strong> <span style="font-size:12px;font-weight:800;color:#000;margin-left:4px;">${escapeHtml(item.nfe)}</span></div>` : '',
     ].filter(Boolean).join('');
 
-    // Linha de stats (Lote, Corrugado, Fáb, OP, Total) — mesma regra: tudo
+    // Linha de stats (Corrugado, Fáb, OP, Total) — mesma regra: tudo
     // legível com label cinza-muito-escuro e valor preto bold.
+    // "Lote" removido em 2026-05 a pedido do user — era a mesma coisa
+    // que OP nessa operação, duplicava info na etiqueta. Quem precisar
+    // do número do PV/cliente continua vendo via "Rót. Pedido" e via
+    // "Pedido" no header da etiqueta.
     const statsCells = [
-      item.lote ? `<div style="padding:3px 10px;border-right:1px solid #555;"><strong style="font-size:10px;color:#222;font-weight:700;">Lote:</strong> <span style="font-size:11px;font-weight:800;color:#000;margin-left:4px;">${escapeHtml(item.lote)}</span></div>` : '',
       `<div style="padding:3px 10px;border-right:1px solid #555;"><strong style="font-size:10px;color:#222;font-weight:700;">Corrugado:</strong> <span style="font-size:12px;font-weight:900;color:#000;margin-left:4px;">${corrugadoPairs} PRS</span></div>`,
       item.fab ? `<div style="padding:3px 10px;border-right:1px solid #555;"><strong style="font-size:10px;color:#222;font-weight:700;">Fáb:</strong> <span style="font-size:11px;font-weight:800;color:#000;margin-left:4px;">${escapeHtml(item.fab)}</span></div>` : '',
       `<div style="padding:3px 10px;border-right:1px solid #555;"><strong style="font-size:10px;color:#222;font-weight:700;">OP:</strong> <span style="font-size:11px;font-weight:800;color:#000;margin-left:4px;">${escapeHtml(item.orderNumber)}</span></div>`,
@@ -285,9 +288,14 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
     const sandalSvg = `data:image/svg+xml;utf8,${encodeURIComponent(
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><path fill="%23999" d="M10 38c0-4 3-8 8-8h28c4 0 8 3 8 8v6c0 3-2 5-5 5H15c-3 0-5-2-5-5v-6zM18 30c0-7 6-12 14-12s14 5 14 12"/></svg>'
     )}`;
+    // Imagem usa toda a área do container (34mm × 66mm menos padding) com
+    // object-fit:contain — preserva a proporção natural da foto cadastrada na
+    // ficha técnica. Antes tinha cap de 30×40mm que forçava a imagem a ficar
+    // muito menor que o container, criando muito espaço em branco e dando
+    // sensação de desproporção.
     const productImage = item.imageUrl ? `
-      <div style="width:34mm;border-left:1px solid #444;padding:3px;display:flex;align-items:center;justify-content:center;background:#fff;overflow:hidden;print-color-adjust:exact;-webkit-print-color-adjust:exact;">
-        <img src="${item.imageUrl}" style="max-width:30mm;max-height:40mm;width:auto;height:auto;object-fit:contain;print-color-adjust:exact;-webkit-print-color-adjust:exact;" onerror="this.onerror=null;this.src='${sandalSvg}';" />
+      <div style="width:34mm;border-left:1px solid #444;padding:2mm;display:flex;align-items:center;justify-content:center;background:#fff;overflow:hidden;print-color-adjust:exact;-webkit-print-color-adjust:exact;">
+        <img src="${item.imageUrl}" style="width:100%;height:100%;object-fit:contain;print-color-adjust:exact;-webkit-print-color-adjust:exact;" onerror="this.onerror=null;this.src='${sandalSvg}';" />
       </div>` : '';
 
     // Rodapé em DUAS linhas estruturadas — antes era uma só com " · "
@@ -1344,8 +1352,8 @@ export function buildIndividualLabelsHtml(items: LabelData[]): string {
         labels.push(`
           <div class="label-cell">
             ${item.imageUrl ? `
-              <div style="text-align:center;margin-bottom:3px;">
-                <img src="${item.imageUrl}" crossorigin="anonymous" style="max-width:60px;max-height:35px;object-fit:contain;filter:grayscale(100%);" onerror="this.parentElement.style.display='none'" />
+              <div style="height:30mm;display:flex;align-items:center;justify-content:center;margin-bottom:3px;overflow:hidden;">
+                <img src="${item.imageUrl}" crossorigin="anonymous" style="max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;filter:grayscale(100%);" onerror="this.parentElement.style.display='none'" />
               </div>
             ` : ''}
             <div style="text-align:center;margin-bottom:2px;">
