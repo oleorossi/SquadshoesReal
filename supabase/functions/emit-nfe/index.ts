@@ -33,6 +33,18 @@ async function gcFetch(path: string, init: RequestInit = {}) {
   return { ok: res.ok, status: res.status, json };
 }
 
+// Mapeia situacao_nf do GestaoClick → status canônico interno. Mesma lógica
+// de nfe-status / sync-nfe-from-provider (evita drift entre os caminhos).
+// Cobre múltiplas situações que a SEFAZ pode retornar.
+function mapSituacao(situacao: string): string {
+  const s = (situacao || "").toLowerCase();
+  if (s.includes("aprovada") || s.includes("autorizada")) return "autorizada";
+  if (s.includes("cancelada")) return "cancelada";
+  if (s.includes("rejeitada") || s.includes("denegada") || s.includes("erro")) return "rejeitada";
+  if (s.includes("processando") || s.includes("aberta") || s.includes("aguardando")) return "processando";
+  return "processando";
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -343,13 +355,21 @@ Deno.serve(async (req) => {
           gcClientId = await createFresh();
           if (client?.id) await adminClient.from("clients").update({ gestaoclick_id: gcClientId }).eq("id", client.id);
         } else {
-          // PUT atualiza o cliente (e endereço) in-place com o formato correto
-          const u = await gcFetch(`/clientes/${gcClientId}`, {
-            method: "PUT",
-            body: JSON.stringify(buildPayload()),
-          });
-          if (!u.ok || u.json?.status === "error") {
-            console.warn(`[emit-nfe] PUT /clientes/${gcClientId} falhou:`, u.json?.message || u.json?.mensagem || JSON.stringify(u.json));
+          // PUT atualiza o cliente (e endereço) in-place. Retry 1x antes de
+          // recriar — falha transitória do GestaoClick não deve duplicar
+          // cadastro de cliente. Só recriamos se a verificação seguinte
+          // realmente acusar cidade_id vazia.
+          let putOk = false;
+          for (let attempt = 0; attempt < 2 && !putOk; attempt++) {
+            if (attempt > 0) await new Promise((r) => setTimeout(r, 500));
+            const u = await gcFetch(`/clientes/${gcClientId}`, {
+              method: "PUT",
+              body: JSON.stringify(buildPayload()),
+            });
+            putOk = u.ok && u.json?.status !== "error";
+            if (!putOk) {
+              console.warn(`[emit-nfe] PUT /clientes/${gcClientId} tentativa ${attempt + 1} falhou:`, u.json?.message || u.json?.mensagem || JSON.stringify(u.json));
+            }
           }
           // Verifica: se mesmo assim ficou sem cidade_id, recria do zero
           const verify = await gcFetch(`/clientes/${gcClientId}`);
@@ -585,12 +605,17 @@ Deno.serve(async (req) => {
     let numeroNf = "";
     let serieNf = "";
     let dataEmissao = "";
+    let motivoRejeicaoSefaz = "";
     if (emitOk) {
       const detail = await gcFetch(`/notas_fiscais_produtos/${gcNfeId}`);
       const d = detail.json?.data || {};
       chave = d.chave || "";
       protocolo = d.protocolo || "";
       situacao = d.situacao_nf || "";
+      // motivo_rejeicao_sefaz vem preenchido quando a SEFAZ rejeitou no
+      // pós-emit. Detector antigo só lia situacao_nf; agora usamos esse
+      // campo como sinal forte de rejeição.
+      motivoRejeicaoSefaz = d.motivo_rejeicao_sefaz || d.motivo_rejeicao || "";
       // numero_nf / serie só vêm no detalhe — sem isso o registro local
       // ficava com numero/serie vazios (quebrava a aba "NF-es Emitidas" e
       // a devolução, que referencia nfeOriginal.numero).
@@ -605,28 +630,27 @@ Deno.serve(async (req) => {
         if (!Number.isNaN(ts) && ts > 0 && ts < Date.now() + 86_400_000) dataEmissao = norm;
       }
     }
-    // Mapeia status final considerando TODOS os terminais que a SEFAZ pode
-    // retornar via GestaoClick. Antes só checava "aprovada" → todo o resto
-    // virava "processando", e NFs claramente rejeitadas (situacao_nf =
-    // "Rejeitada" com motivo_rejeicao preenchido) ficavam eternamente como
-    // "processando" — bug encontrado em 2026-05-15 (7 NFs do mesmo PV-00104).
-    const sit = (situacao || "").toLowerCase();
+    // Status final via mapSituacao() canônico (mesma lógica de nfe-status e
+    // sync-nfe-from-provider). Sinais fortes de rejeição que sobrescrevem o
+    // mapper:
+    //   - emitOk=false → POST /emitir já falhou
+    //   - motivo_rejeicao_sefaz preenchido → SEFAZ rejeitou pós-emit, mesmo
+    //     que situacao_nf venha estranha
+    //   - emitMsg contém "rejei" → mensagem de erro da chamada de emit
     const msg = (emitMsg || "").toLowerCase();
-    const looksRejected = sit.includes("rejeit") || sit.includes("denegada") || msg.includes("rejei");
-    const finalStatus = !emitOk || looksRejected
-      ? "rejeitada"
-      : (sit.includes("aprovada") || sit.includes("autorizada")
-          ? "autorizada"
-          : "processando");
+    const explicitRejection = !emitOk || motivoRejeicaoSefaz.trim() !== "" || msg.includes("rejei");
+    const finalStatus = explicitRejection ? "rejeitada" : mapSituacao(situacao);
 
     const nfeRecord: any = {
       sale_order_id,
       ref_nfe: ref,
       status: finalStatus,
       valor_total: Number(sumItems.toFixed(2)),
-      // Sempre grava o motivo quando o status é rejeitada — inclui o caso de
-      // emitOk=true mas situacao_nf="Rejeitada" (SEFAZ rejeita após emitOk).
-      motivo_rejeicao: finalStatus === "rejeitada" ? (emitMsg || situacao || "Rejeitada pela SEFAZ") : "",
+      // Sempre grava o motivo quando rejeitada. Precedência: motivo da SEFAZ
+      // (mais específico) > emitMsg (genérico do emit) > situacao > fallback.
+      motivo_rejeicao: finalStatus === "rejeitada"
+        ? (motivoRejeicaoSefaz.trim() || emitMsg || situacao || "Rejeitada pela SEFAZ")
+        : "",
       cnpj_emitente: fiscal.cnpj.replace(/\D/g, ""),
       chave_acesso: chave || null,
       protocolo: protocolo || null,

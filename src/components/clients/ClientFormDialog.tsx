@@ -64,6 +64,19 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
   const [loadingCep, setLoadingCep] = useState(false);
   const [loadingCnpj, setLoadingCnpj] = useState(false);
 
+  // Wrapper de submit: bloqueia salvamento sem Inscrição Estadual.
+  // Antes a IE só era validada na hora de emitir NF-e (emit-nfe), o que fazia
+  // cliente "casca" entrar no banco e o erro só aparecer na tentativa de NF.
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const ie = (form.inscricao_estadual || '').trim();
+    if (!ie) {
+      toast.error('Inscrição Estadual é obrigatória. Preencha o número OU escreva "ISENTO".');
+      return;
+    }
+    onSubmit(e);
+  };
+
   const handleCepBlur = async () => {
     const clean = form.cep.replace(/\D/g, '');
     if (clean.length !== 8) return;
@@ -122,7 +135,7 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
         <DialogHeader>
           <DialogTitle>{editingClient ? 'Editar Cliente' : 'Novo Cliente'}</DialogTitle>
         </DialogHeader>
-        <form onSubmit={onSubmit} className="space-y-4 mt-2">
+        <form onSubmit={handleFormSubmit} className="space-y-4 mt-2">
           <Tabs defaultValue="dados">
             <TabsList className="w-full">
               <TabsTrigger value="dados" className="flex-1">Dados</TabsTrigger>
