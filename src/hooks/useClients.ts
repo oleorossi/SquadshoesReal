@@ -15,6 +15,8 @@ export type Client = {
   indicador_ie: number | null;
   /** Operação destinada a consumidor final (NF-e indFinal): 0=Não, 1=Sim. */
   consumidor_final: number | null;
+  /** Cliente é optante do Simples Nacional (regime tributário do destinatário). */
+  optante_simples_nacional: boolean;
   endereco: string;
   cidade: string;
   estado: string;

@@ -210,6 +210,16 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
                       </SelectContent>
                     </Select>
                   </div>
+                  <div className="flex items-center">
+                    <label className="flex items-center gap-2 text-sm cursor-pointer mt-5">
+                      <input
+                        type="checkbox"
+                        checked={!!form.optante_simples_nacional}
+                        onChange={e => setForm(f => ({ ...f, optante_simples_nacional: e.target.checked }))}
+                      />
+                      <span>Optante do Simples Nacional</span>
+                    </label>
+                  </div>
                   <div>
                     <Label className="text-xs">Código da Filial</Label>
                     <Input
