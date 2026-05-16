@@ -229,7 +229,7 @@ export default function Reports() {
     <div className="space-y-5 page-enter p-1">
       {/* Header */}
       <EditorialPageHeader
-        sectionLabel="RELATÓRIOS · Geral"
+        sectionLabel="RELATÓRIOS · GERAL"
         title="Analytics & Relatórios"
         description="Métricas em tempo real e geração inteligente de relatórios"
         actions={

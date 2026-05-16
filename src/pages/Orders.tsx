@@ -1086,7 +1086,7 @@ function getWeekOptions() {
        <div className="w-full space-y-4 page-enter editorial-stagger">
          {!hideHeader && (
            <EditorialPageHeader
-             sectionLabel="PCP · OPs"
+             sectionLabel="PCP · ORDENS"
              title="Ordens de Produção"
              description="Gestão de OPs com controle por setor de produção"
            />

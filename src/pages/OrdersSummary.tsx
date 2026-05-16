@@ -328,7 +328,7 @@ export default function OrdersSummary() {
         {/* Header */}
         <EditorialPageHeader
           className="print:hidden"
-          sectionLabel="PEDIDOS · Resumo"
+          sectionLabel="PEDIDOS · RESUMO"
           title="Resumo de Produção"
           description={`${totalOPs} OPs • ${totalPairs} pares no filtro atual`}
           actions={

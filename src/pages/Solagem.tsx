@@ -421,7 +421,7 @@ export default function Solagem() {
     
       <div className="space-y-5 page-enter">
         <EditorialPageHeader
-          sectionLabel="PRODUÇÃO · Solagem"
+          sectionLabel="PRODUÇÃO · SOLAGEM"
           title="Setor de Solagem"
           description="Grade de solados por cor e numeração"
           actions={<>

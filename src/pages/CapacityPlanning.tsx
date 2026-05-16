@@ -428,7 +428,7 @@ export default function CapacityPlanning() {
   return (
     <div className="space-y-5 page-enter">
       <EditorialPageHeader
-        sectionLabel="PRODUÇÃO · Capacidade"
+        sectionLabel="PRODUÇÃO · CAPACIDADE"
         title="Capacidade por Setor"
         description="Carga real calculada a partir das fichas técnicas × OPs ativas — pares/dia por setor"
       />

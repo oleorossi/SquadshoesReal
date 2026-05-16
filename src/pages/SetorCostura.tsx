@@ -115,7 +115,7 @@ export default function SetorCostura() {
   return (
     <div className="space-y-5 page-enter">
       <EditorialPageHeader
-        sectionLabel="PRODUÇÃO · Costura"
+        sectionLabel="PRODUÇÃO · COSTURA"
         title={`Setor de ${SECTOR_NAME}`}
         description="Costura palmilha + forração e costura do cabedal."
         actions={<>

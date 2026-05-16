@@ -84,7 +84,7 @@ export default function BankReconciliation() {
       </Card>
 
       <DataListPage
-        sectionLabel="FINANCEIRO · Conciliação"
+        sectionLabel="FINANCEIRO · CONCILIAÇÃO"
         title="Conciliação Bancária"
         subtitle="Histórico de sessões salvas em bank_reconciliations"
         icon={Scale}

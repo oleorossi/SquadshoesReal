@@ -163,7 +163,7 @@ export default function OrderEdit() {
       <div className="space-y-6">
         {/* Header */}
         <EditorialPageHeader
-          sectionLabel="PEDIDOS · Edição"
+          sectionLabel="PEDIDOS · EDIÇÃO"
           title={saleOrder ? `Pedido ${saleOrder.order_number}` : `OP ${(displayOrders[0] as any).order_number}`}
           description={`${saleOrder ? saleOrder.client_name : (displayOrders[0] as any).technical_sheets?.name || '—'} · ${displayOrders.length} OP(s) · ${totalPairs} pares`}
           actions={

@@ -82,7 +82,7 @@ export default function SAC() {
   return (
     <div className="space-y-4">
       <EditorialPageHeader
-        sectionLabel="Comercial · Pós-venda"
+        sectionLabel="COMERCIAL · SAC"
         title="SAC · Troca · Garantia"
         description="Workflow de atendimento pós-venda"
         actions={

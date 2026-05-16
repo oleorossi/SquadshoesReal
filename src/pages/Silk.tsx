@@ -416,7 +416,7 @@ export default function Silk() {
     
       <div className="space-y-5 page-enter">
         <EditorialPageHeader
-          sectionLabel="PRODUÇÃO · Silk"
+          sectionLabel="PRODUÇÃO · SILK"
           title="Setor de Silk"
           description="Demanda de silks por arte e cor de solado"
           actions={<>

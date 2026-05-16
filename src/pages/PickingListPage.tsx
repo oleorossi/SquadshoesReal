@@ -393,7 +393,7 @@ export default function PickingListPage() {
     <div className="w-full space-y-4">
       {/* Header */}
       <EditorialPageHeader
-        sectionLabel="LOGÍSTICA · Separação"
+        sectionLabel="LOGÍSTICA · CONFERÊNCIA"
         title="Lista de Separação"
         actions={
           <>

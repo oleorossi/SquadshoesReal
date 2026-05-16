@@ -82,7 +82,7 @@ export default function Transporters() {
   return (
     <div className="space-y-4">
       <EditorialPageHeader
-        sectionLabel="LOGÍSTICA · Transportadoras"
+        sectionLabel="LOGÍSTICA · TRANSPORTADORAS"
         title="Transportadoras"
         description="Cadastro de empresas de frete (rodoviário, sedex, dedicado) usadas em CT-e e expedição."
         actions={

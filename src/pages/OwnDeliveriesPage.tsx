@@ -44,7 +44,7 @@ export default function OwnDeliveriesPage() {
   return (
     <div className="container mx-auto p-4 lg:p-6 space-y-4">
       <EditorialPageHeader
-        sectionLabel="LOGÍSTICA · Entregas Próprias"
+        sectionLabel="LOGÍSTICA · ENTREGAS PRÓPRIAS"
         title="Entregas — Frete Próprio"
         description="Planeje rotas com a frota da empresa, otimize ordem de paradas e veja a projeção de combustível e desgaste."
       />

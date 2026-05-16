@@ -5,7 +5,7 @@ export default function ProntaEntregaPage() {
   return (
     <div className="space-y-5 page-enter">
       <EditorialPageHeader
-        sectionLabel="Comercial · Estoque"
+        sectionLabel="COMERCIAL · ESTOQUE"
         title="Pronta Entrega"
         description="Gestão de estoque de pronta entrega"
       />

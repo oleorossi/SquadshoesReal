@@ -118,7 +118,7 @@ export default function SystemMonitor() {
   return (
     <div className="space-y-5 page-enter">
       <EditorialPageHeader
-        sectionLabel="SISTEMA · Monitor"
+        sectionLabel="SISTEMA · MONITOR"
         title="Monitor do Sistema"
         description="Performance, segurança e auditoria em tempo real"
         actions={

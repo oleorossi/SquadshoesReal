@@ -55,7 +55,7 @@ export default function StockAlerts() {
     <AppLayout>
       <div className="space-y-5 page-enter">
         <EditorialPageHeader
-          sectionLabel="ESTOQUE · Alertas"
+          sectionLabel="ESTOQUE · ALERTAS"
           title="Alertas de Estoque"
           description="Produtos abaixo do estoque mínimo e solados com déficit por numeração. Configure os limites em min_stock (geral) ou min_stock_grade (por numeração) no cadastro de cada produto."
           actions={

@@ -120,7 +120,7 @@ export default function AbsenceReport() {
   return (
     <div className="space-y-5 page-enter">
       <EditorialPageHeader
-        sectionLabel="RH · Absenteísmo"
+        sectionLabel="RH · ABSENTEÍSMO"
         title="Absenteísmo"
         description="Atestados, faltas e licenças. Taxa = (dias ausentes / dias úteis × ativos) × 100."
         actions={

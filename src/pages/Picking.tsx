@@ -66,7 +66,7 @@ function PickingList({ onOpen, onCreate }: { onOpen: (id: string) => void; onCre
   return (
     <>
       <EditorialPageHeader
-        sectionLabel="LOGÍSTICA · Separação"
+        sectionLabel="LOGÍSTICA · SEPARAÇÃO"
         title="Picking · Separação"
         description="Sessões de separação com bipagem EAN. Selecione um pedido pra começar."
         actions={

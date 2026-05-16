@@ -120,7 +120,7 @@ function Header({ group }: { group: any }) {
       )}
       <EditorialPageHeader
         className="flex-1"
-        sectionLabel="COMERCIAL · Grupo Econômico"
+        sectionLabel="COMERCIAL · GRUPO ECONÔMICO"
         title={group.name}
         description={group.description || undefined}
         actions={

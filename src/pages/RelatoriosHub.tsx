@@ -115,7 +115,7 @@ export default function RelatoriosHub() {
     <div className="space-y-6 page-enter">
       {/* Header */}
       <EditorialPageHeader
-        sectionLabel="RELATÓRIOS · Hub"
+        sectionLabel="RELATÓRIOS · HUB"
         title="Relatórios"
         description="Os 6 relatórios oficiais do redesign Novidade. Cada um abre em layout A4 pronto pra impressão — botão Imprimir no topo dispara window.print() com regras @page. Hoje todos com dados de exemplo."
       />

@@ -336,7 +336,7 @@ export default function ProductionControlCenter() {
   return (
     <div className="space-y-4">
       <EditorialPageHeader
-        sectionLabel="PRODUÇÃO · Controle"
+        sectionLabel="PRODUÇÃO · CONTROLE"
         title="Centro de Controle de Produção"
         description="Capacidade por ficha · Alertas automáticos via WhatsApp · Terceirização com 1 clique."
         actions={

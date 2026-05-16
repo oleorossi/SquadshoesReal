@@ -5,7 +5,7 @@ export default function SilkRegistrations() {
   return (
     <div className="space-y-6 page-enter">
       <EditorialPageHeader
-        sectionLabel="SISTEMA · Cadastros"
+        sectionLabel="SISTEMA · SILK CADASTROS"
         title="Cadastro de Silk por Solado"
         description="Gerencie qual silk deve ser utilizada para cada tipo de solado e cliente."
       />

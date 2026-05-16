@@ -1096,7 +1096,7 @@ export default function Contractors() {
       <div className="space-y-5 page-enter">
         {/* Header */}
         <EditorialPageHeader
-          sectionLabel="RH · Terceiros"
+          sectionLabel="RH · TERCEIROS"
           title="Terceirizados"
           description="Gestão de prestadores, ordens de serviço e recibos"
         />

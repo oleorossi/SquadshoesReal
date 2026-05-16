@@ -689,7 +689,7 @@ export default function ProductionDailySchedule() {
     <TooltipProvider>
       <div className="space-y-5">
         <EditorialPageHeader
-          sectionLabel="PCP · Programação"
+          sectionLabel="PCP · PROGRAMAÇÃO"
           title="Programação por Campanha"
           description="Campanha = solado × material — sequência claro→escuro dentro de cada campanha para minimizar setups"
           actions={

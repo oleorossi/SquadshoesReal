@@ -232,7 +232,7 @@ export default function SystemDiagnostics() {
   return (
     <div className="flex flex-col gap-5 page-enter">
       <EditorialPageHeader
-        sectionLabel="SISTEMA · Diagnóstico"
+        sectionLabel="SISTEMA · DIAGNÓSTICO"
         title="Diagnóstico do Sistema"
         description="Status do banco, migrations aplicadas e diagnóstico de carregamento"
         actions={

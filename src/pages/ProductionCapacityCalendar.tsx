@@ -481,7 +481,7 @@ export default function ProductionCapacityCalendar() {
     <TooltipProvider>
       <div className="space-y-5">
         <EditorialPageHeader
-          sectionLabel="PRODUÇÃO · Capacidade"
+          sectionLabel="PRODUÇÃO · CALENDÁRIO"
           title="Calendário de Produção"
           description="Carga planejada por setor, calculada pelas ondas e cronograma reverso"
           actions={

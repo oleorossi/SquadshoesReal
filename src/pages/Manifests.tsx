@@ -66,7 +66,7 @@ function ManifestsList({ onOpen, onCreate }: { onOpen: (id: string) => void; onC
   return (
     <>
       <EditorialPageHeader
-        sectionLabel="FISCAL · Manifestos"
+        sectionLabel="FISCAL · MANIFESTOS"
         title="Romaneios de Carga"
         description="Controle interno de viagens — agrupa volumes por veículo/motorista, com destinos múltiplos."
         actions={

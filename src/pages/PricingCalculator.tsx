@@ -34,7 +34,7 @@ export default function PricingCalculator() {
   return (
     <div className="space-y-5 page-enter">
       <EditorialPageHeader
-        sectionLabel="CUSTOS · Precificação"
+        sectionLabel="CUSTOS · PRECIFICAÇÃO"
         title="Markup"
         description="Simulador de custo do produto e margem — combina insumos, mão de obra, overhead, frete, impostos, comissões e factoring para mostrar o preço de venda mínimo e a margem real por par."
       />

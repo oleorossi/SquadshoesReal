@@ -268,7 +268,7 @@ export default function OrderPickingPage() {
     <div className="space-y-5 page-enter p-6">
       {/* Header */}
       <EditorialPageHeader
-        sectionLabel="LOGÍSTICA · Separação"
+        sectionLabel="LOGÍSTICA · PICKING OP"
         title="Conferência de Saída"
         description="Pedidos com produção concluída aguardando conferência e expedição"
         actions={

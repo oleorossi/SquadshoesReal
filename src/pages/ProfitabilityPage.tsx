@@ -17,7 +17,7 @@ export default function ProfitabilityPage() {
   return (
     <div className="p-6 space-y-5 page-enter">
       <EditorialPageHeader
-        sectionLabel="CUSTOS · Rentabilidade"
+        sectionLabel="CUSTOS · RENTABILIDADE"
         title="Lucratividade por Pedido"
       />
       <Panel

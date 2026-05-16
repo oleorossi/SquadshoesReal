@@ -62,7 +62,7 @@ export default function Security() {
   return (
     <div className="space-y-4">
       <EditorialPageHeader
-        sectionLabel="SISTEMA · Segurança"
+        sectionLabel="SISTEMA · SEGURANÇA"
         title="Segurança"
         description="Política de senhas · MFA · mascaramento"
       />

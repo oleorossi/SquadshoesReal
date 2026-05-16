@@ -30,7 +30,7 @@ export default function LabelSystem() {
   return (
     <div className="p-4 md:p-6 space-y-5 page-enter">
       <EditorialPageHeader
-        sectionLabel="SISTEMA · Etiquetas"
+        sectionLabel="SISTEMA · ETIQUETAS"
         title="Sistema de Etiquetas"
         description="Gerencie etiquetas, gere impressões e acompanhe a fila — integrado às ordens de produção"
       />

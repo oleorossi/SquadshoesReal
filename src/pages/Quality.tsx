@@ -56,7 +56,7 @@ export default function Quality() {
     <AppLayout>
       <div className="space-y-5 page-enter">
         <EditorialPageHeader
-          sectionLabel="QUALIDADE · Inspeções"
+          sectionLabel="QUALIDADE · INSPEÇÕES"
           title="Qualidade & Auditorias"
           description="Defeitos registrados por setor — rastreamento por OP e plano de ação"
         />

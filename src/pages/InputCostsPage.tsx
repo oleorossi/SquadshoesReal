@@ -221,7 +221,7 @@ export default function InputCostsPage() {
     <AppLayout>
       <div className="p-6 space-y-5 max-w-[1600px] mx-auto">
         <EditorialPageHeader
-          sectionLabel="CUSTOS · Insumos"
+          sectionLabel="CUSTOS · INSUMOS"
           title="Custos de Insumos"
           description="Valores de cada material — clique no custo atual para editar. Atualiza automaticamente com cada compra lançada."
           actions={

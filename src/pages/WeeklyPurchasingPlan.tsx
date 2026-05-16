@@ -118,7 +118,7 @@ export default function WeeklyPurchasingPlan() {
   return (
     <div className="space-y-5 page-enter">
       <EditorialPageHeader
-        sectionLabel="SUPRIMENTOS · Planejamento de Compras"
+        sectionLabel="SUPRIMENTOS · PLANO SEMANAL"
         title="Plano Semanal de Compras"
         description="Motor cascata: simula consumo semana a semana e indica o que comprar"
       />

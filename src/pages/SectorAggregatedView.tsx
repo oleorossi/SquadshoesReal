@@ -66,7 +66,7 @@ export default function SectorAggregatedView() {
   return (
     <div className="space-y-5 page-enter">
       <EditorialPageHeader
-        sectionLabel="PRODUÇÃO · Visão Agregada"
+        sectionLabel="PRODUÇÃO · VISÃO AGREGADA"
         title="Visão Agregada por Setor"
         description="Carga ativa de cada setor consolidada por modelo (e cor onde faz sentido). Em vez de N cartões individuais de 12 pares, o operador vê o LOTE consolidado — costura faz a grade inteira sem trocar setup, corte usa o mesmo molde por todas as cores."
       />

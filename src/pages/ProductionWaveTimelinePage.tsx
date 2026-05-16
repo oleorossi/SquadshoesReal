@@ -188,7 +188,7 @@ export default function ProductionWaveTimelinePage() {
         <Link to="/pcp/ondas"><ArrowLeft className="w-4 h-4 mr-1" /> Ondas de Produção</Link>
       </Button>
       <EditorialPageHeader
-        sectionLabel="PCP · Timeline"
+        sectionLabel="PCP · TIMELINE"
         title={`Linha do Tempo — ${detail.code}`}
         description={`Semana ${fmtDateTime(detail.week_start).slice(0, 8)} → ${fmtDateTime(detail.week_end).slice(0, 8)} · ${detail.total_pairs} pares · ${detail.total_items} itens`}
         actions={

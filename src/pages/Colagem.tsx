@@ -255,7 +255,7 @@ export default function Colagem() {
     
       <div className="space-y-5 page-enter">
         <EditorialPageHeader
-          sectionLabel="PRODUÇÃO · Colagem"
+          sectionLabel="PRODUÇÃO · COLAGEM"
           title="Setor de Aviamento"
           description="Fichas de controle com checklist de pares para aviamento"
           actions={<>

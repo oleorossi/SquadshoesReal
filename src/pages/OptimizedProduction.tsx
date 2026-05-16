@@ -254,7 +254,7 @@ const OptimizedProductionSystem: React.FC = () => {
       
         <div className="space-y-6">
           <EditorialPageHeader
-            sectionLabel="PRODUÇÃO · Sistema"
+            sectionLabel="PRODUÇÃO · OTIMIZADA"
             title="Sistema de Produção Otimizado"
             actions={
               <Button onClick={() => refetch()} variant="outline">Atualizar</Button>

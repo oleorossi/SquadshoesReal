@@ -255,7 +255,7 @@ export default function Aviamento() {
     
       <div className="space-y-5 page-enter">
         <EditorialPageHeader
-          sectionLabel="PRODUÇÃO · Aviamento"
+          sectionLabel="PRODUÇÃO · AVIAMENTO"
           title="Setor de Aviamento"
           description="Fichas de controle com checklist de pares para aviamento"
           actions={<>

@@ -92,7 +92,7 @@ export default function BaseConsumption() {
   return (
     <div className="space-y-5 page-enter">
       <EditorialPageHeader
-        sectionLabel="ENGENHARIA · Solados"
+        sectionLabel="ENGENHARIA · CONSUMO BASE"
         title="Gestão de Solados"
         description="Configure em um só lugar o consumo base, especificações por numeração, artes de silk e dados técnicos de cada modelo de solado."
         actions={

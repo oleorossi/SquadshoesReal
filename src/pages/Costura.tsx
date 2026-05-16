@@ -275,7 +275,7 @@ export default function Costura() {
   return (
     <div className="space-y-5 page-enter">
       <EditorialPageHeader
-        sectionLabel="PRODUÇÃO · Corte Forração"
+        sectionLabel="PRODUÇÃO · CORTE FORRAÇÃO"
         title={`Setor de ${SECTOR_NAME}`}
         description="Fichas de controle com checklist de pares para costura"
         actions={<>

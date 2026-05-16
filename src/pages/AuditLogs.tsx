@@ -63,7 +63,7 @@ export default function AuditLogs() {
     <AppLayout>
       <div className="space-y-6 page-enter">
         <EditorialPageHeader
-          sectionLabel="SISTEMA · Auditoria"
+          sectionLabel="SISTEMA · AUDITORIA LOGS"
           title="Auditoria do Sistema"
           description="Rastreamento completo de todas as alterações e ações realizadas no sistema."
           actions={

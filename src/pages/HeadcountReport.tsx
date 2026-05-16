@@ -103,7 +103,7 @@ export default function HeadcountReport() {
   return (
     <div className="space-y-5 page-enter">
       <EditorialPageHeader
-        sectionLabel="RH · Headcount"
+        sectionLabel="RH · HEADCOUNT"
         title="Headcount evolutivo"
         description="Evolução do quadro de funcionários por mês — admitidos, dispensados, saldo líquido."
         actions={

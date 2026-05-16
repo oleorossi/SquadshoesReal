@@ -69,7 +69,7 @@ function QuotationsList({ onOpen, onCreate }: { onOpen: (id: string) => void; on
   return (
     <>
       <EditorialPageHeader
-        sectionLabel="COMERCIAL · Cotações"
+        sectionLabel="COMERCIAL · COTAÇÕES"
         title="Cotações (RFQ)"
         description="Cotação multifornecedor — registre itens, respostas e escolha o vencedor."
         actions={

@@ -121,7 +121,7 @@ export default function PriceLists() {
   return (
     <div className="space-y-4">
       <EditorialPageHeader
-        sectionLabel="Comercial · Preços"
+        sectionLabel="COMERCIAL · PREÇOS"
         title="Tabelas de Preço"
         description="Preços por canal, região, cliente e vigência"
         actions={

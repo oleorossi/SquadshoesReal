@@ -7,7 +7,7 @@ export default function MaterialConsumption() {
 
       <div className="space-y-5 page-enter">
         <EditorialPageHeader
-          sectionLabel="SUPRIMENTOS · Consumo de Material"
+          sectionLabel="SUPRIMENTOS · CONSUMO MATERIAL"
           title="Consumo de Material"
           description="Análise de consumo de materiais por pedido e período"
         />

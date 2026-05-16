@@ -598,7 +598,7 @@ export default function StockAdjustmentPage() {
     <div className="flex flex-col h-[calc(100vh-80px)] page-enter">
 
       <EditorialPageHeader
-        sectionLabel="ESTOQUE · Ajustes"
+        sectionLabel="ESTOQUE · AJUSTES"
         title="Ajuste de Estoque"
         description="Edição rápida de quantidades em planilha, com motivo padronizado e trilha de auditoria."
         className="shrink-0"

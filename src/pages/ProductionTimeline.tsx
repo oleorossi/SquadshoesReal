@@ -123,7 +123,7 @@ export default function ProductionTimeline() {
     <AppLayout>
       <div className="space-y-5 pb-12">
         <EditorialPageHeader
-          sectionLabel="PCP · Timeline"
+          sectionLabel="PCP · TIMELINE OP"
           title="Onde está cada ordem"
         />
 

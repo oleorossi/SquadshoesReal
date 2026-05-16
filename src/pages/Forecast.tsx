@@ -31,7 +31,7 @@ export default function Forecast() {
   return (
     <div className="space-y-4">
       <EditorialPageHeader
-        sectionLabel="Comercial · Planejamento"
+        sectionLabel="COMERCIAL · FORECAST"
         title="Forecast de Demanda"
         description="Média móvel 6 meses × sazonalidade por SKU (referência × cor × numeração)"
       />

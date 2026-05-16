@@ -221,7 +221,7 @@ export default function Montagem() {
   return (
     <div className="space-y-5 page-enter">
       <EditorialPageHeader
-        sectionLabel="PRODUÇÃO · Montagem"
+        sectionLabel="PRODUÇÃO · MONTAGEM"
         title="Setor de Montagem"
         description="Gestão e controle das ordens de produção na etapa de montagem"
         actions={<>

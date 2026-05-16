@@ -125,7 +125,7 @@ export default function CRM() {
   return (
     <div className="space-y-4">
       <EditorialPageHeader
-        sectionLabel="Comercial · Relacionamento"
+        sectionLabel="COMERCIAL · CRM"
         title="CRM"
         description="Histórico, campanhas, recompra prevista, NPS"
         actions={

@@ -244,7 +244,7 @@ export default function BankHours() {
       <div className="space-y-5 pb-12">
         {/* Header */}
         <EditorialPageHeader
-          sectionLabel="RH · Banco de Horas"
+          sectionLabel="RH · BANCO DE HORAS"
           title="Banco de Horas"
           description="Saldo, lançamentos e relatórios — funcionário a funcionário, setor a setor."
           actions={

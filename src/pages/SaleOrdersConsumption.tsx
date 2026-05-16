@@ -19,7 +19,7 @@ export default function SaleOrdersConsumption() {
     <AppLayout>
       <div className="space-y-5 page-enter">
         <EditorialPageHeader
-          sectionLabel="COMERCIAL · Pedido de Venda"
+          sectionLabel="COMERCIAL · CONSUMO"
           title="Consumo Consolidado"
           description={`${saleOrderIds.length} pedido(s) selecionado(s)`}
           actions={

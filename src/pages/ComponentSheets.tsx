@@ -228,7 +228,7 @@ const formatCurrency = (v: number) =>
         {/* Header */}
         {!embedded && (
           <EditorialPageHeader
-            sectionLabel="ENGENHARIA · Fichas de Componente"
+            sectionLabel="ENGENHARIA · COMPONENTES"
             title="Fichas de Componentes"
             description="Consumo por par, dimensões e perdas de cada material"
             actions={

@@ -13,7 +13,7 @@ export default function Products() {
     
       <div className="space-y-5 page-enter">
         <EditorialPageHeader
-          sectionLabel="ENGENHARIA · Produtos"
+          sectionLabel="ENGENHARIA · PRODUTOS"
           title="Produtos"
           description="Fichas técnicas (referências) e fichas de componentes"
         />

@@ -140,7 +140,7 @@ export default function ProductionLive() {
     <AppLayout>
       <div className="space-y-5 pb-12">
         <EditorialPageHeader
-          sectionLabel="PRODUÇÃO · Ao Vivo"
+          sectionLabel="PRODUÇÃO · AO VIVO"
           title="Monitor de chão"
           actions={
             <div className="text-xs text-muted-foreground font-mono">

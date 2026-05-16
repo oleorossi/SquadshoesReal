@@ -77,7 +77,7 @@ export default function BottlenecksPage() {
   return (
     <div className="space-y-5 page-enter">
       <EditorialPageHeader
-        sectionLabel="PRODUÇÃO · Gargalos"
+        sectionLabel="PRODUÇÃO · GARGALOS"
         title="Monitoramento de Gargalos"
         description={'Setores que estão sobrecarregados em alguma semana. Use o botão "Gerar OS" para transferir OPs específicas pra uma costureira terceirizada antes que atrase a Montagem.'}
       />

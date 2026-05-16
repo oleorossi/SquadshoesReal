@@ -868,7 +868,7 @@ if (totalPairsAll !== palmTotal) {
       <div className="space-y-6">
         {/* Header */}
         <EditorialPageHeader
-          sectionLabel="PRODUÇÃO · Corte Palmilha"
+          sectionLabel="PRODUÇÃO · CORTE PALMILHA"
           title="Setor de Corte Palmilha"
           description="Demanda de corte por material, cor e numeração"
           actions={<>

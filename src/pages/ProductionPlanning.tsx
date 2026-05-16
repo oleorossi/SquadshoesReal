@@ -52,7 +52,7 @@
    return (
      <div className="space-y-6">
        <EditorialPageHeader
-         sectionLabel="PRODUÇÃO · Planejamento"
+         sectionLabel="PRODUÇÃO · PLANEJAMENTO"
          title="Planejamento de Produção"
          description="Capacidade por setor, ocupação e timeline de ondas"
        />

@@ -72,7 +72,7 @@ export default function UnitAudit() {
     <AppLayout>
       <div className="space-y-5 page-enter">
         <EditorialPageHeader
-          sectionLabel="ESTOQUE · Auditoria de Unidades"
+          sectionLabel="ESTOQUE · AUDITORIA UNIDADES"
           title="Auditoria de Unidades"
           description="Detecta divergências de unidade de medida entre o frontend e o backend, com exemplos de registros afetados."
           actions={

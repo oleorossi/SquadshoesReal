@@ -82,7 +82,7 @@ export default function CostPolicies() {
   return (
     <div className="space-y-5 page-enter max-w-4xl">
       <EditorialPageHeader
-        sectionLabel="CUSTOS · Políticas"
+        sectionLabel="CUSTOS · POLÍTICAS"
         title="Políticas de Custo"
         description="Defaults usados pelo simulador Markup, cálculo de custo de OP e indicadores financeiros. Mudanças aqui afetam novos cálculos imediatamente; simulações já salvas mantêm o snapshot original."
       />

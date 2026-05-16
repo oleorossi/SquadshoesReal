@@ -52,7 +52,7 @@ export default function NavigationAuditPage() {
           </Link>
         </Button>
         <EditorialPageHeader
-          sectionLabel="SISTEMA · Auditoria"
+          sectionLabel="SISTEMA · AUDITORIA NAV"
           title="Auditoria de Navegação"
           description="Verificação de consistência entre itens do menu lateral e regras de permissões."
           actions={

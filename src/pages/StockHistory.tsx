@@ -105,7 +105,7 @@ import { useTableSelection } from '@/hooks/useTableSelection';
      <div className="space-y-5 page-enter">
        {!hideHeader && (
          <EditorialPageHeader
-           sectionLabel="ESTOQUE · Histórico"
+           sectionLabel="ESTOQUE · HISTÓRICO"
            title="Histórico de Movimentações"
            description="Registro de todas as entradas e saídas de estoque"
          />

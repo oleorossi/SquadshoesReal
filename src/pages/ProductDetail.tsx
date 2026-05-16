@@ -313,7 +313,7 @@ export default function ProductDetail() {
            <ArrowLeft className="h-4 w-4 mr-1" /> Estoque
          </Button>
          <EditorialPageHeader
-           sectionLabel="ENGENHARIA · Material"
+           sectionLabel="ENGENHARIA · MATERIAL"
            title={stripColorFromName(product.name, product.color)}
            description={product.sku}
            actions={

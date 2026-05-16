@@ -294,7 +294,7 @@ export default function Automations() {
 
       {/* Header */}
       <EditorialPageHeader
-        sectionLabel="SISTEMA · Automações"
+        sectionLabel="SISTEMA · AUTOMAÇÕES"
         title="Automações"
         description="Workflows inteligentes com gatilhos e ações configuráveis"
         actions={

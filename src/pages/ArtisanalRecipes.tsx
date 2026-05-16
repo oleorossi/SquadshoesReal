@@ -124,7 +124,7 @@ export default function ArtisanalRecipes() {
     <div className="space-y-4">
       {/* Header */}
       <EditorialPageHeader
-        sectionLabel="ENGENHARIA · Receitas"
+        sectionLabel="ENGENHARIA · RECEITAS"
         title="Produtos Artesanais"
         description="Receitas de transformação de matéria-prima em produtos artesanais via terceirizados"
         actions={

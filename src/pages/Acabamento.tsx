@@ -442,7 +442,7 @@ export default function Acabamento() {
     
       <div className="space-y-5 page-enter">
         <EditorialPageHeader
-          sectionLabel="PRODUÇÃO · Acabamento"
+          sectionLabel="PRODUÇÃO · ACABAMENTO"
           title="Setor de Acabamento"
           description="Fichas de controle com checklist de pares para acabamento"
           actions={<>

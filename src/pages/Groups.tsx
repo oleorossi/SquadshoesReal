@@ -76,7 +76,7 @@ export default function Groups() {
     <AppLayout>
       <div className="space-y-5 page-enter">
         <EditorialPageHeader
-          sectionLabel="ENGENHARIA · Grupos"
+          sectionLabel="ENGENHARIA · GRUPOS"
           title="Grupos de Produtos"
           description="Organize produtos em grupos com fornecedores, materiais e informações técnicas"
           actions={

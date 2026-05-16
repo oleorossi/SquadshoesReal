@@ -186,7 +186,7 @@ export default function LeadTime() {
   return (
     <div className="space-y-5 page-enter">
       <EditorialPageHeader
-        sectionLabel="PRODUÇÃO · Lead Time"
+        sectionLabel="PRODUÇÃO · LEAD TIME"
         title="Configuração de Lead Times Padrão"
         description="Tempos de produção por categoria, usados como fallback quando a Ficha Técnica não possui tempos definidos."
         actions={

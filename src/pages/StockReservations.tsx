@@ -219,7 +219,7 @@ export default function StockReservations() {
   return (
     <div className="container mx-auto p-4 md:p-6 space-y-6">
       <EditorialPageHeader
-        sectionLabel="ESTOQUE · Reservas"
+        sectionLabel="ESTOQUE · RESERVAS"
         title="Reservas e Em Produção"
         description="Visão consolidada de estoque por produto: reservado, já em produção e realmente disponível."
         actions={

@@ -145,7 +145,7 @@ export default function References({ embedded }: { embedded?: boolean } = {}) {
     <>
       <div className="space-y-5 page-enter">
         <EditorialPageHeader
-          sectionLabel="ENGENHARIA · Modelos"
+          sectionLabel="ENGENHARIA · MODELOS"
           title="Referências de Calçados"
           description="Modelos, fichas técnicas e custos de produção"
           actions={

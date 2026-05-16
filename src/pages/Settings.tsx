@@ -429,7 +429,7 @@ export default function SettingsPage() {
     
       <div className="space-y-5 page-enter">
         <EditorialPageHeader
-          sectionLabel="SISTEMA · Configurações"
+          sectionLabel="SISTEMA · CONFIGURAÇÕES"
           title="Configurações"
           description="Gestão de usuários, permissões e configurações do sistema"
         />

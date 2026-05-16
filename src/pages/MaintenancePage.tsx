@@ -251,7 +251,7 @@ export default function MaintenancePage() {
   return (
     <div className="space-y-5 page-enter">
       <EditorialPageHeader
-        sectionLabel="SISTEMA · Manutenção"
+        sectionLabel="SISTEMA · MANUTENÇÃO"
         title="Manutenção Preventiva"
         description="Controle de equipamentos e planos de manutenção"
       />

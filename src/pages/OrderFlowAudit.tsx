@@ -460,7 +460,7 @@ export default function OrderFlowAudit() {
     <AppLayout>
       <div className="w-full space-y-6">
         <EditorialPageHeader
-          sectionLabel="SISTEMA · Auditoria"
+          sectionLabel="SISTEMA · AUDITORIA OP"
           title="Auditoria de Fluxo"
           description="Monitoramento Inteligente de Processos Industriais"
           actions={

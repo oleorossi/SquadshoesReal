@@ -39,7 +39,7 @@ export default function Transport() {
     
       <div className="space-y-5 page-enter">
         <EditorialPageHeader
-          sectionLabel="LOGÍSTICA · Transporte"
+          sectionLabel="LOGÍSTICA · TRANSPORTE"
           title="Logística e Transporte"
           description="Gestão de baús, embalagens e transportadoras"
         />
