@@ -24,10 +24,29 @@ import { Cube as Box, PencilSimple as Pencil, MagnifyingGlass as Search, Plus, F
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDeleteIndividualPackaging, useDuplicateIndividualPackaging } from '@/hooks/usePackaging';
 
+type BoxKind = 'individual' | 'master' | 'colmeia' | 'fitilho';
+
+const KIND_LABEL: Record<BoxKind, string> = {
+  individual: 'Individual',
+  master: 'Master',
+  colmeia: 'Colmeia',
+  fitilho: 'Fitilho',
+};
+
+const KIND_HELPER: Record<BoxKind, string> = {
+  individual: '1 par por caixa. Vai dentro da master ou amarrada com fitilho.',
+  master: 'Agrupa N pares (típico 12). Na NF: 1 master = 1 volume.',
+  colmeia: 'Carrega N pares diretamente. Na NF: 1 colmeia = 1 volume.',
+  fitilho: 'Material linear (metros) que amarra individuais. Na NF: cada par é 1 volume.',
+};
+
 interface BoxRow {
   id: string;
   nome: string;
+  tipo: BoxKind | null;
   interno: boolean;
+  pairs_per_box_default: number | null;
+  metros_per_amarrado_default: number | null;
   comprimento_cm: number;
   largura_cm: number;
   altura_cm: number;
@@ -43,7 +62,9 @@ interface BoxRow {
 
 const emptyForm = {
   nome: '',
-  interno: true,
+  tipo: 'individual' as BoxKind,
+  pairs_per_box_default: 1,
+  metros_per_amarrado_default: 1,
   comprimento_cm: 0,
   largura_cm: 0,
   altura_cm: 0,
@@ -61,7 +82,7 @@ export default function PackagingStockPanel() {
   const [isNewDialogOpen, setIsNewDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<BoxRow | null>(null);
   const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState<'all' | 'individual' | 'master'>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | BoxKind>('all');
 
   const [form, setForm] = useState(emptyForm);
 
@@ -100,10 +121,8 @@ export default function PackagingStockPanel() {
     () =>
       boxTypes.filter((b) => {
         const matchesSearch = b.nome.toLowerCase().includes(search.toLowerCase());
-        const matchesType =
-          typeFilter === 'all' ||
-          (typeFilter === 'individual' && b.interno) ||
-          (typeFilter === 'master' && !b.interno);
+        const kind = b.tipo || (b.interno ? 'individual' : 'master');
+        const matchesType = typeFilter === 'all' || typeFilter === kind;
         return matchesSearch && matchesType;
       }),
     [boxTypes, search, typeFilter]
@@ -138,7 +157,9 @@ export default function PackagingStockPanel() {
     setEditingBox(b);
     setForm({
       nome: b.nome,
-      interno: !!b.interno,
+      tipo: (b.tipo || (b.interno ? 'individual' : 'master')) as BoxKind,
+      pairs_per_box_default: Number(b.pairs_per_box_default ?? (b.interno ? 1 : 12)),
+      metros_per_amarrado_default: Number(b.metros_per_amarrado_default ?? 1),
       comprimento_cm: Number(b.comprimento_cm || 0),
       largura_cm: Number(b.largura_cm || 0),
       altura_cm: Number(b.altura_cm || 0),
@@ -159,11 +180,15 @@ export default function PackagingStockPanel() {
     }
     try {
       const prevQty = Number(editingBox.quantity || 0);
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('box_types')
         .update({
           nome: form.nome,
-          interno: form.interno,
+          tipo: form.tipo,
+          // interno espelha tipo='individual' por compat com leitores antigos
+          interno: form.tipo === 'individual',
+          pairs_per_box_default: form.pairs_per_box_default,
+          metros_per_amarrado_default: form.tipo === 'fitilho' ? form.metros_per_amarrado_default : null,
           comprimento_cm: form.comprimento_cm,
           largura_cm: form.largura_cm,
           altura_cm: form.altura_cm,
@@ -208,9 +233,12 @@ export default function PackagingStockPanel() {
       return;
     }
     try {
-      const { data: created, error } = await supabase.from('box_types').insert({
+      const { data: created, error } = await (supabase as any).from('box_types').insert({
         nome: form.nome,
-        interno: form.interno,
+        tipo: form.tipo,
+        interno: form.tipo === 'individual',
+        pairs_per_box_default: form.pairs_per_box_default,
+        metros_per_amarrado_default: form.tipo === 'fitilho' ? form.metros_per_amarrado_default : null,
         comprimento_cm: form.comprimento_cm,
         largura_cm: form.largura_cm,
         altura_cm: form.altura_cm,
@@ -256,15 +284,52 @@ export default function PackagingStockPanel() {
             placeholder="Ex: Caixa Master 12P"
           />
         </div>
-        <div className="flex items-center gap-3 py-1">
-          <input
-            type="checkbox"
-            id="form-interno"
-            checked={form.interno}
-            onChange={(e) => setForm((f) => ({ ...f, interno: e.target.checked }))}
-            className="rounded border-input h-4 w-4"
-          />
-          <Label htmlFor="form-interno">Caixa Individual (interna)</Label>
+        <div>
+          <Label>Tipo</Label>
+          <Select
+            value={form.tipo}
+            onValueChange={(v: BoxKind) =>
+              setForm((f) => ({
+                ...f,
+                tipo: v,
+                // sugere capacidade típica do tipo (usuário sobrescreve)
+                pairs_per_box_default:
+                  v === 'individual' ? 1 : v === 'master' || v === 'colmeia' || v === 'fitilho' ? 12 : f.pairs_per_box_default,
+              }))
+            }
+          >
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="individual">Individual — 1 par</SelectItem>
+              <SelectItem value="master">Master — agrupa N pares (NF: 1 master = 1 volume)</SelectItem>
+              <SelectItem value="colmeia">Colmeia — carrega N pares direto (NF: 1 colmeia = 1 volume)</SelectItem>
+              <SelectItem value="fitilho">Fitilho — material linear (NF: cada par = 1 volume)</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-[10px] text-muted-foreground mt-1">{KIND_HELPER[form.tipo]}</p>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label>{form.tipo === 'fitilho' ? 'Pares por amarrado' : 'Pares por caixa'}</Label>
+            <Input
+              type="number"
+              min={1}
+              value={form.pairs_per_box_default || ''}
+              onChange={(e) => setForm((f) => ({ ...f, pairs_per_box_default: Number(e.target.value) }))}
+            />
+          </div>
+          {form.tipo === 'fitilho' && (
+            <div>
+              <Label>Metros por amarrado</Label>
+              <Input
+                type="number"
+                step="0.1"
+                min={0.1}
+                value={form.metros_per_amarrado_default || ''}
+                onChange={(e) => setForm((f) => ({ ...f, metros_per_amarrado_default: Number(e.target.value) }))}
+              />
+            </div>
+          )}
         </div>
         <div className="grid grid-cols-3 gap-2">
           <div>
@@ -426,7 +491,9 @@ export default function PackagingStockPanel() {
             <SelectContent>
               <SelectItem value="all">Todos os tipos</SelectItem>
               <SelectItem value="individual">Individuais</SelectItem>
-              <SelectItem value="master">Caixas Master</SelectItem>
+              <SelectItem value="master">Master</SelectItem>
+              <SelectItem value="colmeia">Colmeia</SelectItem>
+              <SelectItem value="fitilho">Fitilho</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -444,6 +511,7 @@ export default function PackagingStockPanel() {
             <TableRow className="bg-muted/30">
               <TableHead>Nome</TableHead>
               <TableHead>Tipo</TableHead>
+              <TableHead className="text-center">Capacidade</TableHead>
               <TableHead className="text-center">Dimensões</TableHead>
               <TableHead className="text-center">Peso</TableHead>
               <TableHead className="text-center">Estoque</TableHead>
@@ -457,7 +525,7 @@ export default function PackagingStockPanel() {
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
                   <Box className="h-10 w-10 mx-auto mb-2 opacity-20" />
                   Nenhuma embalagem encontrada
                 </TableCell>
@@ -468,13 +536,31 @@ export default function PackagingStockPanel() {
                 const minStock = Number(b.min_stock || 0);
                 const isLow = minStock > 0 && qty <= minStock;
                 const supplierName = b.suppliers?.name || '—';
+                const kind = (b.tipo || (b.interno ? 'individual' : 'master')) as BoxKind;
+                const ppb = b.pairs_per_box_default;
+                const mpa = b.metros_per_amarrado_default;
                 return (
                   <TableRow key={b.id} className={isLow ? 'bg-destructive/5' : ''}>
                     <TableCell className="font-medium text-sm">{b.nome}</TableCell>
                     <TableCell>
-                      <Badge variant={b.interno ? 'secondary' : 'default'}>
-                        {b.interno ? 'Individual' : 'Master'}
+                      <Badge variant={kind === 'individual' ? 'secondary' : 'default'}>
+                        {KIND_LABEL[kind]}
                       </Badge>
+                    </TableCell>
+                    <TableCell className="text-center text-xs">
+                      {ppb ? (
+                        <>
+                          <span className="font-semibold">{ppb}</span>{' '}
+                          <span className="text-muted-foreground">
+                            {kind === 'fitilho' ? 'pares/amarrado' : 'pares/caixa'}
+                          </span>
+                          {kind === 'fitilho' && mpa ? (
+                            <div className="text-[10px] text-muted-foreground">{mpa} m/amarrado</div>
+                          ) : null}
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-center font-mono text-xs">
                       {b.comprimento_cm}×{b.largura_cm}×{b.altura_cm} cm

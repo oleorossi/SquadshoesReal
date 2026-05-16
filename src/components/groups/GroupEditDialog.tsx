@@ -70,7 +70,6 @@ function getVisibleFields(type: GroupType) {
     sharedSpecs:    !isChemical && !isTool,
     artisanal:      isUpper || isGeneric,
     colorsManager:  isSole || isUpper || isInsole || isGeneric,
-    boxTypes:       isSole || isLast,
     unitWeight:     isSole || isGeneric,
     yieldTab:       isSole || isUpper || isInsole || isGeneric,
   };
@@ -593,9 +592,6 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
   const [name, setName] = useState(group.name);
   const [description, setDescription] = useState(group.description || '');
   const [isBomColorSource, setIsBomColorSource] = useState(group.is_bom_color_source);
-  const [boxTypeId, setBoxTypeId] = useState<string>((group as any).box_type_id || '__none__');
-  const [boxTypeMasterId, setBoxTypeMasterId] = useState<string>((group as any).box_type_master_id || '__none__');
-  const [boxTypeColmeiaId, setBoxTypeColmeiaId] = useState<string>((group as any).box_type_colmeia_id || '__none__');
   const [consumptionUnit, setConsumptionUnit] = useState<string>(group.consumption_unit || '__none__');
   const [unitPrice, setUnitPrice] = useState<number>(0);
   const [location, setLocation] = useState<string>('');
@@ -616,16 +612,6 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
   const queryClient = useQueryClient();
   const deleteProduct = useDeleteProduct();
 
-  const { data: boxTypes = [] } = useQuery({
-    queryKey: ['box_types_active'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('box_types').select('id, nome').eq('active', true).order('nome');
-      if (error) throw error;
-      return data;
-    },
-    staleTime: 5 * 60_000,
-  });
-
   const { data: recipes = [] } = useArtisanalRecipes();
   const { data: contractors = [] } = useContractors();
   const createRecipe = useCreateArtisanalRecipe();
@@ -635,9 +621,6 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
     setName(group.name);
     setDescription(group.description || '');
     setIsBomColorSource(group.is_bom_color_source);
-    setBoxTypeId((group as any).box_type_id || '__none__');
-    setBoxTypeMasterId((group as any).box_type_master_id || '__none__');
-    setBoxTypeColmeiaId((group as any).box_type_colmeia_id || '__none__');
     setConsumptionUnit(group.consumption_unit || '__none__');
 
     // If all products in group share the same price/location, set them as defaults
@@ -694,9 +677,6 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
           name,
           description,
           is_bom_color_source: isBomColorSource,
-          box_type_id: boxTypeId === '__none__' ? null : boxTypeId,
-          box_type_master_id: boxTypeMasterId === '__none__' ? null : boxTypeMasterId,
-          box_type_colmeia_id: boxTypeColmeiaId === '__none__' ? null : boxTypeColmeiaId,
           consumption_unit: finalUnit,
         } as any,
       });
@@ -1120,60 +1100,6 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                   <GroupColorsManager groupId={group.id} groupName={group.name} />
                 )}
 
-                {/* Box Types */}
-                {show.boxTypes && (
-                <Card className="border-dashed">
-                  <CardHeader className="pb-2 pt-3 px-4">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      <BoxIcon className="h-4 w-4" /> Tipos de Caixa
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="px-4 pb-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div>
-                      <Label className="text-xs">Caixa Individual</Label>
-                      <Select value={boxTypeId} onValueChange={setBoxTypeId}>
-                        <SelectTrigger className="mt-1 h-8 text-xs">
-                          <SelectValue placeholder="Selecionar..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">Nenhuma</SelectItem>
-                          {boxTypes.map(b => (
-                            <SelectItem key={b.id} value={b.id}>{b.nome}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label className="text-xs">Caixa Master</Label>
-                      <Select value={boxTypeMasterId} onValueChange={setBoxTypeMasterId}>
-                        <SelectTrigger className="mt-1 h-8 text-xs">
-                          <SelectValue placeholder="Selecionar..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">Nenhuma</SelectItem>
-                          {boxTypes.map(b => (
-                            <SelectItem key={b.id} value={b.id}>{b.nome}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label className="text-xs">Caixa Colmeia</Label>
-                      <Select value={boxTypeColmeiaId} onValueChange={setBoxTypeColmeiaId}>
-                        <SelectTrigger className="mt-1 h-8 text-xs">
-                          <SelectValue placeholder="Selecionar..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">Nenhuma</SelectItem>
-                          {boxTypes.map(b => (
-                            <SelectItem key={b.id} value={b.id}>{b.nome}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </CardContent>
-                </Card>
-                )}
               </div>
 
               <Card className="border-2 border-primary/10">

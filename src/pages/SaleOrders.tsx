@@ -90,7 +90,7 @@ const emptyForm: SaleOrderFormData = {
   client_name: '', client_cnpj: '', client_contact: '', client_order_number: '',
   representative: '', payment_condition: '', delivery_deadline: '', delivery_week: '', delivery_month: '',
   notes: '', status: 'Rascunho',
-  nfe: '', remessa: '', is_factoring: false, factoring_config_id: '', packaging_mode: 'individual_amarrado',
+  nfe: '', remessa: '', is_factoring: false, factoring_config_id: '', packaging_mode: 'individual_master',
 };
 
 const emptyItem: SaleOrderItemFormData = {

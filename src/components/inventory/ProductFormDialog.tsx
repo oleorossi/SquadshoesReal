@@ -220,17 +220,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
     },
   });
 
-  // Sole packaging state (individual / master / colmeia)
-  type SolePackagingRow = { boxTypeId: string | null; pairsPerBox: number };
-  type SolePackagingState = Record<'individual' | 'master' | 'colmeia', SolePackagingRow>;
-  const EMPTY_SOLE_PACKAGING: SolePackagingState = {
-    individual: { boxTypeId: null, pairsPerBox: 1 },
-    master:     { boxTypeId: null, pairsPerBox: 12 },
-    colmeia:    { boxTypeId: null, pairsPerBox: 1 },
-  };
-  const [solePackaging, setSolePackaging] = useState<SolePackagingState>(EMPTY_SOLE_PACKAGING);
-  const [solePackagingIds, setSolePackagingIds] = useState<Partial<Record<string, string>>>({});
-
   const [yieldPerSize, setYieldPerSize] = useState<Record<string, number>>({});
   const [wastePct, setWastePct] = useState(8);
   const existingSheet = useMemo(() => {
@@ -520,29 +509,9 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
     setMinStockGrade({});
   }, [shoeCategory]);
 
-  // Load existing packaging_configs for this sole product
-  useEffect(() => {
-    if (!product?.id || !isSolado) { setSolePackaging(EMPTY_SOLE_PACKAGING); setSolePackagingIds({}); return; }
-    (async () => {
-      const { data } = await (supabase as any)
-        .from('packaging_configs')
-        .select('id, packaging_type, box_type_id, pairs_per_box')
-        .eq('sole_product_id', product.id)
-        .eq('active', true);
-      if (!data) return;
-      const next = { ...EMPTY_SOLE_PACKAGING } as SolePackagingState;
-      const ids: Partial<Record<string, string>> = {};
-      for (const row of data as any[]) {
-        const t = row.packaging_type as keyof SolePackagingState;
-        if (t === 'individual' || t === 'master' || t === 'colmeia') {
-          next[t] = { boxTypeId: row.box_type_id ?? null, pairsPerBox: Number(row.pairs_per_box) || 1 };
-          ids[t] = row.id;
-        }
-      }
-      setSolePackaging(next);
-      setSolePackagingIds(ids);
-    })();
-  }, [product?.id, isSolado]);
+  // Embalagem migrada pra Gestão de Embalagens / aba Embalagem da ficha técnica;
+  // o estado e o load de packaging_configs ficavam aqui antes — agora não há mais
+  // UI nesta tela. Mantemos só a propagação de dimensões/peso do produto.
 
   const handleAddColors = () => {
     if (!colorInput.trim()) return;
@@ -683,32 +652,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       );
     };
 
-    const saveSolePackagingConfigs = async (productId: string) => {
-      if (!isSolado) return;
-      for (const type of ['individual', 'master', 'colmeia'] as const) {
-        const cfg = solePackaging[type];
-        const existingId = solePackagingIds[type];
-        if (!cfg.boxTypeId) {
-          if (existingId) await (supabase as any).from('packaging_configs').update({ active: false }).eq('id', existingId);
-          continue;
-        }
-        const payload = {
-          packaging_type: type,
-          box_type_id: cfg.boxTypeId,
-          pairs_per_box: cfg.pairsPerBox,
-          active: true,
-          sole_product_id: productId,
-          nome: `Embalagem ${type} — solado`,
-        };
-        if (existingId) {
-          await (supabase as any).from('packaging_configs').update(payload).eq('id', existingId);
-        } else {
-          await (supabase as any).from('packaging_configs').insert(payload);
-        }
-      }
-      queryClient.invalidateQueries({ queryKey: ['packaging_links_overview'] });
-    };
-
     // Propagação entre variações de cor: se há outros produtos no mesmo grupo
     // (siblings) e algum campo propagável foi alterado, pergunta ao usuário
     // se deve aplicar a alteração em todas as variantes. Roda ANTES do save
@@ -745,7 +688,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
         if (product) {
           await Promise.all([
             saveComponentSheet(product.id),
-            saveSolePackagingConfigs(product.id),
             syncSoleRangeToSiblings(product.id),
           ]);
         }
@@ -1528,50 +1470,15 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
             </div>
 
             {isSolado && (
-              <div className="col-span-2 p-3 rounded-lg border bg-muted/30 mb-4 space-y-3">
+              <div className="col-span-2 p-3 rounded-lg border bg-muted/30 mb-4 space-y-2">
                 <Label className="flex items-center gap-2 text-sm font-semibold">
                   <Box className="h-4 w-4 text-primary" />
-                  Tipos de Caixa por Solado
+                  Embalagem
                 </Label>
-                <div className="space-y-2">
-                  {([
-                    { key: 'individual', label: 'Individual' },
-                    { key: 'master',     label: 'Master' },
-                    { key: 'colmeia',    label: 'Colmeia' },
-                  ] as const).map(({ key, label }) => (
-                    <div key={key} className="grid grid-cols-[90px_1fr_80px_32px] gap-2 items-center">
-                      <span className="text-xs font-medium text-muted-foreground">{label}</span>
-                      <Select
-                        value={solePackaging[key].boxTypeId ?? 'none'}
-                        onValueChange={v => setSolePackaging(prev => ({
-                          ...prev,
-                          [key]: { ...prev[key], boxTypeId: v === 'none' ? null : v },
-                        }))}
-                      >
-                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Nenhuma" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Nenhuma</SelectItem>
-                          {(boxTypes as any[]).map((box: any) => (
-                            <SelectItem key={box.id} value={box.id}>{box.nome}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <NumberInput
-                        min={1}
-                        value={solePackaging[key].pairsPerBox}
-                        onChange={v => setSolePackaging(prev => ({
-                          ...prev,
-                          [key]: { ...prev[key], pairsPerBox: v },
-                        }))}
-                        className="h-8 text-xs text-center px-1"
-                        disabled={!solePackaging[key].boxTypeId}
-                      />
-                      <span className="text-[10px] text-muted-foreground leading-none">pares</span>
-                    </div>
-                  ))}
-                </div>
-                <p className="text-[10px] text-muted-foreground">
-                  Aplicado automaticamente ao empacotar OPs com este solado. {!product && <span className="text-warning font-medium">Salve e edite o produto para ativar.</span>}
+                <p className="text-xs text-muted-foreground">
+                  O cadastro e a vinculação de embalagens (tipo, pares por caixa, estoque) agora ficam
+                  só em <strong>Gestão de Embalagens</strong>. Vincule as caixas que cada ficha usa
+                  na aba <strong>Embalagem</strong> da própria ficha técnica.
                 </p>
               </div>
             )}

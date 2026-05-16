@@ -941,7 +941,8 @@ export function useUpdateSaleOrderStatus() {
               } as any);
             }
 
-            // Re-soft-reserve embalagem
+            // Re-soft-reserve embalagem — PV volta pra Rascunho; débito real só acontece
+            // quando o PV for re-aprovado ou re-entrar em produção (caminhos hard acima).
             await supabase.rpc('debit_packaging_for_order', {
               p_sale_order_id: id,
               p_order_id: op.id,
@@ -1265,14 +1266,14 @@ export function useUpdateSaleOrderStatus() {
                       secondaryDebitErrors.push(`tiras: ${strapErr.message}`);
                     }
                   }
-                  // Debit packaging
+                  // Debit packaging — hard debit: OP entra Em Produção, embalagem sai do estoque agora
                   const { error: pkgErr } = await supabase.rpc('debit_packaging_for_order', {
                     p_sale_order_id: id,
                     p_order_id: createdOp.id,
                     p_reference_id: item.reference_id,
                     p_order_quantity: item.quantity,
                     p_packaging_mode: pkgMode2,
-                    p_force_soft: true,
+                    p_force_soft: false,
                   } as any);
                   if (pkgErr) {
                     console.error('Erro embalagem:', pkgErr.message);
@@ -1520,14 +1521,14 @@ export function useUpdateSaleOrderStatus() {
                 }
               }
 
-              // Debit packaging (use hoisted pkgMode)
+              // Debit packaging — hard debit: OP entra Aprovado, embalagem sai do estoque agora
               const { error: pkgErrAprov } = await supabase.rpc('debit_packaging_for_order', {
                 p_sale_order_id: id,
                 p_order_id: createdOp.id,
                 p_reference_id: item.reference_id,
                 p_order_quantity: item.quantity,
                 p_packaging_mode: pkgMode,
-                p_force_soft: true,
+                p_force_soft: false,
               } as any);
               if (pkgErrAprov) {
                 console.error('Erro ao debitar embalagem (Aprovado):', pkgErrAprov.message);
@@ -2087,7 +2088,7 @@ export function useUpdateSaleOrder() {
           // FIX A3: BOM stock out via process_order_stock_out removido — hybrid_debit_stock_for_order
           // já cobre o BOM via snapshot da ficha técnica.
 
-          // Packaging debit — mirrors Aprovado branch; packaging_mode hoisted above loop
+          // Packaging debit — hard debit: OP nova já entra produzindo, embalagem sai agora
           if (newOp?.id) {
             const { error: pkgUpdErr } = await (supabase as any).rpc('debit_packaging_for_order', {
               p_sale_order_id: id,
@@ -2095,7 +2096,7 @@ export function useUpdateSaleOrder() {
               p_reference_id: item.reference_id,
               p_order_quantity: item.quantity,
               p_packaging_mode: pkgModeUpd,
-              p_force_soft: true,
+              p_force_soft: false,
             });
             if (pkgUpdErr) console.error('Erro ao debitar embalagem (update PV):', pkgUpdErr.message);
           }
@@ -2631,14 +2632,14 @@ export function useResyncOPsFromPV() {
           }
         }
 
-        // Debit packaging — mirrors Em Produção and Aprovado branches
+        // Debit packaging (resync) — hard debit: OP entra ativa, embalagem sai agora
         const { error: pkgErr } = await (supabase as any).rpc('debit_packaging_for_order', {
           p_sale_order_id: saleOrderId,
           p_order_id: newOp.id,
           p_reference_id: item.reference_id,
           p_order_quantity: item.quantity,
           p_packaging_mode: so.packaging_mode || 'individual_amarrado',
-          p_force_soft: true,
+          p_force_soft: false,
         });
         if (pkgErr) console.error('Erro embalagem (resync):', pkgErr.message);
 

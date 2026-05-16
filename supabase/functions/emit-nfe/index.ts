@@ -612,51 +612,25 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ---------- Calcula volumes (caixas) AUTOMATICAMENTE por solado ----------
-    // Pedido em 15/05/2026: volume na NF deve refletir o número REAL de caixas
-    // que vai ser despachado. Calcula via:
-    //   volumes = SUM(CEIL(item.quantity / pairs_per_box_individual_do_solado))
-    // pairs_per_box_individual vem de product_groups (grupo do solado mapeado
-    // pra cada item em technical_sheet_sole_colors). Sem mapeamento ou grupo
-    // sem campo preenchido, usa fallback 12 (default da indústria).
+    // ---------- Calcula volumes da NF segundo packaging_mode do PV ----------
+    // Regras (confirmadas com usuário em 2026-05-16):
+    //   individual_master           → cada CAIXA MASTER = 1 volume (12 pares dentro)
+    //   colmeia                     → cada CAIXA COLMEIA = 1 volume (12 pares dentro)
+    //   individual_fitilho/amarrado → cada PAR = 1 volume (fitilho amarra mas não
+    //                                  agrupa em master; transportadora conta par a par)
+    //
+    // Implementado em compute_sale_order_nfe_volumes(): consome packaging_mode
+    // + technical_sheet_box_types + box_types.pairs_per_box_default. Substituiu
+    // o cálculo antigo que sempre dividia por pairs_per_box_individual, ignorando
+    // o modo do PV (gerava NFs com volumes errados no modo master/colmeia).
     try {
-      const { data: itemsForVol } = await adminClient
-        .from("sale_order_items")
-        .select("reference_id, color, quantity")
-        .eq("sale_order_id", sale_order_id);
-      if (itemsForVol && itemsForVol.length > 0) {
-        const refIds = [...new Set(itemsForVol.map((i: any) => i.reference_id).filter(Boolean))];
-        const { data: soleMappings } = refIds.length > 0
-          ? await adminClient
-              .from("technical_sheet_sole_colors")
-              .select("sheet_id, product_color, products:sole_product_id(group_id)")
-              .in("sheet_id", refIds)
-          : { data: [] as any[] };
-        const groupIds = [...new Set((soleMappings || []).map((m: any) => m.products?.group_id).filter(Boolean))];
-        const { data: groupsForVol } = groupIds.length > 0
-          ? await adminClient
-              .from("product_groups")
-              .select("id, pairs_per_box_individual")
-              .in("id", groupIds)
-          : { data: [] as any[] };
-        const ppbByGroup = new Map<string, number>();
-        for (const g of (groupsForVol || []) as any[]) {
-          const ppb = Number(g.pairs_per_box_individual) || 0;
-          if (ppb > 0) ppbByGroup.set(g.id, ppb);
-        }
-        let totalBoxes = 0;
-        for (const it of itemsForVol as any[]) {
-          const qty = Number(it.quantity) || 0;
-          if (qty <= 0) continue;
-          const sm = (soleMappings || []).find(
-            (m: any) => m.sheet_id === it.reference_id
-              && (m.product_color || "").toLowerCase() === (it.color || "").toLowerCase(),
-          );
-          const groupId = (sm as any)?.products?.group_id;
-          const ppb = (groupId && ppbByGroup.get(groupId)) || 12; // fallback indústria
-          totalBoxes += Math.ceil(qty / ppb);
-        }
-        if (totalBoxes > 0) qtdVolumesStr = String(totalBoxes);
+      const { data: volRow, error: volErr } = await adminClient
+        .rpc("compute_sale_order_nfe_volumes", { p_sale_order_id: sale_order_id });
+      if (volErr) {
+        console.warn("[emit-nfe] compute_sale_order_nfe_volumes falhou:", volErr.message);
+      } else if (Array.isArray(volRow) && volRow.length > 0) {
+        const v = Number((volRow[0] as any)?.volumes) || 0;
+        if (v > 0) qtdVolumesStr = String(v);
       }
     } catch (e) {
       console.warn("[emit-nfe] Exceção ao calcular volumes:", e instanceof Error ? e.message : String(e));
