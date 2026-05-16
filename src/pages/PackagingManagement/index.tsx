@@ -20,6 +20,9 @@ const OrderPackagingDecision = () => {
   const { data: orders = [] } = useQuery({
     queryKey: ['orders_for_packaging'],
     queryFn: async () => {
+      // sale_orders!sale_order_id desambigua: orders tem 2 FKs pra sale_orders
+      // (sale_order_id direto + sale_order_item_id via sale_order_items.sale_order_id).
+      // Sem o hint explícito PostgREST falha com "more than one relationship was found".
       const { data, error } = await supabase
         .from('orders')
         .select(`
@@ -27,7 +30,7 @@ const OrderPackagingDecision = () => {
           order_number,
           quantity,
           reference_id,
-          sale_orders (
+          sale_orders!sale_order_id (
             packaging_mode,
             clients (
               accepts_bundled_packaging
