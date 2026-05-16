@@ -57,6 +57,7 @@ const BankHours = lazy(() => import("./pages/BankHours"));
 const RHHub = lazy(() => import("./pages/RHHub"));
 // Labels page removed — unified into LabelSystem
 const Transport = lazy(() => import("./pages/Transport"));
+const PackagingManagement = lazy(() => import("./pages/PackagingManagement"));
 const ExpedicaoHub = lazy(() => import("./pages/ExpedicaoHub"));
 const OrderPickingPage = lazy(() => import("./pages/OrderPickingPage"));
 // Setores agora vive como aba dentro do PCP Hub (rota /setores redireciona)
@@ -745,7 +746,7 @@ const router = createBrowserRouter([
       },
       {
         path: "embalagens",
-        element: <Navigate to="/transporte?tab=packaging" replace />,
+        element: <PackagingManagement />,
       },
       {
         path: "expedicao",
