@@ -1,5 +1,14 @@
-import { ReactNode } from 'react';
+import { ReactNode, useEffect } from 'react';
 import { cn } from '@/lib/utils';
+
+/** Atualiza document.title — restaura ao default quando desmonta. */
+function useDocumentTitle(title: string) {
+  useEffect(() => {
+    const previous = document.title;
+    document.title = title ? `${title} · Squad Shoes` : 'Squad Shoes';
+    return () => { document.title = previous; };
+  }, [title]);
+}
 
 interface EditorialPageHeaderProps {
   /**
@@ -55,6 +64,7 @@ export function EditorialPageHeader({
   noRule = false,
   className,
 }: EditorialPageHeaderProps) {
+  useDocumentTitle(title);
   return (
     <header className={cn('space-y-3 pb-2', className)}>
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 md:gap-6">

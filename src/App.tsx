@@ -1,4 +1,3 @@
-import { Toaster } from "@/components/ui/toaster";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -411,9 +410,12 @@ const RouteErrorFallback = () => {
         </pre>
       </div>
       <div className="flex gap-2">
-        <Button variant="outline" onClick={() => window.location.reload()}>Recarregar página</Button>
-        <Button variant="outline" onClick={() => (window as any).forceAppUpdate?.()}>
-          Limpar cache e recarregar
+        <Button onClick={() => window.location.reload()}>Recarregar página</Button>
+        <Button variant="outline" onClick={() => { window.location.href = '/'; }}>
+          Ir para o início
+        </Button>
+        <Button variant="ghost" onClick={() => (window as any).forceAppUpdate?.()}>
+          Limpar cache
         </Button>
       </div>
     </div>
@@ -876,7 +878,16 @@ const router = createBrowserRouter([
       },
     ],
   },
-]);
+], {
+  future: {
+    v7_startTransition: true,
+    v7_relativeSplatPath: true,
+    v7_fetcherPersist: true,
+    v7_normalizeFormMethod: true,
+    v7_partialHydration: true,
+    v7_skipActionErrorRevalidation: true,
+  },
+});
 
 const App = () => (
   <GlobalErrorBoundary>
@@ -884,7 +895,6 @@ const App = () => (
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <VersionChecker />
-          <Toaster />
           <Sonner position="top-right" closeButton richColors />
           <RouterProvider router={router} />
         </TooltipProvider>
