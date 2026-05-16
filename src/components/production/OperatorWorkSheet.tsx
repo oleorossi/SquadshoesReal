@@ -101,12 +101,14 @@ const OperatorWorkSheet = ({
     : (isAviamento && mesaCapacity && mesaCapacity > 0 ? mesaCapacity : 0);
   const estimatedDays = effectiveCapacity > 0 ? Math.ceil(totalPairs / effectiveCapacity) : 0;
 
+  const resolvedColorName = order.variant?.color_name || order.color || '—';
+  const resolvedColorHex = order.variant?.color_hex || '#fff';
   const resolvedInsoleColor = insoleReadyMade
-    ? (order.variant.color_name?.toLowerCase().includes('preto') ? 'Preto' : 'Caramelo')
+    ? (resolvedColorName.toLowerCase().includes('preto') ? 'Preto' : 'Caramelo')
     : insoleHasLining !== false
-      ? order.variant.color_name
-      : (insoleColor || order.variant.color_name);
-  const resolvedSoleColor = soleColor || order.variant.color_name;
+      ? resolvedColorName
+      : (insoleColor || resolvedColorName);
+  const resolvedSoleColor = soleColor || resolvedColorName;
 
   const boxes = isAcabamento ? Math.ceil(totalPairs / 12) : 0;
 
@@ -119,34 +121,32 @@ const OperatorWorkSheet = ({
 
   return (
     <div
-      className="w-[210mm] p-[6mm] print:w-full print:p-0 bg-white shadow-none print:shadow-none m-auto flex flex-col gap-0 min-h-[297mm]"
+      className="w-[210mm] p-[6mm] print:w-full print:p-0 bg-white shadow-none print:shadow-none m-auto flex flex-col gap-0"
       style={{ boxSizing: 'border-box', fontFamily: "'Inter Tight', sans-serif", color: '#000' }}
     >
       {/* ── Header — Industrial Editorial ── */}
-      <div className="flex items-baseline justify-between mb-1">
+      {/* Sector title bar — top of the page (per user feedback May/2026) */}
+      <div className="flex items-center gap-3 border-y-2 border-black px-2 py-1.5 mb-1">
+        <div className="text-black shrink-0">{meta.icon}</div>
+        <span
+          className="text-black uppercase leading-none flex-1"
+          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '36px', letterSpacing: '-0.02em' }}
+        >
+          {sector}
+        </span>
+        <span className="section-label" style={{ color: '#000' }}>Ficha de Operador</span>
+      </div>
+
+      <div className="flex items-baseline justify-between mb-0.5">
         <span className="section-label" style={{ color: '#000' }}>
-          01 / {sector.toUpperCase()} · Ficha de Operador
+          01 / {sector.toUpperCase()}
         </span>
         <span className="font-mono text-[10px] text-black tracking-widest uppercase">{today}</span>
       </div>
 
-      <div className="border-t-2 border-b border-black py-2 mb-1 flex items-stretch gap-3">
-        {/* Sector identity — Anton massive */}
-        <div className="flex flex-col justify-center shrink-0 min-w-[140px]">
-          <div className="flex items-center gap-2 mb-1">
-            <div className="text-black">{meta.icon}</div>
-            <span className="section-label" style={{ color: '#000' }}>Setor</span>
-          </div>
-          <span
-            className="text-black uppercase leading-none"
-            style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '44px', letterSpacing: '-0.025em' }}
-          >
-            {sector}
-          </span>
-        </div>
-
+      <div className="border-t border-b border-black py-1.5 mb-1 flex items-stretch gap-3">
         {/* OP/Pares heroes */}
-        <div className="flex-1 flex items-stretch gap-3 border-l border-black pl-3 min-w-0 flex-wrap">
+        <div className="flex-1 flex items-stretch gap-3 min-w-0 flex-wrap">
           <div className="flex flex-col justify-center">
             <span className="section-label" style={{ color: '#000' }}>
               {opNumbers && opNumbers.length > 1 ? `OP × ${opNumbers.length}` : 'OP'}
@@ -309,8 +309,8 @@ const OperatorWorkSheet = ({
       {/* ── Product info row — editorial card with hero REF ── */}
       <div className="flex gap-3 mb-2 border-b border-black pb-2">
         {/* Image — hairline framed */}
-        <div className="w-32 h-32 bg-white overflow-hidden shrink-0 relative" style={{ border: '1.5px solid #000' }}>
-          {!order.variant.variant_image_url && (
+        <div className="w-48 h-48 bg-white overflow-hidden shrink-0 relative" style={{ border: '1.5px solid #000' }}>
+          {!order.variant?.variant_image_url && (
             <span
               className="absolute top-0 left-0 bg-white text-black text-[8px] font-mono font-bold px-1 py-0.5 uppercase tracking-[0.18em] leading-none z-10"
               style={{ borderRight: '1.5px solid #000', borderBottom: '1.5px solid #000' }}
@@ -343,12 +343,12 @@ const OperatorWorkSheet = ({
             <div>
               <span className="section-label block" style={{ color: '#000' }}>{hasStraps ? 'Cor Tiras' : 'Cor Cabedal'}</span>
               <div className="flex items-center gap-1.5 mt-0.5">
-                <div className="w-3 h-3 shrink-0" style={{ backgroundColor: order.variant.color_hex || '#fff', border: '1px solid #000' }} />
+                <div className="w-3 h-3 shrink-0" style={{ backgroundColor: resolvedColorHex, border: '1px solid #000' }} />
                 <span
                   className="text-black uppercase leading-none"
                   style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.01em' }}
                 >
-                  {order.variant.color_name}
+                  {resolvedColorName}
                 </span>
               </div>
             </div>
@@ -719,7 +719,7 @@ const OperatorWorkSheet = ({
               {hasStraps && (
                 <div className="border-t border-black pt-1.5 flex justify-between items-baseline">
                   <span className="section-label" style={{ color: '#000' }}>Cor das Tiras</span>
-                  <span className="font-bold text-black uppercase text-sm">{order.variant.color_name}</span>
+                  <span className="font-bold text-black uppercase text-sm">{resolvedColorName}</span>
                 </div>
               )}
               {/* Frente / Traseiro fillable fields */}
@@ -957,7 +957,7 @@ const OperatorWorkSheet = ({
               <div className="border-t border-black pt-1.5 space-y-1 text-xs">
                 <div className="flex justify-between items-baseline">
                   <span className="section-label" style={{ color: '#000' }}>{hasStraps ? 'Tiras' : 'Cabedal'}</span>
-                  <span className="font-bold text-black uppercase">{order.variant.color_name}</span>
+                  <span className="font-bold text-black uppercase">{resolvedColorName}</span>
                 </div>
                 <div className="flex justify-between items-baseline">
                   <span className="section-label" style={{ color: '#000' }}>Solado</span>
@@ -1018,7 +1018,7 @@ const OperatorWorkSheet = ({
                 </div>
                 <div className="flex justify-between items-baseline">
                   <span className="section-label" style={{ color: '#000' }}>Cor</span>
-                  <span className="font-bold text-black uppercase">{order.variant.color_name}</span>
+                  <span className="font-bold text-black uppercase">{resolvedColorName}</span>
                 </div>
                 <div className="flex justify-between items-baseline">
                   <span className="section-label" style={{ color: '#000' }}>Solado</span>

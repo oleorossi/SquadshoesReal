@@ -42,7 +42,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
 
   return (
     <div
-      className="w-[210mm] p-[6mm] print:w-full print:p-0 bg-white shadow-none print:shadow-none m-auto flex flex-col gap-0 min-h-[297mm]"
+      className="w-[210mm] p-[6mm] print:w-full print:p-0 bg-white shadow-none print:shadow-none m-auto flex flex-col gap-0"
       style={{ boxSizing: 'border-box', fontFamily: "'Inter Tight', sans-serif", color: '#000' }}
     >
       <WorksheetHeader
@@ -134,7 +134,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
                     <span className="section-label shrink-0 self-center" style={{ color: '#000' }}>Sandálias</span>
                     {group.refs.map((r) => (
                       <div key={r.key} className="flex flex-col items-center gap-1">
-                        <div className="bg-white overflow-hidden" style={{ width: 64, height: 64, border: '1.5px solid #000' }}>
+                        <div className="bg-white overflow-hidden" style={{ width: 110, height: 110, border: '1.5px solid #000' }}>
                           <img
                             src={r.image_url || '/placeholder.svg'}
                             alt={r.code}

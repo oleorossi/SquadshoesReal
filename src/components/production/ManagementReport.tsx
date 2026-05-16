@@ -113,7 +113,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
 
   return (
     <div
-      className="w-[210mm] p-[6mm] print:w-full print:p-[5mm] bg-white text-black m-auto editorial-stagger min-h-[297mm] flex flex-col"
+      className="w-[210mm] p-[6mm] print:w-full print:p-[5mm] bg-white text-black m-auto editorial-stagger flex flex-col"
       style={{
         boxSizing: 'border-box',
         fontFamily: "'Inter Tight', 'Inter', system-ui, sans-serif",

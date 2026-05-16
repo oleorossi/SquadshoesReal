@@ -161,7 +161,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
 
   return (
     <div
-      className="w-[210mm] p-[6mm] print:w-full print:p-0 bg-white shadow-none print:shadow-none m-auto flex flex-col gap-0 min-h-[297mm]"
+      className="w-[210mm] p-[6mm] print:w-full print:p-0 bg-white shadow-none print:shadow-none m-auto flex flex-col gap-0"
       style={{ boxSizing: 'border-box', fontFamily: "'Inter Tight', sans-serif", color: '#000' }}
     >
       <WorksheetHeader
@@ -363,7 +363,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                       alternateVariants={cg.alternateVariants}
                       technicalSheetImageUrl={cg.technicalSheetImageUrl}
                       orderColor={cg.color}
-                      size={84}
+                      size={140}
                       alt={`${group.soleName} ${cg.color}`}
                     />
                   )}
