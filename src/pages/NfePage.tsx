@@ -45,20 +45,204 @@ function NfeStatusBadge({ status }: { status: string }) {
   );
 }
 
-// ─── Emit dialog ─────────────────────────────────────────────────────────────
+// ─── Emit dialog (wizard 2 passos: configurar → conferir → emitir) ───────────
+
+function fmtMoney(n: number) {
+  return `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function fmtCnpjCpf(d: string) {
+  const v = (d || '').replace(/\D/g, '');
+  if (v.length === 14) return v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+  if (v.length === 11) return v.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
+  return v;
+}
+
+function fmtCep(d: string) {
+  const v = (d || '').replace(/\D/g, '');
+  if (v.length === 8) return v.replace(/^(\d{5})(\d{3})$/, '$1-$2');
+  return v;
+}
+
+function NfePreviewPanel({ preview }: { preview: NfePreviewResponse['preview'] }) {
+  const { emitente, destinatario, operacao, produtos, totais, transporte, pagamento, informacoes_complementares, warnings } = preview;
+  return (
+    <div className="space-y-4 text-sm">
+      {/* Warnings — aparece sempre que houver, no topo */}
+      {warnings.length > 0 && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 space-y-1">
+          {warnings.map((w, i) => (
+            <p key={i} className="flex items-start gap-2 text-amber-700 text-xs">
+              <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+              <span>{w}</span>
+            </p>
+          ))}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card>
+          <CardContent className="pt-4 space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Emitente</p>
+            <p className="font-medium">{emitente.razao_social || emitente.nome_fantasia || '—'}</p>
+            <p className="text-muted-foreground">CNPJ {fmtCnpjCpf(emitente.cnpj)} · IE {emitente.inscricao_estadual}</p>
+            <p className="text-xs text-muted-foreground">Série {emitente.serie_nfe} · Modelo 55 · {emitente.uf}{emitente.cidade ? ` — ${emitente.cidade}` : ''}{emitente.ambiente ? ` · Ambiente: ${emitente.ambiente}` : ''}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Destinatário</p>
+            <p className="font-medium">{destinatario.nome}</p>
+            <p className="text-muted-foreground">{destinatario.tipo_pessoa === 'PJ' ? 'CNPJ' : 'CPF'} {fmtCnpjCpf(destinatario.documento)} · IE {destinatario.ie_valor}</p>
+            <p className="text-xs">{destinatario.endereco}, {destinatario.numero}{destinatario.complemento ? ` — ${destinatario.complemento}` : ''} · {destinatario.bairro}</p>
+            <p className="text-xs">{destinatario.cidade}/{destinatario.uf} · CEP {fmtCep(destinatario.cep)}</p>
+            {(destinatario.telefone || destinatario.email) && (
+              <p className="text-xs text-muted-foreground">{[destinatario.telefone, destinatario.email].filter(Boolean).join(' · ')}</p>
+            )}
+            {!destinatario.gc_id && (
+              <p className="text-xs text-amber-600 mt-1">Cliente novo — será cadastrado no GestaoClick na emissão</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardContent className="pt-4 space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Operação</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-xs">
+            <div><span className="text-muted-foreground">Natureza:</span> {operacao.natureza_operacao}</div>
+            <div><span className="text-muted-foreground">CFOP:</span> <span className="font-mono">{operacao.cfop}</span> {operacao.cfop_interstate ? '(inter)' : '(intra)'}</div>
+            <div><span className="text-muted-foreground">Finalidade:</span> {operacao.finalidade}</div>
+            <div><span className="text-muted-foreground">Tipo NF:</span> {operacao.tipo_nf}</div>
+            <div className="col-span-2"><span className="text-muted-foreground">Indicador destinatário:</span> {operacao.indicador_final}</div>
+            <div className="col-span-2"><span className="text-muted-foreground">Marca (xMarca):</span> {operacao.marca_xmarca}</div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="pt-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Produtos ({totais.qtd_itens})</p>
+            <p className="text-xs text-muted-foreground">{totais.qtd_pares.toLocaleString('pt-BR')} pares</p>
+          </div>
+          <div className="overflow-x-auto -mx-2">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border text-left text-muted-foreground">
+                  <th className="px-2 py-1.5 font-medium">#</th>
+                  <th className="px-2 py-1.5 font-medium">Descrição</th>
+                  <th className="px-2 py-1.5 font-medium font-mono">NCM</th>
+                  <th className="px-2 py-1.5 font-medium font-mono">CFOP</th>
+                  <th className="px-2 py-1.5 font-medium text-right">Qtd</th>
+                  <th className="px-2 py-1.5 font-medium">Un</th>
+                  <th className="px-2 py-1.5 font-medium text-right">V. Unit</th>
+                  <th className="px-2 py-1.5 font-medium text-right">V. Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {produtos.map((p, i) => (
+                  <tr key={i} className="border-b border-border/30 last:border-0">
+                    <td className="px-2 py-1.5 text-muted-foreground">{i + 1}</td>
+                    <td className="px-2 py-1.5">
+                      {p.descricao}
+                      {p.gc_status === 'pending_create' && (
+                        <span className="ml-1 text-amber-600 text-[10px]" title="Será cadastrado no GestaoClick na emissão">(novo)</span>
+                      )}
+                    </td>
+                    <td className="px-2 py-1.5 font-mono">{p.ncm}</td>
+                    <td className="px-2 py-1.5 font-mono">{p.cfop}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{p.quantidade.toLocaleString('pt-BR')}</td>
+                    <td className="px-2 py-1.5">{p.unidade}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{fmtMoney(p.valor_unitario)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums font-medium">{fmtMoney(p.valor_total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-border font-medium">
+                  <td className="px-2 py-2 text-right" colSpan={7}>Total da NF</td>
+                  <td className="px-2 py-2 text-right tabular-nums">{fmtMoney(totais.soma_itens)}</td>
+                </tr>
+                {Math.abs(totais.soma_itens - totais.total_pedido) > 0.01 && (
+                  <tr>
+                    <td colSpan={8} className="px-2 py-1.5 text-xs text-red-600">
+                      ⚠ Soma dos itens ({fmtMoney(totais.soma_itens)}) diverge do total do PV ({fmtMoney(totais.total_pedido)})
+                    </td>
+                  </tr>
+                )}
+              </tfoot>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card>
+          <CardContent className="pt-4 space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Transporte</p>
+            <div className="text-xs space-y-0.5">
+              <div><span className="text-muted-foreground">Modalidade:</span> {transporte.modalidade_frete}</div>
+              <div><span className="text-muted-foreground">Volumes:</span> {transporte.qtd_volumes} {transporte.especie}{Number(transporte.qtd_volumes) > 1 ? 'S' : ''}</div>
+              <div><span className="text-muted-foreground">Peso bruto:</span> {transporte.peso_bruto_kg ? `${transporte.peso_bruto_kg} kg` : '—'}</div>
+              <div><span className="text-muted-foreground">Peso líquido:</span> {transporte.peso_liquido_kg ? `${transporte.peso_liquido_kg} kg` : '—'}</div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pagamento — {pagamento.length} {pagamento.length === 1 ? 'parcela' : 'parcelas'}</p>
+            <div className="text-xs space-y-0.5">
+              {pagamento.length === 0 ? (
+                <p className="text-muted-foreground">Sem parcelas configuradas — à vista no GestaoClick.</p>
+              ) : (
+                pagamento.map((p, i) => (
+                  <div key={i} className="flex justify-between gap-2">
+                    <span><span className="text-muted-foreground">#{p.numero}</span> · {p.forma} · {p.vencimento}</span>
+                    <span className="tabular-nums">{fmtMoney(p.valor)}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {informacoes_complementares && (
+        <Card>
+          <CardContent className="pt-4 space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Informações Complementares</p>
+            <p className="text-xs whitespace-pre-wrap">{informacoes_complementares}</p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
 
 function EmitDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [orderNumber, setOrderNumber] = useState('');
   const [companyId, setCompanyId] = useState('');
   const [searching, setSearching] = useState(false);
   const [foundOrder, setFoundOrder] = useState<any>(null);
+  const [step, setStep] = useState<'config' | 'preview'>('config');
+  const [previewData, setPreviewData] = useState<NfePreviewResponse | null>(null);
   const emit = useEmitNfe();
+  const preview = usePreviewNfe();
   const { data: companies = [] } = useCompanies();
   const { isAdmin, roles } = useAccessControl();
 
   // Audit Phase 3 fix: bloqueia o botão Emitir quando o usuário não tem role pra NF-e.
   // O backend (emit-nfe edge) já bloqueia, mas mostrar feedback antes evita o 403 silencioso.
   const canEmitNfe = isAdmin || roles.includes('gerente') || roles.includes('nfe_operator');
+
+  const resetAndClose = () => {
+    setStep('config');
+    setPreviewData(null);
+    setFoundOrder(null);
+    setOrderNumber('');
+    onClose();
+  };
 
   const search = async () => {
     if (!orderNumber.trim()) return;
@@ -95,8 +279,7 @@ function EmitDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   // segundo), mas a request já saiu, é desperdício e pode confundir logs.
   const [submitting, setSubmitting] = useState(false);
 
-  const handleEmit = async () => {
-    if (submitting) return; // duplo clique
+  const handlePreview = async () => {
     if (!foundOrder) return;
     if (isInformalOrder) {
       toast.error('Este PV é informal (sem NF-e). Edite o pedido e desmarque "Pedido informal" antes de emitir.');
@@ -106,86 +289,124 @@ function EmitDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
       toast.error('Sem permissão pra emitir NF-e. Necessário admin, gerente ou operador NF-e.');
       return;
     }
+    try {
+      const data = await preview.mutateAsync({ saleOrderId: foundOrder.id, companyId: companyId || undefined });
+      setPreviewData(data);
+      setStep('preview');
+    } catch {
+      // toast já dispara via onError do hook — mantém step='config'
+    }
+  };
+
+  const handleConfirmEmit = async () => {
+    if (submitting) return; // duplo clique
+    if (!foundOrder) return;
     setSubmitting(true);
     try {
       await emit.mutateAsync({ saleOrderId: foundOrder.id, companyId: companyId || undefined });
-      onClose();
-      setFoundOrder(null);
-      setOrderNumber('');
+      resetAndClose();
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
+    <Dialog open={open} onOpenChange={(v) => { if (!v) resetAndClose(); }}>
+      <DialogContent className={step === 'preview' ? 'max-w-5xl max-h-[90vh] overflow-y-auto' : 'max-w-md'}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <FileText className="h-4 w-4" /> Emitir Nova NF-e
+            {step === 'preview' ? <Eye className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+            {step === 'preview' ? `Conferir NF-e — ${foundOrder?.order_number || ''}` : 'Emitir Nova NF-e'}
           </DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4 py-2">
-          {companies.length > 0 && (
-            <div>
-              <Label>Empresa Emitente</Label>
-              <Select value={companyId || '__primary__'} onValueChange={v => setCompanyId(v === '__primary__' ? '' : v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Usar empresa principal" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__primary__">Empresa principal</SelectItem>
-                  {companies.map(c => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.nome_fantasia || c.razao_social} — {c.cnpj}
-                      {c.is_primary ? ' ★' : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-          <div>
-            <Label>Número do Pedido (PV)</Label>
-            <div className="flex gap-2 mt-1">
-              <Input
-                value={orderNumber}
-                onChange={e => setOrderNumber(e.target.value)}
-                placeholder="PV-2026-00001"
-                onKeyDown={e => e.key === 'Enter' && search()}
-              />
-              <Button variant="outline" size="icon" onClick={search} disabled={searching} aria-label="Buscar NF-e">
-                {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-              </Button>
-            </div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+            <span className={step === 'config' ? 'font-medium text-foreground' : ''}>1. Configurar</span>
+            <span>→</span>
+            <span className={step === 'preview' ? 'font-medium text-foreground' : ''}>2. Conferir e emitir</span>
           </div>
-          {foundOrder && (
-            <Card className={isInformalOrder ? "border-amber-500/30 bg-amber-500/5" : "border-green-500/30 bg-green-500/5"}>
-              <CardContent className="pt-4 space-y-1 text-sm">
-                <p className="font-medium">{foundOrder.order_number}</p>
-                <p className="text-muted-foreground">{foundOrder.client_name}</p>
-                <p className="font-medium">R$ {Number(foundOrder.total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                <Badge variant="outline" className="text-xs">{foundOrder.status}</Badge>
-                {isInformalOrder && (
-                  <p className="text-xs text-amber-700 mt-2 flex items-center gap-1">
-                    <AlertCircle className="h-3 w-3" /> Pedido informal — NF-e bloqueada
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          )}
-          {!canEmitNfe && (
-            <p className="text-xs text-red-600 flex items-center gap-1">
-              <AlertCircle className="h-3 w-3" /> Sem permissão pra emitir NF-e
-            </p>
-          )}
-        </div>
+        </DialogHeader>
+
+        {step === 'config' && (
+          <div className="space-y-4 py-2">
+            {companies.length > 0 && (
+              <div>
+                <Label>Empresa Emitente</Label>
+                <Select value={companyId || '__primary__'} onValueChange={v => setCompanyId(v === '__primary__' ? '' : v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Usar empresa principal" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__primary__">Empresa principal</SelectItem>
+                    {companies.map(c => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.nome_fantasia || c.razao_social} — {c.cnpj}
+                        {c.is_primary ? ' ★' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div>
+              <Label>Número do Pedido (PV)</Label>
+              <div className="flex gap-2 mt-1">
+                <Input
+                  value={orderNumber}
+                  onChange={e => setOrderNumber(e.target.value)}
+                  placeholder="PV-2026-00001"
+                  onKeyDown={e => e.key === 'Enter' && search()}
+                />
+                <Button variant="outline" size="icon" onClick={search} disabled={searching} aria-label="Buscar NF-e">
+                  {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+            {foundOrder && (
+              <Card className={isInformalOrder ? "border-amber-500/30 bg-amber-500/5" : "border-green-500/30 bg-green-500/5"}>
+                <CardContent className="pt-4 space-y-1 text-sm">
+                  <p className="font-medium">{foundOrder.order_number}</p>
+                  <p className="text-muted-foreground">{foundOrder.client_name}</p>
+                  <p className="font-medium">{fmtMoney(Number(foundOrder.total || 0))}</p>
+                  <Badge variant="outline" className="text-xs">{foundOrder.status}</Badge>
+                  {isInformalOrder && (
+                    <p className="text-xs text-amber-700 mt-2 flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" /> Pedido informal — NF-e bloqueada
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+            {!canEmitNfe && (
+              <p className="text-xs text-red-600 flex items-center gap-1">
+                <AlertCircle className="h-3 w-3" /> Sem permissão pra emitir NF-e
+              </p>
+            )}
+          </div>
+        )}
+
+        {step === 'preview' && previewData && (
+          <NfePreviewPanel preview={previewData.preview} />
+        )}
+
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button onClick={handleEmit} disabled={!foundOrder || emit.isPending || submitting || isInformalOrder || !canEmitNfe}>
-            {emit.isPending || submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileText className="h-4 w-4 mr-2" />}
-            Emitir NF-e
-          </Button>
+          {step === 'config' ? (
+            <>
+              <Button variant="outline" onClick={resetAndClose}>Cancelar</Button>
+              <Button onClick={handlePreview} disabled={!foundOrder || preview.isPending || isInformalOrder || !canEmitNfe}>
+                {preview.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
+                Visualizar antes de emitir
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => setStep('config')} disabled={emit.isPending || submitting}>
+                <ChevronLeft className="h-4 w-4 mr-1" /> Voltar
+              </Button>
+              <Button onClick={handleConfirmEmit} disabled={emit.isPending || submitting}>
+                {emit.isPending || submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle className="h-4 w-4 mr-2" />}
+                Confirmar e emitir NF-e
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
