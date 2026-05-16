@@ -2752,6 +2752,9 @@ export function useCommitPickingForSaleOrder() {
       qc.invalidateQueries({ queryKey: ['material_reservations'] });
       qc.invalidateQueries({ queryKey: ['sale_orders'] });
       qc.invalidateQueries({ queryKey: ['orders'] });
+      // Invalida a query do Picking Semanal pra ele recarregar e excluir
+      // este PV da lista (filtro picking_individually_done_at IS NULL).
+      qc.invalidateQueries({ queryKey: ['picking_active_sale_orders'] });
       if (result.picked_count === 0 && result.skipped_count === 0) {
         toast.info('Nenhuma reserva pendente — todas já foram consumidas.');
       } else if (result.skipped_count > 0) {
@@ -2760,7 +2763,7 @@ export function useCommitPickingForSaleOrder() {
           { duration: 10000 },
         );
       } else {
-        toast.success(`Picking concluído! ${result.picked_count} item(ns) debitado(s) do estoque.`);
+        toast.success(`Picking concluído — ${result.picked_count} item(ns) debitado(s). PV removido do Picking Semanal.`);
       }
     },
     onError: (err: Error) => toast.error(`Erro no picking: ${err.message}`),

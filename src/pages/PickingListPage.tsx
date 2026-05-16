@@ -96,10 +96,15 @@ export default function PickingListPage() {
   const { data: activeSaleOrders = [] } = useQuery({
     queryKey: ['picking_active_sale_orders'],
     queryFn: async () => {
+      // PVs que tiveram "Picking Realizado" individual (botão no drawer) já
+      // tiveram material debitado em massa via commit_picking_for_sale_order
+      // — precisam SAIR daqui pra evitar débito em duplicidade. Filtro
+      // picking_individually_done_at IS NULL coberto pelo .is() abaixo.
       const { data, error } = await supabase
         .from('sale_orders')
-        .select('id, order_number, delivery_deadline, status')
+        .select('id, order_number, delivery_deadline, status, picking_individually_done_at')
         .in('status', ['Em Produção', 'Aprovado'])
+        .is('picking_individually_done_at', null)
         .order('delivery_deadline', { ascending: true })
         .limit(500);
       if (error) throw error;

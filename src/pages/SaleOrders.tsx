@@ -1853,6 +1853,14 @@ export default function SaleOrders() {
                 <span>Pedido {selectedOrder?.order_number || ''}</span>
                 {selectedOrder && <Badge variant="outline" className={STATUS_COLORS[selectedOrder.status] || ''}><span className={`h-1.5 w-1.5 rounded-full mr-1.5 ${STATUS_DOT[selectedOrder.status]}`} />{selectedOrder.status}</Badge>}
                 <PvOutdatedBadge saleOrderId={selectedOrder?.id || null} />
+                {/* Badge "Picking individual realizado" — quando preenchido, este PV
+                    foi excluído do Picking Semanal pra evitar débito em duplicidade. */}
+                {(selectedOrder as any)?.picking_individually_done_at && (
+                  <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 border-emerald-500/30 gap-1.5">
+                    <Hand className="h-3 w-3" />
+                    Picking individual em {new Date((selectedOrder as any).picking_individually_done_at).toLocaleDateString('pt-BR')}
+                  </Badge>
+                )}
               </div>
               {selectedOrder && (
                 <div className="flex items-center gap-2">
@@ -1895,25 +1903,32 @@ export default function SaleOrders() {
                     </Button>
                   )}
                   <Button variant="outline" size="sm" className="gap-2" onClick={() => setConsumptionDialogOpen(true)}><ClipboardList className="h-3.5 w-3.5" /> Consumo de materiais</Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-2"
-                    disabled={commitPicking.isPending}
-                    onClick={() => {
-                      if (!confirm(
-                        `Confirmar picking de TODOS os materiais reservados deste PV?\n\n` +
-                        `Isso vai dar baixa em estoque de cada item (subtrai products.quantity, registra stock_movement '\''out'\''). ` +
-                        `Use quando quiser rodar pedido a pedido em vez de aguardar a onda semanal.\n\n` +
-                        `Itens com estoque insuficiente serão pulados (resto continua). Operação registrada por usuário no histórico.`
-                      )) return;
-                      commitPicking.mutate(selectedOrder.id);
-                    }}
-                    title="Debita em massa todas as reservas soft das OPs deste PV"
-                  >
-                    {commitPicking.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Hand className="h-3.5 w-3.5" />}
-                    Picking Realizado
-                  </Button>
+                  {/* Picking individual — esconde quando já foi feito (badge no
+                      header já indica). Isso evita: (a) duplicar UI redundante,
+                      (b) confundir operador achando que pode re-rodar. Pra
+                      reverter, usar release_order_reservations por OP ou cancelar. */}
+                  {!(selectedOrder as any).picking_individually_done_at && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      disabled={commitPicking.isPending}
+                      onClick={() => {
+                        if (!confirm(
+                          `Confirmar picking de TODOS os materiais reservados deste PV?\n\n` +
+                          `Isso vai dar baixa em estoque de cada item (subtrai products.quantity, registra stock_movement '\''out'\''). ` +
+                          `Use quando quiser rodar pedido a pedido em vez de aguardar a onda semanal.\n\n` +
+                          `Após confirmar, este PV é EXCLUÍDO do Picking Semanal pra evitar débito em duplicidade. ` +
+                          `Itens com estoque insuficiente serão pulados (resto continua). Operação registrada por usuário no histórico.`
+                        )) return;
+                        commitPicking.mutate(selectedOrder.id);
+                      }}
+                      title="Debita em massa todas as reservas soft das OPs deste PV e exclui do Picking Semanal"
+                    >
+                      {commitPicking.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Hand className="h-3.5 w-3.5" />}
+                      Picking Realizado
+                    </Button>
+                  )}
                   <Button variant="outline" size="sm" className="gap-2" onClick={() => setMarginDialogOpen(true)}><TrendingUp className="h-3.5 w-3.5" /> Margem</Button>
                   <Button variant="outline" size="sm" className="gap-2" onClick={async () => { try { await printAllSectorsForSaleOrder(selectedOrder.id, selectedOrder.order_number); } catch (err: any) { toast.error(err.message); } }}><FileText className="h-3.5 w-3.5" /> OPs</Button>
                   <Button variant="outline" size="sm" className="gap-2" onClick={async () => { const { data: oi } = await supabase.from('sale_order_items').select('*, technical_sheets(name, code, image_url, images)').eq('sale_order_id', selectedOrder.id); const refIds = [...new Set((oi || []).map(i => i.reference_id))]; const { data: colorVariants } = await supabase.from('reference_color_variants').select('reference_id, color, image_url').in('reference_id', refIds); printHtml(`PV ${selectedOrder.order_number}`, await buildSaleOrderPrintHtml(selectedOrder, oi || [], colorVariants || [])); }}><FileText className="h-3.5 w-3.5" /> Gerar PDF</Button>
