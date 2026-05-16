@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { getSignedUrl } from '@/lib/getSignedUrl';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown as ChevronDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw } from '@phosphor-icons/react';
+import { ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown as ChevronDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, Eye } from '@phosphor-icons/react';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { BulkActionsBar, MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
 import { cn } from "@/lib/utils";
@@ -33,6 +33,7 @@ import { useAccessControl } from '@/hooks/useAccessControl';
 import { useEmitNfe, useNfeEmitidas, useCheckNfeStatus, useCancelNfe, useCompanies } from '@/hooks/useNfe';
 import { NfeDevolucaoDialog } from '@/components/nfe/NfeDevolucaoDialog';
 import { NfeViewerDialog } from '@/components/nfe/NfeViewerDialog';
+import { NfePreviewDialog } from '@/components/nfe/NfePreviewDialog';
 import type { NfeEmitida } from '@/hooks/useNfe';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRepresentatives } from '@/hooks/useRepresentatives';
@@ -150,6 +151,10 @@ export default function SaleOrders() {
   const [cancelJustificativa, setCancelJustificativa] = useState('');
   const [devolucaoTarget, setDevolucaoTarget] = useState<{ id: string; numero: string | null } | null>(null);
   const [viewNfeTarget, setViewNfeTarget] = useState<NfeEmitida | null>(null);
+  // Preview de NF-e (dry_run) — atalho ao lado do botão "Emitir NF-e" no resumo do PV.
+  // Abre dialog com payload completo (destinatário, itens, totais, peso, parcelas) antes
+  // de qualquer chamada destrutiva ao GestaoClick. Usuário confere e confirma emissão.
+  const [previewNfeOrder, setPreviewNfeOrder] = useState<{ id: string; orderNumber: string } | null>(null);
   const resyncOPs = useResyncOPsFromSheets();
   const resyncPVOPs = useResyncOPsFromPV();
   // bulkSyncFinancial removido em 2026-05 — sync acontece automaticamente no faturamento
@@ -2126,11 +2131,22 @@ export default function SaleOrders() {
                           re-valida tudo (status, IE, NCM, etc) — esse check de UI só
                           esconde quando claramente não faz sentido tentar. */}
                       {!selectedOrderNfes.some((n: any) => ['autorizada', 'processando', 'cancelando'].includes(n.status)) && (
-                        <Button size="sm" className="h-7 text-xs gap-1.5" disabled={emitNfe.isPending}
-                          onClick={() => emitNfe.mutate({ saleOrderId: selectedOrder.id, companyId: nfeCompanyId || undefined })}>
-                          {emitNfe.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Receipt className="h-3 w-3" />}
-                          Emitir NF-e
-                        </Button>
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs gap-1.5"
+                            onClick={() => setPreviewNfeOrder({ id: selectedOrder.id, orderNumber: selectedOrder.order_number })}
+                            title="Pré-visualizar dados da NF antes de emitir"
+                          >
+                            <Eye className="h-3 w-3" /> Visualizar
+                          </Button>
+                          <Button size="sm" className="h-7 text-xs gap-1.5" disabled={emitNfe.isPending}
+                            onClick={() => emitNfe.mutate({ saleOrderId: selectedOrder.id, companyId: nfeCompanyId || undefined })}>
+                            {emitNfe.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Receipt className="h-3 w-3" />}
+                            Emitir NF-e
+                          </Button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -2257,6 +2273,16 @@ export default function SaleOrders() {
         onOpenChange={(v) => { if (!v) setViewNfeTarget(null); }}
         clientLabel={selectedOrder?.client_name || viewNfeTarget?.nome_destinatario || undefined}
         orderNumber={selectedOrder?.order_number || undefined}
+      />
+
+      {/* NF-e preview (dry_run) — atalho do resumo do PV. Mostra tudo que vai
+          pra SEFAZ antes do POST destrutivo. Operador confere e confirma. */}
+      <NfePreviewDialog
+        saleOrderId={previewNfeOrder?.id || null}
+        companyId={nfeCompanyId || undefined}
+        orderNumber={previewNfeOrder?.orderNumber}
+        open={!!previewNfeOrder}
+        onClose={() => setPreviewNfeOrder(null)}
       />
 
       {/* DUPLICATE DIALOG */}
