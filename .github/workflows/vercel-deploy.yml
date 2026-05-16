@@ -1,9 +1,10 @@
 name: Vercel Production Deploy
 
-# Dispara em push direto pra main + manualmente pelo Actions tab.
-# Serve como BACKUP do webhook Vercel→GitHub: se o webhook estiver
-# intermitente ou desligado, esse Action garante que cada push em main
-# vire um deploy production no Vercel.
+# Trigger: DEPOIS que o workflow "CI" passa em push pra main.
+# Mudança em 2026-05-16: era `on: push: main`, rodava em paralelo com CI →
+# Vercel deployava antes do tsc terminar. Erros tipo "Cannot find name 'Box'"
+# (TS2304) caíam em prod porque vite build tolera TS errors silenciosamente.
+# Agora a chain é: push → CI → (só se passou) → Vercel Deploy.
 #
 # Setup necessário (uma vez só):
 # 1. https://vercel.com/account/tokens → Create Token → copia
@@ -15,15 +16,16 @@ name: Vercel Production Deploy
 #    - VERCEL_PROJECT_ID = projectId do project.json
 
 on:
-  push:
+  # Espera CI completar em push pra main. Se CI falhou, deploy é skipado
+  # automaticamente (via `if:` no job abaixo). Branch filter garante que PRs
+  # (que também rodam CI) NÃO disparem deploy prod.
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches: [main]
-    # Ignora pushes que mexem só em migrations/docs — não precisam de novo deploy
-    paths-ignore:
-      - 'supabase/migrations/**'
-      - '**.md'
-      - '.github/**'
 
-  # Permite disparar manualmente em Actions tab
+  # Permite disparar manualmente em Actions tab (útil quando CI flaca por
+  # razões não-relacionadas a código — ex: rede, runner indisponível).
   workflow_dispatch:
 
 # Evita 2 deploys paralelos se vários pushes chegarem em sequência
@@ -38,10 +40,20 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Pula deploy se CI falhou. Manual dispatch ignora esse check (admin
+    # decide quando forçar). workflow_run.conclusion pode ser:
+    # success/failure/cancelled/skipped/timed_out — só deploya em success.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # workflow_run roda no contexto da default branch mas precisamos do
+          # SHA EXATO que disparou o CI (caso outros commits tenham chegado
+          # entre o CI passar e esse job iniciar). github.sha cai no
+          # workflow_dispatch case.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -88,6 +100,20 @@ jobs:
           PROJECT_NAME=$(jq -r '.name' < /tmp/proj.json)
           echo "✅ Projeto encontrado: $PROJECT_NAME"
 
+      - name: Setup Bun (for tsc gate)
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install deps for tsc gate
+        run: bun install --frozen-lockfile
+
+      # Defesa em profundidade: re-roda tsc aqui antes de qualquer build/deploy.
+      # Se workflow_dispatch foi usado pra bypass do CI, ou se algum bug deixou
+      # vercel-deploy.yml ser triggered sem CI, esse gate ainda bloqueia.
+      - name: TypeScript gate (bloqueia deploy se houver erro)
+        run: bunx tsc --noEmit
+
       - name: Pull Vercel config
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
 
@@ -95,9 +121,12 @@ jobs:
         run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
 
       - name: Deploy to production
+        env:
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
           DEPLOY_URL=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
           echo "🚀 Deploy concluído: $DEPLOY_URL"
           echo "## Deploy info" >> $GITHUB_STEP_SUMMARY
           echo "- URL: $DEPLOY_URL" >> $GITHUB_STEP_SUMMARY
-          echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: $DEPLOY_SHA" >> $GITHUB_STEP_SUMMARY
+          echo "- Trigger: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
