@@ -68,6 +68,8 @@ export function NfePreviewPanel({ preview }: { preview: NfePreviewResponse['prev
             <div><span className="text-muted-foreground">CFOP:</span> <span className="font-mono">{operacao.cfop}</span> {operacao.cfop_interstate ? '(inter)' : '(intra)'}</div>
             <div><span className="text-muted-foreground">Finalidade:</span> {operacao.finalidade}</div>
             <div><span className="text-muted-foreground">Tipo NF:</span> {operacao.tipo_nf}</div>
+            <div><span className="text-muted-foreground">Forma emissão:</span> {operacao.tipo_emissao}</div>
+            <div className="col-span-3"><span className="text-muted-foreground">Tipo atendimento:</span> {operacao.indicador_presenca}</div>
             <div className="col-span-2"><span className="text-muted-foreground">Indicador destinatário:</span> {operacao.indicador_final}</div>
             <div className="col-span-2"><span className="text-muted-foreground">Marca (xMarca):</span> {operacao.marca_xmarca}</div>
           </div>

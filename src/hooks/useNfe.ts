@@ -400,6 +400,8 @@ export interface NfePreviewResponse {
       cfop_interstate: boolean;
       modelo: string;
       finalidade: string;
+      tipo_emissao: string;
+      indicador_presenca: string;
       indicador_final: string;
       tipo_nf: string;
       marca_xmarca: string;

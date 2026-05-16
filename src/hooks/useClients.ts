@@ -30,6 +30,11 @@ export type Client = {
   credit_limit: number;
   branch_code: string | null;
   branch_name: string | null;
+  // Flag explícita de contribuição de ICMS. true=contribuinte (precisa IE
+  // numérica), false=isento/não contribuinte (IE pode ser "ISENTO"), null=
+  // não definido (emit-nfe cai no fallback de inferir do campo IE).
+  // Adicionado em 16/05/2026 — backfill derivou do IE pra clientes existentes.
+  icms_contribuinte: boolean | null;
   created_at: string;
   updated_at: string;
 };

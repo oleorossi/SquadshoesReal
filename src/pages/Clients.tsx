@@ -41,6 +41,7 @@ const emptyClient: ClientFormData = {
   credit_limit: 0,
   branch_code: null,
   branch_name: null,
+  icms_contribuinte: null,
 };
 
 export default function Clients() {

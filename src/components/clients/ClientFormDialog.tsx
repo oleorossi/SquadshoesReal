@@ -72,21 +72,58 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
   // antes só falhavam na SEFAZ (Rejeição 232 com mensagem confusa).
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // Validação cruzada com a flag explícita icms_contribuinte (adicionada
+    // em 16/05/2026). Se o operador escolheu "Contribuinte de ICMS",
+    // exige IE numérica. Se escolheu "Isento", aceita "ISENTO" e também
+    // auto-preenche se vier vazio. Se null (não definido — legacy ou
+    // cliente novo sem escolha), mantém comportamento antigo.
     const ie = (form.inscricao_estadual || '').trim().toUpperCase();
-    if (!ie) {
-      toast.error('Inscrição Estadual é obrigatória. Preencha o número OU escreva "ISENTO".');
-      return;
-    }
-    const isIsento = ie === 'ISENTO' || ie === 'ISENTA' || ie === 'NAO CONTRIBUINTE';
-    const digits = ie.replace(/\D/g, '');
-    if (!isIsento && (digits.length < 6 || digits.length > 18)) {
-      toast.error(
-        'IE inválida. Deve ter entre 6 e 18 dígitos (ex: "123456789") ou ser "ISENTO". ' +
-        'Hífens/pontos/letras são permitidos (ex: "12.345.678-9").',
-      );
-      return;
+    if (form.icms_contribuinte === true) {
+      const digits = ie.replace(/\D/g, '');
+      if (!ie || digits.length < 6 || digits.length > 18) {
+        toast.error(
+          'Cliente marcado como Contribuinte de ICMS — preencha a Inscrição Estadual ' +
+          '(entre 6 e 18 dígitos, ex: "123456789"). Hífens/pontos/letras são permitidos.',
+        );
+        return;
+      }
+    } else if (form.icms_contribuinte === false) {
+      // Auto-fix: se Isento e IE vazia, preenche "ISENTO" automaticamente.
+      if (!ie) {
+        setForm(f => ({ ...f, inscricao_estadual: 'ISENTO' }));
+      }
+    } else {
+      // icms_contribuinte = null: fallback ao comportamento antigo
+      if (!ie) {
+        toast.error('Defina se o cliente é Contribuinte ou Isento de ICMS (ou preencha IE manualmente).');
+        return;
+      }
+      const isIsento = ie === 'ISENTO' || ie === 'ISENTA' || ie === 'NAO CONTRIBUINTE';
+      const digits = ie.replace(/\D/g, '');
+      if (!isIsento && (digits.length < 6 || digits.length > 18)) {
+        toast.error(
+          'IE inválida. Deve ter entre 6 e 18 dígitos (ex: "123456789") ou ser "ISENTO". ' +
+          'Hífens/pontos/letras são permitidos (ex: "12.345.678-9").',
+        );
+        return;
+      }
     }
     onSubmit(e);
+  };
+
+  // Quando o operador alterna o select de contribuição, ajusta a IE automaticamente:
+  //  - Contribuinte: se a IE atual era "ISENTO", limpa pra forçar preenchimento
+  //  - Isento: auto-preenche "ISENTO" se IE estiver vazia
+  const handleContribuinteChange = (val: string) => {
+    const newFlag = val === 'sim' ? true : val === 'nao' ? false : null;
+    setForm(f => {
+      const currentIe = (f.inscricao_estadual || '').trim().toUpperCase();
+      const isIsentoText = ['ISENTO', 'ISENTA', 'NAO CONTRIBUINTE'].includes(currentIe);
+      let newIe = f.inscricao_estadual;
+      if (newFlag === true && isIsentoText) newIe = '';
+      if (newFlag === false && !currentIe) newIe = 'ISENTO';
+      return { ...f, icms_contribuinte: newFlag, inscricao_estadual: newIe };
+    });
   };
 
   const handleCepBlur = async () => {
@@ -195,18 +232,42 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
                   </div>
                   <div>
                     <Label className="text-xs">
+                      Contribuinte de ICMS <span className="text-amber-600">*</span>
+                    </Label>
+                    <Select
+                      value={form.icms_contribuinte === true ? 'sim' : form.icms_contribuinte === false ? 'nao' : ''}
+                      onValueChange={handleContribuinteChange}
+                    >
+                      <SelectTrigger className="mt-1 h-9 text-sm">
+                        <SelectValue placeholder="Selecione…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="sim">Sim — Contribuinte de ICMS</SelectItem>
+                        <SelectItem value="nao">Não — Isento / Não contribuinte</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Define como o destinatário entra na NF-e: contribuinte exige IE numérica;
+                      isento preenche IE como <span className="font-mono font-semibold">ISENTO</span> automaticamente.
+                    </p>
+                  </div>
+                  <div>
+                    <Label className="text-xs">
                       Inscrição Estadual <span className="text-amber-600">*</span>
                     </Label>
                     <Input
                       value={form.inscricao_estadual}
                       onChange={e => setForm(f => ({ ...f, inscricao_estadual: e.target.value }))}
                       className="mt-1 h-9 font-mono"
-                      placeholder='IE numérica ou "ISENTO"'
+                      placeholder={form.icms_contribuinte === false ? 'ISENTO' : 'IE numérica'}
+                      disabled={form.icms_contribuinte === false}
                     />
                     <p className="text-[10px] text-muted-foreground mt-1">
-                      Obrigatória pra emitir NF-e. Contribuinte de ICMS: informe a IE.
-                      Isento/não-contribuinte: escreva <span className="font-mono font-semibold">ISENTO</span>.
-                      Campo vazio = NF-e rejeitada pela SEFAZ.
+                      {form.icms_contribuinte === true
+                        ? 'Obrigatória — informe a IE numérica do cliente.'
+                        : form.icms_contribuinte === false
+                          ? 'Preenchida automaticamente como "ISENTO" (campo desabilitado).'
+                          : 'Selecione antes se é contribuinte ou isento.'}
                     </p>
                   </div>
                   <div>

@@ -206,15 +206,36 @@ Deno.serve(async (req) => {
     // GestaoClick/SEFAZ, pra forçar o cadastro correto do cliente.
     const ieDestRaw = (client.inscricao_estadual || "").trim().toUpperCase();
     const ieDestDigits = ieDestRaw.replace(/\D/g, "");
-    const isIsento = ieDestRaw === "ISENTO" || ieDestRaw === "ISENTA" || ieDestRaw === "NAO CONTRIBUINTE";
-    const isContribuinte = ieDestDigits.length > 0 && !isIsento;
+    // Auditoria 16/05/2026: novo campo `clients.icms_contribuinte` (boolean
+    // nullable) tem PRIORIDADE sobre a inferência via IE. Operador define no
+    // cadastro do cliente — antes era inferido só do texto da IE (ambiguidade
+    // quando IE vazia). Fallback pra IE quando flag for NULL (clientes legados).
+    let isContribuinte: boolean;
+    let isIsento: boolean;
+    if (client.icms_contribuinte === true) {
+      isContribuinte = true;
+      isIsento = false;
+    } else if (client.icms_contribuinte === false) {
+      isContribuinte = false;
+      isIsento = true;
+    } else {
+      isIsento = ieDestRaw === "ISENTO" || ieDestRaw === "ISENTA" || ieDestRaw === "NAO CONTRIBUINTE";
+      isContribuinte = ieDestDigits.length > 0 && !isIsento;
+    }
     if (!isContribuinte && !isIsento) {
       const nomeCli = client.razao_social || client.nome || order.client_name || "destinatário";
       return new Response(JSON.stringify({
-        error: `Cliente "${nomeCli}" está sem Inscrição Estadual cadastrada. ` +
-               `Se for contribuinte de ICMS, preencha a IE no cadastro do cliente. ` +
-               `Se for isento ou não-contribuinte, escreva "ISENTO" no campo Inscrição Estadual. ` +
+        error: `Cliente "${nomeCli}" sem definição de contribuição de ICMS. ` +
+               `Abra o cadastro do cliente e selecione "Contribuinte de ICMS" (Sim ou Não). ` +
                `Sem essa informação a NF-e é rejeitada pela SEFAZ (Rejeição 232 ou 696).`,
+      }), { status: 400, headers: corsHeaders });
+    }
+    // Quando flag explícita diz contribuinte mas IE está vazia/inválida.
+    if (isContribuinte && ieDestDigits.length < 6) {
+      const nomeCli = client.razao_social || client.nome || order.client_name || "destinatário";
+      return new Response(JSON.stringify({
+        error: `Cliente "${nomeCli}" marcado como Contribuinte de ICMS mas sem IE válida (precisa ao menos 6 dígitos). ` +
+               `Edite o cadastro: informe a Inscrição Estadual do cliente ou marque como Isento.`,
       }), { status: 400, headers: corsHeaders });
     }
 
@@ -443,7 +464,10 @@ Deno.serve(async (req) => {
       const price = effectivePrice(it);
       const baseName = ts?.name || prod?.name || "Produto";
       const desc = (variant?.description_override || (it.color ? `${baseName} - ${it.color}` : baseName)).trim();
-      const unidade = (prod?.unit || "PAR").toUpperCase();
+      // Auditoria 16/05/2026 — Squad Shoes vende exclusivamente calçado e a
+      // unidade na NF sempre tem que ser PAR (mesmo NF avulsa de standalone).
+      // Antes, NF avulsa puxava de products.unit que podia ser "UN"/"kg"/etc.
+      const unidade = "PAR";
 
       // Resolução do produto no GestaoClick — POR NOME.
       // BUG CRÍTICO da cor (e do duplicado) corrigido aqui:
@@ -478,7 +502,7 @@ Deno.serve(async (req) => {
             body: JSON.stringify({
               nome: nomeProduto,
               valor_venda: price.toFixed(2),
-              unidade: isStandalone ? unidade : "PAR",
+              unidade: "PAR",
               ncm,
               tipo: "P",
               marca: orderBrand, // marca aparece no XML SEFAZ <prod><xMarca>
@@ -506,7 +530,7 @@ Deno.serve(async (req) => {
         // total saía qtd² × preço (ex: R$ 8.3M em vez de R$ 25k).
         valor_venda: price.toFixed(2),
         cfop: resolvedCfop,
-        unidade: isStandalone ? unidade : "PAR",
+        unidade: "PAR",
         NCM: ncm,
         tipo: "P",
         marca: orderBrand, // pedido em 15/05/2026 — sempre Squad Shoes na NF
@@ -516,7 +540,7 @@ Deno.serve(async (req) => {
         ncm,
         cfop: resolvedCfop,
         quantidade: qty,
-        unidade: isStandalone ? unidade : "PAR",
+        unidade: "PAR",
         valor_unitario: price,
         valor_total: Number((qty * price).toFixed(2)),
         gc_status: gcStatus,
@@ -732,6 +756,15 @@ Deno.serve(async (req) => {
       modelo: "55",
       serie: fiscal.serie_nfe || "1",
       finalidade_nf: "1",
+      // tipo_emissao=1 ("Normal") — pedido em 16/05/2026. Antes não era
+      // enviado; GestaoClick assumia default mas explícito blinda contra
+      // mudança de default deles.
+      tipo_emissao: "1",
+      // indicador_presenca=9 ("Operação não presencial, outros") — pedido
+      // em 16/05/2026 pela Squad Shoes. Antes não era enviado: SEFAZ
+      // rejeitava com Rejeição 779 ou aceitava com indPres=0 (não
+      // aplicável), o que é incorreto pra venda B2B por telefone/email.
+      indicador_presenca: "9",
       indicador_final: isContribuinte ? 0 : 1,
       informacoes_complementares: informacoesComplementares,
       produtos: produtosGC,
@@ -796,7 +829,9 @@ Deno.serve(async (req) => {
             cfop: resolvedCfop,
             cfop_interstate: isInterstate,
             modelo: '55',
-            finalidade: '1 (Normal)',
+            finalidade: '1 (NF-e normal)',
+            tipo_emissao: '1 (Emissão normal)',
+            indicador_presenca: '9 (Operação não presencial, outros)',
             indicador_final: isContribuinte ? '0 (Contribuinte)' : '1 (Consumidor final)',
             tipo_nf: '1 (Saída)',
             marca_xmarca: orderBrand,
