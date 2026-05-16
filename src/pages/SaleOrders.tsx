@@ -2110,22 +2110,27 @@ export default function SaleOrders() {
                       NF-e
                     </div>
                     <div className="flex items-center gap-2">
-                      {companies.length > 0 && (
-                        <Select value={nfeCompanyId || '__primary__'} onValueChange={v => setNfeCompanyId(v === '__primary__' ? '' : v)}>
-                          <SelectTrigger className="h-7 text-xs w-52">
-                            <SelectValue placeholder="Empresa principal" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="__primary__">Empresa principal</SelectItem>
-                            {companies.map(c => (
-                              <SelectItem key={c.id} value={c.id}>
-                                {c.nome_fantasia || c.razao_social}
-                                {c.is_primary ? ' ★' : ''}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
+                      {companies.length > 0 && (() => {
+                        const primary = companies.find(c => c.is_primary);
+                        const primaryLabel = primary
+                          ? `${primary.nome_fantasia || primary.razao_social} ★`
+                          : 'Empresa principal';
+                        return (
+                          <Select value={nfeCompanyId || '__primary__'} onValueChange={v => setNfeCompanyId(v === '__primary__' ? '' : v)}>
+                            <SelectTrigger className="h-7 text-xs w-52">
+                              <SelectValue placeholder={primaryLabel} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__primary__">{primaryLabel}</SelectItem>
+                              {companies.filter(c => !c.is_primary).map(c => (
+                                <SelectItem key={c.id} value={c.id}>
+                                  {c.nome_fantasia || c.razao_social}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        );
+                      })()}
                       {/* Botão Emitir aparece pra qualquer status não-cancelado SE não
                           houver NF ativa (autorizada/processando/cancelando). Backend
                           re-valida tudo (status, IE, NCM, etc) — esse check de UI só

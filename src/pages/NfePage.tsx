@@ -21,7 +21,7 @@ import NfeCCePanel from '@/components/nfe/NfeCCePanel';
 import StandaloneNfePanel from '@/components/nfe/StandaloneNfePanel';
 import { NfeBillingHealthCard } from '@/components/nfe/NfeBillingHealthCard';
 import { NfeViewerDialog } from '@/components/nfe/NfeViewerDialog';
-import { NfePreviewPanel, fmtMoney } from '@/components/nfe/NfePreviewPanel';
+import { NfePreviewPanel, fmtMoney, fmtCnpjCpf } from '@/components/nfe/NfePreviewPanel';
 import { AppErrorBoundary } from '@/components/ErrorBoundary';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -155,25 +155,30 @@ function EmitDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
 
         {step === 'config' && (
           <div className="space-y-4 py-2">
-            {companies.length > 0 && (
-              <div>
-                <Label>Empresa Emitente</Label>
-                <Select value={companyId || '__primary__'} onValueChange={v => setCompanyId(v === '__primary__' ? '' : v)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Usar empresa principal" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__primary__">Empresa principal</SelectItem>
-                    {companies.map(c => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.nome_fantasia || c.razao_social} — {c.cnpj}
-                        {c.is_primary ? ' ★' : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            {companies.length > 0 && (() => {
+              const primary = companies.find(c => c.is_primary);
+              const primaryLabel = primary
+                ? `${primary.nome_fantasia || primary.razao_social} — ${fmtCnpjCpf(primary.cnpj)} ★`
+                : 'Empresa principal';
+              return (
+                <div>
+                  <Label>Empresa Emitente</Label>
+                  <Select value={companyId || '__primary__'} onValueChange={v => setCompanyId(v === '__primary__' ? '' : v)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder={primaryLabel} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__primary__">{primaryLabel}</SelectItem>
+                      {companies.filter(c => !c.is_primary).map(c => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.nome_fantasia || c.razao_social} — {fmtCnpjCpf(c.cnpj)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              );
+            })()}
             <div>
               <Label>Número do Pedido (PV)</Label>
               <div className="flex gap-2 mt-1">

@@ -187,21 +187,29 @@ export default function StandaloneNfePanel() {
 
             <div>
               <Label className="text-xs">Empresa emitente</Label>
-              <Select value={companyId} onValueChange={setCompanyId}>
-                <SelectTrigger className="mt-1 h-9 text-sm">
-                  <SelectValue placeholder="Usar empresa principal" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(companies || [])
-                    .filter((c: any) => c.active !== false)
-                    .map((c: any) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.nome_fantasia || c.razao_social}
-                        {c.is_primary && <Badge variant="secondary" className="ml-2 text-[9px]">Principal</Badge>}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+              {(() => {
+                const primary = (companies || []).find((c: any) => c.is_primary && c.active !== false);
+                const primaryLabel = primary
+                  ? `${primary.nome_fantasia || primary.razao_social} (principal)`
+                  : 'Usar empresa principal';
+                return (
+                  <Select value={companyId} onValueChange={setCompanyId}>
+                    <SelectTrigger className="mt-1 h-9 text-sm">
+                      <SelectValue placeholder={primaryLabel} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(companies || [])
+                        .filter((c: any) => c.active !== false)
+                        .map((c: any) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.nome_fantasia || c.razao_social}
+                            {c.is_primary && <Badge variant="secondary" className="ml-2 text-[9px]">Principal</Badge>}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                );
+              })()}
               <p className="mt-1.5 text-[10px] text-muted-foreground">
                 Se vazio, usa a empresa marcada como principal.
               </p>
