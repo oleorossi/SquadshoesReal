@@ -3300,6 +3300,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
              onChange={(sectors: string[]) => {
                updateSheet.mutate({ id: sheet.id, data: { production_sectors: sectors } as any });
              }}
+             aviamentoSteps={Array.isArray((sheet as any).aviamento_steps) ? ((sheet as any).aviamento_steps as string[]) : []}
+             onChangeAviamentoSteps={(steps: string[]) => {
+               updateSheet.mutate({ id: sheet.id, data: { aviamento_steps: steps } as any });
+             }}
            />
           <Separator />
           <OperationsTab
@@ -3533,9 +3537,27 @@ function PhotosByColorTab({ sheetId, form, groups, products }: {
    { name: 'Expedição',      order: 11 },
  ];
  
- function ProductionSectorsTab({ sectors, onChange }: { sectors: string[]; onChange: (sectors: string[]) => void }) {
+// Etapas fixas do setor Aviamento. Quando o user marca Aviamento em
+// production_sectors, abre um sub-painel pra escolher quais dessas etapas
+// se aplicam à ficha. A ficha de operador renderiza checklist por etapa.
+const AVIAMENTO_STEPS = [
+  'Frente',
+  'Traseira',
+  'Costura de tiras',
+] as const;
+
+function ProductionSectorsTab({
+  sectors, onChange,
+  aviamentoSteps, onChangeAviamentoSteps,
+}: {
+  sectors: string[];
+  onChange: (sectors: string[]) => void;
+  aviamentoSteps: string[];
+  onChangeAviamentoSteps: (steps: string[]) => void;
+}) {
    const [localSectors, setLocalSectors] = useState<string[]>(sectors);
- 
+   const [localSteps, setLocalSteps] = useState<string[]>(aviamentoSteps);
+
    const toggle = (sectorName: string) => {
     setLocalSectors(prev => {
       const next = prev.includes(sectorName)
@@ -3549,7 +3571,15 @@ function PhotosByColorTab({ sheetId, form, groups, products }: {
     });
   };
 
-  const hasChanges = JSON.stringify(localSectors) !== JSON.stringify(sectors);
+  const toggleStep = (step: string) => {
+    setLocalSteps(prev =>
+      prev.includes(step) ? prev.filter(s => s !== step) : [...prev, step],
+    );
+  };
+
+  const isAviamentoActive = localSectors.includes('Aviamento');
+  const hasChanges = JSON.stringify(localSectors) !== JSON.stringify(sectors)
+    || (isAviamentoActive && JSON.stringify(localSteps) !== JSON.stringify(aviamentoSteps));
 
   return (
     <div className="space-y-4">
@@ -3578,13 +3608,62 @@ function PhotosByColorTab({ sheetId, form, groups, products }: {
            );
          })}
       </div>
+
+      {/* Sub-painel Aviamento: aparece só quando Aviamento está selecionado.
+          Cada etapa marcada vira uma linha de checklist na ficha de operador
+          de Aviamento (Frente/Traseira/Costura de tiras × numerações). */}
+      {isAviamentoActive && (
+        <div className="rounded-lg border-2 border-amber-500/30 bg-amber-500/5 p-3 space-y-2">
+          <div className="flex items-center gap-2 text-amber-700">
+            <Factory className="h-4 w-4 shrink-0" />
+            <span className="text-sm font-bold">Etapas de Aviamento</span>
+            <span className="text-[11px] text-muted-foreground">
+              Marque quais aplicar nesta ficha · vira checklist na ficha de operador
+            </span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+            {AVIAMENTO_STEPS.map(step => {
+              const isStepActive = localSteps.includes(step);
+              return (
+                <button
+                  key={step}
+                  type="button"
+                  onClick={() => toggleStep(step)}
+                  className={cn(
+                    'flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-all min-w-0',
+                    isStepActive
+                      ? 'border-amber-600 bg-amber-100 text-amber-900 cursor-pointer'
+                      : 'border-border bg-card text-muted-foreground hover:border-amber-500/50 cursor-pointer'
+                  )}
+                >
+                  <Checkbox checked={isStepActive} className="pointer-events-none shrink-0" />
+                  <span className="truncate">{step}</span>
+                </button>
+              );
+            })}
+          </div>
+          {localSteps.length === 0 && (
+            <p className="text-[11px] text-amber-700">
+              ⚠ Nenhuma etapa marcada — ficha de operador vai aparecer sem checklist de Aviamento.
+            </p>
+          )}
+        </div>
+      )}
+
       {hasChanges && (
         <div className="flex items-center justify-between bg-primary/5 border border-primary/20 rounded-lg px-4 py-2">
           <span className="text-sm text-primary font-medium">
-            {localSectors.length} setor(es) selecionado(s)
+            {localSectors.length} setor(es){isAviamentoActive ? ` · ${localSteps.length} etapa(s) Aviamento` : ''}
           </span>
-          <Button size="sm" onClick={() => onChange(localSectors)} className="gap-1">
-            <Save className="h-3.5 w-3.5" /> Salvar Setores
+          <Button
+            size="sm"
+            onClick={() => {
+              onChange(localSectors);
+              if (isAviamentoActive) onChangeAviamentoSteps(localSteps);
+            }}
+            className="gap-1"
+          >
+            <Save className="h-3.5 w-3.5" /> Salvar
           </Button>
         </div>
       )}

@@ -65,6 +65,10 @@ export interface SilkColorGroup {
    *  cabedal completo a cortar. Usado pra filtrar Corte Cabedal — modelos
    *  com tiras não passam por esse setor. */
   requiresUpperCut?: boolean;
+  /** Etapas de Aviamento que se aplicam a essa ficha (subset de
+   *  ["Frente","Traseira","Costura de tiras"]). Renderizado como
+   *  checklist por etapa × numeração no setor Aviamento. */
+  aviamentoSteps?: string[];
 }
 
 export interface SoleSilkGroup {
@@ -581,11 +585,17 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                         </td>
                       </tr>
 
-                      {/* Frente/Traseiro (Aviamento) */}
-                      {theme.showFrenteTraseiro && (
-                        <>
-                          <tr style={{ borderBottom: '1px solid #000' }}>
-                            <td className="py-1.5 text-[10px] font-mono font-bold text-black uppercase tracking-wider" style={{ borderRight: '1px solid #000' }}>Frente</td>
+                      {/* Etapas de Aviamento — checklist por etapa × numeração.
+                          A lista vem da ficha técnica (cg.aviamentoSteps).
+                          Fallback pro comportamento antigo (Frente+Traseira)
+                          quando a ficha não tem aviamento_steps cadastrado. */}
+                      {theme.showFrenteTraseiro && (() => {
+                        const steps = (cg.aviamentoSteps && cg.aviamentoSteps.length > 0)
+                          ? cg.aviamentoSteps
+                          : ['Frente', 'Traseira'];
+                        return steps.map((step, sIdx) => (
+                          <tr key={`avi-${step}`} style={{ borderBottom: sIdx < steps.length - 1 ? '1px solid #000' : 'none' }}>
+                            <td className="py-1.5 text-[10px] font-mono font-bold text-black uppercase tracking-wider" style={{ borderRight: '1px solid #000' }}>{step}</td>
                             {activeSizes.map(s => (
                               <td key={s} className="py-1.5" style={{ borderRight: '1px solid #000' }}>
                                 <span className="inline-block w-5 h-5" style={{ border: '1.5px solid #000' }} />
@@ -595,19 +605,8 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                               <span className="inline-block w-5 h-5" style={{ border: '1.5px solid #000' }} />
                             </td>
                           </tr>
-                          <tr>
-                            <td className="py-1.5 text-[10px] font-mono font-bold text-black uppercase tracking-wider" style={{ borderRight: '1px solid #000' }}>Traseira</td>
-                            {activeSizes.map(s => (
-                              <td key={s} className="py-1.5" style={{ borderRight: '1px solid #000' }}>
-                                <span className="inline-block w-5 h-5" style={{ border: '1.5px solid #000' }} />
-                              </td>
-                            ))}
-                            <td className="py-1.5">
-                              <span className="inline-block w-5 h-5" style={{ border: '1.5px solid #000' }} />
-                            </td>
-                          </tr>
-                        </>
-                      )}
+                        ));
+                      })()}
                     </tbody>
                   </table>
                 </div>

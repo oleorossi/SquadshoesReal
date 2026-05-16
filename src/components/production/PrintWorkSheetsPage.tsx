@@ -466,12 +466,25 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
     queryFn: async () => {
       const { data, error } = await supabase
         .from('technical_sheets')
-        .select('id, insole_has_lining, insole_ready_made, has_straps, sole_material, sole_color, mesa_daily_capacity, cutting_capacity_per_day, sewing_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day')
+        .select('id, insole_has_lining, insole_ready_made, has_straps, sole_material, sole_color, mesa_daily_capacity, cutting_capacity_per_day, sewing_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, aviamento_steps')
         .in('id', referenceIds);
       if (error) throw error;
       return data || [];
     },
   });
+
+  // Map reference_id → aviamento_steps[]. Cada ficha define quais etapas
+  // de Aviamento aplicam (Frente, Traseira, Costura de tiras). Worksheet
+  // de Aviamento usa pra renderizar checklist por etapa × numeração.
+  const aviamentoStepsByRef = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const s of sheetLiningFlags as any[]) {
+      if (Array.isArray(s.aviamento_steps) && s.aviamento_steps.length > 0) {
+        m.set(s.id, s.aviamento_steps as string[]);
+      }
+    }
+    return m;
+  }, [sheetLiningFlags]);
 
   // Fallback de nome de solado quando technical_sheet_sole_colors está vazio:
   // usa technical_sheets.sole_material (texto livre cadastrado na ficha).
@@ -879,6 +892,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
           refs: [],
           requiresLiningCut,
           requiresUpperCut,
+          aviamentoSteps: aviamentoStepsByRef.get(sheetId) || [],
         });
       }
 
