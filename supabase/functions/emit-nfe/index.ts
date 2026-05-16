@@ -760,11 +760,12 @@ Deno.serve(async (req) => {
       // enviado; GestaoClick assumia default mas explícito blinda contra
       // mudança de default deles.
       tipo_emissao: "1",
-      // indicador_presenca=9 ("Operação não presencial, outros") — pedido
-      // em 16/05/2026 pela Squad Shoes. Antes não era enviado: SEFAZ
-      // rejeitava com Rejeição 779 ou aceitava com indPres=0 (não
-      // aplicável), o que é incorreto pra venda B2B por telefone/email.
-      indicador_presenca: "9",
+      // tipo_atendimento=9 ("Operação não presencial, outros") — pedido em
+      // 16/05/2026 pela Squad Shoes. Nome correto do campo no GestaoClick
+      // é `tipo_atendimento` (confirmado em emit-nfe-devolucao que funciona).
+      // V1 desta mudança usou `indicador_presenca` (nome do XML SEFAZ) e o
+      // GC ignorou silenciosamente — XML saía com indPres=0 (não aplicável).
+      tipo_atendimento: "9",
       indicador_final: isContribuinte ? 0 : 1,
       informacoes_complementares: informacoesComplementares,
       produtos: produtosGC,
