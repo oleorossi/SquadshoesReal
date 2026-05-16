@@ -116,7 +116,7 @@ export default function ProductionFlow() {
   }, [ops]);
 
   return (
-    <div className="space-y-5 page-enter">
+    <div className="space-y-4 page-enter">
       {/* Header editorial */}
       <EditorialPageHeader
         sectionLabel="PRODUÇÃO · Fluxo"
@@ -148,25 +148,25 @@ export default function ProductionFlow() {
       </StatGrid>
 
       {/* Quadro de fluxo (5 colunas) */}
-      <div className="bg-card border border-border rounded-lg p-5">
-        <div className="flex items-center justify-between mb-4">
+      <div className="bg-card border border-border rounded-lg p-4">
+        <div className="flex items-center justify-between mb-3">
           <div>
             <div className="eyebrow">Quadro de fluxo</div>
             <div className="display text-lg mt-1">{ops.length} ordens em produção</div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5">
           {STAGES.map((s, i) => {
             const Icon = s.icon;
             const colOps = ops.filter(o => o.col === i);
             return (
               <div
                 key={s.key}
-                className="bg-muted/40 rounded-lg p-3 min-h-[480px]"
+                className="bg-muted/40 rounded-lg p-2.5 min-h-[480px]"
               >
                 {/* column header */}
-                <div className="flex items-center gap-2 pb-3 border-b border-border mb-3">
+                <div className="flex items-center gap-2 pb-2 border-b border-border mb-2.5">
                   <div
                     className="h-7 w-7 rounded flex items-center justify-center bg-card border border-border"
                     style={{ color: s.colorVar }}
@@ -191,7 +191,7 @@ export default function ProductionFlow() {
                   colOps.map((o, j) => (
                     <div
                       key={`${o.id}-${j}`}
-                      className="bg-card rounded-md p-3 mb-2 relative overflow-hidden"
+                      className="bg-card rounded-md p-2.5 mb-1.5 relative overflow-hidden"
                       style={{
                         border: `1px solid ${o.late ? 'hsl(var(--primary))' : 'hsl(var(--border))'}`,
                       }}
@@ -213,12 +213,12 @@ export default function ProductionFlow() {
                           {o.line}
                         </span>
                       </div>
-                      <div className="text-[12.5px] font-semibold mt-2 leading-tight">{o.modelo}</div>
-                      <div className="flex items-baseline gap-1 mt-1.5">
+                      <div className="text-[12.5px] font-semibold mt-1.5 leading-tight">{o.modelo}</div>
+                      <div className="flex items-baseline gap-1 mt-1">
                         <span className="display text-xl tabular-nums">{o.pairs}</span>
                         <span className="font-mono text-[10px] text-muted-foreground">pares</span>
                       </div>
-                      <div className="h-[3px] bg-border rounded-sm mt-2.5 overflow-hidden">
+                      <div className="h-[3px] bg-border rounded-sm mt-2 overflow-hidden">
                         <div
                           className="h-full"
                           style={{

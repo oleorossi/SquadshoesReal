@@ -153,7 +153,7 @@ export default function PurchaseOrders() {
   };
 
   return (
-    <div className="w-full space-y-6 page-enter editorial-stagger">
+    <div className="w-full space-y-4 page-enter editorial-stagger">
         <EditorialPageHeader
           sectionLabel="COMPRAS · ORDENS"
           title="Ordens de Compra"
@@ -172,13 +172,13 @@ export default function PurchaseOrders() {
           }
         />
 
-        <Tabs defaultValue="all" className="space-y-6">
+        <Tabs defaultValue="all" className="space-y-4">
           <TabsList>
             <TabsTrigger value="all" className="gap-2"><ShoppingCart className="h-4 w-4" /> Geral</TabsTrigger>
             <TabsTrigger value="solados" className="gap-2"><Footprints className="h-4 w-4" /> Solados</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="all" className="space-y-6">
+          <TabsContent value="all" className="space-y-4">
             <div className="flex items-center gap-2">
               {pendingCount > 0 && (
                 <>
@@ -248,7 +248,7 @@ export default function PurchaseOrders() {
 
             {/* Table */}
             <Panel flush>
-              <Table>
+              <Table className="[&_td]:py-2 [&_th]:py-2">
                 <TableHeader>
                   <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <TableHead className="w-10">
