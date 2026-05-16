@@ -950,9 +950,9 @@ function ProductBulkActionsBar({
 }) {
   const updateProduct = useUpdateProduct();
   const deleteProduct = useDeleteProduct();
-  const [busy, setBusy] = React.useState(false);
+  const [busy, setBusy] = useState(false);
 
-  const selectedProducts = React.useMemo(
+  const selectedProducts = useMemo(
     () => allProducts.filter((p) => selectedIds.has(p.id)),
     [allProducts, selectedIds],
   );
