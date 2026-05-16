@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useAllNfeEmitidas, useEmitNfe, useCheckNfeStatus, useCancelNfe, useCompanies, useSyncNfeFromProvider, useDownloadNfeFile, NfeEmitida } from '@/hooks/useNfe';
+import { useAllNfeEmitidas, useEmitNfe, useCheckNfeStatus, useCancelNfe, useCompanies, useSyncNfeFromProvider, useDownloadNfeFile, usePreviewNfe, NfeEmitida, type NfePreviewResponse } from '@/hooks/useNfe';
 import { useAccessControl } from '@/hooks/useAccessControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { CircleNotch as Loader2, FileText, ArrowsClockwise as RefreshCw, XCircle, Download, MagnifyingGlass as Search, Buildings as Building2, Plus, CheckCircle, WarningCircle as AlertCircle, Clock, Calculator, Pulse as Activity, FileText as FileEdit } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, FileText, ArrowsClockwise as RefreshCw, XCircle, Download, MagnifyingGlass as Search, Buildings as Building2, Plus, CheckCircle, WarningCircle as AlertCircle, Clock, Calculator, Pulse as Activity, NotePencil as FileEdit, Eye, CaretLeft as ChevronLeft } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';

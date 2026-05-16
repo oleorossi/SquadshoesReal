@@ -119,7 +119,7 @@ export default function ProductionFlow() {
     <div className="space-y-4 page-enter">
       {/* Header editorial */}
       <EditorialPageHeader
-        sectionLabel="PRODUÇÃO · Fluxo"
+        sectionLabel="PRODUÇÃO · FLUXO"
         title="Onde está cada ordem"
         description="Quadro tipo kanban: cada OP cai na coluna do seu estágio atual. Vermelho = atraso."
         actions={<>

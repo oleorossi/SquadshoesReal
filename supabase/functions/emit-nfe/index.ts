@@ -85,10 +85,19 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Forbidden: apenas admin, gerente ou operador NF-e podem emitir NF-e" }), { status: 403, headers: corsHeaders });
     }
 
-    const { sale_order_id, company_id } = await req.json();
+    const { sale_order_id, company_id, dry_run = false } = await req.json();
     if (!sale_order_id) {
       return new Response(JSON.stringify({ error: "sale_order_id é obrigatório" }), { status: 400, headers: corsHeaders });
     }
+    // dry_run=true: roda TODAS as validações + computa peso/volumes/pagamento +
+    // monta payload, mas NÃO faz POST/PUT no GestaoClick e NÃO insere em
+    // nfe_emitidas. Retorna { dry_run:true, payload, preview, warnings }
+    // pra EmitDialog renderizar a tela de conferência (passo 2 do wizard).
+    // Side-effects pulados: POST /clientes, PUT /clientes/:id, POST /produtos,
+    // POST /notas_fiscais_produtos, POST /emitir, UPDATE clients/products.
+    // GETs (cidades, produtos por nome) continuam — são read-only e enriquecem
+    // o preview (ex: detecta produto já cadastrado e mostra id real).
+    const isDryRun = dry_run === true;
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!UUID_RE.test(String(sale_order_id))) {
       return new Response(JSON.stringify({ error: "sale_order_id inválido" }), { status: 400, headers: corsHeaders });
@@ -363,39 +372,45 @@ Deno.serve(async (req) => {
         return String(r.json?.data?.id);
       };
 
-      try {
-        if (!gcClientId) {
-          gcClientId = await createFresh();
-          if (client?.id) await adminClient.from("clients").update({ gestaoclick_id: gcClientId }).eq("id", client.id);
-        } else {
-          // PUT atualiza o cliente (e endereço) in-place. Retry 1x antes de
-          // recriar — falha transitória do GestaoClick não deve duplicar
-          // cadastro de cliente. Só recriamos se a verificação seguinte
-          // realmente acusar cidade_id vazia.
-          let putOk = false;
-          for (let attempt = 0; attempt < 2 && !putOk; attempt++) {
-            if (attempt > 0) await new Promise((r) => setTimeout(r, 500));
-            const u = await gcFetch(`/clientes/${gcClientId}`, {
-              method: "PUT",
-              body: JSON.stringify(buildPayload()),
-            });
-            putOk = u.ok && u.json?.status !== "error";
-            if (!putOk) {
-              console.warn(`[emit-nfe] PUT /clientes/${gcClientId} tentativa ${attempt + 1} falhou:`, u.json?.message || u.json?.mensagem || JSON.stringify(u.json));
-            }
-          }
-          // Verifica: se mesmo assim ficou sem cidade_id, recria do zero
-          const verify = await gcFetch(`/clientes/${gcClientId}`);
-          if (!hasCidade(verify.json?.data)) {
-            console.warn(`[emit-nfe] cliente ${gcClientId} sem cidade_id após PUT — recriando do zero`);
+      if (isDryRun) {
+        // Preview: não cria/atualiza cliente no GC. Apenas marca se já existe
+        // cadastro (gcClientId vindo do cache) ou se será criado na emissão.
+        // gcCidadeId já foi resolvido via GET acima (read-only, seguro).
+      } else {
+        try {
+          if (!gcClientId) {
             gcClientId = await createFresh();
             if (client?.id) await adminClient.from("clients").update({ gestaoclick_id: gcClientId }).eq("id", client.id);
+          } else {
+            // PUT atualiza o cliente (e endereço) in-place. Retry 1x antes de
+            // recriar — falha transitória do GestaoClick não deve duplicar
+            // cadastro de cliente. Só recriamos se a verificação seguinte
+            // realmente acusar cidade_id vazia.
+            let putOk = false;
+            for (let attempt = 0; attempt < 2 && !putOk; attempt++) {
+              if (attempt > 0) await new Promise((r) => setTimeout(r, 500));
+              const u = await gcFetch(`/clientes/${gcClientId}`, {
+                method: "PUT",
+                body: JSON.stringify(buildPayload()),
+              });
+              putOk = u.ok && u.json?.status !== "error";
+              if (!putOk) {
+                console.warn(`[emit-nfe] PUT /clientes/${gcClientId} tentativa ${attempt + 1} falhou:`, u.json?.message || u.json?.mensagem || JSON.stringify(u.json));
+              }
+            }
+            // Verifica: se mesmo assim ficou sem cidade_id, recria do zero
+            const verify = await gcFetch(`/clientes/${gcClientId}`);
+            if (!hasCidade(verify.json?.data)) {
+              console.warn(`[emit-nfe] cliente ${gcClientId} sem cidade_id após PUT — recriando do zero`);
+              gcClientId = await createFresh();
+              if (client?.id) await adminClient.from("clients").update({ gestaoclick_id: gcClientId }).eq("id", client.id);
+            }
           }
+        } catch (e) {
+          return new Response(JSON.stringify({
+            error: e instanceof Error ? e.message : `Falha ao sincronizar cliente com GestaoClick: ${String(e)}`,
+          }), { status: 502, headers: corsHeaders });
         }
-      } catch (e) {
-        return new Response(JSON.stringify({
-          error: e instanceof Error ? e.message : `Falha ao sincronizar cliente com GestaoClick: ${String(e)}`,
-        }), { status: 502, headers: corsHeaders });
       }
     }
 
@@ -405,6 +420,20 @@ Deno.serve(async (req) => {
     // pra cliente OEM/private label.
     const orderBrand = (order.brand && String(order.brand).trim()) || DEFAULT_BRAND;
     const produtosGC: any[] = [];
+    // Companion array só pra preview: dados legíveis (descrição, cor, status no GC).
+    // Não vai pro payload do GC — usado apenas no dry_run pra montar a tabela
+    // de conferência do EmitDialog.
+    const produtosPreview: Array<{
+      descricao: string;
+      ncm: string;
+      cfop: string;
+      quantidade: number;
+      unidade: string;
+      valor_unitario: number;
+      valor_total: number;
+      gc_status: 'cached' | 'found_by_name' | 'pending_create';
+      gc_id: string | null;
+    }> = [];
     for (const it of billableItems) {
       const ts = it.technical_sheets;
       const prod = it.products; // NF avulsa: dados vêm de products
@@ -430,6 +459,7 @@ Deno.serve(async (req) => {
       // products.gestaoclick_id (NF avulsa) continua sendo cache válido.
       const nomeProduto = desc.slice(0, 120);
       let gcProductId: string | null = isStandalone ? (prod?.gestaoclick_id || null) : null;
+      let gcStatus: 'cached' | 'found_by_name' | 'pending_create' = gcProductId ? 'cached' : 'pending_create';
       if (!gcProductId) {
         const lookup = await gcFetch(`/produtos?nome=${encodeURIComponent(nomeProduto)}`);
         const foundList = Array.isArray(lookup.json?.data) ? lookup.json.data : [];
@@ -438,6 +468,10 @@ Deno.serve(async (req) => {
         );
         if (match?.id) {
           gcProductId = String(match.id);
+          gcStatus = 'found_by_name';
+        } else if (isDryRun) {
+          // Preview: não cria produto. gcProductId fica null (warning no preview).
+          gcStatus = 'pending_create';
         } else {
           const r = await gcFetch("/produtos", {
             method: "POST",
@@ -456,15 +490,17 @@ Deno.serve(async (req) => {
             }), { status: 502, headers: corsHeaders });
           }
           gcProductId = String(r.json?.data?.id);
+          gcStatus = 'cached'; // recém criado, agora cacheado pro próximo uso
         }
-        if (isStandalone && prod?.id) {
+        if (isStandalone && prod?.id && gcProductId && !isDryRun) {
           await adminClient.from("products").update({ gestaoclick_id: gcProductId }).eq("id", prod.id);
         }
       }
 
+      const qty = Number(it.quantity) || 0;
       produtosGC.push({
         produto_id: gcProductId,
-        quantidade: Number(it.quantity).toFixed(2),
+        quantidade: qty.toFixed(2),
         // valor_venda é o preço UNITÁRIO — o GestaoClick multiplica por
         // quantidade internamente. Antes mandávamos (qtd × preço) e o
         // total saía qtd² × preço (ex: R$ 8.3M em vez de R$ 25k).
@@ -474,6 +510,17 @@ Deno.serve(async (req) => {
         NCM: ncm,
         tipo: "P",
         marca: orderBrand, // pedido em 15/05/2026 — sempre Squad Shoes na NF
+      });
+      produtosPreview.push({
+        descricao: nomeProduto,
+        ncm,
+        cfop: resolvedCfop,
+        quantidade: qty,
+        unidade: isStandalone ? unidade : "PAR",
+        valor_unitario: price,
+        valor_total: Number((qty * price).toFixed(2)),
+        gc_status: gcStatus,
+        gc_id: gcProductId,
       });
     }
 
@@ -691,6 +738,94 @@ Deno.serve(async (req) => {
       ...(pagamentoArr.length ? { pagamento: pagamentoArr } : {}),
       transporte: transporteBlock,
     };
+
+    // ---------- DRY_RUN: retorna preview sem emitir ----------
+    // Roda TODAS as validações + computa tudo (peso, volumes, pagamento,
+    // payload) mas pula POSTs destrutivos. Operador conferimos no EmitDialog
+    // antes de chamar a emissão real. Veja `isDryRun` no topo do handler.
+    if (isDryRun) {
+      const previewWarnings: string[] = [];
+      if (weightWarning) previewWarnings.push(weightWarning);
+      if (!gcClientId) {
+        previewWarnings.push(
+          `Cliente ainda não está cadastrado no GestaoClick — será criado automaticamente na emissão.`,
+        );
+      }
+      const pendingProducts = produtosPreview.filter((p) => p.gc_status === 'pending_create');
+      if (pendingProducts.length > 0) {
+        previewWarnings.push(
+          `${pendingProducts.length} produto(s) serão cadastrados no GestaoClick na emissão: ${pendingProducts.map((p) => p.descricao).join('; ')}`,
+        );
+      }
+      return new Response(JSON.stringify({
+        dry_run: true,
+        payload: nfePayload,
+        preview: {
+          ref_nfe: ref,
+          revision,
+          emitente: {
+            razao_social: fiscal.razao_social || null,
+            nome_fantasia: fiscal.nome_fantasia || null,
+            cnpj: fiscal.cnpj,
+            inscricao_estadual: fiscal.inscricao_estadual,
+            uf: fiscal.uf,
+            cidade: fiscal.cidade || null,
+            serie_nfe: fiscal.serie_nfe || "1",
+            ambiente: fiscal.ambiente || null,
+          },
+          destinatario: {
+            tipo_pessoa: cnpjDestRaw.length === 14 ? 'PJ' : 'PF',
+            nome: order.client_name || client?.razao_social || client?.nome,
+            documento: cnpjDestRaw,
+            ie_status: isContribuinte ? 'contribuinte' : 'isento',
+            ie_valor: isContribuinte ? ieDestDigits : 'ISENTO',
+            endereco: client.endereco,
+            numero: (client as any).numero || 'S/N',
+            complemento: client.complemento || null,
+            bairro: client.bairro,
+            cidade: client.cidade,
+            uf: client.estado,
+            cep: (client.cep || '').replace(/\D/g, ''),
+            telefone: client.telefone || null,
+            email: client.email || null,
+            gc_id: gcClientId,
+            gc_cidade_id: nfePayload.id_destinatario ? null : null, // resolvido acima, fica no payload
+          },
+          operacao: {
+            natureza_operacao: naturezaEsperada,
+            cfop: resolvedCfop,
+            cfop_interstate: isInterstate,
+            modelo: '55',
+            finalidade: '1 (Normal)',
+            indicador_final: isContribuinte ? '0 (Contribuinte)' : '1 (Consumidor final)',
+            tipo_nf: '1 (Saída)',
+            marca_xmarca: orderBrand,
+          },
+          produtos: produtosPreview,
+          totais: {
+            soma_itens: Number(sumItems.toFixed(2)),
+            total_pedido: Number((Number(order.total) || 0).toFixed(2)),
+            qtd_itens: produtosPreview.length,
+            qtd_pares: produtosPreview.reduce((s, p) => s + p.quantidade, 0),
+          },
+          transporte: {
+            modalidade_frete: '9 (Sem frete — coleta pelo destinatário)',
+            qtd_volumes: qtdVolumesStr,
+            especie: 'VOLUME',
+            peso_bruto_kg: pesoBrutoStr || null,
+            peso_liquido_kg: pesoLiquidoStr || null,
+          },
+          pagamento: pagamentoArr.map((p: any) => ({
+            numero: p.numero_duplicata,
+            forma: 'Boleto Bancário',
+            vencimento: p.data_vencimento,
+            valor: Number(p.valor_pagamento),
+          })),
+          informacoes_complementares: informacoesComplementares || null,
+          warnings: previewWarnings,
+        },
+      }), { status: 200, headers: corsHeaders });
+    }
 
     // Auditoria A4: wrappa POST em try/catch específico pra distinguir
     // timeout/network (NF pode ter sido criada no GC e sistema local não saber)

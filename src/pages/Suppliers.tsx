@@ -1,7 +1,7 @@
 import AppLayout from "@/components/layout/AppLayout";
 import { useState, useCallback, useEffect } from 'react';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { CircleNotch as Loader2, Plus, PencilSimple as Pencil, Trash as Trash2, Truck, FileArrowUp as FileUp, CaretDown as ChevronDown, CaretUp as ChevronUp, Phone, Envelope as Mail, MapPin, Clock, CreditCard, FileText, MagnifyingGlass as Search, Package as PackagePlus, Lightning as Zap, Package, TrendUp as TrendingUp, TrendDown as TrendingDown, Minus } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, Plus, PencilSimple as Pencil, Trash as Trash2, Truck, FileArrowUp as FileUp, CaretDown as ChevronDown, CaretUp as ChevronUp, Phone, Envelope as Mail, MapPin, Clock, CreditCard, FileText, MagnifyingGlass as Search, Lightning as Zap, Package, TrendUp as TrendingUp, TrendDown as TrendingDown, Minus } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -125,7 +125,7 @@ function InvoiceItemsRow({ invoice, supplierName }: { invoice: Invoice; supplier
       {pendingItems.length > 0 && (
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" className="gap-2" onClick={() => setStockDialogOpen(true)}>
-            <PackagePlus className="h-4 w-4" />
+            <Package className="h-4 w-4" />
             Lançar individual ({pendingItems.length})
           </Button>
           <Button size="sm" className="gap-2" onClick={handleBulkLaunch} disabled={bulkLoading}>

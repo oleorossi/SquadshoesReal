@@ -46,7 +46,7 @@ export default function Silks() {
   return (
     <div className="space-y-4">
       <EditorialPageHeader
-        sectionLabel="ENGENHARIA · Silks"
+        sectionLabel="ENGENHARIA · SILKS"
         title="Silks"
         description="Gerencie as silks (estampas que vão coladas na forração) por solado, por cliente ou por grupo econômico. Cliente > Grupo > Solado na hora de aplicar nas fichas."
       />

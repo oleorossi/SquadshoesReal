@@ -1,7 +1,7 @@
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { HubTabsList } from '@/components/layout/HubTabs';
-import { ShoppingCart, ChartBar as BarChart3, Calculator, CalendarBlank as CalendarDays, Warning as AlertTriangle, CalendarBlank as CalendarClock, FlowArrow as Workflow, Info, TrendUp as TrendingUp } from '@phosphor-icons/react';
+import { ShoppingCart, ChartBar as BarChart3, Calculator, CalendarBlank as CalendarDays, Warning as AlertTriangle, ClockClockwise as CalendarClock, FlowArrow as Workflow, Info, TrendUp as TrendingUp } from '@phosphor-icons/react';
 import { lazy, Suspense } from 'react';
 import { CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { useSearchParams } from 'react-router-dom';
@@ -33,7 +33,7 @@ export default function PurchasePlanning() {
   return (
     <div className="space-y-5 page-enter">
       <EditorialPageHeader
-        sectionLabel="SUPRIMENTOS · Planejamento de Compras"
+        sectionLabel="SUPRIMENTOS · PLANEJAMENTO"
         title="Planejamento de Compras"
         description="Análise de demanda, plano semanal, projeções MRP e analytics de custos — tudo em um só lugar"
       />

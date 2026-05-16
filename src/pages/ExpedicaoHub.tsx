@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Truck, Package, Tag, NavigationArrow as Navigation, ArrowRight, Cube as Box, Buildings as Building2, MapPin, Warning as AlertTriangle, Scales as Weight, Ruler, Users, ClipboardText as ClipboardList, Clock, CheckCircle as CheckCircle2, XCircle, CalendarBlank as CalendarClock, TrendUp as TrendingUp, Package as PackageCheck } from '@phosphor-icons/react';
+import { Truck, Package, Tag, NavigationArrow as Navigation, ArrowRight, Cube as Box, Buildings as Building2, MapPin, Warning as AlertTriangle, Scales as Weight, Ruler, Users, ClipboardText as ClipboardList, Clock, CheckCircle as CheckCircle2, XCircle, CalendarBlank as CalendarClock, TrendUp as TrendingUp } from '@phosphor-icons/react';
 import { useNavigate } from 'react-router-dom';
 import { useExpedicaoStats, PendingOrderItem } from '@/hooks/useExpedicaoStats';
 import { format } from 'date-fns';
@@ -23,7 +23,7 @@ export default function ExpedicaoHub() {
     {
       title: 'Conferência',
       route: '/conferencia-saida',
-      icon: PackageCheck,
+      icon: Package,
       color: 'bg-primary/10 text-primary',
       kpis: [
         { label: 'Prontos p/ Expedir', value: stats?.pendingOrders ?? '-' },

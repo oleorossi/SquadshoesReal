@@ -347,6 +347,127 @@ export function useEmitStandaloneNfe() {
   });
 }
 
+// ─── Preview (dry-run) ───────────────────────────────────────────────────────
+
+export interface NfePreviewProduto {
+  descricao: string;
+  ncm: string;
+  cfop: string;
+  quantidade: number;
+  unidade: string;
+  valor_unitario: number;
+  valor_total: number;
+  gc_status: 'cached' | 'found_by_name' | 'pending_create';
+  gc_id: string | null;
+}
+
+export interface NfePreviewResponse {
+  dry_run: true;
+  payload: any;
+  preview: {
+    ref_nfe: string;
+    revision: number;
+    emitente: {
+      razao_social: string | null;
+      nome_fantasia: string | null;
+      cnpj: string;
+      inscricao_estadual: string;
+      uf: string;
+      cidade: string | null;
+      serie_nfe: string | number;
+      ambiente: string | null;
+    };
+    destinatario: {
+      tipo_pessoa: 'PJ' | 'PF';
+      nome: string;
+      documento: string;
+      ie_status: 'contribuinte' | 'isento';
+      ie_valor: string;
+      endereco: string;
+      numero: string;
+      complemento: string | null;
+      bairro: string;
+      cidade: string;
+      uf: string;
+      cep: string;
+      telefone: string | null;
+      email: string | null;
+      gc_id: string | null;
+    };
+    operacao: {
+      natureza_operacao: string;
+      cfop: string;
+      cfop_interstate: boolean;
+      modelo: string;
+      finalidade: string;
+      indicador_final: string;
+      tipo_nf: string;
+      marca_xmarca: string;
+    };
+    produtos: NfePreviewProduto[];
+    totais: {
+      soma_itens: number;
+      total_pedido: number;
+      qtd_itens: number;
+      qtd_pares: number;
+    };
+    transporte: {
+      modalidade_frete: string;
+      qtd_volumes: string;
+      especie: string;
+      peso_bruto_kg: string | null;
+      peso_liquido_kg: string | null;
+    };
+    pagamento: Array<{
+      numero: string;
+      forma: string;
+      vencimento: string;
+      valor: number;
+    }>;
+    informacoes_complementares: string | null;
+    warnings: string[];
+  };
+}
+
+/**
+ * Roda emit-nfe com dry_run=true: valida tudo, computa peso/volumes/pagamento
+ * e devolve o payload + preview formatado pro EmitDialog renderizar a tela
+ * de conferência. Não emite nada no GestaoClick. Toast NÃO é disparado em
+ * sucesso (UI renderiza inline); erros caem em toast.error normalmente.
+ */
+export function usePreviewNfe() {
+  return useMutation<NfePreviewResponse, Error, { saleOrderId: string; companyId?: string }>({
+    mutationFn: async ({ saleOrderId, companyId }) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Sessão expirada. Faça login novamente.');
+
+      const SUPABASE_URL = (import.meta as any).env?.VITE_SUPABASE_URL;
+      const SUPABASE_KEY = (import.meta as any).env?.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/emit-nfe`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+          'apikey': SUPABASE_KEY,
+        },
+        body: JSON.stringify({ sale_order_id: saleOrderId, company_id: companyId, dry_run: true }),
+      });
+      const txt = await res.text();
+      let parsed: any = null;
+      try { parsed = JSON.parse(txt); } catch { /* não-JSON */ }
+
+      if (!res.ok) {
+        const realMsg = parsed?.error || parsed?.message || txt || `HTTP ${res.status} ao gerar preview`;
+        throw new Error(typeof realMsg === 'string' ? realMsg : JSON.stringify(realMsg));
+      }
+      if (parsed?.error) throw new Error(String(parsed.error));
+      if (!parsed?.dry_run) throw new Error('Resposta inesperada do servidor (preview).');
+      return parsed as NfePreviewResponse;
+    },
+    onError: (err: Error) => toast.error(`Não foi possível gerar preview: ${err.message}`),
+  });
+}
+
 export function useEmitNfe() {
   const qc = useQueryClient();
   return useMutation({

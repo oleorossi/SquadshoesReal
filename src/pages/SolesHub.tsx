@@ -103,7 +103,7 @@ export default function SolesHub() {
     <AppLayout>
       <div className="space-y-4 page-enter editorial-stagger">
         <EditorialPageHeader
-          sectionLabel="PRODUÇÃO · SOLADOS"
+          sectionLabel="ENGENHARIA · SOLADOS"
           title="Gestão de Solados"
           description="Tudo sobre solados num só lugar — cadastro, conjugação, estoque e consumos."
           actions={

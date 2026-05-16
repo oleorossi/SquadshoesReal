@@ -1,4 +1,4 @@
-import { Package, ShoppingCart, Gear as Settings, Truck, Factory, Kanban, SquaresFour as LayoutDashboard, Wallet, FileText, Users, UserCheck, Briefcase, Ruler, Package as PackageOpen, ShieldCheck, Lightning as Zap, ShoppingBag, Monitor, Cpu, ChartBar as BarChart2, ChartBar as BarChart3, Receipt, Footprints, Sparkle as Sparkles, Tag, ClipboardText as ClipboardCheck, CurrencyDollar as DollarSign, Calendar, Cube as Box, ClockCounterClockwise as History, ListChecks, Stack as Boxes, Pulse as Activity, ChartLine as GanttChartSquare, Clock, Calculator, TrendUp as TrendingUp, HandHeart as HeartHandshake, ChatText as MessageSquare, FileXls as FileSpreadsheet, Lock, Scales as Scale, FileText as FileCheck2, Warning as AlertTriangle, Printer, Path as RouteIcon } from '@phosphor-icons/react';
+import { Package, ShoppingCart, Gear as Settings, Truck, Factory, Kanban, SquaresFour as LayoutDashboard, Wallet, FileText, Users, UserCheck, Briefcase, Ruler, ShieldCheck, Lightning as Zap, ShoppingBag, Monitor, Cpu, ChartBar as BarChart3, Receipt, Footprints, Sparkle as Sparkles, Tag, ClipboardText as ClipboardCheck, CurrencyDollar as DollarSign, Calendar, Cube as Box, ClockCounterClockwise as History, ListChecks, Stack as Boxes, Pulse as Activity, ChartLine as GanttChartSquare, Clock, Calculator, TrendUp as TrendingUp, HandHeart as HeartHandshake, ChatText as MessageSquare, FileXls as FileSpreadsheet, Lock, Scales as Scale, Warning as AlertTriangle, Printer, Path as RouteIcon } from '@phosphor-icons/react';
 
 // ════════════════════════════════════════════════════════════════════════
 // SQUAD SHOES — Sidebar
@@ -103,10 +103,10 @@ export const menuGroups = [
     label: "Logística",
     icon: Truck,
     items: [
-      { name: "Expedição",        icon: PackageOpen,    path: "/expedicao" },
+      { name: "Expedição",        icon: Package,    path: "/expedicao" },
       { name: "Conferência",      icon: ClipboardCheck, path: "/conferencia-saida" },
       { name: "Sessões Picking",  icon: ClipboardCheck, path: "/picking-sessions" },
-      { name: "Romaneios",        icon: FileCheck2,     path: "/manifests" },
+      { name: "Romaneios",        icon: FileText,     path: "/manifests" },
       { name: "Transportadoras",  icon: Truck,          path: "/transporters" },
       { name: "Entregas",         icon: RouteIcon,      path: "/entregas" },
       { name: "Rastreamento",     icon: Activity,       path: "/delivery-tracking" },
@@ -142,7 +142,7 @@ export const menuGroups = [
 export const systemItems = [
   { to: '/settings',           icon: Settings,  label: 'Configurações' },
   { to: '/automations',        icon: Zap,       label: 'Automações' },
-  { to: '/relatorios',         icon: BarChart2, label: 'Relatórios' },
+  { to: '/relatorios',         icon: BarChart3, label: 'Relatórios' },
   { to: '/audit-logs',         icon: FileText,  label: 'Auditoria' },
   { to: '/lgpd',               icon: Lock,      label: 'LGPD' },
   { to: '/security',           icon: ShieldCheck, label: 'Segurança' },
