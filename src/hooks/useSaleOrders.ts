@@ -2716,3 +2716,53 @@ export function useBulkSyncFinancial() {
     onError: (err: Error) => toast.error(`Erro na sincronização: ${err.message}`),
   });
 }
+
+// ─── Picking realizado (PV) ──────────────────────────────────────────────────
+//
+// Confirma em massa o picking de todas as reservas SOFT (status='reserved')
+// das OPs de um PV — debita products.quantity, registra stock_movement('out')
+// e marca reservation como consumed. Use case: cliente quer rodar pedido a
+// pedido sem esperar a onda semanal processar o débito.
+//
+// Soles já vêm com status='consumed' da criação da OP (debit_sole_stock_by_grade
+// marca direto) então não são re-debitados aqui. Itens com estoque insuficiente
+// são pulados (resto continua) e listados no `insufficient` pra UI mostrar.
+
+export interface PickingResult {
+  sale_order_id: string;
+  picked_count: number;
+  skipped_count: number;
+  insufficient: string[];
+  picked_items: Array<{ product_id: string; product_name: string; quantity: number; op: string | null }>;
+}
+
+export function useCommitPickingForSaleOrder() {
+  const qc = useQueryClient();
+  return useMutation<PickingResult, Error, string>({
+    mutationFn: async (saleOrderId: string) => {
+      const { data, error } = await (supabase as any).rpc('commit_picking_for_sale_order', {
+        p_sale_order_id: saleOrderId,
+      });
+      if (error) throw new Error(error.message);
+      return data as PickingResult;
+    },
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['stock_movements'] });
+      qc.invalidateQueries({ queryKey: ['material_reservations'] });
+      qc.invalidateQueries({ queryKey: ['sale_orders'] });
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      if (result.picked_count === 0 && result.skipped_count === 0) {
+        toast.info('Nenhuma reserva pendente — todas já foram consumidas.');
+      } else if (result.skipped_count > 0) {
+        toast.warning(
+          `Picking parcial: ${result.picked_count} item(ns) debitado(s), ${result.skipped_count} pulado(s) por falta de estoque.`,
+          { duration: 10000 },
+        );
+      } else {
+        toast.success(`Picking concluído! ${result.picked_count} item(ns) debitado(s) do estoque.`);
+      }
+    },
+    onError: (err: Error) => toast.error(`Erro no picking: ${err.message}`),
+  });
+}

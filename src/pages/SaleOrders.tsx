@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { getSignedUrl } from '@/lib/getSignedUrl';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown as ChevronDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, Eye } from '@phosphor-icons/react';
+import { ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown as ChevronDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, Eye, HandPalm as Hand } from '@phosphor-icons/react';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { BulkActionsBar, MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
 import { cn } from "@/lib/utils";
@@ -22,7 +22,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, SaleOrderFormData, SaleOrderItemFormData, PackagingMode } from '@/hooks/useSaleOrders';
+import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, SaleOrderFormData, SaleOrderItemFormData, PackagingMode } from '@/hooks/useSaleOrders';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
 import { useClients, useEconomicGroups } from '@/hooks/useClients';
 import { supabase } from '@/integrations/supabase/client';
@@ -157,6 +157,9 @@ export default function SaleOrders() {
   const [previewNfeOrder, setPreviewNfeOrder] = useState<{ id: string; orderNumber: string } | null>(null);
   const resyncOPs = useResyncOPsFromSheets();
   const resyncPVOPs = useResyncOPsFromPV();
+  // Picking pedido-a-pedido (alternativa à onda semanal) — debita em massa
+  // todas as reservas soft das OPs do PV. Confirmação inline via window.confirm.
+  const commitPicking = useCommitPickingForSaleOrder();
   // bulkSyncFinancial removido em 2026-05 — sync acontece automaticamente no faturamento
   const navigate = useNavigate();
 
@@ -1892,6 +1895,25 @@ export default function SaleOrders() {
                     </Button>
                   )}
                   <Button variant="outline" size="sm" className="gap-2" onClick={() => setConsumptionDialogOpen(true)}><ClipboardList className="h-3.5 w-3.5" /> Consumo de materiais</Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    disabled={commitPicking.isPending}
+                    onClick={() => {
+                      if (!confirm(
+                        `Confirmar picking de TODOS os materiais reservados deste PV?\n\n` +
+                        `Isso vai dar baixa em estoque de cada item (subtrai products.quantity, registra stock_movement '\''out'\''). ` +
+                        `Use quando quiser rodar pedido a pedido em vez de aguardar a onda semanal.\n\n` +
+                        `Itens com estoque insuficiente serão pulados (resto continua). Operação registrada por usuário no histórico.`
+                      )) return;
+                      commitPicking.mutate(selectedOrder.id);
+                    }}
+                    title="Debita em massa todas as reservas soft das OPs deste PV"
+                  >
+                    {commitPicking.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Hand className="h-3.5 w-3.5" />}
+                    Picking Realizado
+                  </Button>
                   <Button variant="outline" size="sm" className="gap-2" onClick={() => setMarginDialogOpen(true)}><TrendingUp className="h-3.5 w-3.5" /> Margem</Button>
                   <Button variant="outline" size="sm" className="gap-2" onClick={async () => { try { await printAllSectorsForSaleOrder(selectedOrder.id, selectedOrder.order_number); } catch (err: any) { toast.error(err.message); } }}><FileText className="h-3.5 w-3.5" /> OPs</Button>
                   <Button variant="outline" size="sm" className="gap-2" onClick={async () => { const { data: oi } = await supabase.from('sale_order_items').select('*, technical_sheets(name, code, image_url, images)').eq('sale_order_id', selectedOrder.id); const refIds = [...new Set((oi || []).map(i => i.reference_id))]; const { data: colorVariants } = await supabase.from('reference_color_variants').select('reference_id, color, image_url').in('reference_id', refIds); printHtml(`PV ${selectedOrder.order_number}`, await buildSaleOrderPrintHtml(selectedOrder, oi || [], colorVariants || [])); }}><FileText className="h-3.5 w-3.5" /> Gerar PDF</Button>
