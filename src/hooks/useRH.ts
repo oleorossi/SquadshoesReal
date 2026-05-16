@@ -137,6 +137,61 @@ export function useDeleteBankHoursMovement() {
   });
 }
 
+/**
+ * Registra pagamento de horas extras: cria movement `payout` (débito do banco
+ * de horas) e financial_entries (despesa pendente) atomicamente via RPC.
+ * Retorna o detalhe do pagamento — UI pode mostrar "X h pagas (R$ Y) em DD/MM".
+ */
+export function usePayBankHours() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      employee_id: string;
+      hours: number;
+      hourly_rate: number;
+      payment_date?: string;          // ISO YYYY-MM-DD; default = hoje
+      notes?: string;
+      bank_account_id?: string | null;
+    }) => {
+      if (!Number.isFinite(input.hours) || input.hours <= 0) {
+        throw new Error('Quantidade de horas deve ser maior que zero.');
+      }
+      if (!Number.isFinite(input.hourly_rate) || input.hourly_rate <= 0) {
+        throw new Error('Valor da hora deve ser maior que zero.');
+      }
+      const { data, error } = await (supabase as any).rpc('pay_bank_hours', {
+        p_employee_id:     input.employee_id,
+        p_hours:           input.hours,
+        p_hourly_rate:     input.hourly_rate,
+        p_payment_date:    input.payment_date || new Date().toISOString().slice(0, 10),
+        p_notes:           input.notes || null,
+        p_bank_account_id: input.bank_account_id || null,
+      });
+      if (error) throw error;
+      return data as {
+        movement_id: string;
+        financial_entry_id: string;
+        employee_name: string;
+        hours: number;
+        minutes: number;
+        hourly_rate: number;
+        amount: number;
+        payment_date: string;
+        created_at: string;
+      };
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['bank_hours_movements'] });
+      qc.invalidateQueries({ queryKey: ['bank_hours_balance'] });
+      qc.invalidateQueries({ queryKey: ['employee_bank_balance'] });
+      qc.invalidateQueries({ queryKey: ['financial_entries'] });
+      const fmt = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      toast.success(`Pagamento registrado — ${data.hours}h × R$ ${data.hourly_rate} = ${fmt(data.amount)}`);
+    },
+    onError: (err: any) => toast.error(`Erro ao registrar pagamento: ${err.message}`),
+  });
+}
+
 // ── absences ─────────────────────────────────────────────────────────
 export type AbsenceType =
   | 'atestado' | 'licenca_maternidade' | 'licenca_paternidade'

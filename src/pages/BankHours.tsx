@@ -18,7 +18,7 @@
  */
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Clock, TrendUp as TrendingUp, TrendDown as TrendingDown, Scales as Scale, Users, Buildings as Building2, MagnifyingGlass as Search, CircleNotch as Loader2, CaretRight as ChevronRight, Plus, Trash as Trash2 } from '@phosphor-icons/react';
+import { Clock, TrendUp as TrendingUp, TrendDown as TrendingDown, Scales as Scale, Users, Buildings as Building2, MagnifyingGlass as Search, CircleNotch as Loader2, CaretRight as ChevronRight, Plus, Trash as Trash2, CurrencyDollar } from '@phosphor-icons/react';
 import AppLayout from '@/components/layout/AppLayout';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { todayISO } from '@/lib/date';
@@ -42,6 +42,7 @@ import {
   useAddBankHoursMovement,
   useDeleteBankHoursMovement,
 } from '@/hooks/useRH';
+import { PayHoursDialog } from '@/components/rh/PayHoursDialog';
 import { cn } from '@/lib/utils';
 
 type Summary = {
@@ -94,6 +95,7 @@ const TYPE_LABELS: Record<string, string> = {
   debit: 'Débito (folga)',
   adjustment: 'Ajuste manual',
   compensation: 'Compensação',
+  payout: 'Pagamento de HE',
   manual: 'Manual',
   timesheet_auto: 'Auto (batidas)',
 };
@@ -177,6 +179,7 @@ export default function BankHours() {
   const [search, setSearch] = useState('');
   const [sectorFilter, setSectorFilter] = useState<string>('all');
   const [selectedEmployee, setSelectedEmployee] = useState<EmployeeBalance | null>(null);
+  const [payDialogOpen, setPayDialogOpen] = useState(false);
   const [movementDialogOpen, setMovementDialogOpen] = useState(false);
 
   const summaryQ = useSummary();
@@ -537,11 +540,23 @@ export default function BankHours() {
               ) : detailQ.data ? (
                 <>
                   <Card>
-                    <CardContent className="p-5 text-center">
-                      <div className="eyebrow">Saldo total (movements + batidas)</div>
-                      <div className={cn('display text-5xl mt-3 tabular-nums', balanceClass(detailQ.data.balance_min))}>
-                        {formatHours(detailQ.data.balance_min)}
+                    <CardContent className="p-5 text-center space-y-3">
+                      <div>
+                        <div className="eyebrow">Saldo total (movements + batidas)</div>
+                        <div className={cn('display text-5xl mt-3 tabular-nums', balanceClass(detailQ.data.balance_min))}>
+                          {formatHours(detailQ.data.balance_min)}
+                        </div>
                       </div>
+                      {detailQ.data.balance_min > 0 && (
+                        <Button
+                          onClick={() => setPayDialogOpen(true)}
+                          className="w-full gap-2"
+                          size="lg"
+                        >
+                          <CurrencyDollar className="h-4 w-4" />
+                          Pagar horas extras
+                        </Button>
+                      )}
                     </CardContent>
                   </Card>
 
@@ -597,33 +612,51 @@ export default function BankHours() {
                         </div>
                       ) : (
                         <div className="divide-y border-t">
-                          {(movementsQ.data || []).slice(0, 30).map((mov: any) => (
-                            <div key={mov.id} className="px-4 py-2.5 flex items-center justify-between gap-3 text-sm">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <Badge variant="outline" className="text-[10px] h-4 px-1.5">
-                                    {TYPE_LABELS[mov.movement_type] || mov.movement_type}
-                                  </Badge>
-                                  <span className="text-xs text-muted-foreground">
-                                    {new Date(mov.movement_date).toLocaleDateString('pt-BR')}
-                                  </span>
+                          {(movementsQ.data || []).slice(0, 30).map((mov: any) => {
+                            const isPayout = mov.movement_type === 'payout';
+                            const createdAt = mov.created_at ? new Date(mov.created_at) : null;
+                            return (
+                              <div key={mov.id} className={cn(
+                                'px-4 py-2.5 flex items-center justify-between gap-3 text-sm',
+                                isPayout && 'bg-blue-500/5'
+                              )}>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <Badge
+                                      variant={isPayout ? 'default' : 'outline'}
+                                      className={cn(
+                                        'text-[10px] h-4 px-1.5',
+                                        isPayout && 'bg-blue-500/15 text-blue-700 border-blue-500/30 hover:bg-blue-500/15'
+                                      )}
+                                    >
+                                      {TYPE_LABELS[mov.movement_type] || mov.movement_type}
+                                    </Badge>
+                                    <span className="text-xs text-muted-foreground">
+                                      {new Date(mov.movement_date).toLocaleDateString('pt-BR')}
+                                    </span>
+                                    {isPayout && createdAt && (
+                                      <span className="text-[10px] text-muted-foreground">
+                                        · registrado {createdAt.toLocaleDateString('pt-BR')} {createdAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {mov.reason && (
+                                    <div className="text-[11px] text-muted-foreground mt-0.5 truncate">{mov.reason}</div>
+                                  )}
                                 </div>
-                                {mov.reason && (
-                                  <div className="text-[11px] text-muted-foreground mt-0.5 truncate">{mov.reason}</div>
-                                )}
+                                <div className={cn('font-mono text-sm font-bold tabular-nums', balanceClass(mov.minutes))}>
+                                  {formatHours(mov.minutes)}
+                                </div>
+                                <button
+                                  onClick={() => deleteMovement.mutate(mov.id)}
+                                  className="text-muted-foreground hover:text-destructive transition-colors p-1"
+                                  aria-label="Excluir lançamento"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
                               </div>
-                              <div className={cn('font-mono text-sm font-bold tabular-nums', balanceClass(mov.minutes))}>
-                                {formatHours(mov.minutes)}
-                              </div>
-                              <button
-                                onClick={() => deleteMovement.mutate(mov.id)}
-                                className="text-muted-foreground hover:text-destructive transition-colors p-1"
-                                aria-label="Excluir lançamento"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </CardContent>
@@ -639,6 +672,17 @@ export default function BankHours() {
             </div>
           </SheetContent>
         </Sheet>
+
+        {/* Dialog de pagamento de horas extras — abre a partir do drill-down */}
+        {selectedEmployee && (
+          <PayHoursDialog
+            open={payDialogOpen}
+            onOpenChange={setPayDialogOpen}
+            employeeId={selectedEmployee.employee_id}
+            employeeName={selectedEmployee.employee_name}
+            balanceMinutes={detailQ.data?.balance_min ?? 0}
+          />
+        )}
       </div>
     </AppLayout>
   );
