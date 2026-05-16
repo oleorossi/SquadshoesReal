@@ -3557,7 +3557,7 @@ function PhotosByColorTab({ sheetId, form, groups, products }: {
       <p className="text-sm text-muted-foreground">
         Selecione quais setores esta referência passa durante a produção. Apenas os setores marcados serão criados nas Ordens de Produção.
       </p>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
          {ALL_PRODUCTION_SECTORS.map(sector => {
            const isActive = localSectors.includes(sector.name);
            return (
@@ -3566,14 +3566,14 @@ function PhotosByColorTab({ sheetId, form, groups, products }: {
                type="button"
                onClick={() => toggle(sector.name)}
                className={cn(
-                 'flex items-center gap-2 rounded-lg border-2 px-4 py-3 text-sm font-medium transition-all',
+                 'flex items-center gap-2 rounded-lg border-2 px-3 py-2.5 text-sm font-medium transition-all min-w-0',
                  isActive
                    ? 'border-primary bg-primary/10 text-primary cursor-pointer'
                    : 'border-border bg-muted/30 text-muted-foreground hover:border-muted-foreground/50 cursor-pointer'
                )}
              >
-               <Checkbox checked={isActive} className="pointer-events-none" />
-               <span>{sector.name}</span>
+               <Checkbox checked={isActive} className="pointer-events-none shrink-0" />
+               <span className="truncate" title={sector.name}>{sector.name}</span>
              </button>
            );
          })}
