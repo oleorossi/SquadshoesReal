@@ -690,6 +690,113 @@ export function ProductionScheduleTimeline() {
   );
 }
 
+interface OpCardProps {
+  op: ScheduleRow;
+  onDialog: (s: { open: boolean; scope: 'order' | 'op'; row: ScheduleRow | null }) => void;
+  /** Compacto: renderiza header menor (usado dentro do agrupamento por PV). */
+  compact?: boolean;
+}
+
+function OpCard({ op, onDialog, compact = false }: OpCardProps) {
+  const lateCount = computeLateStages(op).length;
+  return (
+    <Card className={compact ? 'overflow-hidden border-border/60' : 'overflow-hidden'}>
+      <CardHeader className={compact ? 'pb-2 bg-muted/20 py-2' : 'pb-3 bg-muted/30'}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div>
+              <CardTitle className={compact ? 'text-sm' : 'text-base'}>OP {op.pedido_ref}</CardTitle>
+              <CardDescription className="text-xs">
+                {op.referencia_nome} · {op.op_quantity} pares
+              </CardDescription>
+            </div>
+            {!compact && (
+              <div className="flex items-center gap-1.5">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1"
+                  onClick={() => onDialog({ open: true, scope: 'order', row: op })}
+                >
+                  <FileText className="h-3 w-3" />
+                  Levar do pedido
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1"
+                  onClick={() => onDialog({ open: true, scope: 'op', row: op })}
+                >
+                  <Layers className="h-3 w-3" />
+                  Levar a OP
+                </Button>
+              </div>
+            )}
+            {compact && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 text-xs gap-1 px-2"
+                onClick={() => onDialog({ open: true, scope: 'op', row: op })}
+              >
+                <Layers className="h-3 w-3" />
+                Detalhes
+              </Button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {lateCount > 0 && (
+              <Badge className="bg-destructive/15 text-destructive border-destructive/30 text-xs gap-1">
+                <AlertTriangle className="h-3 w-3" />
+                {lateCount} em atraso
+              </Badge>
+            )}
+            <Badge variant="outline" className="text-xs">{op.order_status}</Badge>
+            <Badge className="bg-primary/10 text-primary border-primary/20 text-xs">
+              Entrega: {fmtFull(op.data_entrega_cliente)}
+            </Badge>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className={compact ? 'pt-3 pb-3' : 'pt-4'}>
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
+          {stages.map(s => {
+            const date = (op as any)[s.key] as string;
+            const st = statusOf(date);
+            const Icon = s.icon;
+            return (
+              <div
+                key={s.key}
+                className={`p-3 rounded-lg border ${toneClasses[st.tone]} flex flex-col gap-1`}
+                title={s.hint}
+              >
+                <div className="flex items-center justify-between text-[11px] uppercase tracking-wide opacity-70">
+                  <span>{s.label}</span>
+                  <Icon className="h-3.5 w-3.5" />
+                </div>
+                <div className="font-bold text-base leading-tight">{fmt(date)}</div>
+                <div className="text-[11px] opacity-80">{st.label}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-3 pt-3 border-t border-border flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+          <span>Lead times:</span>
+          <span>Corte {op.lead_time_corte_dias}d</span>
+          <span>· Costura {op.lead_time_costura_dias}d</span>
+          <span>· Montagem {op.lead_time_montagem_dias}d</span>
+          {op.lead_time_mesa_dias > 0 && (
+            <span>· Mesa {op.lead_time_mesa_dias}d</span>
+          )}
+          <span>· Acabamento {op.lead_time_acabamento_dias}d</span>
+          <span>· Buffer material {op.lead_time_buffer_material_dias}d</span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function KpiBox({ label, value, tone }: { label: string; value: number | string; tone?: 'late' | 'ok' }) {
   const toneCls =
     tone === 'late' ? 'border-destructive/40 bg-destructive/5' :
