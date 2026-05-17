@@ -289,7 +289,7 @@ export default function PricingCalculatorPanel() {
                 <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input id="cost" type="number" step="0.01" min="0" value={cost} onChange={(e) => setCost(e.target.value)} className="pl-8 h-9 text-sm" placeholder="0,00" />
               </div>
-              <p className="text-[10px] text-muted-foreground mt-1">Matéria-prima</p>
+              <p className="text-[11px] text-muted-foreground mt-1">Matéria-prima</p>
             </div>
             <div>
               <Label htmlFor="tax" className="text-xs">Impostos (%)</Label>
@@ -308,7 +308,7 @@ export default function PricingCalculatorPanel() {
             <div>
               <Label htmlFor="days" className="text-xs">Prazo (Dias)</Label>
               <Input id="days" type="text" value={days} onChange={(e) => setDays(e.target.value)} className="mt-1 h-9 text-sm" placeholder="60 ou 30/60/90" />
-              {days.includes('/') && <p className="text-[10px] text-muted-foreground mt-1">Média: {fmt(parseDays(days))} dias</p>}
+              {days.includes('/') && <p className="text-[11px] text-muted-foreground mt-1">Média: {fmt(parseDays(days))} dias</p>}
             </div>
             <div>
               <Label htmlFor="profit" className="text-xs">Margem (%)</Label>
@@ -330,7 +330,7 @@ export default function PricingCalculatorPanel() {
                 <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input id="overhead" type="number" step="0.01" min="0" value={overheadManual} onChange={(e) => setOverheadManual(e.target.value)} className="pl-8 h-9 text-sm" placeholder={fmt(policyOverhead)} />
               </div>
-              <p className="text-[10px] text-muted-foreground mt-1">
+              <p className="text-[11px] text-muted-foreground mt-1">
                 {policyOverhead > 0 ? `Política: R$ ${fmt(policyOverhead)}/par` : 'Despesas fixas ÷ capacidade'}
               </p>
             </div>
@@ -343,7 +343,7 @@ export default function PricingCalculatorPanel() {
                 <Percent className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input id="commission" type="number" step="0.01" min="0" value={commissionPct} onChange={(e) => setCommissionPct(e.target.value)} className="pl-8 h-9 text-sm" placeholder="0" />
               </div>
-              <p className="text-[10px] text-muted-foreground mt-1">% sobre o preço de venda</p>
+              <p className="text-[11px] text-muted-foreground mt-1">% sobre o preço de venda</p>
             </div>
             <div>
               <Label htmlFor="freight" className="text-xs flex items-center gap-1.5">
@@ -354,7 +354,7 @@ export default function PricingCalculatorPanel() {
                 <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input id="freight" type="number" step="0.01" min="0" value={freightValue} onChange={(e) => setFreightValue(e.target.value)} className="pl-8 h-9 text-sm" placeholder="0,00" />
               </div>
-              <p className="text-[10px] text-muted-foreground mt-1">Adicionado ao custo base</p>
+              <p className="text-[11px] text-muted-foreground mt-1">Adicionado ao custo base</p>
             </div>
           </div>
 
@@ -485,7 +485,7 @@ export default function PricingCalculatorPanel() {
                 <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input id="reverseCost" type="number" step="0.01" min="0" placeholder="13,49" value={reverseCost} onChange={(e) => setReverseCost(e.target.value)} className="pl-8 h-9 text-sm" />
               </div>
-              <p className="text-[10px] text-muted-foreground mt-1">Matéria-prima</p>
+              <p className="text-[11px] text-muted-foreground mt-1">Matéria-prima</p>
             </div>
             <div>
               <Label htmlFor="soldPrice" className="text-xs">Preço Venda (R$)</Label>
@@ -511,7 +511,7 @@ export default function PricingCalculatorPanel() {
             <div>
               <Label htmlFor="reverseDays" className="text-xs">Prazo (Dias)</Label>
               <Input id="reverseDays" type="text" placeholder="60 ou 30/60/90" value={reverseDays} onChange={(e) => setReverseDays(e.target.value)} className="mt-1 h-9 text-sm" />
-              {reverseDays.includes('/') && <p className="text-[10px] text-muted-foreground mt-1">Média: {fmt(parseDays(reverseDays))} dias</p>}
+              {reverseDays.includes('/') && <p className="text-[11px] text-muted-foreground mt-1">Média: {fmt(parseDays(reverseDays))} dias</p>}
             </div>
           </div>
 
@@ -526,7 +526,7 @@ export default function PricingCalculatorPanel() {
                 <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input id="reverseOverhead" type="number" step="0.01" min="0" value={reverseOverheadManual} onChange={(e) => setReverseOverheadManual(e.target.value)} className="pl-8 h-9 text-sm" placeholder={fmt(policyOverhead)} />
               </div>
-              <p className="text-[10px] text-muted-foreground mt-1">
+              <p className="text-[11px] text-muted-foreground mt-1">
                 {policyOverhead > 0 ? `Política: R$ ${fmt(policyOverhead)}/par` : 'Despesas fixas ÷ capacidade'}
               </p>
             </div>
@@ -539,7 +539,7 @@ export default function PricingCalculatorPanel() {
                 <Percent className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input id="reverseCommission" type="number" step="0.01" min="0" value={reverseCommissionPct} onChange={(e) => setReverseCommissionPct(e.target.value)} className="pl-8 h-9 text-sm" placeholder="0" />
               </div>
-              <p className="text-[10px] text-muted-foreground mt-1">% sobre o preço de venda</p>
+              <p className="text-[11px] text-muted-foreground mt-1">% sobre o preço de venda</p>
             </div>
             <div>
               <Label htmlFor="reverseFreight" className="text-xs flex items-center gap-1.5">
@@ -550,7 +550,7 @@ export default function PricingCalculatorPanel() {
                 <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input id="reverseFreight" type="number" step="0.01" min="0" value={reverseFreightValue} onChange={(e) => setReverseFreightValue(e.target.value)} className="pl-8 h-9 text-sm" placeholder="0,00" />
               </div>
-              <p className="text-[10px] text-muted-foreground mt-1">Adicionado ao custo base</p>
+              <p className="text-[11px] text-muted-foreground mt-1">Adicionado ao custo base</p>
             </div>
           </div>
 

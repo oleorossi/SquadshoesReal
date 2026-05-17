@@ -310,13 +310,13 @@ function DelayDetailDialog({ open, onClose, scope, focusRow, allRows }: DelayDia
                           <span className="text-muted-foreground">{op.referencia_nome}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="text-[10px]">{op.op_quantity}p</Badge>
+                          <Badge variant="outline" className="text-[11px]">{op.op_quantity}p</Badge>
                           {lateCount > 0 ? (
-                            <Badge className="bg-destructive/15 text-destructive border-destructive/30 text-[10px]">
+                            <Badge className="bg-destructive/15 text-destructive border-destructive/30 text-[11px]">
                               {lateCount} atraso{lateCount > 1 ? 's' : ''}
                             </Badge>
                           ) : (
-                            <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 text-[10px]">
+                            <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 text-[11px]">
                               em dia
                             </Badge>
                           )}
@@ -358,11 +358,11 @@ function DelayDetailDialog({ open, onClose, scope, focusRow, allRows }: DelayDia
                             <Separator orientation="vertical" className="h-3" />
                             <span className="font-semibold truncate">{it.stage_label}</span>
                           </div>
-                          <div className="text-[10px] text-muted-foreground truncate">
+                          <div className="text-[11px] text-muted-foreground truncate">
                             {it.referencia_nome} · {it.op_quantity}p · planejado {fmtFull(it.stage_date)}
                           </div>
                         </div>
-                        <Badge className="bg-destructive text-destructive-foreground text-[10px] gap-1 shrink-0">
+                        <Badge className="bg-destructive text-destructive-foreground text-[11px] gap-1 shrink-0">
                           <Clock className="h-2.5 w-2.5" />
                           {it.days_late}d
                         </Badge>
@@ -578,12 +578,12 @@ export function ProductionScheduleTimeline() {
                         className={`p-3 rounded-lg border ${toneClasses[st.tone]} flex flex-col gap-1`}
                         title={s.hint}
                       >
-                        <div className="flex items-center justify-between text-[10px] uppercase tracking-wide opacity-70">
+                        <div className="flex items-center justify-between text-[11px] uppercase tracking-wide opacity-70">
                           <span>{s.label}</span>
                           <Icon className="h-3.5 w-3.5" />
                         </div>
                         <div className="font-bold text-base leading-tight">{fmt(date)}</div>
-                        <div className="text-[10px] opacity-80">{st.label}</div>
+                        <div className="text-[11px] opacity-80">{st.label}</div>
                       </div>
                     );
                   })}

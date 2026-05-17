@@ -111,51 +111,51 @@ export default function PurchaseProjectionContent() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <Card>
           <CardContent className="p-3">
-            <div className="text-[10px] uppercase text-muted-foreground font-bold">Produtos ativos</div>
+            <div className="text-[11px] uppercase text-muted-foreground font-bold">Produtos ativos</div>
             <div className="text-2xl font-bold tabular-nums mt-0.5">
               {summary ? fmtBR(summary.total_active_products) : <Skeleton className="h-7 w-12" />}
             </div>
-            <div className="text-[10px] text-muted-foreground mt-0.5">com compra ou consumo</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">com compra ou consumo</div>
           </CardContent>
         </Card>
         <Card className="border-red-500/30">
           <CardContent className="p-3">
-            <div className="text-[10px] uppercase text-red-600 font-bold flex items-center gap-1">
+            <div className="text-[11px] uppercase text-red-600 font-bold flex items-center gap-1">
               <AlertCircle className="w-3 h-3" /> Críticos
             </div>
             <div className="text-2xl font-bold tabular-nums mt-0.5">
               {summary ? summary.critical_reorder_count : <Skeleton className="h-7 w-12" />}
             </div>
-            <div className="text-[10px] text-muted-foreground mt-0.5">vão zerar antes do lead time</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">vão zerar antes do lead time</div>
           </CardContent>
         </Card>
         <Card className="border-amber-500/30">
           <CardContent className="p-3">
-            <div className="text-[10px] uppercase text-amber-600 font-bold">Repor em breve</div>
+            <div className="text-[11px] uppercase text-amber-600 font-bold">Repor em breve</div>
             <div className="text-2xl font-bold tabular-nums mt-0.5">
               {summary ? summary.reorder_count : <Skeleton className="h-7 w-12" />}
             </div>
-            <div className="text-[10px] text-muted-foreground mt-0.5">cobertura &lt; 1.5× lead time</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">cobertura &lt; 1.5× lead time</div>
           </CardContent>
         </Card>
         <Card className="border-blue-500/30">
           <CardContent className="p-3">
-            <div className="text-[10px] uppercase text-blue-600 font-bold flex items-center gap-1">
+            <div className="text-[11px] uppercase text-blue-600 font-bold flex items-center gap-1">
               <TrendingDown className="w-3 h-3" /> Estoque alto
             </div>
             <div className="text-2xl font-bold tabular-nums mt-0.5">
               {summary ? summary.high_stock_count : <Skeleton className="h-7 w-12" />}
             </div>
-            <div className="text-[10px] text-muted-foreground mt-0.5">mais de 90 dias parados</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">mais de 90 dias parados</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-3">
-            <div className="text-[10px] uppercase text-muted-foreground font-bold">Reposição estimada</div>
+            <div className="text-[11px] uppercase text-muted-foreground font-bold">Reposição estimada</div>
             <div className="text-2xl font-bold tabular-nums mt-0.5">
               {summary ? fmtMoney(summary.total_reorder_value) : <Skeleton className="h-7 w-20" />}
             </div>
-            <div className="text-[10px] text-muted-foreground mt-0.5">valor a comprar p/ críticos+repor</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">valor a comprar p/ críticos+repor</div>
           </CardContent>
         </Card>
       </div>
@@ -279,7 +279,7 @@ export default function PurchaseProjectionContent() {
       <Card>
         <CardContent className="p-0">
           <Table>
-            <TableHeader className="bg-muted/50 text-[10px] uppercase">
+            <TableHeader className="bg-muted/50 text-[11px] uppercase">
               <TableRow>
                 <TableHead className="w-12 px-3 py-2 h-auto">ABC</TableHead>
                 <TableHead className="px-3 py-2 h-auto">Produto</TableHead>
@@ -340,7 +340,7 @@ function AbcRow({ class_, count, total, hint }: { class_: AbcClass; count: numbe
           <span className="font-medium">{count} produtos</span>
           <span className="text-muted-foreground">{pct}%</span>
         </div>
-        <div className="text-[10px] text-muted-foreground">{hint}</div>
+        <div className="text-[11px] text-muted-foreground">{hint}</div>
       </div>
     </div>
   );
@@ -350,7 +350,7 @@ function ProjectionRow({ row }: { row: ReturnType<typeof Object> & any }) {
   return (
     <TableRow className="hover:bg-muted/40">
       <TableCell className="px-3 py-2">
-        <Badge className={cn('font-bold w-6 h-6 flex items-center justify-center p-0 text-[10px]', ABC_CLASS_BG[row.abc_class as AbcClass])}>
+        <Badge className={cn('font-bold w-6 h-6 flex items-center justify-center p-0 text-[11px]', ABC_CLASS_BG[row.abc_class as AbcClass])}>
           {row.abc_class}
         </Badge>
       </TableCell>
@@ -361,7 +361,7 @@ function ProjectionRow({ row }: { row: ReturnType<typeof Object> & any }) {
         )}
       </TableCell>
       <TableCell className="px-3 py-2 text-xs">
-        {row.color ? <Badge variant="outline" className="text-[10px]">{row.color}</Badge> : <span className="text-muted-foreground">—</span>}
+        {row.color ? <Badge variant="outline" className="text-[11px]">{row.color}</Badge> : <span className="text-muted-foreground">—</span>}
       </TableCell>
       <TableCell className="px-3 py-2 text-xs text-muted-foreground truncate max-w-[140px]">
         {row.product_category ?? '—'}
@@ -398,7 +398,7 @@ function ProjectionRow({ row }: { row: ReturnType<typeof Object> & any }) {
         {row.supplier_name ?? '—'}
       </TableCell>
       <TableCell className="px-3 py-2">
-        <Badge variant="outline" className={cn('text-[10px] gap-1', RECOMMENDATION_CLASS[row.recommendation as Recommendation])}>
+        <Badge variant="outline" className={cn('text-[11px] gap-1', RECOMMENDATION_CLASS[row.recommendation as Recommendation])}>
           {row.recommendation === 'CRITICO_REPOR' && <AlertCircle className="w-3 h-3" />}
           {row.recommendation === 'REPOR'         && <ShoppingCart className="w-3 h-3" />}
           {row.recommendation === 'OK'            && <CheckCircle2 className="w-3 h-3" />}

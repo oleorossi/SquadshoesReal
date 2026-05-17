@@ -379,7 +379,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
         >
           <Search className="h-3.5 w-3.5 shrink-0" />
           <span className="flex-1 text-left">Buscar...</span>
-          <kbd className="inline-flex h-5 items-center gap-0.5 rounded border border-sidebar-border/50 bg-sidebar-accent/30 px-1.5 font-mono text-[10px] text-sidebar-muted shrink-0">
+          <kbd className="inline-flex h-5 items-center gap-0.5 rounded border border-sidebar-border/50 bg-sidebar-accent/30 px-1.5 font-mono text-[11px] text-sidebar-muted shrink-0">
             ⌘K
           </kbd>
         </button>
@@ -397,7 +397,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                 className="border-0 focus:ring-0"
               />
               {q && detectedType !== 'general' && (
-                <Badge variant="secondary" className="text-[10px] shrink-0 mr-2">
+                <Badge variant="secondary" className="text-[11px] shrink-0 mr-2">
                   {TYPE_LABELS[detectedType]}
                 </Badge>
               )}
@@ -500,7 +500,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                                 <span className="text-muted-foreground text-xs ml-2 font-mono">#{g.group_number}</span>
                               )}
                             </div>
-                            <span className="text-[10px] text-muted-foreground shrink-0">ver 360°</span>
+                            <span className="text-[11px] text-muted-foreground shrink-0">ver 360°</span>
                             <ArrowRight className="ml-1.5 h-3 w-3 text-muted-foreground shrink-0" />
                           </CommandItem>
                         ))}
@@ -517,7 +517,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                                   <span className="font-mono text-xs font-semibold">{so.order_number}</span>
                                   <span className="text-muted-foreground text-xs ml-2 truncate">{so.client_name}</span>
                                 </div>
-                                <Badge variant="outline" className="text-[10px] shrink-0">{so.status}</Badge>
+                                <Badge variant="outline" className="text-[11px] shrink-0">{so.status}</Badge>
                               </CommandItem>
                             ))}
                           </CommandGroup>
@@ -534,7 +534,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                                 <div className="flex-1 min-w-0">
                                   <span className="font-mono text-xs font-semibold">{op.order_number}</span>
                                 </div>
-                                <Badge variant="outline" className="text-[10px] shrink-0">{op.status}</Badge>
+                                <Badge variant="outline" className="text-[11px] shrink-0">{op.status}</Badge>
                               </CommandItem>
                             ))}
                           </CommandGroup>
@@ -556,7 +556,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                   <p className="text-[11px] text-muted-foreground mt-1 max-w-md mx-auto">
                     {String((queryError as any)?.message ?? queryError).slice(0, 200)}
                   </p>
-                  <p className="text-[10px] text-muted-foreground mt-2">
+                  <p className="text-[11px] text-muted-foreground mt-2">
                     Verifique sua conexão e tente de novo. Se persistir, contate o suporte.
                   </p>
                 </div>
@@ -579,7 +579,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                     <CommandItem key={item.path} onSelect={() => goTo(item.path)}>
                       <item.icon className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
                       <span className="text-xs font-medium"><Highlight text={item.name} term={q} /></span>
-                      <span className="ml-2 text-[10px] text-muted-foreground">{item.groupLabel}</span>
+                      <span className="ml-2 text-[11px] text-muted-foreground">{item.groupLabel}</span>
                       <ArrowRight className="ml-auto h-3 w-3 text-muted-foreground shrink-0" />
                     </CommandItem>
                   ))}
@@ -596,7 +596,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                           <Highlight text={op.order_number} term={searchTerm} />
                         </span>
                       </div>
-                      <Badge variant="outline" className="text-[10px] shrink-0">{op.status}</Badge>
+                      <Badge variant="outline" className="text-[11px] shrink-0">{op.status}</Badge>
                     </CommandItem>
                   ))}
                 </CommandGroup>
@@ -617,7 +617,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                             <Highlight text={so.client_name} term={searchTerm} />
                           </span>
                         </div>
-                        <Badge variant="outline" className="text-[10px] shrink-0">{so.status}</Badge>
+                        <Badge variant="outline" className="text-[11px] shrink-0">{so.status}</Badge>
                       </CommandItem>
                     ))}
                   </CommandGroup>
@@ -670,7 +670,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                             </span>
                           )}
                         </div>
-                        {s.active === false && <Badge variant="outline" className="text-[10px] shrink-0">inativo</Badge>}
+                        {s.active === false && <Badge variant="outline" className="text-[11px] shrink-0">inativo</Badge>}
                       </CommandItem>
                     ))}
                   </CommandGroup>
@@ -698,7 +698,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                             </span>
                           )}
                         </div>
-                        <span className="text-[10px] font-mono text-muted-foreground shrink-0">
+                        <span className="text-[11px] font-mono text-muted-foreground shrink-0">
                           {Number(p.quantity).toLocaleString('pt-BR')} {p.unit}
                         </span>
                       </CommandItem>
@@ -738,7 +738,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                     <span> · {groupResult.clientCount} {groupResult.clientCount === 1 ? 'loja' : 'lojas'} no grupo</span>
                   )}
                 </span>
-                <span className="text-[10px] text-muted-foreground font-mono">↑↓ navegar · ↵ abrir</span>
+                <span className="text-[11px] text-muted-foreground font-mono">↑↓ navegar · ↵ abrir</span>
               </div>
             )}
           </Command>

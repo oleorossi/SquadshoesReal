@@ -333,7 +333,7 @@ export default function SaldoFinalTab() {
                   <TableHead className="text-right min-w-[100px]">Estoque Atual</TableHead>
                   {visibleWeeks.map(wl => (
                     <TableHead key={wl} className="text-right min-w-[120px]">
-                      <div className="text-[10px] text-muted-foreground">Saldo</div>
+                      <div className="text-[11px] text-muted-foreground">Saldo</div>
                       <div className="text-xs">{wl}</div>
                     </TableHead>
                   ))}
@@ -355,7 +355,7 @@ export default function SaldoFinalTab() {
                         <Badge variant="outline" className="text-[9px]">{mat.type}</Badge>
                       </TableCell>
                       <TableCell className="text-right font-mono text-sm">
-                        {fmtQty(mat.current_stock)} <span className="text-[10px] text-muted-foreground">{mat.unit}</span>
+                        {fmtQty(mat.current_stock)} <span className="text-[11px] text-muted-foreground">{mat.unit}</span>
                       </TableCell>
                       {mat.weeks.filter(w => selectedWeeks.has(w.week_label)).map(w => (
                         <TableCell key={w.week_label} className={`text-right font-mono text-sm ${w.balance < 0 ? 'text-destructive font-bold' : ''}`}>
@@ -366,7 +366,7 @@ export default function SaldoFinalTab() {
                         </TableCell>
                       ))}
                       <TableCell className={`text-right font-mono text-sm font-bold ${mat.final_balance < 0 ? 'text-destructive' : 'text-green-600'}`}>
-                        {fmtQty(mat.final_balance)} <span className="text-[10px] text-muted-foreground">{mat.unit}</span>
+                        {fmtQty(mat.final_balance)} <span className="text-[11px] text-muted-foreground">{mat.unit}</span>
                       </TableCell>
                     </TableRow>
                   ))

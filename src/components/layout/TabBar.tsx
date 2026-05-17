@@ -36,7 +36,7 @@ export function TabBar() {
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="text-xs">
                   <div>{tab.title}</div>
-                  <div className="text-[10px] text-muted-foreground font-mono">{tab.path}</div>
+                  <div className="text-[11px] text-muted-foreground font-mono">{tab.path}</div>
                 </TooltipContent>
               </Tooltip>
               <Button
