@@ -417,7 +417,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
           }
         }));
       }
-      const parts = [`Solado "${soleName}" aplicado em ${applied} ficha(s).`];
+      const parts = [`Solado "${soleName}" aplicado em ${applied} ${applied === 1 ? 'ficha' : 'fichas'}.`];
       if (skippedNoCandidate) parts.push(`${skippedNoCandidate} sem ficha de referência.`);
       if (skippedNoChange) parts.push(`${skippedNoChange} já sincronizadas.`);
       if (failed) parts.push(`${failed} falharam.`);
@@ -487,7 +487,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
             </DialogHeader>
             <div className="space-y-4 py-2">
               <div className="text-sm text-muted-foreground">
-                Aplicar em <span className="font-semibold text-foreground">{filteredSheets.length}</span> ficha(s) listada(s).
+                Aplicar em <span className="font-semibold text-foreground">{filteredSheets.length}</span> {filteredSheets.length === 1 ? 'ficha listada' : 'fichas listadas'}.
                 Os dados (consumo, processo e grupo) serão copiados da ficha mais recente que utiliza o solado escolhido.
               </div>
 
@@ -1521,7 +1521,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
 
       if (added > 0) {
         queryClient.invalidateQueries({ queryKey: ['packaging_configs', sheet.id] });
-        toast.success(`${added} embalagem(ns) vinculada(s) automaticamente do solado!`);
+        toast.success(`${added} ${added === 1 ? 'embalagem vinculada' : 'embalagens vinculadas'} automaticamente do solado!`);
       }
     } catch (err: any) {
       console.error("Error auto-filling packaging:", err);
@@ -1761,11 +1761,11 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
            const fromNew = standardByGroup.length;
            const fromLegacy = newMaterials.length - fromNew;
            if (fromNew > 0 && fromLegacy === 0) {
-             toast.success(`${fromNew} material(is) padrão do solado adicionados ao BOM.`);
+             toast.success(`${fromNew} ${fromNew === 1 ? 'material padrão do solado adicionado' : 'materiais padrão do solado adicionados'} ao BOM.`);
            } else if (fromNew > 0 && fromLegacy > 0) {
              toast.success(`${fromNew} do cadastro do solado + ${fromLegacy} legados adicionados ao BOM.`);
            } else {
-             toast.success(`${newMaterials.length} item(ns) padrão adicionados ao BOM.`);
+             toast.success(`${newMaterials.length} ${newMaterials.length === 1 ? 'item padrão adicionado' : 'itens padrão adicionados'} ao BOM.`);
            }
          }
      } catch (err: any) {

@@ -217,7 +217,7 @@ export function useDeleteEconomicGroup() {
       if (countErr) throw new Error(`Falha ao verificar clientes vinculados: ${countErr.message}`);
       if ((count ?? 0) > 0) {
         throw new Error(
-          `Grupo econômico tem ${count} cliente(s) vinculado(s). Desvincule antes de excluir.`,
+          `Grupo econômico tem ${count} ${count === 1 ? 'cliente vinculado' : 'clientes vinculados'}. Desvincule antes de excluir.`,
         );
       }
       const { error } = await supabase.from('economic_groups').delete().eq('id', id);

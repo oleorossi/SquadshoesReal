@@ -517,8 +517,8 @@ async function generateAutoPurchaseOrders(saleOrderNumber: string, systemOrderNu
   }
 
   const msgs: string[] = [];
-  if (createdCount > 0) msgs.push(`${createdCount} nova(s) OC criada(s)`);
-  if (updatedCount > 0) msgs.push(`${updatedCount} OC existente(s) atualizada(s)`);
+  if (createdCount > 0) msgs.push(`${createdCount} ${createdCount === 1 ? 'nova OC criada' : 'novas OCs criadas'}`);
+  if (updatedCount > 0) msgs.push(`${updatedCount} ${updatedCount === 1 ? 'OC existente atualizada' : 'OCs existentes atualizadas'}`);
   if (msgs.length > 0) {
     toast.info(msgs.join(' e ') + ' para repor estoque');
   }
@@ -1637,7 +1637,7 @@ export function useUpdateSaleOrderStatus() {
                 }
               }
               if (autoPOCount === 0 && totalShortageCount > 0) {
-                toast.warning(`${totalShortageCount} material(is) com estoque insuficiente — verifique fornecedores.`);
+                toast.warning(`${totalShortageCount} ${totalShortageCount === 1 ? 'material' : 'materiais'} com estoque insuficiente — verifique fornecedores.`);
               }
             }
           }
@@ -2155,7 +2155,7 @@ export function useUpdateSaleOrder() {
         // Show consolidated MRP notification if POs were generated
         if (mrpPoCount > 0) {
           toast.info(
-            `MRP: ${mrpPoCount} OC(s) gerada(s) automaticamente — material insuficiente detectado.`,
+            `MRP: ${mrpPoCount} ${mrpPoCount === 1 ? 'OC gerada' : 'OCs geradas'} automaticamente — material insuficiente detectado.`,
             { duration: 7000 }
           );
         }
@@ -2360,7 +2360,7 @@ export function useResyncOPsFromSheets() {
       const msg = `${result.totalResyncedOPs} OPs resincronizadas com fichas técnicas atualizadas!`;
       toast.success(msg);
       if (result.errors.length > 0) {
-        toast.warning(`${result.errors.length} erro(s) durante resync`, { description: result.errors.slice(0, 3).join('\n') });
+        toast.warning(`${result.errors.length} ${result.errors.length === 1 ? 'erro' : 'erros'} durante resync`, { description: result.errors.slice(0, 3).join('\n') });
       }
     },
     onError: (err: Error) => toast.error(`Erro na resincronização: ${err.message}`),
@@ -2687,7 +2687,7 @@ export function useResyncOPsFromPV() {
       qc.invalidateQueries({ queryKey: ['stock_movements'] });
       qc.invalidateQueries({ queryKey: ['material_reservations'] });
       qc.invalidateQueries({ queryKey: ['production_consumptions'] });
-      toast.success(`OPs resincronizadas! ${result.deleted} removida(s), ${result.created} recriada(s).`);
+      toast.success(`OPs resincronizadas! ${result.deleted} ${result.deleted === 1 ? 'removida' : 'removidas'}, ${result.created} ${result.created === 1 ? 'recriada' : 'recriadas'}.`);
     },
     onError: (err: Error) => toast.error(`Erro ao resincronizar: ${err.message}`),
   });
@@ -2760,11 +2760,11 @@ export function useCommitPickingForSaleOrder() {
         toast.info('Nenhuma reserva pendente — todas já foram consumidas.');
       } else if (result.skipped_count > 0) {
         toast.warning(
-          `Picking parcial: ${result.picked_count} item(ns) debitado(s), ${result.skipped_count} pulado(s) por falta de estoque.`,
+          `Picking parcial: ${result.picked_count} ${result.picked_count === 1 ? 'item debitado' : 'itens debitados'}, ${result.skipped_count} ${result.skipped_count === 1 ? 'pulado' : 'pulados'} por falta de estoque.`,
           { duration: 10000 },
         );
       } else {
-        toast.success(`Picking concluído — ${result.picked_count} item(ns) debitado(s). PV removido do Picking Semanal.`);
+        toast.success(`Picking concluído — ${result.picked_count} ${result.picked_count === 1 ? 'item debitado' : 'itens debitados'}. PV removido do Picking Semanal.`);
       }
     },
     onError: (err: Error) => toast.error(`Erro no picking: ${err.message}`),
