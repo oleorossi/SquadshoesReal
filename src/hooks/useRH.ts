@@ -53,13 +53,20 @@ export interface BankHoursMovement {
   created_at: string;
 }
 
-export function useBankHoursMovements(employeeId?: string) {
+export function useBankHoursMovements(
+  employeeId?: string,
+  filters?: { from?: string | null; to?: string | null },
+) {
+  const from = filters?.from || null;
+  const to = filters?.to || null;
   return useQuery({
-    queryKey: ['bank_hours_movements', employeeId],
+    queryKey: ['bank_hours_movements', employeeId, from, to],
     queryFn: async () => {
       let q = (supabase as any).from('bank_hours_movements').select('*').order('movement_date', { ascending: false });
       if (employeeId) q = q.eq('employee_id', employeeId);
       else q = q.limit(2000);
+      if (from) q = q.gte('movement_date', from);
+      if (to)   q = q.lte('movement_date', to);
       const { data, error } = await q;
       if (error) throw error;
       return (data || []) as BankHoursMovement[];

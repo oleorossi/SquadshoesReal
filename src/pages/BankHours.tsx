@@ -158,15 +158,18 @@ function useEmployeeBalances() {
   });
 }
 
-function useEmployeeDetail(employeeId: string | null) {
+function useEmployeeDetail(
+  employeeId: string | null,
+  range: { from: string | null; to: string | null },
+) {
   return useQuery({
-    queryKey: ['bank_hours_detail', employeeId],
+    queryKey: ['bank_hours_detail', employeeId, range.from, range.to],
     enabled: !!employeeId,
     queryFn: async () => {
       const { data, error } = await (supabase as any).rpc('calculate_employee_bank_balance', {
         p_employee_id: employeeId,
-        p_from: null,
-        p_to: null,
+        p_from: range.from,
+        p_to: range.to,
       });
       if (error) throw error;
       return data as EmployeeDetail;
@@ -178,15 +181,21 @@ function useEmployeeDetail(employeeId: string | null) {
 export default function BankHours() {
   const [search, setSearch] = useState('');
   const [sectorFilter, setSectorFilter] = useState<string>('all');
+  // Filtro de período: null/null = sem filtro (igual hoje). Aplicado tanto
+  // no cálculo de saldo (RPC) quanto na listagem de lançamentos do drill-down.
+  const [dateFrom, setDateFrom] = useState<string>('');
+  const [dateTo, setDateTo] = useState<string>('');
   const [selectedEmployee, setSelectedEmployee] = useState<EmployeeBalance | null>(null);
   const [payDialogOpen, setPayDialogOpen] = useState(false);
   const [movementDialogOpen, setMovementDialogOpen] = useState(false);
 
+  const range = { from: dateFrom || null, to: dateTo || null };
+
   const summaryQ = useSummary();
   const sectorsQ = useSectors();
   const employeesQ = useEmployeeBalances();
-  const detailQ = useEmployeeDetail(selectedEmployee?.employee_id || null);
-  const movementsQ = useBankHoursMovements(selectedEmployee?.employee_id);
+  const detailQ = useEmployeeDetail(selectedEmployee?.employee_id || null, range);
+  const movementsQ = useBankHoursMovements(selectedEmployee?.employee_id, range);
   const { data: allEmployees = [] } = useEmployees();
 
   const addMovement = useAddBankHoursMovement();
@@ -373,6 +382,79 @@ export default function BankHours() {
               title="Saldo por funcionário"
               actions={
                 <div className="flex items-center gap-2 flex-wrap">
+                  {/* Filtro de período: aplica no drill-down do funcionário (saldo
+                      via RPC) e na lista de lançamentos. Lista geral de saldo
+                      acumulado segue sem filtro (vem da view bank_hours_balance). */}
+                  <div className="flex items-center gap-1 rounded-md border bg-background px-2 py-1">
+                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Período</span>
+                    <Input
+                      type="date"
+                      value={dateFrom}
+                      onChange={e => setDateFrom(e.target.value)}
+                      className="h-7 w-[130px] text-xs border-0 px-1"
+                      aria-label="Data inicial"
+                    />
+                    <span className="text-xs text-muted-foreground">a</span>
+                    <Input
+                      type="date"
+                      value={dateTo}
+                      onChange={e => setDateTo(e.target.value)}
+                      className="h-7 w-[130px] text-xs border-0 px-1"
+                      aria-label="Data final"
+                    />
+                    {(dateFrom || dateTo) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-1.5 text-xs"
+                        onClick={() => { setDateFrom(''); setDateTo(''); }}
+                        aria-label="Limpar período"
+                      >
+                        ✕
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Presets rápidos */}
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-[11px]"
+                      onClick={() => {
+                        const today = new Date();
+                        const d = (n: number) => {
+                          const x = new Date(today); x.setDate(x.getDate() - n);
+                          return x.toISOString().slice(0, 10);
+                        };
+                        setDateFrom(d(7));
+                        setDateTo(today.toISOString().slice(0, 10));
+                      }}
+                    >7 dias</Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-[11px]"
+                      onClick={() => {
+                        const today = new Date();
+                        const d = new Date(today); d.setDate(d.getDate() - 30);
+                        setDateFrom(d.toISOString().slice(0, 10));
+                        setDateTo(today.toISOString().slice(0, 10));
+                      }}
+                    >30 dias</Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-[11px]"
+                      onClick={() => {
+                        const today = new Date();
+                        const first = new Date(today.getFullYear(), today.getMonth(), 1);
+                        setDateFrom(first.toISOString().slice(0, 10));
+                        setDateTo(today.toISOString().slice(0, 10));
+                      }}
+                    >Este mês</Button>
+                  </div>
+
                   <select
                     value={sectorFilter}
                     onChange={e => setSectorFilter(e.target.value)}
@@ -542,7 +624,16 @@ export default function BankHours() {
                   <Card>
                     <CardContent className="p-5 text-center space-y-3">
                       <div>
-                        <div className="eyebrow">Saldo total (movements + batidas)</div>
+                        <div className="eyebrow">
+                          {(dateFrom || dateTo) ? 'Saldo no período' : 'Saldo total'} (movements + batidas)
+                        </div>
+                        {(dateFrom || dateTo) && (
+                          <div className="text-[10px] text-muted-foreground mt-1">
+                            {dateFrom ? new Date(dateFrom).toLocaleDateString('pt-BR') : '—'}
+                            {' '}até{' '}
+                            {dateTo ? new Date(dateTo).toLocaleDateString('pt-BR') : 'hoje'}
+                          </div>
+                        )}
                         <div className={cn('display text-5xl mt-3 tabular-nums', balanceClass(detailQ.data.balance_min))}>
                           {formatHours(detailQ.data.balance_min)}
                         </div>
