@@ -894,6 +894,23 @@ a:focus-visible {
 @layer utilities {
   .font-mono { font-family: var(--font-mono); }
 
+  /* ── Acessibilidade: tamanho mínimo de fonte ─────────────────────
+     WCAG SC 1.4.4 recomenda texto >= 12px; usamos 11px como mínimo
+     prático pra não quebrar density. Promove arbitrary values
+     `text-[9px]` e `text-[10px]` espalhados pelo app para 11px sem
+     precisar editar cada call-site individual. Texto em SVG/canvas
+     e contextos `print:` ficam intocados (a regra só atua em telas).
+     Se algum lugar PRECISA do 9–10px (eg. eixo de gráfico denso),
+     use uma classe customizada (.text-chart-axis) em vez de
+     reabrir o token. */
+  @media screen {
+    .text-\[9px\],
+    .text-\[10px\] {
+      font-size: 11px;
+      line-height: 1.35;
+    }
+  }
+
   /* ── Z-index semantic utilities (mapeiam pros tokens --z-*) ──
      Usar em vez de z-[100], z-[200] etc. */
   .z-dropdown  { z-index: var(--z-dropdown); }   /* 100 */
