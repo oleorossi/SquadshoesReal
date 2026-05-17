@@ -88,7 +88,7 @@ export function ColorsMultiSelect({ value, onChange }: ColorsMultiSelectProps) {
             aria-expanded={open}
             className="w-full justify-between font-normal text-muted-foreground"
           >
-            {selected.length > 0 ? `${selected.length} cor(es) selecionada(s)` : 'Selecionar cores...'}
+            {selected.length > 0 ? `${selected.length} ${selected.length === 1 ? 'cor selecionada' : 'cores selecionadas'}` : 'Selecionar cores...'}
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>

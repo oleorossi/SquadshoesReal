@@ -605,7 +605,7 @@ export default function PurchasePlanningWizard() {
         count++;
       }
 
-      toast.success(`${count} Ordem(ns) de Compra criada(s) com sucesso!`);
+      toast.success(`${count} ${count === 1 ? 'Ordem de Compra criada' : 'Ordens de Compra criadas'} com sucesso!`);
       setCurrentStep(0);
       setSelectedMaterials([]);
     } catch (err: any) {

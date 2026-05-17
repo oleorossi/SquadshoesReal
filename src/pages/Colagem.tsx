@@ -495,7 +495,7 @@ export default function Colagem() {
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
                   <div>
                     <h1 style="font-size:18px;margin-bottom:4px;">🧷 Relatório do Setor de Aviamento</h1>
-                    <p style="font-size:10px;color:#666;margin-bottom:12px;">Gerado em ${new Date().toLocaleString('pt-BR')} | ${ordersToprint.length} OP(s) | ${totalPairs} pares | ${groups.length} grupo(s) ref+cor</p>
+                    <p style="font-size:10px;color:#666;margin-bottom:12px;">Gerado em ${new Date().toLocaleString('pt-BR')} | ${ordersToprint.length} ${ordersToprint.length === 1 ? 'OP' : 'OPs'} | ${totalPairs} pares | ${groups.length} ${groups.length === 1 ? 'grupo' : 'grupos'} ref+cor</p>
                     <div style="display:flex;gap:16px;flex-wrap:wrap;">
                       <div style="text-align:center;padding:6px 14px;background:#f5f5f0;border:1px solid #ddd;border-radius:6px;"><p style="font-size:18px;font-weight:700;">${ordersToprint.length}</p><p style="font-size:9px;color:#666;">OPs</p></div>
                       <div style="text-align:center;padding:6px 14px;background:#f5f5f0;border:1px solid #ddd;border-radius:6px;"><p style="font-size:18px;font-weight:700;">${totalPairs}</p><p style="font-size:9px;color:#666;">Total Pares</p></div>

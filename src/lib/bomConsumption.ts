@@ -350,7 +350,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
 
 export function formatUnit(unit: string): string {
   const labels: Record<string, string> = {
-    metro: 'm', m: 'm', dm2: 'dm²', par: 'par', un: 'un', kg: 'kg', litro: 'L', placa: 'placa(s)',
+    metro: 'm', m: 'm', dm2: 'dm²', par: 'par', un: 'un', kg: 'kg', litro: 'L', placa: 'placas',
   };
   return labels[unit] || unit || 'un';
 }

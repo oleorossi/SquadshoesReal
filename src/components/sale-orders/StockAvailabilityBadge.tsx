@@ -51,7 +51,7 @@ export default function StockAvailabilityBadge({ referenceId, quantity, color }:
             {allOk ? (
               <><PackageCheck className="h-2.5 w-2.5" /> Estoque OK</>
             ) : (
-              <><AlertTriangle className="h-2.5 w-2.5" /> {shortages.length} falta(s)</>
+              <><AlertTriangle className="h-2.5 w-2.5" /> {shortages.length} {shortages.length === 1 ? 'falta' : 'faltas'}</>
             )}
           </Badge>
         </TooltipTrigger>

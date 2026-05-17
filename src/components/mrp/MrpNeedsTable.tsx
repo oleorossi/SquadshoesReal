@@ -45,7 +45,7 @@ export function MrpNeedsTable() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="text-sm text-muted-foreground">
-          {data.length} insumo(s) com necessidade projetada
+          {data.length} {data.length === 1 ? 'insumo' : 'insumos'} com necessidade projetada
         </div>
         <Button
           onClick={handleGenerate}

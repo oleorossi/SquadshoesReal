@@ -32,7 +32,7 @@ export function NavigationAuditWatcher() {
     if (!isDev || found.length === 0) return;
     setIssues(found);
     const firstPath = found.map(getIssuePath).filter(Boolean)[0];
-    toast.error(`${found.length} inconsistência(s) no menu lateral`, {
+    toast.error(`${found.length} ${found.length === 1 ? 'inconsistência' : 'inconsistências'} no menu lateral`, {
       description: firstPath
         ? `Primeira: ${firstPath}. Clique para abrir a tela de Permissões.`
         : 'Itens de menu apontam para módulos incoerentes. Veja o console.',

@@ -67,7 +67,7 @@ export default function RepresentativeTab({ entityId, type }: Props) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{linkedReps.length} representante(s) vinculado(s)</p>
+        <p className="text-sm text-muted-foreground">{linkedReps.length} {linkedReps.length === 1 ? 'representante vinculado' : 'representantes vinculados'}</p>
         <Button type="button" size="sm" className="gap-1.5" onClick={() => { setSearch(''); setAddDialog(true); }}>
           <Plus className="h-4 w-4" />Vincular
         </Button>

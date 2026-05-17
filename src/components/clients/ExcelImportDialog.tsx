@@ -206,7 +206,7 @@ export default function ExcelImportDialog({ open, onOpenChange, onImport }: Prop
               <div className={cn("rounded-lg border p-3 flex items-start gap-3", validationSummary.withErrors > 0 ? "border-warning/30 bg-warning/5" : "border-success/30 bg-success/5")}>
                 {validationSummary.withErrors > 0 ? <AlertTriangle className="h-4 w-4 text-warning mt-0.5 shrink-0" /> : <CheckCircle2 className="h-4 w-4 text-success mt-0.5 shrink-0" />}
                 <div className="text-sm flex-1">
-                  <p className="font-medium">{validationSummary.withErrors > 0 ? `${validationSummary.withErrors} linha(s) com problemas` : 'Todos os dados válidos'}</p>
+                  <p className="font-medium">{validationSummary.withErrors > 0 ? `${validationSummary.withErrors} ${validationSummary.withErrors === 1 ? 'linha com problema' : 'linhas com problemas'}` : 'Todos os dados válidos'}</p>
                   <p className="text-muted-foreground text-xs mt-0.5">{validationSummary.valid} de {validationSummary.total} registros serão importados</p>
                   {validationSummary.withErrors > 0 && (
                     <div className="flex flex-wrap gap-1 mt-2">

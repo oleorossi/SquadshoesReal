@@ -79,7 +79,7 @@ const addConsumptionRow = (map: Map<string, ConsumptionRow>, row: ConsumptionRow
 };
 
 const formatUnit = (unit: string) => {
-  const labels: Record<string, string> = { metro: 'm', m: 'm', dm2: 'dm²', par: 'par', un: 'un', kg: 'kg', litro: 'L', placa: 'placa(s)' };
+  const labels: Record<string, string> = { metro: 'm', m: 'm', dm2: 'dm²', par: 'par', un: 'un', kg: 'kg', litro: 'L', placa: 'placas' };
   return labels[unit] || unit || 'un';
 };
 
@@ -485,7 +485,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
             <div style="margin:8px 0 12px;border:1px solid #d1d5db;border-radius:6px;overflow:hidden">
               <div style="background:#f3f4f6;padding:4px 10px;font-size:12px;font-weight:600;text-transform:uppercase;display:flex;align-items:center;gap:8px">
                 Solado ${soleType}
-                <span style="font-size:11px;font-weight:400;color:#6b7280">${totalPairs} par(es)</span>
+                <span style="font-size:11px;font-weight:400;color:#6b7280">${totalPairs} ${totalPairs === 1 ? 'par' : 'pares'}</span>
               </div>
               <table style="width:auto;border-collapse:collapse;margin:6px 10px 8px"><tr>${sizeCells}</tr></table>
             </div>`;
@@ -507,7 +507,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
       <body>
         <h1>Resumo de Consumo de Materiais</h1>
         ${orderHeaderHtml}
-        <p class="sub">${rows.length} item(ns) · Gerado em ${new Date().toLocaleDateString('pt-BR')}</p>
+        <p class="sub">${rows.length} ${rows.length === 1 ? 'item' : 'itens'} · Gerado em ${new Date().toLocaleDateString('pt-BR')}</p>
         <div style="margin-bottom:16px">${totalsHtml}</div>
         ${sectionsHtml}
       </body></html>`;
@@ -584,7 +584,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
                    {total.toFixed(2)} {formatUnit(unit)}
                  </Badge>
                ))}
-               <Badge variant="outline" className="text-sm px-3 py-1">{rows.length} item(ns)</Badge>
+               <Badge variant="outline" className="text-sm px-3 py-1">{rows.length} {rows.length === 1 ? 'item' : 'itens'}</Badge>
              </div>
              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => handlePrintConsumption()}>
                <FileText className="h-4 w-4" /> RELATÓRIO PDF
@@ -630,7 +630,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
                          <div className="bg-muted/30 px-3 py-1.5 flex items-center gap-2">
                            <span className="text-xs font-semibold text-muted-foreground uppercase">Solado {soleType}</span>
                            <Badge variant="outline" className="text-[10px]">
-                             {Object.values(sizes).reduce((s, v) => s + Math.round(v), 0)} par(es)
+                             {(() => { const total = Object.values(sizes).reduce((s, v) => s + Math.round(v), 0); return `${total} ${total === 1 ? 'par' : 'pares'}`; })()}
                            </Badge>
                          </div>
                          <div className="flex flex-wrap gap-2 p-3">
@@ -644,7 +644,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
                                <div key={size} className="flex flex-col items-center bg-muted/40 rounded-md px-3 py-1.5 min-w-[56px]">
                                  <span className="text-xs text-muted-foreground font-medium">Nº {size}</span>
                                  <span className="text-sm font-mono font-bold">{Math.round(total)}</span>
-                                 <span className="text-[10px] text-muted-foreground">par(es)</span>
+                                 <span className="text-[11px] text-muted-foreground">pares</span>
                                </div>
                              ))}
                          </div>
