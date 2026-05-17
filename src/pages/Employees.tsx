@@ -28,7 +28,12 @@ import { EmptyState } from '@/components/ui/empty-state';
 const emptyEmployee = {
   name: '', external_id: '', role: '', department: '', salary: 0, overtime_hourly_rate: null as number | null,
   hourly_rate: null as number | null, overtime_multiplier: 1.20,
-  work_schedule_id: null as string | null, phone: '', whatsapp: '', pix_key: '', pix_type: '', notes: '', active: true, admission_date: new Date().toISOString().split('T')[0]
+  work_schedule_id: null as string | null, phone: '', whatsapp: '', pix_key: '', pix_type: '', notes: '', active: true, admission_date: new Date().toISOString().split('T')[0],
+  // Multiplicadores POR funcionário (regime contrato — cada contrato pode ter regra própria).
+  // Default 0 = hora simples (sem adicional). 50/100/20 = padrão CLT se quiser usar.
+  overtime_50_pct: 0,
+  overtime_100_pct: 0,
+  night_bonus_pct: 0,
 };
 
 const emptyAdvance = {
@@ -386,14 +391,40 @@ export default function Employees() {
               <CurrencyInput value={form.hourly_rate ?? 0} onChange={v => setForm(f => ({ ...f, hourly_rate: v > 0 ? v : null }))} />
               <p className="text-xs text-muted-foreground mt-1">Se vazio, usa salário ÷ 220h (padrão CLT).</p>
             </div>
-            <div>
-              <Label>Multiplicador HE (ex: 1.20 = +20%)</Label>
-              <Input
-                type="number" step="0.01" min="1" max="3"
-                value={form.overtime_multiplier}
-                onChange={e => setForm(f => ({ ...f, overtime_multiplier: Number(e.target.value) || 1.20 }))}
-              />
-              <p className="text-xs text-muted-foreground mt-1">CLT mínimo: 1.50. Padrão da Squad: 1.20. Configurável por funcionário.</p>
+            <div className="col-span-2">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Adicionais sobre a hora (regime contrato)
+              </Label>
+              <p className="text-[11px] text-muted-foreground mt-0.5 mb-2">
+                Define o % adicional pago sobre a hora normal. <strong>0 = hora simples</strong>
+                {' '}(sem adicional). Quem segue CLT-like usa <code className="px-1 bg-muted rounded">50 / 100 / 20</code>.
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <Label className="text-xs">HE dia útil (%)</Label>
+                  <Input
+                    type="number" step="1" min="0" max="500"
+                    value={form.overtime_50_pct ?? 0}
+                    onChange={e => setForm(f => ({ ...f, overtime_50_pct: Number(e.target.value) || 0 }))}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">HE dom/feriado (%)</Label>
+                  <Input
+                    type="number" step="1" min="0" max="500"
+                    value={form.overtime_100_pct ?? 0}
+                    onChange={e => setForm(f => ({ ...f, overtime_100_pct: Number(e.target.value) || 0 }))}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Adic. noturno (%)</Label>
+                  <Input
+                    type="number" step="1" min="0" max="100"
+                    value={form.night_bonus_pct ?? 0}
+                    onChange={e => setForm(f => ({ ...f, night_bonus_pct: Number(e.target.value) || 0 }))}
+                  />
+                </div>
+              </div>
             </div>
             <div>
               <Label>Escala de Trabalho</Label>
