@@ -201,7 +201,7 @@ export default function SaleOrdersOverviewDialog({ open, onOpenChange, orders }:
         if (error) throw error;
       }
 
-      toast.success(`${ids.length} pedido(s) atualizado(s).`);
+      toast.success(`${ids.length} ${ids.length === 1 ? 'pedido atualizado' : 'pedidos atualizados'}.`);
       qc.invalidateQueries({ queryKey: ['sale_orders'] });
       qc.invalidateQueries({ queryKey: ['kanban-orders'] });
       setBulkMonth(''); setBulkWeek(''); setBulkDeadline('');
@@ -220,7 +220,7 @@ export default function SaleOrdersOverviewDialog({ open, onOpenChange, orders }:
         <DialogHeader className="border-b pb-3">
           <DialogTitle className="flex items-center gap-2">
             <ShoppingCart className="h-5 w-5 text-primary" />
-            Visão Geral — {orders.length} pedido(s) selecionado(s)
+            Visão Geral — {orders.length} {orders.length === 1 ? 'pedido selecionado' : 'pedidos selecionados'}
           </DialogTitle>
           <DialogDescription>
             Análise consolidada e ações em lote sobre os pedidos selecionados.
@@ -286,7 +286,7 @@ export default function SaleOrdersOverviewDialog({ open, onOpenChange, orders }:
                   </div>
                 </div>
                 <p className="text-[11px] text-muted-foreground">
-                  Aplica o(s) campo(s) preenchido(s) a todos os {orders.length} pedidos selecionados. Campos vazios são ignorados.
+                  Aplica os campos preenchidos a todos os {orders.length} pedidos selecionados. Campos vazios são ignorados.
                 </p>
               </CardContent>
             </Card>

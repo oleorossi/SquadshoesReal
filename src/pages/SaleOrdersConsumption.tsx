@@ -21,7 +21,7 @@ export default function SaleOrdersConsumption() {
         <EditorialPageHeader
           sectionLabel="COMERCIAL · CONSUMO"
           title="Consumo Consolidado"
-          description={`${saleOrderIds.length} pedido(s) selecionado(s)`}
+          description={`${saleOrderIds.length} ${saleOrderIds.length === 1 ? 'pedido selecionado' : 'pedidos selecionados'}`}
           actions={
             <Button variant="outline" size="sm" className="gap-1.5" onClick={() => navigate('/sales')}>
               <ArrowLeft className="h-4 w-4" /> Voltar

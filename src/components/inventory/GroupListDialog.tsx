@@ -171,7 +171,7 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
       }
       qc.invalidateQueries({ queryKey: ['product_groups'] });
       qc.invalidateQueries({ queryKey: ['products'] });
-      toast.success(`${grouped} itens (re)agrupados em ${movePlan.length} grupo(s)`);
+      toast.success(`${grouped} itens reagrupados em ${movePlan.length} ${movePlan.length === 1 ? 'grupo' : 'grupos'}`);
     } catch (err: any) {
       toast.error(`Erro ao agrupar: ${err.message}`);
     } finally {
@@ -494,7 +494,7 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
             <AlertDialogTitle>Excluir grupo "{deletingGroup?.name}"?</AlertDialogTitle>
             <AlertDialogDescription>
               {deletingGroup && deletingGroup.itemCount > 0
-                ? `Este grupo possui ${deletingGroup.itemCount} item(ns) vinculado(s). Os itens não serão excluídos, apenas ficarão sem grupo.`
+                ? `Este grupo possui ${deletingGroup.itemCount} ${deletingGroup.itemCount === 1 ? 'item vinculado' : 'itens vinculados'}. Os itens não serão excluídos, apenas ficarão sem grupo.`
                 : 'Esta ação não pode ser desfeita.'}
             </AlertDialogDescription>
           </AlertDialogHeader>

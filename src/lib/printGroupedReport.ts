@@ -246,7 +246,7 @@ function buildSectorExtra(sectorName: string, group: GroupedItem): string {
         const extra = boxes > maxBoxes ? `<span style="font-size:8px;color:#94a3b8;">+${boxes - maxBoxes}</span>` : '';
         boxesHtml = `
           <div class="sector-note" style="margin-top:4px;">
-            <strong>${boxes} caixa(s) × 12 pares</strong>
+            <strong>${boxes} ${boxes === 1 ? 'caixa' : 'caixas'} × 12 pares</strong>
             <div class="boxes-wrap">${boxDivs}${extra}</div>
           </div>`;
       }

@@ -918,7 +918,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
   <!-- Tabela de itens -->
   <div class="pv-items-title">
     <h2>Itens do Pedido</h2>
-    <span class="count">${items.length} referência(s) · ${grandTotalPairs} pares</span>
+    <span class="count">${items.length} ${items.length === 1 ? 'referência' : 'referências'} · ${grandTotalPairs} pares</span>
   </div>
 
   <table class="pv-table">
@@ -962,7 +962,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
     <div class="pv-summary__kpi">
       <div class="pv-summary__kpi-label">Total de Pares</div>
       <div class="pv-summary__kpi-value">${grandTotalPairs}</div>
-      <div class="pv-summary__kpi-sub">${items.length} referência(s)</div>
+      <div class="pv-summary__kpi-sub">${items.length} ${items.length === 1 ? 'referência' : 'referências'}</div>
     </div>
     <div class="pv-summary__kpi primary">
       <div class="pv-summary__kpi-label">Valor Total</div>

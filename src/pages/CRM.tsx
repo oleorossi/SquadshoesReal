@@ -277,7 +277,7 @@ export default function CRM() {
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold truncate">{c.razao_social}</p>
                         <p className="text-xs text-muted-foreground">
-                          {c.total_orders} pedido(s) · último em {c.last_order_date ? format(new Date(c.last_order_date), 'dd/MM/yyyy') : '—'}
+                          {c.total_orders} {c.total_orders === 1 ? 'pedido' : 'pedidos'} · último em {c.last_order_date ? format(new Date(c.last_order_date), 'dd/MM/yyyy') : '—'}
                         </p>
                       </div>
                       <Badge variant="outline">

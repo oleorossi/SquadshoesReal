@@ -19,10 +19,14 @@ function toCanonical(u: string): string {
     case 'g': case 'gr': case 'grama': case 'gramas': return 'g';
     case 'mg': return 'mg';
     // Length
-    case 'm': return 'm';
-    case 'm linear': case 'm lin': case 'ml (linear)': return 'm linear';
-    case 'cm': return 'cm';
-    case 'mm': return 'mm';
+    case 'm': case 'mt': case 'mts': case 'metro': case 'metros': return 'm';
+    // 'MTL' é a sigla oficial SEFAZ pra metro linear na NF-e (NÃO confundir
+    // com 'ml' que é mililitro, mapeado acima). 'ml (linear)' é variante
+    // legacy de alguns ERPs. Todos viram 'm linear' (CONVERSOES tem entry
+    // m linear → m com fator 1, então metragem casa direto com produto em m).
+    case 'mtl': case 'm linear': case 'm lin': case 'ml (linear)': return 'm linear';
+    case 'cm': case 'cent': case 'centimetro': case 'centimetros': return 'cm';
+    case 'mm': case 'milimetro': case 'milimetros': return 'mm';
     // Area
     case 'm2': case 'm²': return 'm²';
     case 'dm2': case 'dm²': return 'dm²';

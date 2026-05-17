@@ -249,7 +249,7 @@ export function SoleStandardMaterialsEditor({ soleGroupId, soleClassification }:
     },
     onSuccess: (count) => {
       qc.invalidateQueries({ queryKey: ['sole_standard_materials', soleGroupId] });
-      toast.success(`${count} material(is) copiado(s).`);
+      toast.success(`${count} ${count === 1 ? 'material copiado' : 'materiais copiados'}.`);
       setShowCopyDialog(false);
       setCopyFromGroupId('');
       setCopyOverwrite(false);
@@ -297,7 +297,7 @@ export function SoleStandardMaterialsEditor({ soleGroupId, soleClassification }:
     },
     onSuccess: (count) => {
       qc.invalidateQueries({ queryKey: ['sole_groups_with_standard_materials'] });
-      toast.success(`${count} material(is) aplicado(s) em ${applyTargetIds.size} solado(s).`);
+      toast.success(`${count} ${count === 1 ? 'material aplicado' : 'materiais aplicados'} em ${applyTargetIds.size} ${applyTargetIds.size === 1 ? 'solado' : 'solados'}.`);
       setShowApplyDialog(false);
       setApplyTargetIds(new Set());
       setApplyOverwrite(false);
@@ -610,7 +610,7 @@ export function SoleStandardMaterialsEditor({ soleGroupId, soleClassification }:
           <DialogHeader>
             <DialogTitle>Aplicar materiais em outros solados</DialogTitle>
             <DialogDescription className="text-xs">
-              Copia os {materials.length} material(is) deste solado pra todos os solados que você selecionar.
+              Copia {materials.length === 1 ? 'o material' : `os ${materials.length} materiais`} deste solado pra todos os solados que você selecionar.
               Útil quando você cadastra "Cola PU + Linha 60 + Forração X" e quer aplicar em N solados similares de uma vez.
             </DialogDescription>
           </DialogHeader>

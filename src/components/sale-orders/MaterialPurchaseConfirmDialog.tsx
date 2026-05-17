@@ -142,8 +142,8 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
          osCount++;
        }
  
-       if (ocCount > 0) toast.success(`${ocCount} ordem(ns) de compra gerada(s)!`);
-       if (osCount > 0) toast.success(`${osCount} ordem(ns) de serviço gerada(s)!`);
+       if (ocCount > 0) toast.success(`${ocCount} ${ocCount === 1 ? 'ordem de compra gerada' : 'ordens de compra geradas'}!`);
+       if (osCount > 0) toast.success(`${osCount} ${osCount === 1 ? 'ordem de serviço gerada' : 'ordens de serviço geradas'}!`);
       onConfirm('with_po');
     } catch (err: any) {
       toast.error(`Erro ao gerar OCs: ${err.message}`);

@@ -45,7 +45,7 @@ export const validationRules: ValidationRule[] = [
             employee_name: rec.employee_name,
             record_date: rec.record_date,
             passed: false,
-            message: `${punches.length} marcação(ões) – número ímpar indica falta de entrada ou saída`,
+            message: `${punches.length} ${punches.length === 1 ? 'marcação' : 'marcações'} – número ímpar indica falta de entrada ou saída`,
             severity: 'high',
             suggested_fix: 'Verificar se há registro de entrada/saída perdido ou adicionar manualmente',
           });
@@ -250,7 +250,7 @@ export const validationRules: ValidationRule[] = [
             employee_name: rec.employee_name,
             record_date: rec.record_date,
             passed: false,
-            message: `Trabalho registrado em ${dayName} (${punches.length} batida(s)) — verificar se é hora extra autorizada ou compensação de banco de horas`,
+            message: `Trabalho registrado em ${dayName} (${punches.length} ${punches.length === 1 ? 'batida' : 'batidas'}) — verificar se é hora extra autorizada ou compensação de banco de horas`,
             severity: 'low',
             suggested_fix: 'Confirmar autorização da gestão. Banco de horas: 50% adicional (CLT Art. 59-A) ou compensar em até 6 meses.',
           });

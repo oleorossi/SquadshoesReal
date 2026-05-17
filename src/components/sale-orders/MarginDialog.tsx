@@ -203,7 +203,7 @@ export default function MarginDialog({ open, onOpenChange, saleOrderId, orderNum
               <div className="rounded-lg border bg-muted/30 p-3">
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Margem %</p>
                 <div className="mt-1.5"><MarginBadge pct={totalMarginPct} /></div>
-                <p className="text-[10px] text-muted-foreground mt-1">{successCount} item(ns) calculado(s)</p>
+                <p className="text-[11px] text-muted-foreground mt-1">{successCount} {successCount === 1 ? 'item calculado' : 'itens calculados'}</p>
               </div>
             </div>
 
@@ -213,7 +213,7 @@ export default function MarginDialog({ open, onOpenChange, saleOrderId, orderNum
                 <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
                 <div className="text-xs">
                   <p className="font-semibold text-amber-800">
-                    {failCount} item(ns) sem custo calculado — margem total é parcial.
+                    {failCount} {failCount === 1 ? 'item' : 'itens'} sem custo calculado — margem total é parcial.
                   </p>
                   <ul className="mt-1 text-amber-700 list-disc pl-4 space-y-0.5">
                     {errors.slice(0, 3).map((e, idx) => <li key={idx}>{e}</li>)}
