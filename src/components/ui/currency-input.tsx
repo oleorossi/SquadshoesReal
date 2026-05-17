@@ -9,83 +9,104 @@ interface CurrencyInputProps {
   required?: boolean;
 }
 
+/**
+ * Parse permissivo: aceita formato pt-BR e formato programador.
+ *
+ *   "30,19"         → 30.19   (vírgula = decimal pt-BR)
+ *   "30.19"         → 30.19   (ponto único, ≤2 casas → decimal programador)
+ *   "1.234,56"      → 1234.56 (ponto = milhar, vírgula = decimal pt-BR)
+ *   "1,234.56"      → 1234.56 (vírgula = milhar, ponto = decimal en-US)
+ *   "1.234.567"     → 1234567 (múltiplos pontos sem vírgula = milhares)
+ *   "30.190"        → 30190   (>2 casas depois do ponto = milhares)
+ *
+ * Heurística: o ÚLTIMO separador é o decimal quando faz sentido (≤2 dígitos
+ * depois). Se ambos aparecem, o que aparece por último vira decimal.
+ */
+function parseUserValue(input: string): number | null {
+  const cleaned = input.replace(/[^\d,.-]/g, "").trim();
+  if (!cleaned || cleaned === "-") return null;
+
+  const lastComma = cleaned.lastIndexOf(",");
+  const lastDot = cleaned.lastIndexOf(".");
+
+  let normalized = cleaned;
+
+  if (lastComma >= 0 && lastDot >= 0) {
+    // Ambos presentes: o que aparece por último é o decimal
+    if (lastComma > lastDot) {
+      // pt-BR: 1.234,56 → 1234.56
+      normalized = cleaned.replace(/\./g, "").replace(",", ".");
+    } else {
+      // en-US: 1,234.56 → 1234.56
+      normalized = cleaned.replace(/,/g, "");
+    }
+  } else if (lastComma >= 0) {
+    // Só vírgula: sempre decimal pt-BR (vírgula raramente é milhar isolado)
+    normalized = cleaned.replace(",", ".");
+    // Se aparecer mais de uma vírgula, mantém só a última como decimal
+    const parts = normalized.split(".");
+    if (parts.length > 2) normalized = parts.slice(0, -1).join("") + "." + parts.slice(-1);
+  } else if (lastDot >= 0) {
+    // Só ponto(s)
+    const dotCount = (cleaned.match(/\./g) || []).length;
+    if (dotCount === 1) {
+      // Um ponto: trato como decimal (30.19 → 30.19), independente de quantas casas.
+      // Usuário que quer "trinta mil cento e noventa" digita "30190" ou "30.190,00"
+      normalized = cleaned;
+    } else {
+      // Múltiplos pontos: todos milhares
+      normalized = cleaned.replace(/\./g, "");
+    }
+  }
+
+  const n = parseFloat(normalized);
+  return isNaN(n) ? null : n;
+}
+
+const formatToBRL = (num: number): string =>
+  num.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 6 });
+
 export function CurrencyInput({ value, onChange, id, className, required }: CurrencyInputProps) {
-  const [displayValue, setDisplayValue] = React.useState("");
-  const [justFocused, setJustFocused] = React.useState(false);
+  const [displayValue, setDisplayValue] = React.useState(() => formatToBRL(value));
+  const [focused, setFocused] = React.useState(false);
 
-  // Format number to BRL display string
-  const formatToBRL = (num: number): string => {
-    return num.toLocaleString("pt-BR", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 6,
-    });
-  };
-
-  // Initialize display value from prop
-  React.useEffect(() => {
-    setDisplayValue(formatToBRL(value));
-  }, []);
-
-  // Sync when value changes externally (e.g. form reset)
+  // Mantém o display sincronizado com prop quando ele muda externamente
+  // e o campo não está sendo editado (evita atropelar o que o usuário digita).
   const prevValueRef = React.useRef(value);
   React.useEffect(() => {
+    if (focused) return;
     if (prevValueRef.current !== value) {
       setDisplayValue(formatToBRL(value));
       prevValueRef.current = value;
     }
-  }, [value]);
+  }, [value, focused]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let raw = e.target.value;
-    
-    // If just focused and user starts typing, replace entire value
-    if (justFocused) {
-      setJustFocused(false);
-      // Extract only the newly typed character(s)
-      const sel = e.target;
-      // If the old displayValue is still partially there, keep only new input
-      if (raw.length > 0 && raw !== displayValue) {
-        // Find what was typed by removing the old selected text
-        const diff = raw.replace(displayValue, "");
-        if (diff.length > 0) {
-          raw = diff;
-        } else if (raw.length <= displayValue.length) {
-          // User replaced selection - use raw as-is
-        } else {
-          raw = raw.slice(-1);
-        }
-      }
-    }
-
-    // Allow only digits, comma and dot
-    const cleaned = raw.replace(/[^\d,.]/g, "");
+    // Aceita só dígitos, vírgula e ponto durante a edição — preserva exatamente
+    // o que o usuário tá digitando (sem reformat) pra cursor não pular.
+    const cleaned = e.target.value.replace(/[^\d,.-]/g, "");
     setDisplayValue(cleaned);
 
-    // Parse: replace dots (thousands sep in pt-BR) then comma to dot
-    const normalized = cleaned
-      .replace(/\./g, "")
-      .replace(",", ".");
-    const parsed = parseFloat(normalized);
-    if (!isNaN(parsed)) {
+    const parsed = parseUserValue(cleaned);
+    if (parsed !== null) {
       prevValueRef.current = parsed;
       onChange(parsed);
-    } else if (cleaned === "" || cleaned === "0") {
+    } else if (cleaned === "") {
       prevValueRef.current = 0;
       onChange(0);
     }
   };
 
   const handleBlur = () => {
-    setJustFocused(false);
-    // Re-format on blur
+    setFocused(false);
+    // Reformata pro padrão pt-BR ao sair do campo
     setDisplayValue(formatToBRL(value));
   };
 
   const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
-    setJustFocused(true);
-    setTimeout(() => {
-      e.target.select();
-    }, 0);
+    setFocused(true);
+    // Seleciona tudo pra facilitar overwrite
+    setTimeout(() => e.target.select(), 0);
   };
 
   return (
