@@ -27,6 +27,8 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { supabase } from '@/integrations/supabase/client';
+import { CapacityOverflowDialog } from '@/components/production/CapacityOverflowDialog';
 
 function getMondayISO(d = new Date()): string {
   const copy = new Date(d);
@@ -244,6 +246,13 @@ export function WaveBuilder({
   const [timeline, setTimeline] = useState<WaveTimeline | null>(null);
   const [materialNeeds, setMaterialNeeds] = useState<WaveMaterialNeed[]>([]);
   const [creating, setCreating] = useState(false);
+  // ── Capacity overflow / outsourcing dialog ──
+  // Estado da onda recém-criada (waveId + orderIds) usado pelo
+  // CapacityOverflowDialog. Mantemos waveId num ref pra chamar onCreated
+  // depois que o operador escolher os transbordos.
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const [overflowOrderIds, setOverflowOrderIds] = useState<string[]>([]);
+  const [pendingWaveId, setPendingWaveId] = useState<string | null>(null);
 
   const createWave = useCreateWave();
 
@@ -383,10 +392,29 @@ export function WaveBuilder({
       if (osCreated > 0) parts.push(`${osCreated} OS(s) artesanal(is) gerada(s) para "nego".`);
       toast.success(parts.join(' '));
 
-      onCreated?.(waveId);
-      onOpenChange(false);
-      setSelected(new Set());
-      setStep('select');
+      // Captura os order_ids das OPs criadas/atualizadas pela onda — usado
+      // pelo CapacityOverflowDialog pra detectar OPs em setor estourado e
+      // permitir transbordo pra terceiros. Se não houver OPs ainda (race do
+      // pipeline de geração), o dialog detecta vazio e fecha sozinho.
+      const { data: newOrders } = await supabase
+        .from('orders')
+        .select('id')
+        .in('sale_order_id', ids);
+      const createdOrderIds = (newOrders || []).map((o: any) => o.id);
+
+      // Abre dialog de transbordo. Quando fechar (com ou sem terceirização),
+      // chama onCreated pra fechar o WaveBuilder e reset.
+      if (createdOrderIds.length > 0) {
+        setPendingWaveId(waveId);
+        setOverflowOrderIds(createdOrderIds);
+        setOverflowOpen(true);
+        // Não fecha o WaveBuilder ainda — espera o dialog fechar primeiro
+      } else {
+        onCreated?.(waveId);
+        onOpenChange(false);
+        setSelected(new Set());
+        setStep('select');
+      }
     } catch (err: any) {
       // Surface the real error — could be from useCreateWave, createWaveWithMaterialOrders,
       // or autoCreateArtisanalServiceOrders (which throws when "nego" contractor is missing).
@@ -588,6 +616,23 @@ export function WaveBuilder({
           )}
         </DialogFooter>
       </DialogContent>
+
+      {/* Capacity Overflow → outsourcing dialog. Abre automaticamente
+          após criar onda quando há OPs em setor com utilização > 100%.
+          Fecha o WaveBuilder quando o dialog fecha (com ou sem transbordo). */}
+      <CapacityOverflowDialog
+        open={overflowOpen}
+        onClose={() => setOverflowOpen(false)}
+        orderIds={overflowOrderIds}
+        onComplete={() => {
+          if (pendingWaveId) onCreated?.(pendingWaveId);
+          setPendingWaveId(null);
+          setOverflowOrderIds([]);
+          onOpenChange(false);
+          setSelected(new Set());
+          setStep('select');
+        }}
+      />
     </Dialog>
   );
 }
