@@ -25,6 +25,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn } from '@/lib/utils';
 import { useColors } from '@/hooks/useColors';
 import { useGroupColors, useAddGroupColor, useRemoveGroupColor } from '@/hooks/useGroupColors';
+import GroupColorSourcesPanel from './GroupColorSourcesPanel';
 import { useProducts } from '@/hooks/useProducts';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -356,6 +357,11 @@ export default function GroupColorsManager({ groupId, groupName }: GroupColorsMa
           })}
         </div>
       )}
+
+      {/* Fontes de cores: permite herdar paleta de outros grupos (ex: tira
+          derivada de napa). Importação manual — operador escolhe quais cores
+          quer disponíveis aqui. */}
+      <GroupColorSourcesPanel groupId={groupId} groupName={groupName} />
     </div>
   );
 }
