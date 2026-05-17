@@ -3,11 +3,16 @@
  * This unifies the old hardcoded CATEGORIES with the dynamic product_groups.
  *
  * MIRROR DA FUNÇÃO SQL `derive_category_from_group_name(text)` aplicada no
- * DB via trigger BEFORE INSERT `tg_products_auto_category` em products.
- * Manter sincronizado: mudar aqui = mudar lá também (migration). O trigger
- * é a defesa final que garante products.category NUNCA seja NULL (resolve
- * "null value in column category" definitivamente, mesmo se algum code
- * path frontend esquecer).
+ * DB via trigger BEFORE INSERT/UPDATE `tg_products_auto_category` em products.
+ * Manter sincronizado: mudar aqui = mudar lá também (migration).
+ *
+ * Comportamento do trigger (atualizado 2026-05-16):
+ *   • INSERT: respeita category explícita; só deriva quando vazia
+ *   • UPDATE de group_id: SEMPRE recalcula (intenção de reclassificar)
+ *   • UPDATE direto de category sem mexer no group: respeita (edit manual)
+ *
+ * O trigger garante products.category NUNCA seja NULL (resolve "null value
+ * in column category" mesmo se algum code path frontend esquecer).
  */
 export function deriveCategoryFromGroup(groupName: string | null | undefined): string {
   if (!groupName) return 'Componente';
