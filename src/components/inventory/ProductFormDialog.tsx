@@ -55,7 +55,10 @@ interface ProductFormDialogProps {
 const normalizeUnit = (value?: string | null): string => {
   if (!value) return 'un';
   const v = value.trim().toLowerCase();
-  if (v === 'metro' || v === 'metros' || v === 'm linear') return 'm';
+  // 'mtl' (sigla SEFAZ pra metro linear na NF-e) e variantes em PT viram 'm'.
+  // Sem isso, importação via XmlImport ou cadastro manual com "MTL" deixava o
+  // produto com unit fora do enum UNITS, quebrando dropdowns e relatórios.
+  if (v === 'metro' || v === 'metros' || v === 'm linear' || v === 'mtl' || v === 'mt' || v === 'mts') return 'm';
   if (v === 'm2') return 'm²';
   if (v === 'dm2') return 'dm²';
   if (v === 'unidade' || v === 'und') return 'un';

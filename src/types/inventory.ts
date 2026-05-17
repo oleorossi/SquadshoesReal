@@ -76,7 +76,7 @@ export const UNIT_LABELS: Record<string, string> = {
   L: 'Litro (L)',
   mm: 'Milímetro (mm)',
   cm: 'Centímetro (cm)',
-  m: 'Metro linear (m)',
+  m: 'Metro linear (m / MTL)',
   'dm²': 'Decímetro² (dm²)',
   'm²': 'Metro² (m²)',
   un: 'Unidade (un)',
