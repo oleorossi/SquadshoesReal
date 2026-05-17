@@ -28,6 +28,16 @@ const tabs: { value: Tab; label: string; icon: typeof LayoutDashboard }[] = [
   { value: 'relatorios',   label: 'Relatórios',   icon: FileText },
 ];
 
+// Contexto por aba: o header global muda título/descrição/sectionLabel
+// conforme a navegação — evita "Recursos Humanos" abstrato em toda tela.
+const TAB_HEADERS: Record<Tab, { section: string; title: string; description: string }> = {
+  painel:       { section: 'RH · PAINEL',        title: 'Painel',        description: 'Visão geral, alertas e evolução do quadro' },
+  funcionarios: { section: 'RH · COLABORADORES', title: 'Funcionários',  description: 'Gestão de equipe e adiantamentos' },
+  ponto:        { section: 'RH · PONTO',         title: 'Controle de Ponto', description: 'Registros, pendências, resolução de HE e configuração' },
+  folha:        { section: 'RH · FOLHA',         title: 'Folha & Banco', description: 'Folha mensal, banco de horas e adiantamentos' },
+  relatorios:   { section: 'RH · RELATÓRIOS',    title: 'Relatórios',    description: 'Custo, HE, produtividade, absenteísmo e quadro' },
+};
+
 // Compatibilidade com URLs legadas que usavam tabs antigas
 const LEGACY_TAB_MAP: Record<string, Tab> = {
   'banco-horas': 'folha',
@@ -61,12 +71,14 @@ export default function RHHub() {
     }, { replace: true });
   };
 
+  const header = TAB_HEADERS[activeTab] ?? TAB_HEADERS.painel;
+
   return (
     <div className="space-y-4 editorial-stagger">
       <EditorialPageHeader
-        sectionLabel="RH · CENTRAL"
-        title="Recursos Humanos"
-        description="Painel, funcionários, ponto, folha e relatórios"
+        sectionLabel={header.section}
+        title={header.title}
+        description={header.description}
       />
       <Tabs value={activeTab} onValueChange={handleNavigateTab} className="w-full">
         <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 pb-2">

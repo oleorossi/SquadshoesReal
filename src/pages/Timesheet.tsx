@@ -1,13 +1,10 @@
-import AppLayout from "@/components/layout/AppLayout";
 import ExceptionsTab from '@/components/timesheet/ExceptionsTab';
 import DivergencesTab from '@/components/timesheet/DivergencesTab';
-import OverviewTab from '@/components/timesheet/OverviewTab';
 import ManualEntryTab from '@/components/timesheet/ManualEntryTab';
 import LateArrivalsTab from '@/components/timesheet/LateArrivalsTab';
 import ImportHistoryPanel from '@/components/timesheet/ImportHistoryPanel';
 import PendingTimeRecordsPanel from '@/components/timesheet/PendingTimeRecordsPanel';
 import TimeValidationPanel from '@/components/timeControl/TimeValidationPanel';
-import ReportsPanel from '@/components/timeControl/ReportsPanel';
 import { OvertimeResolutionPanel } from '@/components/timesheet/OvertimeResolutionPanel';
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -41,7 +38,6 @@ import { useBankHoursBalances } from '@/hooks/useRH';
 import { getBatchDateRange, resolveTimeControlFilters } from '@/lib/timeControlFilters';
 import { calculateWeeklyPeriod } from '@/lib/weeklyTimeCalculation';
 import { findEmployeeMatch, resolveEmployeeName } from '@/lib/employeeMatching';
-import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -1494,48 +1490,56 @@ export default function Timesheet() {
   // `tab` já carrega o tab do hub. A sub-aba interna usa `subtab`.
   const initialTab = searchParams.get('subtab') || searchParams.get('tab') || 'records';
   return (
-    <AppLayout>
-      <div className="space-y-5 page-enter editorial-stagger">
-        <EditorialPageHeader
-          sectionLabel="RH · PONTO"
-          title="Controle de Ponto"
-          description="Importação de ponto, horários, feriados e cálculo de horas extras"
-        />
+    <div className="space-y-4 page-enter">
+      <Tabs defaultValue={mapLegacyTab(initialTab)} className="space-y-4">
+        {/* 11 → 5 sub-tabs (mai/2026): pending+late+occurrences viraram
+            "Pendências" (tudo que pede ação no mesmo lugar); schedule+
+            holidays+history viraram "Configuração" (coisas raras); overview
+            e reports migraram pro Painel RH e Relatórios respectivamente. */}
+        <HubTabsList tabs={[
+          { value: 'records',     label: 'Ponto',         icon: FileSpreadsheet },
+          { value: 'manual',      label: 'Lançamento',    icon: ClipboardEdit },
+          { value: 'pending',     label: 'Pendências',    icon: AlertTriangle },
+          { value: 'overtime',    label: 'Resolução HE',  icon: Wallet },
+          { value: 'config',      label: 'Configuração',  icon: Clock },
+        ]} />
 
-        <Tabs defaultValue={initialTab} className="space-y-4">
-          <HubTabsList tabs={[
-            { value: 'records',     label: 'Ponto',          icon: FileSpreadsheet },
-            { value: 'overview',    label: 'Visão Geral',    icon: Users2 },
-            { value: 'pending',     label: 'Pendências',     icon: AlertTriangle },
-            { value: 'manual',      label: 'Lançamento',     icon: ClipboardEdit },
-            { value: 'late',        label: 'Atrasos',        icon: AlarmClock },
-            { value: 'occurrences', label: 'Ocorrências',    icon: AlertTriangle },
-            { value: 'overtime',    label: 'Resolução HE',   icon: Wallet },
-            { value: 'reports',     label: 'Relatórios',     icon: FileText },
-            { value: 'history',     label: 'Histórico Imp.', icon: History },
-            { value: 'schedule',    label: 'Horário Padrão', icon: Clock },
-            { value: 'holidays',    label: 'Feriados',       icon: Calendar },
-          ]} />
-
-          <TabsContent value="records"><TimesheetRecordsTab /></TabsContent>
-          <TabsContent value="overview"><OverviewTab /></TabsContent>
-          <TabsContent value="pending"><PendingTimeRecordsPanel /></TabsContent>
-          <TabsContent value="manual"><ManualEntryTab /></TabsContent>
-          <TabsContent value="late"><LateArrivalsTab /></TabsContent>
-          <TabsContent value="occurrences" className="space-y-6">
-            <DivergencesTab />
-            <Separator />
-            <ExceptionsTab />
-            <Separator />
-            <TimeValidationPanel />
-          </TabsContent>
-          <TabsContent value="overtime"><OvertimeResolutionPanel /></TabsContent>
-          <TabsContent value="reports"><ReportsPanel /></TabsContent>
-          <TabsContent value="history"><ImportHistoryPanel /></TabsContent>
-          <TabsContent value="schedule"><WorkScheduleTab /></TabsContent>
-          <TabsContent value="holidays"><HolidaysTab /></TabsContent>
-        </Tabs>
-      </div>
-    </AppLayout>
+        <TabsContent value="records"><TimesheetRecordsTab /></TabsContent>
+        <TabsContent value="manual"><ManualEntryTab /></TabsContent>
+        <TabsContent value="pending" className="space-y-6">
+          <PendingTimeRecordsPanel />
+          <Separator />
+          <LateArrivalsTab />
+          <Separator />
+          <DivergencesTab />
+          <Separator />
+          <ExceptionsTab />
+          <Separator />
+          <TimeValidationPanel />
+        </TabsContent>
+        <TabsContent value="overtime"><OvertimeResolutionPanel /></TabsContent>
+        <TabsContent value="config" className="space-y-6">
+          <WorkScheduleTab />
+          <Separator />
+          <HolidaysTab />
+          <Separator />
+          <ImportHistoryPanel />
+        </TabsContent>
+      </Tabs>
+    </div>
   );
+}
+
+/** Mapeia URLs legadas (?subtab=late, =reports etc.) pras 5 sub-tabs novas. */
+function mapLegacyTab(t: string): string {
+  switch (t) {
+    case 'overview':    return 'records';      // overview migrou pro Painel
+    case 'late':
+    case 'occurrences': return 'pending';      // unificado em Pendências
+    case 'reports':     return 'records';      // relatórios migraram pro RH > Relatórios
+    case 'history':
+    case 'schedule':
+    case 'holidays':    return 'config';       // unificado em Configuração
+    default:            return t || 'records';
+  }
 }

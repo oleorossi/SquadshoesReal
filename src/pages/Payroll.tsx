@@ -22,7 +22,6 @@ import {
 import { calculatePayroll, PAYROLL_TAX_YEAR, type BenefitsConfig, type PayrollDayInput } from '@/lib/payrollCalc';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -240,37 +239,28 @@ export default function Payroll() {
   }
 
   return (
-    <div className="space-y-5 page-enter editorial-stagger">
-      <EditorialPageHeader
-        sectionNumber="03"
-        sectionLabel="RH · FOLHA"
-        title="Folha de Pagamento"
-        description="Cálculo mensal: salário base + HE 50/100 + adic. noturno + DSR + benefícios − INSS/IRRF."
-        actions={
-          <>
-            <Input
-              type="month"
-              value={period}
-              onChange={e => setPeriod(e.target.value)}
-              className="w-40"
-            />
-            <BenefitsConfigDialog open={configOpen} onOpenChange={setConfigOpen} />
-            <Button variant="outline" onClick={() => setConfigOpen(true)}>
-              <Settings className="h-4 w-4 mr-2" />Configurações
-            </Button>
-            <Button variant="outline" onClick={() => navigate('/rh?tab=ponto&subtab=overtime')}>
-              <Clock className="h-4 w-4 mr-2" />
-              Resolver HE
-            </Button>
-            <Button onClick={calculateAll} disabled={calcRunning}>
-              {calcRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Calculator className="h-4 w-4 mr-2" />}
-              Calcular folha
-            </Button>
-          </>
-        }
-      />
-
-      <PayrollPendingInputsAlert period={period} />
+    <div className="space-y-4 page-enter">
+      {/* Header local removido — vive no RHHub. Actions ficam aqui em barra própria. */}
+      <div className="flex items-center justify-end gap-2 flex-wrap">
+        <Input
+          type="month"
+          value={period}
+          onChange={e => setPeriod(e.target.value)}
+          className="w-40 h-9"
+        />
+        <BenefitsConfigDialog open={configOpen} onOpenChange={setConfigOpen} />
+        <Button variant="outline" size="sm" onClick={() => setConfigOpen(true)}>
+          <Settings className="h-4 w-4 mr-2" />Configurações
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => navigate('/rh?tab=ponto&subtab=overtime')}>
+          <Clock className="h-4 w-4 mr-2" />
+          Resolver HE
+        </Button>
+        <Button size="sm" onClick={calculateAll} disabled={calcRunning}>
+          {calcRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Calculator className="h-4 w-4 mr-2" />}
+          Calcular folha
+        </Button>
+      </div>
 
       <PayrollPendingInputsAlert period={period} />
 

@@ -19,8 +19,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Clock, TrendUp as TrendingUp, TrendDown as TrendingDown, Scales as Scale, Users, Buildings as Building2, MagnifyingGlass as Search, CircleNotch as Loader2, CaretRight as ChevronRight, Plus, Trash as Trash2, CurrencyDollar } from '@phosphor-icons/react';
-import AppLayout from '@/components/layout/AppLayout';
-import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { todayISO } from '@/lib/date';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -252,19 +250,14 @@ export default function BankHours() {
   const summary = summaryQ.data;
 
   return (
-    <AppLayout>
-      <div className="space-y-5 pb-12">
-        {/* Header */}
-        <EditorialPageHeader
-          sectionLabel="RH · BANCO DE HORAS"
-          title="Banco de Horas"
-          description="Saldo, lançamentos e relatórios — funcionário a funcionário, setor a setor."
-          actions={
-            <Dialog open={movementDialogOpen} onOpenChange={setMovementDialogOpen}>
-              <DialogTrigger asChild>
-                <Button><Plus className="h-4 w-4 mr-2" />Novo lançamento</Button>
-              </DialogTrigger>
-              <DialogContent>
+    <div className="space-y-4 pb-8 page-enter">
+      {/* Header removido — vive no RHHub. Apenas ação topo. */}
+      <div className="flex items-center justify-end">
+        <Dialog open={movementDialogOpen} onOpenChange={setMovementDialogOpen}>
+          <DialogTrigger asChild>
+            <Button size="sm"><Plus className="h-4 w-4 mr-2" />Novo lançamento</Button>
+          </DialogTrigger>
+          <DialogContent>
               <DialogHeader><DialogTitle>Novo lançamento no banco de horas</DialogTitle></DialogHeader>
               <div className="space-y-3">
                 <div>
@@ -330,11 +323,10 @@ export default function BankHours() {
                 </Button>
               </div>
               </DialogContent>
-            </Dialog>
-          }
-        />
+        </Dialog>
+      </div>
 
-        {/* KPIs */}
+      {/* KPIs */}
         <StatGrid>
           <StatCard
             label="Funcionários"
@@ -774,7 +766,6 @@ export default function BankHours() {
             balanceMinutes={detailQ.data?.balance_min ?? 0}
           />
         )}
-      </div>
-    </AppLayout>
+    </div>
   );
 }

@@ -21,8 +21,6 @@ import {
 import { useWorkSchedules } from '@/hooks/useTimesheet';
 import { useBenefitsConfig } from '@/hooks/useRH';
 import { toast } from 'sonner';
-import AppLayout from '@/components/layout/AppLayout';
-import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -118,25 +116,18 @@ export default function Employees() {
   }
 
   return (
-    <AppLayout>
-      <div className="space-y-5 page-enter editorial-stagger">
-        <EditorialPageHeader
-          sectionLabel="RH · COLABORADORES"
-          title="Funcionários"
-          description="Gestão de equipe e adiantamentos"
-          actions={
-            <>
-              <Button onClick={() => { setForm(emptyEmployee); setEditing(null); setDialogOpen(true); }} className="gap-2">
-                <Plus className="h-4 w-4" /> Novo Funcionário
-              </Button>
-              <Button onClick={() => setAdvanceDialogOpen(true)} variant="outline" className="gap-2">
-                <DollarSign className="h-4 w-4" /> Novo Adiantamento
-              </Button>
-            </>
-          }
-        />
+    <div className="space-y-4 page-enter">
+      {/* Header local removido — vive no RHHub. Actions ficam aqui em barra própria. */}
+      <div className="flex items-center justify-end gap-2 flex-wrap">
+        <Button onClick={() => { setForm(emptyEmployee); setEditing(null); setDialogOpen(true); }} className="gap-2" size="sm">
+          <Plus className="h-4 w-4" /> Novo Funcionário
+        </Button>
+        <Button onClick={() => setAdvanceDialogOpen(true)} variant="outline" className="gap-2" size="sm">
+          <DollarSign className="h-4 w-4" /> Novo Adiantamento
+        </Button>
+      </div>
 
-        {/* KPI Cards */}
+      {/* KPI Cards */}
         <StatGrid>
           <StatCard label="Total" value={employees.length} hint="funcionários" icon={Users2} />
           <StatCard
@@ -442,6 +433,6 @@ export default function Employees() {
           </div>
         </DialogContent>
       </Dialog>
-    </AppLayout>
+    </div>
   );
 }

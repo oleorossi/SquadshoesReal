@@ -177,14 +177,11 @@ export default function PainelRH({ onNavigateTab }: Props) {
     + (bhAlertas.length > 0 ? 1 : 0);
 
   return (
-    <div className="space-y-5 page-enter">
+    <div className="space-y-4 page-enter">
       <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="display text-xl tracking-tight">Painel de Pessoas</h1>
-          <p className="text-sm text-muted-foreground">
-            Resumo do quadro, alertas que pedem ação e evolução do efetivo.
-          </p>
-        </div>
+        <p className="text-sm text-muted-foreground">
+          Resumo do quadro, alertas que pedem ação e evolução do efetivo.
+        </p>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" className="gap-1.5" onClick={() => onNavigateTab('ponto')}>
             <ClipboardEdit className="h-3.5 w-3.5" /> Lançar batidas
