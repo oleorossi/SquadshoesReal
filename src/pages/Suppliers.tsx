@@ -208,7 +208,7 @@ function SupplierInvoices({ supplierId, supplierName }: { supplierId: string; su
               <div className="flex items-center justify-between px-3 py-2">
                 <div className="flex items-center gap-3">
                   <CollapsibleTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-6 w-6">
+                    <Button variant="ghost" size="icon" className="h-6 w-6" aria-label={isExp ? 'Recolher detalhes da nota fiscal' : 'Expandir detalhes da nota fiscal'}>
                       {isExp ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                     </Button>
                   </CollapsibleTrigger>
@@ -476,15 +476,15 @@ export default function Suppliers() {
                           </div>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(s)}>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(s)} aria-label="Editar fornecedor">
                             <Pencil className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setItemsDialogSupplier(s)} title="Ver itens vinculados">
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setItemsDialogSupplier(s)} title="Ver itens vinculados" aria-label="Ver itens vinculados ao fornecedor">
                             <Package className="h-4 w-4" />
                           </Button>
                           <DeleteConfirmButton onConfirm={() => deleteSupplier.mutate(s.id)} title="Excluir fornecedor?" size="h-8 w-8" iconSize="h-4 w-4" />
                           <CollapsibleTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={isExpanded ? 'Recolher detalhes do fornecedor' : 'Expandir detalhes do fornecedor'}>
                               {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                             </Button>
                           </CollapsibleTrigger>

@@ -375,6 +375,12 @@ export function MasterVariantDialog({
   const [groupForm, setGroupForm] = useState<GroupForm | null>(null);
   const [savingGroup, setSavingGroup] = useState(false);
 
+  // Helper compartilhado: NaN/null/undefined → fallback (0 por default).
+  // Usado nos onChange dos inputs numéricos pra evitar que o state segure
+  // NaN, e no payload de save pra blindar valores que escaparam.
+  const safeNum = (v: any, fallback = 0): number =>
+    Number.isFinite(Number(v)) ? Number(v) : fallback;
+
   useEffect(() => {
     if (open && variants.length > 0) {
       setActiveGradeTab(variants[0].id);
@@ -519,28 +525,28 @@ export function MasterVariantDialog({
           category: groupForm.category || v.category,
           group_id: groupForm.group_id,
           supplier_id: groupForm.supplier_id,
-          dimensions_length: groupForm.dimensions_length,
-          dimensions_width: groupForm.dimensions_width,
-          dimensions_height: groupForm.dimensions_height,
-          dimensions_thickness: groupForm.dimensions_thickness,
+          dimensions_length: safeNum(groupForm.dimensions_length),
+          dimensions_width: safeNum(groupForm.dimensions_width),
+          dimensions_height: safeNum(groupForm.dimensions_height),
+          dimensions_thickness: safeNum(groupForm.dimensions_thickness),
           dimensions_unit: groupForm.dimensions_unit,
-          yield_per_meter: groupForm.yield_per_meter || null,
+          yield_per_meter: safeNum(groupForm.yield_per_meter) || null,
           yield_unit: groupForm.yield_unit,
           purchase_unit: groupForm.purchase_unit,
           production_unit: groupForm.production_unit,
-          conversion_rate: groupForm.conversion_rate || 1,
+          conversion_rate: safeNum(groupForm.conversion_rate, 1) || 1,
            purchase_order_unit: groupForm.purchase_order_unit,
            calculation_method: groupForm.calculation_method,
-           lead_time_days: groupForm.lead_time_days,
-           unit_price: groupForm.unit_price,
-           price_wholesale: groupForm.price_wholesale,
-           price_retail: groupForm.price_retail,
-           min_stock: groupForm.min_stock,
-           max_stock: groupForm.max_stock,
-           safety_stock: groupForm.safety_stock,
+           lead_time_days: safeNum(groupForm.lead_time_days),
+           unit_price: safeNum(groupForm.unit_price),
+           price_wholesale: safeNum(groupForm.price_wholesale),
+           price_retail: safeNum(groupForm.price_retail),
+           min_stock: safeNum(groupForm.min_stock),
+           max_stock: safeNum(groupForm.max_stock),
+           safety_stock: safeNum(groupForm.safety_stock),
            location: groupForm.location,
            active: groupForm.active,
-           min_order_quantity: groupForm.min_order_quantity,
+           min_order_quantity: safeNum(groupForm.min_order_quantity, 1),
          };
         const { error } = await supabase.from('products').update(payload).eq('id', v.id);
         if (error) throw new Error(`Variante "${v.color || v.sku}": ${error.message}`);
@@ -836,15 +842,15 @@ export function MasterVariantDialog({
                         <div className="grid grid-cols-3 gap-3">
                           <div>
                             <Label className="text-xs">Custo unitário (R$)</Label>
-                            <Input type="number" step="0.0001" value={groupForm.unit_price} onChange={e => updateGroup('unit_price', Number(e.target.value))} className="mt-1 h-9 font-mono" />
+                            <Input type="number" step="0.0001" value={groupForm.unit_price} onChange={e => updateGroup('unit_price', safeNum(e.target.value))} className="mt-1 h-9 font-mono" />
                           </div>
                           <div>
                             <Label className="text-xs">Atacado (R$)</Label>
-                            <Input type="number" step="0.01" value={groupForm.price_wholesale} onChange={e => updateGroup('price_wholesale', Number(e.target.value))} className="mt-1 h-9 font-mono" />
+                            <Input type="number" step="0.01" value={groupForm.price_wholesale} onChange={e => updateGroup('price_wholesale', safeNum(e.target.value))} className="mt-1 h-9 font-mono" />
                           </div>
                           <div>
                             <Label className="text-xs">Varejo (R$)</Label>
-                            <Input type="number" step="0.01" value={groupForm.price_retail} onChange={e => updateGroup('price_retail', Number(e.target.value))} className="mt-1 h-9 font-mono" />
+                            <Input type="number" step="0.01" value={groupForm.price_retail} onChange={e => updateGroup('price_retail', safeNum(e.target.value))} className="mt-1 h-9 font-mono" />
                           </div>
                         </div>
                       </section>
@@ -854,15 +860,15 @@ export function MasterVariantDialog({
                         <div className="grid grid-cols-3 gap-3">
                           <div>
                             <Label className="text-xs">Estoque Mínimo</Label>
-                            <Input type="number" value={groupForm.min_stock} onChange={e => updateGroup('min_stock', Number(e.target.value))} className="mt-1 h-9 font-mono" />
+                            <Input type="number" value={groupForm.min_stock} onChange={e => updateGroup('min_stock', safeNum(e.target.value))} className="mt-1 h-9 font-mono" />
                           </div>
                           <div>
                             <Label className="text-xs">Estoque Máximo</Label>
-                            <Input type="number" value={groupForm.max_stock} onChange={e => updateGroup('max_stock', Number(e.target.value))} className="mt-1 h-9 font-mono" />
+                            <Input type="number" value={groupForm.max_stock} onChange={e => updateGroup('max_stock', safeNum(e.target.value))} className="mt-1 h-9 font-mono" />
                           </div>
                           <div>
                             <Label className="text-xs">Segurança</Label>
-                            <Input type="number" value={groupForm.safety_stock} onChange={e => updateGroup('safety_stock', Number(e.target.value))} className="mt-1 h-9 font-mono" />
+                            <Input type="number" value={groupForm.safety_stock} onChange={e => updateGroup('safety_stock', safeNum(e.target.value))} className="mt-1 h-9 font-mono" />
                           </div>
                           <div className="col-span-3">
                             <Label className="text-xs">Localização física</Label>
