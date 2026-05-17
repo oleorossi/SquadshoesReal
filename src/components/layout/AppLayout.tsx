@@ -30,9 +30,10 @@ const QuickActionsFAB = () => {
         <DropdownMenuTrigger asChild>
           <Button
             size="icon"
+            aria-label="Ações rápidas: novo pedido, OP ou entrada de estoque"
             className="h-13 w-13 rounded-full shadow-elevated bg-primary hover:bg-primary/90 text-primary-foreground transition-all duration-200 hover:scale-105 hover:shadow-[0_8px_24px_-4px_hsl(var(--primary)/0.5)]"
           >
-            <Plus className="h-6 w-6" />
+            <Plus className="h-6 w-6" aria-hidden="true" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" side="top" className="w-58 mb-3 shadow-elevated rounded-xl border-border/60">
@@ -198,8 +199,8 @@ export default function AppLayout({ children, printMode = false }: { children: R
                   <ModeToggle className="h-7 w-7 text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-accent" />
                <NotificationBell key="sidebar-mobile-notif" />
                   {mobile && (
-                    <Button variant="ghost" size="icon" className="shrink-0 md:hidden h-7 w-7 text-sidebar-muted" onClick={() => setMobileOpen(false)}>
-                      <X className="h-4 w-4" />
+                    <Button variant="ghost" size="icon" aria-label="Fechar menu lateral" className="shrink-0 md:hidden h-7 w-7 text-sidebar-muted" onClick={() => setMobileOpen(false)}>
+                      <X className="h-4 w-4" aria-hidden="true" />
                     </Button>
                   )}
                 </div>
@@ -487,8 +488,8 @@ export default function AppLayout({ children, printMode = false }: { children: R
   const mobileSystemMenu = filteredSystemItems.length > 0 ? (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-9 w-9 text-foreground/60 hover:text-foreground">
-          <Settings className="h-5 w-5" />
+        <Button variant="ghost" size="icon" aria-label="Menu do sistema" className="h-9 w-9 text-foreground/60 hover:text-foreground">
+          <Settings className="h-5 w-5" aria-hidden="true" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
@@ -549,12 +550,12 @@ export default function AppLayout({ children, printMode = false }: { children: R
               printMode && 'print:hidden'
             )}>
               {!isDashboard ? (
-                <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => navigate(-1)}>
-                  <ArrowLeft className="h-5 w-5" />
+                <Button variant="ghost" size="icon" aria-label="Voltar para a tela anterior" className="h-9 w-9" onClick={() => navigate(-1)}>
+                  <ArrowLeft className="h-5 w-5" aria-hidden="true" />
                 </Button>
               ) : (
-                <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => setMobileOpen(true)}>
-                  <Menu className="h-5 w-5" />
+                <Button variant="ghost" size="icon" aria-label="Abrir menu lateral" className="h-9 w-9" onClick={() => setMobileOpen(true)}>
+                  <Menu className="h-5 w-5" aria-hidden="true" />
                 </Button>
               )}
               <div className="h-8 w-8 rounded-lg overflow-hidden ring-1 ring-border bg-card shrink-0 shadow-sm">

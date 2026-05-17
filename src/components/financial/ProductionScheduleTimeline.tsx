@@ -424,9 +424,28 @@ function exportLateOrdersToExcel(rows: ScheduleRow[]) {
   XLSX.writeFile(wb, `ops_em_atraso_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
 }
 
+/** Info do PV usada nos cabeçalhos quando agrupado por pedido. */
+function useSaleOrdersInfo(saleOrderIds: string[]) {
+  return useQuery({
+    queryKey: ['schedule-pv-info', saleOrderIds.sort().join(',')],
+    enabled: saleOrderIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('sale_orders')
+        .select('id, order_number, client_name, status, delivery_deadline')
+        .in('id', saleOrderIds);
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 60_000,
+  });
+}
+
 export function ProductionScheduleTimeline() {
   const { data: rows = [], isLoading } = useProductionSchedule();
   const [search, setSearch] = useState('');
+  const [groupMode, setGroupMode] = useState<'pedido' | 'op'>('pedido');
+  const [collapsedPVs, setCollapsedPVs] = useState<Set<string>>(new Set());
   const [dialogState, setDialogState] = useState<{ open: boolean; scope: 'order' | 'op'; row: ScheduleRow | null }>({
     open: false, scope: 'order', row: null,
   });
@@ -440,6 +459,49 @@ export function ProductionScheduleTimeline() {
         r.referencia_nome?.toLowerCase().includes(q),
     );
   }, [rows, search]);
+
+  // Agrupa por sale_order_id mantendo a ordem de entrega.
+  const groupedByPV = useMemo(() => {
+    const map = new Map<string, ScheduleRow[]>();
+    for (const r of filtered) {
+      const key = r.sale_order_id || `op-${r.order_id}`;
+      const arr = map.get(key) || [];
+      arr.push(r);
+      map.set(key, arr);
+    }
+    // Ordena cada grupo internamente por pedido_ref, e os grupos pela entrega
+    // mais próxima do PV (menor data_entrega_cliente entre as OPs do PV).
+    const entries = Array.from(map.entries()).map(([saleOrderId, ops]) => {
+      ops.sort((a, b) => (a.pedido_ref || '').localeCompare(b.pedido_ref || ''));
+      const earliestDelivery = ops.reduce((min, o) =>
+        !min || (o.data_entrega_cliente && o.data_entrega_cliente < min) ? o.data_entrega_cliente : min,
+        '' as string,
+      );
+      return { saleOrderId, ops, earliestDelivery };
+    });
+    entries.sort((a, b) => (a.earliestDelivery || '9999').localeCompare(b.earliestDelivery || '9999'));
+    return entries;
+  }, [filtered]);
+
+  const pvIds = useMemo(
+    () => groupedByPV.map(g => g.saleOrderId).filter(id => !id.startsWith('op-')),
+    [groupedByPV],
+  );
+  const { data: pvInfo = [] } = useSaleOrdersInfo(pvIds);
+  const pvInfoById = useMemo(() => {
+    const m = new Map<string, any>();
+    for (const p of pvInfo) m.set(p.id, p);
+    return m;
+  }, [pvInfo]);
+
+  const togglePV = (saleOrderId: string) => {
+    setCollapsedPVs(prev => {
+      const next = new Set(prev);
+      if (next.has(saleOrderId)) next.delete(saleOrderId);
+      else next.add(saleOrderId);
+      return next;
+    });
+  };
 
   const kpis = useMemo(() => {
     const today = new Date();
@@ -476,7 +538,30 @@ export function ProductionScheduleTimeline() {
                 A partir da data de entrega, o sistema calcula quando comprar, quando o material precisa estar na fábrica e quando cada setor deve iniciar.
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
+              {/* Toggle: agrupar por pedido (PV) ou listar OP a OP */}
+              <div className="inline-flex rounded-md border bg-background overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setGroupMode('pedido')}
+                  className={`px-3 h-9 text-xs font-medium transition-colors ${
+                    groupMode === 'pedido' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                  }`}
+                  aria-pressed={groupMode === 'pedido'}
+                >
+                  Por Pedido
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGroupMode('op')}
+                  className={`px-3 h-9 text-xs font-medium border-l transition-colors ${
+                    groupMode === 'op' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                  }`}
+                  aria-pressed={groupMode === 'op'}
+                >
+                  Por OP
+                </button>
+              </div>
               <div className="relative flex-1 sm:w-72">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -517,94 +602,82 @@ export function ProductionScheduleTimeline() {
         </Card>
       )}
 
-      <div className="space-y-3">
-        {filtered.map(op => {
-          const lateCount = computeLateStages(op).length;
-          return (
-            <Card key={op.order_id} className="overflow-hidden">
-              <CardHeader className="pb-3 bg-muted/30">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <div>
-                      <CardTitle className="text-base">OP {op.pedido_ref}</CardTitle>
-                      <CardDescription className="text-xs">
-                        {op.referencia_nome} · {op.op_quantity} pares
-                      </CardDescription>
-                    </div>
-                    <div className="flex items-center gap-1.5">
+      {groupMode === 'op' ? (
+        <div className="space-y-3">
+          {filtered.map(op => <OpCard key={op.order_id} op={op} onDialog={setDialogState} />)}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {groupedByPV.map(({ saleOrderId, ops, earliestDelivery }) => {
+            const pv = pvInfoById.get(saleOrderId);
+            const totalPairs = ops.reduce((s, o) => s + Number(o.op_quantity || 0), 0);
+            const lateOps = ops.filter(o => computeLateStages(o).length > 0).length;
+            const totalLateStages = ops.reduce((s, o) => s + computeLateStages(o).length, 0);
+            const isCollapsed = collapsedPVs.has(saleOrderId);
+            const firstOp = ops[0];
+            return (
+              <Card key={saleOrderId} className="overflow-hidden">
+                <CardHeader className="pb-3 bg-muted/40 border-b">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-3 flex-wrap min-w-0">
+                      <button
+                        onClick={() => togglePV(saleOrderId)}
+                        className="text-left min-w-0"
+                        aria-expanded={!isCollapsed}
+                      >
+                        <CardTitle className="text-base flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-primary shrink-0" />
+                          PV {pv?.order_number || '—'}
+                          <span className="text-muted-foreground font-normal truncate">
+                            · {pv?.client_name || 'Cliente —'}
+                          </span>
+                        </CardTitle>
+                        <CardDescription className="text-xs mt-0.5">
+                          {ops.length} {ops.length === 1 ? 'OP' : 'OPs'} · {totalPairs} pares · entrega mais próxima {fmtFull(earliestDelivery)}
+                        </CardDescription>
+                      </button>
                       <Button
                         size="sm"
                         variant="outline"
                         className="h-7 text-xs gap-1"
-                        onClick={() => setDialogState({ open: true, scope: 'order', row: op })}
+                        onClick={() => setDialogState({ open: true, scope: 'order', row: firstOp })}
                       >
                         <FileText className="h-3 w-3" />
-                        Levar do pedido
+                        Resumo do PV
                       </Button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {totalLateStages > 0 && (
+                        <Badge className="bg-destructive/15 text-destructive border-destructive/30 text-xs gap-1">
+                          <AlertTriangle className="h-3 w-3" />
+                          {lateOps}/{ops.length} {ops.length === 1 ? 'OP com atraso' : 'OPs com atraso'} ({totalLateStages} etapas)
+                        </Badge>
+                      )}
+                      {pv?.status && <Badge variant="outline" className="text-xs">{pv.status}</Badge>}
+                      <Badge className="bg-primary/10 text-primary border-primary/20 text-xs">
+                        Entrega: {fmtFull(pv?.delivery_deadline || earliestDelivery)}
+                      </Badge>
                       <Button
                         size="sm"
-                        variant="outline"
-                        className="h-7 text-xs gap-1"
-                        onClick={() => setDialogState({ open: true, scope: 'op', row: op })}
+                        variant="ghost"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => togglePV(saleOrderId)}
                       >
-                        <Layers className="h-3 w-3" />
-                        Levar a OP
+                        {isCollapsed ? 'Expandir' : 'Recolher'}
                       </Button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {lateCount > 0 && (
-                      <Badge className="bg-destructive/15 text-destructive border-destructive/30 text-xs gap-1">
-                        <AlertTriangle className="h-3 w-3" />
-                        {lateCount} em atraso
-                      </Badge>
-                    )}
-                    <Badge variant="outline" className="text-xs">{op.order_status}</Badge>
-                    <Badge className="bg-primary/10 text-primary border-primary/20 text-xs">
-                      Entrega: {fmtFull(op.data_entrega_cliente)}
-                    </Badge>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-4">
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
-                  {stages.map(s => {
-                    const date = (op as any)[s.key] as string;
-                    const st = statusOf(date);
-                    const Icon = s.icon;
-                    return (
-                      <div
-                        key={s.key}
-                        className={`p-3 rounded-lg border ${toneClasses[st.tone]} flex flex-col gap-1`}
-                        title={s.hint}
-                      >
-                        <div className="flex items-center justify-between text-[11px] uppercase tracking-wide opacity-70">
-                          <span>{s.label}</span>
-                          <Icon className="h-3.5 w-3.5" />
-                        </div>
-                        <div className="font-bold text-base leading-tight">{fmt(date)}</div>
-                        <div className="text-[11px] opacity-80">{st.label}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="mt-3 pt-3 border-t border-border flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
-                  <span>Lead times:</span>
-                  <span>Corte {op.lead_time_corte_dias}d</span>
-                  <span>· Costura {op.lead_time_costura_dias}d</span>
-                  <span>· Montagem {op.lead_time_montagem_dias}d</span>
-                  {op.lead_time_mesa_dias > 0 && (
-                    <span>· Mesa {op.lead_time_mesa_dias}d</span>
-                  )}
-                  <span>· Acabamento {op.lead_time_acabamento_dias}d</span>
-                  <span>· Buffer material {op.lead_time_buffer_material_dias}d</span>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+                </CardHeader>
+                {!isCollapsed && (
+                  <CardContent className="pt-3 space-y-3">
+                    {ops.map(op => <OpCard key={op.order_id} op={op} onDialog={setDialogState} compact />)}
+                  </CardContent>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
 
       <DelayDetailDialog
         open={dialogState.open}
