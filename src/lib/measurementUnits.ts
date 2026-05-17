@@ -20,9 +20,10 @@ export const CONSUMPTION_UNITS: MeasurementUnitOption[] = [
   { value: 'L', label: 'Litro (L)', group: 'Volume' },
   { value: 'ml', label: 'Mililitro (ml)', group: 'Volume' },
 
-  // Comprimento
-  { value: 'm', label: 'Metro (m)', group: 'Comprimento' },
-  { value: 'metros', label: 'Metros (m linear)', group: 'Comprimento' },
+  // Comprimento — IMPORTANTE: MTL (metro linear da NF-e) é equivalente a 'm',
+  // NÃO confundir com ML (mililitro, volume — declarado acima). NF-e da SEFAZ
+  // usa MTL pra metro linear; o sistema normaliza pra 'm' na importação.
+  { value: 'm', label: 'Metro linear (m / MTL)', group: 'Comprimento' },
   { value: 'cm', label: 'Centímetro (cm)', group: 'Comprimento' },
   { value: 'mm', label: 'Milímetro (mm)', group: 'Comprimento' },
 
