@@ -606,7 +606,16 @@ export default function SaleOrderForm() {
         validItems.map(async (item) => {
           const ref = canonicalReferences.find((r: any) => r.id === item.reference_id);
           const refLabel = ref ? `${(ref as any).code || ''} - ${(ref as any).name || ''}`.trim() : item.reference_id.substring(0, 8);
-          const availability = await checkStock(item.reference_id, item.quantity, item.color || '');
+          // Passa strap_colors + grade pra que a checagem detecte shortage
+          // de TIRAS (não só componentes regulares). Sem isso, tiras sem estoque
+          // passavam invisíveis pelo PV → OS pra terceiro nunca era criada.
+          const availability = await checkStock(
+            item.reference_id,
+            item.quantity,
+            item.color || '',
+            (item as any).grade ?? null,
+            (item as any).strap_colors ?? null,
+          );
           return { availability, refLabel, color: item.color };
         })
       );

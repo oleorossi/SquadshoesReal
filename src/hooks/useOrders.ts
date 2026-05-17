@@ -38,11 +38,24 @@ export function useOrders() {
 }
 
 export function useCheckStockAvailability() {
-  return async (referenceId: string, quantity: number, color?: string) => {
+  return async (
+    referenceId: string,
+    quantity: number,
+    color?: string,
+    grade?: Record<string, number> | null,
+    strapColors?: any[] | null,
+  ) => {
+    // strapColors vem de sale_order_items (com cor real escolhida pelo cliente),
+    // não da ficha (que tem template sem cor). Sem isso a RPC não conseguia
+    // detectar shortage de tiras → MaterialPurchaseConfirmDialog não abria pra
+    // tiras → OS pra terceiro nunca era criada automaticamente.
+    // Bug histórico até 2026-05-17.
     const { data, error } = await supabase.rpc('check_stock_availability', {
       p_reference_id: referenceId,
       p_order_quantity: quantity,
       p_color: color || '',
+      p_order_grade: grade ?? null,
+      p_strap_colors: strapColors ?? null,
     } as any);
     if (error) throw error;
     return data as Array<{
