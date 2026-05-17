@@ -30,6 +30,7 @@ import XmlImportDialog from '@/components/suppliers/XmlImportDialog';
 import AddToStockDialog from '@/components/suppliers/AddToStockDialog';
 import AddBoletoFinanceDialog from '@/components/suppliers/AddBoletoFinanceDialog';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { convertNfToStockUnit } from '@/lib/nfUnitConversion';
 
 
 function InvoiceItemsRow({ invoice, supplierName }: { invoice: Invoice; supplierName: string }) {
@@ -45,67 +46,133 @@ function InvoiceItemsRow({ invoice, supplierName }: { invoice: Invoice; supplier
   const handleBulkLaunch = useCallback(async () => {
     if (pendingItems.length === 0) return;
     setBulkLoading(true);
+    // Acumula resultados por item pra dar feedback granular ao operador.
+    // Antes: erro genérico "Erro: msg" sem indicar QUAL item, e CONVERSÃO
+    // de unidade NÃO era aplicada — bug crítico que somava qty crua da NF
+    // (ex: ADESIVO PVC 14kg: 7 baldes virava 7 kg em vez de 98 kg).
+    const successItems: string[] = [];
+    const skippedItems: string[] = [];
+    const erroredItems: string[] = [];
     try {
       for (const item of pendingItems) {
-        const match = products.find(p => p.sku === item.product_code);
+        try {
+          const match = products.find(p => p.sku === item.product_code);
 
-        let productId: string;
-        if (match) {
-          const newQty = match.quantity + item.quantity;
-          const totalValue = (match.quantity * match.unit_price) + (item.quantity * item.unit_price);
-          const newPrice = newQty > 0 ? totalValue / newQty : item.unit_price;
+          let productId: string;
+          let addQty = item.quantity;
+          let addPrice = item.unit_price;
+          let convNote = '';
 
-          await supabase.from('products').update({
-            quantity: newQty,
-            unit_price: newPrice,
-          }).eq('id', match.id);
+          if (match) {
+            // ── CONVERSÃO DE UNIDADE (fix mai/2026) ──
+            // Aplica convertNfToStockUnit antes de somar — mesmo path usado
+            // no XmlImportDialog e AddToStockDialog (modo link). Bloqueia
+            // item específico se a conversão exige config faltante, sem
+            // abortar o lote inteiro.
+            const conv = convertNfToStockUnit(
+              item.quantity,
+              item.unit,
+              item.unit_price,
+              {
+                unit: match.unit,
+                name: match.name,
+                conversion_rate: (match as any).conversion_rate,
+                purchase_unit: (match as any).purchase_unit,
+                purchase_order_unit: (match as any).purchase_order_unit,
+              },
+            );
+            if (conv.needsConfig) {
+              skippedItems.push(`${item.product_name}: ${conv.reason || 'conversão necessária'}`);
+              continue;
+            }
+            addQty = conv.qty;
+            addPrice = conv.unitPrice;
+            convNote = conv.converted
+              ? ` (convertido ${item.quantity} ${item.unit} → ${addQty.toFixed(3)} ${match.unit})`
+              : '';
 
-          await supabase.from('stock_movements').insert({
-            product_id: match.id,
-            movement_type: 'in',
-            quantity: item.quantity,
-            previous_stock: match.quantity,
-            new_stock: newQty,
-            description: `Entrada via NF (lote) - ${item.product_name}`,
-          });
+            const newQty = (Number(match.quantity) || 0) + addQty;
+            const totalValue = ((Number(match.quantity) || 0) * (Number(match.unit_price) || 0)) + (addQty * addPrice);
+            const newPrice = newQty > 0 ? totalValue / newQty : addPrice;
 
-          productId = match.id;
-        } else {
-          const { data: newProd, error } = await supabase.from('products').insert({
-            name: item.product_name,
-            sku: item.product_code || `NF-${item.id.slice(0, 8)}`,
-            category: CATEGORIES[0],
-            unit: item.unit || 'un',
-            location: 'Almoxarifado A',
-            quantity: item.quantity,
-            unit_price: item.unit_price,
-            min_stock: 0,
-            max_stock: 0,
-            active: true,
-            image_url: '',
-          }).select().single();
-          if (error) throw error;
-          productId = newProd.id;
+            await supabase.from('products').update({
+              quantity: newQty,
+              unit_price: newPrice,
+            }).eq('id', match.id);
 
-          await supabase.from('stock_movements').insert({
-            product_id: productId,
-            movement_type: 'in',
-            quantity: item.quantity,
-            previous_stock: 0,
-            new_stock: item.quantity,
-            description: `Entrada via NF (lote, novo) - ${item.product_name}`,
-          });
+            await supabase.from('stock_movements').insert({
+              product_id: match.id,
+              movement_type: 'in',
+              quantity: addQty,
+              previous_stock: Number(match.quantity) || 0,
+              new_stock: newQty,
+              description: `Entrada via NF (lote) - ${item.product_name}${convNote}`,
+            });
+
+            productId = match.id;
+          } else {
+            // Produto NOVO criado a partir da NF — sem cadastro prévio não
+            // dá pra resolver conversão. Salva com a unit/qty crua da NF
+            // (operador depois ajusta unit + conversion_rate). Avisa via
+            // skipped list pra ele saber que precisa revisar.
+            const { data: newProd, error } = await supabase.from('products').insert({
+              name: item.product_name,
+              sku: item.product_code || `NF-${item.id.slice(0, 8)}`,
+              category: CATEGORIES[0],
+              unit: item.unit || 'un',
+              location: 'Almoxarifado A',
+              quantity: item.quantity,
+              unit_price: item.unit_price,
+              min_stock: 0,
+              max_stock: 0,
+              active: true,
+              image_url: '',
+            }).select().single();
+            if (error) throw error;
+            productId = newProd.id;
+
+            await supabase.from('stock_movements').insert({
+              product_id: productId,
+              movement_type: 'in',
+              quantity: item.quantity,
+              previous_stock: 0,
+              new_stock: item.quantity,
+              description: `Entrada via NF (lote, novo) - ${item.product_name}`,
+            });
+            // Marca como "skipped" no sentido de "precisa revisão", mas
+            // continua entrando no estoque (não tem cadastro pra validar).
+            skippedItems.push(`${item.product_name}: produto NOVO criado com unit "${item.unit}" — revise o cadastro pra ajustar conversion_rate antes da próxima NF.`);
+          }
+
+          await supabase.from('invoice_items').update({ added_to_stock: true, product_id: productId }).eq('id', item.id);
+          successItems.push(item.product_name);
+        } catch (itemErr: any) {
+          erroredItems.push(`${item.product_name}: ${itemErr.message || 'erro desconhecido'}`);
         }
-
-        await supabase.from('invoice_items').update({ added_to_stock: true, product_id: productId }).eq('id', item.id);
       }
 
       queryClient.invalidateQueries({ queryKey: ['invoice_items'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      toast.success(`${pendingItems.length} item(ns) lançados no estoque!`);
-      setBoletoDialogOpen(true);
+
+      // ── Feedback granular ao operador (fix mai/2026) ──
+      if (erroredItems.length > 0) {
+        toast.error(
+          `${erroredItems.length} item(ns) falharam:\n${erroredItems.join('\n')}`,
+          { duration: 15000 },
+        );
+      }
+      if (skippedItems.length > 0) {
+        toast.warning(
+          `${skippedItems.length} item(ns) precisam de atenção:\n${skippedItems.join('\n')}`,
+          { duration: 15000 },
+        );
+      }
+      if (successItems.length > 0) {
+        toast.success(`${successItems.length} ${successItems.length === 1 ? 'item lançado' : 'itens lançados'} no estoque.`);
+        setBoletoDialogOpen(true);
+      }
     } catch (err: any) {
-      toast.error(`Erro: ${err.message}`);
+      toast.error(`Erro inesperado no lote: ${err.message}`);
     } finally {
       setBulkLoading(false);
     }

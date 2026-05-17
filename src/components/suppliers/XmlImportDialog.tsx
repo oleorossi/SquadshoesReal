@@ -416,14 +416,25 @@ export default function XmlImportDialog({ open, onOpenChange, suppliers, onSuppl
       }
 
       if (failedItems.length > 0 && stockLaunched > 0) {
-        toast.info(`${failedItems.length} item(ns) sem correspondência — clique em "Lançar no Estoque" para cadastrar.`, { duration: 8000 });
+        // Mostra os primeiros 5 nomes — ajuda operador a entender o que ficou
+        // pendente sem precisar abrir a aba "Lançar no Estoque" às cegas.
+        const sample = failedItems.slice(0, 5).join(', ');
+        const more = failedItems.length > 5 ? ` (e mais ${failedItems.length - 5})` : '';
+        toast.info(
+          `${failedItems.length} ${failedItems.length === 1 ? 'item sem correspondência' : 'itens sem correspondência'}: ${sample}${more}. Clique em "Lançar no Estoque" pra cadastrar/vincular.`,
+          { duration: 10000 }
+        );
       }
 
-      // Surface conversion problems explicitly so the user can configure the package weight
+      // Surface conversion problems explicitly so the user can configure the package weight.
+      // Lista NOME COMPLETO do item + motivo da falha, separado por nova linha pra
+      // ficar legível no toast (Sonner respeita \n).
       if (conversionWarnings.length > 0) {
+        const sample = conversionWarnings.slice(0, 5).join('\n• ');
+        const more = conversionWarnings.length > 5 ? `\n• …e mais ${conversionWarnings.length - 5} item(ns).` : '';
         toast.warning(
-          `${conversionWarnings.length} item(ns) NÃO entraram no estoque por divergência de unidade. Configure "Peso por embalagem" no grupo: ${conversionWarnings.slice(0, 3).join(' | ')}${conversionWarnings.length > 3 ? '…' : ''}`,
-          { duration: 15000 }
+          `${conversionWarnings.length} ${conversionWarnings.length === 1 ? 'item NÃO entrou' : 'itens NÃO entraram'} no estoque por divergência de unidade:\n• ${sample}${more}`,
+          { duration: 20000 }
         );
       }
 
