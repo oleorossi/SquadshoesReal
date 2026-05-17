@@ -19,7 +19,7 @@ import {
   usePayrollRuns, useUpsertPayrollRun, useUpdatePayrollStatus,
   useAbsences,
 } from '@/hooks/useRH';
-import { calculatePayroll, PAYROLL_TAX_YEAR, type BenefitsConfig, type PayrollDayInput } from '@/lib/payrollCalc';
+import { calculatePayroll, type BenefitsConfig, type PayrollDayInput } from '@/lib/payrollCalc';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -141,6 +141,20 @@ export default function Payroll() {
         advancesByEmp.set(a.employee_id, (advancesByEmp.get(a.employee_id) || 0) + Number(a.amount || 0));
       }
 
+      // Carrega work_schedules de todos os funcionários ativos pra derivar
+      // jornada/tolerância/mínOT POR FUNCIONÁRIO (antes ficava hardcoded
+      // 528 min/dia + tolerância 10 — só funcionava se todos tivessem CLT 44h).
+      const schedIds = Array.from(new Set(
+        employees.map(e => (e as any).work_schedule_id).filter(Boolean) as string[],
+      ));
+      const { data: schedules } = schedIds.length > 0
+        ? await (supabase as any).from('work_schedules')
+            .select('id, weekly_hours, tolerance_minutes, minimum_overtime_minutes')
+            .in('id', schedIds)
+        : { data: [] };
+      const scheduleById = new Map<string, any>();
+      for (const s of (schedules || [])) scheduleById.set(s.id, s);
+
       // Soma HE paga (overtime_resolutions com decision IN ('pay','split'))
       // do mês — vai como adicional na folha, NÃO como financial_entry separado.
       const monthFirstDay = `${period}-01`;
@@ -165,11 +179,18 @@ export default function Payroll() {
           || byName.get(emp.name.toLowerCase().trim())
           || new Map();
 
+        // Resolve work_schedule do funcionário (fallback: 44h/sem, tol 10, minOT 10)
+        const sched = scheduleById.get((emp as any).work_schedule_id) || {};
+        const weeklyHours = Number(sched.weekly_hours) || 44;
+        const toleranceMin = Number(sched.tolerance_minutes ?? 10);
+        const minOTMin = Number(sched.minimum_overtime_minutes ?? 10);
+        // Jornada diária = weekly_hours × 60 / 5 (assumindo 5 dias úteis)
+        const dailyExpectedMin = Math.round((weeklyHours * 60) / 5);
+
         const days: PayrollDayInput[] = monthDays.map(d => {
           const punches = empPunches.get(d.date) || [];
           const isBusinessDay = d.dow !== 0 && d.dow !== 6;
-          // Jornada esperada: 8h48min em dia útil (528min) — ou 0 fim de semana
-          const expectedMinutes = isBusinessDay && !d.isHoliday ? 528 : 0;
+          const expectedMinutes = isBusinessDay && !d.isHoliday ? dailyExpectedMin : 0;
           return {
             date: d.date,
             dayOfWeek: d.dow,
@@ -189,6 +210,14 @@ export default function Payroll() {
             receives_vr: (emp as any).receives_vr ?? false,
             receives_va: (emp as any).receives_va ?? false,
             health_plan_value: Number((emp as any).health_plan_value) || 0,
+            weekly_hours: weeklyHours,
+            tolerance_minutes: toleranceMin,
+            minimum_overtime_minutes: minOTMin,
+            // Multiplicadores POR FUNCIONÁRIO (regime contrato — cada um pode
+            // ter regra própria). Defaults 0 = hora simples.
+            overtime_50_pct:  Number((emp as any).overtime_50_pct  ?? 0),
+            overtime_100_pct: Number((emp as any).overtime_100_pct ?? 0),
+            night_bonus_pct:  Number((emp as any).night_bonus_pct  ?? 0),
           },
           days,
           (absencesByEmp.get(emp.id) || []).map(a => ({
@@ -264,25 +293,6 @@ export default function Payroll() {
 
       <PayrollPendingInputsAlert period={period} />
 
-      {/* Alerta de ano da tabela INSS/IRRF */}
-      {(() => {
-        const periodYear = Number(period.split('-')[0] || 0);
-        if (periodYear && periodYear !== PAYROLL_TAX_YEAR) {
-          return (
-            <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 flex items-start gap-2 text-sm">
-              <AlertTriangle className="h-4 w-4 mt-0.5 text-amber-600 shrink-0" />
-              <div className="text-amber-800">
-                <strong>Tabela INSS/IRRF de {PAYROLL_TAX_YEAR}</strong> está sendo aplicada em folha de <strong>{periodYear}</strong>.
-                Atualize <code className="font-mono text-xs bg-amber-500/10 px-1 rounded">src/lib/payrollCalc.ts</code>
-                {' '}(constantes <code className="font-mono text-xs bg-amber-500/10 px-1 rounded">INSS_BANDS / IRRF_BANDS</code>) com os valores oficiais publicados pelo governo
-                {' '}antes de aprovar esta folha — caso contrário descontos podem estar incorretos.
-              </div>
-            </div>
-          );
-        }
-        return null;
-      })()}
-
       {/* Totais */}
       <StatGrid>
         <StatCard label="Funcionários" value={runs.length} hint="na folha do período" />
@@ -306,7 +316,6 @@ export default function Payroll() {
               <TableHead className="text-right">Salário base</TableHead>
               <TableHead className="text-right">HE</TableHead>
               <TableHead className="text-right">Noturno</TableHead>
-              <TableHead className="text-right">DSR</TableHead>
               <TableHead className="text-right">Adiantamentos</TableHead>
               <TableHead className="text-right">Descontos</TableHead>
               <TableHead className="text-right">Líquido</TableHead>
@@ -317,7 +326,7 @@ export default function Payroll() {
           <TableBody>
             {runs.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="p-0">
+                <TableCell colSpan={9} className="p-0">
                   <EmptyState
                     icon={Calculator}
                     title="Nenhuma folha calculada"
@@ -343,7 +352,6 @@ export default function Payroll() {
                     <TableCell className="text-right font-mono">{fmt(r.base_salary)}</TableCell>
                     <TableCell className="text-right font-mono text-muted-foreground">{fmt(heValue)}</TableCell>
                     <TableCell className="text-right font-mono text-muted-foreground">{fmt(r.night_bonus_value)}</TableCell>
-                    <TableCell className="text-right font-mono text-muted-foreground">{fmt(r.dsr_value)}</TableCell>
                     <TableCell className={`text-right font-mono ${hasAdvance ? 'text-amber-700 font-semibold' : 'text-muted-foreground'}`}>
                       {hasAdvance ? `− ${fmt(r.advances_total)}` : fmt(0)}
                     </TableCell>
@@ -394,7 +402,7 @@ export default function Payroll() {
             const emp = employeeMap.get(r.employee_id);
             const adv = r.advances_total || 0;
             const gross = (r.base_salary || 0) + (r.overtime_50_value || 0) + (r.overtime_100_value || 0)
-                       + (r.night_bonus_value || 0) + (r.dsr_value || 0);
+                       + (r.night_bonus_value || 0);
             return (
               <>
                 <AlertDialogHeader>
@@ -410,7 +418,7 @@ export default function Payroll() {
                       </p>
                       <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 space-y-1">
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Bruto (base + HE + Adic. + DSR):</span>
+                          <span className="text-muted-foreground">Bruto (base + HE + Adic.):</span>
                           <span className="font-mono">{fmt(gross)}</span>
                         </div>
                         <div className="flex justify-between text-amber-700">
@@ -453,17 +461,15 @@ export default function Payroll() {
             const r = runs.find(x => x.id === detailRun);
             if (!r) return null;
             const emp = employeeMap.get(r.employee_id);
+            // Regime contrato: INSS/IRRF/DSR/VT-desconto não se aplicam.
+            // Holerite mostra só proventos + descontos reais.
             const lines = [
               { label: 'Salário base', value: r.base_salary, type: 'p' as const },
-              { label: `HE 50% (${(r.overtime_50_minutes / 60).toFixed(2)}h)`, value: r.overtime_50_value, type: 'p' as const },
-              { label: `HE 100% (${(r.overtime_100_minutes / 60).toFixed(2)}h)`, value: r.overtime_100_value, type: 'p' as const },
+              { label: `HE dia útil (${(r.overtime_50_minutes / 60).toFixed(2)}h)`, value: r.overtime_50_value, type: 'p' as const },
+              { label: `HE dom/feriado (${(r.overtime_100_minutes / 60).toFixed(2)}h)`, value: r.overtime_100_value, type: 'p' as const },
               { label: `Adic. noturno (${(r.night_minutes / 60).toFixed(2)}h)`, value: r.night_bonus_value, type: 'p' as const },
-              { label: 'DSR sobre HE/Noturno', value: r.dsr_value, type: 'p' as const },
               { label: 'Vale-refeição', value: r.vr_value, type: 'p' as const },
               { label: 'Vale-alimentação', value: r.va_value, type: 'p' as const },
-              { label: 'INSS', value: r.inss_value, type: 'd' as const },
-              { label: 'IRRF', value: r.irrf_value, type: 'd' as const },
-              { label: 'Vale-transporte (cota func.)', value: r.vt_employee_discount, type: 'd' as const },
               { label: 'Plano de saúde', value: r.health_plan_discount, type: 'd' as const },
               { label: `Faltas injust. (${r.absent_days} dias)`, value: r.absence_discount, type: 'd' as const },
               { label: 'Adiantamentos do mês', value: r.advances_total, type: 'd' as const, highlight: true },

@@ -1,17 +1,25 @@
 /**
- * Cálculo de folha de pagamento — CLT 2026.
+ * Cálculo de folha de pagamento — REGIME DE CONTRATO (não-CLT).
  *
- * Fórmulas resumidas:
- *   - Valor da hora normal       = salário / divisor_mensal (220h padrão)
- *   - HE 50%                     = horas_extra × valor_hora × 1.50
- *   - HE 100%                    = horas_dom_feriado × valor_hora × 2.00
- *   - Adic. noturno              = minutos_22h_5h × (valor_hora/60) × (1 + bonus%/100)
- *   - DSR sobre HE               = (HE total / dias_úteis) × dias_descanso
- *   - VT desconto funcionário    = min(VT_total_dias_úteis, salário × 6%)
- *   - INSS/IRRF                  = tabelas progressivas (ver INSS_2026, IRRF_2026)
+ * Empresa contrata por contrato (PJ/prestador) — cada profissional é
+ * responsável pelos próprios impostos (INSS, IRRF). A folha aqui calcula:
  *
- * Tabelas INSS/IRRF abaixo são as vigentes 2024/2025 — ajustáveis via
- * benefits_config.notes ou nova migration quando o governo atualizar.
+ *   - Valor da hora normal      = salário / divisor_mensal (220h padrão)
+ *   - HE em dia útil            = horas_extra × valor_hora × (1 + employee.overtime_50_pct/100)
+ *   - HE em dom/feriado         = horas × valor_hora × (1 + employee.overtime_100_pct/100)
+ *   - Adic. noturno             = minutos_22h_5h × (valor_hora/60) × (employee.night_bonus_pct/100)
+ *   - Tolerância/min HE         = aplicados SEMANALMENTE (employee.tolerance_minutes
+ *                                  e minimum_overtime_minutes; defaults 10/10)
+ *   - Benefícios pagos          = VR (por dia útil), VA (mensal flat)
+ *   - Descontos                 = plano de saúde + faltas + adiantamentos
+ *   - Líquido                   = proventos − descontos
+ *
+ * Multiplicadores de HE são CONFIGURÁVEIS por funcionário (cada contrato
+ * pode ter regra própria — alguns hora simples, outros adicional). Defaults
+ * em zero (= hora simples sem adicional).
+ *
+ * INSS/IRRF/DSR/VT-desconto NÃO se aplicam (não-CLT). As funções calculateINSS
+ * e calculateIRRF ficam mantidas como utilitários históricos / pra simulação.
  */
 
 export interface BenefitsConfig {
@@ -36,6 +44,20 @@ export interface PayrollEmployeeInput {
   receives_vr: boolean;
   receives_va: boolean;
   health_plan_value: number;
+  /** Carga semanal contratada (ex: 44, 40, 36). Default 44. */
+  weekly_hours?: number;
+  /** Tolerância em minutos: variações <= este valor não geram HE nem débito.
+   *  Default 10 (alinhado com work_schedules.tolerance_minutes default). */
+  tolerance_minutes?: number;
+  /** HE < este valor é descartada (aplicado por semana). Default 10. */
+  minimum_overtime_minutes?: number;
+  /** Multiplicador da HE em dia útil. Default 0 = hora simples (sem adicional).
+   *  Vem de employees.overtime_50_pct — configurável por contrato. */
+  overtime_50_pct?: number;
+  /** Multiplicador da HE em domingo/feriado. Default 0 = hora simples. */
+  overtime_100_pct?: number;
+  /** % adicional pelas horas noturnas. Default 0 = sem adicional. */
+  night_bonus_pct?: number;
 }
 
 export interface PayrollDayInput {
@@ -108,6 +130,7 @@ export const IRRF_BANDS = [
   { upTo: Infinity, rate: 0.275, deduction: 896.00 },
 ];
 
+
 export function calculateINSS(grossSalary: number): number {
   if (grossSalary <= 0) return 0;
   let total = 0;
@@ -124,6 +147,11 @@ export function calculateINSS(grossSalary: number): number {
   return INSS_CEILING_VALUE;
 }
 
+/**
+ * @deprecated Mantida pra histórico/auditoria. Cálculo de IRRF segue a tabela
+ * RFB vigente. NÃO é chamada em calculatePayroll() — regime de contrato
+ * (não-CLT) não retém IRRF; cada contratado é responsável pelo próprio.
+ */
 export function calculateIRRF(baseAfterINSS: number): number {
   if (baseAfterINSS <= 0) return 0;
   for (const band of IRRF_BANDS) {
@@ -176,9 +204,11 @@ function countNightMinutes(
 
 /**
  * Soma minutos trabalhados em um dia a partir de pares de batidas.
+ * Punches ímpares (3, 5, ...) retornam 0 — alinhado com banco que marca
+ * o dia como `partial` em vez de presumir entrada/saída faltante.
  */
 function workedMinutesFromPunches(punches: string[]): number {
-  if (punches.length < 2) return 0;
+  if (punches.length < 2 || punches.length % 2 !== 0) return 0;
   let total = 0;
   for (let i = 0; i + 1 < punches.length; i += 2) {
     const a = timeToMin(punches[i]);
@@ -187,6 +217,15 @@ function workedMinutesFromPunches(punches: string[]): number {
     total += b > a ? b - a : b < a ? (1440 - a) + b : 0;
   }
   return total;
+}
+
+/** Retorna a segunda-feira (00:00) da semana de `date`, em YYYY-MM-DD. */
+function mondayOf(dateISO: string): string {
+  const d = new Date(dateISO + 'T00:00:00');
+  const dow = d.getDay();             // 0 = dom, 1 = seg
+  const diff = dow === 0 ? -6 : 1 - dow;
+  d.setDate(d.getDate() + diff);
+  return d.toISOString().slice(0, 10);
 }
 
 export function calculatePayroll(
@@ -200,6 +239,12 @@ export function calculatePayroll(
   const monthlyHours = config.monthly_hours || 220;
   const hourlyRate = monthlyHours > 0 ? baseSalary / monthlyHours : 0;
   const minuteRate = hourlyRate / 60;
+
+  // Tolerância e mínimo de HE — defaults alinhados com work_schedules e com
+  // calculate_employee_bank_balance() do banco. Aplicados POR SEMANA (não dia)
+  // pra evitar discrepância entre o cálculo da folha e o saldo do banco de horas.
+  const TOLERANCE_MIN = Math.max(0, employee.tolerance_minutes ?? 10);
+  const MIN_OT_MIN   = Math.max(0, employee.minimum_overtime_minutes ?? 10);
 
   let workedMin = 0;
   let expectedMin = 0;
@@ -221,6 +266,15 @@ export function calculatePayroll(
     }
   }
 
+  // Agrupa dias por semana (chave = segunda-feira) pra aplicar tolerância
+  // semanal: dias curtos compensam dias longos antes de gerar HE.
+  type WeekBucket = {
+    workedBusiness: number;     // minutos trabalhados em dias úteis (não-feriado, não-domingo)
+    expectedBusiness: number;   // minutos esperados em dias úteis
+    workedHolidaySunday: number; // minutos trabalhados em domingo/feriado (vão pra HE 100)
+  };
+  const weeks = new Map<string, WeekBucket>();
+
   for (const d of days) {
     expectedMin += d.expectedMinutes;
     if (d.isBusinessDay && !d.isHoliday) businessDays++;
@@ -229,15 +283,36 @@ export function calculatePayroll(
     workedMin += dayWorked;
     if (dayWorked > 0 && d.isBusinessDay && !d.isHoliday) businessDaysWorked++;
 
-    // HE: dia útil → 50% sobre o que ultrapassar a jornada;
-    //     domingo/feriado → 100% sobre todas as horas trabalhadas
+    const weekKey = mondayOf(d.date);
+    const bucket = weeks.get(weekKey) ?? { workedBusiness: 0, expectedBusiness: 0, workedHolidaySunday: 0 };
+
     if (d.isHoliday || d.dayOfWeek === 0) {
-      ot100Min += dayWorked;
-    } else if (dayWorked > d.expectedMinutes) {
-      ot50Min += dayWorked - d.expectedMinutes;
+      bucket.workedHolidaySunday += dayWorked;
+    } else {
+      bucket.workedBusiness += dayWorked;
+      bucket.expectedBusiness += d.expectedMinutes;
     }
+    weeks.set(weekKey, bucket);
 
     nightMin += countNightMinutes(d.punches, config.night_shift_start_min, config.night_shift_end_min);
+  }
+
+  // Aplica tolerância e mínimo de HE por SEMANA.
+  // - Se |worked - expected| <= tolerância → ignora (saldo = 0 na semana)
+  // - Se diff > 0 mas < mínimo de HE → ignora (não gera HE)
+  // - Domingo/feriado sempre vira HE 100, sem tolerância (CLT)
+  for (const [, w] of weeks) {
+    const diff = w.workedBusiness - w.expectedBusiness;
+    if (Math.abs(diff) > TOLERANCE_MIN) {
+      if (diff > 0 && diff >= MIN_OT_MIN) {
+        ot50Min += diff;
+      }
+      // diff < 0 (devedor) NÃO entra como HE; cai no banco de horas (negativo)
+    }
+    // Domingo/feriado: aplica só o mínimo de HE pra evitar "5 min de HE 100"
+    if (w.workedHolidaySunday >= MIN_OT_MIN) {
+      ot100Min += w.workedHolidaySunday;
+    }
   }
 
   // Faltas injustificadas (descontadas)
@@ -251,41 +326,37 @@ export function calculatePayroll(
     }
   }
 
-  // Valores
-  const ot50Value = ot50Min * minuteRate * (1 + config.overtime_50_pct / 100);
-  const ot100Value = ot100Min * minuteRate * (1 + config.overtime_100_pct / 100);
-  const nightBonusValue = nightMin * minuteRate * (config.night_bonus_pct / 100);
+  // Multiplicadores POR FUNCIONÁRIO (regime contrato — cada um tem seu acordo).
+  // Default 0 = hora simples (sem adicional CLT). employees.overtime_*_pct
+  // sobrescreve por funcionário; config.overtime_*_pct é fallback global.
+  const ot50Pct      = employee.overtime_50_pct  ?? config.overtime_50_pct  ?? 0;
+  const ot100Pct     = employee.overtime_100_pct ?? config.overtime_100_pct ?? 0;
+  const nightBonus   = employee.night_bonus_pct  ?? config.night_bonus_pct  ?? 0;
 
-  // DSR sobre HE: (HE_total_R$ / dias_úteis) × dias_descanso
-  // Aprox: dias de descanso = (30 ou 31) - dias_úteis
-  const totalDaysInMonth = days.length || 30;
-  const restDays = Math.max(1, totalDaysInMonth - businessDays);
-  const dsrValue = businessDays > 0
-    ? ((ot50Value + ot100Value + nightBonusValue) / businessDays) * restDays
-    : 0;
+  const ot50Value = ot50Min * minuteRate * (1 + ot50Pct / 100);
+  const ot100Value = ot100Min * minuteRate * (1 + ot100Pct / 100);
+  const nightBonusValue = nightMin * minuteRate * (nightBonus / 100);
 
-  // Benefícios
+  // DSR / INSS / IRRF / VT desconto: NÃO se aplicam em regime de contrato
+  // (não-CLT). Contratado é PJ/prestador — cada um cuida dos próprios impostos.
+  // Mantemos os campos no result com zero pra preservar contrato de tipo e
+  // facilitar futura adição de um modo "CLT" se necessário.
+  const dsrValue = 0;
+  const inssValue = 0;
+  const irrfValue = 0;
+  const vtTotal = 0;
+  const vtEmployeeDiscount = 0;
+
+  // Benefícios pagos (não-CLT, são acordos contratuais — VR/VA continuam)
   const vrValue = employee.receives_vr ? config.vr_daily_value * businessDaysWorked : 0;
   const vaValue = employee.receives_va ? config.va_monthly_value : 0;
-
-  // VT: empresa paga vt_daily × dias_úteis_trabalhados; funcionário tem desconto até 6% do salário
-  const vtTotal = employee.receives_vt ? config.vt_daily_value * businessDaysWorked : 0;
-  const vtCap = baseSalary * (config.vt_employee_discount_pct / 100);
-  const vtEmployeeDiscount = Math.min(vtTotal, vtCap);
 
   const healthPlanDiscount = employee.health_plan_value > 0
     ? employee.health_plan_value
     : config.health_plan_default;
 
-  // Proventos brutos para INSS: salário base + adicionais habituais (HE, DSR, noturno)
-  const grossForINSS = baseSalary + ot50Value + ot100Value + nightBonusValue + dsrValue;
-  const inssValue = calculateINSS(grossForINSS);
-  const irrfBase = grossForINSS - inssValue;
-  const irrfValue = calculateIRRF(irrfBase);
-
-  const totalProventos = baseSalary + ot50Value + ot100Value + nightBonusValue + dsrValue + vrValue + vaValue;
-  const totalDescontos =
-    inssValue + irrfValue + vtEmployeeDiscount + healthPlanDiscount + absenceDiscount + advancesTotal;
+  const totalProventos = baseSalary + ot50Value + ot100Value + nightBonusValue + vrValue + vaValue;
+  const totalDescontos = healthPlanDiscount + absenceDiscount + advancesTotal;
   const totalLiquido = totalProventos - totalDescontos;
 
   const round2 = (n: number) => Math.round(n * 100) / 100;
