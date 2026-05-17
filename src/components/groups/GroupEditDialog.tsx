@@ -36,9 +36,9 @@ interface GroupEditDialogProps {
 
 // Renderização condicional por tipo de grupo: campos só aparecem quando fazem
 // sentido pra categoria. Solado precisa de tipos de caixa + peso; cabedal/napa
-// precisa de material artesanal; cola/ferramenta só precisa do básico.
-// "generic" cobre o fallback "Componente" — mostra tudo (catch-all seguro).
-type GroupType = 'sole' | 'upper_material' | 'insole_part' | 'chemical' | 'tool' | 'last' | 'generic';
+// precisa de material artesanal; cola/ferramenta só precisa do básico;
+// componente é consumo unitário — não tem rendimento por numeração nem cor.
+type GroupType = 'sole' | 'upper_material' | 'insole_part' | 'chemical' | 'tool' | 'last' | 'component';
 
 function getGroupType(groupName: string): GroupType {
   switch (deriveCategoryFromGroup(groupName)) {
@@ -49,10 +49,11 @@ function getGroupType(groupName: string): GroupType {
     case 'Cola / Químico': return 'chemical';
     case 'Ferramentas': return 'tool';
     case 'Fôrma': return 'last';
-    // 'Componente' (fallback do deriveCategoryFromGroup) é tratado como cabedal:
-    // na prática componentes sempre são insumos de cabedal (forros, debruns,
-    // entretelas, etc.) — mesma matriz de campos.
-    default: return 'upper_material';
+    // 'Componente' (fivelas, ilhós, ABS, fitas, elásticos) — consumo unitário.
+    // Antes caía como 'upper_material' e ganhava aba "Rendimento por
+    // Numeração" sem sentido (fivela não rende por pé 33 vs 43).
+    // Corrigido em 2026-05-17.
+    default: return 'component';
   }
 }
 
@@ -63,15 +64,23 @@ function getVisibleFields(type: GroupType) {
   const isChemical = type === 'chemical';
   const isTool = type === 'tool';
   const isLast = type === 'last';
-  const isGeneric = type === 'generic';
+  const isComponent = type === 'component';
 
   return {
-    bomColorSource: isSole || isUpper || isInsole || isGeneric,
+    bomColorSource: isSole || isUpper || isInsole,
     sharedSpecs:    !isChemical && !isTool,
-    artisanal:      isUpper || isGeneric,
-    colorsManager:  isSole || isUpper || isInsole || isGeneric,
-    unitWeight:     isSole || isGeneric,
-    yieldTab:       isSole || isUpper || isInsole || isGeneric,
+    // Receitas artesanais (sub-empreitada) só fazem sentido pra cabedal
+    // (corte + costura sob medida). Componente, palmilha, cola não passam
+    // por empreitada artesanal típica.
+    artisanal:      isUpper,
+    // Componente é consumo unitário — não tem variantes de cor que importam
+    // no BOM (toda fivela "X" é igual independente da cor do calçado).
+    colorsManager:  isSole || isUpper || isInsole,
+    unitWeight:     isSole,
+    // Rendimento por numeração: só pra materiais cujo CONSUMO varia com o
+    // tamanho do calçado (cabedal, forração, palmilha, solado). Componente
+    // NÃO entra — fivela/ilhós/ABS consomem 1 unidade por par, fim.
+    yieldTab:       isSole || isUpper || isInsole,
   };
 }
 
@@ -115,7 +124,7 @@ function AddItemsToGroupDialog({ open, onOpenChange, groupId, groupName }: {
         .in('id', Array.from(selected));
       if (error) throw error;
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      toast.success(`${selected.size} item(ns) adicionado(s) ao grupo "${groupName}"`);
+      toast.success(`${selected.size} ${selected.size === 1 ? 'item adicionado' : 'itens adicionados'} ao grupo "${groupName}"`);
       setSelected(new Set());
       toast.success("Grupo de material atualizado/adicionado");
       onOpenChange(false);
@@ -174,7 +183,7 @@ function AddItemsToGroupDialog({ open, onOpenChange, groupId, groupName }: {
         </ScrollArea>
 
         <div className="flex items-center justify-between pt-2 border-t">
-          <span className="text-sm text-muted-foreground">{selected.size} selecionado(s)</span>
+          <span className="text-sm text-muted-foreground">{selected.size} {selected.size === 1 ? 'selecionado' : 'selecionados'}</span>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
             <Button onClick={handleAdd} disabled={saving || selected.size === 0}>
@@ -357,7 +366,7 @@ function SoleYieldEditor({ groupId }: { groupId: string }) {
 
       queryClient.invalidateQueries({ queryKey: ['component_sheets_group', groupId] });
       queryClient.invalidateQueries({ queryKey: ['component_sheets'] });
-      toast.success(`Rendimento salvo para o solado "${selectedModel.name}" (${selectedModel.ids.length} variante(s))!`);
+      toast.success(`Rendimento salvo para o solado "${selectedModel.name}" (${selectedModel.ids.length} ${selectedModel.ids.length === 1 ? 'variante' : 'variantes'})!`);
     } catch (err: any) {
       toast.error(`Erro: ${err.message}`);
     } finally {
@@ -705,10 +714,10 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
             queryClient.invalidateQueries({ queryKey: ['products'] });
             queryClient.invalidateQueries({ queryKey: ['paginated_products'] });
             if (unitChanged) {
-              toast.success(`Unidade de consumo aplicada em ${products.length} item(ns).`);
+              toast.success(`Unidade de consumo aplicada em ${products.length} ${products.length === 1 ? 'item' : 'itens'}.`);
             }
             if (unitPrice > 0 || location.trim()) {
-              toast.success(`Dados financeiros/estoque aplicados a ${products.length} item(ns).`);
+              toast.success(`Dados financeiros/estoque aplicados a ${products.length} ${products.length === 1 ? 'item' : 'itens'}.`);
             }
           }
         }
@@ -832,7 +841,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                       <SelectItem value="__none__">Nenhuma (definida por item)</SelectItem>
                       {Object.entries(CONSUMPTION_UNITS_BY_GROUP).map(([groupName, units]) => (
                         <React.Fragment key={groupName}>
-                          <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground bg-muted/50">
+                          <div className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground bg-muted/50">
                             {groupName}
                           </div>
                           {units.map(u => (
@@ -842,7 +851,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-[10px] text-muted-foreground mt-1">
+                  <p className="text-[11px] text-muted-foreground mt-1">
                     {sharedSpecs
                       ? 'Esta unidade será aplicada a TODOS os itens deste grupo ao salvar (inclusive estoque).'
                       : 'Ao alterar esta unidade, ela será aplicada a todos os itens do grupo para padronização.'}
@@ -925,7 +934,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                       </Select>
                     </div>
                     {artYieldPerMeter > 0 && (
-                      <p className="text-[10px] text-amber-700 bg-amber-100 rounded px-2 py-1">
+                      <p className="text-[11px] text-amber-700 bg-amber-100 rounded px-2 py-1">
                         Cada 1 m de base gera {artYieldPerMeter.toFixed(2)} m² de produto acabado
                         {artLaborCost > 0 ? ` · MO: R$ ${artLaborCost.toFixed(2)}/m` : ''}
                       </p>
@@ -970,7 +979,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-[10px] text-muted-foreground mt-1">
+                  <p className="text-[11px] text-muted-foreground mt-1">
                     Use pra agrupar variações (ex.: "Componentes" → "Tira chata", "Tira Strass").
                     Próprio grupo e descendentes ficam ocultos pra evitar ciclos.
                   </p>
@@ -1046,7 +1055,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                           <div className="flex items-center gap-2 min-w-0">
                             <span className="text-muted-foreground text-xs font-mono shrink-0">└</span>
                             <span className="text-sm font-medium truncate">{c.name}</span>
-                            <Badge variant="secondary" className="text-[10px] h-4 font-mono shrink-0">
+                            <Badge variant="secondary" className="text-[11px] h-4 font-mono shrink-0">
                               {itemCountByGroup.get(c.id) ?? 0} itens
                             </Badge>
                           </div>
@@ -1091,7 +1100,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                     className="mt-1"
                     placeholder="Ex: 0.250"
                   />
-                  <p className="text-[10px] text-muted-foreground mt-1">
+                  <p className="text-[11px] text-muted-foreground mt-1">
                     Peso de uma unidade (par de solados, um cabedal ou uma caixa) usado para cálculo do peso total de despacho.
                   </p>
                 </div>
@@ -1117,7 +1126,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                       onChange={v => setUnitPrice(v || 0)}
                       className="h-9"
                     />
-                    <p className="text-[10px] text-muted-foreground">
+                    <p className="text-[11px] text-muted-foreground">
                       Se preenchido, aplicará este preço a TODOS os itens do grupo.
                     </p>
                   </div>
@@ -1129,7 +1138,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                       placeholder="Ex: Prateleira A1"
                       className="h-9"
                     />
-                    <p className="text-[10px] text-muted-foreground">
+                    <p className="text-[11px] text-muted-foreground">
                       Se preenchido, aplicará esta localização a TODOS os itens.
                     </p>
                   </div>
