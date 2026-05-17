@@ -21,7 +21,7 @@ export function useGeneratePOFromMrp() {
     mutationFn: (productIds?: string[]) =>
       generatePurchaseOrdersFromMrp(productIds),
     onSuccess: (ids) => {
-      toast.success(`Gerada(s) ${ids.length} ordem(ns) de compra`);
+      toast.success(`${ids.length === 1 ? 'Gerada 1 ordem' : `Geradas ${ids.length} ordens`} de compra`);
       qc.invalidateQueries({ queryKey: ["mrp-needs"] });
       qc.invalidateQueries({ queryKey: ["purchase-orders"] });
     },

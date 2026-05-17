@@ -108,10 +108,10 @@ export function useDeleteSupplier() {
       if (lotRes.error) throw new Error(`Falha ao verificar lotes: ${lotRes.error.message}`);
       if (prodRes.error) throw new Error(`Falha ao verificar produtos: ${prodRes.error.message}`);
       const blockers: string[] = [];
-      if ((poRes.count ?? 0) > 0) blockers.push(`${poRes.count} ordem(ns) de compra`);
-      if ((lotRes.count ?? 0) > 0) blockers.push(`${lotRes.count} registro(s) de lote`);
-      if ((prodRes.count ?? 0) > 0) blockers.push(`${prodRes.count} produto(s)`);
-      if (blockers.length > 0) throw new Error(`Não é possível excluir: fornecedor possui ${blockers.join(' e ')} vinculado(s). Inative o cadastro em vez de excluir.`);
+      if ((poRes.count ?? 0) > 0) blockers.push(`${poRes.count} ${poRes.count === 1 ? 'ordem de compra' : 'ordens de compra'}`);
+      if ((lotRes.count ?? 0) > 0) blockers.push(`${lotRes.count} ${lotRes.count === 1 ? 'registro de lote' : 'registros de lote'}`);
+      if ((prodRes.count ?? 0) > 0) blockers.push(`${prodRes.count} ${prodRes.count === 1 ? 'produto' : 'produtos'}`);
+      if (blockers.length > 0) throw new Error(`Não é possível excluir: fornecedor possui ${blockers.join(' e ')} vinculados. Inative o cadastro em vez de excluir.`);
       const { error } = await supabase.from('suppliers').delete().eq('id', id);
       if (error) throw error;
     },

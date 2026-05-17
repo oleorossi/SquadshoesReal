@@ -103,7 +103,7 @@ export function useBatchUpsertReadyStock() {
         if (failedRollbacks.length > 0) {
           throw new Error(
             `Erro original: ${(err as Error).message}. ` +
-            `Atenção: ${failedRollbacks.length} reversão(ões) falharam — estoque pode estar inconsistente: ${failedRollbacks.join('; ')}`
+            `Atenção: ${failedRollbacks.length} ${failedRollbacks.length === 1 ? 'reversão falhou' : 'reversões falharam'} — estoque pode estar inconsistente: ${failedRollbacks.join('; ')}`
           );
         }
         throw err;

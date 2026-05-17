@@ -79,17 +79,18 @@ export default function Acabamento() {
       const failedCount = orderIds.length - successCount;
 
       if (successCount > 0) {
+        const opsLabel = successCount === 1 ? 'OP' : 'OPs';
         if (failedCount === 0) {
-          toast.success(`Acabamento finalizado para ${successCount} OP(s)!`);
+          toast.success(`Acabamento finalizado para ${successCount} ${opsLabel}!`);
         } else {
-          toast.warning(`Acabamento finalizado para ${successCount} OP(s); ${failedCount} falhou(aram).`);
+          toast.warning(`Acabamento finalizado para ${successCount} ${opsLabel}; ${failedCount} ${failedCount === 1 ? 'falhou' : 'falharam'}.`);
         }
         setSelectedOrders(new Set());
         queryClient.invalidateQueries({ queryKey: ['order_stages'] });
         queryClient.invalidateQueries({ queryKey: ['orders'] });
         queryClient.invalidateQueries({ queryKey: ['production_orders'] });
       } else if (failedCount > 0) {
-        toast.error(`Falha ao finalizar ${failedCount} OP(s).`);
+        toast.error(`Falha ao finalizar ${failedCount} ${failedCount === 1 ? 'OP' : 'OPs'}.`);
       }
     } catch (err: any) {
       toast.error('Erro ao finalizar: ' + (err.message || 'Erro desconhecido'));
@@ -405,7 +406,7 @@ export default function Acabamento() {
             <p style="font-size:9px;color:#555;margin:2px 0 0;">
               PV: ${client.saleOrderNumbers.join(', ') || '—'}
               ${client.clientOrderNumbers.length > 0 ? ` | Ped. Cliente: ${client.clientOrderNumbers.join(', ')}` : ''}
-              | ${client.items.length} OP(s) | ${clientTotalPairs} pares
+              | ${client.items.length} ${client.items.length === 1 ? 'OP' : 'OPs'} | ${clientTotalPairs} pares
               | 📦 ${PACKAGING_MODE_LABELS[client.packagingMode as PackagingMode] || client.packagingMode}
             </p>
           </div>
@@ -427,7 +428,7 @@ export default function Acabamento() {
 
     const html = `
       <h1 style="font-size:18px;margin-bottom:4px;">📦 Relatório de Acabamento por Cliente</h1>
-      <p style="font-size:10px;color:#666;margin-bottom:12px;">Gerado em ${new Date().toLocaleString('pt-BR')} | ${sortedClients.length} cliente(s) | ${ordersToReport.length} OP(s) | ${grandTotal} pares</p>
+      <p style="font-size:10px;color:#666;margin-bottom:12px;">Gerado em ${new Date().toLocaleString('pt-BR')} | ${sortedClients.length} ${sortedClients.length === 1 ? 'cliente' : 'clientes'} | ${ordersToReport.length} ${ordersToReport.length === 1 ? 'OP' : 'OPs'} | ${grandTotal} pares</p>
       <div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap;">
         <div style="text-align:center;padding:6px 14px;background:#f5f5f0;border:1px solid #ddd;border-radius:6px;"><p style="font-size:18px;font-weight:700;">${sortedClients.length}</p><p style="font-size:9px;color:#666;">Clientes</p></div>
         <div style="text-align:center;padding:6px 14px;background:#f5f5f0;border:1px solid #ddd;border-radius:6px;"><p style="font-size:18px;font-weight:700;">${ordersToReport.length}</p><p style="font-size:9px;color:#666;">OPs</p></div>

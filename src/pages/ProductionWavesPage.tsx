@@ -343,7 +343,7 @@ function WaveRow({
   );
 }
 
-export default function ProductionWavesPage() {
+export default function ProductionWavesPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [builderOpen, setBuilderOpen] = useState(false);
   const [selectedWave, setSelectedWave] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -414,26 +414,41 @@ export default function ProductionWavesPage() {
   }, [filtered]);
 
   return (
-    <div className="p-6 space-y-5 page-enter editorial-stagger">
-      <EditorialPageHeader
-        sectionLabel="PCP · ONDAS"
-        title="Ondas de Produção"
-        description="Gerencie ondas semanais: pedidos agrupados por solado → referência → cor, fluindo em sequência pelos setores produtivos."
-        actions={
-          <>
-            <Button asChild variant="outline" size="sm">
-              <Link to="/pcp">
-                <Truck className="w-4 h-4 mr-1" />
-                Painel PCP
-              </Link>
-            </Button>
-            <Button onClick={() => setBuilderOpen(true)}>
-              <Plus className="w-4 h-4 mr-1" />
-              Nova onda
-            </Button>
-          </>
-        }
-      />
+    <div className={embedded ? "space-y-5" : "p-6 space-y-5 page-enter editorial-stagger"}>
+      {embedded ? (
+        <div className="flex items-center justify-end gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link to="/pcp">
+              <Truck className="w-4 h-4 mr-1" />
+              Painel PCP
+            </Link>
+          </Button>
+          <Button onClick={() => setBuilderOpen(true)}>
+            <Plus className="w-4 h-4 mr-1" />
+            Nova onda
+          </Button>
+        </div>
+      ) : (
+        <EditorialPageHeader
+          sectionLabel="PCP · ONDAS"
+          title="Ondas de Produção"
+          description="Gerencie ondas semanais: pedidos agrupados por solado → referência → cor, fluindo em sequência pelos setores produtivos."
+          actions={
+            <>
+              <Button asChild variant="outline" size="sm">
+                <Link to="/pcp">
+                  <Truck className="w-4 h-4 mr-1" />
+                  Painel PCP
+                </Link>
+              </Button>
+              <Button onClick={() => setBuilderOpen(true)}>
+                <Plus className="w-4 h-4 mr-1" />
+                Nova onda
+              </Button>
+            </>
+          }
+        />
+      )}
 
       {/* Métricas */}
       <StatGrid>

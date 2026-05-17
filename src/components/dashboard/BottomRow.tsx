@@ -102,7 +102,7 @@ export function BottomRow({ period = 'current_month' }: { period?: DashboardPeri
             <tr>
               {["Modelo", "Referência", "Qtd", "Volume"].map((h, i) => (
                 <th key={h} className={cn(
-                  "text-[10px] font-bold uppercase tracking-[0.07em] text-muted-foreground py-2.5 border-b border-border/60 bg-muted/30",
+                  "text-[11px] font-bold uppercase tracking-[0.07em] text-muted-foreground py-2.5 border-b border-border/60 bg-muted/30",
                   i === 0 ? "pl-5 text-left" : i === 3 ? "pr-5 text-right" : "px-4 text-left"
                 )}>
                   {h}

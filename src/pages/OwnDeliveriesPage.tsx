@@ -95,7 +95,7 @@ function OrdersTab() {
           <div className="flex items-center gap-2">
             {selected.size > 0 && (
               <>
-                <span className="text-xs text-muted-foreground">{selected.size} selecionado(s)</span>
+                <span className="text-xs text-muted-foreground">{selected.size} {selected.size === 1 ? 'selecionado' : 'selecionados'}</span>
                 <Button size="sm" variant="ghost" onClick={clearSel}>Limpar</Button>
               </>
             )}
@@ -216,7 +216,7 @@ function RoutesTab() {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">{routes.length} rota(s)</p>
+        <p className="text-xs text-muted-foreground">{routes.length} {routes.length === 1 ? 'rota' : 'rotas'}</p>
         <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
           <SelectTrigger className="h-8 w-[180px]"><SelectValue /></SelectTrigger>
           <SelectContent>

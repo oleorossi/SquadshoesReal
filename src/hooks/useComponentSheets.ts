@@ -72,7 +72,7 @@ export function usePropagateSoleToTechnicalSheets() {
     onSuccess: (data: any) => {
       qc.invalidateQueries({ queryKey: ['component_sheets'] });
       qc.invalidateQueries({ queryKey: ['technical_sheets'] });
-      toast.success(`Solado propagado para ${data?.sheets_updated ?? 0} ficha(s) técnica(s)!`);
+      toast.success(`Solado propagado para ${data?.sheets_updated ?? 0} ${(data?.sheets_updated ?? 0) === 1 ? 'ficha técnica' : 'fichas técnicas'}!`);
     },
     onError: (err: Error) => toast.error(`Erro ao propagar: ${err.message}`),
   });

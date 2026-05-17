@@ -534,7 +534,9 @@ export function useFinanceAlerts() {
         alerts.push({
           id: 'payables-overdue',
           severity: 'critical',
-          title: `${overduePayables.length} conta(s) a pagar vencida(s)`,
+          title: overduePayables.length === 1
+            ? '1 conta a pagar vencida'
+            : `${overduePayables.length} contas a pagar vencidas`,
           description: 'Pagamentos em atraso podem gerar juros e prejudicar relação com fornecedores.',
           value: total,
           action: { label: 'Ver A Pagar', tab: 'payable' },

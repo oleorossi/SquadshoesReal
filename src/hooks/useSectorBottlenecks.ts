@@ -158,8 +158,8 @@ export function useBulkAssignServiceOrders() {
       qc.invalidateQueries({ queryKey: ['service_orders'] });
       qc.invalidateQueries({ queryKey: ['service_orders_active_bottleneck'] });
       qc.invalidateQueries({ queryKey: ['v_sector_bottlenecks'] });
-      let msg = `${created} OS criada(s).`;
-      if (skipped > 0) msg += ` ${skipped} OP(s) já tinham OS ativa — puladas.`;
+      let msg = `${created} ${created === 1 ? 'OS criada' : 'OSs criadas'}.`;
+      if (skipped > 0) msg += ` ${skipped} ${skipped === 1 ? 'OP já tinha' : 'OPs já tinham'} OS ativa — ${skipped === 1 ? 'pulada' : 'puladas'}.`;
       toast.success(msg);
     },
     onError: (err: any) => {

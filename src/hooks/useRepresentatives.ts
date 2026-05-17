@@ -90,7 +90,7 @@ export function useDeleteRepresentative() {
         .select('id', { count: 'exact', head: true })
         .eq('representative_id', id);
       if (countErr) throw new Error(`Falha ao verificar pedidos vinculados: ${countErr.message}`);
-      if ((count ?? 0) > 0) throw new Error(`Não é possível excluir: representante possui ${count} pedido(s) vinculado(s). Inative o cadastro em vez de excluir.`);
+      if ((count ?? 0) > 0) throw new Error(`Não é possível excluir: representante possui ${count} ${count === 1 ? 'pedido vinculado' : 'pedidos vinculados'}. Inative o cadastro em vez de excluir.`);
       const { error } = await supabase.from('representatives').delete().eq('id', id);
       if (error) throw error;
     },

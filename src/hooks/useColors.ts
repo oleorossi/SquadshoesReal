@@ -137,7 +137,7 @@ export function useDeleteColor() {
           .eq(col, id);
         if (chkErr) throw chkErr;
         if ((count ?? 0) > 0) {
-          throw new Error(`Cor está vinculada a ${count} ficha(s) técnica(s) (campo ${col}). Desvincule antes de excluir.`);
+          throw new Error(`Cor está vinculada a ${count} ${count === 1 ? 'ficha técnica' : 'fichas técnicas'} (campo ${col}). Desvincule antes de excluir.`);
         }
       }
       const { error } = await supabase

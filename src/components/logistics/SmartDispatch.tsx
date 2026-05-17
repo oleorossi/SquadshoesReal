@@ -40,19 +40,19 @@ export function SmartDispatch({ recommendation, orderVolume }: { recommendation:
         </div>
         <div className="text-right">
           <p className="text-2xl font-black font-mono leading-none">{recommendation.occupancy.toFixed(0)}%</p>
-          <p className="text-[9px] font-bold text-primary-foreground/40 uppercase">Ocupação do Baú</p>
+          <p className="text-[11px] font-bold text-primary-foreground/40 uppercase">Ocupação do Baú</p>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 mb-6">
         <div className="bg-primary-foreground/10 p-3 rounded-xl border border-primary-foreground/10">
-          <p className="text-[9px] font-black text-primary-foreground/40 uppercase">Eficiência de Frete</p>
+          <p className="text-[11px] font-black text-primary-foreground/40 uppercase">Eficiência de Frete</p>
           <p className={`text-xs font-bold ${recommendation.efficiency === 'ALTA' ? 'text-lime-400' : 'text-amber-400'}`}>
             {recommendation.efficiency === 'ALTA' ? '🔥 ÓTIMA (Carga Cheia)' : '⚠️ MÉDIA (Espaço Sobrando)'}
           </p>
         </div>
         <div className="bg-primary-foreground/10 p-3 rounded-xl border border-primary-foreground/10">
-          <p className="text-[9px] font-black text-primary-foreground/40 uppercase">Destino (Sugestão)</p>
+          <p className="text-[11px] font-black text-primary-foreground/40 uppercase">Destino (Sugestão)</p>
           <p className="text-xs font-bold text-primary-foreground/80 uppercase italic">Grande Rio / RJ</p>
         </div>
       </div>

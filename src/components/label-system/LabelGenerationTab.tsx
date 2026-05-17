@@ -117,10 +117,10 @@ export function LabelGenerationTab() {
     }
 
     setBatchResult(prev => prev ? { ...prev, status: 'done', progress: 100 } : null);
-    toast.success(`Lote ${batchId}: ${totalLabels} etiqueta(s) gerada(s)`, {
+    toast.success(`Lote ${batchId}: ${totalLabels} ${totalLabels === 1 ? 'etiqueta gerada' : 'etiquetas geradas'}`, {
       description: perFichaMode
         ? `Modo por ficha: ${fichasCount} fichas × ${selectedOrders.length} OPs`
-        : `${selectedOrders.length} OP(s) × ${copies} cópia(s)`,
+        : `${selectedOrders.length} ${selectedOrders.length === 1 ? 'OP' : 'OPs'} × ${copies} ${copies === 1 ? 'cópia' : 'cópias'}`,
     });
     setGenerating(false);
   };
@@ -251,11 +251,11 @@ export function LabelGenerationTab() {
           <CardContent className="py-3 flex flex-wrap items-center justify-between gap-3">
             <div className="space-y-0.5">
               <span className="text-sm font-semibold">
-                {selectedOrders.length} OP(s) selecionada(s)
+                {selectedOrders.length} {selectedOrders.length === 1 ? 'OP selecionada' : 'OPs selecionadas'}
               </span>
               <div className="flex items-center gap-3 text-xs text-muted-foreground">
                 <span className="flex items-center gap-1">
-                  <Tag className="h-3 w-3" />{totalLabels} etiqueta(s)
+                  <Tag className="h-3 w-3" />{totalLabels} {totalLabels === 1 ? 'etiqueta' : 'etiquetas'}
                 </span>
                 <span className="flex items-center gap-1">
                   <Clock className="h-3 w-3" />~{estimatedTime}s

@@ -183,7 +183,7 @@ export function SheetsAuditPanel({
             <TabsTrigger value="sheets" className="text-xs">
               Fichas Técnicas
               {summary && (summary.total_fichas - summary.fichas_100_completas) > 0 && (
-                <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-500/40 text-[9px] h-4 px-1.5 ml-2">
+                <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-500/40 text-[11px] h-4 px-1.5 ml-2">
                   {summary.total_fichas - summary.fichas_100_completas}
                 </Badge>
               )}
@@ -191,7 +191,7 @@ export function SheetsAuditPanel({
             <TabsTrigger value="soles" className="text-xs">
               Solados
               {solesAudit.filter(s => s.missing_lining_specs || s.missing_insole_specs || s.fachetado_missing_fachete_specs).length > 0 && (
-                <Badge variant="outline" className="bg-red-500/10 text-red-700 border-red-500/40 text-[9px] h-4 px-1.5 ml-2">
+                <Badge variant="outline" className="bg-red-500/10 text-red-700 border-red-500/40 text-[11px] h-4 px-1.5 ml-2">
                   {solesAudit.filter(s => s.missing_lining_specs || s.missing_insole_specs || s.fachetado_missing_fachete_specs).length}
                 </Badge>
               )}
@@ -233,14 +233,14 @@ export function SheetsAuditPanel({
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-bold text-sm">{sole.sole_name}</span>
-                            {sole.sole_color && <Badge variant="outline" className="text-[9px] h-4">{sole.sole_color}</Badge>}
+                            {sole.sole_color && <Badge variant="outline" className="text-[11px] h-4">{sole.sole_color}</Badge>}
                             {sole.is_fachetado && (
-                              <Badge variant="outline" className="bg-blue-500/10 text-blue-700 border-blue-500/40 text-[9px] h-4">
+                              <Badge variant="outline" className="bg-blue-500/10 text-blue-700 border-blue-500/40 text-[11px] h-4">
                                 fachetado
                               </Badge>
                             )}
-                            <span className="text-[10px] text-muted-foreground">
-                              {sole.sheets_using} ficha(s) usando
+                            <span className="text-[11px] text-muted-foreground">
+                              {sole.sheets_using} {sole.sheets_using === 1 ? 'ficha usando' : 'fichas usando'}
                             </span>
                           </div>
                           <div className="flex flex-wrap gap-2 mt-2 text-[11px]">
@@ -319,28 +319,28 @@ function SheetsAuditTab({
         {summary && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="rounded-lg border bg-muted/30 p-3">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Total de fichas</p>
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">Total de fichas</p>
               <p className="display text-xl tabular-nums mt-1">{summary.total_fichas}</p>
             </div>
             <div className="rounded-lg border bg-emerald-500/10 border-emerald-500/40 p-3">
-              <p className="text-[10px] uppercase tracking-wider text-emerald-700 font-semibold">100% completas</p>
+              <p className="text-[11px] uppercase tracking-wider text-emerald-700 font-semibold">100% completas</p>
               <p className="display text-xl tabular-nums mt-1 text-emerald-700">
                 {summary.fichas_100_completas} / {summary.total_fichas}
               </p>
             </div>
             <div className="rounded-lg border bg-red-500/10 border-red-500/40 p-3">
-              <p className="text-[10px] uppercase tracking-wider text-red-700 font-semibold">Sem cabedal</p>
+              <p className="text-[11px] uppercase tracking-wider text-red-700 font-semibold">Sem cabedal</p>
               <p className="display text-xl tabular-nums mt-1 text-red-700">
                 {summary.sem_consumo_cabedal}
               </p>
-              <p className="text-[10px] text-muted-foreground">consumo / {summary.sem_grupo_cabedal} grupo</p>
+              <p className="text-[11px] text-muted-foreground">consumo / {summary.sem_grupo_cabedal} grupo</p>
             </div>
             <div className="rounded-lg border bg-red-500/10 border-red-500/40 p-3">
-              <p className="text-[10px] uppercase tracking-wider text-red-700 font-semibold">Sem MOD</p>
+              <p className="text-[11px] uppercase tracking-wider text-red-700 font-semibold">Sem MOD</p>
               <p className="display text-xl tabular-nums mt-1 text-red-700">
                 {summary.sem_mod_cadastrado}
               </p>
-              <p className="text-[10px] text-muted-foreground">não tem operação cadastrada</p>
+              <p className="text-[11px] text-muted-foreground">não tem operação cadastrada</p>
             </div>
           </div>
         )}
@@ -428,10 +428,10 @@ function SheetsAuditTab({
                         <span className="font-bold text-sm">{row.code}</span>
                         <span className="text-xs text-muted-foreground truncate">{row.name}</span>
                         {row.status && (
-                          <Badge variant="outline" className="text-[9px] h-4">{row.status}</Badge>
+                          <Badge variant="outline" className="text-[11px] h-4">{row.status}</Badge>
                         )}
                         {row.sole_drives_consumption && (
-                          <Badge variant="outline" className="bg-blue-500/10 text-blue-700 border-blue-500/40 text-[9px] h-4">
+                          <Badge variant="outline" className="bg-blue-500/10 text-blue-700 border-blue-500/40 text-[11px] h-4">
                             sole-driven
                           </Badge>
                         )}
@@ -443,7 +443,7 @@ function SheetsAuditTab({
                               key={g.key}
                               variant="outline"
                               className={cn(
-                                'text-[10px] gap-1',
+                                'text-[11px] gap-1',
                                 g.severity === 'critical'
                                   ? 'bg-red-500/10 text-red-700 border-red-500/40'
                                   : 'bg-amber-500/10 text-amber-700 border-amber-500/40',
@@ -455,7 +455,7 @@ function SheetsAuditTab({
                           ))}
                         </div>
                       ) : (
-                        <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 border-emerald-500/40 mt-2 text-[10px] gap-1">
+                        <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 border-emerald-500/40 mt-2 text-[11px] gap-1">
                           <CheckCircle2 className="h-2.5 w-2.5" /> Ficha 100% completa
                         </Badge>
                       )}
@@ -487,7 +487,7 @@ export function SheetsAuditButton({ onJumpToSheet }: { onJumpToSheet: (sheetId: 
         <ClipboardList className="h-3.5 w-3.5" />
         Auditoria
         {incomplete > 0 && (
-          <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-500/40 text-[9px] h-4 px-1.5 ml-1">
+          <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-500/40 text-[11px] h-4 px-1.5 ml-1">
             {incomplete}
           </Badge>
         )}

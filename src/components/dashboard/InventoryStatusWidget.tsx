@@ -20,10 +20,10 @@
              Status do Estoque
            </CardTitle>
            <div className="flex gap-2">
-             <Badge variant="outline" className="text-[10px] gap-1">
+             <Badge variant="outline" className="text-[11px] gap-1">
                <Palette className="h-3 w-3" /> Cores
              </Badge>
-             <Badge variant="outline" className="text-[10px] gap-1">
+             <Badge variant="outline" className="text-[11px] gap-1">
                <Ruler className="h-3 w-3" /> Tamanhos
              </Badge>
            </div>
@@ -41,13 +41,13 @@
                <div key={p.id} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-muted/30 border-b last:border-0">
                  <div className="min-w-0">
                    <p className="text-xs font-medium truncate">{p.name}</p>
-                   {p.color && <p className="text-[10px] text-muted-foreground">{p.color}</p>}
+                   {p.color && <p className="text-[11px] text-muted-foreground">{p.color}</p>}
                  </div>
                  <div className="text-right shrink-0 ml-2">
                    <p className={cn('text-xs font-mono font-bold', p.quantity === 0 ? 'text-destructive' : 'text-warning')}>
                      {Number(p.quantity).toLocaleString('pt-BR')}
                    </p>
-                   <p className="text-[10px] text-muted-foreground font-mono">mín {Number(p.min_stock).toLocaleString('pt-BR')}</p>
+                   <p className="text-[11px] text-muted-foreground font-mono">mín {Number(p.min_stock).toLocaleString('pt-BR')}</p>
                  </div>
                </div>
              ))}

@@ -86,10 +86,11 @@ export class ConsumptionSchemaError extends Error {
       .slice(0, 5)
       .map((i) => `• ${i.path}: ${i.message}`)
       .join('\n');
-    const more = issues.length > 5 ? `\n…e mais ${issues.length - 5} problema(s).` : '';
+    const remaining = issues.length - 5;
+    const more = remaining > 0 ? `\n…e mais ${remaining} ${remaining === 1 ? 'problema' : 'problemas'}.` : '';
     super(
       `RPC calculate_order_consumption retornou JSONB inválido ` +
-        `(${issues.length} problema(s)):\n${summary}${more}`,
+        `(${issues.length} ${issues.length === 1 ? 'problema' : 'problemas'}):\n${summary}${more}`,
     );
     this.name = 'ConsumptionSchemaError';
     this.issues = issues;

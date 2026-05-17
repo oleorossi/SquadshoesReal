@@ -75,7 +75,7 @@ export default function PCPHub() {
         <Suspense fallback={<TabLoader />}>
           <TabsContent value="dashboard"><PCPDashboard /></TabsContent>
           <TabsContent value="lead-time"><LeadTime /></TabsContent>
-           <TabsContent value="ondas"><ProductionWavesPage /></TabsContent>
+           <TabsContent value="ondas"><ProductionWavesPage embedded /></TabsContent>
            <TabsContent value="planejamento"><ProductionPlanning /></TabsContent>
           <TabsContent value="cronograma"><ProductionScheduleTimeline /></TabsContent>
            <TabsContent value="setores"><Setores /></TabsContent>

@@ -16,10 +16,10 @@ async function runResyncAndInvalidate(qc: QueryClient, sheetId: string) {
       qc.invalidateQueries({ queryKey: ['products'] });
       qc.invalidateQueries({ queryKey: ['stock_movements'] });
       qc.invalidateQueries({ queryKey: ['material_reservations'] });
-      toast.success(`${result.totalResyncedOPs} OP(s) resincronizada(s) automaticamente!`);
+      toast.success(`${result.totalResyncedOPs} ${result.totalResyncedOPs === 1 ? 'OP resincronizada' : 'OPs resincronizadas'} automaticamente!`);
     }
     if (result.errors.length > 0) {
-      toast.warning(`${result.errors.length} erro(s) no resync`, {
+      toast.warning(`${result.errors.length} ${result.errors.length === 1 ? 'erro' : 'erros'} no resync`, {
         description: result.errors.slice(0, 3).join('\n'),
       });
     }
@@ -307,9 +307,9 @@ export function useDeleteSheet() {
       if (matErr) throw matErr;
       if (ordErr) throw ordErr;
       if (soiErr) throw soiErr;
-      if ((matCount ?? 0) > 0) throw new Error(`Ficha tem ${matCount} material(is) vinculado(s) — esvazie a ficha antes de excluir.`);
-      if ((ordCount ?? 0) > 0) throw new Error(`Ficha está vinculada a ${ordCount} OP(s) — não é possível excluir.`);
-      if ((soiCount ?? 0) > 0) throw new Error(`Ficha está vinculada a ${soiCount} item(ns) de pedido — não é possível excluir.`);
+      if ((matCount ?? 0) > 0) throw new Error(`Ficha tem ${matCount} ${matCount === 1 ? 'material vinculado' : 'materiais vinculados'} — esvazie a ficha antes de excluir.`);
+      if ((ordCount ?? 0) > 0) throw new Error(`Ficha está vinculada a ${ordCount} ${ordCount === 1 ? 'OP' : 'OPs'} — não é possível excluir.`);
+      if ((soiCount ?? 0) > 0) throw new Error(`Ficha está vinculada a ${soiCount} ${soiCount === 1 ? 'item' : 'itens'} de pedido — não é possível excluir.`);
       const { error } = await supabase
         .from('technical_sheets')
         .delete()

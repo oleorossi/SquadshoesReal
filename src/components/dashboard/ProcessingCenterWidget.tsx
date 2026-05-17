@@ -28,9 +28,9 @@
                  )} />
                  <div className="min-w-0 flex-1">
                    <p className="text-xs font-semibold truncate">{act.label}</p>
-                   <p className="text-[10px] text-muted-foreground truncate">{act.detail}</p>
+                   <p className="text-[11px] text-muted-foreground truncate">{act.detail}</p>
                  </div>
-                 <p className="text-[10px] text-muted-foreground shrink-0">{fmtDate(act.time)}</p>
+                 <p className="text-[11px] text-muted-foreground shrink-0">{fmtDate(act.time)}</p>
                </div>
              ))}
            </div>

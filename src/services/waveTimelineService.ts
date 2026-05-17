@@ -351,7 +351,7 @@ export async function autoCreateArtisanalServiceOrders(
       if (delErr) {
         const cause = err?.message ?? String(err);
         throw new Error(
-          `${cause}. ATENÇÃO: ${insertedOsIds.length} OS(s) artesanal(is) já criada(s) ` +
+          `${cause}. ATENÇÃO: ${insertedOsIds.length} ${insertedOsIds.length === 1 ? 'OS artesanal já criada' : 'OSs artesanais já criadas'} ` +
           `não puderam ser removidas (${delErr.message}). Remover manualmente: ${insertedOsIds.join(', ')}.`
         );
       }

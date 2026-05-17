@@ -60,7 +60,7 @@ export default function OrderStockValidationStep({ materials, variantId, grid, o
         <p className="text-sm text-center text-muted-foreground mt-2">
           {hasAllStock
             ? `Todos os ${materials.length} materiais disponíveis em estoque.`
-            : `${insufficientMaterials.length} material(is) com estoque insuficiente.`
+            : `${insufficientMaterials.length} ${insufficientMaterials.length === 1 ? 'material' : 'materiais'} com estoque insuficiente.`
           }
         </p>
       </div>
@@ -110,7 +110,7 @@ export default function OrderStockValidationStep({ materials, variantId, grid, o
             <Info className="h-3 w-3" /> Brecha de Produção Ativada
           </p>
           <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
-            O pedido será salvo e uma Ordem de Compra será gerada automaticamente para os {insufficientMaterials.length} material(is) faltante(s).
+            O pedido será salvo e uma Ordem de Compra será gerada automaticamente para {insufficientMaterials.length === 1 ? 'o material faltante' : `os ${insufficientMaterials.length} materiais faltantes`}.
           </p>
         </div>
       )}

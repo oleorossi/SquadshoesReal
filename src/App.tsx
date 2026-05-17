@@ -873,6 +873,16 @@ const router = createBrowserRouter([
           { path: "reports", element: <ReportsModule /> },
         ]
       },
+      // ── Aliases / rotas legadas ───────────────────────────────────────────
+      // Redirecionam rotas em inglês ou paths antigos que ainda aparecem em
+      // tabs persistidas no localStorage, evitando 404 quando o usuário
+      // recarrega com uma aba antiga.
+      { path: "stock",             element: <Navigate to="/estoque" replace /> },
+      { path: "inventory",         element: <Navigate to="/estoque" replace /> },
+      { path: "auditoria",         element: <Navigate to="/audit-logs" replace /> },
+      { path: "diagnostico",       element: <Navigate to="/system-diagnostics" replace /> },
+      { path: "monitoramento",     element: <Navigate to="/system-monitor" replace /> },
+      { path: "technical-sheets",  element: <Navigate to="/fichas-tecnicas" replace /> },
       {
         path: "*",
         element: <NotFound />,

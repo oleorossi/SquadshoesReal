@@ -1291,7 +1291,7 @@ export function LabelProductionTab() {
                   <Button
                     variant="outline"
                     className="gap-2 h-9 shadow-sm border-amber-500/40 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10"
-                    title="Alterar Referência/Nome/Cor manualmente — afeta TODAS as etiquetas (térmica + caixa) do(s) grupo(s) selecionado(s)"
+                    title="Alterar Referência/Nome/Cor manualmente — afeta TODAS as etiquetas (térmica + caixa) dos grupos selecionados"
                     onClick={() => {
                       const selectedGroups = filtered.filter(g => selected.has(g.groupKey));
                       if (selectedGroups.length === 0) { toast.error('Selecione ao menos um item.'); return; }
@@ -1414,7 +1414,7 @@ export function LabelProductionTab() {
             <p className="text-xs text-muted-foreground">
               Substitui Referência, Nome e/ou Cor nas etiquetas geradas pelo sistema. A alteração é
               propagada em <strong>todas as etiquetas</strong> (térmica individual + caixa externa)
-              do(s) grupo(s) selecionado(s). Não altera o cadastro original — só esta impressão.
+              dos grupos selecionados. Não altera o cadastro original — só esta impressão.
             </p>
             <div className="space-y-2">
               <Label className="text-xs">Referência (código impresso)</Label>
@@ -1456,7 +1456,7 @@ export function LabelProductionTab() {
                 return next;
               });
               setEditingLabelGroup(null);
-              toast.info(`Override removido de ${selectedGroups.length} item(ns).`);
+              toast.info(`Override removido de ${selectedGroups.length} ${selectedGroups.length === 1 ? 'item' : 'itens'}.`);
             }}>
               Restaurar Original
             </Button>
@@ -1489,7 +1489,7 @@ export function LabelProductionTab() {
                 }
                 return next;
               });
-              toast.success(`Etiqueta ajustada em ${selectedGroups.length} grupo(s) — térmica + caixa externa.`);
+              toast.success(`Etiqueta ajustada em ${selectedGroups.length} ${selectedGroups.length === 1 ? 'grupo' : 'grupos'} — térmica + caixa externa.`);
               setEditingLabelGroup(null);
             }}>
               Aplicar a Todos Selecionados
@@ -1538,7 +1538,7 @@ export function LabelProductionTab() {
                   newOverrides[g.groupKey] = editingStrapsText.replace(/ \| /g, '|').replace(/\| /g, '|').replace(/ \|/g, '|');
                 }
                 setStrapsLabelOverrides(newOverrides);
-                toast.success(`Texto das tiras ajustado para ${selectedGroups.length} referência(s).`);
+                toast.success(`Texto das tiras ajustado para ${selectedGroups.length} ${selectedGroups.length === 1 ? 'referência' : 'referências'}.`);
               }
               setEditingStrapsGroup(null);
             }}>

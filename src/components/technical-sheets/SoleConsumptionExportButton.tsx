@@ -68,7 +68,7 @@ export function SoleConsumptionExportButton({ soleProductId, soleLabel }: Props)
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      toast.success(`Exportado: ${rows.length} linha(s)`);
+      toast.success(`Exportado: ${rows.length} ${rows.length === 1 ? 'linha' : 'linhas'}`);
     } catch (err: any) {
       toast.error(`Erro ao exportar: ${err.message}`);
     } finally {

@@ -3,7 +3,7 @@
  * Tela-chave do handoff Novidade (`screen-production-flow.jsx`).
  *
  * Visualização vertical (5 colunas):
- *   CORTE → COSTURA → MONTAGEM → ACABAMENTO → EMBALAGEM
+ *   CORTE → COSTURA → MONTAGEM → ACABAMENTO → EXPEDIÇÃO
  *
  * Cada OP é um cartão na coluna do seu estágio atual, com:
  *   - ID (mono pequeno)
@@ -29,12 +29,15 @@ import { Button } from '@/components/ui/button';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 
+// Kanban segue a taxonomia canônica de productionSectors (5 macro-etapas).
+// A coluna final é "Expedição" — antes chamada de "Embalagem" no kanban,
+// mas o setor real Embalagens é uma sub-etapa de Expedição (vide /expedicao).
 const STAGES = [
   { key: 'CORTE',      icon: Corte,      colorVar: 'var(--stage-cut)',  label: 'Corte' },
   { key: 'COSTURA',    icon: Costura,    colorVar: 'var(--stage-sew)',  label: 'Costura' },
   { key: 'MONTAGEM',   icon: Montagem,   colorVar: 'var(--stage-assy)', label: 'Montagem' },
   { key: 'ACABAMENTO', icon: Acabamento, colorVar: 'var(--stage-fin)',  label: 'Acabamento' },
-  { key: 'EMBALAGEM',  icon: Embalagem,  colorVar: 'var(--stage-pack)', label: 'Embalagem' },
+  { key: 'EXPEDICAO',  icon: Embalagem,  colorVar: 'var(--stage-pack)', label: 'Expedição' },
 ] as const;
 
 type Op = {

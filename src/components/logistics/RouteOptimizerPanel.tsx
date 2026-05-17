@@ -536,7 +536,7 @@ export function RouteOptimizerPanel() {
 
       if (unresolvedClients.length > 0) {
         setRouteWarnings([`Lojas ignoradas (geolocalização falhou): ${unresolvedClients.join(', ')}`]);
-        toast.warning(`${unresolvedClients.length} loja(s) ignorada(s) — rota gerada com as demais.`);
+        toast.warning(`${unresolvedClients.length} ${unresolvedClients.length === 1 ? 'loja ignorada' : 'lojas ignoradas'} — rota gerada com as demais.`);
       }
 
       const allStops: RouteStop[] = [
@@ -668,7 +668,7 @@ export function RouteOptimizerPanel() {
                   <Button variant="outline" className="w-full justify-start text-muted-foreground font-normal">
                     <Search className="h-4 w-4 mr-2 shrink-0" />
                     {selectedClients.length > 0
-                      ? `${selectedClients.length} loja(s) selecionada(s)`
+                      ? `${selectedClients.length} ${selectedClients.length === 1 ? 'loja selecionada' : 'lojas selecionadas'}`
                       : 'Buscar por nome, bairro, cidade...'}
                   </Button>
                 </PopoverTrigger>
@@ -769,7 +769,7 @@ export function RouteOptimizerPanel() {
                       {blockedOrderClients.length > 0 && (
                         <div>
                           <p className="font-medium text-destructive flex items-center gap-1">
-                            <AlertTriangle className="h-3 w-3" /> {blockedOrderClients.length} loja(s) com cadastro incompleto
+                            <AlertTriangle className="h-3 w-3" /> {blockedOrderClients.length} {blockedOrderClients.length === 1 ? 'loja com cadastro incompleto' : 'lojas com cadastro incompleto'}
                           </p>
                           {blockedOrderClients.slice(0, 3).map((c) => (
                             <p key={c.id} className="text-muted-foreground truncate ml-4">
@@ -781,7 +781,7 @@ export function RouteOptimizerPanel() {
                       {unresolvedOrders.length > 0 && (
                         <div>
                           <p className="font-medium text-destructive flex items-center gap-1">
-                            <AlertTriangle className="h-3 w-3" /> {unresolvedOrders.length} pedido(s) sem loja vinculada
+                            <AlertTriangle className="h-3 w-3" /> {unresolvedOrders.length} {unresolvedOrders.length === 1 ? 'pedido sem loja vinculada' : 'pedidos sem loja vinculada'}
                           </p>
                           {unresolvedOrders.slice(0, 3).map((label) => (
                             <p key={label} className="text-muted-foreground truncate ml-4">{label}</p>

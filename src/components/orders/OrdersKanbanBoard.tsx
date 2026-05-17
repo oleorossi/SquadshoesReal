@@ -181,9 +181,9 @@ export default function OrdersKanbanBoard({
               <div className="flex items-baseline justify-between gap-2">
                 <div>
                   <div className="eyebrow">{g.label}</div>
-                  <div className="text-[10px] text-muted-foreground mt-0.5 truncate">{g.short}</div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5 truncate">{g.short}</div>
                 </div>
-                <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
+                <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
                   {String(STAGE_GROUPS.indexOf(g) + 1).padStart(2, '0')}/05
                 </span>
               </div>
@@ -194,9 +194,9 @@ export default function OrdersKanbanBoard({
                 >
                   {colOrders.length}
                 </span>
-                <span className="font-mono text-[10px] text-muted-foreground">OPs</span>
+                <span className="font-mono text-[11px] text-muted-foreground">OPs</span>
               </div>
-              <div className="font-mono text-[10px] text-muted-foreground mt-0.5 tabular-nums">
+              <div className="font-mono text-[11px] text-muted-foreground mt-0.5 tabular-nums">
                 {totalPairs.toLocaleString('pt-BR')} pares
               </div>
             </div>
@@ -232,7 +232,7 @@ export default function OrdersKanbanBoard({
               {/* Column header */}
               <div className="flex items-center gap-2 pb-3 border-b border-border/50 mb-3">
                 <div
-                  className="h-7 w-7 rounded border bg-card flex items-center justify-center font-mono text-[10px] font-bold tabular-nums"
+                  className="h-7 w-7 rounded border bg-card flex items-center justify-center font-mono text-[11px] font-bold tabular-nums"
                   style={{ color: `hsl(var(${g.colorVar}))` }}
                 >
                   {String(STAGE_GROUPS.indexOf(g) + 1).padStart(2, '0')}
@@ -249,7 +249,7 @@ export default function OrdersKanbanBoard({
               {/* OP cards */}
               <div className="flex-1 space-y-2 overflow-y-auto">
                 {colOrders.length === 0 ? (
-                  <div className="text-center text-[10px] text-muted-foreground/60 py-8 italic">
+                  <div className="text-center text-[11px] text-muted-foreground/60 py-8 italic">
                     Nenhuma OP
                   </div>
                 ) : (
@@ -282,7 +282,7 @@ export default function OrdersKanbanBoard({
                         )}
 
                         {/* Header: OP number + sale order */}
-                        <div className="flex items-center justify-between text-[10px]">
+                        <div className="flex items-center justify-between text-[11px]">
                           <span className="font-mono text-muted-foreground tabular-nums">
                             {order.order_number || '—'}
                           </span>
@@ -317,7 +317,7 @@ export default function OrdersKanbanBoard({
                               style={{ backgroundColor: colorHex(order.color) }}
                               aria-hidden
                             />
-                            <span className="text-[10px] text-muted-foreground truncate">
+                            <span className="text-[11px] text-muted-foreground truncate">
                               {order.color}
                             </span>
                           </div>

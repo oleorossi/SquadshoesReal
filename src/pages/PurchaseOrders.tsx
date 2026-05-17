@@ -321,27 +321,27 @@ export default function PurchaseOrders() {
                         </TableCell>
                         <TableCell className="text-center" onClick={e => e.stopPropagation()}>
                           <div className="flex items-center justify-center gap-1">
-                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSelectedId(o.id)}>
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSelectedId(o.id)} aria-label="Ver detalhes da ordem de compra">
                               <Eye className="h-4 w-4" />
                             </Button>
                             {o.status === 'pending' && (
                               <>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-green-600 hover:text-green-700" disabled={updateOrder.isPending} onClick={() => updateOrder.mutate({ id: o.id, data: { status: 'approved' } })}>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-green-600 hover:text-green-700" disabled={updateOrder.isPending} onClick={() => updateOrder.mutate({ id: o.id, data: { status: 'approved' } })} aria-label="Aprovar ordem de compra">
                                   <CheckCircle2 className="h-4 w-4" />
                                 </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" disabled={updateOrder.isPending} onClick={() => updateOrder.mutate({ id: o.id, data: { status: 'cancelled' } })}>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" disabled={updateOrder.isPending} onClick={() => updateOrder.mutate({ id: o.id, data: { status: 'cancelled' } })} aria-label="Cancelar ordem de compra">
                                   <XCircle className="h-4 w-4" />
                                 </Button>
                               </>
                             )}
                             {o.status === 'approved' && (
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600" disabled={updateOrder.isPending} onClick={() => updateOrder.mutate({ id: o.id, data: { status: 'sent' } })}>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600" disabled={updateOrder.isPending} onClick={() => updateOrder.mutate({ id: o.id, data: { status: 'sent' } })} aria-label="Marcar OC como enviada ao fornecedor">
                                 <Send className="h-4 w-4" />
                               </Button>
                             )}
                             <AlertDialog>
                               <AlertDialogTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive/60 hover:text-destructive">
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive/60 hover:text-destructive" aria-label="Excluir ordem de compra">
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               </AlertDialogTrigger>

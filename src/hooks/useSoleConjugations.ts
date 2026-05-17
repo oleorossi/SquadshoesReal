@@ -86,6 +86,6 @@ async function processResyncQueueSilently(qc: ReturnType<typeof useQueryClient>)
     qc.invalidateQueries({ queryKey: ['orders'] });
     qc.invalidateQueries({ queryKey: ['products'] });
     qc.invalidateQueries({ queryKey: ['stock_movements'] });
-    toast.success(`${processed} OP(s) resincronizada(s)`);
+    toast.success(`${processed} ${processed === 1 ? 'OP resincronizada' : 'OPs resincronizadas'}`);
   }
 }

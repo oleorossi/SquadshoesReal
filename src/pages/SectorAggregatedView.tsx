@@ -28,7 +28,7 @@ const SECTORS: SectorConfig[] = [
     hint: 'Agrupado por modelo + cor — corta tecido colorido em lote.',
   },
   {
-    key: 'mesa', stageName: 'Aviamento', label: 'Mesa / Aviamento',
+    key: 'mesa', stageName: 'Aviamento', label: 'Aviamento',
     icon: Hand, groupByColor: true,
     hint: 'Agrupado por modelo + cor — prepara componentes coloridos consolidados.',
   },

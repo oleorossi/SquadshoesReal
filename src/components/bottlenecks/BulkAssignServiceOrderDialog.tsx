@@ -92,7 +92,7 @@ export function BulkAssignServiceOrderDialog({ open, onOpenChange, sector, weekS
           {activeOS.length > 0 && (
             <div className="rounded-md border border-emerald-500/40 bg-emerald-50 dark:bg-emerald-950/30 p-3 text-xs space-y-1">
               <p className="font-medium text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
-                <CheckCircle2 className="h-3.5 w-3.5" /> Já há {activeOS.length} OS ativa(s) nesse gargalo
+                <CheckCircle2 className="h-3.5 w-3.5" /> Já {activeOS.length === 1 ? 'há' : 'há'} {activeOS.length} {activeOS.length === 1 ? 'OS ativa' : 'OSs ativas'} nesse gargalo
               </p>
               <p className="text-emerald-800 dark:text-emerald-300">
                 Contratada já usada: <strong>{(activeOS[0]?.contractors as any)?.name || '—'}</strong>
@@ -215,7 +215,7 @@ export function BulkAssignServiceOrderDialog({ open, onOpenChange, sector, weekS
           >
             {bulkAssign.isPending
               ? 'Criando...'
-              : `Encaminhar ${pendingOrders.length} OP(s)`}
+              : `Encaminhar ${pendingOrders.length} ${pendingOrders.length === 1 ? 'OP' : 'OPs'}`}
           </Button>
         </DialogFooter>
       </DialogContent>

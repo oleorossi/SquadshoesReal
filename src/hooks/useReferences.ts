@@ -83,8 +83,8 @@ export function useDeleteReference() {
       ]);
       if (e1 || e2) throw new Error('Erro ao verificar vínculos da referência.');
       const msgs: string[] = [];
-      if ((saleItemsCount ?? 0) > 0) msgs.push(`${saleItemsCount} item(ns) de PV`);
-      if ((ordersCount ?? 0) > 0) msgs.push(`${ordersCount} OP(s) ativa(s)`);
+      if ((saleItemsCount ?? 0) > 0) msgs.push(`${saleItemsCount} ${saleItemsCount === 1 ? 'item' : 'itens'} de PV`);
+      if ((ordersCount ?? 0) > 0) msgs.push(`${ordersCount} ${ordersCount === 1 ? 'OP ativa' : 'OPs ativas'}`);
       if (msgs.length > 0) {
         throw new Error(`Não é possível excluir: referência usada em ${msgs.join(', ')}.`);
       }

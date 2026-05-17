@@ -144,10 +144,10 @@ export function useDeleteCostCenter() {
       if (ohRes.error) throw new Error(`Falha ao verificar rateios: ${ohRes.error.message}`);
       if (budRes.error) throw new Error(`Falha ao verificar orçamentos: ${budRes.error.message}`);
       const blockers: string[] = [];
-      if ((feRes.count ?? 0) > 0) blockers.push(`${feRes.count} lançamento(s) confirmado(s)`);
-      if ((lcRes.count ?? 0) > 0) blockers.push(`${lcRes.count} custo(s) de MOD`);
-      if ((ohRes.count ?? 0) > 0) blockers.push(`${ohRes.count} rateio(s)`);
-      if ((budRes.count ?? 0) > 0) blockers.push(`${budRes.count} orçamento(s)`);
+      if ((feRes.count ?? 0) > 0) blockers.push(`${feRes.count} ${feRes.count === 1 ? 'lançamento confirmado' : 'lançamentos confirmados'}`);
+      if ((lcRes.count ?? 0) > 0) blockers.push(`${lcRes.count} ${lcRes.count === 1 ? 'custo' : 'custos'} de MOD`);
+      if ((ohRes.count ?? 0) > 0) blockers.push(`${ohRes.count} ${ohRes.count === 1 ? 'rateio' : 'rateios'}`);
+      if ((budRes.count ?? 0) > 0) blockers.push(`${budRes.count} ${budRes.count === 1 ? 'orçamento' : 'orçamentos'}`);
       if (blockers.length > 0) {
         throw new Error(`Centro de custo vinculado a ${blockers.join(', ')}. Desative-o em vez de excluir.`);
       }

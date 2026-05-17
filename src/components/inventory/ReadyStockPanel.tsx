@@ -21,6 +21,7 @@ import {
   useUpdateReadyStock, useDeleteReadyStock,
 } from '@/hooks/useReadyStock';
 import { cn } from '@/lib/utils';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
 
 function gcd(a: number, b: number): number {
   return b === 0 ? a : gcd(b, a % b);
@@ -410,52 +411,35 @@ ${cardsHtml}
   return (
     <div className="space-y-4">
       {/* KPIs */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Card className="p-3">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-primary/15 flex items-center justify-center">
-              <ShoppingBag className="h-4 w-4 text-primary" />
-            </div>
-            <div>
-              <p className="text-lg font-bold font-mono">{totalPairs.toLocaleString('pt-BR')}</p>
-              <p className="text-[10px] text-muted-foreground">Pares Disponíveis</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-3">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-success/15 flex items-center justify-center">
-              <Package className="h-4 w-4 text-success" />
-            </div>
-            <div>
-              <p className="text-lg font-bold font-mono">{grouped.length}</p>
-              <p className="text-[10px] text-muted-foreground">Modelos/Cores</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-3">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-warning/15 flex items-center justify-center">
-              <Package className="h-4 w-4 text-warning" />
-            </div>
-            <div>
-              <p className="text-lg font-bold font-mono">{fmt(totalCost)}</p>
-              <p className="text-[10px] text-muted-foreground">Custo Total</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-3">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-primary/15 flex items-center justify-center">
-              <Package className="h-4 w-4 text-primary" />
-            </div>
-            <div>
-              <p className="text-lg font-bold font-mono">{fmt(totalValue)}</p>
-              <p className="text-[10px] text-muted-foreground">Valor Venda Total</p>
-            </div>
-          </div>
-        </Card>
-      </div>
+      <StatGrid>
+        <StatCard
+          label="Pares Disponíveis"
+          value={totalPairs.toLocaleString('pt-BR')}
+          hint="em estoque"
+          icon={ShoppingBag}
+          tone="primary"
+        />
+        <StatCard
+          label="Modelos/Cores"
+          value={grouped.length}
+          hint="variantes ativas"
+          icon={Package}
+          tone="success"
+        />
+        <StatCard
+          label="Custo Total"
+          value={fmt(totalCost)}
+          hint="estoque a custo"
+          icon={Package}
+          tone="warning"
+        />
+        <StatCard
+          label="Valor Venda Total"
+          value={fmt(totalValue)}
+          hint="estoque a preço de venda"
+          icon={Package}
+        />
+      </StatGrid>
 
       {/* Search + Actions */}
       <div className="flex flex-wrap items-center gap-3">

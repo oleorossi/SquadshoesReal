@@ -170,10 +170,10 @@ export function useDeleteIndividualPackaging() {
         if (sheetRes.error) throw new Error(`Falha ao verificar fichas técnicas: ${sheetRes.error.message}`);
         if (movRes.error) throw new Error(`Falha ao verificar movimentações: ${movRes.error.message}`);
         const blockers: string[] = [];
-        if ((opRes.count ?? 0) > 0) blockers.push(`${opRes.count} OP(s) ativa(s)`);
-        if ((cfgRes.count ?? 0) > 0) blockers.push(`${cfgRes.count} config(s)`);
-        if ((sheetRes.count ?? 0) > 0) blockers.push(`${sheetRes.count} ficha(s) técnica(s)`);
-        if ((movRes.count ?? 0) > 0) blockers.push(`${movRes.count} movimentação(ões) de estoque`);
+        if ((opRes.count ?? 0) > 0) blockers.push(`${opRes.count} ${opRes.count === 1 ? 'OP ativa' : 'OPs ativas'}`);
+        if ((cfgRes.count ?? 0) > 0) blockers.push(`${cfgRes.count} ${cfgRes.count === 1 ? 'config' : 'configs'}`);
+        if ((sheetRes.count ?? 0) > 0) blockers.push(`${sheetRes.count} ${sheetRes.count === 1 ? 'ficha técnica' : 'fichas técnicas'}`);
+        if ((movRes.count ?? 0) > 0) blockers.push(`${movRes.count} ${movRes.count === 1 ? 'movimentação' : 'movimentações'} de estoque`);
         if (blockers.length > 0) {
           throw new Error(`Embalagem vinculada a ${blockers.join(', ')}. Desative-a (active=false) em vez de excluir.`);
         }

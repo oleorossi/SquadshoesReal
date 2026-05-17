@@ -194,9 +194,16 @@ function sheetCap(sheet: any, field: string, def: number): number {
   return v > 0 ? v : def;
 }
 
+// Buckets alinhados ao critério da página /gargalos:
+//   - até 100% → ok        (dentro da capacidade)
+//   - 100–149% → warning   (sobrecarga, mas administrável)
+//   - ≥ 150%   → critical  (gargalo declarado, gera OS terceirizada)
+// Antes desta unificação, esta página marcava QUALQUER coisa >100% como
+// crítico (vermelho), enquanto /gargalos só contava ≥150% — o usuário via
+// "vermelho em vários setores" aqui e "Nenhum gargalo detectado" lá.
 function occStatus(pct: number): 'ok' | 'warning' | 'critical' {
-  if (pct > 100) return 'critical';
-  if (pct > 75) return 'warning';
+  if (pct >= 150) return 'critical';
+  if (pct >= 100) return 'warning';
   return 'ok';
 }
 

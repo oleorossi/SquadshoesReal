@@ -492,7 +492,7 @@ export default function StockAdjustmentPage() {
       // tem que decidir descartar drafts ou recarregar. Antes seguia direto e
       // CONCURRENCY_ERROR vinha do RPC, mas com mensagem confusa.
       toast.error(
-        `${conflictedIds.size} produto(s) foram alterados em outra sessão enquanto você editava. ` +
+        `${conflictedIds.size} ${conflictedIds.size === 1 ? 'produto foi alterado' : 'produtos foram alterados'} em outra sessão enquanto você editava. ` +
         `Recarregue a página (F5) ou descarte seus drafts antes de salvar pra evitar sobrescrever.`,
         { duration: 8000 },
       );
@@ -723,7 +723,7 @@ export default function StockAdjustmentPage() {
              na linha individual também. */
           <span
             className="text-xs font-semibold text-destructive bg-destructive/10 border border-destructive/30 rounded px-2 py-1 shrink-0 cursor-help"
-            title={`${conflictedIds.size} produto(s) que você está editando foram alterados em outra sessão. Recarregue antes de salvar pra evitar perder dados.`}
+            title={`${conflictedIds.size} ${conflictedIds.size === 1 ? 'produto que você está editando foi alterado' : 'produtos que você está editando foram alterados'} em outra sessão. Recarregue antes de salvar pra evitar perder dados.`}
           >
             ⚠ {conflictedIds.size} conflito{conflictedIds.size > 1 ? 's' : ''}
           </span>
@@ -783,7 +783,7 @@ export default function StockAdjustmentPage() {
                <col style={{ width: 76 }} />
             </colgroup>
             <thead className="sticky top-0 z-10">
-              <tr className="bg-muted/40 backdrop-blur-sm border-b border-border [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+              <tr className="bg-muted/40 backdrop-blur-sm border-b border-border [&_th]:text-[11px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                  <th className="text-center py-2 border-r border-border/40">#</th>
                  <th className="text-center py-2 border-r border-border/40">Hist.</th>
                 <th className="text-left px-3 py-2 border-r border-border/40">Produto</th>
@@ -896,13 +896,13 @@ export default function StockAdjustmentPage() {
                             {isLow && <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />}
                             {conflictedIds.has(product.id) && (
                               <span
-                                className="text-[9px] font-bold uppercase tracking-wide bg-destructive/15 text-destructive border border-destructive/40 rounded px-1 py-0.5 shrink-0"
+                                className="text-[11px] font-bold uppercase tracking-wide bg-destructive/15 text-destructive border border-destructive/40 rounded px-1 py-0.5 shrink-0"
                                 title="Outra sessão alterou este produto enquanto você editava. Recarregue antes de salvar."
                               >
                                 conflito
                               </span>
                             )}
-                            {!product.active && <span className="text-[9px] font-semibold uppercase tracking-wide bg-muted text-muted-foreground rounded px-1 py-0.5 shrink-0">inativo</span>}
+                            {!product.active && <span className="text-[11px] font-semibold uppercase tracking-wide bg-muted text-muted-foreground rounded px-1 py-0.5 shrink-0">inativo</span>}
                             <span className="truncate font-medium text-foreground text-[13px]">{product.name}</span>
                           </div>
                         </td>
@@ -938,9 +938,9 @@ export default function StockAdjustmentPage() {
                               {isExpanded
                                 ? <ChevronDown className="h-3 w-3 shrink-0" />
                                 : <ChevronRight className="h-3 w-3 shrink-0" />}
-                              <span className="text-[10px] font-semibold uppercase tracking-wide opacity-60">
+                              <span className="text-[11px] font-semibold uppercase tracking-wide opacity-60">
                                 {keys.length > 0
-                                  ? (range ? `Grade ${range.from}–${range.to}` : `${keys.length} key(s)`)
+                                  ? (range ? `Grade ${range.from}–${range.to}` : `${keys.length} ${keys.length === 1 ? 'chave' : 'chaves'}`)
                                   : "Sem grade"}
                               </span>
                               {hasConjugations && (
@@ -950,7 +950,7 @@ export default function StockAdjustmentPage() {
                                 <TooltipProvider>
                                   <Tooltip>
                                     <TooltipTrigger asChild>
-                                      <span className="text-[9px] font-bold text-primary bg-primary/10 px-1 rounded cursor-help">
+                                      <span className="text-[11px] font-bold text-primary bg-primary/10 px-1 rounded cursor-help">
                                         conj.
                                       </span>
                                     </TooltipTrigger>
@@ -1000,7 +1000,7 @@ export default function StockAdjustmentPage() {
                                 return (
                                   <div key={key} className="flex flex-col items-center gap-0.5">
                                     <span className={cn(
-                                      "text-[10px] font-semibold tabular-nums",
+                                      "text-[11px] font-semibold tabular-nums",
                                       isConjugated ? "text-primary" : "text-muted-foreground",
                                     )}>{key}</span>
                                     <input
@@ -1033,7 +1033,7 @@ export default function StockAdjustmentPage() {
 
                               {/* Totals */}
                               <div className="ml-4 pl-4 border-l border-border/40 flex flex-col items-start gap-0.5">
-                                <span className="text-[10px] text-muted-foreground">Total</span>
+                                <span className="text-[11px] text-muted-foreground">Total</span>
                                 <div className="flex items-baseline gap-1.5">
                                   <span className="font-mono text-[13px] text-muted-foreground">{product.quantity}</span>
                                   {hasSoleDraft && (
@@ -1106,7 +1106,7 @@ export default function StockAdjustmentPage() {
                       <td className="px-3 py-1.5 border-r border-border/30">
                         <div className="flex items-center gap-1.5 min-w-0">
                           {isLow && <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />}
-                          {!product.active && <span className="text-[9px] font-semibold uppercase tracking-wide bg-muted text-muted-foreground rounded px-1 py-0.5 shrink-0">inativo</span>}
+                          {!product.active && <span className="text-[11px] font-semibold uppercase tracking-wide bg-muted text-muted-foreground rounded px-1 py-0.5 shrink-0">inativo</span>}
                           <span className="truncate font-medium text-foreground text-[13px]">{product.name}</span>
                         </div>
                       </td>

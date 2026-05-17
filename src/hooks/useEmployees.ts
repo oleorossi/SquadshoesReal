@@ -110,8 +110,8 @@ export function useDeleteEmployee() {
       if (advRes.error) throw advRes.error;
       if (timeRes.error) throw timeRes.error;
       const blockers: string[] = [];
-      if ((advRes.count ?? 0) > 0) blockers.push(`${advRes.count} adiantamento(s)`);
-      if ((timeRes.count ?? 0) > 0) blockers.push(`${timeRes.count} registro(s) de ponto`);
+      if ((advRes.count ?? 0) > 0) blockers.push(`${advRes.count} ${advRes.count === 1 ? 'adiantamento' : 'adiantamentos'}`);
+      if ((timeRes.count ?? 0) > 0) blockers.push(`${timeRes.count} ${timeRes.count === 1 ? 'registro' : 'registros'} de ponto`);
       if (blockers.length > 0) {
         throw new Error(`Não é possível excluir: funcionário tem ${blockers.join(' e ')} no histórico. Inative o cadastro em vez de excluir.`);
       }

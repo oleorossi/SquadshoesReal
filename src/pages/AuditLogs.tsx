@@ -14,6 +14,66 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
+// Mapas para humanizar recursos e ações vindas direto do banco.
+// O log original guarda os nomes em snake_case (ex: manual_billing_override_create);
+// aqui traduzimos para algo legível pelo operador.
+const RESOURCE_LABELS: Record<string, string> = {
+  SALE_ORDER: 'Pedido de Venda',
+  PURCHASE_ORDER: 'Ordem de Compra',
+  PRODUCTION_ORDER: 'Ordem de Produção',
+  CLIENT: 'Cliente',
+  SUPPLIER: 'Fornecedor',
+  PRODUCT: 'Produto',
+  STOCK: 'Estoque',
+  USER: 'Usuário',
+  PAYABLE: 'Conta a Pagar',
+  RECEIVABLE: 'Conta a Receber',
+};
+
+const ACTION_LABELS: Record<string, string> = {
+  create: 'Criar',
+  update: 'Atualizar',
+  delete: 'Excluir',
+  approve: 'Aprovar',
+  cancel: 'Cancelar',
+  reject: 'Rejeitar',
+  manual_billing_override_create: 'Override manual de faturamento (criar)',
+  manual_billing_override_update: 'Override manual de faturamento (atualizar)',
+  manual_billing_override_delete: 'Override manual de faturamento (remover)',
+  status_change: 'Mudança de status',
+  stage_advance: 'Avanço de etapa',
+  bulk_update: 'Atualização em lote',
+};
+
+function humanizeAction(action: string): string {
+  if (!action) return '—';
+  if (ACTION_LABELS[action]) return ACTION_LABELS[action];
+  // Fallback: snake_case → "Snake Case" em português aproximado.
+  return action
+    .split('_')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function humanizeResource(resource: string): string {
+  if (!resource) return '—';
+  return RESOURCE_LABELS[resource] ?? resource;
+}
+
+/** Resume um payload JSON em pares chave: valor (sem chaves/aspas). */
+function summarizeJson(data: unknown, max = 80): string {
+  if (!data || typeof data !== 'object') return String(data ?? '');
+  const entries = Object.entries(data as Record<string, unknown>)
+    .filter(([, v]) => v !== null && v !== undefined && v !== '')
+    .slice(0, 4)
+    .map(([k, v]) => {
+      const valueStr = typeof v === 'object' ? JSON.stringify(v) : String(v);
+      return `${k}: ${valueStr}`;
+    })
+    .join(' · ');
+  return entries.length > max ? entries.slice(0, max) + '…' : entries;
+}
+
 export default function AuditLogs() {
   const [search, setSearch] = useState('');
   const [resourceFilter, setResourceFilter] = useState('all');
@@ -22,9 +82,11 @@ export default function AuditLogs() {
   const { data: logs = [], isLoading } = useQuery({
     queryKey: ['system-audit-logs'],
     queryFn: async () => {
+      // Inclui o nome do usuário por LEFT JOIN com profiles, quando disponível,
+      // para não exibir só o UUID truncado na tabela.
       const { data, error } = await supabase
         .from('audit_logs')
-        .select('*')
+        .select('*, user:profiles(full_name, email)')
         .order('created_at', { ascending: false })
         .limit(1000);
       if (error) throw error;
@@ -68,7 +130,7 @@ export default function AuditLogs() {
           description="Rastreamento completo de todas as alterações e ações realizadas no sistema."
           actions={
             <Badge variant="outline" className="px-3 py-1">
-              {filteredLogs.length} registros exibidos
+              {filteredLogs.length} {filteredLogs.length === 1 ? 'registro exibido' : 'registros exibidos'}
             </Badge>
           }
         />
@@ -94,7 +156,7 @@ export default function AuditLogs() {
               <SelectContent>
                 <SelectItem value="all">Todos os Recursos</SelectItem>
                 {uniqueResources.map(r => (
-                  <SelectItem key={r} value={r}>{r}</SelectItem>
+                  <SelectItem key={r} value={r}>{humanizeResource(r)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -105,7 +167,7 @@ export default function AuditLogs() {
               <SelectContent>
                 <SelectItem value="all">Todas as Ações</SelectItem>
                 {uniqueActions.map(a => (
-                  <SelectItem key={a} value={a}>{a}</SelectItem>
+                  <SelectItem key={a} value={a}>{humanizeAction(a)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -149,12 +211,18 @@ export default function AuditLogs() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="text-[10px] font-mono uppercase tracking-wider">
-                        {log.resource}
+                      <Badge
+                        variant="outline"
+                        className="text-[11px] tracking-wide"
+                        title={log.resource}
+                      >
+                        {humanizeResource(log.resource)}
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <span className="text-sm font-medium">{log.action}</span>
+                      <span className="text-sm font-medium" title={log.action}>
+                        {humanizeAction(log.action)}
+                      </span>
                     </TableCell>
                     <TableCell className="text-center">
                       {log.success !== false ? (
@@ -166,25 +234,35 @@ export default function AuditLogs() {
                     <TableCell className="text-xs">
                       <div className="flex items-center gap-1.5">
                         <User className="h-3 w-3 text-muted-foreground" />
-                        {log.user_id ? log.user_id.slice(0, 13) + '...' : 'System'}
+                        <span title={log.user_id || undefined}>
+                          {log.user?.full_name
+                            || log.user?.email
+                            || (log.user_id ? `Usuário ${log.user_id.slice(0, 6)}` : 'Sistema')}
+                        </span>
                       </div>
                     </TableCell>
                     <TableCell className="max-w-[400px]">
                       <div className="flex items-center gap-2 overflow-hidden">
                         {log.old_data && (
-                          <div className="text-[10px] bg-muted px-1.5 py-0.5 rounded truncate max-w-[150px]">
-                            Old: {JSON.stringify(log.old_data).slice(0, 50)}...
+                          <div
+                            className="text-[11px] bg-muted px-1.5 py-0.5 rounded truncate max-w-[180px]"
+                            title={JSON.stringify(log.old_data, null, 2)}
+                          >
+                            Antes: {summarizeJson(log.old_data, 50)}
                           </div>
                         )}
-                        {log.old_data && log.new_data && <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />}
+                        {log.old_data && log.new_data && <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" aria-hidden="true" />}
                         {log.new_data && (
-                          <div className="text-[10px] bg-emerald-500/10 text-emerald-700 px-1.5 py-0.5 rounded truncate max-w-[200px]">
-                            New: {JSON.stringify(log.new_data).slice(0, 60)}...
+                          <div
+                            className="text-[11px] bg-emerald-500/10 text-emerald-700 px-1.5 py-0.5 rounded truncate max-w-[220px]"
+                            title={JSON.stringify(log.new_data, null, 2)}
+                          >
+                            Depois: {summarizeJson(log.new_data, 60)}
                           </div>
                         )}
                         {log.error_message && (
-                          <div className="text-[10px] bg-destructive/10 text-destructive px-1.5 py-0.5 rounded">
-                            Error: {log.error_message}
+                          <div className="text-[11px] bg-destructive/10 text-destructive px-1.5 py-0.5 rounded">
+                            Erro: {log.error_message}
                           </div>
                         )}
                       </div>

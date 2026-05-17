@@ -1474,7 +1474,7 @@ function getWeekOptions() {
                                   <StatusPill status={canonicalStatusToKey(order.status)} />
                                 </div>
                                 <div className="flex items-center gap-1">
-                                  <Button variant="ghost" size="icon" className="h-7 w-7" title="Editar" onClick={(e) => { e.stopPropagation(); navigate(`/orders/${order.id}/edit`); }}>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7" title="Editar" aria-label="Editar" onClick={(e) => { e.stopPropagation(); navigate(`/orders/${order.id}/edit`); }}>
                                     <Pencil className="h-3.5 w-3.5" />
                                   </Button>
                                 </div>
@@ -1550,13 +1550,13 @@ function getWeekOptions() {
                             {hasStages && <SectorProgressDots completed={completedStages} total={totalStages} />}
                           </div>
                           <div className="flex items-center gap-1">
-                            <Button variant="ghost" size="icon" className="h-7 w-7" title="Consumo" onClick={(e) => { e.stopPropagation(); setConsumptionOrderIds([order.id]); setConsumptionTitle(`OP ${(order as any).order_number || '—'}`); }}>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" title="Consumo" aria-label="Ver consumo da OP" onClick={(e) => { e.stopPropagation(); setConsumptionOrderIds([order.id]); setConsumptionTitle(`OP ${(order as any).order_number || '—'}`); }}>
                               <Package className="h-3.5 w-3.5" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" title="Editar OP" onClick={(e) => { e.stopPropagation(); navigate(`/orders/${order.id}/edit`); }}>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" title="Editar OP" aria-label="Editar OP" onClick={(e) => { e.stopPropagation(); navigate(`/orders/${order.id}/edit`); }}>
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" title="Imprimir OP" onClick={async (e) => {
+                            <Button variant="ghost" size="icon" className="h-7 w-7" title="Imprimir OP" aria-label="Imprimir OP" onClick={async (e) => {
                               e.stopPropagation();
                               const { data: mats } = await supabase.from('reference_materials').select('*, products(name, unit)').eq('reference_id', order.reference_id);
                               printHtml(`OP ${(order as any).order_number}`, buildProductionOrderPrintHtml(order, mats || []));
@@ -1643,13 +1643,13 @@ function getWeekOptions() {
                               {hasStages && <SectorProgressDots completed={completedStages} total={totalStages} />}
                             </div>
                             <div className="flex items-center gap-1">
-                              <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title="Consumo" onClick={(e) => { e.stopPropagation(); setConsumptionOrderIds([order.id]); setConsumptionTitle(`OP ${(order as any).order_number || '—'}`); }}>
+                              <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title="Consumo" aria-label="Ver consumo da OP" onClick={(e) => { e.stopPropagation(); setConsumptionOrderIds([order.id]); setConsumptionTitle(`OP ${(order as any).order_number || '—'}`); }}>
                                 <Package className="h-3.5 w-3.5" />
                               </Button>
-                              <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title="Detalhes" onClick={(e) => { e.stopPropagation(); setDetailOrders([order]); setDetailTitle(`OP ${(order as any).order_number}`); setDetailDialogOpen(true); }}>
+                              <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title="Detalhes" aria-label="Ver detalhes" onClick={(e) => { e.stopPropagation(); setDetailOrders([order]); setDetailTitle(`OP ${(order as any).order_number}`); setDetailDialogOpen(true); }}>
                                 <FileText className="h-3.5 w-3.5" />
                               </Button>
-                              <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title="Editar OP" onClick={(e) => { e.stopPropagation(); navigate(`/orders/${order.id}/edit`); }}>
+                              <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title="Editar OP" aria-label="Editar OP" onClick={(e) => { e.stopPropagation(); navigate(`/orders/${order.id}/edit`); }}>
                                 <Pencil className="h-3.5 w-3.5" />
                               </Button>
                             </div>
@@ -1730,13 +1730,13 @@ function getWeekOptions() {
                                 {hasStages && <SectorProgressDots completed={completedStages} total={totalStages} />}
                               </div>
                               <div className="flex items-center gap-1">
-                                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title="Consumo" onClick={(e) => { e.stopPropagation(); setConsumptionOrderIds([order.id]); setConsumptionTitle(`OP ${(order as any).order_number || '—'}`); }}>
+                                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title="Consumo" aria-label="Ver consumo da OP" onClick={(e) => { e.stopPropagation(); setConsumptionOrderIds([order.id]); setConsumptionTitle(`OP ${(order as any).order_number || '—'}`); }}>
                                   <Package className="h-3.5 w-3.5" />
                                 </Button>
-                                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title="Detalhes" onClick={(e) => { e.stopPropagation(); setDetailOrders([order]); setDetailTitle(`OP ${(order as any).order_number}`); setDetailDialogOpen(true); }}>
+                                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title="Detalhes" aria-label="Ver detalhes" onClick={(e) => { e.stopPropagation(); setDetailOrders([order]); setDetailTitle(`OP ${(order as any).order_number}`); setDetailDialogOpen(true); }}>
                                   <FileText className="h-3.5 w-3.5" />
                                 </Button>
-                                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title="Editar OP" onClick={(e) => { e.stopPropagation(); navigate(`/orders/${order.id}/edit`); }}>
+                                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title="Editar OP" aria-label="Editar OP" onClick={(e) => { e.stopPropagation(); navigate(`/orders/${order.id}/edit`); }}>
                                   <Pencil className="h-3.5 w-3.5" />
                                 </Button>
                               </div>
@@ -1840,10 +1840,10 @@ function getWeekOptions() {
                           ))}
                         </SelectContent>
                       </Select>
-                      <Button variant="ghost" size="icon" className="h-8 w-8" title="Consumo" onClick={() => { setConsumptionOrderIds([order.id]); setConsumptionTitle(`OP ${(order as any).order_number || '—'}`); }}>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" title="Consumo" aria-label="Ver consumo da OP" onClick={() => { setConsumptionOrderIds([order.id]); setConsumptionTitle(`OP ${(order as any).order_number || '—'}`); }}>
                         <Package className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8" title="Imprimir OP" onClick={async () => {
+                      <Button variant="ghost" size="icon" className="h-8 w-8" title="Imprimir OP" aria-label="Imprimir OP" onClick={async () => {
                         const { data: mats } = await supabase.from('reference_materials').select('*, products(name, unit)').eq('reference_id', order.reference_id);
                         printHtml(`OP ${(order as any).order_number}`, buildProductionOrderPrintHtml(order, mats || []));
                       }}>

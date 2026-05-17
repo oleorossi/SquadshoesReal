@@ -129,7 +129,7 @@ export default function OrderEdit() {
         completed_at: new Date().toISOString(),
         quantity_processed: stage.quantity_total,
       })));
-      toast.success(`Setor "${sectorName}" finalizado para ${sectorStages.length} OP(s)!`);
+      toast.success(`Setor "${sectorName}" finalizado para ${sectorStages.length} ${sectorStages.length === 1 ? 'OP' : 'OPs'}!`);
     } catch (err: any) {
       toast.error(`Erro ao finalizar setor: ${err.message}`);
     } finally {
@@ -165,7 +165,7 @@ export default function OrderEdit() {
         <EditorialPageHeader
           sectionLabel="PEDIDOS · EDIÇÃO"
           title={saleOrder ? `Pedido ${saleOrder.order_number}` : `OP ${(displayOrders[0] as any).order_number}`}
-          description={`${saleOrder ? saleOrder.client_name : (displayOrders[0] as any).technical_sheets?.name || '—'} · ${displayOrders.length} OP(s) · ${totalPairs} pares`}
+          description={`${saleOrder ? saleOrder.client_name : (displayOrders[0] as any).technical_sheets?.name || '—'} · ${displayOrders.length} ${displayOrders.length === 1 ? 'OP' : 'OPs'} · ${totalPairs} pares`}
           actions={
             <Button variant="ghost" size="icon" onClick={() => navigate('/orders')} aria-label="Voltar para Ordens de Produção">
               <ArrowLeft className="h-5 w-5" />

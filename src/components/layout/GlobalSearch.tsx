@@ -732,10 +732,10 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
 
             {q && hasMinChars && (totalResults > 0 || groupTotal > 0) && (
               <div className="border-t border-border p-2 flex items-center justify-between px-3">
-                <span className="text-[10px] text-muted-foreground">
-                  {isGroupSearch ? groupTotal : totalResults} resultado(s)
+                <span className="text-[11px] text-muted-foreground">
+                  {(() => { const n = isGroupSearch ? groupTotal : totalResults; return `${n} ${n === 1 ? 'resultado' : 'resultados'}`; })()}
                   {isGroupSearch && groupResult && groupResult.clientCount > 0 && (
-                    <span> · {groupResult.clientCount} loja(s) no grupo</span>
+                    <span> · {groupResult.clientCount} {groupResult.clientCount === 1 ? 'loja' : 'lojas'} no grupo</span>
                   )}
                 </span>
                 <span className="text-[10px] text-muted-foreground font-mono">↑↓ navegar · ↵ abrir</span>

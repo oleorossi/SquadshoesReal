@@ -168,7 +168,7 @@ function VehiclesPanel() {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">{vehicles.length} veículo(s) cadastrado(s)</p>
+        <p className="text-xs text-muted-foreground">{vehicles.length} {vehicles.length === 1 ? 'veículo cadastrado' : 'veículos cadastrados'}</p>
         <Button size="sm" onClick={openNew}><Plus className="h-3.5 w-3.5 mr-1" />Novo veículo</Button>
       </div>
 
@@ -363,7 +363,7 @@ function DriversPanel() {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">{drivers.length} motorista(s) cadastrado(s)</p>
+        <p className="text-xs text-muted-foreground">{drivers.length} {drivers.length === 1 ? 'motorista cadastrado' : 'motoristas cadastrados'}</p>
         <Button size="sm" onClick={openNew}><Plus className="h-3.5 w-3.5 mr-1" />Novo motorista</Button>
       </div>
 

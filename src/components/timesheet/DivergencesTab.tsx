@@ -82,7 +82,7 @@ export default function DivergencesTab() {
       if (cleanPunches.length === 0) return;
 
       if (cleanPunches.length % 2 !== 0) {
-        let description = `${cleanPunches.length} batida(s) — falta registro`;
+        let description = `${cleanPunches.length} ${cleanPunches.length === 1 ? 'batida' : 'batidas'} — falta registro`;
         const lunchEnd = defaultSchedule.lunch_end;
 
         if (cleanPunches.length === 1) {
@@ -208,16 +208,16 @@ export default function DivergencesTab() {
           </div>
           <div className="flex gap-4 mt-4">
             <Badge variant="outline" className="gap-1">
-              <AlertTriangle className="h-3 w-3" /> {divergenceStats.total} divergência(s)
+              <AlertTriangle className="h-3 w-3" /> {divergenceStats.total} {divergenceStats.total === 1 ? 'divergência' : 'divergências'}
             </Badge>
             {divergenceStats.resolved > 0 && (
               <Badge variant="outline" className="gap-1 border-primary/30 text-primary">
-                ✓ {divergenceStats.resolved} corrigida(s)
+                ✓ {divergenceStats.resolved} {divergenceStats.resolved === 1 ? 'corrigida' : 'corrigidas'}
               </Badge>
             )}
             {divergenceStats.pending > 0 && (
               <Badge variant="outline" className="gap-1 text-destructive border-destructive/30">
-                ⚠ {divergenceStats.pending} pendente(s)
+                ⚠ {divergenceStats.pending} {divergenceStats.pending === 1 ? 'pendente' : 'pendentes'}
               </Badge>
             )}
           </div>

@@ -89,14 +89,14 @@ export default function BottlenecksPage() {
           value={summary.critical}
           icon={AlertTriangle}
           tone={summary.critical > 0 ? 'destructive' : 'default'}
-          hint="utilização > 150%"
+          hint="utilização ≥ 150%"
         />
         <StatCard
           label="Atenção"
           value={summary.warning}
           icon={AlertTriangle}
           tone={summary.warning > 0 ? 'warning' : 'default'}
-          hint="100% < util < 150%"
+          hint="utilização 100–149%"
         />
         <StatCard
           label="OPs em gargalo"

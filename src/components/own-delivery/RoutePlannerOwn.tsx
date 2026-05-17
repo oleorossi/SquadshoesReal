@@ -65,7 +65,7 @@ export default function RoutePlannerOwn({ open, onOpenChange, orders, onCreated 
     if (open) {
       setStops(orders.map((o) => ({ order: o, coord: null })));
       setOptimized(false);
-      setRouteName(`Rota ${new Date(scheduledDate).toLocaleDateString('pt-BR')} · ${orders.length} parada(s)`);
+      setRouteName(`Rota ${new Date(scheduledDate).toLocaleDateString('pt-BR')} · ${orders.length} ${orders.length === 1 ? 'parada' : 'paradas'}`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, orders]);

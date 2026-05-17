@@ -69,7 +69,7 @@ export function analyzeTemplate(template: LabelTemplate): OptimizationResult {
       type: 'layout',
       priority: 'high',
       title: 'Resolver Sobreposições',
-      description: `${overlaps.length} par(es) de campos sobrepostos detectados. Isto pode causar problemas na impressão.`,
+      description: `${overlaps.length} ${overlaps.length === 1 ? 'par' : 'pares'} de campos sobrepostos detectados. Isto pode causar problemas na impressão.`,
       impact: 'Evita campos ilegíveis',
       effort: 'low',
       apply: (t) => {
@@ -147,7 +147,7 @@ export function analyzeTemplate(template: LabelTemplate): OptimizationResult {
       type: 'quality',
       priority: 'high',
       title: 'Aumentar Tamanho de Fonte',
-      description: `${smallFonts.length} campo(s) com fonte menor que 7pt podem ser ilegíveis após impressão.`,
+      description: `${smallFonts.length} ${smallFonts.length === 1 ? 'campo' : 'campos'} com fonte menor que 7pt ${smallFonts.length === 1 ? 'pode ser ilegível' : 'podem ser ilegíveis'} após impressão.`,
       impact: 'Melhor legibilidade',
       effort: 'low',
       apply: (t) => ({

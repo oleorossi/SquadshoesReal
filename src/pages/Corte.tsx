@@ -118,7 +118,7 @@ export default function Corte() {
 
       
       if (successCount > 0) {
-        toast.success(`Corte Palmilha finalizado para ${successCount} OP(s)!`);
+        toast.success(`Corte Palmilha finalizado para ${successCount} ${successCount === 1 ? 'OP' : 'OPs'}!`);
         setSelectedOrders(new Set());
         queryClient.invalidateQueries({ queryKey: ['order_stages'] });
         queryClient.invalidateQueries({ queryKey: ['orders'] });
@@ -356,7 +356,7 @@ if (totalPairsAll !== palmTotal) {
 
     const html = `
       <h1 style="font-size:16px;margin-bottom:4px;">✂️ Lista de Corte — ${title}</h1>
-      <p style="font-size:10px;color:#666;margin-bottom:12px;">Gerado em ${new Date().toLocaleString('pt-BR')} | ${cuttingOrders.length} OP(s) ativa(s)</p>
+      <p style="font-size:10px;color:#666;margin-bottom:12px;">Gerado em ${new Date().toLocaleString('pt-BR')} | ${cuttingOrders.length} ${cuttingOrders.length === 1 ? 'OP ativa' : 'OPs ativas'}</p>
       <table style="width:100%;border-collapse:collapse;font-size:11px;">
         <thead>
           <tr style="background:#e8e8d0;">
@@ -814,7 +814,7 @@ if (totalPairsAll !== palmTotal) {
     const activeSizes = SIZES.filter(s => cuttingData.some(r => (r.sizes[s] || 0) > 0));
 
     let fullHtml = `<h1 style="font-size:16px;margin-bottom:4px;">✂️ Lista de Corte Completa</h1>
-      <p style="font-size:10px;color:#666;margin-bottom:12px;">Gerado em ${new Date().toLocaleString('pt-BR')} | ${cuttingOrders.length} OP(s)</p>
+      <p style="font-size:10px;color:#666;margin-bottom:12px;">Gerado em ${new Date().toLocaleString('pt-BR')} | ${cuttingOrders.length} ${cuttingOrders.length === 1 ? 'OP' : 'OPs'}</p>
       <p style="font-size:10px;margin-bottom:16px;">OPs: ${cuttingOrders.map(o => o.order_number).join(', ')}</p>`;
 
     allData.forEach(({ title, data }) => {

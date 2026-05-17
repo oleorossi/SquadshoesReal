@@ -506,6 +506,14 @@ export default function AppLayout({ children, printMode = false }: { children: R
     <AppLayoutContext.Provider value={true}>
       <TooltipProvider delayDuration={300}>
         <NavigationAuditWatcher />
+        {/* Skip-link — fica oculto até receber foco por Tab. Permite usuários
+            de teclado/leitor pular a sidebar e ir direto ao conteúdo. */}
+        <a
+          href="#conteudo-principal"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:bg-foreground focus:text-background focus:px-4 focus:py-2 focus:rounded-md focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+        >
+          Pular para o conteúdo
+        </a>
         <div className={cn('min-h-screen flex bg-background overflow-x-hidden', printMode && 'print:bg-background')}>
           {mobileOpen && (
             <div
@@ -585,7 +593,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
               </div>
             )}
 
-            <main className={cn(
+            <main id="conteudo-principal" tabIndex={-1} className={cn(
               'flex-1 w-full max-w-[1600px] mx-auto px-4 md:px-6 lg:px-8 py-6 pb-20 md:pb-6 overflow-auto',
               printMode && 'print:px-0 print:py-0 print:overflow-visible'
             )}>

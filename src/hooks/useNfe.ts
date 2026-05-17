@@ -639,8 +639,8 @@ export function useSyncNfeFromProvider() {
       qc.invalidateQueries({ queryKey: ['nfe_emitidas'] });
       qc.invalidateQueries({ queryKey: ['nfe_emitidas_all'] });
       const errCount = data.errors?.length || 0;
-      const msg = `${data.created} importada(s), ${data.updated} atualizada(s)`
-        + (errCount > 0 ? ` · ${errCount} erro(s)` : '');
+      const msg = `${data.created} ${data.created === 1 ? 'importada' : 'importadas'}, ${data.updated} ${data.updated === 1 ? 'atualizada' : 'atualizadas'}`
+        + (errCount > 0 ? ` · ${errCount} ${errCount === 1 ? 'erro' : 'erros'}` : '');
       if (errCount > 0) toast.warning(msg);
       else toast.success(`Sincronização concluída: ${msg}`);
     },

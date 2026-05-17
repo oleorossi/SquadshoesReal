@@ -264,7 +264,7 @@ function groupOrdersByColor(orders: OrderData[], saleOrders?: SaleOrderData[]): 
     <div style="border-bottom:3px solid #111;padding-bottom:4px;margin-bottom:4px;">
       <h1 style="font-size:18px;margin:0 0 2px;">${sheetEmoji} Ficha de Corte — ${sheetTitle}</h1>
       <p style="font-size:10px;color:#666;margin:0;">
-        Gerado em ${new Date().toLocaleString('pt-BR')} · ${opCount} OP(s) · ${pairCount} pares${extra ? ' · ' + extra : ''}
+        Gerado em ${new Date().toLocaleString('pt-BR')} · ${opCount} ${opCount === 1 ? 'OP' : 'OPs'} · ${pairCount} pares${extra ? ' · ' + extra : ''}
       </p>
     </div>`;
 
@@ -383,7 +383,7 @@ function groupOrdersByColor(orders: OrderData[], saleOrders?: SaleOrderData[]): 
   // ===== SEÇÃO 2: FORRAÇÃO — sempre presente, por cor =====
   const forroGrouped = groupOrdersByColor(selectedOrders, saleOrders);
   if (forroGrouped.items.length > 0) {
-    let forroHtml = buildSheetHeader('Forração', '🧵', selectedOrders.length, forroGrouped.grandTotal, `${forroGrouped.items.length} cor(es)`);
+    let forroHtml = buildSheetHeader('Forração', '🧵', selectedOrders.length, forroGrouped.grandTotal, `${forroGrouped.items.length} ${forroGrouped.items.length === 1 ? 'cor' : 'cores'}`);
     forroHtml += buildColorGradeTable('Forração — por Cor', '🧵', forroGrouped.items, forroGrouped.activeSizes, forroGrouped.grandTotal);
     sections.push(`<section class="cut-sheet">${forroHtml}</section>`);
   }

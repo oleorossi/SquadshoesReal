@@ -152,7 +152,7 @@ export function useDuplicateReferenceMaterialVariant() {
       qc.invalidateQueries({ queryKey: QUERY_KEY(vars.sheet_id) });
       qc.invalidateQueries({ queryKey: ALL_ACTIVE_KEY });
       const msg = result.bom_lines_copied > 0
-        ? `Variante duplicada com ${result.bom_lines_copied} item(ns) de BOM`
+        ? `Variante duplicada com ${result.bom_lines_copied} ${result.bom_lines_copied === 1 ? 'item' : 'itens'} de BOM`
         : 'Variante duplicada (sem BOM específico para copiar)';
       toast.success(msg);
     },

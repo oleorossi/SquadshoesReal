@@ -235,7 +235,7 @@ export function useDeleteTransportCompany() {
       if (countErr) throw new Error(`Falha ao verificar tarifas vinculadas: ${countErr.message}`);
       if ((count ?? 0) > 0) {
         throw new Error(
-          `Transportadora possui ${count} tarifa(s) cadastrada(s). Remova-as antes de excluir.`,
+          `Transportadora possui ${count} ${count === 1 ? 'tarifa cadastrada' : 'tarifas cadastradas'}. Remova-${count === 1 ? 'a' : 'as'} antes de excluir.`,
         );
       }
       const { error } = await supabase.from('transport_companies').delete().eq('id', id);

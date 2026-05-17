@@ -2,8 +2,10 @@
  * ProductionTimeline — Gantt horizontal das OPs ativas
  *
  * Adaptado de screen-production-timeline.jsx (pacote Novidade).
- * Cada OP é uma linha. Colunas representam os 5 mega-grupos de estágio:
- *   PREPARAÇÃO → COSTURA → MONTAGEM → FINALIZAÇÃO → EXPEDIÇÃO
+ * Cada OP é uma linha. Colunas representam as 5 macro-etapas da produção,
+ * definidas em src/lib/productionSectors.ts (mesma taxonomia usada por
+ * /producao/fluxo, /capacity-planning e /producao/visao-agregada):
+ *   Corte → Costura → Montagem → Acabamento → Expedição
  *
  * Cada cell mostra barra de progresso preenchida conforme status:
  *   - concluído: cinza
@@ -22,6 +24,7 @@ import { useOrders } from '@/hooks/useOrders';
 import { useAllOrderStages, OrderStage } from '@/hooks/useOrderStages';
 import { cn } from '@/lib/utils';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { MACRO_SECTORS, MICRO_SECTORS, MICRO_TO_MACRO, normalizeSectorId, type MacroSectorId } from '@/lib/productionSectors';
 
 type Order = {
   id: string;
@@ -33,18 +36,38 @@ type Order = {
   technical_sheets?: { name?: string | null } | null;
 };
 
-const STAGE_GROUPS = [
-  { key: 'preparacao' as const, label: 'PREPARAÇÃO', sectors: ['Corte Palmilha', 'Corte Forração', 'Aviamento'], colorVar: '--stage-cut-fg' },
-  { key: 'costura' as const,    label: 'COSTURA',    sectors: ['Costura', 'Silk'],                                colorVar: '--stage-sew-fg' },
-  { key: 'montagem' as const,   label: 'MONTAGEM',   sectors: ['Colagem', 'Montagem'],                            colorVar: '--stage-assy-fg' },
-  { key: 'finalizacao' as const,label: 'FINALIZAÇÃO',sectors: ['Solagem', 'Acabamento'],                          colorVar: '--stage-fin-fg' },
-  { key: 'expedicao' as const,  label: 'EXPEDIÇÃO',  sectors: ['Expedição'],                                       colorVar: '--stage-pack-fg' },
-];
+// Cores por macro-setor — corresponde 1:1 aos tokens do design system.
+const MACRO_COLORS: Record<MacroSectorId, string> = {
+  corte:      '--stage-cut-fg',
+  costura:    '--stage-sew-fg',
+  montagem:   '--stage-assy-fg',
+  acabamento: '--stage-fin-fg',
+  expedicao:  '--stage-pack-fg',
+};
+
+// Derivado de productionSectors: cada macro lista as labels dos micro-setores
+// que ele agrega. Usado pra contar OrderStage por grupo.
+const STAGE_GROUPS = MACRO_SECTORS.map((m) => ({
+  key: m.id,
+  label: m.label.toUpperCase(),
+  sectors: MICRO_SECTORS.filter((mi) => MICRO_TO_MACRO[mi.id] === m.id).map((mi) => mi.label),
+  colorVar: MACRO_COLORS[m.id],
+}));
 
 type Scope = 'hoje' | 'semana' | 'mes';
 
 function calcGroupStatus(stages: OrderStage[], group: typeof STAGE_GROUPS[number]) {
-  const groupStages = stages.filter(s => group.sectors.includes(s.sector_name));
+  // sector_name vem do banco com a string canônica em pt-BR; comparamos
+  // diretamente, com fallback de normalização para tolerar capitalização
+  // variada ou aliases legados.
+  const groupStages = stages.filter(s => {
+    if (group.sectors.includes(s.sector_name)) return true;
+    const normalized = normalizeSectorId(s.sector_name);
+    if (!normalized) return false;
+    return group.sectors.some(
+      (lbl) => normalizeSectorId(lbl) === normalized,
+    );
+  });
   if (!groupStages.length) return { state: 'none', pct: 0 };
   const done = groupStages.filter(s => s.status === 'concluido').length;
   const inProg = groupStages.find(s => s.status === 'em_andamento');

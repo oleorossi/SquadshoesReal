@@ -139,7 +139,7 @@ export function useDeleteContractor() {
       if (countErr) throw countErr;
       if ((count ?? 0) > 0) {
         throw new Error(
-          `Não é possível excluir: há ${count} OS(s) vinculada(s). Inative o prestador em vez de excluir.`,
+          `Não é possível excluir: há ${count} ${count === 1 ? 'OS vinculada' : 'OSs vinculadas'}. Inative o prestador em vez de excluir.`,
         );
       }
       const { error } = await supabase.from('contractors').delete().eq('id', id);

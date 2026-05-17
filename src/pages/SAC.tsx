@@ -26,6 +26,20 @@ const STATUS_COLORS: Record<string, string> = {
   cancelado: 'bg-muted text-muted-foreground border-border',
 };
 
+const STATUS_LABELS: Record<string, string> = {
+  todos: 'Todos',
+  aberto: 'Aberto',
+  em_analise: 'Em Análise',
+  aprovado: 'Aprovado',
+  rejeitado: 'Rejeitado',
+  aguarda_coleta: 'Aguarda Coleta',
+  recebido: 'Recebido',
+  resolvido: 'Resolvido',
+  cancelado: 'Cancelado',
+};
+
+const statusLabel = (s: string) => STATUS_LABELS[s] ?? s.replace(/_/g, ' ');
+
 export default function SAC() {
   const qc = useQueryClient();
   const [filterStatus, setFilterStatus] = useState<string>('todos');
@@ -105,9 +119,9 @@ export default function SAC() {
             variant={filterStatus === s ? 'default' : 'outline'}
             size="sm"
             onClick={() => setFilterStatus(s)}
-            className="capitalize h-7 text-xs"
+            className="h-7 text-xs"
           >
-            {s.replace('_', ' ')}
+            {statusLabel(s)}
           </Button>
         ))}
       </div>
@@ -117,7 +131,7 @@ export default function SAC() {
           <EmptyState
             icon={MessageSquare}
             title="Nenhum atendimento"
-            description={filterStatus !== 'todos' ? `Nenhum atendimento com status "${filterStatus.replace('_', ' ')}".` : 'Nenhum atendimento pós-venda registrado.'}
+            description={filterStatus !== 'todos' ? `Nenhum atendimento com status "${statusLabel(filterStatus)}".` : 'Nenhum atendimento pós-venda registrado.'}
           />
         </Panel>
       ) : (
@@ -157,7 +171,7 @@ function TicketCard({ t, onStatusChange }: { t: any; onStatusChange: (newStatus:
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-mono text-xs font-bold">{t.ticket_number}</span>
               <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[t.status]}`}>
-                {t.status.replace('_', ' ')}
+                {statusLabel(t.status)}
               </Badge>
               <Badge variant="outline" className="text-[10px] capitalize">{t.ticket_type}</Badge>
               {t.defect_category && (
@@ -195,12 +209,12 @@ function TicketCard({ t, onStatusChange }: { t: any; onStatusChange: (newStatus:
                         </span>
                         {h.from_status && (
                           <Badge variant="outline" className="text-[9px] py-0 px-1">
-                            {h.from_status.replace('_', ' ')}
+                            {statusLabel(h.from_status)}
                           </Badge>
                         )}
                         <span className="text-muted-foreground">→</span>
                         <Badge variant="outline" className={`text-[9px] py-0 px-1 ${STATUS_COLORS[h.to_status]}`}>
-                          {h.to_status.replace('_', ' ')}
+                          {statusLabel(h.to_status)}
                         </Badge>
                         {h.profiles?.full_name && (
                           <span className="text-muted-foreground">· por {h.profiles.full_name}</span>

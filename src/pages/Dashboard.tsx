@@ -163,8 +163,8 @@ export default function Dashboard() {
 
       {/* Section label antes do bloco produção */}
       <div className="flex items-baseline gap-3 pt-2">
-        <span className="font-display text-2xl text-muted-foreground tabular-nums">01</span>
-        <span className="section-label">Produção & Estoque</span>
+        <span className="font-display text-2xl text-muted-foreground tabular-nums" aria-hidden="true">01</span>
+        <h2 className="section-label">Produção & Estoque</h2>
       </div>
 
       {/* KPIs — Produção */}
@@ -218,8 +218,8 @@ export default function Dashboard() {
 
       {/* Section label antes do bloco financeiro */}
       <div className="flex items-baseline gap-3 pt-2">
-        <span className="font-display text-2xl text-muted-foreground tabular-nums">02</span>
-        <span className="section-label">Financeiro</span>
+        <span className="font-display text-2xl text-muted-foreground tabular-nums" aria-hidden="true">02</span>
+        <h2 className="section-label">Financeiro</h2>
       </div>
 
       {/* KPIs — Financeiro (Faturamento filtra por período; A Receber/Pagar globais) */}
@@ -260,8 +260,8 @@ export default function Dashboard() {
 
       {/* Section label antes dos gráficos */}
       <div className="flex items-baseline gap-3 pt-2">
-        <span className="font-display text-2xl text-muted-foreground tabular-nums">03</span>
-        <span className="section-label">Tendências & Atividade</span>
+        <span className="font-display text-2xl text-muted-foreground tabular-nums" aria-hidden="true">03</span>
+        <h2 className="section-label">Tendências & Atividade</h2>
       </div>
 
       {/* Gráficos + lista — recebem o período pra ajustar buckets/filtros */}

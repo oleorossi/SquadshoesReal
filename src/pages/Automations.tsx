@@ -324,7 +324,12 @@ export default function Automations() {
         <StatCard label="Total" value={workflows.length} hint="automações" />
         <StatCard label="Ativas" value={activeCount} hint="habilitadas" tone="success" />
         <StatCard label="Execuções" value={totalExecutions} hint="total acumulado" />
-        <StatCard label="Taxa de Sucesso" value={avgSuccess} unit="%" hint="média geral" />
+        <StatCard
+          label="Taxa de Sucesso"
+          value={totalExecutions === 0 ? '—' : avgSuccess}
+          unit={totalExecutions === 0 ? '' : '%'}
+          hint={totalExecutions === 0 ? 'sem execuções ainda' : 'média geral'}
+        />
       </StatGrid>
 
       {/* Tabs */}
@@ -396,13 +401,13 @@ export default function Automations() {
                             <>
                               <ArrowRight className="h-3 w-3 text-muted-foreground" />
                               <Badge variant="outline" className="text-[10px] gap-1">
-                                <Filter className="h-2.5 w-2.5" />{wf.conditions.length} condição(ões)
+                                <Filter className="h-2.5 w-2.5" />{wf.conditions.length} {wf.conditions.length === 1 ? 'condição' : 'condições'}
                               </Badge>
                             </>
                           )}
                           <ArrowRight className="h-3 w-3 text-muted-foreground" />
                           <Badge variant="outline" className="text-[10px] gap-1">
-                            <Play className="h-2.5 w-2.5" />{wf.actions.length} ação(ões)
+                            <Play className="h-2.5 w-2.5" />{wf.actions.length} {wf.actions.length === 1 ? 'ação' : 'ações'}
                           </Badge>
                         </div>
 

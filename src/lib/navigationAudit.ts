@@ -117,7 +117,7 @@ export function runNavigationAuditOnce(): NavigationIssue[] {
     }
   } else {
     // PROD: apenas console silencioso, sem ruído ao usuário final
-    console.warn('[NavigationAudit]', issues.length, 'inconsistência(s) no menu lateral');
+    console.warn('[NavigationAudit]', issues.length, issues.length === 1 ? 'inconsistência no menu lateral' : 'inconsistências no menu lateral');
   }
 
   return issues;

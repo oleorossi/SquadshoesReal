@@ -181,7 +181,7 @@ export default function WeeklyPurchasingPlan() {
         <Panel
           eyebrow="SUPRIMENTOS · PLANO SEMANAL"
           title="Matriz de Compras por Semana"
-          subtitle={`${filteredPlan.length} material(is) · ${result?.sortedWeeks.length || 0} semana(s)`}
+          subtitle={`${filteredPlan.length} ${filteredPlan.length === 1 ? 'material' : 'materiais'} · ${result?.sortedWeeks.length || 0} ${(result?.sortedWeeks.length || 0) === 1 ? 'semana' : 'semanas'}`}
           flush
         >
             <div className="overflow-auto max-h-[70vh]">

@@ -36,7 +36,8 @@ const Context = createContext<TabsCtx | null>(null);
 const STORAGE_KEY = 'in-app-tabs-v1';
 const MAX_TABS = 8;
 
-// Mapa path → label, construído da navegação canônica
+// Mapa path → label, construído da navegação canônica.
+// menuGroups usa { path, name }; systemItems usa { to, label } — normalizamos.
 function buildPathTitleMap(): Map<string, string> {
   const map = new Map<string, string>();
   map.set(topItem.path, topItem.name);
@@ -46,7 +47,27 @@ function buildPathTitleMap(): Map<string, string> {
     }
   }
   for (const it of systemItems) {
-    map.set(it.path, it.name);
+    map.set(it.to, it.label);
+  }
+  // Aliases para rotas extras que aparecem no app mas não no menu principal —
+  // evita que o fallback gere títulos em inglês como "Stock" ou
+  // "Technical sheets" no topo das tabs.
+  const aliases: Record<string, string> = {
+    '/stock': 'Estoque',
+    '/inventory': 'Estoque',
+    '/estoque/historico': 'Histórico de Estoque',
+    '/technical-sheets': 'Fichas Técnicas',
+    '/fichas-tecnicas': 'Fichas Técnicas',
+    '/references': 'Referências',
+    '/products': 'Produtos',
+    '/component-sheets': 'Fichas de Componentes',
+    '/auth': 'Login',
+    '/login': 'Login',
+    '/index': 'Início',
+    '/inicio': 'Início',
+  };
+  for (const [p, t] of Object.entries(aliases)) {
+    if (!map.has(p)) map.set(p, t);
   }
   return map;
 }
@@ -83,8 +104,16 @@ function loadFromStorage(): { tabs: TabEntry[]; activeId: string | null } {
     if (!raw) return { tabs: [], activeId: null };
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed.tabs)) return { tabs: [], activeId: null };
+    // Recalcula o título de cada aba a partir do mapa atual — corrige
+    // títulos legados ("Stock", "Settings", "Audit logs") gravados em
+    // sessões anteriores. Mantém o ID/path para preservar referência.
+    const rehydrated: TabEntry[] = parsed.tabs.slice(0, MAX_TABS).map((t: TabEntry) => ({
+      id: t.id,
+      path: t.path,
+      title: titleForPath(t.path, t.title),
+    }));
     return {
-      tabs: parsed.tabs.slice(0, MAX_TABS),
+      tabs: rehydrated,
       activeId: typeof parsed.activeId === 'string' ? parsed.activeId : null,
     };
   } catch {

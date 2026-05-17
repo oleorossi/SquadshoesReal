@@ -188,7 +188,7 @@ export function useSyncSiblings() {
     },
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      toast.success(`${vars.siblingIds.length} material(is) similar(es) atualizado(s)`);
+      toast.success(`${vars.siblingIds.length} ${vars.siblingIds.length === 1 ? 'material similar atualizado' : 'materiais similares atualizados'}`);
     },
     onError: (err: Error) => toast.error(`Erro ao sincronizar: ${err.message}`),
   });
@@ -215,10 +215,10 @@ export function useDeleteProduct() {
       ]);
       if (e1 || e2 || e3 || e4) throw new Error('Erro ao verificar vínculos do produto.');
       const msgs: string[] = [];
-      if ((smCount ?? 0) > 0) msgs.push(`${smCount} ficha(s) técnica(s)`);
-      if ((resCount ?? 0) > 0) msgs.push(`${resCount} reserva(s) ativa(s)`);
-      if ((poiCount ?? 0) > 0) msgs.push(`${poiCount} item(ns) de OC`);
-      if ((movCount ?? 0) > 0) msgs.push(`${movCount} movimentação(ões) de estoque`);
+      if ((smCount ?? 0) > 0) msgs.push(`${smCount} ${smCount === 1 ? 'ficha técnica' : 'fichas técnicas'}`);
+      if ((resCount ?? 0) > 0) msgs.push(`${resCount} ${resCount === 1 ? 'reserva ativa' : 'reservas ativas'}`);
+      if ((poiCount ?? 0) > 0) msgs.push(`${poiCount} ${poiCount === 1 ? 'item' : 'itens'} de OC`);
+      if ((movCount ?? 0) > 0) msgs.push(`${movCount} ${movCount === 1 ? 'movimentação' : 'movimentações'} de estoque`);
       if (msgs.length > 0) {
         throw new Error(`Produto vinculado a ${msgs.join(', ')}. Desative-o em vez de excluir.`);
       }
@@ -317,7 +317,7 @@ export function useAutoGroupProducts() {
       if (result.created === 0 && result.assigned === 0) {
         toast.info('Nenhum agrupamento necessário — todos os itens já estão agrupados ou são únicos.');
       } else {
-        toast.success(`${result.created} grupo(s) criado(s), ${result.assigned} item(ns) agrupado(s)!`);
+        toast.success(`${result.created} ${result.created === 1 ? 'grupo criado' : 'grupos criados'}, ${result.assigned} ${result.assigned === 1 ? 'item agrupado' : 'itens agrupados'}!`);
       }
     },
     onError: (err: Error) => toast.error(`Erro ao agrupar: ${err.message}`),

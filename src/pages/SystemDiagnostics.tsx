@@ -124,7 +124,9 @@ export default function SystemDiagnostics() {
           id: 'caches',
           label: 'Cache Storage do navegador',
           status: keys.length > 5 ? 'warn' : 'ok',
-          detail: `${keys.length} cache(s) armazenado(s): ${keys.slice(0, 3).join(', ')}${keys.length > 3 ? '…' : ''}`,
+          detail: keys.length === 0
+            ? 'Nenhum cache armazenado.'
+            : `${keys.length} ${keys.length === 1 ? 'cache armazenado' : 'caches armazenados'}: ${keys.slice(0, 3).join(', ')}${keys.length > 3 ? '…' : ''}`,
           hint: keys.length > 5 ? 'Caches em excesso podem servir módulos antigos. Use o botão "Limpar cache".' : undefined,
         });
       }

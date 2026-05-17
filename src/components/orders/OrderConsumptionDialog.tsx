@@ -457,7 +457,7 @@ export default function OrderConsumptionDialog({ open, onOpenChange, orderIds, t
 
   const formatUnit = (unit: string) => {
     const labels: Record<string, string> = {
-      metro: 'm', m: 'm', dm2: 'dm²', par: 'par', un: 'un', kg: 'kg', litro: 'L', placa: 'placa(s)',
+      metro: 'm', m: 'm', dm2: 'dm²', par: 'par', un: 'un', kg: 'kg', litro: 'L', placa: 'placas',
     };
     return labels[unit] || unit || 'un';
   };
@@ -484,7 +484,7 @@ export default function OrderConsumptionDialog({ open, onOpenChange, orderIds, t
       h1{font-size:18px;margin:0 0 4px}p.sub{color:#6b7280;font-size:13px;margin:0 0 16px}</style></head>
       <body>
         <h1>Consumo de Materiais — ${title}</h1>
-        <p class="sub">${rows.length} item(ns) · ${orderIds.length} OP(s) · Gerado em ${new Date().toLocaleDateString('pt-BR')}</p>
+        <p class="sub">${rows.length} ${rows.length === 1 ? 'item' : 'itens'} · ${orderIds.length} ${orderIds.length === 1 ? 'OP' : 'OPs'} · Gerado em ${new Date().toLocaleDateString('pt-BR')}</p>
         <div style="margin-bottom:16px">${totalsHtml}</div>
         <table><thead><tr>
           <th>Grupo de Material</th><th>Aplicação</th><th>Cor</th>
@@ -527,11 +527,11 @@ export default function OrderConsumptionDialog({ open, onOpenChange, orderIds, t
                   </Badge>
                 ))}
                 <Badge variant="outline" className="text-sm px-3 py-1">
-                  {rows.length} item(ns)
+                  {rows.length} {rows.length === 1 ? 'item' : 'itens'}
                 </Badge>
                 {orderIds.length > 1 && (
                   <Badge variant="outline" className="text-sm px-3 py-1">
-                    {orderIds.length} OP(s)
+                    {orderIds.length} OPs
                   </Badge>
                 )}
               </div>

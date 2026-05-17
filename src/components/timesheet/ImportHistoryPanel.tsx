@@ -240,9 +240,9 @@ export default function ImportHistoryPanel() {
                     <AlertTriangle className="h-3.5 w-3.5" /> Importação parcial
                   </p>
                   <p className="text-amber-700/80 dark:text-amber-300/80 mt-1">
-                    {selected.inserted_count + selected.updated_count} linha(s) válida(s)
-                    {' '}foram aplicadas com sucesso. As {selected.error_count} linha(s) abaixo
-                    {' '}foram <strong>ignoradas</strong> e não impactam o relógio de ponto.
+                    {selected.inserted_count + selected.updated_count} {(selected.inserted_count + selected.updated_count) === 1 ? 'linha válida foi aplicada' : 'linhas válidas foram aplicadas'}
+                    {' '}com sucesso. {selected.error_count === 1 ? 'A linha abaixo foi' : `As ${selected.error_count} linhas abaixo foram`}
+                    {' '}<strong>ignoradas</strong> e não impactam o relógio de ponto.
                     Corrija o arquivo e reimporte se necessário — duplicatas serão atualizadas.
                   </p>
                 </div>
