@@ -31,10 +31,11 @@ import type { ParsedNFeDuplicata } from '@/lib/nfeParser';
 import { 
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger 
 } from '@/components/ui/dialog';
-import { 
-  useProducts, useAddProduct, useUpdateProduct, useDeleteProduct, 
-  useBatchAddProducts, ProductSchema 
+import {
+  useProducts, useAddProduct, useUpdateProduct,
+  useBatchAddProducts, ProductSchema
 } from '@/hooks/useProducts';
+import { useForceDeleteProductFlow } from '@/components/inventory/ForceDeleteProductDialog';
 import { usePaginatedProducts } from '@/hooks/usePaginatedProducts';
 import { Product, ProductFormData } from '@/types/inventory';
 import { z } from 'zod';
@@ -239,7 +240,7 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
 
   const addProduct = useAddProduct();
   const updateProduct = useUpdateProduct();
-  const deleteProduct = useDeleteProduct();
+  const forceDeleteFlow = useForceDeleteProductFlow();
   const addComponentSheet = useAddComponentSheet();
 
   // Reset page when filters change
@@ -306,7 +307,7 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
     }
   };
 
-  const handleDelete = (id: string) => deleteProduct.mutate(id);
+  const handleDelete = (id: string) => forceDeleteFlow.tryDelete(id);
   const openEdit = (product: Product) => { setEditingProduct(product); setDialogOpen(true); };
   const openAdd = () => { setEditingProduct(null); setDialogOpen(true); };
 
@@ -527,6 +528,7 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
       <GroupCreateDialog open={groupDialogOpen} onOpenChange={setGroupDialogOpen} />
       <GroupListDialog open={groupListOpen} onOpenChange={setGroupListOpen} />
       <QuickFamilyDialog open={quickFamilyOpen} onOpenChange={setQuickFamilyOpen} defaultGroupId={defaultGroupId} />
+      {forceDeleteFlow.dialog}
     </div>
   );
 }

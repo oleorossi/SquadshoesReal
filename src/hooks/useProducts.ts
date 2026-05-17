@@ -194,45 +194,99 @@ export function useSyncSiblings() {
   });
 }
 
+export interface ProductLinksSummary {
+  sheet_materials: number;
+  reservations: number;
+  purchase_items: number;
+  stock_movements: number;
+  hasAny: boolean;
+}
+
+/** Conta vínculos antes de excluir — útil pra mostrar resumo no AlertDialog. */
+export async function fetchProductLinks(id: string): Promise<ProductLinksSummary> {
+  const [
+    { count: smCount, error: e1 },
+    { count: resCount, error: e2 },
+    { count: poiCount, error: e3 },
+    { count: movCount, error: e4 },
+  ] = await Promise.all([
+    supabase.from('sheet_materials').select('id', { count: 'exact', head: true }).eq('product_id', id),
+    supabase.from('material_reservations').select('id', { count: 'exact', head: true })
+      .eq('product_id', id).in('status', ['reserved', 'partially_consumed']),
+    supabase.from('purchase_order_items').select('id', { count: 'exact', head: true }).eq('product_id', id),
+    supabase.from('stock_movements').select('id', { count: 'exact', head: true }).eq('product_id', id),
+  ]);
+  if (e1 || e2 || e3 || e4) throw new Error('Erro ao verificar vínculos do produto.');
+  const sheet_materials = smCount ?? 0;
+  const reservations = resCount ?? 0;
+  const purchase_items = poiCount ?? 0;
+  const stock_movements = movCount ?? 0;
+  return {
+    sheet_materials, reservations, purchase_items, stock_movements,
+    hasAny: sheet_materials > 0 || reservations > 0 || purchase_items > 0 || stock_movements > 0,
+  };
+}
+
+/**
+ * Excluir produto.
+ *   • `deleteProduct.mutate(id)` — comportamento padrão (bloqueia se há vínculos)
+ *   • `deleteProduct.mutate({ id, force: true })` — exclusão forçada via RPC
+ *     `force_delete_product`. Apaga BOMs/reservas/OCs/movimentações junto.
+ *     Use APENAS via dialog de confirmação dupla — perde histórico.
+ */
 export function useDeleteProduct() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (id: string) => {
-      // Block delete when the product is still referenced — ON DELETE CASCADE on
-      // sheet_materials/material_reservations would silently destroy BOMs and active
-      // reservations. Force the operator to deactivate instead.
-      const [
-        { count: smCount, error: e1 },
-        { count: resCount, error: e2 },
-        { count: poiCount, error: e3 },
-        { count: movCount, error: e4 },
-      ] = await Promise.all([
-        supabase.from('sheet_materials').select('id', { count: 'exact', head: true }).eq('product_id', id),
-        supabase.from('material_reservations').select('id', { count: 'exact', head: true })
-          .eq('product_id', id).in('status', ['reserved', 'partially_consumed']),
-        supabase.from('purchase_order_items').select('id', { count: 'exact', head: true }).eq('product_id', id),
-        supabase.from('stock_movements').select('id', { count: 'exact', head: true }).eq('product_id', id),
-      ]);
-      if (e1 || e2 || e3 || e4) throw new Error('Erro ao verificar vínculos do produto.');
-      const msgs: string[] = [];
-      if ((smCount ?? 0) > 0) msgs.push(`${smCount} ${smCount === 1 ? 'ficha técnica' : 'fichas técnicas'}`);
-      if ((resCount ?? 0) > 0) msgs.push(`${resCount} ${resCount === 1 ? 'reserva ativa' : 'reservas ativas'}`);
-      if ((poiCount ?? 0) > 0) msgs.push(`${poiCount} ${poiCount === 1 ? 'item' : 'itens'} de OC`);
-      if ((movCount ?? 0) > 0) msgs.push(`${movCount} ${movCount === 1 ? 'movimentação' : 'movimentações'} de estoque`);
-      if (msgs.length > 0) {
-        throw new Error(`Produto vinculado a ${msgs.join(', ')}. Desative-o em vez de excluir.`);
+    mutationFn: async (input: string | { id: string; force?: boolean }) => {
+      const id = typeof input === 'string' ? input : input.id;
+      const force = typeof input === 'string' ? false : Boolean(input.force);
+
+      if (force) {
+        const { data, error } = await (supabase as any).rpc('force_delete_product', { p_product_id: id });
+        if (error) throw error;
+        return { force: true, summary: data as Record<string, any> };
       }
-      const { error } = await supabase
-        .from('products')
-        .delete()
-        .eq('id', id);
+
+      const links = await fetchProductLinks(id);
+      if (links.hasAny) {
+        const msgs: string[] = [];
+        if (links.sheet_materials > 0) msgs.push(`${links.sheet_materials} ${links.sheet_materials === 1 ? 'ficha técnica' : 'fichas técnicas'}`);
+        if (links.reservations > 0)    msgs.push(`${links.reservations} ${links.reservations === 1 ? 'reserva ativa' : 'reservas ativas'}`);
+        if (links.purchase_items > 0)  msgs.push(`${links.purchase_items} ${links.purchase_items === 1 ? 'item' : 'itens'} de OC`);
+        if (links.stock_movements > 0) msgs.push(`${links.stock_movements} ${links.stock_movements === 1 ? 'movimentação' : 'movimentações'} de estoque`);
+        // Lança erro que carrega flag `_canForce` — UI pode interceptar e mostrar
+        // dialog de exclusão forçada em vez do toast genérico.
+        const err: any = new Error(`Produto vinculado a ${msgs.join(', ')}. Desative-o em vez de excluir.`);
+        err._canForce = true;
+        err._productId = id;
+        err._links = links;
+        throw err;
+      }
+      const { error } = await supabase.from('products').delete().eq('id', id);
       if (error) throw error;
+      return { force: false };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      toast.success('Produto excluído com sucesso!');
+      queryClient.invalidateQueries({ queryKey: ['sheet_materials'] });
+      queryClient.invalidateQueries({ queryKey: ['material_reservations'] });
+      if (result?.force && result.summary) {
+        const s = result.summary;
+        const parts = [];
+        if (s.sheet_materials_count > 0) parts.push(`${s.sheet_materials_count} BOM`);
+        if (s.reservations_count > 0)    parts.push(`${s.reservations_count} reserva(s)`);
+        if (s.purchase_items_count > 0)  parts.push(`${s.purchase_items_count} OC`);
+        if (s.stock_movements_count > 0) parts.push(`${s.stock_movements_count} movimentação(ões)`);
+        toast.success(`Produto "${s.product_name}" excluído. Removidos: ${parts.join(', ') || 'nenhum vínculo'}.`);
+      } else {
+        toast.success('Produto excluído com sucesso!');
+      }
     },
-    onError: (err: Error) => toast.error(`Erro ao excluir: ${err.message}`),
+    onError: (err: any) => {
+      // Não mostra toast genérico quando o caller vai abrir um dialog de force —
+      // a flag _canForce sinaliza que a UI tratará via componente próprio.
+      if (!err?._canForce) toast.error(`Erro ao excluir: ${err.message}`);
+    },
   });
 }
 

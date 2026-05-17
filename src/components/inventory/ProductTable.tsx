@@ -24,6 +24,7 @@ import { InlineEdit } from '@/components/ui/InlineEdit';
 import { ArtisanalProductDialog } from './ArtisanalProductDialog';
 import { useTableView, densityClasses } from './TableViewContext';
 import { useUpdateProduct, useDeleteProduct } from '@/hooks/useProducts';
+import { useForceDeleteProductFlow } from './ForceDeleteProductDialog';
 import { CheckCircle, XCircle, Trash, Download } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 
@@ -950,6 +951,10 @@ function ProductBulkActionsBar({
 }) {
   const updateProduct = useUpdateProduct();
   const deleteProduct = useDeleteProduct();
+  // Pra produto único selecionado: usa flow com dialog de exclusão forçada
+  // (mesmo comportamento do clique individual). Pra múltiplos, mantém o
+  // loop por mutateAsync — bloqueio "tem vínculos" trata 1 a 1.
+  const forceDeleteFlow = useForceDeleteProductFlow({ onSuccess: onClear });
   const [busy, setBusy] = useState(false);
 
   const selectedProducts = useMemo(
@@ -964,7 +969,7 @@ function ProductBulkActionsBar({
       for (const id of selectedIds) {
         await updateProduct.mutateAsync({ id, data: { active } as any });
       }
-      toast.success(`${selectedIds.size} produto(s) ${active ? 'ativados' : 'inativados'}.`);
+      toast.success(`${selectedIds.size} ${selectedIds.size === 1 ? 'produto' : 'produtos'} ${active ? 'ativados' : 'inativados'}.`);
       onClear();
     } catch (err: any) {
       toast.error(`Erro: ${err.message}`);
@@ -975,15 +980,34 @@ function ProductBulkActionsBar({
 
   async function handleDelete() {
     if (selectedIds.size === 0) return;
-    if (!window.confirm(`Excluir ${selectedIds.size} produto(s)? Esta ação não pode ser desfeita.`)) {
+    // Single delete: usa flow com dialog de força (mesmo comportamento da linha)
+    if (selectedIds.size === 1) {
+      const id = Array.from(selectedIds)[0];
+      forceDeleteFlow.tryDelete(id);
+      return;
+    }
+    // Bulk delete: confirma e tenta. Quem tiver vínculos cai no toast genérico.
+    if (!window.confirm(`Excluir ${selectedIds.size} produtos? Itens com vínculos serão pulados (exclusão um a um pra forçar).`)) {
       return;
     }
     setBusy(true);
+    let ok = 0;
+    let blocked = 0;
     try {
       for (const id of selectedIds) {
-        await deleteProduct.mutateAsync(id);
+        try {
+          await deleteProduct.mutateAsync(id);
+          ok++;
+        } catch (err: any) {
+          if (err?._canForce) blocked++;
+          else throw err;
+        }
       }
-      toast.success(`${selectedIds.size} produto(s) excluído(s).`);
+      if (blocked > 0) {
+        toast.warning(`${ok} excluído(s); ${blocked} bloqueado(s) por vínculos. Selecione 1 a 1 pra forçar exclusão.`);
+      } else {
+        toast.success(`${ok} ${ok === 1 ? 'produto excluído' : 'produtos excluídos'}.`);
+      }
       onClear();
     } catch (err: any) {
       toast.error(`Erro: ${err.message}`);
@@ -1017,40 +1041,43 @@ function ProductBulkActionsBar({
   }
 
   return (
-    <BulkActionsBar
-      selectedIds={selectedIds}
-      onClear={onClear}
-      itemLabel={selectedIds.size === 1 ? 'produto' : 'produtos'}
-      actions={[
-        {
-          label: 'Ativar',
-          icon: <CheckCircle className="h-3.5 w-3.5" />,
-          variant: 'outline',
-          disabled: busy,
-          onClick: () => handleSetActive(true),
-        },
-        {
-          label: 'Inativar',
-          icon: <XCircle className="h-3.5 w-3.5" />,
-          variant: 'outline',
-          disabled: busy,
-          onClick: () => handleSetActive(false),
-        },
-        {
-          label: 'Exportar CSV',
-          icon: <Download className="h-3.5 w-3.5" />,
-          variant: 'outline',
-          disabled: busy,
-          onClick: handleExportCsv,
-        },
-        {
-          label: 'Excluir',
-          icon: <Trash className="h-3.5 w-3.5" />,
-          variant: 'destructive',
-          disabled: busy,
-          onClick: handleDelete,
-        },
-      ]}
-    />
+    <>
+      <BulkActionsBar
+        selectedIds={selectedIds}
+        onClear={onClear}
+        itemLabel={selectedIds.size === 1 ? 'produto' : 'produtos'}
+        actions={[
+          {
+            label: 'Ativar',
+            icon: <CheckCircle className="h-3.5 w-3.5" />,
+            variant: 'outline',
+            disabled: busy,
+            onClick: () => handleSetActive(true),
+          },
+          {
+            label: 'Inativar',
+            icon: <XCircle className="h-3.5 w-3.5" />,
+            variant: 'outline',
+            disabled: busy,
+            onClick: () => handleSetActive(false),
+          },
+          {
+            label: 'Exportar CSV',
+            icon: <Download className="h-3.5 w-3.5" />,
+            variant: 'outline',
+            disabled: busy,
+            onClick: handleExportCsv,
+          },
+          {
+            label: 'Excluir',
+            icon: <Trash className="h-3.5 w-3.5" />,
+            variant: 'destructive',
+            disabled: busy,
+            onClick: handleDelete,
+          },
+        ]}
+      />
+      {forceDeleteFlow.dialog}
+    </>
   );
 }

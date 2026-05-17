@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { PencilSimple as Pencil, Palette, FloppyDisk as Save, Package, Plus, MagnifyingGlass as Search, Footprints, Ruler, CircleNotch as Loader2, Cube as BoxIcon, Flask as FlaskConical, Stack as Layers, X, LinkSimple as Link2 } from '@phosphor-icons/react';
 import { ProductGroup, useUpdateGroup } from '@/hooks/useGroups';
 import { useProducts } from '@/hooks/useProducts';
+import { useForceDeleteProductFlow } from '@/components/inventory/ForceDeleteProductDialog';
 import GroupColorsManager from '@/components/groups/GroupColorsManager';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
@@ -10,7 +11,6 @@ import { useContractors } from '@/hooks/useContractors';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { MasterVariantDialog } from '@/components/inventory/MasterVariantDialog';
-import { useDeleteProduct } from '@/hooks/useProducts';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -619,7 +619,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [variantsDialogOpen, setVariantsDialogOpen] = useState(false);
   const queryClient = useQueryClient();
-  const deleteProduct = useDeleteProduct();
+  const forceDeleteFlow = useForceDeleteProductFlow();
 
   const { data: recipes = [] } = useArtisanalRecipes();
   const { data: contractors = [] } = useContractors();
@@ -1264,9 +1264,10 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
           baseName={group.name}
           variants={products}
           onEditVariant={() => { /* no-op: o usuário já está no GroupEditDialog */ }}
-          onDeleteVariant={(id: string) => { deleteProduct.mutate(id); }}
+          onDeleteVariant={(id: string) => { forceDeleteFlow.tryDelete(id); }}
         />
       )}
+      {forceDeleteFlow.dialog}
     </>
   );
 }

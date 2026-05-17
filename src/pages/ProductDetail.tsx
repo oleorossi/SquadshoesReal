@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
- import { useUpdateProduct, useDeleteProduct, ProductSchema, useProducts } from '@/hooks/useProducts';
+ import { useUpdateProduct, ProductSchema, useProducts } from '@/hooks/useProducts';
+import { useForceDeleteProductFlow } from '@/components/inventory/ForceDeleteProductDialog';
  import { useCurrentProfile } from '@/hooks/useUserManagement';
 import { useGroups } from '@/hooks/useGroups';
 import { useSuppliers } from '@/hooks/useSuppliers';
@@ -89,7 +90,9 @@ export default function ProductDetail() {
   const { data: suppliers = [] } = useSuppliers();
   const { data: componentSheets = [] } = useComponentSheets();
   const updateProduct = useUpdateProduct();
-  const deleteProduct = useDeleteProduct();
+  const forceDeleteFlow = useForceDeleteProductFlow({
+    onSuccess: () => navigate('/estoque'),
+  });
   const { data: allProducts = [] } = useProducts();
   const addComponentSheet = useAddComponentSheet();
   const updateComponentSheet = useUpdateComponentSheet();
@@ -263,9 +266,7 @@ export default function ProductDetail() {
 
   const handleDelete = () => {
     if (!product) return;
-    deleteProduct.mutate(product.id, {
-      onSuccess: () => { toast.success('Material excluído'); navigate('/estoque'); },
-    });
+    forceDeleteFlow.tryDelete(product.id);
   };
 
   if (isLoading) {
@@ -761,6 +762,7 @@ export default function ProductDetail() {
            </DialogContent>
          </Dialog>
        )}
+       {forceDeleteFlow.dialog}
      </AppLayout>
    );
  }
