@@ -205,16 +205,11 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
     // endereço completo (razão + endereço + bairro + cidade/UF + CEP + CNPJ),
     // o recipient ocupava >28mm e o `overflow:hidden` do header CLIPAVA a
     // NF-e — bug reportado pelo user em 18/05/2026 (PV-00107).
-    // Solução: linha dedicada de 14mm full-width após subInfo, NUNCA clipada.
+    // Solução: linha dedicada de 12mm full-width após o header, NUNCA clipada.
     // Atualiza automaticamente via trigger DB tg_sync_nfe_numero_to_sale_order
     // (sale_orders.nfe = nfe_emitidas.numero quando status=autorizada) OU
     // preenchida manualmente em sale_orders.nfe no form do PV.
-    const nfeFullRow = item.nfe
-      ? `<div style="height:14mm;background:#000;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-bottom:1.5px solid #000;overflow:hidden;print-color-adjust:exact;-webkit-print-color-adjust:exact;">
-          <span style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px;">Nota Fiscal</span>
-          <span style="font-size:32px;font-weight:900;letter-spacing:1px;line-height:1;font-family:Arial,Helvetica,sans-serif;">${escapeHtml(item.nfe)}</span>
-        </div>`
-      : '';
+    // (markup renderizado inline no template do label-box abaixo)
 
     // Bloco esquerdo do topo (logo + barcode) — altura limitada
     const headerLeft = `
@@ -334,31 +329,35 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
     ].filter(Boolean).join(' · ');
     const hasFooter = footerLine1 || footerLine2;
 
-    // Alturas hardcoded por seção. Total = 132mm = altura do label-box.
-    // Distribuição QUANDO TEM NF-e:   28+14+7+7+48+16+12 = 132.
-    // Distribuição QUANDO SEM NF-e:   28+7+7+62+16+12    = 132 (fallback).
-    // Reduzido de 140mm pra 132mm em 15/05/2026 — A4 tem 287mm úteis (5mm
-    // margem cada lado), e 2×140=280mm deixava só 7mm de gap entre labels.
-    // Qualquer overflow interno (renderização variável de impressora,
-    // line-height, padding) empurrava a 2ª label pra página seguinte.
-    // Com 2×132=264mm sobra 23mm de gap — folga real de impressão.
+    // Alturas hardcoded por seção. Total = 128mm = altura do label-box.
+    // Distribuição QUANDO TEM NF-e:   26+12+6+6+50+16+12 = 128.
+    // Distribuição QUANDO SEM NF-e:   26+6+6+62+16+12    = 128 (fallback).
+    // Reduzido de 132mm pra 128mm em 18/05/2026 — soma anterior batia exato
+    // em 132mm (sem folga interna). LABEL_PRINT_HARDENING força overflow:
+    // visible em todos os filhos durante print, então qualquer micro-overflow
+    // (1-2mm de barcode/imagem/linha de texto) fazia a label crescer além de
+    // 132mm e vazar no slot bottom — engine de impressão então pulava a 2ª
+    // ficha pra próxima página pra evitar sobreposição. Com 128mm fica 4mm
+    // de respiro interno + slot bottom em 140mm (gap real 12mm) + sobra
+    // 19mm na página.
     //
-    // NF-e em linha dedicada (14mm full-width fundo preto) — adicionada
-    // 18/05/2026 pra resolver clip dela dentro do header quando recipient
-    // tem endereço completo. Quando não há NF, productImage volta pra 62mm
-    // pra ocupar o espaço.
-    const productAreaHeight = item.nfe ? 48 : 62;
+    // NF-e em linha dedicada (12mm full-width fundo preto). Quando não há
+    // NF-e, productImage volta pra 62mm pra ocupar o espaço.
+    const productAreaHeight = item.nfe ? 50 : 62;
     return `
       <div class="label-box">
-        <div style="height:28mm;display:flex;border-bottom:1.5px solid #000;overflow:hidden;">
+        <div style="height:26mm;display:flex;border-bottom:1.5px solid #000;overflow:hidden;">
           ${headerLeft}
           ${headerRight}
         </div>
-        ${nfeFullRow}
-        <div style="height:7mm;display:flex;border-bottom:1px solid #000;overflow:hidden;">
+        ${item.nfe ? `<div style="height:12mm;background:#000;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-bottom:1.5px solid #000;overflow:hidden;print-color-adjust:exact;-webkit-print-color-adjust:exact;">
+          <span style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;">Nota Fiscal</span>
+          <span style="font-size:28px;font-weight:900;letter-spacing:1px;line-height:1;font-family:Arial,Helvetica,sans-serif;">${escapeHtml(item.nfe)}</span>
+        </div>` : ''}
+        <div style="height:6mm;display:flex;border-bottom:1px solid #000;overflow:hidden;">
           ${subInfoCells}
         </div>
-        <div style="height:7mm;display:flex;border-bottom:1px solid #000;background:#f5f5f5;overflow:hidden;">
+        <div style="height:6mm;display:flex;border-bottom:1px solid #000;background:#f5f5f5;overflow:hidden;">
           ${statsCells}
         </div>
         <div style="height:${productAreaHeight}mm;display:flex;border-bottom:1px solid #000;overflow:hidden;">
@@ -429,29 +428,29 @@ ${LABEL_PRINT_HARDENING}
   display:flex;flex-direction:column;
   page-break-inside:avoid !important;
   break-inside:avoid-page !important;
-  border-radius:0.5mm;overflow:hidden;height:132mm;
+  border-radius:0.5mm;overflow:hidden;height:128mm;max-height:128mm;
 }
 .label-box > *{overflow:hidden;page-break-inside:avoid;break-inside:avoid;}
 /* Layout em POSITION:ABSOLUTE — cada page-container vira um plano A4
    onde os 2 labels ficam ancorados em posições FIXAS (X,Y). Saem do
    fluxo do documento → engine de impressão não tem como "decidir"
    quebrar entre eles.
-   A4 útil = 287mm (5mm margem cada lado). 2 labels × 132mm = 264mm,
-   sobra 23mm pra gap entre top/bottom — folga real de impressão. */
+   A4 útil = 287mm (5mm margem cada lado). 2 labels × 128mm = 256mm,
+   sobra 31mm pra gap entre top/bottom — folga real de impressão. */
 .page-container{
   width:198mm;height:287mm;margin:0 auto 0;
   position:relative;box-sizing:border-box;
 }
 .page-container .label-slot-top{
   position:absolute;top:0;left:0;right:0;
-  height:132mm;
+  height:128mm;overflow:hidden;
 }
 .page-container .label-slot-bottom{
-  position:absolute;top:143mm;left:0;right:0;
-  height:132mm;
+  position:absolute;top:140mm;left:0;right:0;
+  height:128mm;overflow:hidden;
 }
 .page-container .label-slot-top .label-box,
-.page-container .label-slot-bottom .label-box{height:132mm;}
+.page-container .label-slot-bottom .label-box{height:128mm;max-height:128mm;}
 .page-container.page-break{break-after:page;page-break-after:always;}
 .page-container:not(.page-break){break-after:avoid;page-break-after:avoid;}
 /* Marcador de versão pra diferenciar do cache antigo no debug */
@@ -480,15 +479,16 @@ ${LABEL_PRINT_HARDENING}
   body{padding:0;margin:0;}
   /* A4 = 297mm. Com @page margin 5mm × 2 = 287mm úteis.
      page-container ocupa o A4 útil (287mm) com posição relativa.
-     Slot top em (0, 0..132mm). Slot bottom em (143mm, +132mm).
-     143+132=275mm dentro dos 287mm úteis — 12mm de respiro garantindo
-     que a 2ª etiqueta NUNCA pula pra próxima página por overflow.
-     (Antes era 140mm cada e só sobravam 4mm — qualquer micro-overflow
-     interno empurrava pra 3 páginas em vez de 2.) */
+     Slot top em (0, 0..128mm). Slot bottom em (140mm, +128mm) → 268mm.
+     268mm dentro de 287mm úteis = 19mm de respiro, garantindo que a 2ª
+     etiqueta NUNCA pula pra próxima página por micro-overflow interno.
+     (Antes era 132mm × 2 com slot bottom em 143mm — soma 275mm. Como
+     LABEL_PRINT_HARDENING força overflow:visible em todos os filhos, qualquer
+     1-2mm de overflow interno empurrava a 2ª etiqueta pra página seguinte.) */
   .page-container{width:100%;height:287mm;margin:0;}
-  .page-container .label-slot-top{height:132mm;}
-  .page-container .label-slot-bottom{height:132mm;top:143mm;}
-  .label-box{height:132mm;}
+  .page-container .label-slot-top{height:128mm;overflow:hidden !important;}
+  .page-container .label-slot-bottom{height:128mm;top:140mm;overflow:hidden !important;}
+  .label-box{height:128mm !important;max-height:128mm !important;overflow:hidden !important;}
   .label-box,
   .label-box *{
     page-break-inside:avoid !important;
