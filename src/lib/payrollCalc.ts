@@ -47,9 +47,10 @@ export interface PayrollEmployeeInput {
   /** Carga semanal contratada (ex: 44, 40, 36). Default 44. */
   weekly_hours?: number;
   /** Tolerância em minutos: variações <= este valor não geram HE nem débito.
-   *  Default 10 (alinhado com work_schedules.tolerance_minutes default). */
+   *  Default 10 (alinhado com work_schedules.tolerance_minutes default e RPC). */
   tolerance_minutes?: number;
-  /** HE < este valor é descartada (aplicado por semana). Default 10. */
+  /** HE < este valor é descartada (aplicada por semana). Default 0 — alinhado
+   *  com work_schedules.minimum_overtime_minutes default e UI fallback. */
   minimum_overtime_minutes?: number;
   /** Multiplicador da HE em dia útil. Default 0 = hora simples (sem adicional).
    *  Vem de employees.overtime_50_pct — configurável por contrato. */
@@ -243,8 +244,14 @@ export function calculatePayroll(
   // Tolerância e mínimo de HE — defaults alinhados com work_schedules e com
   // calculate_employee_bank_balance() do banco. Aplicados POR SEMANA (não dia)
   // pra evitar discrepância entre o cálculo da folha e o saldo do banco de horas.
+  // Defaults idênticos aos do RPC calculate_employee_bank_balance:
+  //   tolerance_minutes default 10, minimum_overtime_minutes default 0.
+  // Antes minimum_overtime_minutes usava `?? 10`, divergindo do RPC e dos
+  // fallbacks de UI (Timesheet.tsx, useTimeAnalytics.ts: =0). Resultado:
+  // funcionários sem work_schedule tinham HE entre 1–9 min descartadas só
+  // na folha, batendo divergência com banco de horas exibido na UI.
   const TOLERANCE_MIN = Math.max(0, employee.tolerance_minutes ?? 10);
-  const MIN_OT_MIN   = Math.max(0, employee.minimum_overtime_minutes ?? 10);
+  const MIN_OT_MIN   = Math.max(0, employee.minimum_overtime_minutes ?? 0);
 
   let workedMin = 0;
   let expectedMin = 0;

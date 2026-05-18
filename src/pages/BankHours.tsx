@@ -80,8 +80,14 @@ type EmployeeDetail = {
   employee_name: string;
   department: string | null;
   movements_min: number;
+  movements_50_min?: number;
+  movements_100_min?: number;
   timesheet_min: number;
+  timesheet_50_min?: number;
+  timesheet_100_min?: number;
   balance_min: number;
+  balance_50_min?: number;
+  balance_100_min?: number;
   days_worked: number;
   days_partial: number;
   expected_per_day_min: number;
@@ -661,6 +667,36 @@ export default function BankHours() {
                       </CardContent>
                     </Card>
                   </div>
+
+                  {/* Split 50/100: HE 50% (dia útil) vs HE 100% (domingo/feriado).
+                      Vem do RPC novo (mig 20260629140000); fallback a 0 se rodar
+                      em ambiente legado sem o campo. */}
+                  {(typeof detailQ.data.balance_50_min === 'number' || typeof detailQ.data.balance_100_min === 'number') && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <Card>
+                        <CardContent className="p-3">
+                          <div className="flex items-center justify-between">
+                            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">HE 50% (dia útil/sáb)</div>
+                            <Badge variant="outline" className="text-[9px] h-4 px-1.5">+50%</Badge>
+                          </div>
+                          <div className={cn('font-mono text-base font-bold mt-1 tabular-nums', balanceClass(detailQ.data.balance_50_min ?? 0))}>
+                            {formatHours(detailQ.data.balance_50_min ?? 0)}
+                          </div>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="p-3">
+                          <div className="flex items-center justify-between">
+                            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">HE 100% (dom/feriado)</div>
+                            <Badge variant="outline" className="text-[9px] h-4 px-1.5">+100%</Badge>
+                          </div>
+                          <div className={cn('font-mono text-base font-bold mt-1 tabular-nums', balanceClass(detailQ.data.balance_100_min ?? 0))}>
+                            {formatHours(detailQ.data.balance_100_min ?? 0)}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  )}
 
                   <Card>
                     <CardHeader className="pb-2"><CardTitle className="text-sm">Período analisado</CardTitle></CardHeader>
