@@ -1,9 +1,10 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, Link } from "react-router-dom";
 import { lazy, Suspense } from "react";
 import { CircleNotch as Loader2, SquaresFour as LayoutDashboard, ClipboardText as ClipboardList, Factory, ChartBar as BarChart3, Stack as Boxes, ClockCounterClockwise as History, Waves, FlowArrow as Workflow, Clock } from '@phosphor-icons/react';
 import { Gauge, FileText as FileBarChart } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { getSecondaryRoutesForGroup } from '@/data/navigation';
 
 const Orders = lazy(() => import("./Orders"));
 const ProductionScheduleTimeline = lazy(() => import("@/components/financial/ProductionScheduleTimeline").then(m => ({ default: m.ProductionScheduleTimeline })));
@@ -60,6 +61,23 @@ export default function PCPHub() {
         title="Planejamento"
         description="Planejamento, controle e produção da fábrica"
       />
+      {/* Atalhos pra visualizações de produção que não estão no sidebar (Fluxo/Live/Timeline/etc).
+          Stripe discreto pra discoverability — só aparece se houver rotas no grupo. */}
+      {getSecondaryRoutesForGroup('Produção').length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 -mt-2 mb-1 text-[11px] text-muted-foreground">
+          <span className="font-medium uppercase tracking-wider text-[10px] text-muted-foreground/70">Visualizações</span>
+          {getSecondaryRoutesForGroup('Produção').map((r) => (
+            <Link
+              key={r.path}
+              to={r.path}
+              className="inline-flex items-center gap-1 rounded-md border border-border/60 px-2 py-0.5 hover:bg-muted/50 hover:text-foreground transition-colors"
+            >
+              <r.icon className="h-3 w-3" />
+              <span>{r.name}</span>
+            </Link>
+          ))}
+        </div>
+      )}
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 pb-2">
           <TabsList className="inline-flex w-max h-auto gap-1 bg-muted/50 p-1 rounded-lg">

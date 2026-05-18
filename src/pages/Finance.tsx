@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { usePersistedState } from '@/hooks/usePersistedState';
@@ -54,6 +54,7 @@ import { FinanceReportsTab } from '@/components/finance/FinanceReportsTab';
 import { SmartDashboard } from '@/components/finance/SmartDashboard';
 import { NetMarginChart } from '@/components/finance/NetMarginChart';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { getSecondaryRoutesForGroup } from '@/data/navigation';
 import { Panel } from '@/components/ui/panel';
 
 const fmt = (v: number | null | undefined) => {
@@ -1099,6 +1100,22 @@ export default function Finance() {
               : 'Visão Geral'
           }
         />
+        {/* Atalhos pra rotas financeiras não-sidebar (Markup/CT-e/MDF-e/CNAB) */}
+        {getSecondaryRoutesForGroup('Financeiro').length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 -mt-2 mb-1 text-[11px] text-muted-foreground">
+            <span className="font-medium uppercase tracking-wider text-[10px] text-muted-foreground/70">Atalhos</span>
+            {getSecondaryRoutesForGroup('Financeiro').map((r) => (
+              <Link
+                key={r.path}
+                to={r.path}
+                className="inline-flex items-center gap-1 rounded-md border border-border/60 px-2 py-0.5 hover:bg-muted/50 hover:text-foreground transition-colors"
+              >
+                <r.icon className="h-3 w-3" />
+                <span>{r.name}</span>
+              </Link>
+            ))}
+          </div>
+        )}
 
         {loading ? (
           /* F14 (audit): skeleton em vez de spinner — usuário vê o esqueleto

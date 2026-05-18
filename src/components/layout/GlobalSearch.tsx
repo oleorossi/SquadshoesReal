@@ -6,7 +6,7 @@ import {
   MagnifyingGlass as Search, ClipboardText as ClipboardList, Users, Package, FileText,
   X, ArrowRight, House as Home, Buildings, ClockCounterClockwise as Clock,
 } from '@phosphor-icons/react';
-import { menuGroups } from '@/data/navigation';
+import { menuGroups, secondaryRoutes } from '@/data/navigation';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@/components/ui/command';
 import { Badge } from '@/components/ui/badge';
@@ -329,13 +329,19 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
   const groupResult = groupEnabled ? (groupQuery.data ?? null) : null;
 
   // Páginas (atalhos) — busca local, instantânea.
+  // Indexa items do sidebar + secondaryRoutes (removidos do sidebar mas
+  // ainda buscáveis aqui — sem isso usuário ficaria órfão dessas rotas).
   const filteredNavItems = useMemo(() => {
     if (!q || q.length < 1 || isGroupSearch) return [];
-    return menuGroups.flatMap(group =>
+    const fromSidebar = menuGroups.flatMap(group =>
       group.items
         .filter(item => item.name.toLowerCase().includes(q) || group.label.toLowerCase().includes(q))
-        .map(item => ({ ...item, groupLabel: group.label }))
+        .map(item => ({ name: item.name, icon: item.icon, path: item.path, groupLabel: group.label }))
     );
+    const fromSecondary = secondaryRoutes
+      .filter(r => r.name.toLowerCase().includes(q) || r.group.toLowerCase().includes(q))
+      .map(r => ({ name: r.name, icon: r.icon, path: r.path, groupLabel: r.group }));
+    return [...fromSidebar, ...fromSecondary];
   }, [q, isGroupSearch]);
 
   const goTo = useCallback((path: string, persistTerm?: string) => {
@@ -363,7 +369,8 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
       {compact ? (
         <button
           onClick={() => setOpen(true)}
-          title="Buscar (⌘K)"
+          title="Buscar (⌘K) — pedidos, clientes, páginas"
+          aria-label="Abrir busca global (atalho Command+K)"
           className="flex items-center justify-center h-7 w-7 rounded-lg text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
         >
           <Search className="h-3.5 w-3.5 shrink-0" />
@@ -371,15 +378,16 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
       ) : (
         <button
           onClick={() => setOpen(true)}
+          aria-label="Abrir busca global (atalho Command+K)"
           className={cn(
             'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors',
-            'text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-accent/60',
-            'border border-sidebar-border/30'
+            'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60',
+            'border border-sidebar-border/40 bg-sidebar-accent/20'
           )}
         >
           <Search className="h-3.5 w-3.5 shrink-0" />
-          <span className="flex-1 text-left">Buscar...</span>
-          <kbd className="inline-flex h-5 items-center gap-0.5 rounded border border-sidebar-border/50 bg-sidebar-accent/30 px-1.5 font-mono text-[11px] text-sidebar-muted shrink-0">
+          <span className="flex-1 text-left">Buscar pedidos, clientes...</span>
+          <kbd className="inline-flex h-5 items-center gap-0.5 rounded border border-sidebar-border/60 bg-sidebar-background/80 px-1.5 font-mono text-[11px] font-semibold text-sidebar-foreground/80 shrink-0">
             ⌘K
           </kbd>
         </button>
