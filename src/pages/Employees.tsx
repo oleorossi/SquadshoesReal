@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { Switch } from '@/components/ui/switch';
+import { SeveranceSimulator } from '@/components/hr/SeveranceSimulator';
 import {
   useEmployees, useAddEmployee, useUpdateEmployee, useDeleteEmployee,
   useEmployeeAdvances, useAddAdvance, useDeleteAdvance,
@@ -398,6 +399,14 @@ export default function Employees() {
                 de calcular horas esperadas após essa data no registro de ponto.
               </p>
             </div>
+
+            {/* Simulador de indenização — só renderiza quando termination_date preenchida.
+                Mostra breakdown CLT (saldo, 13º, férias, aviso, multa FGTS) + total. */}
+            <SeveranceSimulator
+              salary={form.salary}
+              admissionDate={form.admission_date}
+              terminationDate={(form as any).termination_date}
+            />
             <div><Label>Salário (R$)</Label><CurrencyInput value={form.salary} onChange={v => setForm(f => ({ ...f, salary: v }))} /></div>
             <div>
               <Label>Valor Hora (R$/hr)</Label>
