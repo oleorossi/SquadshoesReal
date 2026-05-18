@@ -584,14 +584,14 @@ function TimesheetRecordsTab() {
       recordMap.set(rec.record_date, rec.punches as string[]);
     });
 
-    // Resolve admission date — fix 2026-05-18 user report: relatório calculava
-    // horas esperadas sobre o PRAZO TOTAL do batch, inflando expected pra dias
-    // ANTES do funcionário entrar (ex: Quesia admitida 06/04 mas batch cobre
-    // 01-30/04 → contava 5 dias úteis × 8h fantasma antes da admissão).
+    // Resolve admission + termination dates — fix 2026-05-18 user report:
+    // relatório calculava horas esperadas sobre o PRAZO TOTAL do batch,
+    // inflando expected pra dias ANTES da admissão E APÓS a demissão.
     const emp = employees.find(e =>
       e.name.toLowerCase().trim() === empName.toLowerCase().trim()
     );
     const admissionDateStr = (emp as any)?.admission_date as string | null | undefined;
+    const terminationDateStr = (emp as any)?.termination_date as string | null | undefined;
 
     // Generate all days in the date range
     if (!batchDateRange) {
@@ -605,16 +605,20 @@ function TimesheetRecordsTab() {
       });
     }
 
-    // Respeita admission_date: efetivo start = max(batch.start, admission_date).
-    // Dias anteriores à admissão são pulados (não geram expected nem aparecem
-    // na timeline). Tolerante a admission_date null ou em formato inválido.
+    // Respeita admission_date + termination_date: efetivo start = max(batch.start,
+    // admission_date) e efetivo end = min(batch.end, termination_date).
+    // Dias fora do contrato (antes da admissão / depois da demissão) são pulados.
+    // Tolerante a datas null/inválidas (cai no batch range original).
     const effectiveStartStr = (admissionDateStr && /^\d{4}-\d{2}-\d{2}$/.test(admissionDateStr) && admissionDateStr > batchDateRange.startDate)
       ? admissionDateStr
       : batchDateRange.startDate;
+    const effectiveEndStr = (terminationDateStr && /^\d{4}-\d{2}-\d{2}$/.test(terminationDateStr) && terminationDateStr < batchDateRange.endDate)
+      ? terminationDateStr
+      : batchDateRange.endDate;
 
     const allDays: DaySummary[] = [];
     const start = new Date(effectiveStartStr + 'T12:00:00');
-    const end = new Date(batchDateRange.endDate + 'T12:00:00');
+    const end = new Date(effectiveEndStr + 'T12:00:00');
      const cursor = new Date(start);
      let safetyCounter = 0;
 

@@ -16,6 +16,10 @@ export interface Employee {
   role: string;
   department: string;
   admission_date: string;
+  // Último dia trabalhado (CLT). NULL = funcionário ativo.
+  // Adicionado 2026-05-18: Timesheet usa pra cortar cálculo de horas esperadas
+  // após essa data (sem isso, demitido recebia expected fantasma até fim do batch).
+  termination_date: string | null;
   active: boolean;
   notes: string;
   created_at: string;
