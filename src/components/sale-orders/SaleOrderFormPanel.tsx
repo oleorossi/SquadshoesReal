@@ -747,6 +747,35 @@ export default function SaleOrderFormPanel({
               <div>
                 <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">Condição de Pagamento</Label>
                 <Input value={form.payment_condition} onChange={e => setForm(f => ({ ...f, payment_condition: e.target.value }))} className="h-9" placeholder="Ex: 30/60/90 DIAS" />
+                {(() => {
+                  const installments = parsePaymentConditionInstallments(form.payment_condition);
+                  if (installments.length === 0) return null;
+                  const base = new Date();
+                  base.setHours(0, 0, 0, 0);
+                  const dates = installments.map((days) => {
+                    const d = new Date(base);
+                    d.setDate(d.getDate() + days);
+                    return d;
+                  });
+                  const fmt = (d: Date) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+                  const summary = installments.length === 1
+                    ? `1 parcela — vence em ${fmt(dates[0])}`
+                    : `${installments.length} parcelas — 1ª em ${fmt(dates[0])}, última em ${fmt(dates[dates.length - 1])}`;
+                  return (
+                    <div className="mt-2 rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs">
+                      <div className="font-semibold text-foreground">{summary}</div>
+                      <div className="text-[10px] text-muted-foreground mb-1.5">Base: hoje ({fmt(base)}) — quando faturar, a base passa a ser a data de faturamento.</div>
+                      <div className="flex flex-wrap gap-x-3 gap-y-1">
+                        {dates.map((d, i) => (
+                          <span key={i} className="whitespace-nowrap">
+                            <span className="text-muted-foreground">{i + 1}ª ({installments[i]}d):</span>{' '}
+                            <span className="font-medium text-foreground">{fmt(d)}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
