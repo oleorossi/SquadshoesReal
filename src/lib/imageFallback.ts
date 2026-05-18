@@ -20,14 +20,35 @@ export interface ImageFallbackInput {
 }
 
 /**
- * Resolves the best available product image following the 5-level hierarchy.
- * Returns a signed URL ready for rendering.
+ * Source da imagem retornada — usado pra decidir tratamento downstream
+ * (ex: etiquetas industriais aplicam grayscale quando matchedColor=false,
+ * já que a foto exibida não corresponde à cor real do produto pedido).
  */
-export async function resolveProductImage({
+export type ImageMatchSource =
+  | 'variant_group'   // nível 1: variant_group_images da variante da cor
+  | 'variant_color'   // nível 2: reference_color_variants.image_url da cor
+  | 'master_fallback' // nível 3: technical_sheets.image_url (cor pedida não cadastrada)
+  | 'other_variant'   // nível 4: variante preta ou qualquer outra variante
+  | 'placeholder';    // nível 5: logo da fábrica ou silhueta genérica
+
+export interface ImageResolution {
+  url: string;
+  source: ImageMatchSource;
+  /** True quando a imagem retornada corresponde EXATAMENTE à cor pedida
+   *  (níveis 1 ou 2). False pra qualquer fallback (níveis 3-5). */
+  matchedColor: boolean;
+}
+
+/**
+ * Versão estendida que retorna a fonte da imagem além da URL. Use quando
+ * o caller precisa saber se a foto corresponde à cor pedida — ex: etiquetas
+ * de caixa que aplicam grayscale quando imagem é fallback do master.
+ */
+export async function resolveProductImageWithSource({
   referenceId,
   colorName,
   fallbackUrl = '/placeholder.svg',
-}: ImageFallbackInput): Promise<string> {
+}: ImageFallbackInput): Promise<ImageResolution> {
   // --- 1. Material-specific photo (variant_group_images) ---
   if (colorName) {
     const { data: variant } = await supabase
@@ -46,7 +67,7 @@ export async function resolveProductImage({
 
       if (groupImgs?.[0]?.image_url) {
         const url = await getSignedUrl(groupImgs[0].image_url);
-        if (url) return url;
+        if (url) return { url, source: 'variant_group', matchedColor: true };
       }
     }
   }
@@ -62,7 +83,7 @@ export async function resolveProductImage({
 
     if (variant?.image_url) {
       const url = await getSignedUrl(variant.image_url);
-      if (url) return url;
+      if (url) return { url, source: 'variant_color', matchedColor: true };
     }
   }
 
@@ -76,7 +97,7 @@ export async function resolveProductImage({
   const masterRaw = refData?.image_url || (refData?.images as any)?.[0] || '';
   if (masterRaw) {
     const url = await getSignedUrl(masterRaw);
-    if (url) return url;
+    if (url) return { url, source: 'master_fallback', matchedColor: false };
   }
 
   // --- 4. Any variant with an image (prefer Black/Preta, then any) ---
@@ -92,17 +113,15 @@ export async function resolveProductImage({
     );
     if (blackRow?.image_url) {
       const url = await getSignedUrl(blackRow.image_url);
-      if (url) return url;
+      if (url) return { url, source: 'other_variant', matchedColor: false };
     }
 
-    // Try any variant that has a direct image_url
     const anyWithImage = allVariants.find(v => !!v.image_url);
     if (anyWithImage?.image_url) {
       const url = await getSignedUrl(anyWithImage.image_url);
-      if (url) return url;
+      if (url) return { url, source: 'other_variant', matchedColor: false };
     }
 
-    // Try variant_group_images for any variant of this reference
     const variantIds = allVariants.map(v => v.id);
     const { data: anyGroupImgs } = await supabase
       .from('variant_group_images')
@@ -112,10 +131,20 @@ export async function resolveProductImage({
 
     if (anyGroupImgs?.[0]?.image_url) {
       const url = await getSignedUrl(anyGroupImgs[0].image_url);
-      if (url) return url;
+      if (url) return { url, source: 'other_variant', matchedColor: false };
     }
   }
 
   // --- 5. Fallback ---
-  return fallbackUrl;
+  return { url: fallbackUrl, source: 'placeholder', matchedColor: false };
+}
+
+/**
+ * Resolves the best available product image following the 5-level hierarchy.
+ * Returns a signed URL ready for rendering. (Compat wrapper — use
+ * resolveProductImageWithSource quando precisar saber a fonte.)
+ */
+export async function resolveProductImage(input: ImageFallbackInput): Promise<string> {
+  const result = await resolveProductImageWithSource(input);
+  return result.url;
 }

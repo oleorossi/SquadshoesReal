@@ -67,6 +67,11 @@ export interface BoxIdentificationData {
   grade: { size: string; qty: number }[];
   barcode?: string;
   imageUrl?: string;
+  /** True quando imageUrl é fallback (master da ficha técnica, variante "preta"
+   *  ou placeholder) — a foto NÃO corresponde à cor real pedida. Etiqueta
+   *  aplica filter:grayscale pra deixar claro pro recebedor que essa imagem
+   *  é só ilustrativa, não retrata a cor real do produto. */
+  imageIsFallback?: boolean;
   strapsLabel?: string;
   /** Distintivo da grade (ex.: "5-10", "F-PP"). Aparece grande no canto. */
   sizeRangeLabel?: string;
@@ -317,9 +322,20 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
     // área". Como productLeft virou width:60mm fixo e sizeRangeBig é 30mm,
     // sobram ~108mm de largura pra essa imagem (numa label de 198mm).
     // object-fit:contain preserva proporção natural da foto da ficha técnica.
+    //
+    // Quando imageIsFallback=true (foto da cor pedida não cadastrada, caiu
+    // pra imagem mestre da ficha técnica), aplica filter:grayscale pra
+    // deixar visualmente claro pro recebedor que a imagem NÃO retrata a cor
+    // real — evita confusão de "etiqueta diz cor X mas foto mostra cor Y".
+    // Pequena tag "REF. GENÉRICA" no canto reforça a mensagem.
+    const imgFilter = item.imageIsFallback ? 'filter:grayscale(100%);-webkit-filter:grayscale(100%);' : '';
+    const fallbackBadge = item.imageIsFallback
+      ? `<div style="position:absolute;top:1mm;left:1mm;background:#000;color:#fff;font-size:7px;font-weight:800;padding:1px 4px;letter-spacing:0.5px;text-transform:uppercase;print-color-adjust:exact;-webkit-print-color-adjust:exact;">Foto genérica</div>`
+      : '';
     const productImage = item.imageUrl ? `
-      <div style="flex:1;border-left:1px solid #444;padding:2mm;display:flex;align-items:center;justify-content:center;background:#fff;overflow:hidden;print-color-adjust:exact;-webkit-print-color-adjust:exact;">
-        <img src="${item.imageUrl}" style="width:100%;height:100%;object-fit:contain;print-color-adjust:exact;-webkit-print-color-adjust:exact;" onerror="this.onerror=null;this.src='${sandalSvg}';" />
+      <div style="flex:1;border-left:1px solid #444;padding:2mm;display:flex;align-items:center;justify-content:center;background:#fff;overflow:hidden;position:relative;print-color-adjust:exact;-webkit-print-color-adjust:exact;">
+        ${fallbackBadge}
+        <img src="${item.imageUrl}" style="width:100%;height:100%;object-fit:contain;${imgFilter}print-color-adjust:exact;-webkit-print-color-adjust:exact;" onerror="this.onerror=null;this.src='${sandalSvg}';" />
       </div>` : '<div style="flex:1;border-left:1px solid #444;"></div>';
 
     // Rodapé em DUAS linhas estruturadas — antes era uma só com " · "
