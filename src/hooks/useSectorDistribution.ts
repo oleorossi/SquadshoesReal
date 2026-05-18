@@ -20,6 +20,9 @@ export interface SectorLoadByRef {
   cap_solagem: number;
   cap_acabamento: number;
   cap_expedicao: number;
+  /** 'ficha' = cap configurada na ficha técnica; 'categoria' = veio do
+   *  default_lead_times pelo shoe_category; 'nenhuma' = sem cap em lugar nenhum. */
+  capacity_source: 'ficha' | 'categoria' | 'nenhuma';
 }
 
 export interface SectorDistributionRow {

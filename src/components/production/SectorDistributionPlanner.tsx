@@ -281,7 +281,15 @@ function SectorDayEditor({
                   <div className="text-[10px] text-muted-foreground truncate max-w-[160px]">{ref.reference_name}</div>
                 </td>
                 <td className="px-2 py-1 text-right font-mono">{ref.total_qty}</td>
-                <td className="px-2 py-1 text-right font-mono text-muted-foreground">{ref.cap}</td>
+                <td className="px-2 py-1 text-right">
+                  <span className="font-mono text-muted-foreground">{ref.cap}</span>
+                  {ref.capacity_source === 'categoria' && (
+                    <span className="ml-1 text-[9px] uppercase tracking-wider text-amber-600 dark:text-amber-500" title={`Capacidade veio do default de ${ref.shoe_category || 'categoria'} — defina valor próprio na ficha pra customizar`}>cat</span>
+                  )}
+                  {ref.capacity_source === 'nenhuma' && (
+                    <span className="ml-1 text-[9px] uppercase tracking-wider text-destructive" title="Sem capacidade configurada — defina na ficha ou em default_lead_times">—</span>
+                  )}
+                </td>
                 {[1, 2, 3, 4, 5].map((d) => {
                   const cell = planMap.get(`${sector}|${ref.tech_sheet_id}|${d}`);
                   const val = cell?.pairs ?? 0;
