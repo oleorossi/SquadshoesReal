@@ -729,6 +729,26 @@ Deno.serve(async (req) => {
     // Histórico de mudança: era "9" (sem frete) → "3" (transporte próprio) →
     // "0" (CIF) → "3" (Transporte próprio do remetente — Squad usa veículo próprio,
     // não terceiriza nem deixa pro cliente; é a categoria fiscalmente correta).
+    // modFrete=3 (transporte próprio do REMETENTE) exige que o bloco
+    // <transporta> da NF-e seja preenchido com os dados do PRÓPRIO emitente
+    // — sem isso, contabilidade reclama porque o XML sai com transportador
+    // vazio mas indicando "transporte próprio" (incongruente fiscalmente).
+    // Pedido user 18/05/2026: "frete próprio, então os dados do frete devem
+    // ser os meus". Tudo puxado de fiscal.* (companies/fiscal_config já carregado).
+    const emitenteCnpjDigits = (fiscal.cnpj || "").replace(/\D/g, "");
+    const emitenteIeDigits = (fiscal.inscricao_estadual || "").replace(/\D/g, "");
+    const emitenteEndereco = [fiscal.logradouro || fiscal.endereco, fiscal.numero || "S/N"]
+      .filter(Boolean).join(", ");
+    const transportadorBlock: Record<string, string> = {};
+    if (fiscal.razao_social || fiscal.nome_fantasia) {
+      transportadorBlock.nome = fiscal.razao_social || fiscal.nome_fantasia;
+    }
+    if (emitenteCnpjDigits.length === 14) transportadorBlock.cnpj = emitenteCnpjDigits;
+    if (emitenteIeDigits) transportadorBlock.inscricao_estadual = emitenteIeDigits;
+    if (emitenteEndereco) transportadorBlock.endereco = emitenteEndereco;
+    if (fiscal.cidade) transportadorBlock.cidade = fiscal.cidade;
+    if (fiscal.uf) transportadorBlock.estado = fiscal.uf;
+
     const transporteBlock = (() => {
       const vol: Record<string, string> = {
         quantidade: qtdVolumesStr,
@@ -738,6 +758,9 @@ Deno.serve(async (req) => {
       if (pesoBrutoStr) vol.peso_bruto = pesoBrutoStr;
       return {
         modalidade_frete: "3",
+        ...(Object.keys(transportadorBlock).length > 0
+          ? { transportador: transportadorBlock }
+          : {}),
         volumes: [vol],
       };
     })();
@@ -840,6 +863,11 @@ Deno.serve(async (req) => {
           },
           transporte: {
             modalidade_frete: '3 (Transporte próprio por conta do remetente)',
+            // modFrete=3 → transportador = próprio emitente. Bloco montado
+            // a partir de fiscal.* pra contabilidade conferir antes de emitir.
+            transportador: Object.keys(transportadorBlock).length > 0
+              ? transportadorBlock
+              : null,
             qtd_volumes: qtdVolumesStr,
             especie: 'VOLUME',
             peso_bruto_kg: pesoBrutoStr || null,

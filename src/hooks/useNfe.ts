@@ -415,6 +415,14 @@ export interface NfePreviewResponse {
     };
     transporte: {
       modalidade_frete: string;
+      transportador: {
+        nome?: string;
+        cnpj?: string;
+        inscricao_estadual?: string;
+        endereco?: string;
+        cidade?: string;
+        estado?: string;
+      } | null;
       qtd_volumes: string;
       especie: string;
       peso_bruto_kg: string | null;
