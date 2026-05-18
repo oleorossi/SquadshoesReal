@@ -38,6 +38,31 @@ async function gcFetch(path: string, init: RequestInit = {}) {
   return { ok: res.ok, status: res.status, json };
 }
 
+// Cache do id da loja no GestaoClick. A doc da API marca `loja_id` como
+// obrigatório no POST /notas_fiscais_produtos. Quando ausente, o GC usa
+// "matriz ou loja que o usuário tem permissão" — funciona, mas explícito
+// é mais seguro (e cumpre o contrato da doc). Cache em memória do isolate
+// — válido enquanto o edge function fica quente. Reseta a cada cold start.
+let _gcLojaIdCache: string | null = null;
+async function resolveGcLojaId(): Promise<string | null> {
+  if (_gcLojaIdCache) return _gcLojaIdCache;
+  try {
+    const r = await gcFetch("/lojas");
+    const list = Array.isArray(r.json?.data) ? r.json.data : [];
+    if (list.length === 0) return null;
+    // Prefere matriz (situacao=1 ativa + matriz=1 quando disponível),
+    // senão pega a primeira ativa, senão a primeira.
+    const matriz = list.find((l: any) => l.matriz === 1 || l.matriz === "1" || l.matriz === true);
+    const ativa = list.find((l: any) => l.situacao === 1 || l.situacao === "1" || l.situacao === true);
+    const pick = matriz || ativa || list[0];
+    _gcLojaIdCache = pick?.id ? String(pick.id) : null;
+    return _gcLojaIdCache;
+  } catch (e) {
+    console.warn("[emit-nfe] resolveGcLojaId falhou:", e instanceof Error ? e.message : String(e));
+    return null;
+  }
+}
+
 // Mapeia situacao_nf do GestaoClick → status canônico interno. Mesma lógica
 // de nfe-status / sync-nfe-from-provider (evita drift entre os caminhos).
 // Cobre múltiplas situações que a SEFAZ pode retornar.
@@ -765,8 +790,15 @@ Deno.serve(async (req) => {
       };
     })();
 
+    // Resolve loja_id do GestaoClick — obrigatório segundo a doc da API.
+    // Cache em memória do isolate (resolveGcLojaId). Quando null, GC usa default.
+    const gcLojaId = await resolveGcLojaId();
+
     const nfePayload = {
-      tipo_nf: "1",
+      // tipo_nf como INT (doc especifica int; antes mandávamos string "1").
+      tipo_nf: 1,
+      // loja_id (obrigatório na doc). Quando null, GC usa matriz por default.
+      ...(gcLojaId ? { loja_id: Number(gcLojaId) } : {}),
       natureza_operacao: naturezaEsperada,
       id_destinatario: gcClientId,
       codigo_cfop: resolvedCfop,
@@ -853,6 +885,7 @@ Deno.serve(async (req) => {
             indicador_final: isContribuinte ? '0 (Contribuinte)' : '1 (Consumidor final)',
             tipo_nf: '1 (Saída)',
             marca_xmarca: orderBrand,
+            loja_gc_id: gcLojaId,
           },
           produtos: produtosPreview,
           totais: {
