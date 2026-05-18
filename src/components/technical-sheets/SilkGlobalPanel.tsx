@@ -53,6 +53,23 @@ export function SilkGlobalPanel({ scope = 'all' }: SilkGlobalPanelProps = {}) {
 
   const { data: products = [] } = useProducts();
 
+  // Categorias canônicas (silk_shoe_category) — 14 valores unificados em
+  // 18/05/2026 após auditoria mostrar 4 fontes divergentes (Sandália,
+  // Rasteirinha, Tamanco, Mule, Plataforma, Anabela, Sapatilha, Scarpin,
+  // Sapato, Tênis, Sapatênis, Bota, Botina, Infantil).
+  const { data: shoeCategories = [] } = useQuery({
+    queryKey: ['silk_shoe_categories'],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('silk_shoe_category')
+        .select('id, name')
+        .order('name');
+      if (error) throw error;
+      return (data || []) as Array<{ id: string; name: string }>;
+    },
+    staleTime: 5 * 60_000,
+  });
+
   const getBaseName = (name: string) =>
     name.replace(/\s*-\s*(Preto|Caramelo|Branco|Nude|Vermelho|Azul|Rosa|Verde|Cinza|Ouro|Prata)$/i, '').trim();
 
@@ -321,9 +338,13 @@ export function SilkGlobalPanel({ scope = 'all' }: SilkGlobalPanelProps = {}) {
               >
                 <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todos (Adulto + Infantil)</SelectItem>
-                  <SelectItem value="Adulto">Adulto</SelectItem>
-                  <SelectItem value="Infantil">Infantil</SelectItem>
+                  <SelectItem value="all">Todas as categorias</SelectItem>
+                  {/* Categorias unificadas em 18/05/2026 — fonte canônica:
+                      silk_shoe_category (14 valores). Antes era Adulto/Infantil
+                      hardcoded e não casava com o restante do sistema. */}
+                  {shoeCategories.map(cat => (
+                    <SelectItem key={cat.id} value={cat.name}>{cat.name}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
