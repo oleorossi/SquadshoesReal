@@ -274,8 +274,12 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
     const displayRef = (item.refName && item.refName.trim() && item.refName.trim() !== '—')
       ? item.refName.trim()
       : '—';
+    // productLeft com width FIXO (60mm) em vez de flex:1 — libera o espaço
+    // restante da faixa pra imagem do produto, que era achatada em 34mm.
+    // Pedido do user em 18/05/2026: "a imagem do produto deve ocupar toda
+    // essa área central". REF/COR/TIPO/TIRAS continuam legíveis em 60mm.
     const productLeft = `
-      <div style="flex:1;padding:10px 14px;display:flex;flex-direction:column;justify-content:center;gap:6px;">
+      <div style="width:60mm;padding:10px 14px;display:flex;flex-direction:column;justify-content:center;gap:6px;flex-shrink:0;">
         ${displayRef ? `
           <div style="display:flex;align-items:baseline;gap:8px;line-height:1;">
             <span style="font-size:12px;color:#222;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;">Ref.</span>
@@ -308,15 +312,15 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
     const sandalSvg = `data:image/svg+xml;utf8,${encodeURIComponent(
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><path fill="%23999" d="M10 38c0-4 3-8 8-8h28c4 0 8 3 8 8v6c0 3-2 5-5 5H15c-3 0-5-2-5-5v-6zM18 30c0-7 6-12 14-12s14 5 14 12"/></svg>'
     )}`;
-    // Imagem usa toda a área do container (34mm × 66mm menos padding) com
-    // object-fit:contain — preserva a proporção natural da foto cadastrada na
-    // ficha técnica. Antes tinha cap de 30×40mm que forçava a imagem a ficar
-    // muito menor que o container, criando muito espaço em branco e dando
-    // sensação de desproporção.
+    // Imagem agora ocupa TODA a área central da faixa de produto (flex:1)
+    // em vez de 34mm fixos — pedido do user 18/05/2026 "ocupar toda essa
+    // área". Como productLeft virou width:60mm fixo e sizeRangeBig é 30mm,
+    // sobram ~108mm de largura pra essa imagem (numa label de 198mm).
+    // object-fit:contain preserva proporção natural da foto da ficha técnica.
     const productImage = item.imageUrl ? `
-      <div style="width:34mm;border-left:1px solid #444;padding:2mm;display:flex;align-items:center;justify-content:center;background:#fff;overflow:hidden;print-color-adjust:exact;-webkit-print-color-adjust:exact;">
+      <div style="flex:1;border-left:1px solid #444;padding:2mm;display:flex;align-items:center;justify-content:center;background:#fff;overflow:hidden;print-color-adjust:exact;-webkit-print-color-adjust:exact;">
         <img src="${item.imageUrl}" style="width:100%;height:100%;object-fit:contain;print-color-adjust:exact;-webkit-print-color-adjust:exact;" onerror="this.onerror=null;this.src='${sandalSvg}';" />
-      </div>` : '';
+      </div>` : '<div style="flex:1;border-left:1px solid #444;"></div>';
 
     // Rodapé em DUAS linhas estruturadas — antes era uma só com " · "
     // que quebrava no meio e o overflow:hidden cortava metade.
@@ -421,6 +425,9 @@ ${preloadLinks}
 body{font-family:Arial,Helvetica,sans-serif;color:#000;padding:16px 10px;background:#e8e8e8;}
 @media print{body{background:#fff;padding:0;}}
 ${LABEL_PRINT_HARDENING}
+/* @page declarado uma única vez. Antes havia 2 declarações (margin:5mm e
+   margin:5mm 6mm) cujo conflito interno fazia o Chrome/WebKit reservar
+   página em branco entre cada par — bug reportado 18/05/2026. */
 @page{size:A4;margin:5mm;}
 .label-box{
   width:100%;font-family:Arial,Helvetica,sans-serif;color:#000;
@@ -451,14 +458,22 @@ ${LABEL_PRINT_HARDENING}
 }
 .page-container .label-slot-top .label-box,
 .page-container .label-slot-bottom .label-box{height:128mm;max-height:128mm;}
-.page-container.page-break{break-after:page;page-break-after:always;}
-.page-container:not(.page-break){break-after:avoid;page-break-after:avoid;}
-/* Marcador de versão pra diferenciar do cache antigo no debug */
+/* Page-break: APENAS a versao moderna break-after. Antes tinha
+   page-break-after:always (legacy) duplicado, e o Chrome aplicava DOIS
+   breaks (1 do moderno, 1 do legacy) -> pagina em branco entre cada par.
+   break-before:auto explicito evita que algum reset CSS empurre um
+   break antes do primeiro container. */
+.page-container{break-before:auto;}
+.page-container.page-break{break-after:page;}
+.page-container:not(.page-break){break-after:avoid;}
+/* Marcador de versão pra diferenciar do cache antigo no debug.
+   display:none em print pra não disputar espaço/quebra com o conteúdo. */
 .print-version-marker{
   position:absolute;bottom:1mm;right:2mm;
   font-size:6px;color:#888;font-family:monospace;
   pointer-events:none;
 }
+@media print{.print-version-marker{display:none !important;}}
 .print-footer{
   max-width:190mm;margin:24px auto 12px;padding:18px 24px;
   background:#fff;border:1px solid #d4d4d4;border-radius:6px;
@@ -517,8 +532,10 @@ ${LABEL_PRINT_HARDENING}
     break-after:avoid !important;
   }
 }
-@page{size:A4;margin:5mm 6mm;}
-${LABEL_PRINT_HARDENING}
+/* @page e LABEL_PRINT_HARDENING declarados uma única vez no topo desta
+   tag <style>. Antes havia uma 2ª declaração de @page com margin diferente
+   (5mm 6mm vs 5mm) que entrava em conflito com a 1ª, gerando página em
+   branco entre cada par no Chrome — bug reportado 18/05/2026. */
 </style>
 </head><body>${pages.join('')}
 <div class="print-footer">
