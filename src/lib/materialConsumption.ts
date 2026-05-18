@@ -231,6 +231,21 @@ export const convertDm2ToLinearMeters = (totalDm2: number, componentSheet: Compo
   return (totalDm2 / dm2PerMeter) * (1 + wastePct / 100);
 };
 
+/**
+ * True quando o material é linear (vendido em metro/cm) mas não tem
+ * `dimensions_width` cadastrada na ficha de componente. Sem largura, o
+ * conversor de dm² → metro retorna dm² cru — o consumo aparece inflado
+ * ~100× no PV. Use pra renderizar alerta na UI antes de o cliente ver
+ * número errado.
+ */
+export const isLinearWidthMissing = (componentSheet: ComponentSheetCandidate | null, productUnit?: string | null): boolean => {
+  const sheetUnit = getSheetUnit(componentSheet);
+  const unit = (productUnit || '').toLowerCase();
+  const isLinear = LINEAR_UNITS.has(sheetUnit) || ['m','metros','mt','meters','cm'].includes(unit);
+  if (!isLinear) return false;
+  return getLinearWidthMm(componentSheet) <= 0;
+};
+
 export const convertDm2ToPlates = (totalDm2: number, componentSheet: ComponentSheetCandidate | null) => {
   const plateAreaDm2 = getPlateAreaDm2(componentSheet);
   if (plateAreaDm2 <= 0) return totalDm2;
