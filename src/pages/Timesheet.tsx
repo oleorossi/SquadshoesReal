@@ -584,6 +584,15 @@ function TimesheetRecordsTab() {
       recordMap.set(rec.record_date, rec.punches as string[]);
     });
 
+    // Resolve admission date — fix 2026-05-18 user report: relatório calculava
+    // horas esperadas sobre o PRAZO TOTAL do batch, inflando expected pra dias
+    // ANTES do funcionário entrar (ex: Quesia admitida 06/04 mas batch cobre
+    // 01-30/04 → contava 5 dias úteis × 8h fantasma antes da admissão).
+    const emp = employees.find(e =>
+      e.name.toLowerCase().trim() === empName.toLowerCase().trim()
+    );
+    const admissionDateStr = (emp as any)?.admission_date as string | null | undefined;
+
     // Generate all days in the date range
     if (!batchDateRange) {
       // Fallback: only use existing records
@@ -596,12 +605,19 @@ function TimesheetRecordsTab() {
       });
     }
 
+    // Respeita admission_date: efetivo start = max(batch.start, admission_date).
+    // Dias anteriores à admissão são pulados (não geram expected nem aparecem
+    // na timeline). Tolerante a admission_date null ou em formato inválido.
+    const effectiveStartStr = (admissionDateStr && /^\d{4}-\d{2}-\d{2}$/.test(admissionDateStr) && admissionDateStr > batchDateRange.startDate)
+      ? admissionDateStr
+      : batchDateRange.startDate;
+
     const allDays: DaySummary[] = [];
-    const start = new Date(batchDateRange.startDate + 'T12:00:00');
+    const start = new Date(effectiveStartStr + 'T12:00:00');
     const end = new Date(batchDateRange.endDate + 'T12:00:00');
      const cursor = new Date(start);
      let safetyCounter = 0;
- 
+
      while (cursor <= end && safetyCounter < 1000) {
        safetyCounter++;
        const dateStr = cursor.toISOString().slice(0, 10);
@@ -620,7 +636,7 @@ function TimesheetRecordsTab() {
   const summaries = useMemo(() => {
     if (selectedEmployee === '__all__' || !selectedEmployee) return [];
     return calcSummariesForEmployee(selectedEmployee);
-  }, [selectedEmployee, employeeGroups, defaultSchedule, holidays, batchDateRange]);
+  }, [selectedEmployee, employeeGroups, defaultSchedule, holidays, batchDateRange, employees]);
 
   // All employees summary (weekly-based)
   const allEmployeeSummaries = useMemo(() => {
@@ -638,7 +654,7 @@ function TimesheetRecordsTab() {
         days: dayData.length,
       };
     });
-  }, [selectedEmployee, employeeNames, employeeGroups, defaultSchedule, holidays, batchDateRange]);
+  }, [selectedEmployee, employeeNames, employeeGroups, defaultSchedule, holidays, batchDateRange, employees]);
 
   // Individual employee period (weekly-based)
   const periodSummary = useMemo(() => calculateWeeklyPeriod(summaries, defaultSchedule), [summaries, defaultSchedule]);
