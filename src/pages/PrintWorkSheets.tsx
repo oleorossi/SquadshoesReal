@@ -8,9 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Separator } from '@/components/ui/separator';
-import { Printer, MagnifyingGlass as Search, CircleNotch as Loader2, FileText, Funnel as Filter, Files as FileStack, CaretDown as ChevronDown } from '@phosphor-icons/react';
+import { Printer, MagnifyingGlass as Search, CircleNotch as Loader2, FileText, Funnel as Filter } from '@phosphor-icons/react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -41,42 +39,11 @@ interface OrderRow {
 const STATUS_OPTIONS = ['Reservado', 'Em Produção', 'Finalizado'];
 const EM_FLUXO = ['Reservado', 'Em Produção'];
 
-// Mesma lista do PrintWorkSheetsPage — duplicada aqui pra não criar
-// dependência circular só pra esse array. Se mudar, mudar nos dois.
-const PRINT_SECTORS = [
-  'Corte Palmilha',
-  'Corte Forração',
-  'Corte Cabedal',
-  'Costura',
-  'Aviamento',
-  'Silk',
-  'Colagem',
-  'Montagem',
-  'Solagem',
-  'Acabamento',
-  'Expedição',
-  'Relatório Gerencial',
-] as const;
-
 export default function PrintWorkSheets() {
   const [statusFilter, setStatusFilter] = useState<string>('em_fluxo');
   const [search, setSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showPrintView, setShowPrintView] = useState(false);
-  /** Vazio = modo single (dropdown de 1 setor) no PrintWorkSheetsPage.
-   *  Com itens = modo multi (renderiza só esses setores selecionados). */
-  const [selectedSectors, setSelectedSectors] = useState<Set<string>>(new Set());
-  const [sectorPopoverOpen, setSectorPopoverOpen] = useState(false);
-
-  const toggleSector = (s: string) => {
-    setSelectedSectors(prev => {
-      const next = new Set(prev);
-      if (next.has(s)) next.delete(s); else next.add(s);
-      return next;
-    });
-  };
-  const markAllSectors = () => setSelectedSectors(new Set(PRINT_SECTORS));
-  const clearSectors = () => setSelectedSectors(new Set());
 
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ['print_worksheets_orders', statusFilter],
@@ -178,8 +145,7 @@ export default function PrintWorkSheets() {
     return (
       <PrintWorkSheetsPage
         orders={selectedOrders}
-        onBack={() => { setShowPrintView(false); setSelectedSectors(new Set()); }}
-        selectedSectors={selectedSectors.size > 0 ? selectedSectors : undefined}
+        onBack={() => setShowPrintView(false)}
       />
     );
   }
@@ -199,89 +165,16 @@ export default function PrintWorkSheets() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            size="lg"
-            disabled={selectedOrders.length === 0}
-            onClick={() => { setSelectedSectors(new Set()); setShowPrintView(true); }}
-            className="gap-2"
-            title="Abre a tela com dropdown pra escolher 1 setor por vez"
-          >
-            <FileText className="h-4 w-4" />
-            Gerar fichas ({selectedOrders.length} OP{selectedOrders.length === 1 ? '' : 's'})
-          </Button>
-          <Popover open={sectorPopoverOpen} onOpenChange={setSectorPopoverOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                size="lg"
-                variant="outline"
-                disabled={selectedOrders.length === 0}
-                className="gap-2"
-                title="Escolha quais setores entram na impressão"
-              >
-                <FileStack className="h-4 w-4" />
-                Imprimir setores
-                {selectedSectors.size > 0 && (
-                  <span className="ml-1 px-1.5 py-0.5 rounded bg-primary text-primary-foreground text-[10px] font-bold">
-                    {selectedSectors.size}
-                  </span>
-                )}
-                <ChevronDown className="h-3.5 w-3.5 opacity-60" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent align="end" className="w-72 p-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  Setores ({selectedSectors.size}/{PRINT_SECTORS.length})
-                </p>
-                <div className="flex gap-1">
-                  <button
-                    type="button"
-                    onClick={markAllSectors}
-                    className="text-[11px] text-primary hover:underline"
-                  >
-                    Marcar todos
-                  </button>
-                  <span className="text-[11px] text-muted-foreground">·</span>
-                  <button
-                    type="button"
-                    onClick={clearSectors}
-                    className="text-[11px] text-muted-foreground hover:underline"
-                  >
-                    Limpar
-                  </button>
-                </div>
-              </div>
-              <Separator />
-              <div className="space-y-1 max-h-72 overflow-y-auto">
-                {PRINT_SECTORS.map(s => {
-                  const checked = selectedSectors.has(s);
-                  return (
-                    <label
-                      key={s}
-                      className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-muted/50 ${
-                        checked ? 'bg-primary/5' : ''
-                      }`}
-                    >
-                      <Checkbox checked={checked} onCheckedChange={() => toggleSector(s)} />
-                      <span className="text-sm">{s}</span>
-                    </label>
-                  );
-                })}
-              </div>
-              <Separator />
-              <Button
-                size="sm"
-                className="w-full gap-1.5"
-                disabled={selectedSectors.size === 0}
-                onClick={() => { setSectorPopoverOpen(false); setShowPrintView(true); }}
-              >
-                <Printer className="h-3.5 w-3.5" />
-                Imprimir {selectedSectors.size} setor{selectedSectors.size === 1 ? '' : 'es'}
-              </Button>
-            </PopoverContent>
-          </Popover>
-        </div>
+        <Button
+          size="lg"
+          disabled={selectedOrders.length === 0}
+          onClick={() => setShowPrintView(true)}
+          className="gap-2"
+          title="Abre a tela com os setores das fichas — você marca/desmarca quais entram no arquivo final"
+        >
+          <FileText className="h-4 w-4" />
+          Gerar fichas ({selectedOrders.length} OP{selectedOrders.length === 1 ? '' : 's'})
+        </Button>
       </div>
 
       <Card>
