@@ -67,6 +67,11 @@ export interface BoxIdentificationData {
   grade: { size: string; qty: number }[];
   barcode?: string;
   imageUrl?: string;
+  /** True quando imageUrl é fallback (master da ficha técnica, variante "preta"
+   *  ou placeholder) — a foto NÃO corresponde à cor real pedida. Etiqueta
+   *  aplica filter:grayscale pra deixar claro pro recebedor que essa imagem
+   *  é só ilustrativa, não retrata a cor real do produto. */
+  imageIsFallback?: boolean;
   strapsLabel?: string;
   /** Distintivo da grade (ex.: "5-10", "F-PP"). Aparece grande no canto. */
   sizeRangeLabel?: string;
@@ -200,18 +205,16 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
         </div>`
       : '';
 
-    // NF-e em DESTAQUE — informação fiscal mais importante da etiqueta.
+    // NF-e em linha PRÓPRIA full-width (rendered fora do header).
+    // Histórico: ficava dentro do headerRight, mas com cliente que tem
+    // endereço completo (razão + endereço + bairro + cidade/UF + CEP + CNPJ),
+    // o recipient ocupava >28mm e o `overflow:hidden` do header CLIPAVA a
+    // NF-e — bug reportado pelo user em 18/05/2026 (PV-00107).
+    // Solução: linha dedicada de 12mm full-width após o header, NUNCA clipada.
     // Atualiza automaticamente via trigger DB tg_sync_nfe_numero_to_sale_order
-    // (sale_orders.nfe = nfe_emitidas.numero quando status=autorizada).
-    // Aparece logo abaixo do Pedido em block próprio com fundo preto/branco
-    // invertido + fonte 24px pra ser a primeira coisa a saltar aos olhos
-    // de quem lê a etiqueta — exigência do user em 15/05/2026.
-    const nfeLine = item.nfe
-      ? `<div style="margin-top:4px;padding:4px 6px;background:#000;color:#fff;border-radius:2px;display:flex;justify-content:space-between;align-items:baseline;gap:6px;print-color-adjust:exact;-webkit-print-color-adjust:exact;">
-          <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.6px;">NF-e</span>
-          <span style="font-size:24px;font-weight:900;letter-spacing:0.5px;line-height:1;">${escapeHtml(item.nfe)}</span>
-        </div>`
-      : '';
+    // (sale_orders.nfe = nfe_emitidas.numero quando status=autorizada) OU
+    // preenchida manualmente em sale_orders.nfe no form do PV.
+    // (markup renderizado inline no template do label-box abaixo)
 
     // Bloco esquerdo do topo (logo + barcode) — altura limitada
     const headerLeft = `
@@ -222,7 +225,10 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
         ` : ''}
       </div>`;
 
-    // Bloco direito do topo (QR + cliente + NF-e em destaque)
+    // Bloco direito do topo (QR + cliente + pedido). NF-e MOVIDA pra linha
+    // própria full-width abaixo do header (nfeFullRow) — antes ficava aqui
+    // dentro mas era clipada pelo overflow:hidden quando o cliente tinha
+    // endereço completo (PV-00107, 18/05/2026).
     const headerRight = `
       <div style="width:88mm;padding:4px 8px;display:flex;gap:6px;align-items:flex-start;overflow:hidden;">
         <div style="width:16mm;height:16mm;flex-shrink:0;background:#fff;border:1px solid #555;display:flex;align-items:center;justify-content:center;font-size:7px;color:#333;text-align:center;line-height:1.1;font-weight:700;">
@@ -231,7 +237,6 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
         <div style="flex:1;font-size:10px;color:#000;line-height:1.3;overflow:hidden;">
           ${recipientBlock || '<span style="color:#555;font-size:10px;font-style:italic;font-weight:600;">Sem dados do destinatário</span>'}
           ${pedidoLine}
-          ${nfeLine}
         </div>
       </div>`;
 
@@ -274,8 +279,12 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
     const displayRef = (item.refName && item.refName.trim() && item.refName.trim() !== '—')
       ? item.refName.trim()
       : '—';
+    // productLeft com width FIXO (60mm) em vez de flex:1 — libera o espaço
+    // restante da faixa pra imagem do produto, que era achatada em 34mm.
+    // Pedido do user em 18/05/2026: "a imagem do produto deve ocupar toda
+    // essa área central". REF/COR/TIPO/TIRAS continuam legíveis em 60mm.
     const productLeft = `
-      <div style="flex:1;padding:10px 14px;display:flex;flex-direction:column;justify-content:center;gap:6px;">
+      <div style="width:60mm;padding:10px 14px;display:flex;flex-direction:column;justify-content:center;gap:6px;flex-shrink:0;">
         ${displayRef ? `
           <div style="display:flex;align-items:baseline;gap:8px;line-height:1;">
             <span style="font-size:12px;color:#222;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;">Ref.</span>
@@ -308,15 +317,26 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
     const sandalSvg = `data:image/svg+xml;utf8,${encodeURIComponent(
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><path fill="%23999" d="M10 38c0-4 3-8 8-8h28c4 0 8 3 8 8v6c0 3-2 5-5 5H15c-3 0-5-2-5-5v-6zM18 30c0-7 6-12 14-12s14 5 14 12"/></svg>'
     )}`;
-    // Imagem usa toda a área do container (34mm × 66mm menos padding) com
-    // object-fit:contain — preserva a proporção natural da foto cadastrada na
-    // ficha técnica. Antes tinha cap de 30×40mm que forçava a imagem a ficar
-    // muito menor que o container, criando muito espaço em branco e dando
-    // sensação de desproporção.
+    // Imagem agora ocupa TODA a área central da faixa de produto (flex:1)
+    // em vez de 34mm fixos — pedido do user 18/05/2026 "ocupar toda essa
+    // área". Como productLeft virou width:60mm fixo e sizeRangeBig é 30mm,
+    // sobram ~108mm de largura pra essa imagem (numa label de 198mm).
+    // object-fit:contain preserva proporção natural da foto da ficha técnica.
+    //
+    // Quando imageIsFallback=true (foto da cor pedida não cadastrada, caiu
+    // pra imagem mestre da ficha técnica), aplica filter:grayscale pra
+    // deixar visualmente claro pro recebedor que a imagem NÃO retrata a cor
+    // real — evita confusão de "etiqueta diz cor X mas foto mostra cor Y".
+    // Pequena tag "REF. GENÉRICA" no canto reforça a mensagem.
+    const imgFilter = item.imageIsFallback ? 'filter:grayscale(100%);-webkit-filter:grayscale(100%);' : '';
+    const fallbackBadge = item.imageIsFallback
+      ? `<div style="position:absolute;top:1mm;left:1mm;background:#000;color:#fff;font-size:7px;font-weight:800;padding:1px 4px;letter-spacing:0.5px;text-transform:uppercase;print-color-adjust:exact;-webkit-print-color-adjust:exact;">Foto genérica</div>`
+      : '';
     const productImage = item.imageUrl ? `
-      <div style="width:34mm;border-left:1px solid #444;padding:2mm;display:flex;align-items:center;justify-content:center;background:#fff;overflow:hidden;print-color-adjust:exact;-webkit-print-color-adjust:exact;">
-        <img src="${item.imageUrl}" style="width:100%;height:100%;object-fit:contain;print-color-adjust:exact;-webkit-print-color-adjust:exact;" onerror="this.onerror=null;this.src='${sandalSvg}';" />
-      </div>` : '';
+      <div style="flex:1;border-left:1px solid #444;padding:2mm;display:flex;align-items:center;justify-content:center;background:#fff;overflow:hidden;position:relative;print-color-adjust:exact;-webkit-print-color-adjust:exact;">
+        ${fallbackBadge}
+        <img src="${item.imageUrl}" style="width:100%;height:100%;object-fit:contain;${imgFilter}print-color-adjust:exact;-webkit-print-color-adjust:exact;" onerror="this.onerror=null;this.src='${sandalSvg}';" />
+      </div>` : '<div style="flex:1;border-left:1px solid #444;"></div>';
 
     // Rodapé em DUAS linhas estruturadas — antes era uma só com " · "
     // que quebrava no meio e o overflow:hidden cortava metade.
@@ -329,26 +349,38 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
     ].filter(Boolean).join(' · ');
     const hasFooter = footerLine1 || footerLine2;
 
-    // Alturas hardcoded por seção. Total = 132mm = altura do label-box.
-    // Distribuição: 28+7+7+62+16+12 = 132.
-    // Reduzido de 140mm pra 132mm em 15/05/2026 — A4 tem 287mm úteis (5mm
-    // margem cada lado), e 2×140=280mm deixava só 7mm de gap entre labels.
-    // Qualquer overflow interno (renderização variável de impressora,
-    // line-height, padding) empurrava a 2ª label pra página seguinte.
-    // Com 2×132=264mm sobra 23mm de gap — folga real de impressão.
+    // Alturas hardcoded por seção. Total = 128mm = altura do label-box.
+    // Distribuição QUANDO TEM NF-e:   26+12+6+6+50+16+12 = 128.
+    // Distribuição QUANDO SEM NF-e:   26+6+6+62+16+12    = 128 (fallback).
+    // Reduzido de 132mm pra 128mm em 18/05/2026 — soma anterior batia exato
+    // em 132mm (sem folga interna). LABEL_PRINT_HARDENING força overflow:
+    // visible em todos os filhos durante print, então qualquer micro-overflow
+    // (1-2mm de barcode/imagem/linha de texto) fazia a label crescer além de
+    // 132mm e vazar no slot bottom — engine de impressão então pulava a 2ª
+    // ficha pra próxima página pra evitar sobreposição. Com 128mm fica 4mm
+    // de respiro interno + slot bottom em 140mm (gap real 12mm) + sobra
+    // 19mm na página.
+    //
+    // NF-e em linha dedicada (12mm full-width fundo preto). Quando não há
+    // NF-e, productImage volta pra 62mm pra ocupar o espaço.
+    const productAreaHeight = item.nfe ? 50 : 62;
     return `
       <div class="label-box">
-        <div style="height:28mm;display:flex;border-bottom:1.5px solid #000;overflow:hidden;">
+        <div style="height:26mm;display:flex;border-bottom:1.5px solid #000;overflow:hidden;">
           ${headerLeft}
           ${headerRight}
         </div>
-        <div style="height:7mm;display:flex;border-bottom:1px solid #000;overflow:hidden;">
+        ${item.nfe ? `<div style="height:12mm;background:#000;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-bottom:1.5px solid #000;overflow:hidden;print-color-adjust:exact;-webkit-print-color-adjust:exact;">
+          <span style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;">Nota Fiscal</span>
+          <span style="font-size:28px;font-weight:900;letter-spacing:1px;line-height:1;font-family:Arial,Helvetica,sans-serif;">${escapeHtml(item.nfe)}</span>
+        </div>` : ''}
+        <div style="height:6mm;display:flex;border-bottom:1px solid #000;overflow:hidden;">
           ${subInfoCells}
         </div>
-        <div style="height:7mm;display:flex;border-bottom:1px solid #000;background:#f5f5f5;overflow:hidden;">
+        <div style="height:6mm;display:flex;border-bottom:1px solid #000;background:#f5f5f5;overflow:hidden;">
           ${statsCells}
         </div>
-        <div style="height:62mm;display:flex;border-bottom:1px solid #000;overflow:hidden;">
+        <div style="height:${productAreaHeight}mm;display:flex;border-bottom:1px solid #000;overflow:hidden;">
           ${productLeft}
           ${productImage}
           ${sizeRangeBig}
@@ -373,9 +405,11 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
       </div>`;
   });
 
-  // Cada A4 = 1 page-container com 2 slots absolutos (top/bottom).
-  // Position absolute remove os labels do fluxo de documento — engine
-  // de impressão não tem como quebrar entre eles.
+  // Cada A4 = 1 page-container com layout grid 3 linhas (top / spacer / bottom).
+  // Tentativas anteriores com position:absolute falhavam no macOS Preview e
+  // alguns engines de PDF — o slot bottom era ignorado ou jogado pra próxima
+  // página em branco. Grid mantém os slots no fluxo natural com alturas
+  // explícitas, sem ambiguidade pra engine de impressão.
   const pages: string[] = [];
   for (let i = 0; i < labels.length; i += 2) {
     const first = labels[i];
@@ -383,8 +417,8 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
     const isLastPage = i + 2 >= labels.length;
     pages.push(`<div class="page-container${!isLastPage ? ' page-break' : ''}">
       <div class="label-slot-top">${first}</div>
-      ${second ? `<div class="label-slot-bottom">${second}</div>` : ''}
-      <div class="print-version-marker">v4-abs</div>
+      <div class="label-slot-spacer"></div>
+      ${second ? `<div class="label-slot-bottom">${second}</div>` : '<div class="label-slot-bottom"></div>'}
     </div>`);
   }
   const totalPages = Math.ceil(labels.length / 2);
@@ -409,6 +443,9 @@ ${preloadLinks}
 body{font-family:Arial,Helvetica,sans-serif;color:#000;padding:16px 10px;background:#e8e8e8;}
 @media print{body{background:#fff;padding:0;}}
 ${LABEL_PRINT_HARDENING}
+/* @page declarado uma única vez. Antes havia 2 declarações (margin:5mm e
+   margin:5mm 6mm) cujo conflito interno fazia o Chrome/WebKit reservar
+   página em branco entre cada par — bug reportado 18/05/2026. */
 @page{size:A4;margin:5mm;}
 .label-box{
   width:100%;font-family:Arial,Helvetica,sans-serif;color:#000;
@@ -416,37 +453,43 @@ ${LABEL_PRINT_HARDENING}
   display:flex;flex-direction:column;
   page-break-inside:avoid !important;
   break-inside:avoid-page !important;
-  border-radius:0.5mm;overflow:hidden;height:132mm;
+  border-radius:0.5mm;overflow:hidden;height:128mm;max-height:128mm;
 }
 .label-box > *{overflow:hidden;page-break-inside:avoid;break-inside:avoid;}
-/* Layout em POSITION:ABSOLUTE — cada page-container vira um plano A4
-   onde os 2 labels ficam ancorados em posições FIXAS (X,Y). Saem do
-   fluxo do documento → engine de impressão não tem como "decidir"
-   quebrar entre eles.
-   A4 útil = 287mm (5mm margem cada lado). 2 labels × 132mm = 264mm,
-   sobra 23mm pra gap entre top/bottom — folga real de impressão. */
+/* Layout em CSS GRID com 3 linhas (top label / spacer / bottom label).
+   Substituiu o antigo position:absolute em 18/05/2026 — absolute fazia
+   o macOS Preview e alguns engines de PDF cuspirem 1 etiqueta por página
+   + página em branco intercalada (slot bottom ignorado ou pulado pra
+   próxima página). Grid mantém os slots em FLUXO NATURAL com alturas
+   explícitas, sem ambiguidade pra calc de altura/overflow do container.
+   A4 útil = 287mm. 128mm + 1fr + 128mm = 256mm fixos + 31mm de spacer. */
 .page-container{
   width:198mm;height:287mm;margin:0 auto 0;
-  position:relative;box-sizing:border-box;
+  display:grid;grid-template-rows:128mm 1fr 128mm;
+  box-sizing:border-box;
 }
-.page-container .label-slot-top{
-  position:absolute;top:0;left:0;right:0;
-  height:132mm;
-}
+.page-container .label-slot-top,
 .page-container .label-slot-bottom{
-  position:absolute;top:143mm;left:0;right:0;
-  height:132mm;
+  height:128mm;max-height:128mm;overflow:hidden;
+}
+.page-container .label-slot-spacer{
+  min-height:0;
 }
 .page-container .label-slot-top .label-box,
-.page-container .label-slot-bottom .label-box{height:132mm;}
+.page-container .label-slot-bottom .label-box{height:128mm;max-height:128mm;}
+/* Page-break: precisa do par moderno + legacy juntos (Chrome 90+ usa
+   o moderno mas alguns engines de PDF/Preview ainda olham o legacy). */
+.page-container{break-inside:avoid !important;page-break-inside:avoid !important;}
 .page-container.page-break{break-after:page;page-break-after:always;}
 .page-container:not(.page-break){break-after:avoid;page-break-after:avoid;}
-/* Marcador de versão pra diferenciar do cache antigo no debug */
+/* Marcador de versão pra diferenciar do cache antigo no debug.
+   display:none em print pra não disputar espaço/quebra com o conteúdo. */
 .print-version-marker{
   position:absolute;bottom:1mm;right:2mm;
   font-size:6px;color:#888;font-family:monospace;
   pointer-events:none;
 }
+@media print{.print-version-marker{display:none !important;}}
 .print-footer{
   max-width:190mm;margin:24px auto 12px;padding:18px 24px;
   background:#fff;border:1px solid #d4d4d4;border-radius:6px;
@@ -467,15 +510,16 @@ ${LABEL_PRINT_HARDENING}
   body{padding:0;margin:0;}
   /* A4 = 297mm. Com @page margin 5mm × 2 = 287mm úteis.
      page-container ocupa o A4 útil (287mm) com posição relativa.
-     Slot top em (0, 0..132mm). Slot bottom em (143mm, +132mm).
-     143+132=275mm dentro dos 287mm úteis — 12mm de respiro garantindo
-     que a 2ª etiqueta NUNCA pula pra próxima página por overflow.
-     (Antes era 140mm cada e só sobravam 4mm — qualquer micro-overflow
-     interno empurrava pra 3 páginas em vez de 2.) */
-  .page-container{width:100%;height:287mm;margin:0;}
-  .page-container .label-slot-top{height:132mm;}
-  .page-container .label-slot-bottom{height:132mm;top:143mm;}
-  .label-box{height:132mm;}
+     Slot top em (0, 0..128mm). Slot bottom em (140mm, +128mm) → 268mm.
+     268mm dentro de 287mm úteis = 19mm de respiro, garantindo que a 2ª
+     etiqueta NUNCA pula pra próxima página por micro-overflow interno.
+     (Antes era 132mm × 2 com slot bottom em 143mm — soma 275mm. Como
+     LABEL_PRINT_HARDENING força overflow:visible em todos os filhos, qualquer
+     1-2mm de overflow interno empurrava a 2ª etiqueta pra página seguinte.) */
+  .page-container{width:100%;height:287mm;margin:0;display:grid;grid-template-rows:128mm 1fr 128mm;}
+  .page-container .label-slot-top,
+  .page-container .label-slot-bottom{height:128mm !important;max-height:128mm !important;overflow:hidden !important;}
+  .label-box{height:128mm !important;max-height:128mm !important;overflow:hidden !important;}
   .label-box,
   .label-box *{
     page-break-inside:avoid !important;
@@ -504,8 +548,10 @@ ${LABEL_PRINT_HARDENING}
     break-after:avoid !important;
   }
 }
-@page{size:A4;margin:5mm 6mm;}
-${LABEL_PRINT_HARDENING}
+/* @page e LABEL_PRINT_HARDENING declarados uma única vez no topo desta
+   tag <style>. Antes havia uma 2ª declaração de @page com margin diferente
+   (5mm 6mm vs 5mm) que entrava em conflito com a 1ª, gerando página em
+   branco entre cada par no Chrome — bug reportado 18/05/2026. */
 </style>
 </head><body>${pages.join('')}
 <div class="print-footer">

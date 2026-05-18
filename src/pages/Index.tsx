@@ -14,10 +14,12 @@ import AuditLogTab from '@/components/inventory/tabs/AuditLogTab';
  import StrapStockLogTab from '@/components/inventory/tabs/StrapStockLogTab';
  import StockHistory from './StockHistory';
 
-// Categorias de material para filtro inline (chips)
+// Categorias de material para filtro inline (chips).
+// 'Solado' REMOVIDO em 18/05/2026 — gestão de solados vive em /solados (SolesHub).
+// User pediu deduplicação: "hoje vejo status do Solado em estoque e em gestão
+// de solados, quero apenas em gestão de solados".
 const MATERIAL_CATEGORIES = [
   { value: 'all',       label: 'Todos' },
-  { value: 'Solado',    label: 'Solados' },
   { value: 'Cabedal',   label: 'Cabedal' },
   { value: 'Forro',     label: 'Forro' },
   { value: 'Palmilha',  label: 'Palmilha' },
@@ -42,13 +44,22 @@ export default function Index() {
   const isAdmin = useIsAdmin();
   const requestedTab = searchParams.get('tab');
 
+  // Redireciona tabs legadas "solados" → /solados (SolesHub). Mudança 18/05/2026:
+  // gestão de solados centralizada num único lugar; bookmarks/links antigos
+  // não morrem de imediato — viram redirect.
+  useEffect(() => {
+    if (requestedTab === 'solados') {
+      navigate('/solados', { replace: true });
+    }
+  }, [requestedTab, navigate]);
+
   // Mapeia tabs legadas para o novo esquema
   const resolveTab = (tab: string | null): MainTab => {
     if (!tab) return 'materials';
     // Tabs admin — só acessa se for admin
     if (ADMIN_TABS.has(tab) && isAdmin) return tab as any;
-    // "solados" e "componentes" eram tabs — agora viram filtro dentro de materials
-    if (tab === 'solados' || tab === 'componentes') return 'materials';
+    // "componentes" era tab — agora vira filtro dentro de materials
+    if (tab === 'componentes') return 'materials';
     // "consumables" foi removida — redireciona pra materials
     if (tab === 'consumables') return 'materials';
     // "report" / "painel" mapeados para overview
@@ -64,8 +75,6 @@ export default function Index() {
 
   // Filtro de categoria de material (chip inline)
   const [materialCategory, setMaterialCategory] = useState<string>(() => {
-    // Se veio de uma tab legada "solados", pré-seleciona o filtro
-    if (requestedTab === 'solados') return 'Solado';
     if (requestedTab === 'componentes') return 'Componente';
     return 'all';
   });
@@ -74,9 +83,7 @@ export default function Index() {
     if (requestedTab && ALL_TABS.has(requestedTab)) {
       const resolved = resolveTab(requestedTab);
       setActiveTab(resolved);
-      // Pré-seleciona filtro para tabs legadas
-      if (requestedTab === 'solados') setMaterialCategory('Solado');
-      else if (requestedTab === 'componentes') setMaterialCategory('Componente');
+      if (requestedTab === 'componentes') setMaterialCategory('Componente');
     }
   }, [requestedTab]);
 
@@ -194,10 +201,8 @@ export default function Index() {
                 </Button>
               </div>
 
-              {/* Conteúdo filtrado */}
-              {materialCategory === 'Solado' ? (
-                <MaterialsTab defaultGroupName="Solado" title="Solados" />
-              ) : materialCategory !== 'all' ? (
+              {/* Conteúdo filtrado — Solado removido em 18/05/2026, vive em /solados */}
+              {materialCategory !== 'all' ? (
                 <MaterialsTab defaultGroupName={materialCategory} title={
                   MATERIAL_CATEGORIES.find(c => c.value === materialCategory)?.label ?? materialCategory
                 } />

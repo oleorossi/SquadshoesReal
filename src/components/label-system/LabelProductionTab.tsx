@@ -30,7 +30,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Textarea } from '@/components/ui/textarea';
 import logoImg from '@/assets/logo-squad-shoes.jpg';
 import { supabase } from '@/integrations/supabase/client';
-import { resolveProductImage } from '@/lib/imageFallback';
+import { resolveProductImage, resolveProductImageWithSource } from '@/lib/imageFallback';
 import { fetchMainMaterial } from '@/lib/labelUtils';
 import { buildBoxIdentificationHtml, buildThermalLabelsHtml, buildThermalLabelsPdf, buildHangtagHtml, type BoxIdentificationData, type ThermalLabelConfig, DEFAULT_THERMAL_CONFIG } from '@/lib/printLabels';
 import { cn } from '@/lib/utils';
@@ -891,11 +891,23 @@ export function LabelProductionTab() {
           if (!imageKeys.has(key)) { imageKeys.add(key); imageRequests.push({ key, referenceId: group.referenceId, colorName: order.color || '' }); }
         }
       }
+      // Mapa adicional pra saber se a imagem é fallback (foto da cor pedida
+      // não cadastrada — caiu pra master da ficha, variante preta, etc).
+      // Quando true, etiqueta aplica grayscale + tag "Foto genérica" pra
+      // deixar claro pro recebedor que a foto não retrata a cor real.
+      const imageFallbackMap = new Map<string, boolean>();
       const imageResults = await Promise.all(imageRequests.map(async ({ key, referenceId, colorName }) => {
-        const url = await resolveProductImage({ referenceId, colorName, fallbackUrl: logoUrl }).catch(() => logoUrl);
-        return [key, url] as const;
+        try {
+          const result = await resolveProductImageWithSource({ referenceId, colorName, fallbackUrl: logoUrl });
+          return [key, result.url, !result.matchedColor] as const;
+        } catch {
+          return [key, logoUrl, true] as const;
+        }
       }));
-      imageResults.forEach(([k, v]) => imageMap.set(k, v));
+      imageResults.forEach(([k, v, isFallback]) => {
+        imageMap.set(k, v);
+        imageFallbackMap.set(k, isFallback);
+      });
 
       const boxItems: BoxIdentificationData[] = [];
       for (const group of boxGroups) {
@@ -1004,6 +1016,7 @@ export function LabelProductionTab() {
               grade: gradePerFicha,
               barcode: order.order_number,
               imageUrl: finalImageUrl,
+              imageIsFallback: imageFallbackMap.get(`${group.referenceId}|${order.color || ''}`) ?? false,
               nfe: so?.nfe || '',
               remessa: so?.remessa || '',
               strapsLabel: getEffectiveStrapsLabel(group),

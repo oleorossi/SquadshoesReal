@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { Switch } from '@/components/ui/switch';
+import { SeveranceSimulator } from '@/components/hr/SeveranceSimulator';
 import {
   useEmployees, useAddEmployee, useUpdateEmployee, useDeleteEmployee,
   useEmployeeAdvances, useAddAdvance, useDeleteAdvance,
@@ -28,7 +29,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 const emptyEmployee = {
   name: '', external_id: '', role: '', department: '', salary: 0, overtime_hourly_rate: null as number | null,
   hourly_rate: null as number | null, overtime_multiplier: 1.20,
-  work_schedule_id: null as string | null, phone: '', whatsapp: '', pix_key: '', pix_type: '', notes: '', active: true, admission_date: new Date().toISOString().split('T')[0],
+  work_schedule_id: null as string | null, phone: '', whatsapp: '', pix_key: '', pix_type: '', notes: '', active: true, admission_date: new Date().toISOString().split('T')[0], termination_date: null as string | null,
   // Multiplicadores POR funcionário (regime contrato — cada contrato pode ter regra própria).
   // Default 0 = hora simples (sem adicional). 50/100/20 = padrão CLT se quiser usar.
   overtime_50_pct: 0,
@@ -121,6 +122,7 @@ export default function Employees() {
   }
 
   return (
+    <>
     <div className="space-y-4 page-enter">
       {/* Header local removido — vive no RHHub. Actions ficam aqui em barra própria. */}
       <div className="flex items-center justify-end gap-2 flex-wrap">
@@ -385,6 +387,26 @@ export default function Employees() {
             <div><Label>Cargo</Label><Input value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} /></div>
             <div><Label>Departamento</Label><Input value={form.department} onChange={e => setForm(f => ({ ...f, department: e.target.value }))} /></div>
             <div><Label>Admissão</Label><Input type="date" value={form.admission_date} onChange={e => setForm(f => ({ ...f, admission_date: e.target.value }))} /></div>
+            <div>
+              <Label>Demissão</Label>
+              <Input
+                type="date"
+                value={(form as any).termination_date ?? ''}
+                onChange={e => setForm(f => ({ ...f, termination_date: e.target.value || null } as any))}
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Último dia trabalhado. Deixe vazio se ainda ativo. Sistema para
+                de calcular horas esperadas após essa data no registro de ponto.
+              </p>
+            </div>
+
+            {/* Simulador de indenização — só renderiza quando termination_date preenchida.
+                Mostra breakdown CLT (saldo, 13º, férias, aviso, multa FGTS) + total. */}
+            <SeveranceSimulator
+              salary={form.salary}
+              admissionDate={form.admission_date}
+              terminationDate={(form as any).termination_date}
+            />
             <div><Label>Salário (R$)</Label><CurrencyInput value={form.salary} onChange={v => setForm(f => ({ ...f, salary: v }))} /></div>
             <div>
               <Label>Valor Hora (R$/hr)</Label>
@@ -464,6 +486,6 @@ export default function Employees() {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }

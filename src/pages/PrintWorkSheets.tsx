@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Printer, MagnifyingGlass as Search, CircleNotch as Loader2, FileText, Funnel as Filter, Files as FileStack } from '@phosphor-icons/react';
+import { Printer, MagnifyingGlass as Search, CircleNotch as Loader2, FileText, Funnel as Filter } from '@phosphor-icons/react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -44,8 +44,6 @@ export default function PrintWorkSheets() {
   const [search, setSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showPrintView, setShowPrintView] = useState(false);
-  /** Quando true, gera fichas de TODOS os setores + relatório gerencial num único arquivo. */
-  const [printAllMode, setPrintAllMode] = useState(false);
 
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ['print_worksheets_orders', statusFilter],
@@ -147,8 +145,7 @@ export default function PrintWorkSheets() {
     return (
       <PrintWorkSheetsPage
         orders={selectedOrders}
-        onBack={() => { setShowPrintView(false); setPrintAllMode(false); }}
-        printAll={printAllMode}
+        onBack={() => setShowPrintView(false)}
       />
     );
   }
@@ -168,26 +165,34 @@ export default function PrintWorkSheets() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            size="lg"
-            disabled={selectedOrders.length === 0}
-            onClick={() => { setPrintAllMode(false); setShowPrintView(true); }}
-            className="gap-2"
-          >
-            <FileText className="h-4 w-4" />
-            Gerar fichas ({selectedOrders.length} OP{selectedOrders.length === 1 ? '' : 's'})
-          </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Atalho "Selecionar tudo e imprimir": marca TODAS as OPs filtradas
+              + abre a tela de print em 1 clique. Pedido do user 18/05/2026.
+              Respeita filtros ativos (status + busca), só seleciona o que
+              está visível na lista filtrada. */}
           <Button
             size="lg"
             variant="outline"
-            disabled={selectedOrders.length === 0}
-            onClick={() => { setPrintAllMode(true); setShowPrintView(true); }}
+            disabled={filtered.length === 0}
+            onClick={() => {
+              setSelectedIds(new Set(filtered.map(r => r.id)));
+              setShowPrintView(true);
+            }}
             className="gap-2"
-            title="Gera um único arquivo com todas as fichas (todos os setores) + relatório gerencial"
+            title="Marca todas as OPs filtradas e abre direto a tela de impressão"
           >
-            <FileStack className="h-4 w-4" />
-            Imprimir tudo
+            <FileText className="h-4 w-4" />
+            Selecionar tudo e imprimir ({filtered.length})
+          </Button>
+          <Button
+            size="lg"
+            disabled={selectedOrders.length === 0}
+            onClick={() => setShowPrintView(true)}
+            className="gap-2"
+            title="Abre a tela com os setores das fichas — você marca/desmarca quais entram no arquivo final"
+          >
+            <FileText className="h-4 w-4" />
+            Gerar fichas ({selectedOrders.length} OP{selectedOrders.length === 1 ? '' : 's'})
           </Button>
         </div>
       </div>

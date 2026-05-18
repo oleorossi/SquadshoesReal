@@ -3,11 +3,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { CircleNotch as Loader2, Package, FileText, ArrowsDownUp as ArrowUpDown, ArrowUp, ArrowDown } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, Package, FileText, ArrowsDownUp as ArrowUpDown, ArrowUp, ArrowDown, Warning as WarningIcon } from '@phosphor-icons/react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { supabase } from '@/integrations/supabase/client';
 import {
   calculateGradeBasedDm2,
   calculateConsumptionWithUnit,
+  isLinearWidthMissing,
   convertDm2ToLinearMeters,
   convertDm2ToPlates,
   getPreferredComponentSheet as getPreferredComponentSheetFromCandidates,
@@ -29,6 +31,7 @@ type ConsumptionRow = {
   productUnit: string;
   color: string;
   totalQuantity: number;
+  widthMissing?: boolean;
 };
 
 const COMPONENT_ORDER = ['Cabedal', 'Forro', 'Palmilha', 'Solado', 'Tiras', 'Químicos', 'Embalagem', 'Outros'] as const;
@@ -69,6 +72,7 @@ const addConsumptionRow = (map: Map<string, ConsumptionRow>, row: ConsumptionRow
 
   if (existing) {
     existing.totalQuantity += totalQuantity;
+    if (row.widthMissing) existing.widthMissing = true;
     return;
   }
 
@@ -79,6 +83,7 @@ const addConsumptionRow = (map: Map<string, ConsumptionRow>, row: ConsumptionRow
     productUnit,
     color,
     totalQuantity,
+    widthMissing: row.widthMissing,
   });
 };
 
@@ -299,6 +304,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
             productUnit: 'metro',
             color: orderColor,
             totalQuantity: upperTotal,
+            widthMissing: isLinearWidthMissing(upperSheet, 'm'),
           });
         }
 
@@ -318,6 +324,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
             productUnit: 'metro',
             color: orderColor,
             totalQuantity: mandTotal,
+            widthMissing: isLinearWidthMissing(mandSheet, 'm'),
           });
         }
 
@@ -339,6 +346,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
              productUnit: 'metro',
              color: mappedLiningColor,
              totalQuantity: liningTotal,
+             widthMissing: isLinearWidthMissing(liningSheet, 'm'),
            });
          }
 
@@ -379,18 +387,45 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
          }
 
         // Solado: resolver cor real via technical_sheet_sole_colors (mapeamento
-        // por cor do cabedal → produto-solado específico). Antes era hardcoded
-        // "preto/caramelo" — qualquer cor diferente caía em Caramelo (errado).
-        // Fallback: sheet.sole_color se cadastrado; senão deixa "—".
-        const soleProductIdResolved = soleColorMap.get(`${item.reference_id}::${orderColor}`) || null;
+        // por cor do cabedal → produto-solado específico). Match case/acento-
+        // insensitive — antes "Caramelo" vs "CARAMELO" não casava e a cor
+        // saía "—" mesmo com mapeamento cadastrado.
+        const orderColorNorm = (orderColor || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+        let soleProductIdResolved: string | null = null;
+        for (const [k, v] of soleColorMap.entries()) {
+          const [skId, skColor] = k.split('::');
+          if (skId !== item.reference_id) continue;
+          const kNorm = (skColor || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+          if (kNorm === orderColorNorm) { soleProductIdResolved = v; break; }
+        }
         const soleProduct = soleProductIdResolved
           ? (allProducts || []).find(p => p.id === soleProductIdResolved)
           : null;
-        const soleColor = soleProduct?.color || sheet?.sole_color || '—';
+        const soleColor = soleProduct?.color || orderColor || sheet?.sole_color || '—';
+
+        // Resumo de numerações pra coluna Aplicação. Quando OP tem grade,
+        // mostra "34: 1 · 35: 2 · ..." ou "34-40 (12)" se uniforme. Sem grade,
+        // fica "Solado" cru. Pedido em 18/05/2026 pelo user — quer ver
+        // numeração + cor no resumo de consumo do PV.
+        const grade = (item as any).grade as Record<string, number> | null | undefined;
+        const sizesSummary = (() => {
+          if (!grade || typeof grade !== 'object') return 'Solado';
+          const entries = Object.entries(grade)
+            .filter(([k, v]) => /^\d+$/.test(k) && Number(v) > 0)
+            .sort(([a], [b]) => Number(a) - Number(b));
+          if (entries.length === 0) return 'Solado';
+          const values = entries.map(([, v]) => Number(v));
+          const allEqual = values.every(v => v === values[0]);
+          if (allEqual && entries.length > 1) {
+            return `Nº ${entries[0][0]}–${entries[entries.length-1][0]} (${values[0]} pares cada)`;
+          }
+          return entries.map(([s, v]) => `Nº ${s}: ${v}`).join(' · ');
+        })();
+
         addConsumptionRow(consumptionMap, {
           componentType: 'Solado',
           groupName: soleProduct?.name || sheet?.sole_material || '',
-          materialName: 'Solado',
+          materialName: sizesSummary,
           productUnit: 'par',
           color: soleColor,
           totalQuantity: (Number(sheet?.sole_consumption) || 0) * itemQuantity,
@@ -654,6 +689,19 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
           <p className="text-center text-muted-foreground py-8">Nenhum consumo de material encontrado para este pedido.</p>
         ) : (
           <div className="space-y-4">
+            {rows.some(r => r.widthMissing) && (
+              <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 flex items-start gap-2">
+                <WarningIcon weight="fill" className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="text-sm">
+                  <p className="font-semibold text-amber-900 dark:text-amber-300">Atenção — consumo pode estar inflado</p>
+                  <p className="text-amber-900/80 dark:text-amber-200/80 mt-0.5">
+                    Materiais marcados com <WarningIcon weight="fill" className="h-3 w-3 inline text-amber-600" /> não têm <strong>largura cadastrada</strong> na Ficha de Componente.
+                    Sem isso, o sistema trata dm² como metro, fazendo o consumo aparecer ~100× maior que o real.
+                    Cadastre em <strong>Materiais → produto → Ficha de Componente → Dimensões</strong> pra corrigir.
+                  </p>
+                </div>
+              </div>
+            )}
             <div className="flex items-center justify-between">
               <div className="flex flex-wrap gap-2">
                 {Array.from(totalsByUnit.entries()).map(([unit, total]) => (
@@ -698,8 +746,27 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                     </TableHeader>
                     <TableBody>
                       {componentRows.map((row, index) => (
-                        <TableRow key={`${row.componentType}-${row.groupName}-${row.materialName}-${row.color}-${index}`}>
-                          <TableCell className="font-medium">{row.groupName}</TableCell>
+                        <TableRow key={`${row.componentType}-${row.groupName}-${row.materialName}-${row.color}-${index}`} className={row.widthMissing ? 'bg-amber-500/5' : ''}>
+                          <TableCell className="font-medium">
+                            <div className="flex items-center gap-1.5">
+                              {row.widthMissing && (
+                                <TooltipProvider delayDuration={150}>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <WarningIcon weight="fill" className="h-4 w-4 text-amber-600 shrink-0" />
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-xs">
+                                      <p className="text-xs">
+                                        Largura do material não cadastrada em <strong>Materiais → Ficha de Componente</strong>.
+                                        Consumo pode estar até <strong>100× inflado</strong>. Cadastre <code>dimensions_width</code> pra corrigir.
+                                      </p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+                              {row.groupName}
+                            </div>
+                          </TableCell>
                           <TableCell>{row.materialName}</TableCell>
                           <TableCell>{row.color}</TableCell>
                           <TableCell className="text-right font-mono font-bold">{row.totalQuantity.toFixed(2)}</TableCell>

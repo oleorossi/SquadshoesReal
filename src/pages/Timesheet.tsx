@@ -32,7 +32,7 @@ import {
   WorkSchedule, Holiday, TimeRecord, ParsedEmployee, DaySummary,
 } from '@/hooks/useTimesheet';
 import { useEmployees, useUpdateEmployee } from '@/hooks/useEmployees';
-import { printAllEmployeesTimesheet, printEmployeeTimesheet, printAllIndividualTimesheets, printCalendarReport, printIndividualCalendarReport, saveEmployeeTimesheetPdf, EmployeeTimesheetData } from '@/lib/printTimesheet';
+import { printAllEmployeesTimesheet, printEmployeeTimesheet, printAllIndividualTimesheets, printCalendarReport, saveEmployeeTimesheetPdf, EmployeeTimesheetData } from '@/lib/printTimesheet';
 import { printTimeMirror } from '@/lib/printTimeMirror';
 import { useBankHoursBalances } from '@/hooks/useRH';
 import { getBatchDateRange, resolveTimeControlFilters } from '@/lib/timeControlFilters';
@@ -584,6 +584,15 @@ function TimesheetRecordsTab() {
       recordMap.set(rec.record_date, rec.punches as string[]);
     });
 
+    // Resolve admission + termination dates — fix 2026-05-18 user report:
+    // relatório calculava horas esperadas sobre o PRAZO TOTAL do batch,
+    // inflando expected pra dias ANTES da admissão E APÓS a demissão.
+    const emp = employees.find(e =>
+      e.name.toLowerCase().trim() === empName.toLowerCase().trim()
+    );
+    const admissionDateStr = (emp as any)?.admission_date as string | null | undefined;
+    const terminationDateStr = (emp as any)?.termination_date as string | null | undefined;
+
     // Generate all days in the date range
     if (!batchDateRange) {
       // Fallback: only use existing records
@@ -596,12 +605,23 @@ function TimesheetRecordsTab() {
       });
     }
 
+    // Respeita admission_date + termination_date: efetivo start = max(batch.start,
+    // admission_date) e efetivo end = min(batch.end, termination_date).
+    // Dias fora do contrato (antes da admissão / depois da demissão) são pulados.
+    // Tolerante a datas null/inválidas (cai no batch range original).
+    const effectiveStartStr = (admissionDateStr && /^\d{4}-\d{2}-\d{2}$/.test(admissionDateStr) && admissionDateStr > batchDateRange.startDate)
+      ? admissionDateStr
+      : batchDateRange.startDate;
+    const effectiveEndStr = (terminationDateStr && /^\d{4}-\d{2}-\d{2}$/.test(terminationDateStr) && terminationDateStr < batchDateRange.endDate)
+      ? terminationDateStr
+      : batchDateRange.endDate;
+
     const allDays: DaySummary[] = [];
-    const start = new Date(batchDateRange.startDate + 'T12:00:00');
-    const end = new Date(batchDateRange.endDate + 'T12:00:00');
+    const start = new Date(effectiveStartStr + 'T12:00:00');
+    const end = new Date(effectiveEndStr + 'T12:00:00');
      const cursor = new Date(start);
      let safetyCounter = 0;
- 
+
      while (cursor <= end && safetyCounter < 1000) {
        safetyCounter++;
        const dateStr = cursor.toISOString().slice(0, 10);
@@ -620,7 +640,7 @@ function TimesheetRecordsTab() {
   const summaries = useMemo(() => {
     if (selectedEmployee === '__all__' || !selectedEmployee) return [];
     return calcSummariesForEmployee(selectedEmployee);
-  }, [selectedEmployee, employeeGroups, defaultSchedule, holidays, batchDateRange]);
+  }, [selectedEmployee, employeeGroups, defaultSchedule, holidays, batchDateRange, employees]);
 
   // All employees summary (weekly-based)
   const allEmployeeSummaries = useMemo(() => {
@@ -638,7 +658,7 @@ function TimesheetRecordsTab() {
         days: dayData.length,
       };
     });
-  }, [selectedEmployee, employeeNames, employeeGroups, defaultSchedule, holidays, batchDateRange]);
+  }, [selectedEmployee, employeeNames, employeeGroups, defaultSchedule, holidays, batchDateRange, employees]);
 
   // Individual employee period (weekly-based)
   const periodSummary = useMemo(() => calculateWeeklyPeriod(summaries, defaultSchedule), [summaries, defaultSchedule]);
@@ -1077,19 +1097,15 @@ function TimesheetRecordsTab() {
               <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setReportDialogOpen(true)}>
                 <Users2 className="h-3.5 w-3.5" /> Resumo Individual
               </Button>
-              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => {
-                printIndividualCalendarReport(buildPrintData(selectedEmployee), periodLabel);
-              }}>
-                <Calendar className="h-3.5 w-3.5" /> Calendário Individual
-              </Button>
-              <Button size="sm" className="gap-1.5" onClick={() => {
-                const data = buildPrintData(selectedEmployee);
-                saveEmployeeTimesheetPdf(data, periodLabel);
-              }}>
-                <FileText className="h-3.5 w-3.5" /> Gerar PDF
-              </Button>
+              {/* Botão único "Calendário Individual" (18/05/2026) — consolida
+                  os antigos 3 botões (Calendário, Gerar PDF, Espelho assinar).
+                  Usa printTimeMirror que tem TUDO: dados do funcionário (CPF/PIS/
+                  admissão), tabela dia-a-dia com batidas, totais agregados e
+                  bloco de assinatura empregado+empregador conforme Portaria MTE
+                  1.510/2009. Pra salvar como PDF, basta usar "Salvar como PDF"
+                  no diálogo de impressão do navegador. */}
               <Button size="sm" variant="default" className="gap-1.5" onClick={handlePrintTimeMirror}>
-                <ClipboardEdit className="h-3.5 w-3.5" /> Espelho de Ponto (assinar)
+                <Calendar className="h-3.5 w-3.5" /> Calendário Individual
               </Button>
             </div>
           )}

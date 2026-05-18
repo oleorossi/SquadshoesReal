@@ -143,6 +143,29 @@ export function NfePreviewPanel({ preview }: { preview: NfePreviewResponse['prev
               <div><span className="text-muted-foreground">Peso bruto:</span> {transporte.peso_bruto_kg ? `${transporte.peso_bruto_kg} kg` : '—'}</div>
               <div><span className="text-muted-foreground">Peso líquido:</span> {transporte.peso_liquido_kg ? `${transporte.peso_liquido_kg} kg` : '—'}</div>
             </div>
+            {transporte.transportador && (
+              <div className="mt-2 pt-2 border-t border-border space-y-0.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Transportador (modFrete 3 — próprio)</p>
+                {transporte.transportador.nome && (
+                  <div className="text-xs"><span className="text-muted-foreground">Razão social:</span> {transporte.transportador.nome}</div>
+                )}
+                {transporte.transportador.cnpj && (
+                  <div className="text-xs font-mono"><span className="text-muted-foreground">CNPJ:</span> {transporte.transportador.cnpj}</div>
+                )}
+                {transporte.transportador.inscricao_estadual && (
+                  <div className="text-xs font-mono"><span className="text-muted-foreground">IE:</span> {transporte.transportador.inscricao_estadual}</div>
+                )}
+                {transporte.transportador.endereco && (
+                  <div className="text-xs"><span className="text-muted-foreground">Endereço:</span> {transporte.transportador.endereco}</div>
+                )}
+                {(transporte.transportador.cidade || transporte.transportador.estado) && (
+                  <div className="text-xs">
+                    <span className="text-muted-foreground">Município:</span>{' '}
+                    {[transporte.transportador.cidade, transporte.transportador.estado].filter(Boolean).join(' / ')}
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
         <Card>

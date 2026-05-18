@@ -36,8 +36,13 @@ export default function CreateUserDialog({ open, onOpenChange }: CreateUserDialo
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
 
-      if (res.error) throw new Error(res.error.message);
+      // Ordem importa: res.data.error tem a mensagem específica do servidor
+      // ("Senha deve ter ao menos 8 caracteres", "Email already exists", etc).
+      // res.error.message do supabase-js é só "Edge Function returned a non-2xx
+      // status code" (genérico). Checa o específico ANTES — sem isso o user
+      // via mensagem genérica e não sabia o que estava errado.
       if (res.data?.error) throw new Error(res.data.error);
+      if (res.error) throw new Error(res.error.message);
 
       toast.success('Usuário criado com sucesso!');
       qc.invalidateQueries({ queryKey: ['profiles'] });
@@ -85,11 +90,11 @@ export default function CreateUserDialog({ open, onOpenChange }: CreateUserDialo
             <Input
               id="create-password"
               type="password"
-              placeholder="Mínimo 6 caracteres"
+              placeholder="Mínimo 8 caracteres"
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
-              minLength={6}
+              minLength={8}
             />
           </div>
           <div className="flex justify-end gap-2 pt-2">

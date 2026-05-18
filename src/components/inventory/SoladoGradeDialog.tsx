@@ -500,17 +500,18 @@ export function SoladoGradeDialog({ open, onOpenChange, product }: SoladoGradeDi
             cleanGrade._size_to = resolvedRange.to;
           }
           updates.push({ id: variant.id, grade: cleanGrade, total: pendingChanges[variant.id].total });
-        } else {
-          // Variant wasn't edited — preserve existing grade as-is
-          const existing = variant.stock_grade as Record<string, any> | null;
-          if (!existing || typeof existing !== 'object') continue;
-          let total = 0;
-          for (const [k, v] of Object.entries(existing)) {
-            if (k.startsWith('_')) continue;
-            total += Number(v) || 0;
-          }
-          updates.push({ id: variant.id, grade: existing, total });
         }
+        // Variante NÃO editada → pula. Fix 18/05/2026: antes empurrava o
+        // grade existente pro array de updates, causando 2 problemas:
+        // (1) Toast inflado: "Grade de 2 variações atualizada" quando só
+        //     1 cor foi de fato editada. User reportou: "ao salvar a grade
+        //     do solado por cor o botão aparece como se estivesse salvando
+        //     a quantidade das duas cores".
+        // (2) UPDATE desnecessário em adjust_stock: trigger
+        //     check_grade_quantity_coherence ainda valida, mas se houver
+        //     drift histórico SUM(stock_grade) ≠ quantity, falha aqui sem
+        //     necessidade. Bug de cancelar OP (mig 20260517120000) era
+        //     diferente, mas mesma classe.
       }
 
       if (updates.length === 0) {
@@ -542,7 +543,15 @@ export function SoladoGradeDialog({ open, onOpenChange, product }: SoladoGradeDi
       }
 
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      toast.success(`Grade de estoque atualizada para ${updates.length} variação(ões)!`);
+      // Mensagem precisa: só conta as cores que de fato foram editadas
+      // (não inclui as preservadas como antes — vide fix do bloco else acima).
+      const updatedNames = updates
+        .map(u => colorVariants.find(v => v.id === u.id)?.color || '')
+        .filter(Boolean);
+      const msg = updates.length === 1
+        ? `Grade da cor "${updatedNames[0] || 'solado'}" atualizada!`
+        : `Grade atualizada em ${updates.length} cores: ${updatedNames.join(', ')}`;
+      toast.success(msg);
       onOpenChange(false);
     } catch (err: any) {
       toast.error(`Erro: ${err.message}`);

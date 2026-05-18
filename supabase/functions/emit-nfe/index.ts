@@ -38,6 +38,31 @@ async function gcFetch(path: string, init: RequestInit = {}) {
   return { ok: res.ok, status: res.status, json };
 }
 
+// Cache do id da loja no GestaoClick. A doc da API marca `loja_id` como
+// obrigatório no POST /notas_fiscais_produtos. Quando ausente, o GC usa
+// "matriz ou loja que o usuário tem permissão" — funciona, mas explícito
+// é mais seguro (e cumpre o contrato da doc). Cache em memória do isolate
+// — válido enquanto o edge function fica quente. Reseta a cada cold start.
+let _gcLojaIdCache: string | null = null;
+async function resolveGcLojaId(): Promise<string | null> {
+  if (_gcLojaIdCache) return _gcLojaIdCache;
+  try {
+    const r = await gcFetch("/lojas");
+    const list = Array.isArray(r.json?.data) ? r.json.data : [];
+    if (list.length === 0) return null;
+    // Prefere matriz (situacao=1 ativa + matriz=1 quando disponível),
+    // senão pega a primeira ativa, senão a primeira.
+    const matriz = list.find((l: any) => l.matriz === 1 || l.matriz === "1" || l.matriz === true);
+    const ativa = list.find((l: any) => l.situacao === 1 || l.situacao === "1" || l.situacao === true);
+    const pick = matriz || ativa || list[0];
+    _gcLojaIdCache = pick?.id ? String(pick.id) : null;
+    return _gcLojaIdCache;
+  } catch (e) {
+    console.warn("[emit-nfe] resolveGcLojaId falhou:", e instanceof Error ? e.message : String(e));
+    return null;
+  }
+}
+
 // Mapeia situacao_nf do GestaoClick → status canônico interno. Mesma lógica
 // de nfe-status / sync-nfe-from-provider (evita drift entre os caminhos).
 // Cobre múltiplas situações que a SEFAZ pode retornar.
@@ -572,13 +597,24 @@ Deno.serve(async (req) => {
         const wd: any = weightData;
         const net = Number(wd.net_weight_kg) || 0;
         const gross = Number(wd.gross_weight_kg) || 0;
+        const estimated = Number(wd.net_weight_estimated_kg) || 0;
         if (net > 0) pesoLiquidoStr = net.toFixed(3);
         if (gross > 0) pesoBrutoStr = gross.toFixed(3);
         if (wd.is_complete === false && Array.isArray(wd.incomplete_items)) {
           const n = wd.incomplete_items.length;
-          weightWarning = `Peso parcial: ${n} item(s) sem cadastro de peso na ficha técnica.`;
+          const semEstimativa = wd.incomplete_items.filter(
+            (it: any) => !it.estimated_kg_per_pair || Number(it.estimated_kg_per_pair) <= 0,
+          ).length;
+          const comEstimativa = n - semEstimativa;
+          if (comEstimativa > 0 && estimated > 0) {
+            weightWarning = `Peso parcial: ${comEstimativa} item(s) com peso ESTIMADO via média do solado (~${estimated.toFixed(3)} kg).`;
+          }
+          if (semEstimativa > 0) {
+            weightWarning = (weightWarning ? weightWarning + " " : "")
+              + `${semEstimativa} item(s) sem cadastro de peso na ficha técnica (e sem outras fichas com mesmo solado pra estimar).`;
+          }
           console.warn(
-            `[emit-nfe] PV ${sale_order_id} com peso parcial — ${n} ficha(s) sem cadastro.`,
+            `[emit-nfe] PV ${sale_order_id} com peso parcial — ${n} ficha(s) incompletas (${comEstimativa} estimadas, ${semEstimativa} sem estimativa).`,
           );
         }
       }
@@ -691,24 +727,53 @@ Deno.serve(async (req) => {
     const pagamentoArr = buildPagamento();
 
     // ---------- Cria a NF-e no GestaoClick (rascunho) ----------
-    // Natureza de operação fixa "Venda de Produção do Estabelecimento" — é a
-    // natureza configurada no painel GestaoClick e a correta pra uma indústria
-    // de calçados vendendo produção própria. O painel GestaoClick é a fonte da
-    // verdade pra consumidor_final / indicador_destinatario / CFOP e para a
-    // tributação (IPI/PIS/COFINS/CSOSN) — campos do payload da API são ignorados.
-    // Os CSTs (IPI 99/enq.999, PIS 49, COFINS 49) e o CSOSN saem do cadastro da
-    // natureza no painel GestaoClick (a API não tem endpoint de tributação).
-    const naturezaEsperada = "Venda de Produção do Estabelecimento";
+    // Natureza de operação fixa — pedido user em 18/05/2026: usar
+    // "Operação não presencial, outros" pra alinhar com cadastro no
+    // painel GestaoClick. Antes era "Venda de Produção do Estabelecimento"
+    // mas não casava com a natureza que o user cadastrou lá.
+    // O painel GestaoClick é a fonte da verdade pra consumidor_final /
+    // indicador_destinatario / CFOP e para a tributação (IPI/PIS/COFINS/CSOSN)
+    // — campos do payload da API são ignorados. Os CSTs (IPI 99/enq.999,
+    // PIS 49, COFINS 49) e o CSOSN saem do cadastro da natureza no painel
+    // GestaoClick (a API não tem endpoint de tributação).
+    const naturezaEsperada = "Operação não presencial, outros";
 
     // ---------- Bloco `transporte` (peso bruto / líquido / volumes) ----------
     // GestaoClick ignora `peso_bruto` / `peso_liquido` / `quantidade_volumes`
     // se mandados no top-level — a doc deles exige dentro de
     // `transporte.volumes[]`. Mandávamos no topo até NF #244 e o XML saía com
-    // <pesoB>/<pesoL> vazios. modalidade_frete: "9" = sem frete (mercadoria
-    // coletada pelo destinatário). especie: "VOLUME" — pedido em 15/05/2026
+    // <pesoB>/<pesoL> vazios. especie: "VOLUME" — pedido em 15/05/2026
     // (era "CX"; contabilidade prefere "VOLUME" pra refletir o termo legal).
-    // Sempre envia bloco transporte (mesmo sem peso) pra carregar a contagem
-    // de volumes calculada automaticamente.
+    // modalidade_frete (SEFAZ modFrete):
+    //   0 = Frete por conta do REMETENTE (CIF)
+    //   1 = Frete por conta do DESTINATÁRIO (FOB)
+    //   2 = Frete por conta de terceiros
+    //   3 = Transporte próprio por conta do REMETENTE   ← Squad Shoes (pedido user 18/05/2026)
+    //   4 = Transporte próprio por conta do destinatário
+    //   9 = Sem ocorrência de transporte
+    // Histórico de mudança: era "9" (sem frete) → "3" (transporte próprio) →
+    // "0" (CIF) → "3" (Transporte próprio do remetente — Squad usa veículo próprio,
+    // não terceiriza nem deixa pro cliente; é a categoria fiscalmente correta).
+    // modFrete=3 (transporte próprio do REMETENTE) exige que o bloco
+    // <transporta> da NF-e seja preenchido com os dados do PRÓPRIO emitente
+    // — sem isso, contabilidade reclama porque o XML sai com transportador
+    // vazio mas indicando "transporte próprio" (incongruente fiscalmente).
+    // Pedido user 18/05/2026: "frete próprio, então os dados do frete devem
+    // ser os meus". Tudo puxado de fiscal.* (companies/fiscal_config já carregado).
+    const emitenteCnpjDigits = (fiscal.cnpj || "").replace(/\D/g, "");
+    const emitenteIeDigits = (fiscal.inscricao_estadual || "").replace(/\D/g, "");
+    const emitenteEndereco = [fiscal.logradouro || fiscal.endereco, fiscal.numero || "S/N"]
+      .filter(Boolean).join(", ");
+    const transportadorBlock: Record<string, string> = {};
+    if (fiscal.razao_social || fiscal.nome_fantasia) {
+      transportadorBlock.nome = fiscal.razao_social || fiscal.nome_fantasia;
+    }
+    if (emitenteCnpjDigits.length === 14) transportadorBlock.cnpj = emitenteCnpjDigits;
+    if (emitenteIeDigits) transportadorBlock.inscricao_estadual = emitenteIeDigits;
+    if (emitenteEndereco) transportadorBlock.endereco = emitenteEndereco;
+    if (fiscal.cidade) transportadorBlock.cidade = fiscal.cidade;
+    if (fiscal.uf) transportadorBlock.estado = fiscal.uf;
+
     const transporteBlock = (() => {
       const vol: Record<string, string> = {
         quantidade: qtdVolumesStr,
@@ -717,13 +782,23 @@ Deno.serve(async (req) => {
       if (pesoLiquidoStr) vol.peso_liquido = pesoLiquidoStr;
       if (pesoBrutoStr) vol.peso_bruto = pesoBrutoStr;
       return {
-        modalidade_frete: "9",
+        modalidade_frete: "3",
+        ...(Object.keys(transportadorBlock).length > 0
+          ? { transportador: transportadorBlock }
+          : {}),
         volumes: [vol],
       };
     })();
 
+    // Resolve loja_id do GestaoClick — obrigatório segundo a doc da API.
+    // Cache em memória do isolate (resolveGcLojaId). Quando null, GC usa default.
+    const gcLojaId = await resolveGcLojaId();
+
     const nfePayload = {
-      tipo_nf: "1",
+      // tipo_nf como INT (doc especifica int; antes mandávamos string "1").
+      tipo_nf: 1,
+      // loja_id (obrigatório na doc). Quando null, GC usa matriz por default.
+      ...(gcLojaId ? { loja_id: Number(gcLojaId) } : {}),
       natureza_operacao: naturezaEsperada,
       id_destinatario: gcClientId,
       codigo_cfop: resolvedCfop,
@@ -810,6 +885,7 @@ Deno.serve(async (req) => {
             indicador_final: isContribuinte ? '0 (Contribuinte)' : '1 (Consumidor final)',
             tipo_nf: '1 (Saída)',
             marca_xmarca: orderBrand,
+            loja_gc_id: gcLojaId,
           },
           produtos: produtosPreview,
           totais: {
@@ -819,7 +895,12 @@ Deno.serve(async (req) => {
             qtd_pares: produtosPreview.reduce((s, p) => s + p.quantidade, 0),
           },
           transporte: {
-            modalidade_frete: '9 (Sem frete — coleta pelo destinatário)',
+            modalidade_frete: '3 (Transporte próprio por conta do remetente)',
+            // modFrete=3 → transportador = próprio emitente. Bloco montado
+            // a partir de fiscal.* pra contabilidade conferir antes de emitir.
+            transportador: Object.keys(transportadorBlock).length > 0
+              ? transportadorBlock
+              : null,
             qtd_volumes: qtdVolumesStr,
             especie: 'VOLUME',
             peso_bruto_kg: pesoBrutoStr || null,

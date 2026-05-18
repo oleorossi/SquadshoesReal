@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { getSignedUrl } from '@/lib/getSignedUrl';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown as ChevronDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, Eye, HandPalm as Hand } from '@phosphor-icons/react';
+import { ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown as ChevronDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand } from '@phosphor-icons/react';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { BulkActionsBar, MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
 import { cn } from "@/lib/utils";
@@ -2197,24 +2197,20 @@ export default function SaleOrders() {
                       {/* Botão Emitir aparece pra qualquer status não-cancelado SE não
                           houver NF ativa (autorizada/processando/cancelando). Backend
                           re-valida tudo (status, IE, NCM, etc) — esse check de UI só
-                          esconde quando claramente não faz sentido tentar. */}
+                          esconde quando claramente não faz sentido tentar.
+                          18/05/2026: removido botão "Emitir direto" — agora SEMPRE
+                          passa pelo preview (NfePreviewDialog tem botão "Confirmar e
+                          emitir" dentro). Evita emissão sem conferência de IE/NCM/peso/
+                          volumes/transportador/total. Mesmo fluxo da rota /nfe. */}
                       {!selectedOrderNfes.some((n: any) => ['autorizada', 'processando', 'cancelando'].includes(n.status)) && (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 text-xs gap-1.5"
-                            onClick={() => setPreviewNfeOrder({ id: selectedOrder.id, orderNumber: selectedOrder.order_number })}
-                            title="Pré-visualizar dados da NF antes de emitir"
-                          >
-                            <Eye className="h-3 w-3" /> Visualizar
-                          </Button>
-                          <Button size="sm" className="h-7 text-xs gap-1.5" disabled={emitNfe.isPending}
-                            onClick={() => emitNfe.mutate({ saleOrderId: selectedOrder.id, companyId: nfeCompanyId || undefined })}>
-                            {emitNfe.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Receipt className="h-3 w-3" />}
-                            Emitir NF-e
-                          </Button>
-                        </>
+                        <Button
+                          size="sm"
+                          className="h-7 text-xs gap-1.5"
+                          onClick={() => setPreviewNfeOrder({ id: selectedOrder.id, orderNumber: selectedOrder.order_number })}
+                          title="Conferir dados antes de emitir (passo obrigatório)"
+                        >
+                          <Receipt className="h-3 w-3" /> Emitir NF-e
+                        </Button>
                       )}
                     </div>
                   </div>

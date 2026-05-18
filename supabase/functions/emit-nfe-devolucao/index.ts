@@ -47,6 +47,25 @@ async function gcFetch(path: string, init: RequestInit = {}) {
   return { ok: res.ok, status: res.status, json };
 }
 
+// loja_id obrigatório segundo doc GestaoClick. Cache em memória do isolate.
+let _gcLojaIdCache: string | null = null;
+async function resolveGcLojaId(): Promise<string | null> {
+  if (_gcLojaIdCache) return _gcLojaIdCache;
+  try {
+    const r = await gcFetch("/lojas");
+    const list = Array.isArray(r.json?.data) ? r.json.data : [];
+    if (list.length === 0) return null;
+    const matriz = list.find((l: any) => l.matriz === 1 || l.matriz === "1" || l.matriz === true);
+    const ativa = list.find((l: any) => l.situacao === 1 || l.situacao === "1" || l.situacao === true);
+    const pick = matriz || ativa || list[0];
+    _gcLojaIdCache = pick?.id ? String(pick.id) : null;
+    return _gcLojaIdCache;
+  } catch (e) {
+    console.warn("[emit-nfe-devolucao] resolveGcLojaId falhou:", e instanceof Error ? e.message : String(e));
+    return null;
+  }
+}
+
 // Espelho da NF original → CFOP de entrada de devolução
 function cfopDevolucao(cfopSaida: string): string {
   const c = String(cfopSaida || "").trim();
@@ -344,8 +363,12 @@ Deno.serve(async (req) => {
     //   - Consumidor final: "0" = não
     //   - Tipo de atendimento (indicador_presenca): "9" = operação não presencial, outros
     // Sem isso o GC defaultava algumas pra valores diferentes do exigido pela contabilidade.
+    // loja_id (obrigatório na doc GestaoClick). Quando null, GC usa matriz.
+    const gcLojaId = await resolveGcLojaId();
+
     const nfePayload: any = {
-      tipo_nf: "0", // 0 = entrada
+      tipo_nf: 0, // 0 = entrada (devolução). Doc da API exige int.
+      ...(gcLojaId ? { loja_id: Number(gcLojaId) } : {}),
       finalidade_nf: "4", // 4 = devolução de mercadoria
       tipo_emissao: "1", // 1 = emissão normal
       natureza_operacao: "Devolução de venda de produção do estabelecimento",
