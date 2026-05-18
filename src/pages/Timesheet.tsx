@@ -32,7 +32,7 @@ import {
   WorkSchedule, Holiday, TimeRecord, ParsedEmployee, DaySummary,
 } from '@/hooks/useTimesheet';
 import { useEmployees, useUpdateEmployee } from '@/hooks/useEmployees';
-import { printAllEmployeesTimesheet, printEmployeeTimesheet, printAllIndividualTimesheets, printCalendarReport, printIndividualCalendarReport, saveEmployeeTimesheetPdf, EmployeeTimesheetData } from '@/lib/printTimesheet';
+import { printAllEmployeesTimesheet, printEmployeeTimesheet, printAllIndividualTimesheets, printCalendarReport, saveEmployeeTimesheetPdf, EmployeeTimesheetData } from '@/lib/printTimesheet';
 import { printTimeMirror } from '@/lib/printTimeMirror';
 import { useBankHoursBalances } from '@/hooks/useRH';
 import { getBatchDateRange, resolveTimeControlFilters } from '@/lib/timeControlFilters';
@@ -1097,19 +1097,15 @@ function TimesheetRecordsTab() {
               <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setReportDialogOpen(true)}>
                 <Users2 className="h-3.5 w-3.5" /> Resumo Individual
               </Button>
-              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => {
-                printIndividualCalendarReport(buildPrintData(selectedEmployee), periodLabel);
-              }}>
-                <Calendar className="h-3.5 w-3.5" /> Calendário Individual
-              </Button>
-              <Button size="sm" className="gap-1.5" onClick={() => {
-                const data = buildPrintData(selectedEmployee);
-                saveEmployeeTimesheetPdf(data, periodLabel);
-              }}>
-                <FileText className="h-3.5 w-3.5" /> Gerar PDF
-              </Button>
+              {/* Botão único "Calendário Individual" (18/05/2026) — consolida
+                  os antigos 3 botões (Calendário, Gerar PDF, Espelho assinar).
+                  Usa printTimeMirror que tem TUDO: dados do funcionário (CPF/PIS/
+                  admissão), tabela dia-a-dia com batidas, totais agregados e
+                  bloco de assinatura empregado+empregador conforme Portaria MTE
+                  1.510/2009. Pra salvar como PDF, basta usar "Salvar como PDF"
+                  no diálogo de impressão do navegador. */}
               <Button size="sm" variant="default" className="gap-1.5" onClick={handlePrintTimeMirror}>
-                <ClipboardEdit className="h-3.5 w-3.5" /> Espelho de Ponto (assinar)
+                <Calendar className="h-3.5 w-3.5" /> Calendário Individual
               </Button>
             </div>
           )}
