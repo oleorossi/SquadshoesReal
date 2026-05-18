@@ -200,16 +200,19 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
         </div>`
       : '';
 
-    // NF-e em DESTAQUE — informação fiscal mais importante da etiqueta.
+    // NF-e em linha PRÓPRIA full-width (rendered fora do header).
+    // Histórico: ficava dentro do headerRight, mas com cliente que tem
+    // endereço completo (razão + endereço + bairro + cidade/UF + CEP + CNPJ),
+    // o recipient ocupava >28mm e o `overflow:hidden` do header CLIPAVA a
+    // NF-e — bug reportado pelo user em 18/05/2026 (PV-00107).
+    // Solução: linha dedicada de 14mm full-width após subInfo, NUNCA clipada.
     // Atualiza automaticamente via trigger DB tg_sync_nfe_numero_to_sale_order
-    // (sale_orders.nfe = nfe_emitidas.numero quando status=autorizada).
-    // Aparece logo abaixo do Pedido em block próprio com fundo preto/branco
-    // invertido + fonte 24px pra ser a primeira coisa a saltar aos olhos
-    // de quem lê a etiqueta — exigência do user em 15/05/2026.
-    const nfeLine = item.nfe
-      ? `<div style="margin-top:4px;padding:4px 6px;background:#000;color:#fff;border-radius:2px;display:flex;justify-content:space-between;align-items:baseline;gap:6px;print-color-adjust:exact;-webkit-print-color-adjust:exact;">
-          <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.6px;">NF-e</span>
-          <span style="font-size:24px;font-weight:900;letter-spacing:0.5px;line-height:1;">${escapeHtml(item.nfe)}</span>
+    // (sale_orders.nfe = nfe_emitidas.numero quando status=autorizada) OU
+    // preenchida manualmente em sale_orders.nfe no form do PV.
+    const nfeFullRow = item.nfe
+      ? `<div style="height:14mm;background:#000;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-bottom:1.5px solid #000;overflow:hidden;print-color-adjust:exact;-webkit-print-color-adjust:exact;">
+          <span style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px;">Nota Fiscal</span>
+          <span style="font-size:32px;font-weight:900;letter-spacing:1px;line-height:1;font-family:Arial,Helvetica,sans-serif;">${escapeHtml(item.nfe)}</span>
         </div>`
       : '';
 
@@ -222,7 +225,10 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
         ` : ''}
       </div>`;
 
-    // Bloco direito do topo (QR + cliente + NF-e em destaque)
+    // Bloco direito do topo (QR + cliente + pedido). NF-e MOVIDA pra linha
+    // própria full-width abaixo do header (nfeFullRow) — antes ficava aqui
+    // dentro mas era clipada pelo overflow:hidden quando o cliente tinha
+    // endereço completo (PV-00107, 18/05/2026).
     const headerRight = `
       <div style="width:88mm;padding:4px 8px;display:flex;gap:6px;align-items:flex-start;overflow:hidden;">
         <div style="width:16mm;height:16mm;flex-shrink:0;background:#fff;border:1px solid #555;display:flex;align-items:center;justify-content:center;font-size:7px;color:#333;text-align:center;line-height:1.1;font-weight:700;">
@@ -231,7 +237,6 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
         <div style="flex:1;font-size:10px;color:#000;line-height:1.3;overflow:hidden;">
           ${recipientBlock || '<span style="color:#555;font-size:10px;font-style:italic;font-weight:600;">Sem dados do destinatário</span>'}
           ${pedidoLine}
-          ${nfeLine}
         </div>
       </div>`;
 
@@ -330,25 +335,33 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
     const hasFooter = footerLine1 || footerLine2;
 
     // Alturas hardcoded por seção. Total = 132mm = altura do label-box.
-    // Distribuição: 28+7+7+62+16+12 = 132.
+    // Distribuição QUANDO TEM NF-e:   28+14+7+7+48+16+12 = 132.
+    // Distribuição QUANDO SEM NF-e:   28+7+7+62+16+12    = 132 (fallback).
     // Reduzido de 140mm pra 132mm em 15/05/2026 — A4 tem 287mm úteis (5mm
     // margem cada lado), e 2×140=280mm deixava só 7mm de gap entre labels.
     // Qualquer overflow interno (renderização variável de impressora,
     // line-height, padding) empurrava a 2ª label pra página seguinte.
     // Com 2×132=264mm sobra 23mm de gap — folga real de impressão.
+    //
+    // NF-e em linha dedicada (14mm full-width fundo preto) — adicionada
+    // 18/05/2026 pra resolver clip dela dentro do header quando recipient
+    // tem endereço completo. Quando não há NF, productImage volta pra 62mm
+    // pra ocupar o espaço.
+    const productAreaHeight = item.nfe ? 48 : 62;
     return `
       <div class="label-box">
         <div style="height:28mm;display:flex;border-bottom:1.5px solid #000;overflow:hidden;">
           ${headerLeft}
           ${headerRight}
         </div>
+        ${nfeFullRow}
         <div style="height:7mm;display:flex;border-bottom:1px solid #000;overflow:hidden;">
           ${subInfoCells}
         </div>
         <div style="height:7mm;display:flex;border-bottom:1px solid #000;background:#f5f5f5;overflow:hidden;">
           ${statsCells}
         </div>
-        <div style="height:62mm;display:flex;border-bottom:1px solid #000;overflow:hidden;">
+        <div style="height:${productAreaHeight}mm;display:flex;border-bottom:1px solid #000;overflow:hidden;">
           ${productLeft}
           ${productImage}
           ${sizeRangeBig}
