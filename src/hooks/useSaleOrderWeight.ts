@@ -6,12 +6,20 @@ export interface IncompleteWeightItem {
   code: string | null;
   name: string | null;
   pairs: number;
+  /** Peso/par estimado via AVG das fichas com mesmo solado (null se nem estimativa achou). */
+  estimated_kg_per_pair?: number | null;
+  /** 'sole_group_avg' | 'sole_id_avg' | null */
+  estimate_source?: 'sole_group_avg' | 'sole_id_avg' | null;
 }
 
 export interface SaleOrderWeight {
   saleOrderId: string;
   totalPairs: number;
   netWeightKg: number;
+  /** Soma só dos itens com weight_per_pair_kg cadastrado na ficha. */
+  netWeightRealKg: number;
+  /** Soma dos itens estimados via média do solado (preenchido pelo backend). */
+  netWeightEstimatedKg: number;
   boxWeightKg: number;
   grossWeightKg: number;
   incompleteItems: IncompleteWeightItem[];
@@ -22,6 +30,8 @@ interface RawResult {
   sale_order_id: string;
   total_pairs: number;
   net_weight_kg: number;
+  net_weight_real_kg?: number;
+  net_weight_estimated_kg?: number;
   box_weight_kg: number;
   gross_weight_kg: number;
   incomplete_items: IncompleteWeightItem[];
@@ -52,6 +62,8 @@ export function useSaleOrderWeight(saleOrderId: string | null | undefined) {
         saleOrderId: r.sale_order_id,
         totalPairs: r.total_pairs,
         netWeightKg: Number(r.net_weight_kg) || 0,
+        netWeightRealKg: Number(r.net_weight_real_kg) || 0,
+        netWeightEstimatedKg: Number(r.net_weight_estimated_kg) || 0,
         boxWeightKg: Number(r.box_weight_kg) || 0,
         grossWeightKg: Number(r.gross_weight_kg) || 0,
         incompleteItems: r.incomplete_items || [],

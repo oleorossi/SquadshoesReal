@@ -572,13 +572,24 @@ Deno.serve(async (req) => {
         const wd: any = weightData;
         const net = Number(wd.net_weight_kg) || 0;
         const gross = Number(wd.gross_weight_kg) || 0;
+        const estimated = Number(wd.net_weight_estimated_kg) || 0;
         if (net > 0) pesoLiquidoStr = net.toFixed(3);
         if (gross > 0) pesoBrutoStr = gross.toFixed(3);
         if (wd.is_complete === false && Array.isArray(wd.incomplete_items)) {
           const n = wd.incomplete_items.length;
-          weightWarning = `Peso parcial: ${n} item(s) sem cadastro de peso na ficha técnica.`;
+          const semEstimativa = wd.incomplete_items.filter(
+            (it: any) => !it.estimated_kg_per_pair || Number(it.estimated_kg_per_pair) <= 0,
+          ).length;
+          const comEstimativa = n - semEstimativa;
+          if (comEstimativa > 0 && estimated > 0) {
+            weightWarning = `Peso parcial: ${comEstimativa} item(s) com peso ESTIMADO via média do solado (~${estimated.toFixed(3)} kg).`;
+          }
+          if (semEstimativa > 0) {
+            weightWarning = (weightWarning ? weightWarning + " " : "")
+              + `${semEstimativa} item(s) sem cadastro de peso na ficha técnica (e sem outras fichas com mesmo solado pra estimar).`;
+          }
           console.warn(
-            `[emit-nfe] PV ${sale_order_id} com peso parcial — ${n} ficha(s) sem cadastro.`,
+            `[emit-nfe] PV ${sale_order_id} com peso parcial — ${n} ficha(s) incompletas (${comEstimativa} estimadas, ${semEstimativa} sem estimativa).`,
           );
         }
       }
