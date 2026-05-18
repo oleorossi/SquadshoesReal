@@ -165,16 +165,36 @@ export default function PrintWorkSheets() {
             </p>
           </div>
         </div>
-        <Button
-          size="lg"
-          disabled={selectedOrders.length === 0}
-          onClick={() => setShowPrintView(true)}
-          className="gap-2"
-          title="Abre a tela com os setores das fichas — você marca/desmarca quais entram no arquivo final"
-        >
-          <FileText className="h-4 w-4" />
-          Gerar fichas ({selectedOrders.length} OP{selectedOrders.length === 1 ? '' : 's'})
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Atalho "Selecionar tudo e imprimir": marca TODAS as OPs filtradas
+              + abre a tela de print em 1 clique. Pedido do user 18/05/2026.
+              Respeita filtros ativos (status + busca), só seleciona o que
+              está visível na lista filtrada. */}
+          <Button
+            size="lg"
+            variant="outline"
+            disabled={filtered.length === 0}
+            onClick={() => {
+              setSelectedIds(new Set(filtered.map(r => r.id)));
+              setShowPrintView(true);
+            }}
+            className="gap-2"
+            title="Marca todas as OPs filtradas e abre direto a tela de impressão"
+          >
+            <FileText className="h-4 w-4" />
+            Selecionar tudo e imprimir ({filtered.length})
+          </Button>
+          <Button
+            size="lg"
+            disabled={selectedOrders.length === 0}
+            onClick={() => setShowPrintView(true)}
+            className="gap-2"
+            title="Abre a tela com os setores das fichas — você marca/desmarca quais entram no arquivo final"
+          >
+            <FileText className="h-4 w-4" />
+            Gerar fichas ({selectedOrders.length} OP{selectedOrders.length === 1 ? '' : 's'})
+          </Button>
+        </div>
       </div>
 
       <Card>
