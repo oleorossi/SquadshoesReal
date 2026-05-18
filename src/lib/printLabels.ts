@@ -389,9 +389,11 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
       </div>`;
   });
 
-  // Cada A4 = 1 page-container com 2 slots absolutos (top/bottom).
-  // Position absolute remove os labels do fluxo de documento — engine
-  // de impressão não tem como quebrar entre eles.
+  // Cada A4 = 1 page-container com layout grid 3 linhas (top / spacer / bottom).
+  // Tentativas anteriores com position:absolute falhavam no macOS Preview e
+  // alguns engines de PDF — o slot bottom era ignorado ou jogado pra próxima
+  // página em branco. Grid mantém os slots no fluxo natural com alturas
+  // explícitas, sem ambiguidade pra engine de impressão.
   const pages: string[] = [];
   for (let i = 0; i < labels.length; i += 2) {
     const first = labels[i];
@@ -399,8 +401,8 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
     const isLastPage = i + 2 >= labels.length;
     pages.push(`<div class="page-container${!isLastPage ? ' page-break' : ''}">
       <div class="label-slot-top">${first}</div>
-      ${second ? `<div class="label-slot-bottom">${second}</div>` : ''}
-      <div class="print-version-marker">v4-abs</div>
+      <div class="label-slot-spacer"></div>
+      ${second ? `<div class="label-slot-bottom">${second}</div>` : '<div class="label-slot-bottom"></div>'}
     </div>`);
   }
   const totalPages = Math.ceil(labels.length / 2);
@@ -438,32 +440,29 @@ ${LABEL_PRINT_HARDENING}
   border-radius:0.5mm;overflow:hidden;height:128mm;max-height:128mm;
 }
 .label-box > *{overflow:hidden;page-break-inside:avoid;break-inside:avoid;}
-/* Layout em POSITION:ABSOLUTE — cada page-container vira um plano A4
-   onde os 2 labels ficam ancorados em posições FIXAS (X,Y). Saem do
-   fluxo do documento → engine de impressão não tem como "decidir"
-   quebrar entre eles.
-   A4 útil = 287mm (5mm margem cada lado). 2 labels × 128mm = 256mm,
-   sobra 31mm pra gap entre top/bottom — folga real de impressão. */
+/* Layout em CSS GRID com 3 linhas (top label / spacer / bottom label).
+   Substituiu o antigo position:absolute em 18/05/2026 — absolute fazia
+   o macOS Preview e alguns engines de PDF cuspirem 1 etiqueta por página
+   + página em branco intercalada (slot bottom ignorado ou pulado pra
+   próxima página). Grid mantém os slots em FLUXO NATURAL com alturas
+   explícitas, sem ambiguidade pra calc de altura/overflow do container.
+   A4 útil = 287mm. 128mm + 1fr + 128mm = 256mm fixos + 31mm de spacer. */
 .page-container{
   width:198mm;height:287mm;margin:0 auto 0;
-  position:relative;box-sizing:border-box;
+  display:grid;grid-template-rows:128mm 1fr 128mm;
+  box-sizing:border-box;
 }
-.page-container .label-slot-top{
-  position:absolute;top:0;left:0;right:0;
-  height:128mm;overflow:hidden;
-}
+.page-container .label-slot-top,
 .page-container .label-slot-bottom{
-  position:absolute;top:140mm;left:0;right:0;
-  height:128mm;overflow:hidden;
+  height:128mm;max-height:128mm;overflow:hidden;
+}
+.page-container .label-slot-spacer{
+  min-height:0;
 }
 .page-container .label-slot-top .label-box,
 .page-container .label-slot-bottom .label-box{height:128mm;max-height:128mm;}
 /* Page-break: precisa do par moderno + legacy juntos (Chrome 90+ usa
-   o moderno mas alguns engines de PDF/Preview ainda olham o legacy).
-   Tentar remover o legacy causou paginas em branco intercaladas no macOS
-   Preview (bug reportado 18/05/2026 14:00) — voltou pra dupla regra.
-   break-inside:avoid blinda o container contra qualquer split interno
-   indesejado entre slot top e slot bottom. */
+   o moderno mas alguns engines de PDF/Preview ainda olham o legacy). */
 .page-container{break-inside:avoid !important;page-break-inside:avoid !important;}
 .page-container.page-break{break-after:page;page-break-after:always;}
 .page-container:not(.page-break){break-after:avoid;page-break-after:avoid;}
@@ -501,9 +500,9 @@ ${LABEL_PRINT_HARDENING}
      (Antes era 132mm × 2 com slot bottom em 143mm — soma 275mm. Como
      LABEL_PRINT_HARDENING força overflow:visible em todos os filhos, qualquer
      1-2mm de overflow interno empurrava a 2ª etiqueta pra página seguinte.) */
-  .page-container{width:100%;height:287mm;margin:0;}
-  .page-container .label-slot-top{height:128mm;overflow:hidden !important;}
-  .page-container .label-slot-bottom{height:128mm;top:140mm;overflow:hidden !important;}
+  .page-container{width:100%;height:287mm;margin:0;display:grid;grid-template-rows:128mm 1fr 128mm;}
+  .page-container .label-slot-top,
+  .page-container .label-slot-bottom{height:128mm !important;max-height:128mm !important;overflow:hidden !important;}
   .label-box{height:128mm !important;max-height:128mm !important;overflow:hidden !important;}
   .label-box,
   .label-box *{
