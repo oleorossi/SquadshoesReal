@@ -121,6 +121,7 @@ export default function Employees() {
   }
 
   return (
+    <>
     <div className="space-y-4 page-enter">
       {/* Header local removido — vive no RHHub. Actions ficam aqui em barra própria. */}
       <div className="flex items-center justify-end gap-2 flex-wrap">
@@ -464,6 +465,6 @@ export default function Employees() {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }
