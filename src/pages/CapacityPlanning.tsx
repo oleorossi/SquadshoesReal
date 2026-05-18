@@ -4,6 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import SectorDistributionPlanner from '@/components/production/SectorDistributionPlanner';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useQuery } from '@tanstack/react-query';
@@ -503,12 +504,18 @@ export default function CapacityPlanning() {
       </div>
 
       {/* ── TABS ───────────────────────────────────────────────────────────── */}
-      <Tabs defaultValue="sectors">
+      <Tabs defaultValue="distribution">
         <TabsList>
+          <TabsTrigger value="distribution">Distribuição por Ref</TabsTrigger>
           <TabsTrigger value="sectors">Visão por Setor</TabsTrigger>
           <TabsTrigger value="timeline">Previsão Semanal</TabsTrigger>
           <TabsTrigger value="ops">OPs Ativas ({enrichedOrders.length})</TabsTrigger>
         </TabsList>
+
+        {/* ── TAB 0: DISTRIBUIÇÃO POR REFERÊNCIA (dinâmica por setor) ─────── */}
+        <TabsContent value="distribution" className="space-y-4 mt-4">
+          <SectorDistributionPlanner />
+        </TabsContent>
 
         {/* ── TAB 1: POR SETOR ─────────────────────────────────────────────── */}
         <TabsContent value="sectors" className="space-y-4 mt-4">
