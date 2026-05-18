@@ -844,11 +844,36 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false, selectedSectors
     if (!wantsAnySoleColorSector) return null;
     const soleMap = new Map<string, Map<string, SilkColorGroup>>();
 
+    // Assinatura ordenada das tiras de uma OP. Usada como sufixo na chave de
+    // agrupamento: OPs com mesmo (solado, cor cabedal) mas tiras de cores
+    // DIFERENTES devem virar fichas separadas em Aviamento/Costura/Montagem
+    // — antes a chave ignorava tiras e cospia 1 ficha só com as tiras da 1ª
+    // OP, virando fantasma as tiras das demais (bug reportado 2026-05-18).
+    // Modelos sem tiras: retorna '' (não muda nada — comportamento atual).
+    const computeStrapSignature = (order: any): string => {
+      const raw = Array.isArray(order?.strap_colors) ? order.strap_colors : [];
+      if (raw.length === 0) return '';
+      return [...raw]
+        .sort((a: any, b: any) => {
+          const ka = parseInt(a?.id, 10);
+          const kb = parseInt(b?.id, 10);
+          if (isFinite(ka) && isFinite(kb)) return ka - kb;
+          return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
+        })
+        .map((s: any) => `${(s?.label || 'TIRA').toUpperCase()}=${(s?.color || '').toUpperCase().trim()}`)
+        .join('|');
+    };
+
     for (const order of orders) {
       const sheetId = order.reference_id;
       const cabedelColorLower = (order.color || '').toLowerCase();
       const colorName = order.variant?.color_name || order.color || '';
       const colorHex = order.variant?.color_hex;
+      const strapSig = computeStrapSignature(order);
+      // Chave do colorMap = cor cabedal + assinatura de tiras. Sem strap_colors,
+      // strapSig='' e a chave equivale ao comportamento antigo. Com tiras,
+      // cada combinação distinta vira uma ficha própria.
+      const colorKey = strapSig ? `${colorName}::${strapSig}` : colorName;
 
       const soleMapping = (soleMappings as any[]).find(
         m => m.sheet_id === sheetId && (m.product_color || '').toLowerCase() === cabedelColorLower,
@@ -865,7 +890,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false, selectedSectors
       if (!soleMap.has(soleName)) soleMap.set(soleName, new Map());
       const colorMap = soleMap.get(soleName)!;
 
-      if (!colorMap.has(colorName)) {
+      if (!colorMap.has(colorKey)) {
         // Sempre calcula silk + alerts (independente do sector). O componente
         // decide via theme se renderiza. Permite reutilizar o mesmo memo em
         // modo printAll (todos os setores no mesmo arquivo).
@@ -910,7 +935,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false, selectedSectors
           && (readyMadeLookup.get(sheetId) !== true);
         const requiresUpperCut = hasStrapsLookup.get(sheetId) !== true;
 
-        colorMap.set(colorName, {
+        colorMap.set(colorKey, {
           color: colorName,
           // Cor da forração pra essa cor de cabedal (usado em Corte Forração).
           liningColor: liningColorLookup.get(`${sheetId}::${cabedelColorLower}`) || null,
@@ -935,7 +960,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false, selectedSectors
         });
       }
 
-      const cg = colorMap.get(colorName)!;
+      const cg = colorMap.get(colorKey)!;
       cg.opNumbers.push(order.op_number);
       if (order.sale_order_number && !cg.pvNumbers.includes(order.sale_order_number)) {
         cg.pvNumbers.push(order.sale_order_number);
