@@ -691,14 +691,16 @@ Deno.serve(async (req) => {
     const pagamentoArr = buildPagamento();
 
     // ---------- Cria a NF-e no GestaoClick (rascunho) ----------
-    // Natureza de operação fixa "Venda de Produção do Estabelecimento" — é a
-    // natureza configurada no painel GestaoClick e a correta pra uma indústria
-    // de calçados vendendo produção própria. O painel GestaoClick é a fonte da
-    // verdade pra consumidor_final / indicador_destinatario / CFOP e para a
-    // tributação (IPI/PIS/COFINS/CSOSN) — campos do payload da API são ignorados.
-    // Os CSTs (IPI 99/enq.999, PIS 49, COFINS 49) e o CSOSN saem do cadastro da
-    // natureza no painel GestaoClick (a API não tem endpoint de tributação).
-    const naturezaEsperada = "Venda de Produção do Estabelecimento";
+    // Natureza de operação fixa — pedido user em 18/05/2026: usar
+    // "Operação não presencial, outros" pra alinhar com cadastro no
+    // painel GestaoClick. Antes era "Venda de Produção do Estabelecimento"
+    // mas não casava com a natureza que o user cadastrou lá.
+    // O painel GestaoClick é a fonte da verdade pra consumidor_final /
+    // indicador_destinatario / CFOP e para a tributação (IPI/PIS/COFINS/CSOSN)
+    // — campos do payload da API são ignorados. Os CSTs (IPI 99/enq.999,
+    // PIS 49, COFINS 49) e o CSOSN saem do cadastro da natureza no painel
+    // GestaoClick (a API não tem endpoint de tributação).
+    const naturezaEsperada = "Operação não presencial, outros";
 
     // ---------- Bloco `transporte` (peso bruto / líquido / volumes) ----------
     // GestaoClick ignora `peso_bruto` / `peso_liquido` / `quantidade_volumes`
