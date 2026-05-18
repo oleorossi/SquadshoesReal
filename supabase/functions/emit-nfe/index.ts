@@ -717,11 +717,17 @@ Deno.serve(async (req) => {
     // GestaoClick ignora `peso_bruto` / `peso_liquido` / `quantidade_volumes`
     // se mandados no top-level — a doc deles exige dentro de
     // `transporte.volumes[]`. Mandávamos no topo até NF #244 e o XML saía com
-    // <pesoB>/<pesoL> vazios. modalidade_frete: "9" = sem frete (mercadoria
-    // coletada pelo destinatário). especie: "VOLUME" — pedido em 15/05/2026
+    // <pesoB>/<pesoL> vazios. especie: "VOLUME" — pedido em 15/05/2026
     // (era "CX"; contabilidade prefere "VOLUME" pra refletir o termo legal).
-    // Sempre envia bloco transporte (mesmo sem peso) pra carregar a contagem
-    // de volumes calculada automaticamente.
+    // modalidade_frete (SEFAZ modFrete):
+    //   0 = Frete por conta do REMETENTE (CIF)
+    //   1 = Frete por conta do DESTINATÁRIO (FOB)
+    //   2 = Frete por conta de terceiros
+    //   3 = Transporte PRÓPRIO por conta do REMETENTE   ← Squad Shoes (pedido user 18/05/2026)
+    //   4 = Transporte próprio por conta do destinatário
+    //   9 = Sem ocorrência de transporte
+    // Antes era "9" (sem frete — coleta pelo destinatário). User corrigiu:
+    // Squad Shoes usa veículo próprio pra entregar nos clientes.
     const transporteBlock = (() => {
       const vol: Record<string, string> = {
         quantidade: qtdVolumesStr,
@@ -730,7 +736,7 @@ Deno.serve(async (req) => {
       if (pesoLiquidoStr) vol.peso_liquido = pesoLiquidoStr;
       if (pesoBrutoStr) vol.peso_bruto = pesoBrutoStr;
       return {
-        modalidade_frete: "9",
+        modalidade_frete: "3",
         volumes: [vol],
       };
     })();
@@ -832,7 +838,7 @@ Deno.serve(async (req) => {
             qtd_pares: produtosPreview.reduce((s, p) => s + p.quantidade, 0),
           },
           transporte: {
-            modalidade_frete: '9 (Sem frete — coleta pelo destinatário)',
+            modalidade_frete: '3 (Transporte próprio por conta do remetente)',
             qtd_volumes: qtdVolumesStr,
             especie: 'VOLUME',
             peso_bruto_kg: pesoBrutoStr || null,
