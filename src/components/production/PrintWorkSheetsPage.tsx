@@ -162,8 +162,13 @@ const printStyles = `
 interface PrintWorkSheetsPageProps {
   orders: any[];
   onBack: () => void;
-  /** Quando true, renderiza fichas de TODOS os setores + relatório gerencial num arquivo único. */
+  /** Quando true, renderiza fichas de TODOS os setores + relatório gerencial num arquivo único.
+   *  Equivale a `selectedSectors` contendo todos os SECTORS. Mantido por compat. */
   printAll?: boolean;
+  /** Sub-conjunto de setores a renderizar (modo multi-select). Quando definido
+   *  e não-vazio, ignora `selectedSector` (dropdown single) e `printAll`. Cada
+   *  setor da lista vira uma quebra de página no arquivo final. */
+  selectedSectors?: ReadonlySet<string>;
 }
 
 // 'Corte Cabedal' adicionado em 2026-05-12 como 3ª sub-etapa de Corte
@@ -231,8 +236,23 @@ function groupOrdersByRefColor(orders: any[]): Array<{
   return Array.from(map.values());
 }
 
-const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkSheetsPageProps) => {
+const PrintWorkSheetsPage = ({ orders, onBack, printAll = false, selectedSectors }: PrintWorkSheetsPageProps) => {
   const [selectedSector, setSelectedSector] = useState<typeof SECTORS[number]>('Corte Palmilha');
+
+  // Modo multi-select: quando selectedSectors está definido e tem itens, ele
+  // controla quais setores entram no arquivo. Caso contrário cai no fluxo
+  // antigo (printAll => todos; senão => single via dropdown).
+  const isMultiMode = !!selectedSectors && selectedSectors.size > 0;
+  const includesSector = (s: typeof SECTORS[number]): boolean => {
+    if (isMultiMode) return selectedSectors!.has(s);
+    if (printAll) return true;
+    return selectedSector === s;
+  };
+  // Compat: várias guards e effect deps ainda esperam o booleano "renderiza
+  // mais de um setor". Verdadeiro em multi-mode E em printAll legacy.
+  const renderAllSectors = isMultiMode
+    ? selectedSectors!.size === SECTORS.length
+    : printAll;
 
   const referenceIds = useMemo(() => [...new Set(orders.map(o => o.reference_id).filter(Boolean))], [orders]);
 
@@ -802,7 +822,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
   // (variantsByRef + tsImageByRef movidos pra antes de palmilhaGroups —
   //  ver comentário lá em cima sobre TDZ)
   const silkMontageGroups = useMemo<SoleSilkGroup[] | null>(() => {
-    if (!printAll && !SOLE_COLOR_GROUPED_SECTORS.includes(selectedSector as GroupedSector)) return null;
+    // Renderiza se está em multi-mode com qualquer setor sole+cor marcado,
+    // ou se printAll, ou se o single dropdown está em algum sole+cor sector.
+    const wantsAnySoleColorSector = isMultiMode
+      ? SOLE_COLOR_GROUPED_SECTORS.some(s => selectedSectors!.has(s))
+      : printAll || SOLE_COLOR_GROUPED_SECTORS.includes(selectedSector as GroupedSector);
+    if (!wantsAnySoleColorSector) return null;
     const soleMap = new Map<string, Map<string, SilkColorGroup>>();
 
     for (const order of orders) {
@@ -929,11 +954,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
       })
       .sort((a, b) => a.soleName.localeCompare(b.soleName, 'pt-BR'));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orders, selectedSector, printAll, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, liningColorLookup, soleMaterialByRef, soleFachetadoLookup, clientsInfo, economicGroupsInfo, soleGroupPackaging]);
+  }, [orders, selectedSector, printAll, selectedSectors, isMultiMode, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, liningColorLookup, soleMaterialByRef, soleFachetadoLookup, clientsInfo, economicGroupsInfo, soleGroupPackaging]);
 
   // ── Solagem: consolidated by sole color ──────────────────────────────────────
   const solagemData = useMemo<{ bands: SoleColorBand[]; allSizes: string[]; grandTotal: number } | null>(() => {
-    if (!printAll && selectedSector !== 'Solagem') return null;
+    if (!includesSector('Solagem')) return null;
     const soleColorMap = new Map<string, {
       grade: Record<string, number>; totalPairs: number;
       baseGrade: Record<string, number>; baseGradeSum: number; fichas: number;
@@ -1009,12 +1034,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
     const grandTotal = bands.reduce((s, b) => s + b.totalPairs, 0);
 
     return { bands, allSizes, grandTotal };
-  }, [orders, selectedSector, printAll, soleColorLookup]);
+  }, [orders, selectedSector, printAll, selectedSectors, isMultiMode, soleColorLookup]);
 
   // ── Expedição: por cliente (LOJA-A-LOJA), com info de embalagem ──────────
   // Acabamento agora segue mesma lógica de Aviamento (sole+color), per user.
   const expedicaoGroups = useMemo<ExpedicaoCustomerGroup[] | null>(() => {
-    if (!printAll && selectedSector !== 'Expedição') return null;
+    if (!includesSector('Expedição')) return null;
 
     const clientById = new Map<string, any>();
     for (const c of clientsInfo as any[]) clientById.set((c as any).id, c);
@@ -1114,17 +1139,17 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
     }
 
     return Array.from(map.values()).sort((a, b) => a.client_name.localeCompare(b.client_name, 'pt-BR'));
-  }, [orders, saleOrders, clientsInfo, soleMappings, soleGroupPackaging, nfeForExpedicao, saleOrdersTransport, selectedSector, printAll, variantsByRef, tsImageByRef]);
+  }, [orders, saleOrders, clientsInfo, soleMappings, soleGroupPackaging, nfeForExpedicao, saleOrdersTransport, selectedSector, printAll, selectedSectors, isMultiMode, variantsByRef, tsImageByRef]);
 
   // ── Colagem: agrupa por Ref + Cor (não tem solado-específico) ──────────────
   const groupedWorksheets = useMemo(() => {
-    if (!printAll && selectedSector !== 'Colagem') return null;
+    if (!includesSector('Colagem')) return null;
     return groupOrdersByRefColor(orders);
-  }, [orders, selectedSector, printAll]);
+  }, [orders, selectedSector, printAll, selectedSectors, isMultiMode]);
 
   // ── Relatório Gerencial: agrupa por sale_order_id, junta costs + stages ────
   const reportGroups = useMemo<Array<{ saleOrder: ReportSaleOrder; reportOrders: ReportOrder[] }> | null>(() => {
-    if (!printAll && selectedSector !== 'Relatório Gerencial') return null;
+    if (!includesSector('Relatório Gerencial')) return null;
 
     const clientById = new Map<string, any>();
     for (const c of clientsInfo as any[]) clientById.set((c as any).id, c);
@@ -1221,7 +1246,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
     return Array.from(map.values()).sort((a, b) =>
       (a.saleOrder.order_number || '').localeCompare(b.saleOrder.order_number || ''),
     );
-  }, [orders, saleOrders, clientsInfo, soleMappings, soleGroupPackaging, orderCosts, orderStagesData, selectedSector, printAll]);
+  }, [orders, saleOrders, clientsInfo, soleMappings, soleGroupPackaging, orderCosts, orderStagesData, selectedSector, printAll, selectedSectors, isMultiMode]);
 
   // ── Sheet count for print button label ───────────────────────────────────────
   const sheetCount =
@@ -1256,8 +1281,18 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
         <div className="flex items-center gap-4">
           <Button variant="ghost" onClick={onBack}><ArrowLeft className="mr-2 h-4 w-4" /> Voltar</Button>
           <div className="h-8 w-[1px] bg-border" />
-          <h2 className="font-bold text-lg">{printAll ? 'Imprimir Tudo' : 'Fichas de Operador'}</h2>
-          {printAll ? (
+          <h2 className="font-bold text-lg">
+            {isMultiMode
+              ? (renderAllSectors ? 'Imprimir Tudo' : `Setores Selecionados (${selectedSectors!.size})`)
+              : printAll
+                ? 'Imprimir Tudo'
+                : 'Fichas de Operador'}
+          </h2>
+          {isMultiMode ? (
+            <span className="text-sm text-muted-foreground">
+              {orders.length} OP(s) → {Array.from(selectedSectors!).join(', ')}
+            </span>
+          ) : printAll ? (
             <span className="text-sm text-muted-foreground">
               {orders.length} OP(s) → todas as fichas de operador + relatório gerencial num arquivo
             </span>
@@ -1279,7 +1314,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
           )}
         </div>
         <div className="flex items-center gap-3">
-          {!printAll && (
+          {/* Dropdown single-sector só faz sentido fora dos modos multi/printAll */}
+          {!printAll && !isMultiMode && (
             <>
               <span className="text-xs text-muted-foreground bg-muted rounded-md px-2 py-1 flex items-center gap-1">
                 <Layers className="h-3.5 w-3.5" />
@@ -1295,7 +1331,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
             </>
           )}
           <Button onClick={() => window.print()} className="gap-2">
-            <Printer className="h-4 w-4" /> {printAll ? 'Imprimir arquivo único' : `Imprimir ${sheetCount} Ficha(s)`}
+            <Printer className="h-4 w-4" /> {isMultiMode || printAll ? 'Imprimir arquivo único' : `Imprimir ${sheetCount} Ficha(s)`}
           </Button>
         </div>
       </div>
@@ -1304,7 +1340,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
       <div className="print-area space-y-0">
 
         {/* ── Corte Palmilha ── */}
-        {(printAll || selectedSector === 'Corte Palmilha') && palmilhaGroups.length > 0 && (
+        {includesSector('Corte Palmilha') && palmilhaGroups.length > 0 && (
           <div className="page-break">
             <PalmilhaWorkSheet
               groups={palmilhaGroups}
@@ -1337,19 +1373,23 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
             return { soleName: group.soleName, colorGroups: filtered, totalPairs };
           };
 
-          // Em printAll, renderiza os setores sole+cor em sequência (ordem de fluxo).
-          // Quando o user seleciona Corte Forração OU Corte Cabedal, exibe AMBOS
-          // num só relatório (sub-etapas de Corte que rodam em paralelo) — pedido
-          // do user em 15/05/2026: 'Corte Cabedal deve estar no mesmo relatório
-          // que Corte Forração, logo na sequência'.
-          const isCorteForCab = selectedSector === 'Corte Forração' || selectedSector === 'Corte Cabedal';
-          const sectorsToRender: GroupedSector[] = printAll
-            ? ['Corte Forração', 'Corte Cabedal', 'Silk', 'Costura', 'Aviamento', 'Montagem']
-            : isCorteForCab
-              ? ['Corte Forração', 'Corte Cabedal']
-              : SOLE_COLOR_GROUPED_SECTORS.includes(selectedSector as GroupedSector)
-                ? [selectedSector as GroupedSector]
-                : [];
+          // Em printAll / multi-mode, renderiza os setores sole+cor em sequência
+          // (ordem de fluxo). Quando o user seleciona Corte Forração OU Corte
+          // Cabedal pelo single dropdown, exibe AMBOS num só relatório (sub-etapas
+          // de Corte que rodam em paralelo) — pedido do user em 15/05/2026:
+          // 'Corte Cabedal deve estar no mesmo relatório que Corte Forração,
+          // logo na sequência'.
+          const flowOrder: GroupedSector[] = ['Corte Forração', 'Corte Cabedal', 'Silk', 'Costura', 'Aviamento', 'Montagem'];
+          const isCorteForCab = !isMultiMode && (selectedSector === 'Corte Forração' || selectedSector === 'Corte Cabedal');
+          const sectorsToRender: GroupedSector[] = isMultiMode
+            ? flowOrder.filter(s => selectedSectors!.has(s))
+            : printAll
+              ? flowOrder
+              : isCorteForCab
+                ? ['Corte Forração', 'Corte Cabedal']
+                : SOLE_COLOR_GROUPED_SECTORS.includes(selectedSector as GroupedSector)
+                  ? [selectedSector as GroupedSector]
+                  : [];
           return sectorsToRender.flatMap(sectorName =>
             silkMontageGroups
               .map(group => ({ group, filtered: filterGroupForSector(group, sectorName) }))
@@ -1367,7 +1407,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
         })()}
 
         {/* ── Solagem ── */}
-        {(printAll || selectedSector === 'Solagem') && solagemData && solagemData.bands.length > 0 && (
+        {includesSector('Solagem') && solagemData && solagemData.bands.length > 0 && (
           <div className="page-break">
             <SolagemWorkSheet
               bands={solagemData.bands}
@@ -1379,7 +1419,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
         )}
 
         {/* ── Colagem: agrupado por Ref + Cor ── */}
-        {(printAll || selectedSector === 'Colagem') && groupedWorksheets && groupedWorksheets.map((group) => {
+        {includesSector('Colagem') && groupedWorksheets && groupedWorksheets.map((group) => {
           const { representative } = group;
           // Resolve foto via cascata: variante exata > variante "Preto" > images[0] master.
           const repColorLower = (representative.color || '').toLowerCase();
@@ -1449,7 +1489,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
             nenhum, é o pedido individual cliente a cliente'. Antes era
             agregado em silkMontageGroups por solado+cor. Agora itera OP a OP
             e renderiza OperatorWorkSheet (mesma estrutura da Colagem). */}
-        {(printAll || selectedSector === 'Acabamento') && orders.map((order) => {
+        {includesSector('Acabamento') && orders.map((order) => {
           const repColorLower = (order.color || '').toLowerCase();
           const variantsList = variantsByRef.get(order.reference_id) || [];
           const exactVariant = variantsList.find(v => (v.color || '').toLowerCase() === repColorLower);
@@ -1501,14 +1541,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false }: PrintWorkShee
         })}
 
         {/* ── Expedição: 1 ficha por cliente/CNPJ ── */}
-        {(printAll || selectedSector === 'Expedição') && expedicaoGroups && expedicaoGroups.map((group) => (
+        {includesSector('Expedição') && expedicaoGroups && expedicaoGroups.map((group) => (
           <div key={`exped-${group.client_id}`} className="page-break">
             <ExpedicaoWorkSheet group={group} date={today} />
           </div>
         ))}
 
         {/* ── Relatório Gerencial: 1 relatório por PV ── */}
-        {(printAll || selectedSector === 'Relatório Gerencial') && reportGroups && reportGroups.map((rg) => (
+        {includesSector('Relatório Gerencial') && reportGroups && reportGroups.map((rg) => (
           <div key={`report-${rg.saleOrder.id}`} className="page-break">
             <ManagementReport saleOrder={rg.saleOrder} orders={rg.reportOrders} date={today} />
           </div>
