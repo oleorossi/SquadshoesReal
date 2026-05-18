@@ -720,14 +720,14 @@ Deno.serve(async (req) => {
     // <pesoB>/<pesoL> vazios. especie: "VOLUME" — pedido em 15/05/2026
     // (era "CX"; contabilidade prefere "VOLUME" pra refletir o termo legal).
     // modalidade_frete (SEFAZ modFrete):
-    //   0 = Frete por conta do REMETENTE (CIF)
+    //   0 = Frete por conta do REMETENTE (CIF)            ← Squad Shoes (pedido user 18/05/2026)
     //   1 = Frete por conta do DESTINATÁRIO (FOB)
     //   2 = Frete por conta de terceiros
-    //   3 = Transporte PRÓPRIO por conta do REMETENTE   ← Squad Shoes (pedido user 18/05/2026)
+    //   3 = Transporte próprio por conta do remetente
     //   4 = Transporte próprio por conta do destinatário
     //   9 = Sem ocorrência de transporte
-    // Antes era "9" (sem frete — coleta pelo destinatário). User corrigiu:
-    // Squad Shoes usa veículo próprio pra entregar nos clientes.
+    // Histórico de mudança: era "9" (sem frete) → "3" (transporte próprio)
+    // → "0" (CIF — frete por conta do remetente, padrão pra todas as NFs).
     const transporteBlock = (() => {
       const vol: Record<string, string> = {
         quantidade: qtdVolumesStr,
@@ -736,7 +736,7 @@ Deno.serve(async (req) => {
       if (pesoLiquidoStr) vol.peso_liquido = pesoLiquidoStr;
       if (pesoBrutoStr) vol.peso_bruto = pesoBrutoStr;
       return {
-        modalidade_frete: "3",
+        modalidade_frete: "0",
         volumes: [vol],
       };
     })();
@@ -838,7 +838,7 @@ Deno.serve(async (req) => {
             qtd_pares: produtosPreview.reduce((s, p) => s + p.quantidade, 0),
           },
           transporte: {
-            modalidade_frete: '3 (Transporte próprio por conta do remetente)',
+            modalidade_frete: '0 (Frete por conta do remetente — CIF)',
             qtd_volumes: qtdVolumesStr,
             especie: 'VOLUME',
             peso_bruto_kg: pesoBrutoStr || null,
