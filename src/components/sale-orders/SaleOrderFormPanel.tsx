@@ -23,6 +23,7 @@ import {
   calculateFactoringDiscount,
   parsePaymentConditionInstallments,
 } from '@/lib/factoringCalc';
+import { computeARSchedule } from '@/lib/saleOrderAR';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
  import { cn } from '@/lib/utils';
@@ -750,47 +751,71 @@ export default function SaleOrderFormPanel({
                 <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">Condição de Pagamento</Label>
                 <Input value={form.payment_condition} onChange={e => setForm(f => ({ ...f, payment_condition: e.target.value }))} className="h-9" placeholder="Ex: 30/60/90 DIAS" />
                 {(() => {
-                  // Preview da data de vencimento que SERÁ gerada em accounts_receivable
-                  // ao faturar. Espelha a lógica de syncFinancialRecords em useSaleOrders.ts:
-                  //   - sem factoring: due_date = delivery_deadline (ou hoje se faltar)
-                  //   - com factoring: due_date = max(hoje, delivery_deadline) + receiving_days
-                  // Importante: payment_condition (30/60/90) NÃO afeta a data — só entra no
-                  // cálculo do desconto factoring. Por isso só uma data é exibida.
-                  if (!form.delivery_deadline) {
+                  // Preview do cronograma de parcelas que SERÁ gravado em
+                  // accounts_receivable ao faturar. Usa exatamente a mesma função
+                  // (computeARSchedule) usada por syncFinancialRecords — então o
+                  // que aparece aqui é o que o A/R terá. Mostra também o desconto
+                  // factoring quando aplicável (calculado em cima do total e
+                  // distribuído proporcionalmente entre as parcelas).
+                  if (!form.delivery_deadline || totalValue <= 0) {
                     return (
                       <div className="mt-2 text-[11px] text-muted-foreground">
-                        Defina mês + semana de faturamento abaixo pra ver a data de vencimento que cairá no A/R.
+                        {totalValue <= 0
+                          ? 'Adicione itens com valor pra ver o cronograma de vencimento.'
+                          : 'Defina mês + semana de faturamento abaixo pra ver o cronograma de vencimento.'}
                       </div>
                     );
                   }
-                  const fmt = (d: Date) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-                  const today = new Date(); today.setHours(0, 0, 0, 0);
-                  const deadline = new Date(form.delivery_deadline + 'T00:00:00');
-                  let dueDate: Date;
-                  let formula: string;
-                  if (form.is_factoring && selectedFactoringConfig) {
-                    const base = deadline > today ? new Date(deadline) : new Date(today);
-                    base.setDate(base.getDate() + selectedFactoringConfig.receiving_days);
-                    dueDate = base;
-                    const baseLabel = deadline > today ? 'faturamento' : 'hoje';
-                    formula = `${baseLabel} (${fmt(deadline > today ? deadline : today)}) + ${selectedFactoringConfig.receiving_days}d factoring`;
-                  } else {
-                    dueDate = deadline;
-                    formula = `data de faturamento`;
+                  const fmt = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+                  const fmtMoney = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                  let arTotal = totalValue;
+                  let factoringDiscount = 0;
+                  if (form.is_factoring && selectedFactoringConfig && form.payment_condition) {
+                    const { pv } = calculateFactoringDiscount({
+                      total: totalValue,
+                      monthlyInterestRate: selectedFactoringConfig.monthly_interest_rate,
+                      paymentCondition: form.payment_condition,
+                      deliveryMonth: form.delivery_month,
+                      deliveryWeek: form.delivery_week,
+                      fallbackReceivingDays: selectedFactoringConfig.receiving_days,
+                    });
+                    arTotal = pv;
+                    factoringDiscount = totalValue - pv;
                   }
-                  const installments = parsePaymentConditionInstallments(form.payment_condition);
+                  const schedule = computeARSchedule({
+                    total: arTotal,
+                    paymentCondition: form.payment_condition,
+                    deliveryDeadline: form.delivery_deadline,
+                    isFactoring: !!form.is_factoring,
+                    factoringReceivingDays: selectedFactoringConfig?.receiving_days ?? null,
+                  });
+                  const baseLabel = form.is_factoring && selectedFactoringConfig
+                    ? `faturamento + ${selectedFactoringConfig.receiving_days}d factoring`
+                    : `data de faturamento`;
                   return (
-                    <div className="mt-2 rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs space-y-1">
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-muted-foreground">Vencimento ao faturar:</span>
-                        <span className="text-sm font-bold text-foreground">{fmt(dueDate)}</span>
+                    <div className="mt-2 rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs space-y-1.5">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-muted-foreground">
+                          {schedule.length === 1 ? '1 parcela' : `${schedule.length} parcelas`} — base: {baseLabel}
+                        </span>
+                        {factoringDiscount > 0 && (
+                          <span className="text-[10px] text-amber-600 dark:text-amber-500">desconto factoring −{fmtMoney(factoringDiscount)}</span>
+                        )}
                       </div>
-                      <div className="text-[10px] text-muted-foreground">Origem: {formula}</div>
-                      {installments.length > 1 && (
-                        <div className="text-[10px] text-amber-600 dark:text-amber-500">
-                          Aviso: o prazo {installments.join('/')} foi informado mas o sistema gera apenas 1 parcela em accounts_receivable. O prazo só afeta o cálculo do desconto factoring.
-                        </div>
-                      )}
+                      <div className="space-y-0.5">
+                        {schedule.map((inst) => (
+                          <div key={inst.installment_number} className="flex items-baseline justify-between gap-3">
+                            <span className="text-muted-foreground">
+                              {inst.installment_number}/{inst.total_installments}
+                              {inst.days_offset > 0 && <span className="text-muted-foreground/70"> · +{inst.days_offset}d</span>}
+                            </span>
+                            <span className="font-mono text-foreground">
+                              <span className="font-medium">{fmt(inst.due_date)}</span>
+                              <span className="text-muted-foreground/70"> · {fmtMoney(inst.amount)}</span>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   );
                 })()}

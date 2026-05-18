@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { autoCreateSolePO } from '@/lib/soleAutoPO';
 import { autoCreateMaterialPO } from '@/lib/materialAutoPO';
 import { calculateFactoringDiscount } from '@/lib/factoringCalc';
+import { computeARSchedule, type InstallmentSchedule } from '@/lib/saleOrderAR';
 import { isValidStatusTransition } from '@/lib/saleOrderStateMachine';
 import { logAuditEvent } from '@/services/auditService';
 
@@ -48,6 +49,98 @@ function parseBillingWeekToMonday(billingWeek: string): Date | null {
 
 
 /**
+ * Reconcilia accounts_receivable com o cronograma de parcelas desejado.
+ *
+ * Estratégia (match por installment_number):
+ *  - Rows com status='received' são INTOCÁVEIS (recebimento real, fechado).
+ *  - Cada parcela desejada tenta match pelo installment_number existente.
+ *    Existe e não-recebida → UPDATE amount/due_date/description.
+ *    Não existe → INSERT com (installment_number, total_installments).
+ *  - Rows existentes não-recebidas com installment_number > N desejado → CANCEL
+ *    (usuário reduziu o número de parcelas).
+ *  - Rows legacy com installment_number=NULL: tratadas como parcela 1 (a migration
+ *    20260629130000 já fez backfill pra (1,1), mas defensivamente cobrimos NULL).
+ */
+async function reconcileARInstallments(
+  saleOrderId: string,
+  schedule: InstallmentSchedule[],
+  existingAR: Array<{ id: string; status: string | null; installment_number: number | null; amount?: number }>,
+  metadata: {
+    client_name: string;
+    client_cnpj: string;
+    description_for: (s: InstallmentSchedule) => string;
+    category: string;
+  },
+) {
+  const must = (op: string, err: any) => { if (err) throw new Error(`${op}: ${err.message}`); };
+
+  const N = schedule.length;
+  const byNum = new Map<number, typeof existingAR[number]>();
+  for (const ar of existingAR) {
+    if (ar.status === 'cancelled') continue;
+    const num = ar.installment_number ?? 1;
+    // Se houver mais de 1 row mapeado pro mesmo número (corrupção legacy ou race
+    // pré-constraint), mantém o primeiro — os outros serão cancelados na limpeza
+    // final como duplicatas.
+    if (!byNum.has(num)) byNum.set(num, ar);
+  }
+
+  for (const inst of schedule) {
+    const existing = byNum.get(inst.installment_number);
+    if (existing && existing.status === 'received') continue; // sagrado, não toca
+    if (existing) {
+      const { error } = await supabase.from('accounts_receivable').update({
+        amount: inst.amount,
+        due_date: inst.due_date,
+        installment_number: inst.installment_number,
+        total_installments: inst.total_installments,
+        client_name: metadata.client_name,
+        client_cnpj: metadata.client_cnpj,
+        description: metadata.description_for(inst),
+      }).eq('id', existing.id);
+      must(`Atualizar parcela ${inst.installment_number}/${N}`, error);
+    } else {
+      const { error } = await supabase.from('accounts_receivable').insert({
+        sale_order_id: saleOrderId,
+        client_name: metadata.client_name,
+        client_cnpj: metadata.client_cnpj,
+        description: metadata.description_for(inst),
+        category: metadata.category,
+        due_date: inst.due_date,
+        amount: inst.amount,
+        amount_received: 0,
+        status: 'pending',
+        installment_number: inst.installment_number,
+        total_installments: inst.total_installments,
+      });
+      must(`Inserir parcela ${inst.installment_number}/${N}`, error);
+    }
+  }
+
+  // Cancela parcelas a mais (usuário reduziu o nº de parcelas) e duplicatas
+  // que sobraram do map (qualquer existing AR não-recebida cujo installment_number
+  // não está no schedule).
+  const desiredNums = new Set(schedule.map((s) => s.installment_number));
+  const idsToCancel = existingAR
+    .filter((ar) => ar.status !== 'cancelled' && ar.status !== 'received')
+    .filter((ar) => {
+      const num = ar.installment_number ?? 1;
+      if (!desiredNums.has(num)) return true; // parcela fora do schedule
+      const owner = byNum.get(num);
+      return owner ? owner.id !== ar.id : false; // duplicata: cancela todas exceto owner
+    })
+    .map((ar) => ar.id);
+
+  if (idsToCancel.length > 0) {
+    const { error } = await supabase.from('accounts_receivable')
+      .update({ status: 'cancelled' })
+      .in('id', idsToCancel)
+      .neq('status', 'received');
+    must('Cancelar parcelas extras/duplicadas', error);
+  }
+}
+
+/**
  * Sync accounts_receivable when a sale order changes status, value, or quantity.
  * - Faturado: creates receivable if none exists, updates if already exists
  *   - With factoring: amount = PV discounted by compound interest based on payment_condition days
@@ -69,7 +162,7 @@ async function syncFinancialRecords(saleOrderId: string) {
   // Fetch existing receivables linked to this sale order
   const { data: existingAR, error: arErr } = await supabase
     .from('accounts_receivable')
-    .select('id, amount, status')
+    .select('id, amount, status, installment_number, total_installments, due_date')
     .eq('sale_order_id', saleOrderId);
   must('Buscar contas a receber existentes', arErr);
 
@@ -137,9 +230,6 @@ async function syncFinancialRecords(saleOrderId: string) {
   }
 
   if (so.status === 'Faturado') {
-    const todayISO = new Date().toISOString().split('T')[0];
-    let dueDate = so.delivery_deadline || todayISO;
-
     // If factoring is enabled, calculate discounted amount and due date
     let factoringDiscountedTotal = total;
     let factoringConfigForEntry: { name?: string | null; receiving_days?: number; monthly_interest_rate?: number } | null = null;
@@ -151,17 +241,6 @@ async function syncFinancialRecords(saleOrderId: string) {
         .single();
       if (factoringConfig) {
         factoringConfigForEntry = factoringConfig as any;
-        // Antes: dueDate = today + receiving_days. Bug: se a fatura é emitida ANTES
-        // da entrega, o dinheiro entrava antes do produto sair (impossível). Factoring
-        // só desconta o título contra a NF emitida — então a base correta é
-        // max(today, delivery_deadline). A entrega "puxa" pra frente quando a OP
-        // ainda não saiu; today protege quando a entrega já passou (ex.: regularização).
-        const baseDate = so.delivery_deadline && so.delivery_deadline > todayISO
-          ? new Date(so.delivery_deadline)
-          : new Date();
-        baseDate.setDate(baseDate.getDate() + factoringConfig.receiving_days);
-        dueDate = baseDate.toISOString().split('T')[0];
-
         const { pv } = calculateFactoringDiscount({
           total,
           monthlyInterestRate: factoringConfig.monthly_interest_rate,
@@ -174,11 +253,11 @@ async function syncFinancialRecords(saleOrderId: string) {
       }
     }
 
-    const arAmount = so.is_factoring ? factoringDiscountedTotal : total;
+    const arTotal = so.is_factoring ? factoringDiscountedTotal : total;
     const factoringDiscount = so.is_factoring ? (total - factoringDiscountedTotal) : 0;
 
-    if (arAmount <= 0) {
-      console.warn(`syncFinancialRecords: Faturado PV ${saleOrderId} has arAmount=${arAmount} — cancelling any existing AR to avoid ghost revenue.`);
+    if (arTotal <= 0) {
+      console.warn(`syncFinancialRecords: Faturado PV ${saleOrderId} has arTotal=${arTotal} — cancelling any existing AR to avoid ghost revenue.`);
       if (existingAR && existingAR.length > 0) {
         const idsToCancel = existingAR.filter((ar: any) => ar.status !== 'cancelled').map((ar: any) => ar.id);
         if (idsToCancel.length > 0) {
@@ -188,40 +267,29 @@ async function syncFinancialRecords(saleOrderId: string) {
       return;
     }
 
-    // Only consider non-cancelled AR as "active". When a PV went Cancelado then
-    // back to Faturado, all prior rows are cancelled — treat that as "no AR" so
-    // a fresh row is inserted rather than silently skipping the update loop.
-    const activeAR = existingAR ? existingAR.filter((ar: any) => ar.status !== 'cancelled') : [];
+    // Cronograma de parcelas. payment_condition vira N rows em accounts_receivable.
+    // Cada parcela tem due_date = base + days[i] e amount = arTotal/N (centavos do
+    // resto vão pra última parcela). Factoring adiciona receiving_days à base e
+    // empurra pra max(hoje, delivery_deadline) (entrega "puxa" pra frente).
+    const schedule = computeARSchedule({
+      total: arTotal,
+      paymentCondition: so.payment_condition,
+      deliveryDeadline: so.delivery_deadline,
+      isFactoring: !!so.is_factoring,
+      factoringReceivingDays: factoringConfigForEntry?.receiving_days ?? null,
+    });
 
-    if (activeAR.length > 0) {
-      // Update existing receivable with current total
-      for (const ar of activeAR) {
-        if (ar.status !== 'received') {
-          const { error } = await supabase.from('accounts_receivable').update({
-            amount: arAmount,
-            due_date: dueDate,
-            client_name: so.client_name || '',
-            client_cnpj: so.client_cnpj || '',
-            description: `Pedido ${so.order_number || saleOrderId}${so.is_factoring ? ` (Factoring - Desc. R$${factoringDiscount.toFixed(2)})` : ''}`,
-          }).eq('id', ar.id);
-          must('Atualizar conta a receber existente', error);
-        }
-      }
-    } else {
-      // Create new receivable (no active non-cancelled AR exists)
-      const { error } = await supabase.from('accounts_receivable').insert({
-        sale_order_id: saleOrderId,
-        client_name: so.client_name || '',
-        client_cnpj: so.client_cnpj || '',
-        description: `Pedido ${so.order_number || saleOrderId}${so.is_factoring ? ` (Factoring - Desc. R$${factoringDiscount.toFixed(2)})` : ''}`,
-        category: 'venda',
-        due_date: dueDate,
-        amount: arAmount,
-        amount_received: 0,
-        status: 'pending',
-      });
-      must('Inserir conta a receber (Faturado)', error);
-    }
+    await reconcileARInstallments(saleOrderId, schedule, existingAR ?? [], {
+      client_name: so.client_name || '',
+      client_cnpj: so.client_cnpj || '',
+      category: 'venda',
+      description_for: (inst) => {
+        const base = `Pedido ${so.order_number || saleOrderId}`;
+        const installLabel = schedule.length > 1 ? ` (${inst.installment_number}/${schedule.length})` : '';
+        const factoringLabel = so.is_factoring ? ` (Factoring - Desc. R$${factoringDiscount.toFixed(2)})` : '';
+        return `${base}${installLabel}${factoringLabel}`;
+      },
+    });
 
     // Create financial entry for revenue tracking. Receita BRUTA (total) — desconto
     // factoring vai como despesa financeira separada abaixo. Convenção contábil:
@@ -297,54 +365,57 @@ async function syncFinancialRecords(saleOrderId: string) {
 
   // For Aprovado / Em Produção: create or update receivable
   if (so.status === 'Aprovado' || so.status === 'Em Produção') {
-    const dueDate = so.delivery_deadline || new Date().toISOString().split('T')[0];
-    // Only treat non-cancelled rows as "active" — all-cancelled means we must re-insert.
-    const activeAR = (existingAR || []).filter(ar => ar.status !== 'cancelled');
-    if (activeAR.length > 0) {
-      const idsToUpdate = activeAR
-        .filter(ar => ar.status !== 'received')
-        .map(ar => ar.id);
-      if (idsToUpdate.length > 0) {
-        const { error } = await supabase.from('accounts_receivable').update({
-          amount: total,
-          due_date: dueDate,
-          client_name: so.client_name || '',
-          client_cnpj: so.client_cnpj || '',
-          description: `PV ${so.order_number || saleOrderId} - ${so.client_name || ''}`,
-        }).in('id', idsToUpdate);
-        must('Atualizar contas a receber (Aprovado/Em Produção)', error);
-      }
-    } else if (total > 0) {
-      const { error } = await supabase.from('accounts_receivable').insert({
-        sale_order_id: saleOrderId,
-        client_name: so.client_name || '',
-        client_cnpj: so.client_cnpj || '',
-        description: `PV ${so.order_number || saleOrderId} - ${so.client_name || ''}`,
-        category: 'venda',
-        due_date: dueDate,
-        amount: total,
-        amount_received: 0,
-        status: 'pending',
-      });
-      must('Inserir conta a receber (Aprovado/Em Produção)', error);
-    }
+    if (total <= 0) return;
+    // Aprovado/Em Produção também já cria as parcelas conforme payment_condition.
+    // Sem desconto factoring nesse estágio (kick in só em Faturado): valor total
+    // dividido em N parcelas com due_date = delivery_deadline + days[i].
+    const schedule = computeARSchedule({
+      total,
+      paymentCondition: so.payment_condition,
+      deliveryDeadline: so.delivery_deadline,
+      isFactoring: false,
+      factoringReceivingDays: null,
+    });
+    await reconcileARInstallments(saleOrderId, schedule, existingAR ?? [], {
+      client_name: so.client_name || '',
+      client_cnpj: so.client_cnpj || '',
+      category: 'venda',
+      description_for: (inst) => {
+        const base = `PV ${so.order_number || saleOrderId} - ${so.client_name || ''}`;
+        return schedule.length > 1 ? `${base} (${inst.installment_number}/${schedule.length})` : base;
+      },
+    });
     return;
   }
 
-  // For other statuses (Expedido, Concluído, etc.): sync amount AND due_date
-  // so that delivery_deadline changes after Faturado are reflected in the AR
-  // and the cash-flow forecast stays accurate.
+  // For other statuses (Expedido, Concluído, etc.): sync amount AND due_date pra
+  // cada parcela ativa, recalculando o cronograma a partir do payment_condition
+  // atual e delivery_deadline atual. Preserva a estrutura de N parcelas que já
+  // foi criada em Aprovado/Faturado — não cria nem cancela rows aqui (qualquer
+  // mudança estrutural deve passar antes por Aprovado/Faturado de novo).
+  //
+  // Nota: não re-aplica desconto factoring (precisaria fetch da config). Mantém
+  // comportamento legacy — quem alterou qty após Faturado já lidava com isso.
   if (existingAR && existingAR.length > 0) {
-    const newDueDate = so.delivery_deadline || null;
+    const schedule = computeARSchedule({
+      total,
+      paymentCondition: so.payment_condition,
+      deliveryDeadline: so.delivery_deadline,
+      isFactoring: false,
+      factoringReceivingDays: null,
+    });
+    const byNum = new Map(schedule.map((s) => [s.installment_number, s]));
     for (const ar of existingAR) {
-      if (ar.status !== 'received' && ar.status !== 'cancelled') {
-        const updates: Record<string, any> = {};
-        if (ar.amount !== total) updates.amount = total;
-        if (newDueDate && ar.due_date !== newDueDate) updates.due_date = newDueDate;
-        if (Object.keys(updates).length > 0) {
-          const { error } = await supabase.from('accounts_receivable').update(updates).eq('id', ar.id);
-          must('Atualizar conta a receber', error);
-        }
+      if (ar.status === 'received' || ar.status === 'cancelled') continue;
+      const num = ar.installment_number ?? 1;
+      const inst = byNum.get(num);
+      if (!inst) continue; // row "órfã" do cronograma — não toca, será revisada se PV voltar pra Aprovado/Faturado
+      const updates: Record<string, any> = {};
+      if (Number(ar.amount) !== inst.amount) updates.amount = inst.amount;
+      if (ar.due_date !== inst.due_date) updates.due_date = inst.due_date;
+      if (Object.keys(updates).length > 0) {
+        const { error } = await supabase.from('accounts_receivable').update(updates).eq('id', ar.id);
+        must(`Atualizar parcela ${num} pós-Faturado`, error);
       }
     }
   }

@@ -43,6 +43,7 @@ import { autoCreateSolePO } from '@/lib/soleAutoPO';
 import { buildThermalLabelsHtml } from '@/lib/printLabels';
 import { openPrintWindow, writeRawPrintWindow } from '@/lib/printOrder';
 import { todayISO, todayPlusDaysISO } from '@/lib/date';
+import { computeARSchedule } from '@/lib/saleOrderAR';
 import logoImg from '@/assets/logo-squad-shoes.jpg';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { getValidNextStatuses } from '@/lib/saleOrderStateMachine';
@@ -988,16 +989,41 @@ export default function SaleOrders() {
           continue;
         }
 
-        // AR idempotency: only insert if no active AR row exists for this PV
+        // AR idempotency: agora 1 PV pode ter N parcelas (uma row por parcela do
+        // payment_condition). Conta as ativas (não-cancelled) por installment_number
+        // e só insere o que falta — preservando rows recebidas ou já criadas em
+        // execuções anteriores.
         const { data: existingBulkAR } = await supabase
           .from('accounts_receivable')
-          .select('id')
+          .select('installment_number, status')
           .eq('sale_order_id', order.id)
-          .neq('status', 'cancelled')
-          .limit(1);
-        if (!existingBulkAR || existingBulkAR.length === 0) {
-          const { error: arError } = await supabase.from('accounts_receivable').insert({ description: `PV ${order.order_number} - ${order.client_name}`, client_name: order.client_name, client_cnpj: order.client_cnpj || '', sale_order_id: order.id, category: 'venda', due_date: order.delivery_deadline || todayPlusDaysISO(30), amount: Number(order.total), amount_received: 0, status: 'pending', notes: order.payment_condition ? `Condição: ${order.payment_condition}` : '' } as any);
-          if (arError) { errors.push(`${order.order_number}: ${arError.message}`); continue; }
+          .neq('status', 'cancelled');
+        const existingNums = new Set((existingBulkAR ?? []).map((r) => r.installment_number ?? 1));
+        const bulkSchedule = computeARSchedule({
+          total: Number(order.total),
+          paymentCondition: order.payment_condition,
+          deliveryDeadline: order.delivery_deadline || todayPlusDaysISO(30),
+          isFactoring: false,
+          factoringReceivingDays: null,
+        });
+        for (const inst of bulkSchedule) {
+          if (existingNums.has(inst.installment_number)) continue;
+          const installLabel = bulkSchedule.length > 1 ? ` (${inst.installment_number}/${bulkSchedule.length})` : '';
+          const { error: arError } = await supabase.from('accounts_receivable').insert({
+            description: `PV ${order.order_number} - ${order.client_name}${installLabel}`,
+            client_name: order.client_name,
+            client_cnpj: order.client_cnpj || '',
+            sale_order_id: order.id,
+            category: 'venda',
+            due_date: inst.due_date,
+            amount: inst.amount,
+            amount_received: 0,
+            status: 'pending',
+            installment_number: inst.installment_number,
+            total_installments: inst.total_installments,
+            notes: order.payment_condition ? `Condição: ${order.payment_condition}` : '',
+          } as any);
+          if (arError) { errors.push(`${order.order_number}: ${arError.message}`); break; }
         }
         const { data: pvItems } = await supabase.from('sale_order_items').select('*').eq('sale_order_id', order.id);
         if (pvItems && pvItems.length > 0) {
