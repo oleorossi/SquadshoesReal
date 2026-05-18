@@ -458,14 +458,15 @@ ${LABEL_PRINT_HARDENING}
 }
 .page-container .label-slot-top .label-box,
 .page-container .label-slot-bottom .label-box{height:128mm;max-height:128mm;}
-/* Page-break: APENAS a versao moderna break-after. Antes tinha
-   page-break-after:always (legacy) duplicado, e o Chrome aplicava DOIS
-   breaks (1 do moderno, 1 do legacy) -> pagina em branco entre cada par.
-   break-before:auto explicito evita que algum reset CSS empurre um
-   break antes do primeiro container. */
-.page-container{break-before:auto;}
-.page-container.page-break{break-after:page;}
-.page-container:not(.page-break){break-after:avoid;}
+/* Page-break: precisa do par moderno + legacy juntos (Chrome 90+ usa
+   o moderno mas alguns engines de PDF/Preview ainda olham o legacy).
+   Tentar remover o legacy causou paginas em branco intercaladas no macOS
+   Preview (bug reportado 18/05/2026 14:00) — voltou pra dupla regra.
+   break-inside:avoid blinda o container contra qualquer split interno
+   indesejado entre slot top e slot bottom. */
+.page-container{break-inside:avoid !important;page-break-inside:avoid !important;}
+.page-container.page-break{break-after:page;page-break-after:always;}
+.page-container:not(.page-break){break-after:avoid;page-break-after:avoid;}
 /* Marcador de versão pra diferenciar do cache antigo no debug.
    display:none em print pra não disputar espaço/quebra com o conteúdo. */
 .print-version-marker{
