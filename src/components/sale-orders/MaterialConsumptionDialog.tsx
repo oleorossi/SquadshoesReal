@@ -379,18 +379,45 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
          }
 
         // Solado: resolver cor real via technical_sheet_sole_colors (mapeamento
-        // por cor do cabedal → produto-solado específico). Antes era hardcoded
-        // "preto/caramelo" — qualquer cor diferente caía em Caramelo (errado).
-        // Fallback: sheet.sole_color se cadastrado; senão deixa "—".
-        const soleProductIdResolved = soleColorMap.get(`${item.reference_id}::${orderColor}`) || null;
+        // por cor do cabedal → produto-solado específico). Match case/acento-
+        // insensitive — antes "Caramelo" vs "CARAMELO" não casava e a cor
+        // saía "—" mesmo com mapeamento cadastrado.
+        const orderColorNorm = (orderColor || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+        let soleProductIdResolved: string | null = null;
+        for (const [k, v] of soleColorMap.entries()) {
+          const [skId, skColor] = k.split('::');
+          if (skId !== item.reference_id) continue;
+          const kNorm = (skColor || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+          if (kNorm === orderColorNorm) { soleProductIdResolved = v; break; }
+        }
         const soleProduct = soleProductIdResolved
           ? (allProducts || []).find(p => p.id === soleProductIdResolved)
           : null;
-        const soleColor = soleProduct?.color || sheet?.sole_color || '—';
+        const soleColor = soleProduct?.color || orderColor || sheet?.sole_color || '—';
+
+        // Resumo de numerações pra coluna Aplicação. Quando OP tem grade,
+        // mostra "34: 1 · 35: 2 · ..." ou "34-40 (12)" se uniforme. Sem grade,
+        // fica "Solado" cru. Pedido em 18/05/2026 pelo user — quer ver
+        // numeração + cor no resumo de consumo do PV.
+        const grade = (item as any).grade as Record<string, number> | null | undefined;
+        const sizesSummary = (() => {
+          if (!grade || typeof grade !== 'object') return 'Solado';
+          const entries = Object.entries(grade)
+            .filter(([k, v]) => /^\d+$/.test(k) && Number(v) > 0)
+            .sort(([a], [b]) => Number(a) - Number(b));
+          if (entries.length === 0) return 'Solado';
+          const values = entries.map(([, v]) => Number(v));
+          const allEqual = values.every(v => v === values[0]);
+          if (allEqual && entries.length > 1) {
+            return `Nº ${entries[0][0]}–${entries[entries.length-1][0]} (${values[0]} pares cada)`;
+          }
+          return entries.map(([s, v]) => `Nº ${s}: ${v}`).join(' · ');
+        })();
+
         addConsumptionRow(consumptionMap, {
           componentType: 'Solado',
           groupName: soleProduct?.name || sheet?.sole_material || '',
-          materialName: 'Solado',
+          materialName: sizesSummary,
           productUnit: 'par',
           color: soleColor,
           totalQuantity: (Number(sheet?.sole_consumption) || 0) * itemQuantity,
