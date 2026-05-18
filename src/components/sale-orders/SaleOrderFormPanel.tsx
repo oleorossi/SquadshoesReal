@@ -690,43 +690,72 @@ export default function SaleOrderFormPanel({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="md:col-span-2">
-                  <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">Razão Social / Nome Fantasia *</Label>
-                  <Input
-                    value={form.client_name}
-                    onChange={e => setForm(f => ({ ...f, client_name: e.target.value }))}
-                    required
-                    className={`h-9 ${submitAttempted && !form.client_name ? 'border-destructive focus-visible:ring-destructive' : ''}`}
-                  />
+              {/* Razão Social + CNPJ ficam OCULTOS quando o cliente foi
+                  selecionado do cadastro — handleClientSelect já preencheu
+                  esses campos automaticamente, mostrar os inputs editáveis
+                  só duplicava a informação e confundia o operador (pedido
+                  do user em 18/05/2026: "1 cliente cadastra e ele joga pra
+                  cliente nome fantasia não faz sentido nenhum").
+                  Os campos só aparecem em modo "pedido avulso" (sem cliente
+                  do cadastro selecionado) pra digitar manualmente. */}
+              {selectedClientId ? (
+                <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2.5 flex items-center gap-3">
+                  <Info className="h-4 w-4 text-primary shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold truncate">{form.client_name || '—'}</p>
+                    {form.client_cnpj && (
+                      <p className="text-[11px] font-mono text-muted-foreground">{form.client_cnpj}</p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClientSelect('');
+                      setForm(f => ({ ...f, client_id: null as any, client_name: '', client_cnpj: '' }));
+                    }}
+                    className="text-[11px] text-muted-foreground hover:text-foreground underline shrink-0"
+                  >
+                    Trocar cliente
+                  </button>
                 </div>
-                <div>
-                  <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">CNPJ / CPF</Label>
-                  {(() => {
-                    /* Audit visual: validação leve de CNPJ/CPF — só conta dígitos.
-                       Aceita 11 (CPF) ou 14 (CNPJ). Não bloqueia submit, mas
-                       sinaliza visualmente formato inválido pra reduzir lixo
-                       no cadastro de clientes. */
-                    const digits = (form.client_cnpj || '').replace(/\D/g, '');
-                    const isInvalidLength = digits.length > 0 && digits.length !== 11 && digits.length !== 14;
-                    return (
-                      <>
-                        <Input
-                          value={form.client_cnpj}
-                          onChange={e => setForm(f => ({ ...f, client_cnpj: e.target.value }))}
-                          className={`h-9 font-mono ${isInvalidLength ? 'border-destructive focus-visible:ring-destructive' : ''}`}
-                          placeholder="00.000.000/0001-00 ou 000.000.000-00"
-                        />
-                        {isInvalidLength && (
-                          <p className="text-[10px] text-destructive mt-0.5">
-                            CNPJ deve ter 14 dígitos · CPF deve ter 11 dígitos. Tem {digits.length}.
-                          </p>
-                        )}
-                      </>
-                    );
-                  })()}
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="md:col-span-2">
+                    <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">
+                      Razão Social / Nome Fantasia *
+                      <span className="ml-2 text-[10px] text-muted-foreground/70 normal-case font-normal">(pedido avulso — sem cadastro)</span>
+                    </Label>
+                    <Input
+                      value={form.client_name}
+                      onChange={e => setForm(f => ({ ...f, client_name: e.target.value }))}
+                      required
+                      className={`h-9 ${submitAttempted && !form.client_name ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">CNPJ / CPF</Label>
+                    {(() => {
+                      const digits = (form.client_cnpj || '').replace(/\D/g, '');
+                      const isInvalidLength = digits.length > 0 && digits.length !== 11 && digits.length !== 14;
+                      return (
+                        <>
+                          <Input
+                            value={form.client_cnpj}
+                            onChange={e => setForm(f => ({ ...f, client_cnpj: e.target.value }))}
+                            className={`h-9 font-mono ${isInvalidLength ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                            placeholder="00.000.000/0001-00 ou 000.000.000-00"
+                          />
+                          {isInvalidLength && (
+                            <p className="text-[10px] text-destructive mt-0.5">
+                              CNPJ deve ter 14 dígitos · CPF deve ter 11 dígitos. Tem {digits.length}.
+                            </p>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
                 </div>
-              </div>
+              )}
             </CardContent>
           </Card>
 
