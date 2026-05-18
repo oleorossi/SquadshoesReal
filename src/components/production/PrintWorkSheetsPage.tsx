@@ -486,7 +486,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false, selectedSectors
     queryFn: async () => {
       const { data, error } = await supabase
         .from('technical_sheets')
-        .select('id, insole_has_lining, insole_ready_made, has_straps, sole_material, sole_color, mesa_daily_capacity, cutting_capacity_per_day, sewing_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, aviamento_steps')
+        .select('id, insole_has_lining, insole_ready_made, has_straps, sole_material, sole_color, mesa_daily_capacity, cutting_capacity_per_day, sewing_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, aviamento_steps, upper_material, lining_material, insole_material')
         .in('id', referenceIds);
       if (error) throw error;
       return data || [];
@@ -515,6 +515,20 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false, selectedSectors
     for (const s of sheetLiningFlags as any[]) {
       const raw = (s.sole_material || '').toString().trim();
       if (raw) m.set(s.id, raw);
+    }
+    return m;
+  }, [sheetLiningFlags]);
+
+  // Materiais principais (cabedal/forro/palmilha) por referência — usados
+  // pelo Relatório Gerencial pra mostrar detalhamento técnico de cada OP.
+  const sheetMaterialsByRef = useMemo(() => {
+    const m = new Map<string, { upper: string | null; lining: string | null; insole: string | null }>();
+    for (const s of sheetLiningFlags as any[]) {
+      m.set(s.id, {
+        upper: (s.upper_material || null) as string | null,
+        lining: (s.lining_material || null) as string | null,
+        insole: (s.insole_material || null) as string | null,
+      });
     }
     return m;
   }, [sheetLiningFlags]);
@@ -1208,10 +1222,19 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false, selectedSectors
             client_order_number: so.client_order_number,
             client_name: client?.razao_social || so.client_name || null,
             client_cnpj: client?.cnpj || so.client_cnpj || null,
+            client_ie: client?.inscricao_estadual || null,
+            client_phone: client?.telefone || null,
+            client_email: (client as any)?.email || null,
+            client_address: [client?.endereco, client?.bairro, client?.cep].filter(Boolean).join(' · ') || null,
             client_city: client?.cidade || null,
+            client_state: client?.estado || null,
+            client_logo_url: client?.logo_url || client?.silk_url || null,
+            representative: (so as any).representative || (so as any).representante || null,
+            payment_condition: (so as any).payment_condition || (so as any).condicao_pagamento || null,
             delivery_deadline: so.delivery_deadline,
             status: so.status,
             total_value: (so as any).total ?? (so as any).total_value ?? null,
+            notes: (so as any).notes || (so as any).observacoes || null,
           },
           reportOrders: [],
         });
@@ -1219,6 +1242,59 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false, selectedSectors
       const g = map.get(so.id)!;
       const costKey = `${so.id}::${order.reference_id || ''}::${(order.color || '').toLowerCase()}`;
       const cost = costsBySaleAndRef.get(costKey);
+
+      // Imagem: cascata variante-exata > variante-Preto > ficha-técnica
+      const orderColorLower = (order.color || '').toLowerCase();
+      const orderVariants = variantsByRef.get(order.reference_id) || [];
+      const exactImg = orderVariants.find(v => (v.color || '').toLowerCase() === orderColorLower)?.image_url;
+      const pretoImg = !exactImg
+        ? orderVariants.find(v => v.image_url && /^preto$/i.test((v.color || '').trim()))?.image_url
+        : null;
+      const tsImg = tsImageByRef.get(order.reference_id) || null;
+
+      // Silk via cascata padrão (cliente/grupo/solado/squad).
+      const silkInfo = getOrderSilk(order);
+
+      // Materiais técnicos da ficha.
+      const mats = sheetMaterialsByRef.get(order.reference_id) || { upper: null, lining: null, insole: null };
+
+      // Tiras configuradas no item de venda (ordenadas por id numérico).
+      const strapColorsRaw = Array.isArray((order as any).strap_colors)
+        ? ((order as any).strap_colors as Array<any>)
+        : [];
+      const straps = [...strapColorsRaw]
+        .sort((a: any, b: any) => {
+          const ka = parseInt(a?.id, 10);
+          const kb = parseInt(b?.id, 10);
+          if (isFinite(ka) && isFinite(kb)) return ka - kb;
+          return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
+        })
+        .map((s: any) => ({
+          label: s?.label || undefined,
+          color: s?.color || undefined,
+          group_name: s?.group_name || undefined,
+        }));
+
+      // Grade escalada pra pares reais (igual ao Expedição).
+      const baseGrid = ((order as any).grid as Record<string, number>) || {};
+      const baseSum = Object.values(baseGrid).reduce((s: number, v) => s + (Number(v) || 0), 0);
+      const orderTotal = Number(order.total_pairs ?? 0);
+      const mult = baseSum > 0 ? orderTotal / baseSum : 0;
+      const scaledGrade: Record<string, number> = {};
+      for (const [size, qty] of Object.entries(baseGrid)) {
+        const s = Math.round((Number(qty) || 0) * mult);
+        if (s > 0) scaledGrade[size] = s;
+      }
+
+      // Pares/caixa do solado.
+      const soleMapping = (soleMappings as any[]).find(
+        (m: any) => m.sheet_id === order.reference_id && (m.product_color || '').toLowerCase() === orderColorLower,
+      );
+      const soleGroupId = (soleMapping as any)?.products?.product_group_id ?? null;
+      const pairsPerBox = soleGroupId
+        ? ((soleGroupPackaging as any[]).find((g: any) => g.id === soleGroupId)?.pairs_per_box_individual ?? null)
+        : null;
+
       g.reportOrders.push({
         id: order.id,
         op_number: order.op_number,
@@ -1226,10 +1302,19 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false, selectedSectors
         reference_name: order.reference_name,
         color: order.color,
         sole_name: resolveSoleName(order),
-        total_pairs: order.total_pairs ?? 0,
+        total_pairs: orderTotal,
         status: order.status,
         due_date: order.due_date,
         stages: stagesByOrderId.get(order.id) || [],
+        image_url: exactImg || pretoImg || tsImg || null,
+        silk_url: silkInfo?.silk_url || null,
+        silk_name: silkInfo?.silk_name || null,
+        grade: Object.keys(scaledGrade).length > 0 ? scaledGrade : null,
+        straps,
+        upper_material: mats.upper,
+        lining_material: mats.lining,
+        insole_material: mats.insole,
+        pairs_per_box: pairsPerBox,
         cost: cost ? {
           material_cost: Number(cost.material_cost) || 0,
           labor_cost: Number(cost.labor_cost) || 0,
@@ -1246,7 +1331,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, printAll = false, selectedSectors
     return Array.from(map.values()).sort((a, b) =>
       (a.saleOrder.order_number || '').localeCompare(b.saleOrder.order_number || ''),
     );
-  }, [orders, saleOrders, clientsInfo, soleMappings, soleGroupPackaging, orderCosts, orderStagesData, selectedSector, printAll, selectedSectors, isMultiMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders, saleOrders, clientsInfo, soleMappings, soleGroupPackaging, orderCosts, orderStagesData, selectedSector, printAll, selectedSectors, isMultiMode, variantsByRef, tsImageByRef, sheetMaterialsByRef]);
 
   // ── Sheet count for print button label ───────────────────────────────────────
   const sheetCount =
