@@ -371,6 +371,8 @@ export default function SaleOrderFormPanel({
   const { canSeeFinancialValues } = useAccessControl();
   const selectedRep = representatives.find(r => r.id === form.representative);
   const selectedClient = clients.find(c => c.id === selectedClientId);
+  const { data: factoringConfigs = [] } = useFactoringConfigs();
+  const selectedFactoringConfig = factoringConfigs.find(c => c.id === form.factoring_config_id);
 
   // Defaults comerciais do cliente OU do grupo econômico (precedência cliente > grupo).
   // Pré-popula campos vazios quando o cliente é selecionado pela primeira vez.
@@ -748,31 +750,47 @@ export default function SaleOrderFormPanel({
                 <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">Condição de Pagamento</Label>
                 <Input value={form.payment_condition} onChange={e => setForm(f => ({ ...f, payment_condition: e.target.value }))} className="h-9" placeholder="Ex: 30/60/90 DIAS" />
                 {(() => {
-                  const installments = parsePaymentConditionInstallments(form.payment_condition);
-                  if (installments.length === 0) return null;
-                  const base = new Date();
-                  base.setHours(0, 0, 0, 0);
-                  const dates = installments.map((days) => {
-                    const d = new Date(base);
-                    d.setDate(d.getDate() + days);
-                    return d;
-                  });
-                  const fmt = (d: Date) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
-                  const summary = installments.length === 1
-                    ? `1 parcela — vence em ${fmt(dates[0])}`
-                    : `${installments.length} parcelas — 1ª em ${fmt(dates[0])}, última em ${fmt(dates[dates.length - 1])}`;
-                  return (
-                    <div className="mt-2 rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs">
-                      <div className="font-semibold text-foreground">{summary}</div>
-                      <div className="text-[10px] text-muted-foreground mb-1.5">Base: hoje ({fmt(base)}) — quando faturar, a base passa a ser a data de faturamento.</div>
-                      <div className="flex flex-wrap gap-x-3 gap-y-1">
-                        {dates.map((d, i) => (
-                          <span key={i} className="whitespace-nowrap">
-                            <span className="text-muted-foreground">{i + 1}ª ({installments[i]}d):</span>{' '}
-                            <span className="font-medium text-foreground">{fmt(d)}</span>
-                          </span>
-                        ))}
+                  // Preview da data de vencimento que SERÁ gerada em accounts_receivable
+                  // ao faturar. Espelha a lógica de syncFinancialRecords em useSaleOrders.ts:
+                  //   - sem factoring: due_date = delivery_deadline (ou hoje se faltar)
+                  //   - com factoring: due_date = max(hoje, delivery_deadline) + receiving_days
+                  // Importante: payment_condition (30/60/90) NÃO afeta a data — só entra no
+                  // cálculo do desconto factoring. Por isso só uma data é exibida.
+                  if (!form.delivery_deadline) {
+                    return (
+                      <div className="mt-2 text-[11px] text-muted-foreground">
+                        Defina mês + semana de faturamento abaixo pra ver a data de vencimento que cairá no A/R.
                       </div>
+                    );
+                  }
+                  const fmt = (d: Date) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                  const today = new Date(); today.setHours(0, 0, 0, 0);
+                  const deadline = new Date(form.delivery_deadline + 'T00:00:00');
+                  let dueDate: Date;
+                  let formula: string;
+                  if (form.is_factoring && selectedFactoringConfig) {
+                    const base = deadline > today ? new Date(deadline) : new Date(today);
+                    base.setDate(base.getDate() + selectedFactoringConfig.receiving_days);
+                    dueDate = base;
+                    const baseLabel = deadline > today ? 'faturamento' : 'hoje';
+                    formula = `${baseLabel} (${fmt(deadline > today ? deadline : today)}) + ${selectedFactoringConfig.receiving_days}d factoring`;
+                  } else {
+                    dueDate = deadline;
+                    formula = `data de faturamento`;
+                  }
+                  const installments = parsePaymentConditionInstallments(form.payment_condition);
+                  return (
+                    <div className="mt-2 rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs space-y-1">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-muted-foreground">Vencimento ao faturar:</span>
+                        <span className="text-sm font-bold text-foreground">{fmt(dueDate)}</span>
+                      </div>
+                      <div className="text-[10px] text-muted-foreground">Origem: {formula}</div>
+                      {installments.length > 1 && (
+                        <div className="text-[10px] text-amber-600 dark:text-amber-500">
+                          Aviso: o prazo {installments.join('/')} foi informado mas o sistema gera apenas 1 parcela em accounts_receivable. O prazo só afeta o cálculo do desconto factoring.
+                        </div>
+                      )}
                     </div>
                   );
                 })()}
