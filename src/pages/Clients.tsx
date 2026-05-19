@@ -21,6 +21,7 @@ import {
 } from '@/hooks/useClients';
 import ClientFormDialog from '@/components/clients/ClientFormDialog';
 import ExcelImportDialog from '@/components/clients/ExcelImportDialog';
+import { ImportClientsDialog } from '@/components/clients/ImportClientsDialog';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
@@ -79,6 +80,7 @@ export default function Clients() {
   });
 
   const [excelDialog, setExcelDialog] = useState(false);
+  const [importSmartOpen, setImportSmartOpen] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [addStoreDialog, setAddStoreDialog] = useState(false);
   const [storeSearch, setStoreSearch] = useState('');
@@ -266,6 +268,12 @@ export default function Clients() {
           sectionLabel="COMERCIAL · CLIENTES"
           title="Clientes"
           description="Cadastro de lojistas e grupos econômicos"
+          actions={
+            <Button variant="outline" onClick={() => setImportSmartOpen(true)} className="gap-2" title="Importar lojistas de Excel, PDF, Word ou imagem (IA)">
+              <FileUp className="h-4 w-4" />
+              <span className="hidden sm:inline">Importar Clientes</span>
+            </Button>
+          }
         />
 
         <Tabs defaultValue="clients">
@@ -507,6 +515,8 @@ export default function Clients() {
         economicGroups={economicGroups}
         onSubmit={handleClientSubmit}
       />
+
+      <ImportClientsDialog open={importSmartOpen} onOpenChange={setImportSmartOpen} />
 
       <ExcelImportDialog
         open={excelDialog}

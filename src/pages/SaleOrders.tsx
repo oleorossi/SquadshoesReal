@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { getSignedUrl } from '@/lib/getSignedUrl';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown as ChevronDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand } from '@phosphor-icons/react';
+import { ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown as ChevronDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload } from '@phosphor-icons/react';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { BulkActionsBar, MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
 import { cn } from "@/lib/utils";
@@ -28,6 +28,7 @@ import { useClients, useEconomicGroups } from '@/hooks/useClients';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import SaleOrderFormPanel from '@/components/sale-orders/SaleOrderFormPanel';
+import { ImportClientsDialog } from '@/components/clients/ImportClientsDialog';
 import { useAuth } from '@/hooks/useAuth';
 import { useAccessControl } from '@/hooks/useAccessControl';
 import { useEmitNfe, useNfeEmitidas, useCheckNfeStatus, useCancelNfe, useCompanies } from '@/hooks/useNfe';
@@ -276,6 +277,7 @@ export default function SaleOrders() {
   const [filterSegment, setFilterSegment] = usePersistedState<string>('filterSegment', 'all');
   const [filterMonth, setFilterMonth] = usePersistedState<string>('filterMonth', 'all');
   const [showFilters, setShowFilters] = usePersistedState('showFilters', false);
+  const [importClientsOpen, setImportClientsOpen] = useState(false);
   const [mainTab, setMainTab] = usePersistedState<string>('saleOrderMainTab', 'ativos');
 
   // Derived data
@@ -1308,6 +1310,10 @@ export default function SaleOrders() {
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">Novo Pedido</span>
             </Button>
+            <Button variant="outline" onClick={() => setImportClientsOpen(true)} className="gap-2" title="Importar lojistas de arquivo (Excel/PDF/Word/Imagem)">
+              <Upload className="h-4 w-4" />
+              <span className="hidden sm:inline">Importar Clientes</span>
+            </Button>
             <Button
               variant="outline"
               onClick={() => {
@@ -1876,6 +1882,9 @@ export default function SaleOrders() {
           { label: 'Exportar', icon: <Download className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkExport },
         ]}
       />
+
+      {/* IMPORT CLIENTS DIALOG */}
+      <ImportClientsDialog open={importClientsOpen} onOpenChange={setImportClientsOpen} />
 
       {/* NEW ORDER DIALOG */}
       <Dialog open={dialogOpen} onOpenChange={closeCreateDialog}>
