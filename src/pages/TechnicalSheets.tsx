@@ -1808,25 +1808,13 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         return null;
       }
 
-      // Try sole_technical_specs first (per-size consumption_dm2 → convert to template grid)
-      const { data: specs } = await supabase
-        .from('sole_technical_specs')
-        .select('size')
-        .eq('sole_id', soleProduct.id);
-
-      const sizes = parseSizesFromRange(form.sizes, form.shoe_category);
+      // Aplica conjugações: 23/24 vira 1 entrada (key conjugado) em vez de
+      // 23 e 24 separados — alinhado com o débito de estoque do solado.
+      const sizes: (string | number)[] = soleSizeKeys.length > 0
+        ? soleSizeKeys
+        : parseSizesFromRange(form.sizes, form.shoe_category);
       const grid: Record<string, number> = {};
       sizes.forEach(s => { grid[String(s)] = 0; });
-
-      if (specs && specs.length > 0) {
-        // Just fill the grid template with sizes that exist in sole specs (value 0 for user to fill)
-        const knownSizes = new Set(specs.map(s => String(s.size)));
-        sizes.forEach(s => {
-          if (knownSizes.has(String(s))) grid[String(s)] = 0;
-        });
-        return grid;
-      }
-
       return grid;
     } catch (err: any) {
       console.error("Error fetching sole grade:", err);
