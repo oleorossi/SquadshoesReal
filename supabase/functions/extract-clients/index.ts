@@ -158,12 +158,10 @@ serve(async (req) => {
       },
     });
 
-    // Tenta cada modelo em ordem. 429/503 num modelo → tenta o próximo.
-    // 4xx outros (400/401/403) são erros do cliente — para imediato.
+    // Tenta cada modelo em ordem. 4xx (exceto 429) param imediato.
+    // 429/503/5xx → tenta o próximo modelo.
+    const attempts: Array<{ model: string; status: number; detail: string }> = [];
     let response: Response | null = null;
-    let lastErrText = "";
-    let lastStatus = 0;
-    let usedModel = "";
     for (const model of MODELS) {
       const r = await fetch(`${geminiUrl(model)}?key=${GEMINI_API_KEY}`, {
         method: "POST",
@@ -172,47 +170,38 @@ serve(async (req) => {
       });
       if (r.ok) {
         response = r;
-        usedModel = model;
         console.log(`[extract-clients] OK com modelo ${model}`);
         break;
       }
-      lastErrText = await r.text();
-      lastStatus = r.status;
-      console.warn(`[extract-clients] ${model} retornou ${r.status}: ${lastErrText.slice(0, 300)}`);
-      // 401/403/400 = erro estável — tentar outro modelo não ajuda.
+      const errText = await r.text();
+      let geminiMsg = "";
+      try { geminiMsg = JSON.parse(errText)?.error?.message || ""; } catch { geminiMsg = errText.slice(0, 300); }
+      attempts.push({ model, status: r.status, detail: geminiMsg });
+      console.warn(`[extract-clients] ${model} → ${r.status}: ${geminiMsg.slice(0, 300)}`);
+      // 400/401/403 = erro do cliente (key/request) — não adianta tentar outro modelo.
       if (r.status === 400 || r.status === 401 || r.status === 403) break;
-      // 429/503 = capacidade/quota — pula pro próximo modelo.
     }
 
     if (!response) {
-      console.error("Gemini API esgotou todos os modelos. Último:", lastStatus, lastErrText.slice(0, 500));
-      if (lastStatus === 429) {
-        let detail = "";
-        try { detail = JSON.parse(lastErrText)?.error?.message || ""; } catch { detail = lastErrText.slice(0, 300); }
-        return new Response(JSON.stringify({
-          error: `Cota do Gemini esgotada em todos os modelos free (${MODELS.join(", ")}). ${detail || "Tente em ~1 minuto, ou habilite billing no Google AI Studio pra subir o tier."}`,
-        }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+      // Resposta carrega TODAS as tentativas no campo `attempts` pro user/dev
+      // entender o que cada modelo retornou. Status HTTP retornado = pior da
+      // cadeia (último que falhou), mas a UI pode ler `attempts[]` pra detalhe.
+      const lastStatus = attempts[attempts.length - 1]?.status ?? 500;
+      const summary = attempts.map(a => `${a.model}: ${a.status} ${a.detail.slice(0, 120)}`).join(" | ");
+      console.error(`[extract-clients] Falhou em todos os modelos. ${summary}`);
+      let userError = "";
+      if (attempts.every(a => a.status === 429)) {
+        userError = `Cota do Gemini esgotada em todos modelos free. Detalhes: ${summary}. Habilite billing em https://aistudio.google.com/app/apikey ou tente em alguns minutos.`;
+      } else if (attempts.some(a => a.status === 401 || a.status === 403)) {
+        userError = `GEMINI_API_KEY inválida ou sem permissão. Detalhes: ${summary}`;
+      } else if (attempts.some(a => a.status === 400)) {
+        userError = `Requisição inválida — arquivo possivelmente grande demais ou corrompido. Detalhes: ${summary}`;
+      } else {
+        userError = `Falha ao consultar Gemini. Detalhes: ${summary}`;
       }
-      if (lastStatus === 401 || lastStatus === 403) {
-        return new Response(JSON.stringify({
-          error: "GEMINI_API_KEY inválida ou sem permissão. Confira em Supabase → Edge Functions → Secrets.",
-        }), {
-          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (lastStatus === 400) {
-        let detail = "";
-        try { detail = JSON.parse(lastErrText)?.error?.message || ""; } catch { detail = lastErrText.slice(0, 200); }
-        return new Response(JSON.stringify({
-          error: `Requisição inválida (400): ${detail || "arquivo possivelmente grande demais ou corrompido"}.`,
-        }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      return new Response(JSON.stringify({ error: `Erro ao consultar Gemini (HTTP ${lastStatus})` }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      return new Response(JSON.stringify({ error: userError, attempts }), {
+        status: lastStatus >= 400 && lastStatus < 600 ? lastStatus : 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
