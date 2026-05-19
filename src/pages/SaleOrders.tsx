@@ -29,6 +29,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import SaleOrderFormPanel from '@/components/sale-orders/SaleOrderFormPanel';
 import { ImportClientsDialog } from '@/components/clients/ImportClientsDialog';
+import { BulkNfeDialog } from '@/components/nfe/BulkNfeDialog';
 import { useAuth } from '@/hooks/useAuth';
 import { useAccessControl } from '@/hooks/useAccessControl';
 import { useEmitNfe, useNfeEmitidas, useCheckNfeStatus, useCancelNfe, useCompanies } from '@/hooks/useNfe';
@@ -278,6 +279,8 @@ export default function SaleOrders() {
   const [filterMonth, setFilterMonth] = usePersistedState<string>('filterMonth', 'all');
   const [showFilters, setShowFilters] = usePersistedState('showFilters', false);
   const [importClientsOpen, setImportClientsOpen] = useState(false);
+  const [bulkNfeOpen, setBulkNfeOpen] = useState(false);
+  const [bulkNfeMode, setBulkNfeMode] = useState<'preview' | 'emit'>('preview');
   const [mainTab, setMainTab] = usePersistedState<string>('saleOrderMainTab', 'ativos');
 
   // Derived data
@@ -682,6 +685,26 @@ export default function SaleOrders() {
     const list = selectedIds.size > 0 ? filteredOrders.filter(o => selectedIds.has(o.id)) : filteredOrders;
     handleExportSaleOrdersExcel(list);
   };
+
+  /** Abre BulkNfeDialog com os PVs selecionados.
+   * mode='preview': só mostra previews lado a lado.
+   * mode='emit': preview + botão grande de emitir todas em sequência. */
+  const openBulkNfe = (mode: 'preview' | 'emit') => {
+    if (selectedIds.size === 0) {
+      toast.info('Selecione pelo menos um pedido.');
+      return;
+    }
+    setBulkNfeMode(mode);
+    setBulkNfeOpen(true);
+  };
+
+  const bulkNfeOrders = useMemo(() => {
+    return orders.filter(o => selectedIds.has(o.id)).map(o => ({
+      id: o.id,
+      order_number: o.order_number,
+      client_name: o.client_name,
+    }));
+  }, [orders, selectedIds]);
 
   const handleOpenSummary = async () => {
     if (selectedIds.size === 0) { toast.info('Selecione pelo menos um pedido.'); return; }
@@ -1893,11 +1916,21 @@ export default function SaleOrders() {
         itemLabel={sel.count === 1 ? 'PV selecionado' : 'PVs selecionados'}
         actions={[
           { label: 'Aprovar', icon: <Check className="h-3.5 w-3.5" />, onClick: handleBulkApprove },
+          { label: 'Pré-visualizar NF-e', icon: <Receipt className="h-3.5 w-3.5" />, variant: 'outline', onClick: () => openBulkNfe('preview') },
+          { label: 'Emitir NF-e', icon: <Receipt className="h-3.5 w-3.5" />, onClick: () => openBulkNfe('emit') },
           { label: 'Cancelar', icon: <X className="h-3.5 w-3.5" />, variant: 'destructive', onClick: handleBulkCancel },
           { label: 'Excluir', icon: <Trash2 className="h-3.5 w-3.5" />, variant: 'destructive', onClick: handleBulkDelete },
           { label: 'Imprimir Fichas', icon: <Printer className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkPrint },
           { label: 'Exportar', icon: <Download className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkExport },
         ]}
+      />
+
+      {/* Preview + Emit NF-e em LOTE — accordion com 1 NF por PV */}
+      <BulkNfeDialog
+        open={bulkNfeOpen}
+        onOpenChange={setBulkNfeOpen}
+        saleOrders={bulkNfeOrders}
+        mode={bulkNfeMode}
       />
 
       {/* IMPORT CLIENTS DIALOG */}
