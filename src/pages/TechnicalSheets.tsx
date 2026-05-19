@@ -135,6 +135,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { SignedImage } from '@/components/ui/signed-image';
+import { useDisplaySizeKeys } from '@/lib/soleGradeKeys';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { FileText, Plus, Trash as Trash2, PencilSimple as Pencil, CircleNotch as Loader2, Package, Copy, MagnifyingGlass as Search, Stack as Layers, Scissors, Drop as Droplets, Shield, Cube as Box, Footprints, FloppyDisk as Save, Wrench, Tag, ImageSquare as ImagePlus, Warning as AlertTriangle, ClockCounterClockwise as History, Factory, MagicWand as Wand2, ArrowsClockwise as RefreshCw, Gauge, ArrowLeft, ClipboardText as ClipboardCopy, Lock, Palette, CurrencyDollar as DollarSign } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
@@ -1264,6 +1265,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
   const { data: products = [] } = useProducts();
   const { data: sheetMaterials = [] } = useSheetMaterials(sheet.id);
   const { data: soleColorMappings = [] } = useSoleColorMappings(sheet.id);
+  // soleSizeKeys deve refletir a grade do solado com conjugações aplicadas
+  // (ex: solado com 23/24 conjugado mostra "23/24" em vez de "23" e "24"
+  // separados). Usado em todas as tabelas por numeração: cabedal, forro,
+  // palmilha, fachete, tiras. Vazia até o solado ser selecionado.
   const upsertSoleColor = useUpsertSoleColorMapping();
    const { data: palmilhaColorMappings = [] } = usePalmilhaColorMappings(sheet.id);
    const upsertPalmilhaColor = useUpsertPalmilhaColorMapping();
@@ -1350,6 +1355,19 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
     setForm(f);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sheet.id, sheet.updated_at]);
+
+  // Grade de tamanhos do solado com conjugações aplicadas (ex: 23/24 vira
+  // 1 entrada em vez de 23 + 24). Bug visto em 19/05/2026: tabela "Consumo
+  // por Numeração" só listava individuais, então consumo dos conjugados
+  // ficava sempre 0 e BOM custo saía errado.
+  const soleSizeKeysNumeric = useMemo(
+    () => parseSizesFromRange(form.sizes, form.shoe_category),
+    [form.sizes, form.shoe_category],
+  );
+  const soleSizeKeys = useDisplaySizeKeys({
+    sizes: soleSizeKeysNumeric,
+    soleGroupId: form.sole_group_id,
+  });
 
   // Set de campos recentemente importados/auto-preenchidos. Cada entrada
   // some sozinha após 2s. Usado pra aplicar flash verde nas linhas/inputs
@@ -2426,7 +2444,16 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                     || (products || []).find((p: any) => p.group_id === g.id && (p.unit || '').trim());
                   return (prod?.unit || '').toString().trim() || 'un';
                 };
-                const cabedalSizes = parseSizesFromRange(form.sizes, form.shoe_category);
+                // Tamanhos numéricos individuais (35, 36, 37...) e a versão
+                // com conjugações aplicadas (substitui 23,24 → "23/24" quando
+                // o solado tem conjugação cadastrada). Usar a lista conjugada
+                // pra renderizar a grade — assim o user só preenche 1 célula
+                // por conjugação, alinhada com o débito de estoque (que usa
+                // get_sole_size_key() pra resolver o key conjugado).
+                const cabedalSizesNumeric = parseSizesFromRange(form.sizes, form.shoe_category);
+                const cabedalSizes: (string | number)[] = soleSizeKeys.length > 0
+                  ? soleSizeKeys
+                  : cabedalSizesNumeric;
 
                 // Renderiza grade de consumo por numeração (em metros/par)
                 const renderSizeGrid = (
@@ -2869,7 +2896,11 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
              const insoleMode = (soleProd as any)?.insole_mode || 'cortar';
              const insoleIsPronta = insoleMode === 'pronta_na_cor';
  
-            const sizes = parseSizesFromRange(form.sizes, form.shoe_category);
+            // Usa keys com conjugações aplicadas (mesmo critério da tabela
+            // INLINE acima). 23/24 vira 1 célula em vez de 23+24 separados.
+            const sizes: (string | number)[] = soleSizeKeys.length > 0
+              ? soleSizeKeys
+              : parseSizesFromRange(form.sizes, form.shoe_category);
             // Resolves the measurement unit for a group name, used to label input fields.
             // FIX: prioriza consumption_unit/dimensions_unit do grupo (unidade canônica
             // de BOM). Antes pulava direto pro product.unit (unidade de estoque, ex:
@@ -3090,7 +3121,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
 
                 {/* Handling time — only for strap models */}
                 {(form.strap_colors || []).map((strap: any, idx: number) => {
-                  const strapSizes = parseSizesFromRange(form.sizes, form.shoe_category);
+                  // Conjugações aplicadas (23/24 vira 1 célula).
+                  const strapSizes: (string | number)[] = soleSizeKeys.length > 0
+                    ? soleSizeKeys
+                    : parseSizesFromRange(form.sizes, form.shoe_category);
                   const consumptionPerSize: Record<string, number> = strap.consumption_per_size || {};
                   const filledSizes = strapSizes.filter(s => (consumptionPerSize[String(s)] || 0) > 0);
                   const avgConsumption = filledSizes.length > 0
