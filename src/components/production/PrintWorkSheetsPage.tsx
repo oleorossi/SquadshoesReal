@@ -839,7 +839,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     // Renderiza se qualquer setor sole+cor estiver marcado.
     const wantsAnySoleColorSector = SOLE_COLOR_GROUPED_SECTORS.some(s => activeSectors.has(s));
     if (!wantsAnySoleColorSector) return null;
-    const soleMap = new Map<string, Map<string, SilkColorGroup>>();
+    // Map: soleKey → { displayName, colorMap }. soleKey é a IDENTIDADE do
+    // solado (sole_product_id quando há mapping real; sheetId quando cai no
+    // fallback de sole_material textual). displayName é o NOME a exibir no
+    // header da ficha (getBaseName do produto ou do textual).
+    const soleMap = new Map<string, { displayName: string; colorMap: Map<string, SilkColorGroup> }>();
 
     // Assinatura ordenada das tiras de uma OP. Usada como sufixo na chave de
     // agrupamento: OPs com mesmo (solado, cor cabedal) mas tiras de cores
@@ -883,9 +887,21 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       const soleName = rawSoleName
         ? getBaseName(rawSoleName)
         : (fallbackSole ? getBaseName(fallbackSole) : 'Sem Solado');
+      // Chave de agrupamento por SOLADO. Quando há mapping real em
+      // technical_sheet_sole_colors, usa sole_product_id pra agrupar fichas
+      // que usam o MESMO produto solado (legítimo). Quando cai no fallback
+      // textual (sole_material), usa sheetId pra evitar que fichas distintas
+      // com mesmo label "01" colidam num único card (bug reportado em
+      // 2026-05-19: SP117 e SP119 com sole_material='01' fundiam-se e a
+      // segunda OP era engolida pela primeira processada).
+      const soleProductId = (soleMapping as any)?.sole_product_id || null;
+      const soleKey = soleProductId
+        ? `pid::${soleProductId}`
+        : (fallbackSole ? `txt::${sheetId}` : 'none');
 
-      if (!soleMap.has(soleName)) soleMap.set(soleName, new Map());
-      const colorMap = soleMap.get(soleName)!;
+      if (!soleMap.has(soleKey)) soleMap.set(soleKey, { displayName: soleName, colorMap: new Map() });
+      const soleEntry = soleMap.get(soleKey)!;
+      const colorMap = soleEntry.colorMap;
 
       if (!colorMap.has(colorKey)) {
         // Sempre calcula silk + alerts (independente do sector). O componente
@@ -982,11 +998,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       cg.totalPairs = Object.values(cg.combinedGrid).reduce((s, v) => s + v, 0);
     }
 
-    return Array.from(soleMap.entries())
-      .map(([soleName, colorMap]) => {
+    return Array.from(soleMap.values())
+      .map(({ displayName, colorMap }) => {
         const colorGroups = Array.from(colorMap.values()).sort((a, b) => a.color.localeCompare(b.color, 'pt-BR'));
         const totalPairs = colorGroups.reduce((s, g) => s + g.totalPairs, 0);
-        return { soleName, colorGroups, totalPairs };
+        return { soleName: displayName, colorGroups, totalPairs };
       })
       .sort((a, b) => a.soleName.localeCompare(b.soleName, 'pt-BR'));
   // eslint-disable-next-line react-hooks/exhaustive-deps
