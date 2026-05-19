@@ -12,6 +12,7 @@ import { useBankHoursBalances } from '@/hooks/useRH';
 import {
   LineChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid,
 } from 'recharts';
+import { KPIsRH } from './KPIsRH';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const fmtMin = (m: number): string => {
@@ -253,6 +254,9 @@ export default function PainelRH({ onNavigateTab }: Props) {
           </CardContent>
         </Card>
       </div>
+
+      {/* KPIs derivados do ponto + folha — absenteísmo, HE%, custo HE, funcs c/ HE */}
+      <KPIsRH />
 
       {/* Alertas que pedem ação */}
       {alertCount > 0 && (
