@@ -68,7 +68,7 @@ export function NfeViewerDialog({ nfe, open, onOpenChange, clientLabel, orderNum
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[92vh] flex flex-col p-0 gap-0">
+      <DialogContent className="w-[90vw] max-w-5xl max-h-[92vh] flex flex-col p-0 gap-0">
         <DialogHeader className="px-6 pt-5 pb-3 border-b border-border/60">
           <DialogTitle className="flex items-center gap-3 flex-wrap">
             <FileText className="h-5 w-5 text-muted-foreground" />

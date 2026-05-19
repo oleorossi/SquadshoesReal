@@ -142,7 +142,7 @@ export function BulkNfeDialog({ open, onOpenChange, saleOrders, mode }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-4xl max-h-[92vh] overflow-y-auto">
+      <DialogContent className="w-[95vw] max-w-6xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Receipt className="h-5 w-5 text-primary" />

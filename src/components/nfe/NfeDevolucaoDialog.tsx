@@ -96,7 +96,7 @@ export function NfeDevolucaoDialog({ open, onOpenChange, nfeId, nfeNumero, saleO
 
   return (
     <Dialog open={open} onOpenChange={(v) => !emitDevolucao.isPending && onOpenChange(v)}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="w-[95vw] max-w-5xl max-h-[92vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <RotateCcw className="h-5 w-5 text-primary" />

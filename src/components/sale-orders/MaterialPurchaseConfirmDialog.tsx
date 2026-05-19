@@ -154,7 +154,7 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[95vw] max-w-4xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <SubmitFlowStepper current="material" />
           <DialogTitle className="flex items-center gap-2">

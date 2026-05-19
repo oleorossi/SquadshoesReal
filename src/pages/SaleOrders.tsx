@@ -1970,7 +1970,7 @@ export default function SaleOrders() {
 
       {/* NEW ORDER DIALOG */}
       <Dialog open={dialogOpen} onOpenChange={closeCreateDialog}>
-        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[95vw] max-w-5xl max-h-[92vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Novo Pedido de Venda</DialogTitle></DialogHeader>
           <SaleOrderFormPanel form={form} setForm={setForm} items={items} setItems={setItems} clients={clients} representatives={representatives} references={references} isAdmin={isAdmin} selectedClientId={selectedClientId} onClientSelect={handleClientSelect} onSubmit={handleSubmit} onCancel={() => closeCreateDialog(false)} isPending={createOrder.isPending} submitLabel="Criar Pedido" />
         </DialogContent>
@@ -1978,7 +1978,7 @@ export default function SaleOrders() {
 
       {/* ORDER DETAILS DIALOG */}
       <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
-        <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[95vw] max-w-7xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between w-full">
               <div className="flex items-center gap-3 flex-wrap">

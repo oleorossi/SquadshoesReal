@@ -216,7 +216,7 @@ export default function SaleOrdersOverviewDialog({ open, onOpenChange, orders }:
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-6xl max-h-[92vh] overflow-hidden flex flex-col">
+      <DialogContent className="w-[95vw] max-w-7xl max-h-[92vh] overflow-hidden flex flex-col">
         <DialogHeader className="border-b pb-3">
           <DialogTitle className="flex items-center gap-2">
             <ShoppingCart className="h-5 w-5 text-primary" />
