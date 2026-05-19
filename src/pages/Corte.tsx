@@ -30,6 +30,7 @@ import { useOrderStraps } from '@/hooks/useOrderStraps';
 import { getGradeTotal, getOrderTotalPairs } from '@/lib/cuttingCounts';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { RefChip } from '@/components/ui/ref-chip';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 const SIZES = ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
 
@@ -134,7 +135,7 @@ export default function Corte() {
 
   // Get orders that are in cutting stage (Corte pendente or em_andamento)
   const cuttingOrders = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim();
+    const q = normalizeForSearch(searchQuery);
     const filtered = orders.filter(order => {
       const status = (order.status || '').toLowerCase();
       // Exclude finalized/cancelled OPs
@@ -146,7 +147,7 @@ export default function Corte() {
       }
       // Status filter - only filter if "active" is selected
       if (filterStatus === 'active' && status !== 'em produção') return false;
-      
+
       const stages = allStages.filter(s => s.order_id === order.id);
       const corteStage = stages.find(s => s.stage_name === 'Corte');
       if (!corteStage) return filterStatus === 'all';
@@ -154,11 +155,14 @@ export default function Corte() {
 
       if (q) {
         const so = saleOrders?.find((s: any) => s.id === order.sale_order_id);
-        const pvNumber = (so?.order_number || '').toLowerCase();
-        const clientOrderNum = (so?.client_order_number || '').toLowerCase();
-        const opNumber = (order.order_number || '').toLowerCase();
-        const clientName = (so?.client_name || '').toLowerCase();
-        if (!pvNumber.includes(q) && !clientOrderNum.includes(q) && !opNumber.includes(q) && !clientName.includes(q)) return false;
+        const ref = (references as any[])?.find((r: any) => r.id === (order as any).reference_id);
+        if (!normalizeForSearch(so?.order_number).includes(q)
+          && !normalizeForSearch(so?.client_order_number).includes(q)
+          && !normalizeForSearch(order.order_number).includes(q)
+          && !normalizeForSearch(so?.client_name).includes(q)
+          && !normalizeForSearch(ref?.name).includes(q)
+          && !normalizeForSearch(ref?.code).includes(q)
+        ) return false;
       }
 
       return true;

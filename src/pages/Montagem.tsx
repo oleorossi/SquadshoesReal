@@ -23,6 +23,7 @@ import { printSectorWorkSheets } from '@/lib/printSectorWorkSheet';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import OrderSearchBar from '@/components/production/OrderSearchBar';
+import { normalizeForSearch } from '@/lib/searchUtils';
 import { useOrderStraps } from '@/hooks/useOrderStraps';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
@@ -56,7 +57,7 @@ export default function Montagem() {
   };
 
   const montagemOrders = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim();
+    const q = normalizeForSearch(searchQuery);
     const filtered = orders.filter(order => {
       const status = (order.status || '').toLowerCase().normalize('NFC');
       if (status === 'finalizado' || status === 'cancelada') return false;
@@ -64,9 +65,8 @@ export default function Montagem() {
         const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
         if (so && (so.status === 'Faturado' || so.status === 'Finalizado s/ NF' || so.status === 'Cancelado')) return false;
       }
-      // Status filter - only filter if "active" is selected
       if (filterStatus === 'active' && status !== 'em produção') return false;
-      
+
       const stages = allStages.filter(s => s.order_id === order.id);
       const stage = stages.find(s => s.stage_name === STAGE_NAME);
       if (!stage) return filterStatus === 'all';
@@ -74,11 +74,14 @@ export default function Montagem() {
 
       if (q) {
         const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
-        const pvNumber = (so?.order_number || '').toLowerCase();
-        const clientOrderNum = (so?.client_order_number || '').toLowerCase();
-        const opNumber = (order.order_number || '').toLowerCase();
-        const clientName = (so?.client_name || '').toLowerCase();
-        if (!pvNumber.includes(q) && !clientOrderNum.includes(q) && !opNumber.includes(q) && !clientName.includes(q)) return false;
+        const ref = (references as any[])?.find((r: any) => r.id === (order as any).reference_id);
+        if (!normalizeForSearch(so?.order_number).includes(q)
+          && !normalizeForSearch(so?.client_order_number).includes(q)
+          && !normalizeForSearch(order.order_number).includes(q)
+          && !normalizeForSearch(so?.client_name).includes(q)
+          && !normalizeForSearch(ref?.name).includes(q)
+          && !normalizeForSearch(ref?.code).includes(q)
+        ) return false;
       }
 
       return true;

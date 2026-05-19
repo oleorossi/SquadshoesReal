@@ -52,6 +52,7 @@ import { getValidNextStatuses } from '@/lib/saleOrderStateMachine';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 // TODOS os status canônicos do sale_orders (saleOrderStateMachine.ts).
 // Antes faltavam 'Pendente', 'Expedido' e 'Concluído' — PVs nesses status
@@ -445,9 +446,14 @@ export default function SaleOrders() {
           client?.client_number,
           client?.nome_fantasia,
         ];
-        const matchesText = candidates.some(v => (v || '').toString().toLowerCase().includes(q));
+        // Normaliza: remove espaços/hifens/acentos pra "SP 10"/"sp-10"/"SP10"
+        // serem equivalentes (pedido user 19/05/2026). qDigits continua sendo
+        // checagem extra pra CNPJ. Mantém q lower-case original como fallback
+        // pra casos onde a query é só dígitos longos (ex: nº de pedido).
+        const qNorm = normalizeForSearch(q);
+        const matchesText = candidates.some(v => normalizeForSearch(v).includes(qNorm));
         const matchesCnpj = qDigits.length >= 3 && cnpjDigits.includes(qDigits);
-        const matchesItem = itemTokens && Array.from(itemTokens).some(t => t.includes(q));
+        const matchesItem = itemTokens && Array.from(itemTokens).some(t => normalizeForSearch(t).includes(qNorm));
         if (!matchesText && !matchesCnpj && !matchesItem) return false;
       }
       return true;

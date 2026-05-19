@@ -19,6 +19,7 @@ import { useAllOrderStages, useRealtimeOrderStages } from '@/hooks/useOrderStage
 import { useSaleOrders } from '@/hooks/useSaleOrders';
 import { printHtml } from '@/lib/printOrder';
 import { printSectorWorkSheets } from '@/lib/printSectorWorkSheet';
+import { normalizeForSearch } from '@/lib/searchUtils';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import OrderSearchBar from '@/components/production/OrderSearchBar';
@@ -234,7 +235,7 @@ export default function Silk() {
 
   // Orders at Solagem stage after UI filters
   const solagemOrders = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim();
+    const q = normalizeForSearch(searchQuery);
     const now = new Date();
 
     return baseSolagemOrders.filter(order => {
@@ -258,11 +259,14 @@ export default function Silk() {
 
       if (q) {
         const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
-        const pvNumber = (so?.order_number || '').toLowerCase();
-        const clientOrderNum = (so?.client_order_number || '').toLowerCase();
-        const opNumber = (order.order_number || '').toLowerCase();
-        const clientName = (so?.client_name || '').toLowerCase();
-        if (!pvNumber.includes(q) && !clientOrderNum.includes(q) && !opNumber.includes(q) && !clientName.includes(q)) return false;
+        const ref = (references as any[])?.find((r: any) => r.id === (order as any).reference_id);
+        if (!normalizeForSearch(so?.order_number).includes(q)
+          && !normalizeForSearch(so?.client_order_number).includes(q)
+          && !normalizeForSearch(order.order_number).includes(q)
+          && !normalizeForSearch(so?.client_name).includes(q)
+          && !normalizeForSearch(ref?.name).includes(q)
+          && !normalizeForSearch(ref?.code).includes(q)
+        ) return false;
       }
 
       if (filterCategoria !== 'all') {

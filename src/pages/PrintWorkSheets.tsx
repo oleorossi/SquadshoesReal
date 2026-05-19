@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Printer, MagnifyingGlass as Search, CircleNotch as Loader2, FileText, Funnel as Filter } from '@phosphor-icons/react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 interface OrderRow {
   id: string;
@@ -68,16 +69,17 @@ export default function PrintWorkSheets() {
 
   const filtered = useMemo(() => {
     if (!search.trim()) return rows;
-    const tokens = search.toLowerCase().split(/[,\s]+/).filter(Boolean);
+    // Split por vírgula (multi-token); normaliza cada token (sp10/sp 10/SP-10 equivalentes).
+    const tokens = search.split(',').map(t => normalizeForSearch(t)).filter(Boolean);
     return rows.filter(r => {
-      const hay = [
+      const hay = normalizeForSearch([
         r.order_number,
         r.color,
         r.technical_sheets?.name,
         r.technical_sheets?.code,
         r.sale_orders?.order_number,
         r.sale_orders?.client_name,
-      ].filter(Boolean).join(' ').toLowerCase();
+      ].filter(Boolean).join(' '));
       return tokens.every(t => hay.includes(t));
     });
   }, [rows, search]);

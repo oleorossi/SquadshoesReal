@@ -19,6 +19,7 @@ import { format, parseISO, isWithinInterval } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { printHtml } from '@/lib/printOrder';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 const SIZES_ALL = ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
 
@@ -57,10 +58,10 @@ export default function OrdersSummary() {
     const effectiveStatus = statusFilter;
     return orders.filter(order => {
       if (searchTerm) {
-        const search = searchTerm.toLowerCase();
-        const matchesNumber = (order as any).order_number?.toLowerCase().includes(search);
-        const matchesRef = (order as any).technical_sheets?.name?.toLowerCase().includes(search);
-        const matchesColor = (order as any).color?.toLowerCase().includes(search);
+        const search = normalizeForSearch(searchTerm);
+        const matchesNumber = normalizeForSearch((order as any).order_number).includes(search);
+        const matchesRef = normalizeForSearch((order as any).technical_sheets?.name).includes(search);
+        const matchesColor = normalizeForSearch((order as any).color).includes(search);
         if (!matchesNumber && !matchesRef && !matchesColor) return false;
       }
       if (effectiveStatus !== 'all' && order.status !== effectiveStatus) return false;

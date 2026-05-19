@@ -19,6 +19,7 @@ import { useAllOrderStages } from '@/hooks/useOrderStages';
 import { useSaleOrders } from '@/hooks/useSaleOrders';
 import { useClients, useEconomicGroups } from '@/hooks/useClients';
 import { useProductionTransitions } from '@/hooks/useProductionTransitions';
+import { normalizeForSearch } from '@/lib/searchUtils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { printHtml, openPrintWindow, writePrintWindow } from '@/lib/printOrder';
@@ -107,12 +108,11 @@ export default function Aviamento() {
 
 
   const aviamentoOrders = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim();
+    const q = normalizeForSearch(searchQuery);
     const filtered = orders.filter(order => {
       const status = (order.status || '').toLowerCase();
-      // Status filter - only filter if "active" is selected
       if (filterStatus === 'active' && status !== 'em produção') return false;
-      
+
       const stages = allStages.filter(s => s.order_id === order.id);
       const stage = stages.find(s => s.stage_name === 'Aviamento');
       if (!stage) return filterStatus === 'all';
@@ -120,11 +120,14 @@ export default function Aviamento() {
 
       if (q) {
         const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
-        const pvNumber = (so?.order_number || '').toLowerCase();
-        const clientOrderNum = (so?.client_order_number || '').toLowerCase();
-        const opNumber = (order.order_number || '').toLowerCase();
-        const clientName = (so?.client_name || '').toLowerCase();
-        if (!pvNumber.includes(q) && !clientOrderNum.includes(q) && !opNumber.includes(q) && !clientName.includes(q)) return false;
+        const ref = (references as any[])?.find((r: any) => r.id === (order as any).reference_id);
+        if (!normalizeForSearch(so?.order_number).includes(q)
+          && !normalizeForSearch(so?.client_order_number).includes(q)
+          && !normalizeForSearch(order.order_number).includes(q)
+          && !normalizeForSearch(so?.client_name).includes(q)
+          && !normalizeForSearch(ref?.name).includes(q)
+          && !normalizeForSearch(ref?.code).includes(q)
+        ) return false;
       }
 
       return true;

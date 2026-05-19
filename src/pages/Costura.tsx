@@ -22,6 +22,7 @@ import { useClients, useEconomicGroups } from '@/hooks/useClients';
 import { useProductionTransitions } from '@/hooks/useProductionTransitions';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { normalizeForSearch } from '@/lib/searchUtils';
 import { printHtml, openPrintWindow, writePrintWindow } from '@/lib/printOrder';
 import { getClientLogoUrl } from '@/lib/getClientLogo';
 import OrderSearchBar from '@/components/production/OrderSearchBar';
@@ -111,7 +112,8 @@ export default function Costura() {
   };
 
   const costuraOrders = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim();
+    // normalizeForSearch: SP10/SP 10/sp-10 são equivalentes (pedido user 19/05/2026).
+    const q = normalizeForSearch(searchQuery);
     const filtered = orders.filter(order => {
       const status = (order.status || '').toLowerCase().normalize('NFC');
       if (filterStatus === 'active' && status !== 'em produção') return false;
@@ -123,11 +125,14 @@ export default function Costura() {
 
       if (q) {
         const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
-        const pvNumber = (so?.order_number || '').toLowerCase();
-        const clientOrderNum = (so?.client_order_number || '').toLowerCase();
-        const opNumber = (order.order_number || '').toLowerCase();
-        const clientName = (so?.client_name || '').toLowerCase();
-        if (!pvNumber.includes(q) && !clientOrderNum.includes(q) && !opNumber.includes(q) && !clientName.includes(q)) return false;
+        const ref = (references as any[]).find(t => t.id === (order as any).reference_id);
+        if (!normalizeForSearch(so?.order_number).includes(q)
+          && !normalizeForSearch(so?.client_order_number).includes(q)
+          && !normalizeForSearch(order.order_number).includes(q)
+          && !normalizeForSearch(so?.client_name).includes(q)
+          && !normalizeForSearch(ref?.name).includes(q)
+          && !normalizeForSearch(ref?.code).includes(q)
+        ) return false;
       }
 
       return true;
