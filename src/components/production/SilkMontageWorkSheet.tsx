@@ -193,25 +193,48 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
             </div>
           ) : undefined
         }
-        identification={
-          <>
-            <span className="section-label block" style={{ color: '#000' }}>Solado</span>
-            <p
-              className="text-black uppercase leading-none mt-0.5"
-              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '36px', letterSpacing: '-0.025em' }}
-            >
-              {group.soleName}
-            </p>
-            <div className="flex items-baseline gap-3 mt-1 flex-wrap">
-              <span className="font-mono text-[11px] text-black tracking-widest uppercase">
-                {group.colorGroups.length} cor{group.colorGroups.length !== 1 ? 'es' : ''}
-              </span>
-              <span className="font-mono text-[11px] text-black tracking-widest uppercase">
-                Total · <span className="font-bold">{group.totalPairs}</span> pares
-              </span>
+        identification={(() => {
+          // Coleta PVs únicos de todas as cores deste solado pra destacar no header.
+          const pvs = Array.from(new Set(
+            group.colorGroups.flatMap(cg => cg.pvNumbers || []).filter(Boolean)
+          ));
+          const pvDisplay = pvs.length === 0 ? null
+            : pvs.length === 1 ? pvs[0]
+            : `${pvs[0]} +${pvs.length - 1}`;
+          return (
+            <div className="flex items-start gap-4 min-w-0">
+              {/* PV destacado — pedido user 19/05/2026 */}
+              {pvDisplay && (
+                <div className="shrink-0">
+                  <span className="section-label block" style={{ color: '#000' }}>PV</span>
+                  <p
+                    className="text-black leading-none mt-0.5"
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em' }}
+                  >
+                    {pvDisplay}
+                  </p>
+                </div>
+              )}
+              <div className={`min-w-0 flex-1 ${pvDisplay ? 'border-l border-black pl-4' : ''}`}>
+                <span className="section-label block" style={{ color: '#000' }}>Solado</span>
+                <p
+                  className="text-black uppercase leading-none mt-0.5"
+                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '36px', letterSpacing: '-0.025em' }}
+                >
+                  {group.soleName}
+                </p>
+                <div className="flex items-baseline gap-3 mt-1 flex-wrap">
+                  <span className="font-mono text-[11px] text-black tracking-widest uppercase">
+                    {group.colorGroups.length} cor{group.colorGroups.length !== 1 ? 'es' : ''}
+                  </span>
+                  <span className="font-mono text-[11px] text-black tracking-widest uppercase">
+                    Total · <span className="font-bold">{group.totalPairs}</span> pares
+                  </span>
+                </div>
+              </div>
             </div>
-          </>
-        }
+          );
+        })()}
         qrLabel={sector.toUpperCase().slice(0, 8)}
         date={date}
       />

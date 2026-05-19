@@ -222,27 +222,46 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
       <WorksheetHeader
         sector="Solagem"
         icon={Footprints}
-        identification={
-          <>
-            <span className="section-label block" style={{ color: '#000' }}>Resumo</span>
-            <p
-              className="text-black uppercase leading-none mt-0.5"
-              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em' }}
-            >
-              {grandTotal} <span className="text-sm font-mono tracking-widest">pares</span>
-            </p>
-            <div className="flex items-baseline gap-3 mt-1 flex-wrap">
-              <span className="font-mono text-[11px] text-black tracking-widest uppercase">
-                {bands.length} cor{bands.length !== 1 ? 'es' : ''} de solado
-              </span>
-              {hasBothGroups && (
-                <span className="font-mono text-[10px] text-black tracking-widest uppercase">
-                  Preto separado das demais cores
-                </span>
+        identification={(() => {
+          const pvs = Array.from(new Set(bands.flatMap(b => b.pvNumbers || []).filter(Boolean)));
+          const pvDisplay = pvs.length === 0 ? null
+            : pvs.length === 1 ? pvs[0]
+            : `${pvs[0]} +${pvs.length - 1}`;
+          return (
+            <div className="flex items-start gap-4 min-w-0">
+              {pvDisplay && (
+                <div className="shrink-0">
+                  <span className="section-label block" style={{ color: '#000' }}>PV</span>
+                  <p
+                    className="text-black leading-none mt-0.5"
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em' }}
+                  >
+                    {pvDisplay}
+                  </p>
+                </div>
               )}
+              <div className={`min-w-0 flex-1 ${pvDisplay ? 'border-l border-black pl-4' : ''}`}>
+                <span className="section-label block" style={{ color: '#000' }}>Resumo</span>
+                <p
+                  className="text-black uppercase leading-none mt-0.5"
+                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em' }}
+                >
+                  {grandTotal} <span className="text-sm font-mono tracking-widest">pares</span>
+                </p>
+                <div className="flex items-baseline gap-3 mt-1 flex-wrap">
+                  <span className="font-mono text-[11px] text-black tracking-widest uppercase">
+                    {bands.length} cor{bands.length !== 1 ? 'es' : ''} de solado
+                  </span>
+                  {hasBothGroups && (
+                    <span className="font-mono text-[10px] text-black tracking-widest uppercase">
+                      Preto separado das demais cores
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
-          </>
-        }
+          );
+        })()}
         qrLabel="SOLAGEM"
         date={date}
       />

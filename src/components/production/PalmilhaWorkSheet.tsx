@@ -48,25 +48,44 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
       <WorksheetHeader
         sector="Corte Palmilha"
         icon={Scissors}
-        identification={
-          <>
-            <span className="section-label block" style={{ color: '#000' }}>Resumo</span>
-            <p
-              className="text-black uppercase leading-none mt-0.5"
-              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em' }}
-            >
-              {grandTotal} <span className="text-sm font-mono tracking-widest">pares</span>
-            </p>
-            <div className="flex items-baseline gap-3 mt-1 flex-wrap">
-              <span className="font-mono text-[11px] text-black tracking-widest uppercase">
-                {groups.length} grupo{groups.length !== 1 ? 's' : ''}
-              </span>
-              <span className="font-mono text-[10px] text-black tracking-widest uppercase">
-                Corte por solado + cor · cor do cabedal indiferente
-              </span>
+        identification={(() => {
+          const pvs = Array.from(new Set(groups.flatMap(g => g.pvNumbers || []).filter(Boolean)));
+          const pvDisplay = pvs.length === 0 ? null
+            : pvs.length === 1 ? pvs[0]
+            : `${pvs[0]} +${pvs.length - 1}`;
+          return (
+            <div className="flex items-start gap-4 min-w-0">
+              {pvDisplay && (
+                <div className="shrink-0">
+                  <span className="section-label block" style={{ color: '#000' }}>PV</span>
+                  <p
+                    className="text-black leading-none mt-0.5"
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em' }}
+                  >
+                    {pvDisplay}
+                  </p>
+                </div>
+              )}
+              <div className={`min-w-0 flex-1 ${pvDisplay ? 'border-l border-black pl-4' : ''}`}>
+                <span className="section-label block" style={{ color: '#000' }}>Resumo</span>
+                <p
+                  className="text-black uppercase leading-none mt-0.5"
+                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em' }}
+                >
+                  {grandTotal} <span className="text-sm font-mono tracking-widest">pares</span>
+                </p>
+                <div className="flex items-baseline gap-3 mt-1 flex-wrap">
+                  <span className="font-mono text-[11px] text-black tracking-widest uppercase">
+                    {groups.length} grupo{groups.length !== 1 ? 's' : ''}
+                  </span>
+                  <span className="font-mono text-[10px] text-black tracking-widest uppercase">
+                    Corte por solado + cor · cor do cabedal indiferente
+                  </span>
+                </div>
+              </div>
             </div>
-          </>
-        }
+          );
+        })()}
         qrLabel="PALMILHA"
         date={date}
       />

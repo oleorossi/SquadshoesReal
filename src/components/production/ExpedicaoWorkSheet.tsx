@@ -101,34 +101,42 @@ export const ExpedicaoWorkSheet = ({ group, date }: Props) => {
         sector="Expedição"
         icon={Truck}
         identification={
-          <>
-            <span className="section-label block" style={{ color: '#000' }}>Cliente</span>
-            <p
-              className="text-black uppercase leading-none mt-0.5 truncate"
-              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '30px', letterSpacing: '-0.025em' }}
-            >
-              {group.client_name}
-            </p>
-            <div className="flex items-baseline gap-3 flex-wrap text-[10px] mt-1 font-mono text-black tracking-widest uppercase">
-              {group.client_cnpj && <span>CNPJ {group.client_cnpj}</span>}
-              {group.client_ie && <span>IE {group.client_ie}</span>}
-              {group.client_telefone && (
-                <span className="flex items-center gap-1"><Phone className="h-3 w-3" weight="bold" />{group.client_telefone}</span>
-              )}
-            </div>
-            {(enderecoLinha1 || enderecoLinha2) && (
-              <div className="text-[10px] text-black leading-tight mt-0.5 font-mono tracking-wider">
-                <MapPin className="h-3 w-3 inline mr-1 text-black" weight="bold" />
-                {enderecoLinha1 && <span className="font-bold uppercase">{enderecoLinha1}</span>}
-                {enderecoLinha2 && <span className="ml-1 uppercase">· {enderecoLinha2}</span>}
+          <div className="flex items-start gap-4 min-w-0">
+            {/* PV destacado — pedido user 19/05/2026 */}
+            {group.sale_order_number && (
+              <div className="shrink-0">
+                <span className="section-label block" style={{ color: '#000' }}>PV</span>
+                <p
+                  className="text-black leading-none mt-0.5"
+                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em' }}
+                >
+                  {group.sale_order_number}
+                </p>
               </div>
             )}
-            <div className="flex items-center gap-3 mt-1 flex-wrap text-[10px] font-mono tracking-widest uppercase">
-              {group.sale_order_number && (
-                <span className="text-black">
-                  PV <span className="font-bold">{group.sale_order_number}</span>
-                </span>
+            <div className={`min-w-0 flex-1 ${group.sale_order_number ? 'border-l border-black pl-4' : ''}`}>
+              <span className="section-label block" style={{ color: '#000' }}>Cliente</span>
+              <p
+                className="text-black uppercase leading-none mt-0.5 truncate"
+                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '30px', letterSpacing: '-0.025em' }}
+              >
+                {group.client_name}
+              </p>
+              <div className="flex items-baseline gap-3 flex-wrap text-[10px] mt-1 font-mono text-black tracking-widest uppercase">
+                {group.client_cnpj && <span>CNPJ {group.client_cnpj}</span>}
+                {group.client_ie && <span>IE {group.client_ie}</span>}
+                {group.client_telefone && (
+                  <span className="flex items-center gap-1"><Phone className="h-3 w-3" weight="bold" />{group.client_telefone}</span>
+                )}
+              </div>
+              {(enderecoLinha1 || enderecoLinha2) && (
+                <div className="text-[10px] text-black leading-tight mt-0.5 font-mono tracking-wider">
+                  <MapPin className="h-3 w-3 inline mr-1 text-black" weight="bold" />
+                  {enderecoLinha1 && <span className="font-bold uppercase">{enderecoLinha1}</span>}
+                  {enderecoLinha2 && <span className="ml-1 uppercase">· {enderecoLinha2}</span>}
+                </div>
               )}
+              <div className="flex items-center gap-3 mt-1 flex-wrap text-[10px] font-mono tracking-widest uppercase">
               {group.nfe_numero && (
                 <span className="text-black flex items-center gap-1">
                   <Receipt className="h-3 w-3" weight="bold" />
@@ -141,12 +149,13 @@ export const ExpedicaoWorkSheet = ({ group, date }: Props) => {
                   Transp. <span className="font-bold">{group.transport_name}</span>
                 </span>
               )}
-              <span className="text-black">
-                {group.orders.length} ite{group.orders.length === 1 ? 'm' : 'ns'} ·{' '}
-                <span className="font-bold">{totalPairs} pares</span>
-              </span>
+                <span className="text-black">
+                  {group.orders.length} ite{group.orders.length === 1 ? 'm' : 'ns'} ·{' '}
+                  <span className="font-bold">{totalPairs} pares</span>
+                </span>
+              </div>
             </div>
-          </>
+          </div>
         }
         qrLabel="EXPED."
         date={date}
