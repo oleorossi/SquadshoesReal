@@ -21,10 +21,12 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Printer, ArrowLeft, CircleNotch as Loader2 } from '@phosphor-icons/react';
+import { Printer, ArrowLeft, CircleNotch as Loader2, FileText, Download } from '@phosphor-icons/react';
+import { toast } from 'sonner';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useWorkSchedules, useHolidays, useTimeRecords, calculateDaySummary, type WorkSchedule } from '@/hooks/useTimesheet';
 import { useCompanySettings } from '@/hooks/useCompanySettings';
+import { generateAEJ, downloadAEJ } from '@/lib/aejExporter';
 import { format, parseISO, startOfMonth, endOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -232,6 +234,43 @@ export default function EspelhoPontoPage() {
             {periods.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
           </SelectContent>
         </Select>
+        <Button
+          size="sm"
+          variant="outline"
+          className="gap-1.5"
+          disabled={!company || employeeRecords.length === 0}
+          onClick={() => {
+            if (!employee || !company) return;
+            const result = generateAEJ({
+              company: {
+                razao_social: company.razao_social,
+                cnpj: company.cnpj,
+                cpf: company.cpf,
+                cei: company.cei,
+                caepf: company.caepf,
+                cno: company.cno,
+              },
+              employees: [{
+                employee: {
+                  name: employee.name,
+                  cpf: employee.cpf,
+                  admission_date: employee.admission_date,
+                  external_id: employee.external_id,
+                },
+                records: employeeRecords.map(r => ({
+                  record_date: r.record_date,
+                  punches: (r.punches as string[]) || [],
+                })),
+              }],
+              periodStart,
+              periodEnd,
+            });
+            downloadAEJ(result);
+            result.warnings.forEach(w => toast.warning(w, { duration: 6000 }));
+          }}
+        >
+          <Download className="h-4 w-4" /> AEJ (.txt)
+        </Button>
         <Button size="sm" onClick={() => window.print()} className="gap-1.5">
           <Printer className="h-4 w-4" /> Imprimir
         </Button>
