@@ -1,9 +1,10 @@
 import { lazy, Suspense } from 'react';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { HubTabsList } from '@/components/layout/HubTabs';
-import { CurrencyDollar as DollarSign, Hourglass, Wallet, CircleNotch as Loader2 } from '@phosphor-icons/react';
+import { CurrencyDollar as DollarSign, Hourglass, Wallet, Calculator, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 
+const PreFolha = lazy(() => import('./PreFolha'));
 const Payroll = lazy(() => import('@/pages/Payroll'));
 const BankHours = lazy(() => import('@/pages/BankHours'));
 const AdvancesPanel = lazy(() => import('./AdvancesPanel'));
@@ -22,12 +23,14 @@ export default function FolhaConsolidada() {
       {/* Masthead local removido — header global no RHHub. */}
       <Tabs value={tab} onValueChange={setTab} className="w-full">
         <HubTabsList tabs={[
+          { value: 'pre-folha',   label: 'Pré-folha',        icon: Calculator },
           { value: 'folha',       label: 'Folha do Mês',     icon: DollarSign },
           { value: 'banco-horas', label: 'Banco de Horas',   icon: Hourglass },
           { value: 'adiantamentos', label: 'Adiantamentos',  icon: Wallet },
         ]} />
 
         <Suspense fallback={<TabLoader />}>
+          <TabsContent value="pre-folha"><PreFolha /></TabsContent>
           <TabsContent value="folha"><Payroll /></TabsContent>
           <TabsContent value="banco-horas"><BankHours /></TabsContent>
           <TabsContent value="adiantamentos"><AdvancesPanel /></TabsContent>
