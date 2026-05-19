@@ -211,9 +211,9 @@ export async function extractClientsFromFile(file: File): Promise<ExtractedClien
         }
       }
     } catch { /* ignore */ }
-    // Dica específica pro 503 — quase sempre = chave Anthropic não cadastrada
+    // Dica específica pro 503 — quase sempre = chave Gemini não cadastrada
     const hint = httpStatus === 503
-      ? ' (Provavelmente ANTHROPIC_API_KEY não está cadastrada nos secrets do Supabase. Veja Supabase Dashboard → Edge Functions → Secrets. Pegue a chave em https://console.anthropic.com)'
+      ? ' (Provavelmente GEMINI_API_KEY não está cadastrada nos secrets do Supabase. Veja Supabase Dashboard → Edge Functions → Secrets. Pegue grátis em https://aistudio.google.com/app/apikey)'
       : '';
     throw new Error((serverMsg || error.message || 'Falha ao chamar extract-clients') + hint);
   }
