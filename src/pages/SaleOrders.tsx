@@ -213,6 +213,28 @@ export default function SaleOrders() {
       return data?.map(r => r.role) || [];
     },
   });
+
+  // Set de sale_order_ids com NF-e autorizada — fonte da verdade fiscal pra
+  // pintar a linha de verde no /sales (pedido user 19/05/2026 — não usar status,
+  // usar registro real de NF). Refresh automático quando alguma NF muda status
+  // (invalidação por queryKey 'sale_orders_with_nfe' em useNfe).
+  const { data: nfeIssuedSaleOrderIds = new Set<string>() } = useQuery({
+    queryKey: ['sale_orders_with_nfe'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('nfe_emitidas')
+        .select('sale_order_id')
+        .eq('status', 'autorizada')
+        .not('sale_order_id', 'is', null);
+      if (error) throw error;
+      const set = new Set<string>();
+      for (const row of (data || []) as any[]) {
+        if (row.sale_order_id) set.add(row.sale_order_id);
+      }
+      return set;
+    },
+    staleTime: 60 * 1000,
+  });
   const isAdmin = userRoles.includes('admin');
   // Produção/almoxarifado veem PVs pra contexto de produção, mas SEM valores
   // (preço unit, total, comissão). canSeeFinancialValues=false bloqueia colunas
@@ -1694,10 +1716,12 @@ export default function SaleOrders() {
                   const isSelected = sel.isSelected(order.id);
                   const isOverdue = order.delivery_deadline && new Date(order.delivery_deadline) < new Date() && !TERMINAL_BILLED_STATUSES.includes(order.status) && order.status !== 'Cancelado';
                   const isInformal = (order as any).nfe_required === false;
-                  // PV com NF-e emitida (pedido user 19/05/2026 — destacar visualmente):
-                  // status Faturado = NF autorizada; Expedido/Concluído = NF autorizada + saiu.
-                  // 'Finalizado s/ NF' NÃO entra (é exatamente o oposto — finalizou sem emitir).
-                  const hasEmittedNfe = ['Faturado', 'Expedido', 'Concluído'].includes(order.status);
+                  // PV com NF-e emitida — guiado pela TABELA nfe_emitidas (fonte da
+                  // verdade fiscal), não pelo status do PV. User pediu (19/05/2026)
+                  // pra usar marcação real de NF: status pode estar inconsistente
+                  // (PV faturado externamente, sync errado, etc), mas se existe
+                  // registro de NF autorizada no banco, fica verde.
+                  const hasEmittedNfe = nfeIssuedSaleOrderIds.has(order.id);
                   const minBilling = minBillingMap.get(order.id) || null;
                   const isInfeasible = !!(
                     minBilling && order.delivery_deadline && order.delivery_deadline < minBilling
