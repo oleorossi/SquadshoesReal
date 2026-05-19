@@ -9,9 +9,11 @@ const corsHeaders = {
 const GESTAOCLICK_BASE = "https://api.gestaoclick.com";
 
 // Marca default — usada quando o PV não tem brand cadastrada explícita.
-// Era hardcoded até 15/05/2026; agora é override-able via sale_orders.brand
-// (default no DB também é 'SquadShoes', então pra fluxo normal segue igual).
-const DEFAULT_BRAND = "SquadShoes";
+// Era hardcoded até 15/05/2026; agora é override-able via sale_orders.brand.
+// 19/05/2026: 'SquadShoes' (junto) → 'Squad Shoes' (com espaço). Migração
+// DB 20260519130000 também muda o default da coluna e backfilla os 39 PVs
+// existentes. xMarca no XML SEFAZ agora sai escrito como o nome da empresa.
+const DEFAULT_BRAND = "Squad Shoes";
 
 function gcHeaders() {
   const access = Deno.env.get("CLICKNOTAS_ACCESS_TOKEN");

@@ -40,7 +40,7 @@ const emptyForm: SaleOrderFormData = {
   nfe_required: true,
   own_delivery: false,
   informacoes_complementares_nf: '',
-  brand: 'SquadShoes',
+  brand: 'Squad Shoes',
 };
 
 const emptyItem: SaleOrderItemFormData = {
@@ -315,7 +315,7 @@ export default function SaleOrderForm() {
         nfe_required: (order as any).nfe_required !== false,
         own_delivery: (order as any).own_delivery === true,
         informacoes_complementares_nf: (order as any).informacoes_complementares_nf || '',
-        brand: (order as any).brand || 'SquadShoes',
+        brand: (order as any).brand || 'Squad Shoes',
       });
       setPackagingProductId((order as any).packaging_product_id || '');
       setPackagingQuantity((order as any).packaging_quantity || 0);

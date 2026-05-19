@@ -954,10 +954,10 @@ export default function SaleOrderFormPanel({
                     <span className="ml-1 text-[9px] font-normal normal-case text-muted-foreground">xMarca no XML</span>
                   </Label>
                   <Input
-                    value={form.brand || 'SquadShoes'}
+                    value={form.brand || 'Squad Shoes'}
                     onChange={e => setForm(f => ({ ...f, brand: e.target.value }))}
                     className="h-9"
-                    placeholder="SquadShoes"
+                    placeholder="Squad Shoes"
                   />
                 </div>
                 <div>
