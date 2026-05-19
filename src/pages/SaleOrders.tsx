@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { getSignedUrl } from '@/lib/getSignedUrl';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown as ChevronDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload } from '@phosphor-icons/react';
+import { ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown as ChevronDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload, Trash as Trash2 } from '@phosphor-icons/react';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { BulkActionsBar, MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
 import { cn } from "@/lib/utils";
@@ -505,13 +505,29 @@ export default function SaleOrders() {
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
     const ids = Array.from(selectedIds);
+    // Confirma destruição — excluir difere de cancelar: apaga o registro
+    // por completo, não recupera. Lista os 5 primeiros pra ajudar o user
+    // a perceber se selecionou demais por engano.
+    const sample = orders
+      .filter(o => selectedIds.has(o.id))
+      .slice(0, 5)
+      .map(o => `• ${o.order_number} (${o.client_name || '—'})`)
+      .join('\n');
+    const more = ids.length > 5 ? `\n... e mais ${ids.length - 5}` : '';
+    const ok = window.confirm(
+      `EXCLUIR ${ids.length} pedido${ids.length === 1 ? '' : 's'}?\n\n${sample}${more}\n\n` +
+      'Esta ação é PERMANENTE — o pedido some do sistema (não dá pra recuperar). ' +
+      'Se quer só interromper sem apagar, use "Cancelar" no lugar.\n\n' +
+      'Confirmar exclusão?'
+    );
+    if (!ok) return;
     const results = await Promise.allSettled(ids.map(id => deleteOrder.mutateAsync(id)));
     const failed = results.filter(r => r.status === 'rejected').length;
     setSelectedIds(new Set());
     if (failed === 0) {
       toast.success(`${ids.length} pedido(s) excluído(s)`);
     } else {
-      toast.error(`${ids.length - failed} excluído(s), ${failed} falha(s).`);
+      toast.error(`${ids.length - failed} excluído(s), ${failed} falha(s). Pedidos com OPs/NF-e ativas não podem ser excluídos.`);
     }
   };
 
@@ -1878,6 +1894,7 @@ export default function SaleOrders() {
         actions={[
           { label: 'Aprovar', icon: <Check className="h-3.5 w-3.5" />, onClick: handleBulkApprove },
           { label: 'Cancelar', icon: <X className="h-3.5 w-3.5" />, variant: 'destructive', onClick: handleBulkCancel },
+          { label: 'Excluir', icon: <Trash2 className="h-3.5 w-3.5" />, variant: 'destructive', onClick: handleBulkDelete },
           { label: 'Imprimir Fichas', icon: <Printer className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkPrint },
           { label: 'Exportar', icon: <Download className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkExport },
         ]}
