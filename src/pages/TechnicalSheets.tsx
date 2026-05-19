@@ -1694,10 +1694,15 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
          .eq('sole_product_id', soleProductId);
        if (consError) throw consError;
 
-       // 2) Items globais (legacy is_standard_sole_item)
+       // 2) Items globais marcados como `is_standard_sole_item` (cola, linha,
+       // EVA, etc. que sempre entram). BUG 19/05/2026: query antiga incluía
+       // `category.eq.Solado,category.eq.Componente` no .or() — isso despejava
+       // TODOS os solados e componentes do estoque no BOM da nova ficha
+       // (centenas de produtos), o que não fazia sentido nenhum.
+       // Critério correto: só items explicitamente marcados como "padrão global".
       const { data: globalStandardItems, error: globalError } = await supabase.from('products')
         .select('id, name, group_id, unit_price, unit, category')
-        .or('is_standard_sole_item.eq.true,category.eq.Solado,category.eq.Componente')
+        .eq('is_standard_sole_item', true)
         .eq('active', true);
 
        if (globalError) throw globalError;
