@@ -16,9 +16,13 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Gemini 2.0 Flash — generoso no free tier, suporta PDF + vision + structured output
-const MODEL = "gemini-2.0-flash";
-const GEMINI_API = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+// Modelos em ordem de preferência. 20/05/2026: chaves criadas no Google AI
+// Studio depois de jan/2025 batem 429 imediato em `gemini-2.0-flash` quando
+// não têm billing habilitado. `gemini-1.5-flash` ainda tem free tier sólido
+// sem exigir billing — usado como fallback automático.
+const MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b"];
+const geminiUrl = (model: string) =>
+  `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -135,54 +139,79 @@ serve(async (req) => {
       "- razao_social é obrigatório: se não conseguir identificar pelo menos o nome da " +
       "  empresa, NÃO inclua aquela entrada.";
 
-    const response = await fetch(`${GEMINI_API}?key=${GEMINI_API_KEY}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        systemInstruction: { role: "system", parts: [{ text: systemInstruction }] },
-        contents: [
-          {
-            role: "user",
-            parts: [
-              { inlineData: { mimeType: cleanMime, data: fileBase64 } },
-              { text: `Extraia os clientes/lojistas deste arquivo: ${fileName || "(sem nome)"}` },
-            ],
-          },
-        ],
-        generationConfig: {
-          responseMimeType: "application/json",
-          responseSchema,
-          maxOutputTokens: 8192,
-          temperature: 0.1,
+    const requestBody = JSON.stringify({
+      systemInstruction: { role: "system", parts: [{ text: systemInstruction }] },
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { inlineData: { mimeType: cleanMime, data: fileBase64 } },
+            { text: `Extraia os clientes/lojistas deste arquivo: ${fileName || "(sem nome)"}` },
+          ],
         },
-      }),
+      ],
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema,
+        maxOutputTokens: 8192,
+        temperature: 0.1,
+      },
     });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error("Gemini API error:", response.status, errText.slice(0, 500));
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Limite gratuito do Gemini excedido (15 req/min ou 1k req/dia). Tente novamente em alguns segundos." }), {
+    // Tenta cada modelo em ordem. 429/503 num modelo → tenta o próximo.
+    // 4xx outros (400/401/403) são erros do cliente — para imediato.
+    let response: Response | null = null;
+    let lastErrText = "";
+    let lastStatus = 0;
+    let usedModel = "";
+    for (const model of MODELS) {
+      const r = await fetch(`${geminiUrl(model)}?key=${GEMINI_API_KEY}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: requestBody,
+      });
+      if (r.ok) {
+        response = r;
+        usedModel = model;
+        console.log(`[extract-clients] OK com modelo ${model}`);
+        break;
+      }
+      lastErrText = await r.text();
+      lastStatus = r.status;
+      console.warn(`[extract-clients] ${model} retornou ${r.status}: ${lastErrText.slice(0, 300)}`);
+      // 401/403/400 = erro estável — tentar outro modelo não ajuda.
+      if (r.status === 400 || r.status === 401 || r.status === 403) break;
+      // 429/503 = capacidade/quota — pula pro próximo modelo.
+    }
+
+    if (!response) {
+      console.error("Gemini API esgotou todos os modelos. Último:", lastStatus, lastErrText.slice(0, 500));
+      if (lastStatus === 429) {
+        let detail = "";
+        try { detail = JSON.parse(lastErrText)?.error?.message || ""; } catch { detail = lastErrText.slice(0, 300); }
+        return new Response(JSON.stringify({
+          error: `Cota do Gemini esgotada em todos os modelos free (${MODELS.join(", ")}). ${detail || "Tente em ~1 minuto, ou habilite billing no Google AI Studio pra subir o tier."}`,
+        }), {
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (response.status === 401 || response.status === 403) {
+      if (lastStatus === 401 || lastStatus === 403) {
         return new Response(JSON.stringify({
           error: "GEMINI_API_KEY inválida ou sem permissão. Confira em Supabase → Edge Functions → Secrets.",
         }), {
           status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (response.status === 400) {
+      if (lastStatus === 400) {
         let detail = "";
-        try { detail = JSON.parse(errText)?.error?.message || ""; } catch { detail = errText.slice(0, 200); }
+        try { detail = JSON.parse(lastErrText)?.error?.message || ""; } catch { detail = lastErrText.slice(0, 200); }
         return new Response(JSON.stringify({
-          error: `Requisição inválida (${response.status}): ${detail || "arquivo possivelmente grande demais ou corrompido"}.`,
+          error: `Requisição inválida (400): ${detail || "arquivo possivelmente grande demais ou corrompido"}.`,
         }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      return new Response(JSON.stringify({ error: `Erro ao consultar Gemini (HTTP ${response.status})` }), {
+      return new Response(JSON.stringify({ error: `Erro ao consultar Gemini (HTTP ${lastStatus})` }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
