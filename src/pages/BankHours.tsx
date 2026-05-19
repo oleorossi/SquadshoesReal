@@ -17,8 +17,9 @@
  *   - calculate_employee_bank_balance() RPC (saldo completo)
  */
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Clock, TrendUp as TrendingUp, TrendDown as TrendingDown, Scales as Scale, Users, Buildings as Building2, MagnifyingGlass as Search, CircleNotch as Loader2, CaretRight as ChevronRight, Plus, Trash as Trash2, CurrencyDollar } from '@phosphor-icons/react';
+import { Clock, TrendUp as TrendingUp, TrendDown as TrendingDown, Scales as Scale, Users, Buildings as Building2, MagnifyingGlass as Search, CircleNotch as Loader2, CaretRight as ChevronRight, Plus, Trash as Trash2, CurrencyDollar, FileText } from '@phosphor-icons/react';
 import { todayISO } from '@/lib/date';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -636,16 +637,31 @@ export default function BankHours() {
                           {formatHours(detailQ.data.balance_min)}
                         </div>
                       </div>
-                      {detailQ.data.balance_min > 0 && (
-                        <Button
-                          onClick={() => setPayDialogOpen(true)}
-                          className="w-full gap-2"
-                          size="lg"
-                        >
-                          <CurrencyDollar className="h-4 w-4" />
-                          Pagar horas extras
-                        </Button>
-                      )}
+                      <div className="flex flex-col gap-2">
+                        {detailQ.data.balance_min > 0 && (
+                          <Button
+                            onClick={() => setPayDialogOpen(true)}
+                            className="w-full gap-2"
+                            size="lg"
+                          >
+                            <CurrencyDollar className="h-4 w-4" />
+                            Pagar horas extras
+                          </Button>
+                        )}
+                        {/* Espelho de Ponto (Portaria 671) — abre em nova aba pra impressão */}
+                        {selectedEmployee && (
+                          <Button asChild variant="outline" size="sm" className="w-full gap-2">
+                            <Link
+                              to={`/rh/espelho-ponto/${selectedEmployee.employee_id}${dateFrom ? `?period=${dateFrom.slice(0, 7)}` : ''}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              <FileText className="h-3.5 w-3.5" />
+                              Espelho de Ponto (imprimir)
+                            </Link>
+                          </Button>
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
 

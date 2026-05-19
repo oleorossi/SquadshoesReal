@@ -52,6 +52,7 @@ const ProducaoDashboard = lazy(() => import("./pages/ProducaoDashboard"));
 const ProductionLive = lazy(() => import("./pages/ProductionLive"));
 const ProductionTimeline = lazy(() => import("./pages/ProductionTimeline"));
 const BankHours = lazy(() => import("./pages/BankHours"));
+const EspelhoPontoPage = lazy(() => import("./pages/EspelhoPontoPage"));
 // ProductionDashboardPage removido — funcionalidade unificada em /producao (ProducaoDashboard).
 // FinanceiroDashboard removido — /financeiro agora renderiza o Finance.tsx unificado (mai/2026).
 const RHHub = lazy(() => import("./pages/RHHub"));
@@ -729,6 +730,11 @@ const router = createBrowserRouter([
         // Banco de Horas — visão completa (KPIs + funcionário + setor + drill-down)
         path: "rh/banco-de-horas",
         element: <BankHours />,
+      },
+      {
+        // Espelho de Ponto Eletrônico — Portaria MTE 671/2021 art. 84
+        path: "rh/espelho-ponto/:employeeId",
+        element: <EspelhoPontoPage />,
       },
       {
         // Alias legado
