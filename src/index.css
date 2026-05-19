@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@300;400;500;600;700;800;900&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Anton&family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@300;400;500;600;700;800;900&family=Inter+Tight:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -283,6 +283,33 @@
   --z-popover:  500;
   --z-toast:    600;
   --z-tooltip:  700;
+
+  /* ═══════════════════════════════════════════════════════════════
+     ▼ PAPER · tokens A4 (fichas, relatórios, etiquetas impressas)
+     Ref: squad_shoes_COMPLETO/_design/styles-paper.css
+     Light tone, cinzas claros, vermelho só em destaques.
+     ═════════════════════════════════════════════════════════════ */
+  --p-bg:        #F4F2EE;
+  --p-paper:     #FFFFFF;
+  --p-soft:      #FAF8F5;
+  --p-line:      #E4E0D9;
+  --p-line-2:    #CFC9BF;
+  --p-ink:       #14110E;
+  --p-ink-2:     #3A3631;
+  --p-mute:      #76706A;
+  --p-dim:       #A39C92;
+  --p-red:       #B7141F;     /* deeper red for print legibility */
+  --p-red-soft:  #FBE9EB;
+  --p-red-line:  rgba(183,20,31,0.35);
+  --p-ok:        #1F7A4D;
+  --p-warn:      #8A5A00;
+  --p-info:      #0D4F8A;
+
+  /* Etiqueta caixa externa: amarelo "fluor" oficial */
+  --label-yellow: #FFE94A;
+
+  /* Font alias paper (Fraunces opcional para acentos editoriais) */
+  --font-serif:  'Fraunces', 'Times New Roman', serif;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -1055,6 +1082,159 @@ a:focus-visible {
     display: none !important;
   }
 }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   PAPER & LIGHT · utilitários A4 (fichas, relatórios, etiquetas)
+   Ref: squad_shoes_COMPLETO/_design/styles-paper.css
+   Aplicar em containers .paper > .sheet pra ganhar tipografia + grid editorial.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+.paper, .paper * {
+  font-family: 'Inter Tight', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.paper {
+  background: var(--p-bg);
+  color: var(--p-ink);
+}
+
+/* A4 sheet @ 96dpi: 794×1123 portrait · 1123×794 landscape */
+.sheet {
+  background: var(--p-paper);
+  color: var(--p-ink);
+  width: 794px;
+  min-height: 1123px;
+  padding: 36px 48px 56px;
+  position: relative;
+  box-shadow: 0 1px 0 #e5e0d8, 0 12px 32px -12px rgba(20,17,14,0.18);
+  font-size: 11px;
+  line-height: 1.4;
+  display: flex;
+  flex-direction: column;
+}
+.sheet-l {
+  width: 1123px;
+  min-height: 794px;
+  padding: 40px 48px 56px;
+}
+
+.p-eyebrow {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--p-mute);
+}
+.p-display {
+  font-family: 'Anton', Impact, sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.005em;
+  line-height: 0.95;
+  font-weight: 400;
+}
+.p-serif {
+  font-family: var(--font-serif);
+  font-weight: 400;
+}
+.p-mono {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.p-rule        { height: 1px; background: var(--p-line); border: 0; }
+.p-rule-thick  { height: 2px; background: var(--p-ink); border: 0; }
+.p-rule-red    { height: 2px; background: var(--p-red); border: 0; }
+.p-hairline    { border: 1px solid var(--p-line); }
+.p-hair-bottom { border-bottom: 1px solid var(--p-line); }
+.p-hair-top    { border-top: 1px solid var(--p-line); }
+
+.p-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 18px;
+  padding: 0 7px;
+  border: 1px solid var(--p-line-2);
+  border-radius: 999px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--p-ink-2);
+}
+.p-pill-red  { color: var(--p-red);  border-color: var(--p-red-line); background: var(--p-red-soft); }
+.p-pill-ok   { color: var(--p-ok);   border-color: rgba(31,122,77,0.3); background: rgba(31,122,77,0.06); }
+.p-pill-warn { color: var(--p-warn); border-color: rgba(138,90,0,0.3);  background: rgba(138,90,0,0.06); }
+
+/* Tabelas print-grade */
+.p-tbl { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+.p-tbl th, .p-tbl td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--p-line);
+  text-align: left;
+  vertical-align: middle;
+}
+.p-tbl thead th {
+  background: var(--p-soft);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--p-mute);
+  border-top: 1px solid var(--p-line);
+  border-bottom: 1px solid var(--p-line-2);
+}
+.p-tbl-zebra tbody tr:nth-child(even) td { background: var(--p-soft); }
+.p-tbl .num, .p-tbl-num {
+  text-align: right;
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A4 header band — largura fixa, sem wrap */
+.a4-head {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 32px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--p-ink);
+  margin-bottom: 14px;
+  flex-shrink: 0;
+}
+.a4-head .brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  flex: 0 0 auto;
+}
+
+/* Light card (cards leves em A4) */
+.light-card {
+  background: var(--p-paper);
+  border: 1px solid var(--p-line);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+.light-card .label { color: var(--p-mute); font-family: 'JetBrains Mono', monospace; font-size: 8px; letter-spacing: 0.14em; text-transform: uppercase; }
+.light-card .value { color: var(--p-ink); font-weight: 600; }
+
+/* KPI strip (relatórios) */
+.p-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  background: var(--p-soft);
+  border: 1px solid var(--p-line);
+  border-radius: 4px;
+}
+.p-kpi .v { font-family: 'Anton', Impact, sans-serif; font-size: 24px; line-height: 1; color: var(--p-ink); }
+.p-kpi .l { font-family: 'JetBrains Mono', monospace; font-size: 8px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--p-mute); }
 
 /* ════════════════════════════════════════════════════════════════════════════
    FRONTEND-DESIGN · Editorial Industrial — animations + utilities (2026-05)
