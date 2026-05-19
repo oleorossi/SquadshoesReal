@@ -50,40 +50,97 @@ export function ImportClientsDialog({ open, onOpenChange }: Props) {
     onOpenChange(v);
   };
 
+  // Progresso visível ao usuário durante extração multi-arquivo.
+  // Updates conforme cada arquivo é processado em sequência.
+  const [progress, setProgress] = useState<{ done: number; total: number; current: string | null }>({
+    done: 0, total: 0, current: null,
+  });
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
     setIsExtracting(true);
-    try {
-      const extracted = await extractClientsFromFile(file);
-      if (extracted.length === 0) {
-        toast.error('Nenhum cliente identificado no arquivo.');
-        return;
+    setProgress({ done: 0, total: files.length, current: files[0].name });
+
+    // Resultado bruto de TODOS os arquivos. Mesmo se 1 falhar, o resto segue.
+    const allExtracted: ExtractedClient[] = [];
+    const failures: Array<{ name: string; reason: string }> = [];
+
+    // Sequencial pra evitar rate-limit do Gemini (PDF/imagem usam IA).
+    // Excel/CSV são instantâneos e poderiam ser paralelos, mas a complicação
+    // de roteamento por tipo não compensa — 1-2s/arquivo no pior caso.
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      setProgress({ done: i, total: files.length, current: f.name });
+      try {
+        const extracted = await extractClientsFromFile(f);
+        if (extracted.length === 0) {
+          failures.push({ name: f.name, reason: 'Nenhum cliente identificado' });
+        } else {
+          allExtracted.push(...extracted);
+        }
+      } catch (err: any) {
+        console.error(`[ImportClients] extract error (${f.name}):`, err);
+        failures.push({ name: f.name, reason: err?.message || 'Falha desconhecida' });
       }
-      // Pra cada extraído, verifica duplicata por CNPJ
-      const enriched: ReviewItem[] = await Promise.all(
-        extracted.map(async c => {
-          const existing = await findExistingByCnpj(c.cnpj);
-          return {
-            client: c,
-            existingId: existing?.id ?? null,
-            existingName: existing?.razao_social ?? null,
-            resolution: 'pending' as const,
-          };
-        }),
-      );
-      setItems(enriched);
-      setCurrentIdx(0);
-      setDraft({ ...enriched[0].client });
-      setStage('review');
-      toast.success(`${enriched.length} cliente${enriched.length === 1 ? '' : 's'} encontrado${enriched.length === 1 ? '' : 's'}`);
-    } catch (err: any) {
-      console.error('[ImportClients] extract error:', err);
-      toast.error(err?.message || 'Falha ao processar arquivo', { duration: 10000 });
-    } finally {
-      setIsExtracting(false);
-      e.target.value = ''; // permite re-upload do mesmo arquivo
     }
+    setProgress({ done: files.length, total: files.length, current: null });
+
+    // Dedup local por CNPJ: se o mesmo CNPJ apareceu em 2+ arquivos, mantém
+    // a versão MAIS COMPLETA (mais campos preenchidos) — operador edita
+    // tudo na revisão, mas começamos com o melhor candidato. Sem CNPJ,
+    // ignora dedup (cliente sem documento sempre cria novo).
+    const dedupKey = (c: ExtractedClient) => onlyDigits(c.cnpj);
+    const byKey = new Map<string, ExtractedClient>();
+    const sansCnpj: ExtractedClient[] = [];
+    for (const c of allExtracted) {
+      const k = dedupKey(c);
+      if (!k) { sansCnpj.push(c); continue; }
+      const prev = byKey.get(k);
+      if (!prev) { byKey.set(k, c); continue; }
+      // Score = qtd de campos truthy. Vence o mais completo.
+      const score = (x: ExtractedClient) => Object.values(x).filter(v => v && String(v).trim()).length;
+      byKey.set(k, score(c) > score(prev) ? c : prev);
+    }
+    const consolidated = [...byKey.values(), ...sansCnpj];
+
+    if (consolidated.length === 0) {
+      const msg = failures.length > 0
+        ? `Nenhum cliente extraído. Falhas: ${failures.map(f => `${f.name} (${f.reason})`).join('; ')}`
+        : 'Nenhum cliente identificado nos arquivos.';
+      toast.error(msg, { duration: 10000 });
+      setIsExtracting(false);
+      e.target.value = '';
+      return;
+    }
+
+    // Pra cada consolidado, verifica duplicata por CNPJ NO BANCO
+    const enriched: ReviewItem[] = await Promise.all(
+      consolidated.map(async c => {
+        const existing = await findExistingByCnpj(c.cnpj);
+        return {
+          client: c,
+          existingId: existing?.id ?? null,
+          existingName: existing?.razao_social ?? null,
+          resolution: 'pending' as const,
+        };
+      }),
+    );
+
+    setItems(enriched);
+    setCurrentIdx(0);
+    setDraft({ ...enriched[0].client });
+    setStage('review');
+
+    const msg = `${enriched.length} cliente${enriched.length === 1 ? '' : 's'} de ${files.length} arquivo${files.length === 1 ? '' : 's'}` +
+      (failures.length > 0 ? ` · ${failures.length} arquivo${failures.length === 1 ? '' : 's'} com erro` : '');
+    toast.success(msg);
+    if (failures.length > 0) {
+      toast.warning(`Arquivos com erro: ${failures.map(f => f.name).join(', ')}`, { duration: 8000 });
+    }
+
+    setIsExtracting(false);
+    e.target.value = ''; // permite re-upload do mesmo arquivo
   };
 
   const advance = () => {
@@ -137,7 +194,7 @@ export function ImportClientsDialog({ open, onOpenChange }: Props) {
         <DialogHeader>
           <DialogTitle>Importar Clientes</DialogTitle>
           <DialogDescription>
-            Envie um arquivo (Excel, CSV, PDF, Word, ou foto) com lista de lojistas. O sistema extrai os dados e você confirma loja por loja.
+            Envie um ou vários arquivos (Excel, CSV, PDF, Word, ou foto) com lista de lojistas. O sistema processa cada um, consolida por CNPJ e você revisa loja por loja antes de salvar.
           </DialogDescription>
         </DialogHeader>
 
@@ -150,14 +207,22 @@ export function ImportClientsDialog({ open, onOpenChange }: Props) {
               {isExtracting ? (
                 <>
                   <Loader2 className="h-10 w-10 text-primary animate-spin" />
-                  <p className="text-sm font-medium">Lendo arquivo e extraindo dados…</p>
-                  <p className="text-xs text-muted-foreground">PDF/imagem usam IA — pode levar 10-20s</p>
+                  <p className="text-sm font-medium">
+                    {progress.total > 1
+                      ? `Processando ${progress.done + (progress.current ? 1 : 0)} de ${progress.total} arquivos…`
+                      : 'Lendo arquivo e extraindo dados…'}
+                  </p>
+                  {progress.current && (
+                    <p className="text-xs text-muted-foreground truncate max-w-xs">{progress.current}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground">PDF/imagem usam IA — pode levar 10-20s cada</p>
                 </>
               ) : (
                 <>
                   <Upload className="h-10 w-10 text-muted-foreground" />
-                  <p className="text-sm font-medium">Clique pra escolher arquivo</p>
+                  <p className="text-sm font-medium">Clique pra escolher arquivos</p>
                   <p className="text-xs text-muted-foreground text-center">
+                    Pode selecionar VÁRIOS arquivos (Ctrl/Cmd + clique).<br />
                     Aceito: .xlsx · .xls · .csv · .pdf · .docx · .jpg · .png<br />
                     Excel/CSV: parse direto (instantâneo). PDF/Word/Imagem: IA Gemini.
                   </p>
@@ -166,6 +231,7 @@ export function ImportClientsDialog({ open, onOpenChange }: Props) {
               <input
                 id="import-clients-file"
                 type="file"
+                multiple
                 accept=".xlsx,.xls,.csv,.pdf,.docx,.doc,.jpg,.jpeg,.png,.webp"
                 className="hidden"
                 onChange={handleFileChange}
