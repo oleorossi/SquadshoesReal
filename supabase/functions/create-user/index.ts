@@ -60,15 +60,20 @@ Deno.serve(async (req) => {
       email,
       password,
       full_name,
-      // Novos: roles atribuídas + flag de aprovação imediata
       roles,
       approve,
+      // Permissões GRANULARES — se preenchido, sobrepõe ROLE_MODULES no front
+      // (admin marca menu por menu no dialog em vez de só escolher a role).
+      // Não substitui as roles — só adiciona override que useAccessControl usa
+      // com precedência. Se vier vazio/null, RBAC normal por roles.
+      allowed_modules,
     } = body as {
       email?: string;
       password?: string;
       full_name?: string;
       roles?: string[];
       approve?: boolean;
+      allowed_modules?: string[];
     };
 
     if (!email || !password) {
@@ -157,10 +162,40 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Permissões granulares por módulo (opcional). Se admin marcou menus
+    // individuais no dialog, persiste cada um como uma row em user_permissions.
+    // Front lê esses rows pra filtrar a sidebar (useAccessControl com precedência).
+    const cleanModules = Array.isArray(allowed_modules)
+      ? Array.from(new Set(allowed_modules.filter((m): m is string => typeof m === "string" && m.length > 0)))
+      : [];
+
+    if (cleanModules.length > 0) {
+      const permRows = cleanModules.map(module => ({
+        user_id: newUserId,
+        module,
+        can_view: true,
+        can_edit: false,
+      }));
+      const { error: permErr } = await adminClient.from("user_permissions").insert(permRows);
+      if (permErr) {
+        return new Response(JSON.stringify({
+          user: createData.user,
+          roles: cleanRoles,
+          approved: shouldApprove,
+          allowed_modules: [],
+          warning: `Usuário criado, roles atribuídas, mas falha ao gravar permissões granulares: ${permErr.message}. Edite manualmente em user_permissions.`,
+        }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     return new Response(JSON.stringify({
       user: createData.user,
       roles: cleanRoles,
       approved: shouldApprove,
+      allowed_modules: cleanModules,
     }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

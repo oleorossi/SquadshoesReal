@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useCurrentUserRoles } from './useUserManagement';
+import { useCurrentUserRoles, useCurrentUserPermissions } from './useUserManagement';
 import { useAuth } from './useAuth';
 
 /**
@@ -188,6 +188,12 @@ function getAllowedModules(roles: string[]): Set<string> {
    const { user, loading: authLoading } = useAuth();
    const rolesQuery = useCurrentUserRoles();
    const { data: roles = [] } = rolesQuery;
+   // Permissões granulares por usuário (sobrescrevem ROLE_MODULES quando
+   // o admin marcou menus individuais no dialog de criação de usuário).
+   // Se o user TEM rows em user_permissions, usamos só elas. Se NÃO tem,
+   // caímos no RBAC tradicional via roles. Admin sempre vê tudo.
+   const permsQuery = useCurrentUserPermissions();
+   const { data: granularPerms = [] } = permsQuery;
  
     // Cálculo do status de permissão.
     //
@@ -220,7 +226,23 @@ function getAllowedModules(roles: string[]): Set<string> {
 
   const roleKeys = useMemo(() => roles.map(r => r.role), [roles]);
    const isAdmin = useMemo(() => roleKeys.includes('admin'), [roleKeys]);
-  const allowedModules = useMemo(() => getAllowedModules(roleKeys), [roleKeys]);
+
+  // Resolve módulos permitidos com precedência:
+  //   1. Admin → '*' (tudo)
+  //   2. Tem rows em user_permissions com can_view=true → usa essas
+  //      (sobrescreve totalmente o RBAC, exceto admin)
+  //   3. Senão → usa ROLE_MODULES baseado nas roles do user
+  // Sem isso, admin não tinha como liberar SÓ "Pedido de Venda" pra alguém
+  // que não fosse comercial — agora dá override granular.
+  const allowedModules = useMemo<Set<string>>(() => {
+    if (roleKeys.includes('admin')) return new Set(['*']);
+    const granular = granularPerms.filter(p => p.can_view).map(p => p.module);
+    if (granular.length > 0) {
+      // dashboard sempre liberado pra qualquer user (tela inicial)
+      return new Set(['dashboard', ...granular]);
+    }
+    return getAllowedModules(roleKeys);
+  }, [roleKeys, granularPerms]);
 
   /**
    * Pode ver valores financeiros (preço unitário, total do PV, comissão).
