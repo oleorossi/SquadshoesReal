@@ -22,7 +22,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, SaleOrderFormData, SaleOrderItemFormData, PackagingMode } from '@/hooks/useSaleOrders';
+import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, useRealtimeSaleOrders, SaleOrderFormData, SaleOrderItemFormData, PackagingMode } from '@/hooks/useSaleOrders';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
 import { useClients, useEconomicGroups } from '@/hooks/useClients';
 import { supabase } from '@/integrations/supabase/client';
@@ -143,6 +143,8 @@ export default function SaleOrders() {
   const updateOrder = useUpdateSaleOrder();
   const deleteOrder = useDeleteSaleOrder();
   const updateStatus = useUpdateSaleOrderStatus();
+  // Subscribe Realtime: outros users veem mudanças/exclusões em ~200ms via WS.
+  useRealtimeSaleOrders();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const emitNfe = useEmitNfe();

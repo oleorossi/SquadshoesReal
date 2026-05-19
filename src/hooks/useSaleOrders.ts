@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -2840,4 +2841,38 @@ export function useCommitPickingForSaleOrder() {
     },
     onError: (err: Error) => toast.error(`Erro no picking: ${err.message}`),
   });
+}
+
+// Realtime: escuta INSERT/UPDATE/DELETE em sale_orders + sale_order_items e
+// invalida queries pra que todos os users vejam mudanças em ~200ms (sem F5).
+// Mesma estratégia do useRealtimeOrderStages — habilitado em sale_orders via
+// migration 20260519180000. Resolve o problema "PV some pra outro user sem
+// aviso" — agora B é notificado imediatamente quando A altera/deleta um PV.
+//
+// Chamado uma vez por sessão dentro do SaleOrders.tsx. NÃO chamar em outros
+// componentes pra evitar múltiplos canais (cada channel custa recursos de WS).
+export function useRealtimeSaleOrders() {
+  const qc = useQueryClient();
+  useEffect(() => {
+    const channel = supabase
+      .channel('sale-orders-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sale_orders' }, () => {
+        // Invalida todas as queries de sale_orders (predicate-based pra cobrir
+        // variações com filtros — sale_orders_with_nfe, etc.).
+        qc.invalidateQueries({ predicate: (q) => {
+          const k = q.queryKey[0];
+          return typeof k === 'string' && k.startsWith('sale_order');
+        }});
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sale_order_items' }, () => {
+        qc.invalidateQueries({ predicate: (q) => {
+          const k = q.queryKey[0];
+          return typeof k === 'string' && k.startsWith('sale_order');
+        }});
+      })
+      .subscribe((status, err) => {
+        if (status === 'CHANNEL_ERROR') console.warn('[realtime] sale-orders:', err?.message);
+      });
+    return () => { supabase.removeChannel(channel); };
+  }, [qc]);
 }
