@@ -40,6 +40,27 @@ async function gcFetch(path: string, init: RequestInit = {}) {
   return { ok: res.ok, status: res.status, json };
 }
 
+// Quando clients.endereco vem concatenado tipo "Rua X, PARTE GALPAO" (vírgula
+// como separador entre logradouro e complemento), o XML SEFAZ saía com o
+// complemento DENTRO do logradouro — fica feio no DANFE e tecnicamente
+// errado (Receita espera logradouro limpo, complemento em tag própria).
+// 19/05/2026: bug visto em PV-00116, cliente LNG cadastrado como
+// "Rua Maria Soares Sendas, PARTE GALPAO". Helper separa pela 1ª vírgula.
+function splitAddress(addr: string | null | undefined, manualComplemento?: string | null): { logradouro: string; complemento: string } {
+  const raw = (addr || "").trim();
+  const manual = (manualComplemento || "").trim();
+  if (!raw) return { logradouro: "", complemento: manual };
+  const idx = raw.indexOf(",");
+  if (idx < 0) return { logradouro: raw, complemento: manual };
+  const logradouro = raw.slice(0, idx).trim();
+  const restoDoEndereco = raw.slice(idx + 1).trim();
+  // Junta manual + extraído (manual primeiro se houver, separado por " - ")
+  const complemento = manual && restoDoEndereco
+    ? `${manual} - ${restoDoEndereco}`
+    : (manual || restoDoEndereco);
+  return { logradouro, complemento };
+}
+
 // Cache do id da loja no GestaoClick. A doc da API marca `loja_id` como
 // obrigatório no POST /notas_fiscais_produtos. Quando ausente, o GC usa
 // "matriz ou loja que o usuário tem permissão" — funciona, mas explícito
@@ -392,17 +413,22 @@ Deno.serve(async (req) => {
         ...(client.telefone ? { telefone: client.telefone } : {}),
         ...(client.email ? { email: client.email } : {}),
         // Formato GestaoClick: array de objetos { endereco: {...} }, cidade por id.
-        enderecos: [{
-          endereco: {
-            cep: (client.cep || "").replace(/\D/g, ""),
-            logradouro: client.endereco,
-            numero: (client as any).numero || "S/N",
-            ...(client.complemento ? { complemento: client.complemento } : {}),
-            bairro: client.bairro,
-            cidade_id: gcCidadeId,
-            estado: client.estado,
-          },
-        }],
+        // splitAddress separa "Rua X, PARTE GALPAO" em logradouro+complemento
+        // pra não aparecer concatenado no DANFE (fix 19/05/2026 PV-00116).
+        enderecos: (() => {
+          const { logradouro, complemento } = splitAddress(client.endereco, (client as any).complemento);
+          return [{
+            endereco: {
+              cep: (client.cep || "").replace(/\D/g, ""),
+              logradouro,
+              numero: (client as any).numero || "S/N",
+              ...(complemento ? { complemento } : {}),
+              bairro: client.bairro,
+              cidade_id: gcCidadeId,
+              estado: client.estado,
+            },
+          }];
+        })(),
       });
 
       // cidade_id preenchido no endereço retornado pelo GestaoClick?
@@ -666,14 +692,52 @@ Deno.serve(async (req) => {
         .rpc("compute_sale_order_nfe_volumes", { p_sale_order_id: sale_order_id });
       if (volErr) {
         console.warn("[emit-nfe] compute_sale_order_nfe_volumes falhou:", volErr.message);
-      } else if (Array.isArray(volRow) && volRow.length > 0) {
-        const v = Number((volRow[0] as any)?.volumes) || 0;
-        if (v > 0) qtdVolumesStr = String(v);
+      } else {
+        // RPC retorna TABLE(...) → array de rows. Aceita tb objeto direto
+        // por defesa contra mudanças no comportamento do supabase-js.
+        const row = Array.isArray(volRow) ? volRow[0] : volRow;
+        const v = Number((row as any)?.volumes) || 0;
+        const mode = (row as any)?.mode || "?";
+        if (v > 0) {
+          qtdVolumesStr = String(v);
+          console.log(`[emit-nfe] volumes=${v} (mode=${mode}) PV ${sale_order_id}`);
+        } else {
+          console.warn(`[emit-nfe] compute_sale_order_nfe_volumes retornou v=${v} (mode=${mode}). Fallback=1.`);
+        }
       }
     } catch (e) {
       console.warn("[emit-nfe] Exceção ao calcular volumes:", e instanceof Error ? e.message : String(e));
     }
-    if (!qtdVolumesStr) qtdVolumesStr = "1"; // sempre tem ao menos 1 volume
+    // Defesa: nunca enviar quantidade vazia/nula. Mínimo 1 volume.
+    if (!qtdVolumesStr || qtdVolumesStr === "0") qtdVolumesStr = "1";
+
+    // Fallback baseado em packaging_mode QUANDO a RPC falhou completamente.
+    // Não valida "volumes > total_pairs" porque em modos individual_fitilho/
+    // amarrado a quantidade de volumes É IGUAL ao total de pares (1 par = 1
+    // volume amarrado/com fitilho) — não é bug. Em individual_master/colmeia,
+    // dividir pelo pairs_per_box_default (12 é padrão histórico Squad Shoes).
+    if (qtdVolumesStr === "1") {
+      // Só recalcula se temos sinal claro de que a RPC não retornou um
+      // valor sensato — o "1" é o fallback default. Pra outros modos,
+      // a RPC sabe melhor.
+      const pkgMode = (order as any).packaging_mode || "";
+      const totalPairsForVolumeCheck = billableItems.reduce(
+        (s: number, it: any) => s + (Number(it.quantity) || 0), 0,
+      );
+      if (totalPairsForVolumeCheck > 1) {
+        if (pkgMode === "individual_fitilho" || pkgMode === "individual_amarrado") {
+          // Cada par = 1 volume amarrado/com fitilho
+          qtdVolumesStr = String(totalPairsForVolumeCheck);
+        } else if (pkgMode === "individual_master" || pkgMode === "colmeia") {
+          // Cada caixa master/colmeia agrupa pairs_per_box_default pares
+          // (default histórico = 12). RPC normalmente cobre esse caso —
+          // este é só fallback se a RPC falhou.
+          qtdVolumesStr = String(Math.max(1, Math.ceil(totalPairsForVolumeCheck / 12)));
+        }
+        // Outros modos (sem packaging_mode definido) ficam com "1".
+        console.log(`[emit-nfe] fallback de volumes aplicado: mode=${pkgMode} → ${qtdVolumesStr}`);
+      }
+    }
 
     // Informações Complementares — concatena ordem que aparece no XML:
     //   [OC do cliente] · [Texto livre do user] · [PV interno] · [Aviso peso]
@@ -858,24 +922,27 @@ Deno.serve(async (req) => {
             serie_nfe: fiscal.serie_nfe || "1",
             ambiente: fiscal.ambiente || null,
           },
-          destinatario: {
-            tipo_pessoa: cnpjDestRaw.length === 14 ? 'PJ' : 'PF',
-            nome: order.client_name || client?.razao_social || client?.nome,
-            documento: cnpjDestRaw,
-            ie_status: isContribuinte ? 'contribuinte' : 'isento',
-            ie_valor: isContribuinte ? ieDestDigits : 'ISENTO',
-            endereco: client.endereco,
-            numero: (client as any).numero || 'S/N',
-            complemento: client.complemento || null,
-            bairro: client.bairro,
-            cidade: client.cidade,
-            uf: client.estado,
-            cep: (client.cep || '').replace(/\D/g, ''),
-            telefone: client.telefone || null,
-            email: client.email || null,
-            gc_id: gcClientId,
-            gc_cidade_id: nfePayload.id_destinatario ? null : null, // resolvido acima, fica no payload
-          },
+          destinatario: (() => {
+            const { logradouro, complemento } = splitAddress(client.endereco, (client as any).complemento);
+            return {
+              tipo_pessoa: cnpjDestRaw.length === 14 ? 'PJ' : 'PF',
+              nome: order.client_name || client?.razao_social || client?.nome,
+              documento: cnpjDestRaw,
+              ie_status: isContribuinte ? 'contribuinte' : 'isento',
+              ie_valor: isContribuinte ? ieDestDigits : 'ISENTO',
+              endereco: logradouro,
+              numero: (client as any).numero || 'S/N',
+              complemento: complemento || null,
+              bairro: client.bairro,
+              cidade: client.cidade,
+              uf: client.estado,
+              cep: (client.cep || '').replace(/\D/g, ''),
+              telefone: client.telefone || null,
+              email: client.email || null,
+              gc_id: gcClientId,
+              gc_cidade_id: nfePayload.id_destinatario ? null : null,
+            };
+          })(),
           operacao: {
             natureza_operacao: naturezaEsperada,
             cfop: resolvedCfop,
