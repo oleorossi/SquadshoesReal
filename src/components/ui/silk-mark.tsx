@@ -20,8 +20,10 @@ interface SilkMarkProps {
   silk?: Silk;
   /** Altura em px (default 22). Largura é dinâmica via padding+texto. */
   height?: number;
-  /** 'dark' = fundo preto/texto amarelo · 'light' = traço preto. Default 'dark'. */
+  /** 'dark' = fundo preto/texto amarelo (etiqueta caixa externa) · 'light' = traço preto sobre transparente. Default 'dark'. */
   variant?: 'dark' | 'light';
+  /** Cor do "amarelo etiqueta" quando variant='dark'. Default token --label-yellow (#FFE94A). */
+  yellow?: string;
   className?: string;
 }
 
@@ -76,17 +78,24 @@ export function SilkMark({
   silk = 'HOST',
   height = 22,
   variant = 'dark',
+  yellow,
   className,
 }: SilkMarkProps) {
   const isDark = variant === 'dark';
+  // Token --label-yellow (definido em src/index.css). Fallback FFE94A do design ref.
+  const yellowColor = yellow || 'var(--label-yellow, #FFE94A)';
   return (
     <span
       className={cn(
         'inline-flex items-center gap-1 box-border leading-none whitespace-nowrap',
-        isDark ? 'bg-foreground text-[var(--label-yellow,#FDE047)]' : 'bg-transparent text-foreground border border-foreground',
+        isDark ? 'bg-foreground' : 'bg-transparent text-foreground border border-foreground',
         className,
       )}
-      style={{ height, padding: '2px 8px' }}
+      style={{
+        height,
+        padding: '2px 8px',
+        ...(isDark ? { color: yellowColor } : {}),
+      }}
     >
       <SilkLogo silk={silk} size={height - 6} />
       <span

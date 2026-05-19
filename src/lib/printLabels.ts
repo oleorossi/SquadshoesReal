@@ -166,7 +166,7 @@ function silkLogoSvg(silk: string, size: number): string {
 /** Build HTML string for box identification labels (rótulo Caixa Externa).
  *
  * Formato 198×132mm — 2 etiquetas empilhadas verticalmente por folha A4 portrait
- * com 6mm de margem de corte entre elas. Visual amarelo (#FDE047, yellow-300
+ * com 6mm de margem de corte entre elas. Visual amarelo fluor (#FFE94A — ref
  * Tailwind do design system) estilo Beira-Rio/Molekinha redesign:
  *   - HEADER: NF em destaque (Anton 34px sobre faixa preta) + PROG.: <orderNumber> /
  *     FICHA <ficha> como metadata secundária à direita.
@@ -403,7 +403,7 @@ ${LABEL_PRINT_HARDENING}
 .page:not(.page-break){break-after:avoid;page-break-after:avoid;}
 
 .label-cx-ext{
-  width:192mm;height:132mm;background:#FDE047;
+  width:192mm;height:132mm;background:#FFE94A;
   border:1.5px solid #000;color:#000;
   font-family:'Inter Tight',sans-serif;
   display:flex;flex-direction:column;
@@ -420,7 +420,7 @@ ${LABEL_PRINT_HARDENING}
 
 /* HEADER NF / PROG ─────────────────── */
 .nf-row{display:grid;grid-template-columns:1.4fr 1fr;border-bottom:1.5px solid #000;flex-shrink:0;}
-.nf-cell{padding:6px 12px;border-right:1.5px solid #000;display:flex;align-items:baseline;gap:8px;background:#000;color:#FDE047;}
+.nf-cell{padding:6px 12px;border-right:1.5px solid #000;display:flex;align-items:baseline;gap:8px;background:#000;color:#FFE94A;}
 .nf-cell .nf-label{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:13px;letter-spacing:0.06em;}
 .nf-cell .nf-value{font-family:'Anton',sans-serif;font-size:34px;letter-spacing:0.02em;line-height:1;}
 .prog-cell{padding:6px 12px;display:flex;align-items:baseline;gap:6px;}
@@ -437,9 +437,9 @@ ${LABEL_PRINT_HARDENING}
 .body-left .gap{height:4px;}
 
 .body-right{flex:1;display:flex;flex-direction:column;padding:8px 10px 6px;}
-.photo-frame{flex:1;border:2px solid #000;background:#FDE047;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;}
+.photo-frame{flex:1;border:2px solid #000;background:#FFE94A;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;}
 .photo-frame img{max-width:100%;max-height:100%;object-fit:contain;}
-.photo-fallback-badge{position:absolute;top:2px;left:2px;background:#000;color:#FDE047;font-size:8px;font-weight:800;padding:2px 5px;letter-spacing:0.5px;text-transform:uppercase;font-family:'JetBrains Mono',monospace;}
+.photo-fallback-badge{position:absolute;top:2px;left:2px;background:#000;color:#FFE94A;font-size:8px;font-weight:800;padding:2px 5px;letter-spacing:0.5px;text-transform:uppercase;font-family:'JetBrains Mono',monospace;}
 .cor-row{margin-top:4px;display:flex;justify-content:space-between;align-items:center;gap:6px;}
 .cor-row .cor-name{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;}
 
@@ -447,24 +447,24 @@ ${LABEL_PRINT_HARDENING}
 .grade-table{display:flex;border-top:1.5px solid #000;flex-shrink:0;}
 .grade-labels{border-right:1.5px solid #000;display:flex;flex-direction:column;}
 .grade-labels .lbl{padding:5px 10px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:10px;letter-spacing:0.06em;min-width:110px;border-bottom:1px solid #000;}
-.grade-labels .lbl.first{background:#000;color:#FDE047;}
+.grade-labels .lbl.first{background:#000;color:#FFE94A;}
 .grade-labels .lbl.last{border-bottom:none;}
 .grade-grid{flex:1;display:grid;}
 .grade-grid > .cell{text-align:center;border-right:1px solid #000;border-bottom:1px solid #000;font-family:'JetBrains Mono',monospace;font-weight:700;color:#000;padding:4px 0;font-size:13px;}
-.grade-grid > .cell.tam-total{background:#000;color:#FDE047;}
-.grade-grid > .cell.qtd-total{background:#000;color:#FDE047;font-size:18px;border-bottom:none;}
-.grade-grid .row-marca{grid-column:1 / -1;background:#000;color:#FDE047;padding:3px 10px;text-align:left;display:flex;align-items:center;gap:8px;border-right:none;border-bottom:1px solid #FDE047;}
-.grade-grid .row-marca .silk-legend{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.1em;color:rgba(253,224,71,0.65);}
+.grade-grid > .cell.tam-total{background:#000;color:#FFE94A;}
+.grade-grid > .cell.qtd-total{background:#000;color:#FFE94A;font-size:18px;border-bottom:none;}
+.grade-grid .row-marca{grid-column:1 / -1;background:#000;color:#FFE94A;padding:3px 10px;text-align:left;display:flex;align-items:center;gap:8px;border-right:none;border-bottom:1px solid #FFE94A;}
+.grade-grid .row-marca .silk-legend{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.1em;color:rgba(255,233,74,0.65);}
 .grade-grid .row-ref{grid-column:1 / -1;text-align:left;padding:4px 10px;font-size:14px;border-right:none;border-bottom:1px solid #000;font-family:'JetBrains Mono',monospace;font-weight:700;}
 
 /* SilkMark inline (espelha src/components/ui/silk-mark.tsx) */
-.silk-mark{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;background:#000;color:#FDE047;box-sizing:border-box;line-height:1;}
+.silk-mark{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;background:#000;color:#FFE94A;box-sizing:border-box;line-height:1;}
 .silk-mark svg{flex-shrink:0;}
 .silk-mark .silk-name{font-family:'Anton',sans-serif;letter-spacing:0.06em;line-height:1;}
 
 /* RODAPÉ PEDIDO + VOLUME ──────────── */
-.footer{display:flex;border-top:1.5px solid #000;background:#000;color:#FDE047;flex-shrink:0;}
-.footer .pedido{flex:1;padding:6px 12px;border-right:1.5px solid #FDE047;display:flex;align-items:center;gap:8px;}
+.footer{display:flex;border-top:1.5px solid #000;background:#000;color:#FFE94A;flex-shrink:0;}
+.footer .pedido{flex:1;padding:6px 12px;border-right:1.5px solid #FFE94A;display:flex;align-items:center;gap:8px;}
 .footer .volume{padding:6px 14px;display:flex;align-items:baseline;gap:8px;}
 .footer .lbl{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:13px;letter-spacing:0.06em;}
 .footer .val{font-family:'Anton',sans-serif;font-size:28px;letter-spacing:0.02em;line-height:1;}
@@ -1487,9 +1487,11 @@ export function buildHangtagHtml(labels: {
 
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter+Tight:wght@400;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
   *{box-sizing:border-box;margin:0;padding:0;}
-  body{background:#e8e8e8;font-family:Arial,Helvetica,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  body{background:#e8e8e8;font-family:'Inter Tight',system-ui,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
   .hangtag-page{
     width:${W}mm;height:${H}mm;background:#fff;margin:8px auto;
     overflow:hidden;position:relative;page-break-after:always;
@@ -1504,7 +1506,8 @@ export function buildHangtagHtml(labels: {
     flex-shrink:0;
   }
   .ht-brand-name{
-    font-size:13pt;font-weight:900;letter-spacing:4px;text-transform:uppercase;line-height:1;
+    font-family:'Anton',Impact,sans-serif;
+    font-size:14pt;font-weight:400;letter-spacing:6px;text-transform:uppercase;line-height:1;
   }
   .ht-brand-logo{
     max-width:80%;max-height:10mm;object-fit:contain;
@@ -1516,19 +1519,21 @@ export function buildHangtagHtml(labels: {
   }
   .ht-size-block{display:flex;flex-direction:column;align-items:center;gap:1mm;}
   .ht-size-label{
-    font-size:5.5pt;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#777;
+    font-family:'JetBrains Mono',monospace;
+    font-size:5.5pt;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:#777;
   }
   .ht-size-circle{
     width:14mm;height:14mm;border:2px solid #000;border-radius:50%;
     display:flex;align-items:center;justify-content:center;
-    font-weight:900;font-size:15pt;line-height:1;
+    font-family:'Anton',Impact,sans-serif;
+    font-weight:400;font-size:18pt;line-height:1;
   }
   .ht-info{
     width:100%;border-top:0.5px solid #ddd;border-bottom:0.5px solid #ddd;
     padding:2mm 0;
   }
   .ht-info-row{font-size:7pt;line-height:1.6;text-align:center;}
-  .ht-info-label{color:#888;font-weight:500;text-transform:uppercase;font-size:6pt;margin-right:0.5mm;}
+  .ht-info-label{font-family:'JetBrains Mono',monospace;color:#888;font-weight:600;text-transform:uppercase;font-size:6pt;letter-spacing:0.12em;margin-right:0.5mm;}
   .ht-info-value{font-weight:900;color:#000;text-transform:uppercase;}
   .ht-composition{
     font-size:5.5pt;color:#555;line-height:1.5;text-align:center;

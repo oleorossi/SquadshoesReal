@@ -14,20 +14,44 @@ interface ShoePhotoProps {
   height?: number;
   src?: string | null;
   label?: string;
+  /**
+   * 'soft' (default) — fundo --p-soft, ideal pra fichas A4.
+   * 'photo' — fundo #F2EEE5 cinza-cremoso, pra etiquetas individuais.
+   * 'photo-yellow' — fundo --label-yellow (#FFE94A), pra etiqueta caixa externa.
+   */
+  variant?: 'soft' | 'photo' | 'photo-yellow';
+  /** Adiciona borda preta de 2px (etiqueta caixa externa). */
+  framed?: boolean;
   className?: string;
 }
 
-export function ShoePhoto({ width = 120, height = 88, src, label, className }: ShoePhotoProps) {
+const VARIANT_BG: Record<NonNullable<ShoePhotoProps['variant']>, string> = {
+  soft: 'var(--p-soft, #FAF8F5)',
+  photo: '#F2EEE5',
+  'photo-yellow': 'var(--label-yellow, #FFE94A)',
+};
+
+export function ShoePhoto({
+  width = 120,
+  height = 88,
+  src,
+  label,
+  variant = 'soft',
+  framed = false,
+  className,
+}: ShoePhotoProps) {
   const [errored, setErrored] = useState(false);
   const showImage = src && !errored;
+  const bg = VARIANT_BG[variant];
 
   return (
     <div
       className={cn(
-        'relative overflow-hidden shrink-0 bg-muted border border-border',
+        'relative overflow-hidden shrink-0',
+        framed ? 'border-2 border-foreground' : 'border border-border',
         className,
       )}
-      style={{ width, height }}
+      style={{ width, height, background: bg }}
     >
       {showImage ? (
         <img
