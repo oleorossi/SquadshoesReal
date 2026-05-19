@@ -86,6 +86,13 @@ export interface BoxIdentificationData {
   /** Página global e total (ex.: 41 de 72). Omite quando ambos faltam. */
   pageNumber?: number;
   pageTotal?: number;
+  /** Solado do produto (ex.: 'TR-04', 'EVA-22'). Define qual SILK é estampado
+   *  na etiqueta — mapeamento via `silkBySoladoForLabel()` interno. Quando
+   *  ausente ou desconhecido, faz fallback para silk 'HOST'. */
+  solado?: string;
+  /** Número da ficha/talão dentro do PV. Aparece no header como metadata
+   *  secundária ("PROG.: <orderNumber> / FICHA <ficha>"). Opcional. */
+  ficha?: string;
 }
 
 interface LabelData {
@@ -120,35 +127,226 @@ function safeScriptBlock(code: string): string {
   return `<script>${code}<` + `/script>`;
 }
 
-/** Build HTML string for box identification labels (rótulo caixa externa)
+// ─── Mapeamento solado → silk (espelha src/components/ui/silk-mark.tsx) ──
+// HTML builder não pode importar JSX, então duplica a tabela. Mantenha em
+// sync com src/components/ui/silk-mark.tsx::SOLADO_TO_SILK. Solado desconhecido
+// cai pra 'HOST'.
+const LABEL_SOLADO_TO_SILK: Record<string, string> = {
+  'TR-04': 'HOST', 'TR-PR': 'HOST', 'TR-09': 'HOST', 'TR-14': 'HOST',
+  'TR-12': 'NOVA', 'TR-21': 'NOVA', 'EVA-22': 'NOVA',
+  'PU-08': 'PRIME', 'COURO-A': 'PRIME',
+};
+function silkBySoladoForLabel(solado?: string | null): string {
+  if (!solado) return 'HOST';
+  return LABEL_SOLADO_TO_SILK[solado.toUpperCase()] || 'HOST';
+}
+
+/** SVG inline do logo SilkMark. currentColor → herda fg da .silk-mark. */
+function silkLogoSvg(silk: string, size: number): string {
+  if (silk === 'HOST') {
+    return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M 4 12 L 9 4 L 14 12 L 9 20 Z" fill="currentColor"/>
+      <circle cx="17" cy="12" r="3" fill="currentColor"/>
+    </svg>`;
+  }
+  if (silk === 'NOVA') {
+    return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M 12 2 L 14 10 L 22 12 L 14 14 L 12 22 L 10 14 L 2 12 L 10 10 Z" fill="currentColor"/>
+    </svg>`;
+  }
+  if (silk === 'PRIME') {
+    return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.5"/>
+      <circle cx="12" cy="12" r="3.5" fill="currentColor"/>
+    </svg>`;
+  }
+  return '';
+}
+
+/** Build HTML string for box identification labels (rótulo Caixa Externa).
  *
- * Layout no estilo Molekinha/Beira-Rio:
- *   Topo:    Logo + Barcode  |  QR  +  Bloco Cliente
- *   Sub:     Remessa/Talões  |  Rót Rem/Ped/Ped.Rem
- *   Stats:   Lote · Corrugado · Fáb · Grade · Total
- *   Mid:     Mod/Cor/Descrição  |  Imagem  |  Tamanho-grande
- *   Grade:   Tam: 29 30 31 32 ...  /  Qtd: 1 1 1 1 ...
- *   Rodapé:  Endereço remetente · CGC · Página X/Y
+ * Formato 198×132mm — 2 etiquetas empilhadas verticalmente por folha A4 portrait
+ * com 6mm de margem de corte entre elas. Visual amarelo (#FDE047, yellow-300
+ * Tailwind do design system) estilo Beira-Rio/Molekinha redesign:
+ *   - HEADER: NF em destaque (Anton 34px sobre faixa preta) + PROG.: <orderNumber> /
+ *     FICHA <ficha> como metadata secundária à direita.
+ *   - BODY: 2 colunas — esquerda com dados do destinatário (CLIENTE, CNPJ, ENDEREÇO,
+ *     BAIRRO, CIDADE, UF + IDENTIF. CLI + PED. COMPRA); direita com foto grande
+ *     do produto (~310×240px) em moldura preta 2px + nome da cor abaixo.
+ *   - GRADE TABLE: rótulos MARCA/REFERENCIA/TAMANHO/QUANTIDADE à esquerda, valores
+ *     em grid à direita. Linha MARCA renderiza SilkMark determinado pelo solado.
+ *   - FOOTER: PEDIDO + VOLUME em Anton 28px sobre faixa preta.
  *
  * Regra: campo vazio → linha/célula NÃO renderiza (em vez de aparecer "—").
+ *
+ * Histórico: redimensionado de 150×100mm → 198×132mm em 19/05/2026 conforme
+ * handoff `cxext_198x132_handoff/` (README + screen-etiquetas.jsx). Fontes
+ * escaladas proporcionalmente (NF 26→34px, foto 220×170→310×240px, PEDIDO
+ * 22→28px, TT total 13→18px, QUANTIDADE 12→16px).
  */
 export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): string {
-  const labels = items.map((item, idx) => {
-    const totalPairs = item.totalPairsInRemessa ?? item.grade.reduce((sum, s) => sum + s.qty, 0);
-    const corrugadoPairs = item.grade.reduce((sum, s) => sum + s.qty, 0);
+  // Helper: célula só renderiza se valor for truthy. Evita "—" vazios.
+  const fieldRow = (
+    label: string,
+    val: string | number | undefined | null,
+    opts: { mono?: boolean } = {},
+  ): string => {
+    if (val === undefined || val === null || val === '' || val === 0) return '';
+    return `<div class="field${opts.mono ? ' mono' : ''}">
+      <span class="lbl">${escapeHtml(label)}:</span>
+      <span class="val">${escapeHtml(String(val))}</span>
+    </div>`;
+  };
 
-    // Tamanhos da grade renderizados como divs flex (NÃO usar <table>).
-    // Tabelas em HTML têm regras próprias de page-break que ignoram o
-    // break-inside:avoid do pai — foi o que causou a quebra entre TAM
-    // e QTD vista em produção. Divs flex respeitam o avoid normalmente.
-    const gradeCellWidth = item.grade.length > 0 ? `${100 / item.grade.length}%` : '0%';
-    const gradeHead = item.grade.map(s =>
-      `<div style="flex:1;text-align:center;padding:3px 4px;font-size:13px;font-weight:900;color:#000;">${s.size}</div>`
+  // Helper: HTML do SilkMark inline (espelha SilkMark.tsx visualmente para o
+  // builder de HTML strings). Variant 'dark' (faixa preta + texto amarelo) é
+  // o usado na linha MARCA da tabela de grade.
+  const renderSilkMarkHtml = (silk: string, height = 22): string => {
+    const logoSize = Math.max(0, height - 6);
+    return `<span class="silk-mark" style="height:${height}px;">
+      ${silkLogoSvg(silk, logoSize)}
+      <span class="silk-name" style="font-size:${Math.round(height * 0.7)}px;">${escapeHtml(silk)}</span>
+    </span>`;
+  };
+
+  // Fallback SVG quando imageUrl ausente/quebrada — silhueta de calçado escura
+  // sobre fundo amarelo (mantém continuidade visual com o restante da etiqueta).
+  const SHOE_FALLBACK_SVG = encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 130" preserveAspectRatio="xMidYMid meet">' +
+      '<ellipse cx="100" cy="118" rx="78" ry="6" fill="#000" opacity="0.18"/>' +
+      '<path d="M 24 100 Q 26 86 40 84 L 150 84 Q 174 84 180 96 Q 184 104 184 110 Q 184 114 180 114 L 32 114 Q 24 114 24 108 Z" fill="#1A1A1A" stroke="#000" stroke-width="0.8"/>' +
+      '<path d="M 40 84 Q 44 56 70 50 L 124 50 Q 156 52 168 70 Q 178 80 180 96 L 40 96 Z" fill="#2A2A2A" stroke="#000" stroke-width="0.8"/>' +
+    '</svg>',
+  );
+  const FALLBACK_PHOTO_DATA_URL = `data:image/svg+xml;utf8,${SHOE_FALLBACK_SVG}`;
+
+  // Render de uma etiqueta individual (198×132mm).
+  const renderLabel = (item: BoxIdentificationData): string => {
+    // ─── HEADER NF / PROG ──────────────────────────────────
+    const nfValue = item.nfe || '—';
+    const progParts = [
+      item.orderNumber ? escapeHtml(item.orderNumber) : '',
+      item.ficha ? `FICHA ${escapeHtml(item.ficha)}` : '',
+    ].filter(Boolean);
+    const progValue = progParts.join(' / ') || '—';
+
+    // ─── DESTINATÁRIO (esquerda) ───────────────────────────
+    const cliente = item.recipientRazaoSocial || item.recipientName || '';
+    const cepFmt = item.recipientCep
+      ? (() => {
+          const c = item.recipientCep!.replace(/\D/g, '');
+          return c.length === 8 ? `${c.slice(0, 5)}-${c.slice(5)}` : item.recipientCep!;
+        })()
+      : '';
+    const identifCli = [item.recipientBranchCode, item.recipientBranchName].filter(Boolean).join(' — ')
+      || item.recipientCode
+      || '';
+    const recipientFields = [
+      fieldRow('CLIENTE', cliente),
+      fieldRow('CNPJ', item.recipientCnpj),
+      fieldRow('ENDEREÇO', item.recipientAddress),
+      fieldRow('BAIRRO', item.recipientNeighborhood),
+      fieldRow('CIDADE', item.recipientCity),
+      fieldRow('UF', item.recipientUf),
+      fieldRow('CEP', cepFmt),
+    ].filter(Boolean).join('');
+    const orderFields = [
+      identifCli ? fieldRow('IDENTIF. CLI', identifCli, { mono: true }) : '',
+      fieldRow('PED. COMPRA', item.clientOrderNumber, { mono: true }),
+    ].filter(Boolean).join('');
+
+    // ─── FOTO + COR (direita) ──────────────────────────────
+    // imageIsFallback aplica grayscale pra deixar claro que a cor da foto não
+    // corresponde à cor real do pedido (foto mestra da ficha técnica).
+    const imgFilter = item.imageIsFallback ? 'filter:grayscale(100%);-webkit-filter:grayscale(100%);' : '';
+    const fallbackBadge = item.imageIsFallback
+      ? `<div class="photo-fallback-badge">FOTO GENÉRICA</div>`
+      : '';
+    const photoInner = item.imageUrl
+      ? `${fallbackBadge}<img src="${item.imageUrl}" style="${imgFilter}" onerror="this.onerror=null;this.src='${FALLBACK_PHOTO_DATA_URL}';" alt="" />`
+      : `<img src="${FALLBACK_PHOTO_DATA_URL}" alt="" />`;
+
+    // ─── GRADE (tabela rodapé) ─────────────────────────────
+    const gradeCols = item.grade.length + 1; // +1 para coluna TT
+    const sizeCells = item.grade.map(g =>
+      `<div class="cell">${escapeHtml(String(g.size))}</div>`,
     ).join('');
-    const gradeRow = item.grade.map(s =>
-      `<div style="flex:1;text-align:center;padding:3px 4px;font-size:17px;font-weight:900;color:#000;">${s.qty}</div>`
+    const qtyCells = item.grade.map(g =>
+      `<div class="cell">${g.qty}</div>`,
     ).join('');
-    void gradeCellWidth;
+    const totalQty = item.grade.reduce((sum, g) => sum + g.qty, 0);
+
+    // ─── MARCA SILK (linha 1 da tabela de grade) ───────────
+    // O solado define o silk. Quando solado ausente/desconhecido → HOST.
+    const silk = silkBySoladoForLabel(item.solado);
+    const silkLegend = item.solado
+      ? `SILK DEFINIDO PELO SOLADO ${escapeHtml(item.solado.toUpperCase())}`
+      : 'SILK PADRÃO';
+
+    // ─── RODAPÉ PEDIDO / VOLUME ────────────────────────────
+    const pedidoFooter = item.clientOrderNumber || item.orderNumber || '—';
+    const volNumerador = item.boxNumber ?? 1;
+    const volDenominador = item.totalBoxes ?? 1;
+
+    return `
+      <div class="label-cx-ext">
+        <div class="nf-row">
+          <div class="nf-cell">
+            <span class="nf-label">NF:</span>
+            <span class="nf-value">${escapeHtml(String(nfValue))}</span>
+          </div>
+          <div class="prog-cell">
+            <span class="prog-label">PROG.:</span>
+            <span class="prog-value">${progValue}</span>
+          </div>
+        </div>
+
+        <div class="body">
+          <div class="body-left">
+            ${recipientFields}
+            ${orderFields ? '<div class="gap"></div>' + orderFields : ''}
+          </div>
+          <div class="body-right">
+            <div class="photo-frame">${photoInner}</div>
+            ${item.color ? `<div class="cor-row"><span class="cor-name">${escapeHtml(item.color)}</span></div>` : ''}
+          </div>
+        </div>
+
+        <div class="grade-table">
+          <div class="grade-labels">
+            <div class="lbl first">MARCA:</div>
+            <div class="lbl">REFERENCIA</div>
+            <div class="lbl">TAMANHO</div>
+            <div class="lbl last">QUANTIDADE</div>
+          </div>
+          <div class="grade-grid" style="grid-template-columns:repeat(${gradeCols}, 1fr);">
+            <div class="row-marca">
+              ${renderSilkMarkHtml(silk, 22)}
+              <span class="silk-legend">${silkLegend}</span>
+            </div>
+            <div class="row-ref">${escapeHtml(item.refCode || '—')}</div>
+            ${sizeCells}<div class="cell total tam-total">TT</div>
+            ${qtyCells}<div class="cell total qtd-total">${totalQty}</div>
+          </div>
+        </div>
+
+        <div class="footer">
+          <div class="pedido">
+            <span class="lbl">PEDIDO:</span>
+            <span class="val">${escapeHtml(String(pedidoFooter))}</span>
+          </div>
+          <div class="volume">
+            <span class="lbl">VOLUME:</span>
+            <span class="val">${volNumerador}<span class="sep">/</span>${volDenominador}</span>
+          </div>
+        </div>
+      </div>`;
+  };
+
+  // Construímos pages com 2 etiquetas empilhadas por A4 portrait. Linha de
+  // corte (6mm) intercala. page-break-inside:avoid no .page garante que cada
+  // par fique na mesma folha.
+  const labels = items.map(renderLabel);
 
     const barcodeId = `box-bc-${idx}`;
 
