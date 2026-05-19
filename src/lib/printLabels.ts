@@ -348,426 +348,148 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
   // par fique na mesma folha.
   const labels = items.map(renderLabel);
 
-    const barcodeId = `box-bc-${idx}`;
+  // (código órfão da implementação 150×100mm removido em 19/05/2026 — agora
+  //  vive em git history se precisar consultar; o novo renderLabel acima cobre
+  //  todo o ciclo de renderização da etiqueta 198×132mm.)
 
-    // Helpers de renderização condicional. Quando o valor é "falsy" (null,
-    // undefined, '', 0), a célula INTEIRA é omitida (em vez de aparecer vazia).
-    const fieldRow = (label: string, val: string | number | undefined, opts: { bold?: boolean; big?: boolean } = {}) => {
-      if (val === undefined || val === null || val === '' || val === 0) return '';
-      const bigStyle = opts.big ? 'font-size:18px;font-weight:900;' : 'font-weight:700;';
-      const boldStyle = opts.bold ? 'font-weight:700;' : '';
-      // label em #222 (cinza muito escuro) + bold pra ler bem em impressão.
-      // Antes era #555 que sumia no toner.
-      return `<div style="display:flex;gap:6px;line-height:1.3;${boldStyle}">
-        <span style="color:#222;font-size:10px;font-weight:700;min-width:54px;">${label}</span>
-        <span style="color:#000;${bigStyle}">${escapeHtml(String(val))}</span>
-      </div>`;
-    };
-
-    // Bloco DESTINATÁRIO: razão social em destaque + filial (se houver) +
-    // endereço completo + CNPJ. Razão social vai por cima pra não passar
-    // despercebida — quem recebe a caixa precisa identificar o cliente
-    // ANTES de qualquer outro dado.
-    const branchLabel = [item.recipientBranchCode, item.recipientBranchName]
-      .filter(Boolean)
-      .join(' — ');
-    const cityUf = [item.recipientCity, item.recipientUf].filter(Boolean).join(' / ');
-    const cepFmt = item.recipientCep
-      ? (() => {
-          const c = item.recipientCep!.replace(/\D/g, '');
-          return c.length === 8 ? `${c.slice(0, 5)}-${c.slice(5)}` : item.recipientCep!;
-        })()
-      : '';
-    const razaoSocial = item.recipientRazaoSocial || item.recipientName;
-    const razaoLine = razaoSocial
-      ? `<div style="display:flex;align-items:baseline;gap:6px;line-height:1.2;margin-bottom:2px;">
-          <span style="font-size:9px;color:#222;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;">Para:</span>
-          <span style="font-size:13px;font-weight:900;color:#000;text-transform:uppercase;letter-spacing:0.3px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(razaoSocial)}</span>
-          ${branchLabel ? `<span style="font-size:10px;font-weight:800;color:#000;border:1.5px solid #000;border-radius:2px;padding:1px 5px;white-space:nowrap;">${escapeHtml(branchLabel)}</span>` : ''}
-        </div>`
-      : '';
-    const recipientBlock = [
-      razaoLine,
-      item.recipientAddress ? fieldRow('Endereço:', item.recipientAddress) : '',
-      item.recipientNeighborhood ? fieldRow('Bairro:', item.recipientNeighborhood) : '',
-      cityUf ? fieldRow('Cidade/UF:', cityUf) : '',
-      cepFmt ? fieldRow('CEP:', cepFmt) : '',
-      item.recipientCnpj ? fieldRow('CNPJ:', item.recipientCnpj) : (item.recipientCode ? fieldRow('Cliente:', item.recipientCode) : ''),
-      item.transporter ? fieldRow('Transp:', item.transporter) : '',
-    ].filter(Boolean).join('');
-
-    const pedidoLine = item.clientOrderNumber
-      ? `<div style="margin-top:4px;padding-top:4px;border-top:1px dashed #555;display:flex;justify-content:space-between;align-items:baseline;gap:6px;">
-          <span style="font-size:11px;color:#000;font-weight:800;">Pedido:</span>
-          <span style="font-size:20px;font-weight:900;letter-spacing:0.5px;color:#000;">${escapeHtml(item.clientOrderNumber)}</span>
-        </div>`
-      : '';
-
-    // NF-e em linha PRÓPRIA full-width (rendered fora do header).
-    // Histórico: ficava dentro do headerRight, mas com cliente que tem
-    // endereço completo (razão + endereço + bairro + cidade/UF + CEP + CNPJ),
-    // o recipient ocupava >28mm e o `overflow:hidden` do header CLIPAVA a
-    // NF-e — bug reportado pelo user em 18/05/2026 (PV-00107).
-    // Solução: linha dedicada de 12mm full-width após o header, NUNCA clipada.
-    // Atualiza automaticamente via trigger DB tg_sync_nfe_numero_to_sale_order
-    // (sale_orders.nfe = nfe_emitidas.numero quando status=autorizada) OU
-    // preenchida manualmente em sale_orders.nfe no form do PV.
-    // (markup renderizado inline no template do label-box abaixo)
-
-    // Bloco esquerdo do topo (logo + barcode) — altura limitada
-    const headerLeft = `
-      <div style="flex:1;padding:5px 10px;display:flex;flex-direction:column;justify-content:center;border-right:1.5px solid #000;overflow:hidden;">
-        <p style="margin:0;font-size:16px;font-weight:900;letter-spacing:2px;text-transform:lowercase;line-height:1;">squad<span style="font-weight:400;">shoes</span></p>
-        ${item.barcode ? `
-          <svg id="${barcodeId}" style="margin-top:2px;max-width:100%;max-height:14mm;"></svg>
-        ` : ''}
-      </div>`;
-
-    // Bloco direito do topo (QR + cliente + pedido). NF-e MOVIDA pra linha
-    // própria full-width abaixo do header (nfeFullRow) — antes ficava aqui
-    // dentro mas era clipada pelo overflow:hidden quando o cliente tinha
-    // endereço completo (PV-00107, 18/05/2026).
-    const headerRight = `
-      <div style="width:88mm;padding:4px 8px;display:flex;gap:6px;align-items:flex-start;overflow:hidden;">
-        <div style="width:16mm;height:16mm;flex-shrink:0;background:#fff;border:1px solid #555;display:flex;align-items:center;justify-content:center;font-size:7px;color:#333;text-align:center;line-height:1.1;font-weight:700;">
-          ${item.clientOrderNumber || item.orderNumber}<br/>QR
-        </div>
-        <div style="flex:1;font-size:10px;color:#000;line-height:1.3;overflow:hidden;">
-          ${recipientBlock || '<span style="color:#555;font-size:10px;font-style:italic;font-weight:600;">Sem dados do destinatário</span>'}
-          ${pedidoLine}
-        </div>
-      </div>`;
-
-    // Linha de identificadores secundários (Remessa, Talões, Rótulo).
-    // NF-e foi MOVIDA daqui pro bloco em destaque no headerRight (15/05/2026)
-    // — user pediu pra ficar bem visível, então saiu da barra fina e foi pro
-    // header em destaque (fundo preto, fonte 24px) ao lado dos dados do
-    // destinatário, logo abaixo do número do pedido.
-    const subInfoCells = [
-      item.remessa ? `<div style="padding:3px 10px;border-right:1px solid #000;"><strong style="font-size:10px;color:#222;font-weight:700;">Remessa:</strong> <span style="font-size:12px;font-weight:800;color:#000;margin-left:4px;">${escapeHtml(item.remessa)}</span></div>` : '',
-      item.taloes ? `<div style="padding:3px 10px;border-right:1px solid #000;"><strong style="font-size:10px;color:#222;font-weight:700;">Talões:</strong> <span style="font-size:12px;font-weight:800;color:#000;margin-left:4px;">${item.taloes}</span></div>` : '',
-      `<div style="padding:3px 10px;"><strong style="font-size:10px;color:#222;font-weight:700;">Rót. Pedido:</strong> <span style="font-size:12px;font-weight:800;color:#000;margin-left:4px;">${item.boxNumber}/${item.totalBoxes}</span></div>`,
-    ].filter(Boolean).join('');
-
-    // Linha de stats (Corrugado, Fáb, OP, Total) — mesma regra: tudo
-    // legível com label cinza-muito-escuro e valor preto bold.
-    // "Lote" removido em 2026-05 a pedido do user — era a mesma coisa
-    // que OP nessa operação, duplicava info na etiqueta. Quem precisar
-    // do número do PV/cliente continua vendo via "Rót. Pedido" e via
-    // "Pedido" no header da etiqueta.
-    const statsCells = [
-      `<div style="padding:3px 10px;border-right:1px solid #555;"><strong style="font-size:10px;color:#222;font-weight:700;">Corrugado:</strong> <span style="font-size:12px;font-weight:900;color:#000;margin-left:4px;">${corrugadoPairs} PRS</span></div>`,
-      item.fab ? `<div style="padding:3px 10px;border-right:1px solid #555;"><strong style="font-size:10px;color:#222;font-weight:700;">Fáb:</strong> <span style="font-size:11px;font-weight:800;color:#000;margin-left:4px;">${escapeHtml(item.fab)}</span></div>` : '',
-      `<div style="padding:3px 10px;border-right:1px solid #555;"><strong style="font-size:10px;color:#222;font-weight:700;">OP:</strong> <span style="font-size:11px;font-weight:800;color:#000;margin-left:4px;">${escapeHtml(item.orderNumber)}</span></div>`,
-      `<div style="padding:3px 10px;"><strong style="font-size:10px;color:#222;font-weight:700;">Total:</strong> <span style="font-size:12px;font-weight:900;color:#000;margin-left:4px;">${totalPairs}</span></div>`,
-    ].filter(Boolean).join('');
-
-    // Bloco do produto: descrição + imagem + tamanho-grande.
-    // Layout adaptativo: como o destinatário pode vir vazio (PV sem cliente),
-    // a referência, cor e categoria sobem em peso/tamanho pra ocupar o
-    // espaço disponível sem ficar desproporcional.
-    // Cores: tudo preto puro ou cinza-muito-escuro (#222) — sem cinzas
-    // claros que somem no toner laser/térmico.
-    // Referência = SOMENTE o nome do modelo (item.refName). O SKU/refCode
-    // (ex: '3213131') NUNCA é exibido na etiqueta de caixa — só o nome
-    // operacional do modelo (ex: 'DS12'). User foi explícito em 2026-05:
-    // 'É o nome do modelo'. Antes havia fallback pra refCode que mostrava
-    // o número do SKU quando o nome não estava resolvido — agora cai pra
-    // '—' pra forçar correção no cadastro em vez de mostrar dado errado.
-    const displayRef = (item.refName && item.refName.trim() && item.refName.trim() !== '—')
-      ? item.refName.trim()
-      : '—';
-    // productLeft com width FIXO (60mm) em vez de flex:1 — libera o espaço
-    // restante da faixa pra imagem do produto, que era achatada em 34mm.
-    // Pedido do user em 18/05/2026: "a imagem do produto deve ocupar toda
-    // essa área central". REF/COR/TIPO/TIRAS continuam legíveis em 60mm.
-    const productLeft = `
-      <div style="width:60mm;padding:10px 14px;display:flex;flex-direction:column;justify-content:center;gap:6px;flex-shrink:0;">
-        ${displayRef ? `
-          <div style="display:flex;align-items:baseline;gap:8px;line-height:1;">
-            <span style="font-size:12px;color:#222;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;">Ref.</span>
-            <span style="font-size:22px;font-weight:900;letter-spacing:0.3px;color:#000;text-transform:uppercase;">${escapeHtml(displayRef)}</span>
-          </div>` : ''}
-        ${item.color ? `
-          <div style="display:flex;align-items:baseline;gap:8px;line-height:1;">
-            <span style="font-size:12px;color:#222;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;">Cor</span>
-            <span style="font-size:18px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;color:#000;">${escapeHtml(item.color)}</span>
-          </div>` : ''}
-        ${item.shoeCategory ? `
-          <div style="display:flex;align-items:baseline;gap:8px;line-height:1;">
-            <span style="font-size:12px;color:#222;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;">Tipo</span>
-            <span style="font-size:15px;font-weight:700;color:#000;text-transform:uppercase;">${escapeHtml(item.shoeCategory)}</span>
-          </div>` : ''}
-        ${item.strapsLabel ? `<div style="font-size:10px;color:#000;font-weight:600;line-height:1.2;"><strong>TIRAS:</strong> ${escapeHtml(item.strapsLabel.replace(/\|/g, ' — ').replace(/:/g, ': '))}</div>` : ''}
-        ${item.mainMaterial ? `<div style="font-size:10px;color:#222;font-weight:600;font-style:italic;text-transform:uppercase;line-height:1.2;">${escapeHtml(item.mainMaterial)}</div>` : ''}
-      </div>`;
-
-    const sizeRangeBig = item.sizeRangeLabel
-      ? `<div style="width:30mm;display:flex;align-items:center;justify-content:center;border-left:1px solid #444;">
-          <span style="font-size:34px;font-weight:900;line-height:1;letter-spacing:-1.5px;color:#000;">${escapeHtml(item.sizeRangeLabel)}</span>
-        </div>` : '';
-
-    // Imagem do produto: SEM crossorigin (carrega tudo sem CORS bloqueando)
-    // + onerror que substitui pelo SVG da silhueta de calçado em vez de
-    // esconder o elemento (antes ficava em branco quando CORS falhava).
-    // print-color-adjust:exact garante que a impressora não otimize a
-    // imagem pra fora.
-    const sandalSvg = `data:image/svg+xml;utf8,${encodeURIComponent(
-      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><path fill="%23999" d="M10 38c0-4 3-8 8-8h28c4 0 8 3 8 8v6c0 3-2 5-5 5H15c-3 0-5-2-5-5v-6zM18 30c0-7 6-12 14-12s14 5 14 12"/></svg>'
-    )}`;
-    // Imagem agora ocupa TODA a área central da faixa de produto (flex:1)
-    // em vez de 34mm fixos — pedido do user 18/05/2026 "ocupar toda essa
-    // área". Como productLeft virou width:60mm fixo e sizeRangeBig é 30mm,
-    // sobram ~108mm de largura pra essa imagem (numa label de 198mm).
-    // object-fit:contain preserva proporção natural da foto da ficha técnica.
-    //
-    // Quando imageIsFallback=true (foto da cor pedida não cadastrada, caiu
-    // pra imagem mestre da ficha técnica), aplica filter:grayscale pra
-    // deixar visualmente claro pro recebedor que a imagem NÃO retrata a cor
-    // real — evita confusão de "etiqueta diz cor X mas foto mostra cor Y".
-    // Pequena tag "REF. GENÉRICA" no canto reforça a mensagem.
-    const imgFilter = item.imageIsFallback ? 'filter:grayscale(100%);-webkit-filter:grayscale(100%);' : '';
-    const fallbackBadge = item.imageIsFallback
-      ? `<div style="position:absolute;top:1mm;left:1mm;background:#000;color:#fff;font-size:7px;font-weight:800;padding:1px 4px;letter-spacing:0.5px;text-transform:uppercase;print-color-adjust:exact;-webkit-print-color-adjust:exact;">Foto genérica</div>`
-      : '';
-    const productImage = item.imageUrl ? `
-      <div style="flex:1;border-left:1px solid #444;padding:2mm;display:flex;align-items:center;justify-content:center;background:#fff;overflow:hidden;position:relative;print-color-adjust:exact;-webkit-print-color-adjust:exact;">
-        ${fallbackBadge}
-        <img src="${item.imageUrl}" style="width:100%;height:100%;object-fit:contain;${imgFilter}print-color-adjust:exact;-webkit-print-color-adjust:exact;" onerror="this.onerror=null;this.src='${sandalSvg}';" />
-      </div>` : '<div style="flex:1;border-left:1px solid #444;"></div>';
-
-    // Rodapé em DUAS linhas estruturadas — antes era uma só com " · "
-    // que quebrava no meio e o overflow:hidden cortava metade.
-    // Linha 1: endereço completo da fábrica
-    // Linha 2: CGC + Página X de Y
-    const footerLine1 = item.senderAddress ? escapeHtml(item.senderAddress) : '';
-    const footerLine2 = [
-      item.senderCnpj ? `CGC: ${escapeHtml(item.senderCnpj)}` : '',
-      (item.pageNumber && item.pageTotal) ? `Página ${item.pageNumber} de ${item.pageTotal}` : '',
-    ].filter(Boolean).join(' · ');
-    const hasFooter = footerLine1 || footerLine2;
-
-    // Alturas hardcoded por seção. Total = 128mm = altura do label-box.
-    // Distribuição QUANDO TEM NF-e:   26+12+6+6+50+16+12 = 128.
-    // Distribuição QUANDO SEM NF-e:   26+6+6+62+16+12    = 128 (fallback).
-    // Reduzido de 132mm pra 128mm em 18/05/2026 — soma anterior batia exato
-    // em 132mm (sem folga interna). LABEL_PRINT_HARDENING força overflow:
-    // visible em todos os filhos durante print, então qualquer micro-overflow
-    // (1-2mm de barcode/imagem/linha de texto) fazia a label crescer além de
-    // 132mm e vazar no slot bottom — engine de impressão então pulava a 2ª
-    // ficha pra próxima página pra evitar sobreposição. Com 128mm fica 4mm
-    // de respiro interno + slot bottom em 140mm (gap real 12mm) + sobra
-    // 19mm na página.
-    //
-    // NF-e em linha dedicada (12mm full-width fundo preto). Quando não há
-    // NF-e, productImage volta pra 62mm pra ocupar o espaço.
-    const productAreaHeight = item.nfe ? 50 : 62;
-    return `
-      <div class="label-box">
-        <div style="height:26mm;display:flex;border-bottom:1.5px solid #000;overflow:hidden;">
-          ${headerLeft}
-          ${headerRight}
-        </div>
-        ${item.nfe ? `<div style="height:12mm;background:#000;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-bottom:1.5px solid #000;overflow:hidden;print-color-adjust:exact;-webkit-print-color-adjust:exact;">
-          <span style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;">Nota Fiscal</span>
-          <span style="font-size:28px;font-weight:900;letter-spacing:1px;line-height:1;font-family:Arial,Helvetica,sans-serif;">${escapeHtml(item.nfe)}</span>
-        </div>` : ''}
-        <div style="height:6mm;display:flex;border-bottom:1px solid #000;overflow:hidden;">
-          ${subInfoCells}
-        </div>
-        <div style="height:6mm;display:flex;border-bottom:1px solid #000;background:#f5f5f5;overflow:hidden;">
-          ${statsCells}
-        </div>
-        <div style="height:${productAreaHeight}mm;display:flex;border-bottom:1px solid #000;overflow:hidden;">
-          ${productLeft}
-          ${productImage}
-          ${sizeRangeBig}
-        </div>
-        ${item.grade.length > 0 ? `
-        <div class="grade-block" style="height:16mm;padding:2px 10px;border-bottom:1px solid #000;overflow:hidden;page-break-inside:avoid;break-inside:avoid;display:flex;flex-direction:column;justify-content:center;gap:1px;">
-          <div style="display:flex;align-items:center;">
-            <div style="width:48px;font-size:10px;color:#000;font-weight:800;padding-right:8px;text-transform:uppercase;letter-spacing:0.4px;">Tam.</div>
-            <div style="flex:1;display:flex;">${gradeHead}</div>
-          </div>
-          <div style="display:flex;align-items:center;">
-            <div style="width:48px;font-size:10px;color:#000;font-weight:800;padding-right:8px;text-transform:uppercase;letter-spacing:0.4px;">Qtd.</div>
-            <div style="flex:1;display:flex;">${gradeRow}</div>
-          </div>
-        </div>` : '<div style="height:16mm;border-bottom:1px solid #000;"></div>'}
-        <div class="footer-block" style="height:12mm;padding:1mm 8mm;font-size:8.5px;color:#000;font-weight:600;text-align:center;overflow:hidden;display:flex;flex-direction:column;justify-content:center;line-height:1.25;">
-          ${hasFooter ? `
-            ${footerLine1 ? `<div>${footerLine1}</div>` : ''}
-            ${footerLine2 ? `<div>${footerLine2}</div>` : ''}
-          ` : '&nbsp;'}
-        </div>
-      </div>`;
-  });
-
-  // Cada A4 = 1 page-container com layout grid 3 linhas (top / spacer / bottom).
-  // Tentativas anteriores com position:absolute falhavam no macOS Preview e
-  // alguns engines de PDF — o slot bottom era ignorado ou jogado pra próxima
-  // página em branco. Grid mantém os slots no fluxo natural com alturas
-  // explícitas, sem ambiguidade pra engine de impressão.
+  // Pages com 2 etiquetas empilhadas por A4 portrait + linha de corte (6mm)
+  // entre elas. page-break-inside:avoid no .page garante que cada par fique
+  // na mesma folha; .page-break dispara break-after:page nas folhas que não
+  // são a última, evitando uma página em branco no final.
   const pages: string[] = [];
   for (let i = 0; i < labels.length; i += 2) {
     const first = labels[i];
-    const second = labels[i + 1] || '';
+    const second = labels[i + 1];
     const isLastPage = i + 2 >= labels.length;
-    pages.push(`<div class="page-container${!isLastPage ? ' page-break' : ''}">
-      <div class="label-slot-top">${first}</div>
-      <div class="label-slot-spacer"></div>
-      ${second ? `<div class="label-slot-bottom">${second}</div>` : '<div class="label-slot-bottom"></div>'}
-    </div>`);
+    pages.push(`<section class="page${!isLastPage ? ' page-break' : ''}">
+      ${first}
+      ${second ? `<div class="cut-line"><span>✂ CORTAR AQUI</span></div>\n${second}` : ''}
+    </section>`);
   }
   const totalPages = Math.ceil(labels.length / 2);
 
-  // Build barcode init script
-  const barcodeInits = items.map((item, idx) => {
-    if (!item.barcode) return '';
-    const bc = item.barcode.replace(/"/g, '\\"');
-    const fmtCode = item.barcode.length === 13 ? 'EAN13' : 'CODE128';
-    return `try{JsBarcode("#box-bc-${idx}","${bc}",{format:"${fmtCode}",width:1.6,height:40,displayValue:true,fontSize:12,margin:3,font:"monospace"});}catch(e){try{JsBarcode("#box-bc-${idx}","${bc}",{format:"CODE128",width:1.6,height:40,displayValue:true,fontSize:12,margin:3,font:"monospace"});}catch(e2){}}`;
-  }).filter(Boolean).join('\n');
-
-  // Collect unique image URLs for preloading
+  // Preload das imagens dos produtos pra evitar layout shift na impressão.
   const uniqueImageUrls = [...new Set(items.map(i => i.imageUrl).filter(Boolean))];
-  const preloadLinks = uniqueImageUrls.map(u => `<link rel="preload" as="image" href="${u}" crossorigin="anonymous" />`).join('\n');
+  const preloadLinks = uniqueImageUrls
+    .map(u => `<link rel="preload" as="image" href="${u}" crossorigin="anonymous" />`)
+    .join('\n');
 
   return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Rótulo de Identificação de Caixa</title>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Rótulo Caixa Externa · 198×132mm</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter+Tight:wght@400;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 ${preloadLinks}
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:Arial,Helvetica,sans-serif;color:#000;padding:16px 10px;background:#e8e8e8;}
-@media print{body{background:#fff;padding:0;}}
+html,body{background:#e8e6e1;font-family:'Inter Tight',sans-serif;color:#000;-webkit-font-smoothing:antialiased;}
+body{padding:24px;}
 ${LABEL_PRINT_HARDENING}
-/* @page declarado uma única vez. Antes havia 2 declarações (margin:5mm e
-   margin:5mm 6mm) cujo conflito interno fazia o Chrome/WebKit reservar
-   página em branco entre cada par — bug reportado 18/05/2026. */
-@page{size:A4;margin:5mm;}
-.label-box{
-  width:100%;font-family:Arial,Helvetica,sans-serif;color:#000;
-  border:1.5px solid #000;padding:0;box-sizing:border-box;
+
+/* A4 portrait — 210×297mm, margem 9mm. Cada .page acomoda 2 .label-cx-ext
+   empilhadas com 6mm de gap (margem de corte). */
+@page{size:A4 portrait;margin:9mm;}
+
+.page{
+  width:210mm;min-height:297mm;margin:0 auto;background:#fff;
+  box-shadow:0 18px 48px -16px rgba(0,0,0,0.25);
+  padding:9mm;display:flex;flex-direction:column;align-items:center;gap:6mm;
+  page-break-inside:avoid;break-inside:avoid;
+}
+.page.page-break{break-after:page;page-break-after:always;}
+.page:not(.page-break){break-after:avoid;page-break-after:avoid;}
+
+.label-cx-ext{
+  width:192mm;height:132mm;background:#FDE047;
+  border:1.5px solid #000;color:#000;
+  font-family:'Inter Tight',sans-serif;
   display:flex;flex-direction:column;
-  page-break-inside:avoid !important;
-  break-inside:avoid-page !important;
-  border-radius:0.5mm;overflow:hidden;height:128mm;max-height:128mm;
+  page-break-inside:avoid;break-inside:avoid;
+  overflow:hidden;position:relative;
 }
-.label-box > *{overflow:hidden;page-break-inside:avoid;break-inside:avoid;}
-/* Layout em CSS GRID com 3 linhas (top label / spacer / bottom label).
-   Substituiu o antigo position:absolute em 18/05/2026 — absolute fazia
-   o macOS Preview e alguns engines de PDF cuspirem 1 etiqueta por página
-   + página em branco intercalada (slot bottom ignorado ou pulado pra
-   próxima página). Grid mantém os slots em FLUXO NATURAL com alturas
-   explícitas, sem ambiguidade pra calc de altura/overflow do container.
-   A4 útil = 287mm. 128mm + 1fr + 128mm = 256mm fixos + 31mm de spacer. */
-.page-container{
-  width:198mm;height:287mm;margin:0 auto 0;
-  display:grid;grid-template-rows:128mm 1fr 128mm;
-  box-sizing:border-box;
+
+@media print{
+  body{padding:0;background:#fff;}
+  .page{box-shadow:none;padding:0;width:210mm;min-height:297mm;gap:6mm;}
+  .label-cx-ext{width:198mm;height:132mm;}
+  .print-footer{display:none !important;}
 }
-.page-container .label-slot-top,
-.page-container .label-slot-bottom{
-  height:128mm;max-height:128mm;overflow:hidden;
-}
-.page-container .label-slot-spacer{
-  min-height:0;
-}
-.page-container .label-slot-top .label-box,
-.page-container .label-slot-bottom .label-box{height:128mm;max-height:128mm;}
-/* Page-break: precisa do par moderno + legacy juntos (Chrome 90+ usa
-   o moderno mas alguns engines de PDF/Preview ainda olham o legacy). */
-.page-container{break-inside:avoid !important;page-break-inside:avoid !important;}
-.page-container.page-break{break-after:page;page-break-after:always;}
-.page-container:not(.page-break){break-after:avoid;page-break-after:avoid;}
-/* Marcador de versão pra diferenciar do cache antigo no debug.
-   display:none em print pra não disputar espaço/quebra com o conteúdo. */
-.print-version-marker{
-  position:absolute;bottom:1mm;right:2mm;
-  font-size:6px;color:#888;font-family:monospace;
-  pointer-events:none;
-}
-@media print{.print-version-marker{display:none !important;}}
-.print-footer{
-  max-width:190mm;margin:24px auto 12px;padding:18px 24px;
-  background:#fff;border:1px solid #d4d4d4;border-radius:6px;
-  font-family:Arial,Helvetica,sans-serif;text-align:center;
-  box-shadow:0 1px 3px rgba(0,0,0,0.05);
-}
+
+/* HEADER NF / PROG ─────────────────── */
+.nf-row{display:grid;grid-template-columns:1.4fr 1fr;border-bottom:1.5px solid #000;flex-shrink:0;}
+.nf-cell{padding:6px 12px;border-right:1.5px solid #000;display:flex;align-items:baseline;gap:8px;background:#000;color:#FDE047;}
+.nf-cell .nf-label{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:13px;letter-spacing:0.06em;}
+.nf-cell .nf-value{font-family:'Anton',sans-serif;font-size:34px;letter-spacing:0.02em;line-height:1;}
+.prog-cell{padding:6px 12px;display:flex;align-items:baseline;gap:6px;}
+.prog-cell .prog-label{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11.5px;letter-spacing:0.06em;}
+.prog-cell .prog-value{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;}
+
+/* CORPO 2 colunas ──────────────────── */
+.body{display:flex;flex:1;min-height:0;}
+.body-left{flex:1.3;border-right:1.5px solid #000;padding:8px 14px;display:flex;flex-direction:column;gap:3px;font-size:11px;font-weight:600;}
+.body-left .field{display:flex;gap:6px;align-items:baseline;border-bottom:0.5px solid #000;padding-bottom:1px;line-height:1.25;}
+.body-left .field .lbl{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:10px;letter-spacing:0.06em;min-width:76px;}
+.body-left .field .val{font-weight:700;font-size:12px;flex:1;}
+.body-left .field.mono .val{font-family:'JetBrains Mono',monospace;}
+.body-left .gap{height:4px;}
+
+.body-right{flex:1;display:flex;flex-direction:column;padding:8px 10px 6px;}
+.photo-frame{flex:1;border:2px solid #000;background:#FDE047;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;}
+.photo-frame img{max-width:100%;max-height:100%;object-fit:contain;}
+.photo-fallback-badge{position:absolute;top:2px;left:2px;background:#000;color:#FDE047;font-size:8px;font-weight:800;padding:2px 5px;letter-spacing:0.5px;text-transform:uppercase;font-family:'JetBrains Mono',monospace;}
+.cor-row{margin-top:4px;display:flex;justify-content:space-between;align-items:center;gap:6px;}
+.cor-row .cor-name{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;}
+
+/* TABELA grade ───────────────────── */
+.grade-table{display:flex;border-top:1.5px solid #000;flex-shrink:0;}
+.grade-labels{border-right:1.5px solid #000;display:flex;flex-direction:column;}
+.grade-labels .lbl{padding:5px 10px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:10px;letter-spacing:0.06em;min-width:110px;border-bottom:1px solid #000;}
+.grade-labels .lbl.first{background:#000;color:#FDE047;}
+.grade-labels .lbl.last{border-bottom:none;}
+.grade-grid{flex:1;display:grid;}
+.grade-grid > .cell{text-align:center;border-right:1px solid #000;border-bottom:1px solid #000;font-family:'JetBrains Mono',monospace;font-weight:700;color:#000;padding:4px 0;font-size:13px;}
+.grade-grid > .cell.tam-total{background:#000;color:#FDE047;}
+.grade-grid > .cell.qtd-total{background:#000;color:#FDE047;font-size:18px;border-bottom:none;}
+.grade-grid .row-marca{grid-column:1 / -1;background:#000;color:#FDE047;padding:3px 10px;text-align:left;display:flex;align-items:center;gap:8px;border-right:none;border-bottom:1px solid #FDE047;}
+.grade-grid .row-marca .silk-legend{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.1em;color:rgba(253,224,71,0.65);}
+.grade-grid .row-ref{grid-column:1 / -1;text-align:left;padding:4px 10px;font-size:14px;border-right:none;border-bottom:1px solid #000;font-family:'JetBrains Mono',monospace;font-weight:700;}
+
+/* SilkMark inline (espelha src/components/ui/silk-mark.tsx) */
+.silk-mark{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;background:#000;color:#FDE047;box-sizing:border-box;line-height:1;}
+.silk-mark svg{flex-shrink:0;}
+.silk-mark .silk-name{font-family:'Anton',sans-serif;letter-spacing:0.06em;line-height:1;}
+
+/* RODAPÉ PEDIDO + VOLUME ──────────── */
+.footer{display:flex;border-top:1.5px solid #000;background:#000;color:#FDE047;flex-shrink:0;}
+.footer .pedido{flex:1;padding:6px 12px;border-right:1.5px solid #FDE047;display:flex;align-items:center;gap:8px;}
+.footer .volume{padding:6px 14px;display:flex;align-items:baseline;gap:8px;}
+.footer .lbl{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:13px;letter-spacing:0.06em;}
+.footer .val{font-family:'Anton',sans-serif;font-size:28px;letter-spacing:0.02em;line-height:1;}
+.footer .volume .sep{font-size:16px;}
+
+/* Linha de corte entre as 2 etiquetas (visível só em tela, sumindo em print) */
+.cut-line{width:100%;height:0;border-top:1px dashed #888;position:relative;margin:0 auto;}
+.cut-line span{position:absolute;left:50%;top:-7px;transform:translateX(-50%);background:#fff;padding:0 8px;font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:0.18em;color:#999;}
+@media print{.cut-line{border-top:none;}.cut-line span{display:none;}}
+
+/* Print footer (botões "Imprimir" / "Voltar" — só em tela) */
+.print-footer{max-width:190mm;margin:24px auto 12px;padding:18px 24px;background:#fff;border:1px solid #d4d4d4;border-radius:6px;font-family:Arial,sans-serif;text-align:center;}
 .print-footer__title{font-size:12px;font-weight:700;color:#111;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:4px;}
 .print-footer__sub{font-size:11px;color:#555;margin-bottom:14px;}
-.print-footer__btn{
-  display:inline-block;padding:9px 22px;background:#0f172a;color:#fff;
-  text-decoration:none;border:none;border-radius:4px;cursor:pointer;
-  font-size:12px;font-weight:600;letter-spacing:0.3px;font-family:inherit;
-}
-.print-footer__btn:hover{background:#1e293b;}
+.print-footer__btn{display:inline-block;padding:9px 22px;background:#0f172a;color:#fff;text-decoration:none;border-radius:4px;font-size:12px;font-weight:600;letter-spacing:0.3px;font-family:inherit;}
 .print-footer__btn--ghost{background:#fff;color:#0f172a;border:1px solid #0f172a;margin-left:8px;}
-.print-footer__btn--ghost:hover{background:#f5f5f5;}
-@media print{
-  body{padding:0;margin:0;}
-  /* A4 = 297mm. Com @page margin 5mm × 2 = 287mm úteis.
-     page-container ocupa o A4 útil (287mm) com posição relativa.
-     Slot top em (0, 0..128mm). Slot bottom em (140mm, +128mm) → 268mm.
-     268mm dentro de 287mm úteis = 19mm de respiro, garantindo que a 2ª
-     etiqueta NUNCA pula pra próxima página por micro-overflow interno.
-     (Antes era 132mm × 2 com slot bottom em 143mm — soma 275mm. Como
-     LABEL_PRINT_HARDENING força overflow:visible em todos os filhos, qualquer
-     1-2mm de overflow interno empurrava a 2ª etiqueta pra página seguinte.) */
-  .page-container{width:100%;height:287mm;margin:0;display:grid;grid-template-rows:128mm 1fr 128mm;}
-  .page-container .label-slot-top,
-  .page-container .label-slot-bottom{height:128mm !important;max-height:128mm !important;overflow:hidden !important;}
-  .label-box{height:128mm !important;max-height:128mm !important;overflow:hidden !important;}
-  .label-box,
-  .label-box *{
-    page-break-inside:avoid !important;
-    break-inside:avoid !important;
-  }
-  /* Footer tem que sumir COMPLETAMENTE em impressão (sem ocupar nem layout
-     nem fluxo de página). Várias regras em conjunto pra fechar todos os
-     caminhos: display:none deveria bastar, mas alguns navegadores ainda
-     reservam quebra de página, então zeramos tudo. */
-  .print-footer,
-  .print-footer *{
-    display:none !important;
-    visibility:hidden !important;
-    height:0 !important;
-    max-height:0 !important;
-    width:0 !important;
-    max-width:0 !important;
-    margin:0 !important;
-    padding:0 !important;
-    border:0 !important;
-    page-break-before:avoid !important;
-    page-break-inside:avoid !important;
-    page-break-after:avoid !important;
-    break-before:avoid !important;
-    break-inside:avoid !important;
-    break-after:avoid !important;
-  }
-}
-/* @page e LABEL_PRINT_HARDENING declarados uma única vez no topo desta
-   tag <style>. Antes havia uma 2ª declaração de @page com margin diferente
-   (5mm 6mm vs 5mm) que entrava em conflito com a 1ª, gerando página em
-   branco entre cada par no Chrome — bug reportado 18/05/2026. */
 </style>
 </head><body>${pages.join('')}
 <div class="print-footer">
-  <p class="print-footer__title">${labels.length} etiqueta${labels.length === 1 ? '' : 's'} · ${totalPages} folha${totalPages === 1 ? '' : 's'} A4</p>
+  <p class="print-footer__title">${items.length} etiqueta${items.length === 1 ? '' : 's'} · ${totalPages} folha${totalPages === 1 ? '' : 's'} A4</p>
   <p class="print-footer__sub">Cada folha A4 imprime 2 etiquetas (= 2 caixas). Confira o layout antes de mandar pra impressão.</p>
   <a class="print-footer__btn" href="javascript:window.print()">Imprimir agora</a>
   <a class="print-footer__btn print-footer__btn--ghost" href="javascript:window.close()">Voltar e ajustar</a>
 </div>
-${safeScript('https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js')}
 ${safeScriptBlock(`
-var _bcRetry=0;
-function initBC(){
-  if(typeof JsBarcode==='undefined'){_bcRetry++;if(_bcRetry>40){console.warn('JsBarcode CDN timeout');return;}setTimeout(initBC,150);return;}
-  ${barcodeInits}
-}
-initBC();
-
-// Wait for all images to load before allowing print
 function waitForImages(){
   var imgs=document.querySelectorAll('img');
   var promises=[];
