@@ -20,9 +20,38 @@ const corsHeaders = {
 // Studio depois de jan/2025 batem 429 imediato em `gemini-2.0-flash` quando
 // não têm billing habilitado. `gemini-1.5-flash` ainda tem free tier sólido
 // sem exigir billing — usado como fallback automático.
-const MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b"];
+// Lista atualizada para 2026. Google mudou nomes de modelos várias vezes:
+// nomes antigos (gemini-2.0-flash, gemini-1.5-flash) retornam 404 com chaves
+// novas. Tenta em ordem: 2.5 flash → 2.0 flash com -001 → flash-latest →
+// versões antigas como último fallback.
+const MODELS = [
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+  "gemini-2.0-flash-001",
+  "gemini-2.0-flash",
+  "gemini-flash-latest",
+  "gemini-1.5-flash-latest",
+  "gemini-1.5-flash",
+];
 const geminiUrl = (model: string) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+
+// Lista modelos disponíveis pra essa chave (usado pra diagnóstico quando
+// todos os modelos hardcoded retornam 404). Não custa quota — é metadata.
+async function listAvailableModels(apiKey: string): Promise<string[]> {
+  try {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+    if (!r.ok) return [];
+    const j = await r.json();
+    const list = Array.isArray(j?.models) ? j.models : [];
+    return list
+      .filter((m: any) => Array.isArray(m?.supportedGenerationMethods) && m.supportedGenerationMethods.includes("generateContent"))
+      .map((m: any) => String(m?.name || "").replace(/^models\//, ""))
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -183,26 +212,65 @@ serve(async (req) => {
     }
 
     if (!response) {
-      // Resposta carrega TODAS as tentativas no campo `attempts` pro user/dev
-      // entender o que cada modelo retornou. Status HTTP retornado = pior da
-      // cadeia (último que falhou), mas a UI pode ler `attempts[]` pra detalhe.
       const lastStatus = attempts[attempts.length - 1]?.status ?? 500;
       const summary = attempts.map(a => `${a.model}: ${a.status} ${a.detail.slice(0, 120)}`).join(" | ");
       console.error(`[extract-clients] Falhou em todos os modelos. ${summary}`);
-      let userError = "";
-      if (attempts.every(a => a.status === 429)) {
-        userError = `Cota do Gemini esgotada em todos modelos free. Detalhes: ${summary}. Habilite billing em https://aistudio.google.com/app/apikey ou tente em alguns minutos.`;
-      } else if (attempts.some(a => a.status === 401 || a.status === 403)) {
-        userError = `GEMINI_API_KEY inválida ou sem permissão. Detalhes: ${summary}`;
-      } else if (attempts.some(a => a.status === 400)) {
-        userError = `Requisição inválida — arquivo possivelmente grande demais ou corrompido. Detalhes: ${summary}`;
-      } else {
-        userError = `Falha ao consultar Gemini. Detalhes: ${summary}`;
+
+      // Se TODOS os modelos hardcoded retornaram 404, o problema é nome de
+      // modelo defasado. Lista o que essa chave realmente tem disponível e
+      // tenta o primeiro que faz sentido (flash). Salva o user de bater na
+      // documentação procurando o nome certo.
+      const all404 = attempts.length > 0 && attempts.every(a => a.status === 404);
+      if (all404) {
+        const available = await listAvailableModels(GEMINI_API_KEY);
+        console.log(`[extract-clients] Modelos disponíveis pra essa chave: ${available.join(", ")}`);
+        // Prioriza modelos "flash" (rápidos, baratos) — depois "pro" se nada de flash.
+        const flash = available.filter(m => /flash/i.test(m) && !/embedding|tts|image|audio/i.test(m));
+        const candidate = flash[0] || available.find(m => /gemini.*pro/i.test(m) && !/vision|embedding/i.test(m));
+        if (candidate) {
+          console.log(`[extract-clients] Tentando fallback dinâmico: ${candidate}`);
+          const r = await fetch(`${geminiUrl(candidate)}?key=${GEMINI_API_KEY}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: requestBody,
+          });
+          if (r.ok) {
+            response = r;
+            console.log(`[extract-clients] OK com modelo dinâmico ${candidate}`);
+          } else {
+            const t = await r.text();
+            let m = "";
+            try { m = JSON.parse(t)?.error?.message || ""; } catch { m = t.slice(0, 300); }
+            attempts.push({ model: candidate, status: r.status, detail: m });
+          }
+        }
+        if (!response) {
+          return new Response(JSON.stringify({
+            error: `Modelos hardcoded retornam 404. Modelos disponíveis pra sua chave: ${available.join(", ") || "(nenhum)"}. Detalhes das tentativas: ${attempts.map(a => `${a.model}=${a.status}`).join(", ")}`,
+            attempts,
+            available_models: available,
+          }), {
+            status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
       }
-      return new Response(JSON.stringify({ error: userError, attempts }), {
-        status: lastStatus >= 400 && lastStatus < 600 ? lastStatus : 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+
+      if (!response) {
+        let userError = "";
+        if (attempts.every(a => a.status === 429)) {
+          userError = `Cota do Gemini esgotada em todos modelos free. Detalhes: ${summary}. Habilite billing em https://aistudio.google.com/app/apikey ou tente em alguns minutos.`;
+        } else if (attempts.some(a => a.status === 401 || a.status === 403)) {
+          userError = `GEMINI_API_KEY inválida ou sem permissão. Detalhes: ${summary}`;
+        } else if (attempts.some(a => a.status === 400)) {
+          userError = `Requisição inválida — arquivo possivelmente grande demais ou corrompido. Detalhes: ${summary}`;
+        } else {
+          userError = `Falha ao consultar Gemini. Detalhes: ${summary}`;
+        }
+        return new Response(JSON.stringify({ error: userError, attempts }), {
+          status: lastStatus >= 400 && lastStatus < 600 ? lastStatus : 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     const data = await response.json();
