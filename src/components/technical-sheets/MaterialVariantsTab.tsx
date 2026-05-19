@@ -82,7 +82,21 @@ import { supabase } from '@/integrations/supabase/client';
         body: { productName: name, description: desc },
       });
       const { data, error } = await Promise.race([invokePromise, timeoutPromise]) as Awaited<typeof invokePromise>;
-      if (error) throw error;
+      if (error) {
+        // supabase-js só expõe "Edge Function returned a non-2xx status code"
+        // quando há HTTP não-2xx. A mensagem REAL do servidor está em
+        // error.context.response.json().error — tentar extrair antes de
+        // mostrar o genérico.
+        let serverMessage: string | null = null;
+        try {
+          const resp = (error as any)?.context?.response;
+          if (resp && typeof resp.clone === 'function') {
+            const body = await resp.clone().json();
+            serverMessage = body?.error || null;
+          }
+        } catch { /* ignore parse error */ }
+        throw new Error(serverMessage || error.message || 'Falha ao consultar suggest-ncm');
+      }
       if (data?.error) {
         toast.error(data.error);
         return;
