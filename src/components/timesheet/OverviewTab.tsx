@@ -82,8 +82,12 @@ export default function OverviewTab() {
 
     // Group records by employee, resolving names via employee registry
     const map = new Map<string, typeof records>();
+    // linkedOnly: true pula funcionários sem coligação (demitidos s/ external_id
+    // explícito). Records órfãos somem em vez de aparecer com nome do relógio.
     records.forEach(r => {
-      const resolvedName = resolveEmployeeName(employees, r.employee_name, r.employee_external_id);
+      const match = findEmployeeMatch(employees, r.employee_name, r.employee_external_id, { linkedOnly: true });
+      if (!match) return;
+      const resolvedName = match.name;
       if (!map.has(resolvedName)) map.set(resolvedName, []);
       map.get(resolvedName)!.push(r);
     });

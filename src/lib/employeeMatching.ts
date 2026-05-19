@@ -45,16 +45,24 @@ export function namesMatch(left: string, right: string): boolean {
 
 /**
  * Find the best employee match from a list, using:
- * 1. external_id match (clock ID)
- * 2. Fuzzy name match
+ * 1. external_id match (clock ID) — coligação explícita feita pelo gestor
+ * 2. Fuzzy name match (fallback)
+ *
+ * Opts:
+ *   - linkedOnly (default false): se true, o fallback por nome SÓ casa com
+ *     funcionários ATIVOS. Funcionário demitido sem external_id explícito
+ *     fica fora — usado por relatórios pra evitar ex-funcionário aparecer
+ *     ("Ana Carolina" caso clássico). Telas de edição (ManualEntryTab)
+ *     devem usar false pra continuar mostrando não-coligados.
  */
 export function findEmployeeMatch(
   employees: Employee[],
   employeeName: string,
   externalId?: string | null,
+  opts: { linkedOnly?: boolean } = {},
 ): Employee | undefined {
-  // 1. Try match by external_id first (most reliable)
-  // Supports comma-separated IDs for employees with multiple clock registrations
+  // 1. external_id (coligação explícita) — vale mesmo em demitido pq vínculo é forte
+  // Suporta CSV de IDs pra funcionários com múltiplas matrículas no relógio
   if (externalId) {
     const match = employees.find(e => {
       if (!e.external_id) return false;
@@ -64,8 +72,9 @@ export function findEmployeeMatch(
     if (match) return match;
   }
 
-  // 2. Try match by normalized name
-  return employees.find((e) => namesMatch(employeeName, e.name));
+  // 2. Fuzzy name. Em modo linkedOnly, filtra inativos pra não vazar demitidos.
+  const candidates = opts.linkedOnly ? employees.filter(e => e.active) : employees;
+  return candidates.find((e) => namesMatch(employeeName, e.name));
 }
 
 /**

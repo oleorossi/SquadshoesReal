@@ -16,6 +16,8 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Warning as AlertTriangle, Plus, Users as Users2, User, Clock, MagnifyingGlass as Search } from '@phosphor-icons/react';
 import { getBatchDateRange } from '@/lib/timeControlFilters';
+import { useEmployees } from '@/hooks/useEmployees';
+import { findEmployeeMatch } from '@/lib/employeeMatching';
 
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
@@ -39,6 +41,7 @@ function cleanPunch(p: string) {
 export default function DivergencesTab() {
   const { data: schedules = [] } = useWorkSchedules();
   const { data: batches = [] } = useImportBatches();
+  const { data: employees = [] } = useEmployees();
   const queryClient = useQueryClient();
 
   const [selectedBatch, setSelectedBatch] = useState<string>('__latest__');
@@ -67,9 +70,15 @@ export default function DivergencesTab() {
 
   const divergences = useMemo<Divergence[]>(() => {
     const result: Divergence[] = [];
-    let filteredRecords = filterEmployee === '__all__'
-      ? records
-      : records.filter(r => r.employee_name === filterEmployee);
+    // Filtro de coligados: diverg\u00eancia s\u00f3 conta pra funcion\u00e1rio vinculado.
+    // Records de ex-funcion\u00e1rio (Ana Carolina sem external_id) somem daqui.
+    let filteredRecords = records.filter(r =>
+      findEmployeeMatch(employees, r.employee_name, r.employee_external_id, { linkedOnly: true })
+    );
+
+    if (filterEmployee !== '__all__') {
+      filteredRecords = filteredRecords.filter(r => r.employee_name === filterEmployee);
+    }
 
     if (searchEmployee.trim()) {
       const term = searchEmployee.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -113,9 +122,14 @@ export default function DivergencesTab() {
   }, [records, filterEmployee, searchEmployee, defaultSchedule]);
 
   const employeeNames = useMemo(() => {
-    const names = new Set(records.map(r => r.employee_name));
+    // Só nomes coligados — ex-funcionário não polui o dropdown
+    const names = new Set(
+      records
+        .filter(r => findEmployeeMatch(employees, r.employee_name, r.employee_external_id, { linkedOnly: true }))
+        .map(r => r.employee_name)
+    );
     return Array.from(names).sort();
-  }, [records]);
+  }, [records, employees]);
 
   const openAddPunch = (div: Divergence) => {
     setSelectedDivergence(div);

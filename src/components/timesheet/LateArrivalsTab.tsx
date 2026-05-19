@@ -104,10 +104,11 @@ export default function LateArrivalsTab() {
       const isHol = isHolidayDate(rec.record_date);
       if (isHol || dow === 0) continue; // skip holidays and sundays
 
-      // Resolve employee to get their schedule
-      const resolvedName = resolveEmployeeName(employees, rec.employee_name, rec.employee_external_id);
-      const emp = findEmployeeMatch(employees, resolvedName, rec.employee_external_id);
-      const empSchedule = (emp?.work_schedule_id && schedules.find(s => s.id === emp.work_schedule_id)) || defaultSchedule;
+      // Resolve employee — linkedOnly pula demitidos sem coligação explícita
+      const emp = findEmployeeMatch(employees, rec.employee_name, rec.employee_external_id, { linkedOnly: true });
+      if (!emp) continue;
+      const resolvedName = emp.name;
+      const empSchedule = (emp.work_schedule_id && schedules.find(s => s.id === emp.work_schedule_id)) || defaultSchedule;
 
       const isSaturday = dow === 6;
       const hasSaturday = !!(empSchedule.saturday_entry && empSchedule.saturday_exit);
