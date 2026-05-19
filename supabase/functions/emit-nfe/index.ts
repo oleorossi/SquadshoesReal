@@ -920,7 +920,7 @@ Deno.serve(async (req) => {
     const transporteBlock = (() => {
       const vol: Record<string, string> = {
         quantidade: qtdVolumesStr,
-        especie: "VOLUME",
+        especie: "Volumes",
       };
       if (pesoLiquidoStr) vol.peso_liquido = pesoLiquidoStr;
       if (pesoBrutoStr) vol.peso_bruto = pesoBrutoStr;
@@ -981,7 +981,7 @@ Deno.serve(async (req) => {
       ...(pesoBrutoStr ? { peso_bruto: pesoBrutoStr } : {}),
       ...(pesoLiquidoStr ? { peso_liquido: pesoLiquidoStr } : {}),
       ...(qtdVolumesStr ? { quantidade_volumes: qtdVolumesStr } : {}),
-      especie_volumes: "VOLUME",
+      especie_volumes: "Volumes",
       produtos: produtosGC,
       ...(pagamentoArr.length ? { pagamento: pagamentoArr } : {}),
       transporte: transporteBlock,
@@ -1076,7 +1076,7 @@ Deno.serve(async (req) => {
               ? transportadorBlock
               : null,
             qtd_volumes: qtdVolumesStr,
-            especie: 'VOLUME',
+            especie: 'Volumes',
             peso_bruto_kg: pesoBrutoStr || null,
             peso_liquido_kg: pesoLiquidoStr || null,
           },
