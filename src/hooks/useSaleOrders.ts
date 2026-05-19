@@ -685,6 +685,7 @@ export function useSaleOrders() {
       const { data, error } = await supabase
         .from('sale_orders')
         .select('*')
+        .is('deleted_at', null) // soft delete: esconde PVs com deleted_at != null
         .order('created_at', { ascending: false })
         .limit(1000);
       if (error) throw error;
@@ -2439,7 +2440,51 @@ export function useResyncOPsFromSheets() {
   });
 }
 
+// SOFT DELETE: marca deleted_at em vez de apagar fisicamente. PV some das
+// listas (filtro deleted_at IS NULL) mas tudo continua intacto — items, OPs,
+// AR, etc. Restauração via useRestoreSaleOrder em 1 clique.
+//
+// Mudança 19/05/2026: user reportou "PVs sumindo sem rastro" + 7 PVs ausentes
+// confirmados (LNG 102/103/105/106 + 112/113/114 sumiram antes da trigger de
+// audit existir). Soft delete elimina perda de dados por acidente de UI.
+//
+// Guards de NF-e ativa permanecem (impossível esconder PV com NF autorizada).
+// Pra apagar de vez (estornar estoque, cancelar AR, etc.) usa useHardDeleteSaleOrder.
 export function useDeleteSaleOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data, error } = await (supabase as any).rpc('soft_delete_sale_order', { p_id: id });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sale_orders'] });
+      qc.invalidateQueries({ queryKey: ['sale_orders_with_nfe'] });
+    },
+    onError: (err: Error) => toast.error(`Erro ao excluir: ${err.message}`),
+  });
+}
+
+// Restaura PV deletado (deleted_at = NULL). Apenas admin/gerente (RPC já valida).
+export function useRestoreSaleOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data, error } = await (supabase as any).rpc('restore_sale_order', { p_id: id });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data: any) => {
+      qc.invalidateQueries({ queryKey: ['sale_orders'] });
+      qc.invalidateQueries({ queryKey: ['sale_orders_with_nfe'] });
+      toast.success(`${data?.order_number || 'PV'} restaurado!`);
+    },
+    onError: (err: Error) => toast.error(`Erro ao restaurar: ${err.message}`),
+  });
+}
+
+export function useHardDeleteSaleOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {

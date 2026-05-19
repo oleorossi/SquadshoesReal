@@ -532,29 +532,32 @@ export default function SaleOrders() {
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
     const ids = Array.from(selectedIds);
-    // Confirma destruição — excluir difere de cancelar: apaga o registro
-    // por completo, não recupera. Lista os 5 primeiros pra ajudar o user
-    // a perceber se selecionou demais por engano.
     const sample = orders
       .filter(o => selectedIds.has(o.id))
       .slice(0, 5)
       .map(o => `• ${o.order_number} (${o.client_name || '—'})`)
       .join('\n');
     const more = ids.length > 5 ? `\n... e mais ${ids.length - 5}` : '';
-    const ok = window.confirm(
-      `EXCLUIR ${ids.length} pedido${ids.length === 1 ? '' : 's'}?\n\n${sample}${more}\n\n` +
-      'Esta ação é PERMANENTE — o pedido some do sistema (não dá pra recuperar). ' +
-      'Se quer só interromper sem apagar, use "Cancelar" no lugar.\n\n' +
-      'Confirmar exclusão?'
+    // Anti-acidente: window.prompt obriga digitar exatamente "EXCLUIR <N>".
+    // window.confirm sozinho permitia OK acidental → 7 PVs sumiram em mai/2026.
+    const expectedText = `EXCLUIR ${ids.length}`;
+    const typed = window.prompt(
+      `Você está EXCLUINDO ${ids.length} pedido${ids.length === 1 ? '' : 's'}:\n\n${sample}${more}\n\n` +
+      `Os pedidos ficam OCULTOS (podem ser restaurados por admin/gerente).\n\n` +
+      `Para confirmar, digite exatamente: ${expectedText}`,
+      ''
     );
-    if (!ok) return;
+    if (typed !== expectedText) {
+      if (typed !== null) toast.error('Texto digitado não confere. Exclusão cancelada.');
+      return;
+    }
     const results = await Promise.allSettled(ids.map(id => deleteOrder.mutateAsync(id)));
     const failed = results.filter(r => r.status === 'rejected').length;
     setSelectedIds(new Set());
     if (failed === 0) {
-      toast.success(`${ids.length} pedido(s) excluído(s)`);
+      toast.success(`${ids.length} pedido(s) excluído(s) — restauráveis se preciso`);
     } else {
-      toast.error(`${ids.length - failed} excluído(s), ${failed} falha(s). Pedidos com OPs/NF-e ativas não podem ser excluídos.`);
+      toast.error(`${ids.length - failed} excluído(s), ${failed} falha(s). PVs com NF-e ativa não podem ser excluídos.`);
     }
   };
 
@@ -1914,7 +1917,14 @@ export default function SaleOrders() {
                               <Zap className="h-3.5 w-3.5" />
                             </Button>
                           )}
-                          <DeleteConfirmButton onConfirm={() => deleteOrder.mutate(order.id)} title="Excluir pedido?" size="h-7 w-7" iconSize="h-3.5 w-3.5" />
+                          <DeleteConfirmButton
+                            onConfirm={() => deleteOrder.mutate(order.id)}
+                            title={`Excluir ${order.order_number}?`}
+                            description="O pedido fica oculto mas pode ser restaurado por admin/gerente. Pra apagar de vez (com estorno de estoque), use \"Cancelar\" ou contate o admin."
+                            confirmTypedText={order.order_number}
+                            size="h-7 w-7"
+                            iconSize="h-3.5 w-3.5"
+                          />
                         </div>
                       </TableCell>
                     </TableRow>
