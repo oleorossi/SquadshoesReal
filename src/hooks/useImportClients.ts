@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import * as XLSX from 'xlsx';
 import { toast } from 'sonner';
+import { invalidateAllClientQueries } from './useClients';
 
 /**
  * Forma "normalizada" de um cliente extraído de arquivo, antes de ir pra DB.
@@ -261,7 +262,7 @@ export function useSaveImportedClient() {
       return { id: (data as any).id, action: 'created' as const };
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['clients'] });
+      invalidateAllClientQueries(qc);
     },
     onError: (err: Error) => {
       toast.error(`Falha ao salvar cliente: ${err.message}`);

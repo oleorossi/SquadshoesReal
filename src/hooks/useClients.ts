@@ -1,7 +1,28 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { sanitizeUuidFields } from '@/lib/utils';
+
+/**
+ * Invalida TODAS as queries cuja queryKey começa com 'clients' (em qualquer
+ * lugar do app). Cobre keys derivadas como ['clients_by_group', id],
+ * ['clients_by_cnpj_for_labels'], ['clients_for_expedicao_v3'], etc.
+ *
+ * Pq isso existe: o invalidate padrão `{ queryKey: ['clients'] }` só casa
+ * com EXATAMENTE essa key — não pega as variantes. Resultado: editava
+ * CNPJ/dados em /clients e ao navegar pra /grupos-economicos, /label-system,
+ * /expedicao etc, o cliente aparecia desatualizado (cache stale).
+ *
+ * Reportado pelo user em 19/05/2026 (caso grupo Vivian Ferreira).
+ */
+export function invalidateAllClientQueries(qc: QueryClient) {
+  qc.invalidateQueries({
+    predicate: (q) => {
+      const k = q.queryKey[0];
+      return typeof k === 'string' && (k === 'clients' || k.startsWith('clients_') || k.startsWith('clients-'));
+    },
+  });
+}
 
 export type Client = {
   id: string;
@@ -97,7 +118,7 @@ export function useCreateClient() {
       return data;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['clients'] });
+      invalidateAllClientQueries(qc);
       toast.success('Cliente cadastrado!');
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
@@ -112,7 +133,7 @@ export function useUpdateClient() {
       if (error) throw error;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['clients'] });
+      invalidateAllClientQueries(qc);
       toast.success('Cliente atualizado!');
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
@@ -165,7 +186,7 @@ export function useDeleteClient() {
       if (error) throw error;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['clients'] });
+      invalidateAllClientQueries(qc);
       toast.success('Cliente excluído!');
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
@@ -225,7 +246,7 @@ export function useDeleteEconomicGroup() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['economic_groups'] });
-      qc.invalidateQueries({ queryKey: ['clients'] });
+      invalidateAllClientQueries(qc);
       toast.success('Grupo econômico excluído!');
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
