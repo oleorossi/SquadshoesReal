@@ -1694,6 +1694,10 @@ export default function SaleOrders() {
                   const isSelected = sel.isSelected(order.id);
                   const isOverdue = order.delivery_deadline && new Date(order.delivery_deadline) < new Date() && !TERMINAL_BILLED_STATUSES.includes(order.status) && order.status !== 'Cancelado';
                   const isInformal = (order as any).nfe_required === false;
+                  // PV com NF-e emitida (pedido user 19/05/2026 — destacar visualmente):
+                  // status Faturado = NF autorizada; Expedido/Concluído = NF autorizada + saiu.
+                  // 'Finalizado s/ NF' NÃO entra (é exatamente o oposto — finalizou sem emitir).
+                  const hasEmittedNfe = ['Faturado', 'Expedido', 'Concluído'].includes(order.status);
                   const minBilling = minBillingMap.get(order.id) || null;
                   const isInfeasible = !!(
                     minBilling && order.delivery_deadline && order.delivery_deadline < minBilling
@@ -1709,7 +1713,11 @@ export default function SaleOrders() {
                         "group transition-colors cursor-pointer",
                         isSelected ? "bg-primary/10 hover:bg-primary/15" : "hover:bg-muted/50",
                         isOverdue && "border-l-4 border-l-destructive",
-                        isInformal && !isSelected && "bg-amber-500/[0.04] hover:bg-amber-500/[0.08]"
+                        isInformal && !isSelected && "bg-amber-500/[0.04] hover:bg-amber-500/[0.08]",
+                        // PV com NF emitida: fundo verde claro (semântico) — destaca visualmente
+                        // pedidos que já saíram da etapa fiscal. Não conflita com isInformal pois
+                        // são mutuamente exclusivos (informal nunca chega em Faturado/Expedido).
+                        hasEmittedNfe && !isSelected && "bg-emerald-500/[0.07] hover:bg-emerald-500/[0.12]"
                       )}
                       onClick={(e) => {
                         const target = e.target as HTMLElement;
