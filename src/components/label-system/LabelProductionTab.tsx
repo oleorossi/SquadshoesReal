@@ -13,6 +13,7 @@
  */
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { Tag, MagnifyingGlass as Search, Barcode, Gear as Settings2, Package as BoxIcon, Package, ArrowCounterClockwise as RotateCcw, Factory, Scan as ScanLine, CalendarBlank as CalendarDays, Buildings as Building2, CircleNotch as Loader2, Stack as Layers, CheckCircle as CheckCircle2, PencilSimple as Pencil, Download } from '@phosphor-icons/react';
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, parseISO } from 'date-fns';
 import { Button } from '@/components/ui/button';
@@ -551,9 +552,28 @@ export function LabelProductionTab() {
   // User pediu (15/05/2026): "Quando pedido entrar em onda eu passa a poder
   // ser impresso". Sem isso, a aba mostrava qualquer OP em produção mesmo
   // se a programação ainda não tinha agendado essa onda.
-  const productionOrders = allOrders.filter((o: any) =>
+  let productionOrders = allOrders.filter((o: any) =>
     !!o.sale_order_id && saleOrdersInWaves.has(o.sale_order_id),
   );
+
+  // Deep-link via querystring: /label-system?sale_order=<PV_ID> filtra a aba
+  // pra mostrar SÓ as OPs daquele pedido. Acionado pelo botão "Etiquetas"
+  // no detalhe do PV em /sales (19/05/2026, pedido user). Quando setado,
+  // o gating de wave é IGNORADO — operador quer ver as etiquetas do pedido
+  // mesmo que ainda não esteja em onda.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const saleOrderFilter = searchParams.get('sale_order') || '';
+  const filteredSaleOrder = saleOrderFilter
+    ? saleOrders.find((so: any) => so.id === saleOrderFilter)
+    : null;
+  if (saleOrderFilter) {
+    productionOrders = allOrders.filter((o: any) => o.sale_order_id === saleOrderFilter);
+  }
+  const clearSaleOrderFilter = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete('sale_order');
+    setSearchParams(next, { replace: true });
+  };
   const finishedSaleOrderIds = useMemo(
     () => new Set(
       saleOrders.filter((so: any) => ['Faturado', 'Finalizado s/ NF', 'Expedido', 'Concluído'].includes(so.status)).map((so: any) => so.id)
@@ -1080,6 +1100,27 @@ export function LabelProductionTab() {
           <Button variant="outline" size="sm" onClick={() => setShowConfig(!showConfig)} className="h-8"><Settings2 className="h-4 w-4 mr-2" />Ajustes</Button>
         </div>
       </div>
+
+      {/* Badge de filtro vindo do deep-link /label-system?sale_order=ID — quando
+          ativo, a tab mostra SÓ as OPs daquele PV. Botão X limpa e volta pra
+          listagem completa. (19/05/2026, pedido user pelo botão Etiquetas em /sales) */}
+      {saleOrderFilter && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-md border border-primary/30 bg-primary/5 text-sm">
+          <Tag className="h-4 w-4 text-primary shrink-0" />
+          <span className="text-foreground">
+            Filtrado por pedido <strong className="font-mono">{filteredSaleOrder?.order_number || saleOrderFilter.slice(0, 8)}</strong>
+            {filteredSaleOrder?.client_name && (
+              <span className="text-muted-foreground"> — {filteredSaleOrder.client_name}</span>
+            )}
+            <span className="ml-2 text-muted-foreground">
+              ({productionOrders.length} OP{productionOrders.length === 1 ? '' : 's'})
+            </span>
+          </span>
+          <Button variant="ghost" size="sm" className="ml-auto h-7 px-2 gap-1" onClick={clearSaleOrderFilter}>
+            <RotateCcw className="h-3.5 w-3.5" /> Limpar filtro
+          </Button>
+        </div>
+      )}
 
       {showConfig && (
         <Card className="animate-in slide-in-from-top-2 border-primary/20 shadow-lg">

@@ -1982,68 +1982,21 @@ export default function SaleOrders() {
                   <Button variant="outline" size="sm" className="gap-2" onClick={() => setMarginDialogOpen(true)}><TrendingUp className="h-3.5 w-3.5" /> Margem</Button>
                   <Button variant="outline" size="sm" className="gap-2" onClick={async () => { try { await printAllSectorsForSaleOrder(selectedOrder.id, selectedOrder.order_number); } catch (err: any) { toast.error(err.message); } }}><FileText className="h-3.5 w-3.5" /> OPs</Button>
                   <Button variant="outline" size="sm" className="gap-2" onClick={async () => { const { data: oi } = await supabase.from('sale_order_items').select('*, technical_sheets(name, code, image_url, images)').eq('sale_order_id', selectedOrder.id); const refIds = [...new Set((oi || []).map(i => i.reference_id))]; const { data: colorVariants } = await supabase.from('reference_color_variants').select('reference_id, color, image_url').in('reference_id', refIds); printHtml(`PV ${selectedOrder.order_number}`, await buildSaleOrderPrintHtml(selectedOrder, oi || [], colorVariants || [])); }}><FileText className="h-3.5 w-3.5" /> Gerar PDF</Button>
-                  <Button variant="outline" size="sm" className="gap-2" onClick={async () => {
-                    const pw = openPrintWindow('Etiquetas térmicas');
-                    try {
-                      const { data: linkedOps } = await supabase.from('orders').select('id, order_number, reference_id, color, grade, quantity, sale_order_id').eq('sale_order_id', selectedOrder.id);
-                      if (!linkedOps || linkedOps.length === 0) { toast.info('Nenhuma OP vinculada a este pedido.'); pw.close(); return; }
-                      const labels: Parameters<typeof buildThermalLabelsHtml>[0] = [];
-                      const displayOrderNumber = selectedOrder.client_order_number || selectedOrder.order_number || '';
-                      
-                      for (const op of linkedOps) {
-                        const { data: refData } = await supabase.from('technical_sheets').select('image_url, images, shoe_category, code, name').eq('id', op.reference_id).single();
-                        const rawRefImgUrl = ((refData as any)?.images as string[] | null)?.[0] || refData?.image_url || '';
-                        const refImageUrl = await getSignedUrl(rawRefImgUrl);
-                        const color = op.color || '';
-                        
-                        const { data: variant } = await supabase.from('reference_color_variants').select('image_url').eq('reference_id', op.reference_id).eq('color', color).maybeSingle();
-                        const imgUrl = variant?.image_url ? await getSignedUrl(variant.image_url) : refImageUrl;
-                        
-                        const { data: matData } = await supabase.from('sheet_materials').select('products(name)').eq('sheet_id', op.reference_id).limit(1).maybeSingle();
-                        const mainMaterial = (matData?.products as any)?.name || '';
-                        
-                        const grade = op.grade as Record<string, number> | null;
-                        if (grade && Object.keys(grade).length > 0) {
-                          for (const [size, qty] of Object.entries(grade)) {
-                            const count = Number(qty) || 0;
-                            for (let i = 0; i < count; i++) {
-                              labels.push({ 
-                                refCode: refData?.code || '', 
-                                refName: refData?.name || '', 
-                                mainMaterial, 
-                                color, 
-                                size, 
-                                barcode: refData?.barcode || op.order_number || '', 
-                                imageUrl: imgUrl, 
-                                shoeCategory: refData?.shoe_category || '', 
-                                clientOrderNumber: displayOrderNumber 
-                              });
-                            }
-                          }
-                        } else {
-                          const opQty = Number(op.quantity) || 0;
-                          for (let i = 0; i < opQty; i++) {
-                            labels.push({ 
-                              refCode: refData?.code || '', 
-                              refName: refData?.name || '', 
-                              mainMaterial, 
-                              color, 
-                              size: '—', 
-                              barcode: refData?.barcode || op.order_number || '', 
-                              imageUrl: imgUrl, 
-                              shoeCategory: refData?.shoe_category || '', 
-                              clientOrderNumber: displayOrderNumber 
-                            });
-                          }
-                        }
-                      }
-                      if (labels.length === 0) { toast.info('Nenhuma etiqueta para gerar.'); pw.close(); return; }
-                      const logoUrl = new URL(logoImg, window.location.origin).href;
-                      const html = buildThermalLabelsHtml(labels, logoUrl, { width: 100, height: 30 });
-                      writeRawPrintWindow(pw, html);
-                      toast.success(`${labels.length} etiqueta(s) gerada(s)`);
-                    } catch (err: any) { toast.error(err.message); pw.close(); }
-                  }}><Tag className="h-3.5 w-3.5" /> Etiquetas</Button>
+                  {/* Botão "Etiquetas" — abre /etiquetas pré-filtrado pelo PV.
+                      Antes printava térmica direto (perdia acesso a caixa externa,
+                      hangtag, etc). Agora navega pra página completa de etiquetas
+                      com sale_order na URL — todas as opções continuam disponíveis
+                      mas só dos itens deste pedido. (19/05/2026, pedido user) */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => {
+                      navigate(`/label-system?sale_order=${selectedOrder.id}`);
+                    }}
+                  >
+                    <Tag className="h-3.5 w-3.5" /> Etiquetas
+                  </Button>
                 </div>
               )}
             </DialogTitle>
