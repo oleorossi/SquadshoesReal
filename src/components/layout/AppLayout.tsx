@@ -582,7 +582,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
                 "shadow-[0_1px_0_0_hsl(var(--border)/0.4)]",
                 printMode && 'print:hidden'
               )}>
-                <div className="w-full max-w-[1600px] mx-auto h-11 flex items-center px-6 gap-3">
+                <div className="w-full h-11 flex items-center px-4 md:px-6 lg:px-8 xl:px-10 gap-3">
                   <PageHeader compact />
                 </div>
               </div>
@@ -595,7 +595,12 @@ export default function AppLayout({ children, printMode = false }: { children: R
             )}
 
             <main id="conteudo-principal" tabIndex={-1} className={cn(
-              'flex-1 w-full max-w-[1600px] mx-auto px-4 md:px-6 lg:px-8 py-6 pb-20 md:pb-6 overflow-auto',
+              // Layout fluido: usa 100% da largura disponível, sem cap em 1600px.
+              // Antes em telas grandes (1080p+/4K/ultrawide) o sistema ficava com
+              // barras vazias gigantes nas laterais — pedido user 19/05/2026
+              // "sempre se adequar à resolução de quem está acessando".
+              // Padding cresce com a tela (mobile 4 → md 6 → lg 8 → xl 10 → 2xl 12).
+              'flex-1 w-full px-4 md:px-6 lg:px-8 xl:px-10 2xl:px-12 py-6 pb-20 md:pb-6 overflow-auto',
               printMode && 'print:px-0 print:py-0 print:overflow-visible'
             )}>
               <div className="md:hidden">

@@ -219,7 +219,7 @@ export default function InputCostsPage() {
 
   return (
     <AppLayout>
-      <div className="p-6 space-y-5 max-w-[1600px] mx-auto">
+      <div className="space-y-5">
         <EditorialPageHeader
           sectionLabel="CUSTOS · INSUMOS"
           title="Custos de Insumos"
