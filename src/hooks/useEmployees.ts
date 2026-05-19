@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 export interface Employee {
   id: string;
   name: string;
+  cpf: string | null;
   external_id: string | null;
   phone: string;
   whatsapp: string;

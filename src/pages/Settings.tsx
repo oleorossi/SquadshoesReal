@@ -27,7 +27,8 @@ import RepresentativesPanel from '@/components/settings/RepresentativesPanel';
 import EditProfileDialog from '@/components/settings/EditProfileDialog';
 import CreateUserDialog from '@/components/settings/CreateUserDialog';
 import FinanceConfigPanel from '@/components/settings/FinanceConfigPanel';
-import { CurrencyDollar as DollarSign } from '@phosphor-icons/react';
+import { CurrencyDollar as DollarSign, Buildings } from '@phosphor-icons/react';
+import CompanySettingsTab from '@/components/settings/CompanySettingsTab';
 import { cn } from '@/lib/utils';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -459,6 +460,10 @@ export default function SettingsPage() {
               <DollarSign className="h-3.5 w-3.5" />
               Financeiro
             </TabsTrigger>
+            <TabsTrigger value="empresa" className="gap-1.5">
+              <Buildings className="h-3.5 w-3.5" />
+              Empresa
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="users" className="space-y-4 mt-4">
@@ -513,6 +518,9 @@ export default function SettingsPage() {
 
           <TabsContent value="finance-config" className="mt-4">
             <FinanceConfigPanel />
+          </TabsContent>
+          <TabsContent value="empresa" className="mt-4">
+            <CompanySettingsTab />
           </TabsContent>
         </Tabs>
 

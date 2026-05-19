@@ -24,8 +24,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Printer, ArrowLeft, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useWorkSchedules, useHolidays, useTimeRecords, calculateDaySummary, type WorkSchedule } from '@/hooks/useTimesheet';
+import { useCompanySettings } from '@/hooks/useCompanySettings';
 import { format, parseISO, startOfMonth, endOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+
+function formatDoc(doc: string | null | undefined, type: 'cpf' | 'cnpj'): string {
+  if (!doc) return '—';
+  const clean = doc.replace(/\D/g, '');
+  if (type === 'cpf' && clean.length === 11) {
+    return `${clean.slice(0, 3)}.${clean.slice(3, 6)}.${clean.slice(6, 9)}-${clean.slice(9)}`;
+  }
+  if (type === 'cnpj' && clean.length === 14) {
+    return `${clean.slice(0, 2)}.${clean.slice(2, 5)}.${clean.slice(5, 8)}/${clean.slice(8, 12)}-${clean.slice(12)}`;
+  }
+  return doc;
+}
 
 const fmtMin = (m: number) => {
   if (!m) return '00:00';
@@ -73,6 +86,7 @@ export default function EspelhoPontoPage() {
   const { data: schedules = [] } = useWorkSchedules();
   const { data: holidays = [] } = useHolidays();
   const { data: records = [], isLoading: recsLoading } = useTimeRecords(undefined, periodStart, periodEnd);
+  const { data: company } = useCompanySettings();
 
   const employee = employees.find(e => e.id === employeeId);
   const schedule = employee?.work_schedule_id
@@ -200,8 +214,9 @@ export default function EspelhoPontoPage() {
     );
   }
 
-  const companyName = import.meta.env.VITE_APP_COMPANY_NAME || 'Squad Shoes';
-  const companyCnpj = import.meta.env.VITE_APP_COMPANY_CNPJ || '—';
+  const companyName = company?.razao_social || 'Squad Shoes';
+  const companyCnpj = formatDoc(company?.cnpj, 'cnpj');
+  const companyExtraId = company?.cei ? `CEI ${company.cei}` : company?.caepf ? `CAEPF ${company.caepf}` : company?.cno ? `CNO ${company.cno}` : null;
   const emissionDate = format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
 
   return (
@@ -237,11 +252,21 @@ export default function EspelhoPontoPage() {
         <table className="w-full border-collapse mb-3 text-[9pt]">
           <tbody>
             <tr>
-              <td className="border border-black px-2 py-1 w-[30%] font-bold uppercase text-[8pt] bg-black/5">Empregador</td>
+              <td className="border border-black px-2 py-1 w-[18%] font-bold uppercase text-[8pt] bg-black/5">Empregador</td>
               <td className="border border-black px-2 py-1">{companyName}</td>
-              <td className="border border-black px-2 py-1 w-[15%] font-bold uppercase text-[8pt] bg-black/5">CNPJ</td>
-              <td className="border border-black px-2 py-1">{companyCnpj}</td>
+              <td className="border border-black px-2 py-1 w-[12%] font-bold uppercase text-[8pt] bg-black/5">CNPJ</td>
+              <td className="border border-black px-2 py-1 font-mono">{companyCnpj}</td>
             </tr>
+            {(company?.endereco || companyExtraId) && (
+              <tr>
+                <td className="border border-black px-2 py-1 font-bold uppercase text-[8pt] bg-black/5">Endereço</td>
+                <td className="border border-black px-2 py-1">
+                  {company?.endereco || '—'}{company?.cidade ? ` · ${company.cidade}` : ''}{company?.uf ? `/${company.uf}` : ''}
+                </td>
+                <td className="border border-black px-2 py-1 font-bold uppercase text-[8pt] bg-black/5">{companyExtraId ? companyExtraId.split(' ')[0] : 'CEI/CAEPF'}</td>
+                <td className="border border-black px-2 py-1 font-mono">{companyExtraId ? companyExtraId.split(' ').slice(1).join(' ') : '—'}</td>
+              </tr>
+            )}
           </tbody>
         </table>
 
@@ -250,7 +275,9 @@ export default function EspelhoPontoPage() {
           <tbody>
             <tr>
               <td className="border border-black px-2 py-1 w-[15%] font-bold uppercase text-[8pt] bg-black/5">Nome</td>
-              <td className="border border-black px-2 py-1" colSpan={3}>{employee.name}</td>
+              <td className="border border-black px-2 py-1">{employee.name}</td>
+              <td className="border border-black px-2 py-1 w-[10%] font-bold uppercase text-[8pt] bg-black/5">CPF</td>
+              <td className="border border-black px-2 py-1 font-mono">{formatDoc(employee.cpf, 'cpf')}</td>
             </tr>
             <tr>
               <td className="border border-black px-2 py-1 font-bold uppercase text-[8pt] bg-black/5">Cargo</td>

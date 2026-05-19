@@ -27,7 +27,7 @@ import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 
 const emptyEmployee = {
-  name: '', external_id: '', role: '', department: '', salary: 0, overtime_hourly_rate: null as number | null,
+  name: '', cpf: '', external_id: '', role: '', department: '', salary: 0, overtime_hourly_rate: null as number | null,
   hourly_rate: null as number | null, overtime_multiplier: 1.20,
   work_schedule_id: null as string | null, phone: '', whatsapp: '', pix_key: '', pix_type: '', notes: '', active: true, admission_date: new Date().toISOString().split('T')[0], termination_date: null as string | null,
   // Multiplicadores POR funcionário (regime contrato — cada contrato pode ter regra própria).
@@ -374,6 +374,17 @@ export default function Employees() {
           <DialogHeader><DialogTitle>{editing ? 'Editar Funcionário' : 'Novo Funcionário'}</DialogTitle></DialogHeader>
           <div className="grid grid-cols-2 gap-4 mt-2">
             <div className="col-span-2"><Label>Nome</Label><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></div>
+            <div>
+              <Label>CPF</Label>
+              <Input
+                value={form.cpf || ''}
+                onChange={e => setForm(f => ({ ...f, cpf: e.target.value.replace(/\D/g, '').slice(0, 11) }))}
+                placeholder="11 dígitos"
+                className="font-mono"
+                maxLength={11}
+              />
+              <p className="text-[10px] text-muted-foreground mt-0.5">Obrigatório no Espelho de Ponto (Portaria 671)</p>
+            </div>
             <div>
               <Label>ID no Relógio (External ID)</Label>
               <div className="relative">
