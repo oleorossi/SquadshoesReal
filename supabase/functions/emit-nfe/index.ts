@@ -86,6 +86,82 @@ async function resolveGcLojaId(): Promise<string | null> {
   }
 }
 
+// Cache do id da transportadora "própria" (Squad Shoes) no GestaoClick.
+// modFrete=3 (transporte próprio do remetente) exige que a NF aponte pra uma
+// transportadora cadastrada — mas o painel GC não puxa automaticamente do
+// emitente. A doc da API de /notas_fiscais_produtos não documenta bloco
+// `transporte.transportador.*` (silenciosamente ignorado) — só aceita
+// `transportadora_id` (FK pra /transportadoras). Solução: criar a transportadora
+// "Squad Shoes" uma vez (idempotente por CNPJ) e referenciar pelo ID.
+// 19/05/2026: bug visto em PV-00107+, transportador saía em branco no DANFE.
+let _gcTransportadoraIdCache: string | null = null;
+async function resolveGcTransportadoraEmitenteId(fiscal: any): Promise<string | null> {
+  if (_gcTransportadoraIdCache) return _gcTransportadoraIdCache;
+  const cnpjDigits = (fiscal?.cnpj || "").replace(/\D/g, "");
+  if (cnpjDigits.length !== 14) {
+    console.warn("[emit-nfe] resolveGcTransportadoraEmitenteId: CNPJ do emitente inválido — pulando");
+    return null;
+  }
+  try {
+    // 1. Tenta achar transportadora existente com mesmo CNPJ. GC filtra por
+    // nome (não por CNPJ), então buscamos pelo nome e validamos no client.
+    const nomeBusca = fiscal.nome_fantasia || fiscal.razao_social || "Squad Shoes";
+    const listResp = await gcFetch(`/transportadoras?nome=${encodeURIComponent(nomeBusca)}`);
+    const list = Array.isArray(listResp.json?.data) ? listResp.json.data : [];
+    const match = list.find((t: any) => {
+      const tCnpj = (t?.cnpj || "").replace(/\D/g, "");
+      return tCnpj && tCnpj === cnpjDigits;
+    });
+    if (match?.id) {
+      _gcTransportadoraIdCache = String(match.id);
+      console.log(`[emit-nfe] Transportadora emitente já existe no GC: id=${_gcTransportadoraIdCache}`);
+      return _gcTransportadoraIdCache;
+    }
+
+    // 2. Não achou — cria. POST /transportadoras.
+    const ieDigits = (fiscal?.inscricao_estadual || "").replace(/\D/g, "");
+    const logradouro = fiscal?.logradouro || fiscal?.endereco || "";
+    const body: Record<string, any> = {
+      tipo_pessoa: "PJ",
+      nome: fiscal.nome_fantasia || fiscal.razao_social || "Squad Shoes",
+      razao_social: fiscal.razao_social || fiscal.nome_fantasia || "Squad Shoes",
+      cnpj: cnpjDigits,
+      ativo: "1",
+    };
+    if (ieDigits) body.inscricao_estadual = ieDigits;
+    if (fiscal?.telefone) body.telefone = fiscal.telefone;
+    if (fiscal?.email) body.email = fiscal.email;
+    if (logradouro || fiscal?.cidade) {
+      body.enderecos = [{
+        endereco: {
+          cep: (fiscal?.cep || "").replace(/\D/g, ""),
+          logradouro: logradouro,
+          numero: fiscal?.numero || "S/N",
+          complemento: fiscal?.complemento || "",
+          bairro: fiscal?.bairro || "",
+          nome_cidade: fiscal?.cidade || "",
+          estado: fiscal?.uf || "",
+        },
+      }];
+    }
+    const createResp = await gcFetch("/transportadoras", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    const newId = createResp.json?.data?.id;
+    if (createResp.ok && newId) {
+      _gcTransportadoraIdCache = String(newId);
+      console.log(`[emit-nfe] Transportadora emitente criada no GC: id=${_gcTransportadoraIdCache}`);
+      return _gcTransportadoraIdCache;
+    }
+    console.warn("[emit-nfe] Falha ao criar transportadora emitente:", createResp.status, JSON.stringify(createResp.json).slice(0, 300));
+    return null;
+  } catch (e) {
+    console.warn("[emit-nfe] resolveGcTransportadoraEmitenteId exceção:", e instanceof Error ? e.message : String(e));
+    return null;
+  }
+}
+
 // Mapeia situacao_nf do GestaoClick → status canônico interno. Mesma lógica
 // de nfe-status / sync-nfe-from-provider (evita drift entre os caminhos).
 // Cobre múltiplas situações que a SEFAZ pode retornar.
@@ -808,8 +884,9 @@ Deno.serve(async (req) => {
     // GestaoClick ignora `peso_bruto` / `peso_liquido` / `quantidade_volumes`
     // se mandados no top-level — a doc deles exige dentro de
     // `transporte.volumes[]`. Mandávamos no topo até NF #244 e o XML saía com
-    // <pesoB>/<pesoL> vazios. especie: "VOLUME" — pedido em 15/05/2026
-    // (era "CX"; contabilidade prefere "VOLUME" pra refletir o termo legal).
+    // <pesoB>/<pesoL> vazios. especie: "Volumes" — XML SEFAZ alvo confirmado
+    // pelo user em 19/05/2026 (era "VOLUME" caps, antes "CX"). Plural com
+    // capital só na 1ª letra é o que sai no DANFE/XML aprovado pela contabilidade.
     // modalidade_frete (SEFAZ modFrete):
     //   0 = Frete por conta do REMETENTE (CIF)
     //   1 = Frete por conta do DESTINATÁRIO (FOB)
@@ -860,6 +937,13 @@ Deno.serve(async (req) => {
     // Cache em memória do isolate (resolveGcLojaId). Quando null, GC usa default.
     const gcLojaId = await resolveGcLojaId();
 
+    // Resolve (cria se preciso) transportadora "Squad Shoes" no GestaoClick.
+    // modFrete=3 (transporte próprio do remetente) só preenche o bloco
+    // <transporta> do XML se houver `transportadora_id` apontando pra um
+    // registro de /transportadoras — o bloco transporte.transportador aninhado
+    // é silenciosamente ignorado pelo GC (não documentado em /notas_fiscais_produtos).
+    const gcTransportadoraId = await resolveGcTransportadoraEmitenteId(fiscal);
+
     const nfePayload = {
       // tipo_nf como INT (doc especifica int; antes mandávamos string "1").
       tipo_nf: 1,
@@ -883,10 +967,29 @@ Deno.serve(async (req) => {
       tipo_atendimento: "9",
       indicador_final: isContribuinte ? 0 : 1,
       informacoes_complementares: informacoesComplementares,
+      // modalidade_frete no top-level — campo aceito pelo GC em outras rotas
+      // (Vendas/Pedidos). Redundante com transporte.modalidade_frete (aninhado)
+      // pra cobrir as duas formas e garantir que o XML saia com modFrete=3.
+      modalidade_frete: "3",
+      // transportadora_id no top-level — FK pra /transportadoras (cadastro
+      // próprio Squad Shoes resolvido acima). Sem isso o XML sai com
+      // <transporta> vazio e DANFE mostra transportador em branco.
+      ...(gcTransportadoraId ? { transportadora_id: Number(gcTransportadoraId) } : {}),
+      // Peso/volumes também no top-level — Webmania-style. Não documentado
+      // em GC mas é o padrão de outros emissores brasileiros. Campos
+      // ignorados não afetam (GC filtra silenciosamente).
+      ...(pesoBrutoStr ? { peso_bruto: pesoBrutoStr } : {}),
+      ...(pesoLiquidoStr ? { peso_liquido: pesoLiquidoStr } : {}),
+      ...(qtdVolumesStr ? { quantidade_volumes: qtdVolumesStr } : {}),
+      especie_volumes: "VOLUME",
       produtos: produtosGC,
       ...(pagamentoArr.length ? { pagamento: pagamentoArr } : {}),
       transporte: transporteBlock,
     };
+
+    // Log estruturado pro próximo debug se algum campo ainda não pegar.
+    // Permite ver no Supabase Functions Logs exatamente o que foi enviado.
+    console.log(`[emit-nfe] payload transporte: modFrete=${nfePayload.modalidade_frete} transp_id=${gcTransportadoraId || '∅'} qtdVol=${qtdVolumesStr || '∅'} pesoB=${pesoBrutoStr || '∅'} pesoL=${pesoLiquidoStr || '∅'}`);
 
     // ---------- DRY_RUN: retorna preview sem emitir ----------
     // Roda TODAS as validações + computa tudo (peso, volumes, pagamento,
@@ -965,8 +1068,10 @@ Deno.serve(async (req) => {
           },
           transporte: {
             modalidade_frete: '3 (Transporte próprio por conta do remetente)',
-            // modFrete=3 → transportador = próprio emitente. Bloco montado
-            // a partir de fiscal.* pra contabilidade conferir antes de emitir.
+            // modFrete=3 → transportadora = própria Squad. ID resolvido via
+            // /transportadoras (cadastro idempotente por CNPJ). Quando null
+            // a transportadora será criada na emissão real.
+            transportadora_id_gc: gcTransportadoraId,
             transportador: Object.keys(transportadorBlock).length > 0
               ? transportadorBlock
               : null,
