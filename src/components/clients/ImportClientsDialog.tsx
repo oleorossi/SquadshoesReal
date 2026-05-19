@@ -232,7 +232,7 @@ export function ImportClientsDialog({ open, onOpenChange }: Props) {
                 id="import-clients-file"
                 type="file"
                 multiple
-                accept=".xlsx,.xls,.csv,.pdf,.docx,.doc,.jpg,.jpeg,.png,.webp"
+                accept=".xlsx,.xls,.csv,.pdf,.docx,.jpg,.jpeg,.png,.webp"
                 className="hidden"
                 onChange={handleFileChange}
                 disabled={isExtracting}

@@ -1,15 +1,24 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.0";
 
-// extract-clients: recebe base64 + mime de PDF/DOCX/JPG/PNG, manda pra
-// Gemini Vision e retorna array de clientes JSON.
+// extract-clients: recebe base64 + mime de PDF/JPG/PNG/WEBP, manda pra
+// Claude (Anthropic) e retorna array de clientes JSON.
 // Excel/CSV NÃO passam aqui — o front parseia local com SheetJS.
+//
+// 19/05/2026: migrado de Gemini → Claude API a pedido do user.
+// Claude suporta PDF nativamente (até 32MB / 100 páginas via document block)
+// e imagens (JPEG/PNG/WEBP/GIF). Força JSON estruturado via tool_use.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
+// Modelo: Claude Haiku 4.5 — rápido + barato pra extração estruturada
+// (Sonnet/Opus seriam overkill pra este caso e queimariam quota desnecessária).
+const MODEL = "claude-haiku-4-5-20251001";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -50,129 +59,177 @@ serve(async (req) => {
       });
     }
 
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) {
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+    if (!ANTHROPIC_API_KEY) {
       return new Response(JSON.stringify({
-        error: "GEMINI_API_KEY não configurada. Cadastre em Supabase → Edge Functions → Secrets. Pegue grátis em https://ai.google.dev",
+        error: "ANTHROPIC_API_KEY não configurada. Cadastre em Supabase → Edge Functions → Secrets. Pegue em https://console.anthropic.com",
       }), {
         status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const prompt = `Você está analisando um arquivo (PDF/Word/imagem) com lista de CLIENTES/LOJISTAS de uma indústria calçadista brasileira.
+    // Detecta tipo do arquivo pra montar o content block correto:
+    // - PDF → document block (vision automática, até 100 páginas)
+    // - imagem → image block
+    // - outro → erro claro pro front (não tem caminho viável pra .docx via Claude API)
+    const mime = (mimeType || "").toLowerCase();
+    let contentBlock: any;
+    if (mime === "application/pdf") {
+      contentBlock = {
+        type: "document",
+        source: { type: "base64", media_type: "application/pdf", data: fileBase64 },
+      };
+    } else if (mime.startsWith("image/")) {
+      // Normaliza JPEG variants pro mime padrão da Anthropic
+      const cleanMime = mime === "image/jpg" ? "image/jpeg" : mime;
+      contentBlock = {
+        type: "image",
+        source: { type: "base64", media_type: cleanMime, data: fileBase64 },
+      };
+    } else {
+      return new Response(JSON.stringify({
+        error: `Formato '${mime}' não suportado pelo extrator. Aceito: PDF, JPEG, PNG, WEBP. ` +
+               `Pra Word, salve como PDF antes de enviar. Pra Excel/CSV, use a aba normal (parseado local).`,
+      }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-Extraia TODOS os clientes que conseguir identificar. Para cada um, retorne os campos abaixo (use null quando não conseguir extrair):
-
-- razao_social (obrigatório se conseguir identificar pelo menos o nome da empresa)
-- nome_fantasia
-- cnpj (formato XX.XXX.XXX/XXXX-XX ou só dígitos, sem inventar)
-- inscricao_estadual
-- regime_tributario (ex: "Simples Nacional", "Lucro Presumido", "Lucro Real", "MEI")
-- endereco (rua/avenida + número, sem bairro/cidade)
-- numero (separado quando claro)
-- bairro
-- cidade
-- estado (UF, 2 letras maiúsculas)
-- cep (formato XXXXX-XXX ou só dígitos)
-- email
-- telefone
-- contato (nome da pessoa de contato, se houver)
-
-IMPORTANTE:
-- NÃO INVENTE dados. Se não conseguir ler, use null.
-- Aceite formatos variados (CNPJ pode vir formatado ou não, UF pode vir extenso ou abreviado).
-- Se o documento tiver várias lojas/filiais do MESMO grupo, retorne cada uma como um cliente separado.
-- Ignore cabeçalhos, totais, rodapés.
-
-Arquivo: ${fileName || "(sem nome)"}`;
-
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
-
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        systemInstruction: {
-          parts: [{ text: "Você é um extrator de dados de cadastro de clientes. Responda SEMPRE em JSON válido conforme o schema. Não invente dados — use null quando não conseguir ler com certeza." }],
-        },
-        contents: [{
-          role: "user",
-          parts: [
-            { text: prompt },
-            { inline_data: { mime_type: mimeType, data: fileBase64 } },
-          ],
-        }],
-        generationConfig: {
-          temperature: 0.1,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: "object",
-            properties: {
-              clients: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    razao_social: { type: "string", nullable: true },
-                    nome_fantasia: { type: "string", nullable: true },
-                    cnpj: { type: "string", nullable: true },
-                    inscricao_estadual: { type: "string", nullable: true },
-                    regime_tributario: { type: "string", nullable: true },
-                    endereco: { type: "string", nullable: true },
-                    numero: { type: "string", nullable: true },
-                    bairro: { type: "string", nullable: true },
-                    cidade: { type: "string", nullable: true },
-                    estado: { type: "string", nullable: true },
-                    cep: { type: "string", nullable: true },
-                    email: { type: "string", nullable: true },
-                    telefone: { type: "string", nullable: true },
-                    contato: { type: "string", nullable: true },
-                  },
-                },
+    // Força JSON estruturado via tool_use: Claude é OBRIGADO a chamar essa
+    // "tool" como output. Bem mais confiável que pedir JSON no prompt e dar
+    // parse (que falha em ~5% dos casos com texto solto antes/depois).
+    const extractTool = {
+      name: "extract_clients",
+      description:
+        "Retorna a lista estruturada de clientes/lojistas extraídos do documento. " +
+        "Use null pra campos que não conseguir ler com certeza — não invente.",
+      input_schema: {
+        type: "object",
+        properties: {
+          clients: {
+            type: "array",
+            description: "Lista de clientes identificados no documento.",
+            items: {
+              type: "object",
+              properties: {
+                razao_social: { type: "string", description: "Razão social ou nome da empresa (obrigatório se conseguir identificar)" },
+                nome_fantasia: { type: ["string", "null"] },
+                cnpj: { type: ["string", "null"], description: "CNPJ formatado XX.XXX.XXX/XXXX-XX ou só dígitos. NÃO inventar." },
+                inscricao_estadual: { type: ["string", "null"] },
+                regime_tributario: { type: ["string", "null"], description: "Simples Nacional, Lucro Presumido, Lucro Real, MEI" },
+                endereco: { type: ["string", "null"], description: "Rua/avenida + número, sem bairro/cidade" },
+                numero: { type: ["string", "null"] },
+                bairro: { type: ["string", "null"] },
+                cidade: { type: ["string", "null"] },
+                estado: { type: ["string", "null"], description: "UF, 2 letras maiúsculas (RJ, SP, MG...)" },
+                cep: { type: ["string", "null"], description: "XXXXX-XXX ou só dígitos" },
+                email: { type: ["string", "null"] },
+                telefone: { type: ["string", "null"] },
+                contato: { type: ["string", "null"], description: "Nome da pessoa de contato" },
               },
+              required: ["razao_social"],
             },
-            required: ["clients"],
           },
         },
+        required: ["clients"],
+      },
+    };
+
+    const systemPrompt =
+      "Você é um extrator de dados de cadastro de clientes/lojistas de uma indústria " +
+      "calçadista brasileira. Analise o documento (PDF, foto de cartão de visita, lista " +
+      "de lojas, contrato, planilha impressa) e extraia TODOS os clientes que conseguir " +
+      "identificar.\n\n" +
+      "REGRAS:\n" +
+      "- Use null pra qualquer campo que não conseguir ler com certeza.\n" +
+      "- NUNCA invente CNPJ, IE, CEP ou outros documentos.\n" +
+      "- Aceite variações: CNPJ formatado ou só dígitos; UF extenso ou abreviado.\n" +
+      "- Se o documento tem várias lojas/filiais do mesmo grupo, retorne CADA UMA como " +
+      "  cliente separado (filiais têm CNPJ próprio).\n" +
+      "- Ignore cabeçalhos, totais, rodapés, marcas d'água.\n" +
+      "- razao_social é obrigatório: se não conseguir identificar pelo menos o nome da " +
+      "  empresa, NÃO inclua aquela entrada.";
+
+    const userPrompt = `Extraia os clientes/lojistas deste arquivo: ${fileName || "(sem nome)"}\n\nChame a tool extract_clients com a lista completa.`;
+
+    const apiHeaders: Record<string, string> = {
+      "x-api-key": ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    };
+    // Beta header obrigatório pra suporte a PDF via document block.
+    if (mime === "application/pdf") {
+      apiHeaders["anthropic-beta"] = "pdfs-2024-09-25";
+    }
+
+    const response = await fetch(ANTHROPIC_API, {
+      method: "POST",
+      headers: apiHeaders,
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 8192,
+        system: systemPrompt,
+        tools: [extractTool],
+        // Força Claude a chamar EXATAMENTE essa tool — garante JSON estruturado.
+        tool_choice: { type: "tool", name: "extract_clients" },
+        messages: [
+          {
+            role: "user",
+            content: [contentBlock, { type: "text", text: userPrompt }],
+          },
+        ],
       }),
     });
 
     if (!response.ok) {
-      const t = await response.text();
-      console.error("Gemini API error:", response.status, t.slice(0, 500));
+      const errText = await response.text();
+      console.error("Anthropic API error:", response.status, errText.slice(0, 500));
+      // Erros conhecidos do Claude: mapeia pra HTTP claro
       if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Limite do Gemini excedido. Tente novamente em alguns segundos." }), {
+        return new Response(JSON.stringify({ error: "Limite da Anthropic excedido. Tente novamente em alguns segundos." }), {
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+      if (response.status === 401 || response.status === 403) {
+        return new Response(JSON.stringify({
+          error: "ANTHROPIC_API_KEY inválida ou sem permissão. Confira em Supabase → Edge Functions → Secrets.",
+        }), {
+          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       if (response.status === 400) {
-        return new Response(JSON.stringify({ error: "Requisição inválida (arquivo grande demais ou chave Gemini errada). HTTP 400." }), {
+        // Arquivo muito grande, mime errado, base64 corrompido
+        let detail = "";
+        try { detail = JSON.parse(errText)?.error?.message || ""; } catch { detail = errText.slice(0, 200); }
+        return new Response(JSON.stringify({
+          error: `Requisição inválida (${response.status}): ${detail || "arquivo possivelmente grande demais ou corrompido"}.`,
+        }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      return new Response(JSON.stringify({ error: `Erro ao consultar IA (HTTP ${response.status})` }), {
+      return new Response(JSON.stringify({ error: `Erro ao consultar IA Claude (HTTP ${response.status})` }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const data = await response.json();
-    const content = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-
-    try {
-      const cleaned = content.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
-      const result = JSON.parse(cleaned);
-      const clients = Array.isArray(result?.clients) ? result.clients : [];
-      // Filtra fora entradas sem razao_social (provavelmente noise)
-      const valid = clients.filter((c: any) => c?.razao_social && String(c.razao_social).trim().length > 0);
-      return new Response(JSON.stringify({ clients: valid, total: valid.length }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    } catch (parseErr) {
-      console.error("Failed to parse Gemini response:", parseErr, "raw:", content.slice(0, 500));
-      return new Response(JSON.stringify({ error: "IA retornou JSON inválido. Tente outro arquivo ou reformule." }), {
+    // Claude retorna lista de content blocks. Com tool_choice forçado, há sempre
+    // pelo menos um bloco tool_use. Extraímos o `input` dele.
+    const blocks = Array.isArray(data?.content) ? data.content : [];
+    const toolBlock = blocks.find((b: any) => b?.type === "tool_use" && b?.name === "extract_clients");
+    if (!toolBlock) {
+      console.error("Claude não retornou tool_use:", JSON.stringify(blocks).slice(0, 400));
+      return new Response(JSON.stringify({ error: "IA não retornou estrutura esperada. Tente outro arquivo ou reformule." }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    const clients = Array.isArray(toolBlock.input?.clients) ? toolBlock.input.clients : [];
+    // Filtra noise: entradas sem razao_social só atrapalham o wizard de revisão.
+    const valid = clients.filter((c: any) => c?.razao_social && String(c.razao_social).trim().length > 0);
+    return new Response(JSON.stringify({ clients: valid, total: valid.length }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   } catch (e) {
     console.error("extract-clients error:", e);
     return new Response(

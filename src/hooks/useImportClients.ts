@@ -29,8 +29,12 @@ export interface ExtractedClient {
 export const onlyDigits = (s: string | null | undefined): string =>
   (s ?? '').toString().replace(/\D/g, '');
 
-/** Detecta o tipo de arquivo pela extensão + mime. */
-type FileKind = 'excel' | 'csv' | 'pdf' | 'docx' | 'image' | 'unknown';
+/** Detecta o tipo de arquivo pela extensão + mime.
+ *  'doc_legacy' = formato binário antigo .doc (Word 97-2003). Gemini Vision
+ *  só aceita .docx (OOXML). Tratamos como 'unknown' pra dar mensagem clara
+ *  de "salve como .docx" — antes mapeava silenciosamente pra docx e o
+ *  Gemini retornava erro 400 confuso. */
+type FileKind = 'excel' | 'csv' | 'pdf' | 'docx' | 'doc_legacy' | 'image' | 'unknown';
 
 export function detectFileKind(file: File): FileKind {
   const name = file.name.toLowerCase();
@@ -38,7 +42,8 @@ export function detectFileKind(file: File): FileKind {
   if (name.endsWith('.xlsx') || name.endsWith('.xls') || mime.includes('spreadsheet') || mime.includes('excel')) return 'excel';
   if (name.endsWith('.csv') || mime.includes('csv')) return 'csv';
   if (name.endsWith('.pdf') || mime.includes('pdf')) return 'pdf';
-  if (name.endsWith('.docx') || name.endsWith('.doc') || mime.includes('word')) return 'docx';
+  if (name.endsWith('.docx') || mime.includes('officedocument.wordprocessingml')) return 'docx';
+  if (name.endsWith('.doc') || mime === 'application/msword') return 'doc_legacy';
   if (name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.png') || name.endsWith('.webp') || mime.startsWith('image/')) return 'image';
   return 'unknown';
 }
@@ -167,7 +172,14 @@ export async function extractClientsFromFile(file: File): Promise<ExtractedClien
     return parseExcelOrCsv(file);
   }
   if (kind === 'unknown') {
-    throw new Error(`Formato não suportado: ${file.name}. Aceito: .xlsx, .xls, .csv, .pdf, .docx, .jpg, .png`);
+    if (kind === 'doc_legacy') {
+      throw new Error(
+        `Formato .doc (Word 97-2003) não é suportado pelo extrator de IA. ` +
+        `Abra "${file.name}" no Word/LibreOffice e salve como PDF, ou converta pra .docx — ` +
+        `ou tire foto/screenshot e envie como imagem.`,
+      );
+    }
+    throw new Error(`Formato não suportado: ${file.name}. Aceito: .xlsx, .xls, .csv, .pdf, .docx, .jpg, .png, .webp`);
   }
 
   // PDF/DOCX/Image → Gemini
@@ -199,9 +211,9 @@ export async function extractClientsFromFile(file: File): Promise<ExtractedClien
         }
       }
     } catch { /* ignore */ }
-    // Dica específica pro 503 — quase sempre = chave Gemini não cadastrada
+    // Dica específica pro 503 — quase sempre = chave Anthropic não cadastrada
     const hint = httpStatus === 503
-      ? ' (Provavelmente GEMINI_API_KEY não está cadastrada nos secrets do Supabase. Veja Supabase Dashboard → Edge Functions → Secrets.)'
+      ? ' (Provavelmente ANTHROPIC_API_KEY não está cadastrada nos secrets do Supabase. Veja Supabase Dashboard → Edge Functions → Secrets. Pegue a chave em https://console.anthropic.com)'
       : '';
     throw new Error((serverMsg || error.message || 'Falha ao chamar extract-clients') + hint);
   }
