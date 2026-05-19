@@ -181,16 +181,28 @@ export async function extractClientsFromFile(file: File): Promise<ExtractedClien
   });
 
   if (error) {
-    // Tenta extrair mensagem específica do servidor
+    // supabase-js mascara erros não-2xx com "Edge Function returned a non-2xx status code".
+    // A mensagem real do servidor vive em error.context.response — tenta JSON, depois texto bruto.
     let serverMsg: string | null = null;
+    let httpStatus: number | null = null;
     try {
       const resp = (error as any)?.context?.response;
       if (resp && typeof resp.clone === 'function') {
-        const body = await resp.clone().json();
-        serverMsg = body?.error || null;
+        httpStatus = resp.status ?? null;
+        try {
+          const body = await resp.clone().json();
+          serverMsg = body?.error || null;
+        } catch {
+          // Body não é JSON — pega texto puro como fallback
+          try { serverMsg = (await resp.clone().text())?.slice(0, 300) || null; } catch { /* ignore */ }
+        }
       }
     } catch { /* ignore */ }
-    throw new Error(serverMsg || error.message || 'Falha ao chamar extract-clients');
+    // Dica específica pro 503 — quase sempre = chave Gemini não cadastrada
+    const hint = httpStatus === 503
+      ? ' (Provavelmente GEMINI_API_KEY não está cadastrada nos secrets do Supabase. Veja Supabase Dashboard → Edge Functions → Secrets.)'
+      : '';
+    throw new Error((serverMsg || error.message || 'Falha ao chamar extract-clients') + hint);
   }
   if (data?.error) throw new Error(data.error);
   return Array.isArray(data?.clients) ? data.clients : [];
