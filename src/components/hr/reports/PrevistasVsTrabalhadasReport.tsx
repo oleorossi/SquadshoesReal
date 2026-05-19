@@ -7,6 +7,7 @@ import { CircleNotch as Loader2, Target, Download, TrendUp as TrendingUp, TrendD
 import { Progress } from '@/components/ui/progress';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useTimeRecords, useWorkSchedules, calculateDaySummary, useHolidays } from '@/hooks/useTimesheet';
+import { buildEmployeeLookup, lookupLinkedEmployee } from '@/lib/timeRecordLink';
 
 const fmtMin = (m: number) => {
   const sign = m < 0 ? '-' : '';
@@ -29,11 +30,7 @@ export default function PrevistasVsTrabalhadasReport() {
   const { data: holidays = [] } = useHolidays();
   const { data: records = [], isLoading } = useTimeRecords(undefined, from, to);
 
-  const empByName = useMemo(() => {
-    const m = new Map<string, typeof employees[number]>();
-    for (const e of employees) m.set(e.name.toLowerCase().trim(), e);
-    return m;
-  }, [employees]);
+  const empLookup = useMemo(() => buildEmployeeLookup(employees), [employees]);
 
   const scheduleMap = useMemo(() => new Map(schedules.map(s => [s.id, s])), [schedules]);
   const holidaySet = useMemo(() => new Set(holidays.map(h => h.holiday_date)), [holidays]);
@@ -43,11 +40,14 @@ export default function PrevistasVsTrabalhadasReport() {
     [schedules]
   );
 
-  // Agrupa por funcionário, somando previsto vs trabalhado
-  const rows = useMemo(() => {
+  // Agrupa por funcionário, somando previsto vs trabalhado.
+  // Records sem vínculo com employee ATIVO (ou sem external_id coligado) são
+  // pulados — funcionários demitidos cujo ID/nome ainda vem do relógio não
+  // aparecem mais. Contador `skippedUnlinked` é exposto pra mostrar aviso.
+  const { rows, skippedUnlinked, skippedNames } = useMemo(() => {
     const map = new Map<string, {
       name: string;
-      empId: string | null;
+      empId: string;
       department: string;
       scheduleName: string;
       expected: number;
@@ -55,11 +55,17 @@ export default function PrevistasVsTrabalhadasReport() {
       diasComBatida: number;
       diasSemBatida: number;
     }>();
+    let skipped = 0;
+    const skippedSet = new Set<string>();
 
     for (const rec of records) {
-      const empName = rec.employee_name;
-      const emp = empByName.get(empName.toLowerCase().trim());
-      const schedule = (emp?.work_schedule_id && scheduleMap.get(emp.work_schedule_id)) || defaultSchedule;
+      const emp = lookupLinkedEmployee(rec, empLookup);
+      if (!emp) {
+        skipped++;
+        skippedSet.add(rec.employee_name);
+        continue;
+      }
+      const schedule = (emp.work_schedule_id && scheduleMap.get(emp.work_schedule_id)) || defaultSchedule;
       if (!schedule) continue;
 
       const recDate = new Date(rec.record_date + 'T00:00:00');
@@ -67,10 +73,10 @@ export default function PrevistasVsTrabalhadasReport() {
       const isHoliday = holidaySet.has(rec.record_date);
       const summary = calculateDaySummary(rec.punches as string[], dow, schedule, isHoliday);
 
-      const cur = map.get(empName) || {
-        name: empName,
-        empId: emp?.id || null,
-        department: emp?.department || '—',
+      const cur = map.get(emp.id) || {
+        name: emp.name,
+        empId: emp.id,
+        department: emp.department || '—',
         scheduleName: schedule.name,
         expected: 0,
         worked: 0,
@@ -81,17 +87,19 @@ export default function PrevistasVsTrabalhadasReport() {
       cur.worked += summary.workedMinutes;
       if ((rec.punches as string[]).length > 0) cur.diasComBatida++;
       else if (summary.expectedMinutes > 0) cur.diasSemBatida++;
-      map.set(empName, cur);
+      map.set(emp.id, cur);
     }
 
-    return Array.from(map.values())
+    const result = Array.from(map.values())
       .map(r => ({
         ...r,
         diff: r.worked - r.expected,
         pct: r.expected > 0 ? (r.worked / r.expected) * 100 : 0,
       }))
       .sort((a, b) => b.expected - a.expected);
-  }, [records, empByName, scheduleMap, defaultSchedule, holidaySet]);
+
+    return { rows: result, skippedUnlinked: skipped, skippedNames: Array.from(skippedSet) };
+  }, [records, empLookup, scheduleMap, defaultSchedule, holidaySet]);
 
   const totals = useMemo(() => {
     return rows.reduce((acc, r) => ({
@@ -167,6 +175,24 @@ export default function PrevistasVsTrabalhadasReport() {
         </div>
         <div className="rule-line-double mt-5" />
       </div>
+
+      {/* Aviso: registros ignorados por falta de coligação no /rh/funcionarios. */}
+      {skippedUnlinked > 0 && (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs">
+          <p className="font-semibold text-amber-700 dark:text-amber-500">
+            {skippedUnlinked} registro{skippedUnlinked !== 1 ? 's' : ''} ignorado{skippedUnlinked !== 1 ? 's' : ''} — funcionário não coligado
+          </p>
+          <p className="text-muted-foreground mt-1">
+            Batidas do relógio cujo ID/nome não vincula a um funcionário ativo do sistema não entram no relatório.
+            {skippedNames.length > 0 && (
+              <>
+                {' '}Nomes pulados: <span className="font-mono">{skippedNames.slice(0, 5).join(', ')}{skippedNames.length > 5 ? `, …+${skippedNames.length - 5}` : ''}</span>.
+              </>
+            )}
+            {' '}Pra incluí-los, cadastre em <span className="font-mono">/rh/funcionarios</span> e preencha o "ID no Relógio".
+          </p>
+        </div>
+      )}
 
       {/* ─────────── 01 / INDICADORES ─────────── */}
       <section>
