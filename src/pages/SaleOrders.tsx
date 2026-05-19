@@ -381,6 +381,21 @@ export default function SaleOrders() {
       if (searchTerm) {
         const q = searchTerm.toLowerCase().trim();
         if (!q) return true;
+
+        // Atalho "/<nome>" → filtra por GRUPO ECONÔMICO do cliente (pedido
+        // user 19/05/2026). Ex: "/lng" pega PVs de TODOS os clientes do grupo
+        // que tenha "lng" no nome (LNG 10, LNG 30, etc). Quando só "/" foi
+        // digitado, mostra tudo (operador ainda está formando a query).
+        if (q.startsWith('/')) {
+          const groupQuery = q.slice(1).trim();
+          if (!groupQuery) return true;
+          const cli = clientByName[(order.client_name || '').toLowerCase()];
+          const groupId = cli?.economic_group_id;
+          if (!groupId) return false;
+          const group = (economicGroups as any[]).find((g: any) => g.id === groupId);
+          return !!(group && (group.name || '').toLowerCase().includes(groupQuery));
+        }
+
         const client = clientByName[(order.client_name || '').toLowerCase()];
         const cnpjDigits = (client?.cnpj || (order as any).client_cnpj || '').replace(/\D/g, '');
         const qDigits = q.replace(/\D/g, '');
@@ -408,7 +423,7 @@ export default function SaleOrders() {
       }
       return true;
     });
-  }, [orders, mainTab, filterStatus, filterRep, filterGroup, filterSegment, segmentsBySaleOrder, searchTerm, clientGroupMap, clientByName, itemsBySaleOrder]);
+  }, [orders, mainTab, filterStatus, filterRep, filterGroup, filterSegment, segmentsBySaleOrder, searchTerm, clientGroupMap, clientByName, itemsBySaleOrder, economicGroups, filterMonth]);
 
   // Marquee selection + range/Ctrl click + Esc-to-clear (replaces ad-hoc
   // useState<Set>). `selectedIds`/`setSelectedIds` shims abaixo mantêm
@@ -1501,7 +1516,7 @@ export default function SaleOrders() {
                 value={searchTerm}
                 onChange={setSearchTerm}
                 getSuggestions={searchSuggestions}
-                placeholder="Buscar PV, cliente, representante, referência…"
+                placeholder="Buscar PV, cliente, ref… ou /grupo (ex: /lng)"
               />
             </div>
             <Button
