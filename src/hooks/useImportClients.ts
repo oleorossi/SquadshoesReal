@@ -198,6 +198,7 @@ export async function extractClientsFromFile(file: File): Promise<ExtractedClien
     // A mensagem real do servidor vive em error.context.response — tenta JSON, depois texto bruto.
     let serverMsg: string | null = null;
     let httpStatus: number | null = null;
+    let attempts: Array<{ model: string; status: number; detail: string }> | null = null;
     try {
       const resp = (error as any)?.context?.response;
       if (resp && typeof resp.clone === 'function') {
@@ -205,6 +206,7 @@ export async function extractClientsFromFile(file: File): Promise<ExtractedClien
         try {
           const body = await resp.clone().json();
           serverMsg = body?.error || null;
+          attempts = Array.isArray(body?.attempts) ? body.attempts : null;
         } catch {
           // Body não é JSON — pega texto puro como fallback
           try { serverMsg = (await resp.clone().text())?.slice(0, 300) || null; } catch { /* ignore */ }
@@ -215,7 +217,13 @@ export async function extractClientsFromFile(file: File): Promise<ExtractedClien
     const hint = httpStatus === 503
       ? ' (Provavelmente GEMINI_API_KEY não está cadastrada nos secrets do Supabase. Veja Supabase Dashboard → Edge Functions → Secrets. Pegue grátis em https://aistudio.google.com/app/apikey)'
       : '';
-    throw new Error((serverMsg || error.message || 'Falha ao chamar extract-clients') + hint);
+    // Anexa detalhe das tentativas pro user/console — facilita debug quando
+    // diferentes modelos do Gemini retornam erros distintos (chave restrita,
+    // PDF grande, cota etc).
+    const attemptsDetail = attempts && attempts.length > 0
+      ? '\n— Tentativas: ' + attempts.map(a => `${a.model} (${a.status}): ${a.detail.slice(0, 200)}`).join('; ')
+      : '';
+    throw new Error((serverMsg || error.message || 'Falha ao chamar extract-clients') + hint + attemptsDetail);
   }
   if (data?.error) throw new Error(data.error);
   return Array.isArray(data?.clients) ? data.clients : [];
