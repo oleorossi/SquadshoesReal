@@ -191,6 +191,8 @@ import { AppErrorBoundary } from '@/components/ErrorBoundary';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { EmptyState } from '@/components/ui/empty-state';
 import { normalizeForSearch } from '@/lib/searchUtils';
+import { Link as Link2 } from '@phosphor-icons/react';
+import { SoleSizeConjugationsEditor } from '@/components/inventory/SoleSizeConjugationsEditor';
 const STATUSES = ['Ativo', 'Em desenvolvimento', 'Descontinuado'] as const;
 const STATUS_FICHA = ['rascunho', 'em_revisao', 'validada', 'publicada'] as const;
 const STATUS_FICHA_LABELS: Record<string, string> = { rascunho: 'Rascunho', em_revisao: 'Em Revisão', validada: 'Validada', publicada: 'Publicada' };
@@ -2028,16 +2030,41 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               </div>
               <div className="rounded-md border bg-muted/30 px-3 py-2.5 flex items-center gap-3 text-xs">
                 <Footprints className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                   <span className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider">Grade Resultante</span>
-                  <div className="text-sm font-mono text-foreground font-bold mt-0.5">
-                    {form.sizes || (form.shoe_category === 'Infantil' ? '25-36' : '34-40')}
+                  <div className="text-sm font-mono text-foreground font-bold mt-0.5 break-words">
+                    {soleSizeKeys.length > 0
+                      ? soleSizeKeys.join(', ')
+                      : (form.sizes || (form.shoe_category === 'Infantil' ? '25-36' : '34-40'))}
                     <span className="text-muted-foreground text-[10px] ml-2 font-sans normal-case font-normal">
                       derivada da categoria{form.sole_material ? ` + solado "${form.sole_material}"` : ''}
                     </span>
                   </div>
                 </div>
               </div>
+
+              {/* Editor de conjugações inline. Aparece quando há solado vinculado.
+                  Sem ele, o user tinha que ir em Solados Hub pra cadastrar — fluxo
+                  quebrado quando estava editando uma ficha. Reuso do componente
+                  compartilhado que já existe em SolesCadastroTab/MasterVariantDialog. */}
+              {form.sole_group_id && (
+                <details className="rounded-md border bg-muted/20" open={soleSizeKeys.some(k => k.includes('/'))}>
+                  <summary className="px-3 py-2 cursor-pointer text-xs font-semibold flex items-center gap-2 select-none">
+                    <Link2 className="h-3.5 w-3.5 text-primary" />
+                    Numerações Conjugadas
+                    <span className="text-[10px] text-muted-foreground font-normal ml-1">
+                      (ex: 33/34 = 1 par único)
+                    </span>
+                  </summary>
+                  <div className="border-t px-3 py-3">
+                    <SoleSizeConjugationsEditor
+                      soleGroupId={form.sole_group_id}
+                      sizeFrom={soleSizeKeysNumeric.length > 0 ? Math.min(...soleSizeKeysNumeric) : null}
+                      sizeTo={soleSizeKeysNumeric.length > 0 ? Math.max(...soleSizeKeysNumeric) : null}
+                    />
+                  </div>
+                </details>
+              )}
             </div>
           </div>
 
