@@ -90,43 +90,36 @@ function ExpandedWaveRow({ waveId }: { waveId: string }) {
                   Nenhum pedido vinculado.
                 </div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
-                      <TableHead className="px-3 py-2 h-auto">Pedido</TableHead>
-                      <TableHead className="px-3 py-2 h-auto">Cliente</TableHead>
-                      <TableHead className="px-3 py-2 h-auto text-right">Pares</TableHead>
-                      <TableHead className="px-3 py-2 h-auto">Entrega</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {orders.map((o) => (
-                      <TableRow key={o.sale_order_id ?? Math.random()}>
-                        <TableCell className="px-3 py-2 font-mono text-xs">
-                          {o.sale_order_id ? (
-                            <Link
-                              to={`/pedidos/${o.sale_order_id}`}
-                              className="text-primary hover:underline"
-                            >
-                              {o.order_number ?? '—'}
-                            </Link>
-                          ) : (
-                            o.order_number ?? '—'
-                          )}
-                        </TableCell>
-                        <TableCell className="px-3 py-2 text-xs truncate max-w-[200px]">
-                          {o.client_fantasy || o.client_name || '—'}
-                        </TableCell>
-                        <TableCell className="px-3 py-2 text-right tabular-nums text-xs">
-                          {Number(o.total_pairs).toLocaleString('pt-BR')}
-                        </TableCell>
-                        <TableCell className="px-3 py-2 text-xs">
-                          {formatDate(o.delivery_deadline)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                // Grid-based em vez de <Table> pra evitar warning React
+                // "validateDOMNesting <tr> in <tr>" (esta lista vive dentro
+                // de uma <TableCell> da tabela principal de ondas).
+                <div className="text-xs">
+                  <div className="grid grid-cols-[1fr_2fr_60px_80px] gap-x-3 px-3 py-2 bg-muted/40 font-bold uppercase tracking-wider text-muted-foreground border-b border-border">
+                    <span>Pedido</span>
+                    <span>Cliente</span>
+                    <span className="text-right">Pares</span>
+                    <span>Entrega</span>
+                  </div>
+                  {orders.map((o) => (
+                    <div
+                      key={o.sale_order_id ?? Math.random()}
+                      className="grid grid-cols-[1fr_2fr_60px_80px] gap-x-3 px-3 py-2 border-b border-border/40 last:border-0 hover:bg-muted/30"
+                    >
+                      <span className="font-mono">
+                        {o.sale_order_id ? (
+                          <Link to={`/pedidos/${o.sale_order_id}`} className="text-primary hover:underline">
+                            {o.order_number ?? '—'}
+                          </Link>
+                        ) : (
+                          o.order_number ?? '—'
+                        )}
+                      </span>
+                      <span className="truncate">{o.client_fantasy || o.client_name || '—'}</span>
+                      <span className="text-right tabular-nums">{Number(o.total_pairs).toLocaleString('pt-BR')}</span>
+                      <span>{formatDate(o.delivery_deadline)}</span>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </div>
@@ -145,36 +138,30 @@ function ExpandedWaveRow({ waveId }: { waveId: string }) {
                   Sem itens.
                 </div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
-                      <TableHead className="px-3 py-2 h-auto">Solado</TableHead>
-                      <TableHead className="px-3 py-2 h-auto">Referência</TableHead>
-                      <TableHead className="px-3 py-2 h-auto">Cor</TableHead>
-                      <TableHead className="px-3 py-2 h-auto text-right">Pares</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {detail.items.map((it) => (
-                      <TableRow key={it.item_id}>
-                        <TableCell className="px-3 py-2 text-xs font-medium">
-                          {it.sole_name ?? '—'}
-                        </TableCell>
-                        <TableCell className="px-3 py-2 text-xs">
-                          {it.reference_name}
-                        </TableCell>
-                        <TableCell className="px-3 py-2 text-xs">
-                          <Badge variant="outline" className="text-xs">
-                            {it.color || '—'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="px-3 py-2 text-right tabular-nums text-xs">
-                          {Number(it.total_quantity).toLocaleString('pt-BR')}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                // Mesma razão da grid acima: evita warning de tr-in-tr.
+                <div className="text-xs">
+                  <div className="grid grid-cols-[1.2fr_1.5fr_1fr_60px] gap-x-3 px-3 py-2 bg-muted/40 font-bold uppercase tracking-wider text-muted-foreground border-b border-border">
+                    <span>Solado</span>
+                    <span>Referência</span>
+                    <span>Cor</span>
+                    <span className="text-right">Pares</span>
+                  </div>
+                  {detail.items.map((it) => (
+                    <div
+                      key={it.item_id}
+                      className="grid grid-cols-[1.2fr_1.5fr_1fr_60px] gap-x-3 px-3 py-2 border-b border-border/40 last:border-0 items-center hover:bg-muted/30"
+                    >
+                      <span className="font-medium">{it.sole_name ?? '—'}</span>
+                      <span>{it.reference_name}</span>
+                      <span>
+                        <Badge variant="outline" className="text-xs">
+                          {it.color || '—'}
+                        </Badge>
+                      </span>
+                      <span className="text-right tabular-nums">{Number(it.total_quantity).toLocaleString('pt-BR')}</span>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </div>
