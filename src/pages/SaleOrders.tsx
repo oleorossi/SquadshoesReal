@@ -530,10 +530,43 @@ export default function SaleOrders() {
     return matchedClient?.id ?? null;
   }, [dupOrderId, orders, clientByCnpj, clientByName]);
 
+  // IDs de clientes que já receberam cópia deste PV (parent_order_id liga ao
+  // PV origem). Pedido user 20/05/2026: "duplicar deve desconsiderar lojas do
+  // grupo que já foi copiado daquele pedido". Considera também o cliente da
+  // ÚLTIMA cópia do encadeamento (ex: A duplica pra B, depois abre B e dup
+  // pra C — quero excluir A e B da lista).
+  const alreadyCopiedClientIds = useMemo<Set<string>>(() => {
+    if (!dupOrderId) return new Set();
+    const ids = new Set<string>();
+    // PVs filhos: parent_order_id = dupOrderId
+    for (const o of orders) {
+      if ((o as any).parent_order_id === dupOrderId && o.client_id) {
+        ids.add(o.client_id);
+      }
+    }
+    return ids;
+  }, [dupOrderId, orders]);
+
   const dupGroupClients = useMemo(() => {
     if (!dupGroupId) return [];
-    return clients.filter(c => c.economic_group_id === dupGroupId && c.active && c.id !== dupSourceClientId);
-  }, [dupGroupId, clients, dupSourceClientId]);
+    return clients.filter(c =>
+      c.economic_group_id === dupGroupId
+      && c.active
+      && c.id !== dupSourceClientId
+      && !alreadyCopiedClientIds.has(c.id)
+    );
+  }, [dupGroupId, clients, dupSourceClientId, alreadyCopiedClientIds]);
+
+  // Lojas do grupo que JÁ receberam cópia — pra mostrar como info contextual
+  // no dialog (não bloqueia, só informa).
+  const dupAlreadyCopiedStores = useMemo(() => {
+    if (!dupGroupId) return [];
+    return clients.filter(c =>
+      c.economic_group_id === dupGroupId
+      && c.active
+      && alreadyCopiedClientIds.has(c.id)
+    );
+  }, [dupGroupId, clients, alreadyCopiedClientIds]);
 
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
@@ -983,7 +1016,11 @@ export default function SaleOrders() {
         };
       });
       try {
-        await createOrder.mutateAsync({ order: newOrder, items: newItems, client_id: client.id });
+        // parent_order_id liga a cópia ao PV origem — permite filtrar
+        // "lojas já copiadas" no próximo dialog de duplicação (pedido user
+        // 20/05/2026: "tudo que duplicar deve desconsiderar lojas do grupo
+        // que já foi copiado daquele pedido").
+        await createOrder.mutateAsync({ order: newOrder, items: newItems, client_id: client.id, parent_order_id: dupOrderId });
         successCount++;
       } catch (err: any) {
         const msg = err?.message || 'erro desconhecido';
@@ -2471,6 +2508,35 @@ export default function SaleOrders() {
                 <SelectContent>{economicGroups.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
+
+            {/* Info contextual: lojas que JÁ receberam cópia deste PV são
+                ocultadas da lista (filtradas via parent_order_id). Pedido
+                user 20/05/2026: "duplicar deve desconsiderar lojas do grupo
+                que já foi copiado daquele pedido". */}
+            {dupGroupId && dupAlreadyCopiedStores.length > 0 && (
+              <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5">
+                <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                  ✓ {dupAlreadyCopiedStores.length} {dupAlreadyCopiedStores.length === 1 ? 'loja já recebeu cópia' : 'lojas já receberam cópia'} (não aparecem na lista abaixo)
+                </p>
+                <p className="text-[11px] text-emerald-800/80 dark:text-emerald-300/80 mt-1">
+                  {dupAlreadyCopiedStores.slice(0, 5).map(c => c.razao_social).join(' · ')}
+                  {dupAlreadyCopiedStores.length > 5 && ` · +${dupAlreadyCopiedStores.length - 5}`}
+                </p>
+              </div>
+            )}
+
+            {/* Vazio quando todas já foram copiadas */}
+            {dupGroupId && dupGroupClients.length === 0 && dupAlreadyCopiedStores.length > 0 && (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-3 text-center">
+                <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+                  Todas as lojas ativas do grupo já receberam cópia deste PV
+                </p>
+                <p className="text-xs text-amber-800/80 dark:text-amber-300/80 mt-1">
+                  Nada pra duplicar — feche este dialog.
+                </p>
+              </div>
+            )}
+
             {dupGroupId && dupGroupClients.length > 0 && (() => {
               const searchLower = dupClientSearch.toLowerCase().trim();
               const filteredClients = searchLower

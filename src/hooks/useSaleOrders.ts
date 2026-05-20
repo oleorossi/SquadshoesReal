@@ -745,7 +745,7 @@ export function useSaleOrderAllItems() {
 export function useCreateSaleOrder() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ order, items, client_id, representative_id, commission_value, packaging_product_id, packaging_quantity }: { order: SaleOrderFormData; items: SaleOrderItemFormData[]; client_id?: string | null; representative_id?: string | null; commission_value?: number; packaging_product_id?: string | null; packaging_quantity?: number }) => {
+    mutationFn: async ({ order, items, client_id, representative_id, commission_value, packaging_product_id, packaging_quantity, parent_order_id }: { order: SaleOrderFormData; items: SaleOrderItemFormData[]; client_id?: string | null; representative_id?: string | null; commission_value?: number; packaging_product_id?: string | null; packaging_quantity?: number; parent_order_id?: string | null }) => {
       const total = items.reduce((s, i) => s + (Number(i.unit_price) || 0) * (Number(i.quantity) || 0), 0);
       // Bug fix 20/05/2026 (PV-00122): valor_frete não era gravado quando o
       // usuário definia shipping_rate_per_pair (R$ por par). UI somava
@@ -769,6 +769,10 @@ export function useCreateSaleOrder() {
       if (commission_value !== undefined) insertData.commission_value = commission_value;
       if (packaging_product_id) insertData.packaging_product_id = packaging_product_id; else insertData.packaging_product_id = null;
       if (packaging_quantity !== undefined) insertData.packaging_quantity = packaging_quantity;
+      // Rastreabilidade de duplicação (20/05/2026): quando o PV é cópia de
+      // outro pra distribuir entre lojas do grupo, grava parent_order_id pra
+      // permitir filtrar lojas já copiadas no próximo dialog de duplicação.
+      if (parent_order_id) insertData.parent_order_id = parent_order_id;
 
       // Sanitize: replace empty strings with null for all UUID-type fields
       const uuidFields = ['client_id', 'representative_id', 'factoring_config_id', 'packaging_product_id', 'economic_group_id'];
