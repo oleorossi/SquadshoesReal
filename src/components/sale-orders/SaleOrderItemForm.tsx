@@ -19,6 +19,7 @@ import CreateStrapProductDialog from './CreateStrapProductDialog';
 import { toast } from 'sonner';
 import { useReferenceMaterialVariants, useAllActiveReferenceMaterialVariants, VariantSummary } from '@/hooks/useReferenceMaterialVariants';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { normalizeForSearch } from '@/lib/searchUtils';
 interface ReferenceOption {
   id: string;
   code: string;
@@ -1319,8 +1320,10 @@ function ReferenceSearch({
   variantsByRef?: Map<string, VariantSummary[]>;
 }) {
   const [search, setSearch] = useState('');
+  // Normaliza pra match com espaços/acentos/case — "SP 10"/"sp10"/"Sp-10"
+  // devem todos casar com a referência cadastrada como "SP10".
   const filtered = references.filter(r =>
-    (r.code?.toLowerCase() + ' ' + r.name?.toLowerCase()).includes(search.toLowerCase())
+    normalizeForSearch((r.code || '') + ' ' + (r.name || '')).includes(normalizeForSearch(search))
   );
   return (
     <div className="p-2 space-y-2">
@@ -1385,8 +1388,8 @@ function ReferenceSearch({
 function ColorPickerDropdown({ value, colors, onChange, disabled, onAddNew }: { value: string; colors: string[]; onChange: (v: string) => void; disabled?: boolean; onAddNew?: (color: string) => void }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const filtered = colors.filter(c => c.toLowerCase().includes(search.toLowerCase()));
-  const showAdd = search.trim() && !colors.some(c => c.toLowerCase() === search.trim().toLowerCase());
+  const filtered = colors.filter(c => normalizeForSearch(c).includes(normalizeForSearch(search)));
+  const showAdd = search.trim() && !colors.some(c => normalizeForSearch(c) === normalizeForSearch(search));
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
