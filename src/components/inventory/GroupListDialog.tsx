@@ -388,7 +388,7 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
                     </div>
                     <AccordionContent>
                       <div
-                        className={`space-y-1 pb-2 min-h-[32px] ${dragOverGroupId === g.id ? 'bg-primary/5 rounded' : ''}`}
+                        className={`space-y-1 pb-2 min-h-8 ${dragOverGroupId === g.id ? 'bg-primary/5 rounded' : ''}`}
                         onDragOver={(e) => handleDragOver(e, g.id)}
                         onDragLeave={handleDragLeave}
                         onDrop={(e) => handleDrop(e, g.id)}
@@ -444,7 +444,7 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
                     </div>
                     <AccordionContent>
                       <div
-                        className={`space-y-1 pb-2 min-h-[32px] ${dragOverGroupId === '__ungrouped' ? 'bg-primary/5 rounded' : ''}`}
+                        className={`space-y-1 pb-2 min-h-8 ${dragOverGroupId === '__ungrouped' ? 'bg-primary/5 rounded' : ''}`}
                         onDragOver={(e) => handleDragOver(e, '__ungrouped')}
                         onDragLeave={handleDragLeave}
                         onDrop={(e) => handleDrop(e, null)}

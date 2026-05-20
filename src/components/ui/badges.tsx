@@ -480,7 +480,7 @@ interface LiveIndicatorProps extends React.HTMLAttributes<HTMLDivElement> {
 export function LiveIndicator({ label, current, total, className, ...props }: LiveIndicatorProps) {
   return (
     <div
-      className={cn('inline-flex items-center gap-2 rounded-[8px] px-[14px] py-2 text-[12px] font-semibold text-white', className)}
+      className={cn('inline-flex items-center gap-2 rounded-[8px] px-[14px] py-2 text-sm font-semibold text-white', className)}
       style={{ background: 'hsl(215 35% 8%)' }}
       {...props}
     >

@@ -138,7 +138,7 @@ export function ChartsRow({ period = 'current_month' }: { period?: DashboardPeri
       <div className="bg-card rounded-xl border border-border shadow-card hover:shadow-card-hover transition-shadow duration-200">
         <div className="flex items-start justify-between px-5 py-4 border-b border-border/60">
           <div>
-            <h3 className="text-[13px] font-semibold text-foreground tracking-tight">
+            <h3 className="text-base font-semibold text-foreground tracking-tight">
               Vendas vs Produção
             </h3>
             <p className="text-xs text-muted-foreground mt-0.5">últimos 6 meses</p>
@@ -192,7 +192,7 @@ export function ChartsRow({ period = 'current_month' }: { period?: DashboardPeri
       {/* ── Donut chart ── */}
       <div className="bg-card rounded-xl border border-border shadow-card hover:shadow-card-hover transition-shadow duration-200">
         <div className="px-5 py-4 border-b border-border/60">
-          <h3 className="text-[13px] font-semibold text-foreground tracking-tight">
+          <h3 className="text-base font-semibold text-foreground tracking-tight">
             Distribuição de Estoque
           </h3>
           <p className="text-xs text-muted-foreground mt-0.5">por categoria</p>

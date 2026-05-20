@@ -89,7 +89,7 @@ export function BottomRow({ period = 'current_month' }: { period?: DashboardPeri
       {/* ── Top Modelos ── */}
       <div className="bg-card rounded-xl border border-border shadow-card hover:shadow-card-hover transition-shadow duration-200 overflow-hidden">
         <div className="px-5 py-3.5 border-b border-border/60 flex items-center justify-between bg-muted/20">
-          <h3 className="text-[13px] font-semibold text-foreground tracking-tight">Top Modelos Produzidos</h3>
+          <h3 className="text-base font-semibold text-foreground tracking-tight">Top Modelos Produzidos</h3>
           <button
             onClick={() => navigate("/fichas-tecnicas")}
             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded-lg px-2.5 py-1 hover:bg-muted/50 transition-colors"
@@ -113,7 +113,7 @@ export function BottomRow({ period = 'current_month' }: { period?: DashboardPeri
           <tbody>
             {topProducts.length === 0 ? (
               <tr>
-                <td colSpan={4} className="py-10 text-center text-[12px] text-muted-foreground">
+                <td colSpan={4} className="py-10 text-center text-sm text-muted-foreground">
                   Sem dados disponíveis
                 </td>
               </tr>
@@ -124,8 +124,8 @@ export function BottomRow({ period = 'current_month' }: { period?: DashboardPeri
                 onClick={() => navigate("/fichas-tecnicas")}
               >
                 <td className="py-2.5 pl-5 text-[12.5px] font-medium text-foreground">{m.name}</td>
-                <td className="py-2.5 px-4 text-[12px] font-mono text-muted-foreground">{m.ref}</td>
-                <td className="py-2.5 px-4 text-[12px] font-mono font-semibold text-foreground tabular-nums">{m.qty.toLocaleString("pt-BR")}</td>
+                <td className="py-2.5 px-4 text-sm font-mono text-muted-foreground">{m.ref}</td>
+                <td className="py-2.5 px-4 text-sm font-mono font-semibold text-foreground tabular-nums">{m.qty.toLocaleString("pt-BR")}</td>
                 <td className="py-2.5 pr-5">
                   <div className="flex items-center gap-2 justify-end">
                     <div className="w-24 h-1.5 bg-muted rounded-full overflow-hidden">
@@ -143,7 +143,7 @@ export function BottomRow({ period = 'current_month' }: { period?: DashboardPeri
       {/* ── OPs Recentes ── */}
       <div className="bg-card rounded-xl border border-border shadow-card hover:shadow-card-hover transition-shadow duration-200 overflow-hidden">
         <div className="px-5 py-3.5 border-b border-border/60 flex items-center justify-between bg-muted/20">
-          <h3 className="text-[13px] font-semibold text-foreground tracking-tight">OPs Recentes</h3>
+          <h3 className="text-base font-semibold text-foreground tracking-tight">OPs Recentes</h3>
           <button
             onClick={() => navigate("/orders")}
             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded-lg px-2.5 py-1 hover:bg-muted/50 transition-colors"
@@ -153,7 +153,7 @@ export function BottomRow({ period = 'current_month' }: { period?: DashboardPeri
         </div>
         <div>
           {recentOps.length === 0 ? (
-            <div className="py-10 text-center text-[12px] text-muted-foreground">
+            <div className="py-10 text-center text-sm text-muted-foreground">
               Nenhuma OP encontrada
             </div>
           ) : recentOps.map((op: any) => (
@@ -163,7 +163,7 @@ export function BottomRow({ period = 'current_month' }: { period?: DashboardPeri
               onClick={() => navigate("/orders")}
             >
               <span className={cn("w-2 h-2 rounded-full shrink-0", STATUS_DOT[op.status as OPStatus])} />
-              <span className="flex-1 text-[12px] font-medium text-foreground font-mono">{op.id}</span>
+              <span className="flex-1 text-sm font-medium text-foreground font-mono">{op.id}</span>
               <span className="text-xs font-mono text-muted-foreground tabular-nums">{op.qty}</span>
               <span className={cn(
                 "text-xs font-bold uppercase tracking-wider rounded-full px-2 py-0.5 border",

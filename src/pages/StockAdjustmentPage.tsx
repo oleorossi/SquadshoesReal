@@ -923,14 +923,14 @@ export default function StockAdjustmentPage() {
                               </span>
                             )}
                             {!product.active && <span className="text-xs font-semibold uppercase tracking-wide bg-muted text-muted-foreground rounded px-1 py-0.5 shrink-0">inativo</span>}
-                            <span className="truncate font-medium text-foreground text-[13px]">{product.name}</span>
+                            <span className="truncate font-medium text-foreground text-base">{product.name}</span>
                           </div>
                         </td>
-                        <td className="px-2 py-1.5 text-[12px] text-muted-foreground border-r border-border/30 truncate">{product.color ?? "—"}</td>
+                        <td className="px-2 py-1.5 text-sm text-muted-foreground border-r border-border/30 truncate">{product.color ?? "—"}</td>
                         <td className="px-2 py-1.5 font-mono text-xs text-muted-foreground border-r border-border/30">{product.sku ?? "—"}</td>
-                        <td className="px-2 py-1.5 text-[12px] text-muted-foreground border-r border-border/30 truncate">{product.category ?? "—"}</td>
+                        <td className="px-2 py-1.5 text-sm text-muted-foreground border-r border-border/30 truncate">{product.category ?? "—"}</td>
                         <td className="text-xs text-muted-foreground text-center border-r border-border/30">{product.unit}</td>
-                        <td className="px-3 py-1.5 text-right font-mono text-[13px] border-r border-border/30 tabular-nums select-none">
+                        <td className="px-3 py-1.5 text-right font-mono text-base border-r border-border/30 tabular-nums select-none">
                           <span className={isLow ? "text-amber-600 font-semibold" : "text-foreground"}>{product.quantity.toLocaleString("pt-BR")}</span>
                         </td>
                         {/* Sole: toggle expand instead of a quantity input */}
@@ -946,7 +946,7 @@ export default function StockAdjustmentPage() {
                               else if (e.key === "ArrowUp") { e.preventDefault(); navigateTo(rowIndex - 1); }
                             }}
                             className={cn(
-                              "w-full h-[33px] px-3 flex items-center justify-between gap-1.5 text-[12px] font-mono",
+                              "w-full h-[33px] px-3 flex items-center justify-between gap-1.5 text-sm font-mono",
                               "hover:bg-muted/40 transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary/60",
                               hasSoleDraft ? "text-foreground font-semibold" : "text-muted-foreground",
                               keys.length === 0 && "opacity-40 cursor-not-allowed"
@@ -989,7 +989,7 @@ export default function StockAdjustmentPage() {
                             )}
                           </button>
                         </td>
-                        <td className="px-3 py-1.5 text-right font-mono text-[12px] tabular-nums">
+                        <td className="px-3 py-1.5 text-right font-mono text-sm tabular-nums">
                           {hasSoleDraft ? (
                             <span className={cn("font-semibold", delta > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
                               {delta > 0 ? "+" : ""}{delta.toLocaleString("pt-BR")}
@@ -1038,7 +1038,7 @@ export default function StockAdjustmentPage() {
                                       onKeyDown={(e) => handleSizeKeyDown(e, product.id, keys, sizeIndex, rowIndex)}
                                       onFocus={(e) => e.target.select()}
                                       className={cn(
-                                        "h-8 text-center font-mono text-[12px] tabular-nums",
+                                        "h-8 text-center font-mono text-sm tabular-nums",
                                         isConjugated ? "w-14 border-primary/40" : "w-12 border-border/60",
                                         "border rounded-sm outline-none",
                                         "placeholder:text-muted-foreground/30",
@@ -1055,7 +1055,7 @@ export default function StockAdjustmentPage() {
                               <div className="ml-4 pl-4 border-l border-border/40 flex flex-col items-start gap-0.5">
                                 <span className="text-xs text-muted-foreground">Total</span>
                                 <div className="flex items-baseline gap-1.5">
-                                  <span className="font-mono text-[13px] text-muted-foreground">{product.quantity}</span>
+                                  <span className="font-mono text-base text-muted-foreground">{product.quantity}</span>
                                   {hasSoleDraft && (
                                     <>
                                       <span className="text-muted-foreground/40 text-xs">→</span>
@@ -1127,14 +1127,14 @@ export default function StockAdjustmentPage() {
                         <div className="flex items-center gap-1.5 min-w-0">
                           {isLow && <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />}
                           {!product.active && <span className="text-xs font-semibold uppercase tracking-wide bg-muted text-muted-foreground rounded px-1 py-0.5 shrink-0">inativo</span>}
-                          <span className="truncate font-medium text-foreground text-[13px]">{product.name}</span>
+                          <span className="truncate font-medium text-foreground text-base">{product.name}</span>
                         </div>
                       </td>
-                      <td className="px-2 py-1.5 text-[12px] text-muted-foreground border-r border-border/30 truncate">{product.color ?? "—"}</td>
+                      <td className="px-2 py-1.5 text-sm text-muted-foreground border-r border-border/30 truncate">{product.color ?? "—"}</td>
                       <td className="px-2 py-1.5 font-mono text-xs text-muted-foreground border-r border-border/30">{product.sku ?? "—"}</td>
-                      <td className="px-2 py-1.5 text-[12px] text-muted-foreground border-r border-border/30 truncate">{product.category ?? "—"}</td>
+                      <td className="px-2 py-1.5 text-sm text-muted-foreground border-r border-border/30 truncate">{product.category ?? "—"}</td>
                       <td className="text-xs text-muted-foreground text-center border-r border-border/30">{product.unit}</td>
-                      <td className="px-3 py-1.5 text-right font-mono text-[13px] border-r border-border/30 tabular-nums select-none">
+                      <td className="px-3 py-1.5 text-right font-mono text-base border-r border-border/30 tabular-nums select-none">
                         <span className={isLow ? "text-amber-600 font-semibold" : "text-foreground"}>
                           {product.quantity % 1 === 0
                             ? product.quantity.toLocaleString("pt-BR")
@@ -1152,7 +1152,7 @@ export default function StockAdjustmentPage() {
                           onKeyDown={(e) => handleKeyDown(e, rowIndex)}
                           onFocus={(e) => e.target.select()}
                           className={cn(
-                            "w-full h-[33px] px-3 text-right font-mono text-[13px] tabular-nums",
+                            "w-full h-[33px] px-3 text-right font-mono text-base tabular-nums",
                             "border-0 outline-none bg-transparent",
                             "focus:bg-card",
                             "focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary/60",
@@ -1161,7 +1161,7 @@ export default function StockAdjustmentPage() {
                           )}
                         />
                       </td>
-                      <td className="px-3 py-1.5 text-right font-mono text-[12px] tabular-nums">
+                      <td className="px-3 py-1.5 text-right font-mono text-sm tabular-nums">
                         {isDirty ? (
                           <span className={cn("font-semibold", delta > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
                             {delta > 0 ? "+" : ""}

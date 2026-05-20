@@ -37,7 +37,7 @@ const QuickActionsFAB = () => {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" side="top" className="w-58 mb-3 shadow-elevated rounded-xl border-border/60">
-          <DropdownMenuItem onClick={() => navigate('/sales/new')} className="gap-3 cursor-pointer py-3 text-[13px]">
+          <DropdownMenuItem onClick={() => navigate('/sales/new')} className="gap-3 cursor-pointer py-3 text-base">
             <div className="h-7 w-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
               <ShoppingCart className="h-3.5 w-3.5" />
             </div>
@@ -46,7 +46,7 @@ const QuickActionsFAB = () => {
               <p className="text-xs text-muted-foreground">Criar novo PV</p>
             </div>
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => navigate('/orders')} className="gap-3 cursor-pointer py-3 text-[13px]">
+          <DropdownMenuItem onClick={() => navigate('/orders')} className="gap-3 cursor-pointer py-3 text-base">
             <div className="h-7 w-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
               <Plus className="h-3.5 w-3.5" />
             </div>
@@ -55,7 +55,7 @@ const QuickActionsFAB = () => {
               <p className="text-xs text-muted-foreground">Criar nova OP</p>
             </div>
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => navigate('/estoque')} className="gap-3 cursor-pointer py-3 text-[13px]">
+          <DropdownMenuItem onClick={() => navigate('/estoque')} className="gap-3 cursor-pointer py-3 text-base">
             <div className="h-7 w-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
               <Package className="h-3.5 w-3.5" />
             </div>
@@ -151,7 +151,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
 
   // ── Nav item active class ────────────────────────────────
   const navItemClass = (isActive: boolean) => cn(
-    "group flex items-center justify-between px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-150 relative",
+    "group flex items-center justify-between px-3 py-2 rounded-lg text-base font-medium transition-all duration-150 relative",
     isActive
       ? "bg-sidebar-primary/15 text-sidebar-primary font-semibold border-l-2 border-sidebar-primary"
       : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
@@ -192,7 +192,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
                   <img src={logoImg} alt="Squad Shoes" className="h-full w-full object-contain" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-extrabold text-sidebar-foreground leading-tight tracking-tight">Squad Shoes</p>
+                  <p className="text-base font-extrabold text-sidebar-foreground leading-tight tracking-tight">Squad Shoes</p>
                   <p className="text-xs text-sidebar-muted leading-tight mt-0.5 font-semibold tracking-[0.15em] uppercase">Gestão Industrial</p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
@@ -258,7 +258,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
                   <NavLink
                     key={item.path}
                     to={item.path}
-                    className="group flex items-center justify-between px-3 py-1.5 rounded-lg text-[13px] font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-all duration-100"
+                    className="group flex items-center justify-between px-3 py-1.5 rounded-lg text-base font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-all duration-100"
                   >
                     <span className="truncate">{item.name}</span>
                     <button onClick={(e) => toggleFavorite(e, item.name, item.path)} className="opacity-0 group-hover:opacity-100 p-1 hover:text-primary transition-opacity">
@@ -373,7 +373,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
                             >
                               <div className="flex items-center gap-2.5 min-w-0">
                                 <item.icon className={cn("shrink-0", isSubItem ? "h-3.5 w-3.5" : "h-4 w-4")} />
-                                <span className={cn("truncate", isSubItem && "text-[12px]")}>{item.name}</span>
+                                <span className={cn("truncate", isSubItem && "text-sm")}>{item.name}</span>
                               </div>
                               <button
                                 onClick={(e) => toggleFavorite(e, item.name, item.path)}
@@ -463,7 +463,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
               <div className="flex items-center gap-1">
                 <button
                   onClick={signOut}
-                  className="flex-1 flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[12px] font-medium text-sidebar-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-all duration-150"
+                  className="flex-1 flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-sm font-medium text-sidebar-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-all duration-150"
                 >
                   <LogOut className="h-3.5 w-3.5 shrink-0" />
                   <span>Sair</span>
@@ -562,7 +562,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
                 <img src={logoImg} alt="Squad Shoes" className="h-full w-full object-contain" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-extrabold text-foreground leading-tight tracking-tight truncate">Squad Shoes</p>
+                <p className="text-base font-extrabold text-foreground leading-tight tracking-tight truncate">Squad Shoes</p>
                 <p className="text-xs text-muted-foreground leading-tight mt-0.5 font-semibold tracking-[0.05em] uppercase truncate">
                   {isDashboard ? "Gestão Industrial" : "Sistema"}
                 </p>
