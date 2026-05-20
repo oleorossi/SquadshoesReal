@@ -143,6 +143,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
+import { RequiredMark } from '@/components/ui/required-mark';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -1073,7 +1074,7 @@ function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => v
           </div>
 
           <div className="md:col-span-2">
-            <Label htmlFor="qc-name" className="text-xs">Nome da Ficha / Referência <span className="text-red-500">*</span></Label>
+            <Label htmlFor="qc-name" className="text-xs">Nome da Ficha / Referência <RequiredMark /></Label>
             <Input
               id="qc-name"
               value={form.name}
@@ -1086,7 +1087,7 @@ function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => v
           </div>
 
           <div>
-            <Label htmlFor="qc-code" className="text-xs">SKU / Código <span className="text-red-500">*</span></Label>
+            <Label htmlFor="qc-code" className="text-xs">SKU / Código <RequiredMark /></Label>
             <Input
               id="qc-code"
               value={form.code}
@@ -1098,7 +1099,7 @@ function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => v
           </div>
 
           <div>
-            <Label htmlFor="qc-category" className="text-xs">Categoria <span className="text-red-500">*</span></Label>
+            <Label htmlFor="qc-category" className="text-xs">Categoria <RequiredMark /></Label>
             <Select value={form.shoe_category} onValueChange={v => setForm(f => ({ ...f, shoe_category: v, sizes: v === 'Infantil' ? '25-36' : '34-40' }))}>
               <SelectTrigger id="qc-category" className={cn("mt-1 h-9", categoryMissing && "border-red-500")}>
                 <SelectValue placeholder="Selecione…" />
