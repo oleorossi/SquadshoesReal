@@ -1622,7 +1622,7 @@ export default function SaleOrders() {
               <div className="space-y-1">
                 <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Status</Label>
                 <Select value={filterStatus} onValueChange={setFilterStatus}>
-                  <SelectTrigger className="h-8 w-[140px] text-xs"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-9 w-[140px] text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
                     {STATUS_OPTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
@@ -1632,7 +1632,7 @@ export default function SaleOrders() {
               <div className="space-y-1">
                 <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Representante</Label>
                 <Select value={filterRep} onValueChange={setFilterRep}>
-                  <SelectTrigger className="h-8 w-[160px] text-xs"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-9 w-[160px] text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
                     {uniqueReps.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
@@ -1642,7 +1642,7 @@ export default function SaleOrders() {
               <div className="space-y-1">
                 <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Grupo Econômico</Label>
                 <Select value={filterGroup} onValueChange={setFilterGroup}>
-                  <SelectTrigger className="h-8 w-[160px] text-xs"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-9 w-[160px] text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
                     {economicGroups.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
@@ -1652,7 +1652,7 @@ export default function SaleOrders() {
               <div className="space-y-1">
                 <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Segmento</Label>
                 <Select value={filterSegment} onValueChange={setFilterSegment}>
-                  <SelectTrigger className="h-8 w-[140px] text-xs"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-9 w-[140px] text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
                     <SelectItem value="Adulto">Adulto</SelectItem>
@@ -1663,7 +1663,7 @@ export default function SaleOrders() {
               <div className="space-y-1">
                 <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Mês Fat.</Label>
                 <Select value={filterMonth} onValueChange={setFilterMonth}>
-                  <SelectTrigger className="h-8 w-[160px] text-xs"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-9 w-[160px] text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
                     {uniqueMonths.map(m => {
@@ -2145,9 +2145,29 @@ export default function SaleOrders() {
                       {canSeeFinancialValues && <span className="w-20 text-right">Unitário</span>}
                       {canSeeFinancialValues && <span className="w-24 text-right">Total</span>}
                     </div>
-                    {selectedOrderItems.map((item) => {
+                    {[...selectedOrderItems]
+                      // Agrupa por referência (code+name) e depois cor.
+                      // Antes vinha na ordem de inserção do banco, então
+                      // CF 05 aparecia depois de ST 10. Pedido user 20/05/2026.
+                      .sort((a, b) => {
+                        const ra = `${(a as any).technical_sheets?.code || ''} ${(a as any).technical_sheets?.name || ''}`.trim();
+                        const rb = `${(b as any).technical_sheets?.code || ''} ${(b as any).technical_sheets?.name || ''}`.trim();
+                        const refCmp = ra.localeCompare(rb, 'pt-BR', { numeric: true });
+                        if (refCmp !== 0) return refCmp;
+                        return String(a.color || '').localeCompare(String(b.color || ''), 'pt-BR');
+                      })
+                      .map((item) => {
                       const grade = (item.grade || {}) as Record<string, number>;
-                      const gradeEntries = Object.entries(grade).filter(([, qty]) => Number(qty) > 0).sort((a, b) => Number(a[0]) - Number(b[0]));
+                      // Ordena grade por menor numeração; conjugadas (33/34)
+                      // usam o primeiro número. Antes Number("33/34") virava NaN
+                      // e a ordem ficava inconsistente.
+                      const gradeEntries = Object.entries(grade)
+                        .filter(([k, qty]) => !k.startsWith('_') && Number(qty) > 0)
+                        .sort((a, b) => {
+                          const na = parseInt(String(a[0]).split('/')[0], 10);
+                          const nb = parseInt(String(b[0]).split('/')[0], 10);
+                          return (isNaN(na) ? 0 : na) - (isNaN(nb) ? 0 : nb);
+                        });
                       const gradePairs = gradeEntries.reduce((s, [, qty]) => s + Number(qty), 0);
                       const totalQty = Number(item.quantity || 0);
                       const fichas = gradePairs > 0 ? Math.round(totalQty / gradePairs) : 1;

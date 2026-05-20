@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { CircleNotch as Loader2, FileXls as FileSpreadsheet, Warning as AlertTriangle, CheckCircle as CheckCircle2, XCircle, Eye, ClockCounterClockwise as History, ArrowsClockwise as RefreshCw, Download } from '@phosphor-icons/react';
 import { useTimeImportLogs, useDeleteTimeImportLog, getImportFileUrl, TimeImportLog } from '@/hooks/useTimeImportLogs';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
-import { EmptyState } from '@/components/ui/EmptyState';
+import { EmptyState } from '@/components/ui/empty-state';
 import { toast } from 'sonner';
 
 const fmtSize = (bytes?: number | null) => {
