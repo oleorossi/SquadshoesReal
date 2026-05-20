@@ -2226,7 +2226,7 @@ export default function SaleOrders() {
                           <div className="flex items-center gap-3">
                             {refImage ? <img src={refImage} alt={refName} className="h-12 w-12 rounded object-cover border shrink-0" /> : <div className="h-12 w-12 rounded bg-muted flex items-center justify-center text-muted-foreground text-xs shrink-0">Sem foto</div>}
                             <div className="space-y-0.5">
-                              <p className="text-sm font-semibold">{refCode} - {refName}</p>
+                              <p className="text-sm font-semibold">{refCode && refCode !== refName ? `${refCode} · ${refName}` : (refCode || refName)}</p>
                               <p className="text-sm">{item.color || '—'}</p>
                               {(item.strap_colors as any[])?.length > 0 && (
                                 <div className="flex flex-wrap gap-2 mt-2 p-2 rounded bg-muted/30 border border-border/40">
@@ -2273,7 +2273,7 @@ export default function SaleOrders() {
               </div>
 
               <div className="flex flex-col items-end gap-1 text-sm">
-                <p><span className="text-muted-foreground">Itens:</span> <span className="font-bold font-mono">{selectedOrderItems.reduce((s, i) => s + Number(i.quantity || 0), 0)}</span></p>
+                <p><span className="text-muted-foreground">Pares:</span> <span className="font-bold font-mono">{selectedOrderItems.reduce((s, i) => s + Number(i.quantity || 0), 0).toLocaleString('pt-BR')}</span> <span className="text-xs text-muted-foreground font-normal">· {selectedOrderItems.length} {selectedOrderItems.length === 1 ? 'item' : 'itens'}</span></p>
                 {canSeeFinancialValues && (
                   <p><span className="text-muted-foreground">Total:</span> <span className="font-bold font-mono text-lg">{loadingOrderItems ? '—' : formatCurrency(selectedOrderItems.reduce((s, i) => s + Number(i.quantity || 0) * Number(i.unit_price || 0), 0))}</span></p>
                 )}

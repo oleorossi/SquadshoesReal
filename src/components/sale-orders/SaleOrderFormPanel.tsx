@@ -1610,22 +1610,22 @@ export default function SaleOrderFormPanel({
               <div className="grid grid-cols-3 sm:flex sm:items-center sm:gap-6 sm:flex-1 sm:min-w-0">
                 <div className="flex flex-col">
                   <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Itens</span>
-                  <span className="font-mono font-bold text-base sm:text-lg tracking-tight leading-none">{validItemsCount}</span>
+                  <span className="font-mono font-bold text-base sm:text-lg tracking-tight leading-none tabular-nums">{validItemsCount}</span>
                 </div>
                 <div className="hidden sm:block h-8 w-px bg-border" />
                 <div className="flex flex-col">
                   <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Pares</span>
-                  <span className="font-mono font-bold text-base sm:text-lg tracking-tight leading-none">{totalPairs}</span>
+                  <span className="font-mono font-bold text-base sm:text-lg tracking-tight leading-none tabular-nums">{totalPairs.toLocaleString('pt-BR')}</span>
                 </div>
                 <div className="hidden sm:block h-8 w-px bg-border" />
                 <div className="flex flex-col">
                   <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Valor Total</span>
-                  <span className="font-mono font-bold text-base sm:text-xl text-primary tracking-tight leading-none">
+                  <span className="font-mono font-bold text-base sm:text-xl text-primary tracking-tight leading-none tabular-nums">
                     {formatCurrency(totalValue + estimatedShippingCost)}
                   </span>
                   {estimatedShippingCost > 0 && (
-                    <span className="text-xs text-muted-foreground font-mono mt-0.5">
-                      mercadoria {formatCurrency(totalValue)} + frete {formatCurrency(estimatedShippingCost)}
+                    <span className="text-xs text-muted-foreground font-mono mt-0.5 tabular-nums">
+                      Mercadoria {formatCurrency(totalValue)} + Frete {formatCurrency(estimatedShippingCost)}
                     </span>
                   )}
                 </div>
