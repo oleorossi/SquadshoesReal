@@ -1196,6 +1196,8 @@ Deno.serve(async (req) => {
         cnpj_emitente: fiscal.cnpj.replace(/\D/g, ""),
         nome_destinatario: order.client_name || client?.razao_social || client?.nome || null,
         cnpj_destinatario: cnpjDestRaw || null,
+        gc_request_payload: nfePayload as any,
+        gc_response_payload: createResp.json as any,
       };
       if (resolvedCompanyId) nfeRecord.company_id = resolvedCompanyId;
       await adminClient.from("nfe_emitidas").insert(nfeRecord);
@@ -1216,8 +1218,10 @@ Deno.serve(async (req) => {
     let serieNf = "";
     let dataEmissao = "";
     let motivoRejeicaoSefaz = "";
+    let detailResponseJson: unknown = null;
     if (emitOk) {
       const detail = await gcFetch(`/notas_fiscais_produtos/${gcNfeId}`);
+      detailResponseJson = detail.json ?? null;
       const d = detail.json?.data || {};
       chave = d.chave || "";
       protocolo = d.protocolo || "";
@@ -1270,6 +1274,14 @@ Deno.serve(async (req) => {
       ...(numeroNf ? { numero: numeroNf } : {}),
       ...(serieNf ? { serie: serieNf } : {}),
       ...(dataEmissao ? { data_emissao: dataEmissao } : {}),
+      // Auditoria fiscal forense (20/05/2026): grava o body completo do
+      // request/response do GC pra diagnosticar campos ignorados pela API.
+      // Permite consultar via SQL exatamente o que foi enviado/recebido,
+      // sem depender de Supabase Function Logs (que apaga em ~24h).
+      gc_request_payload: nfePayload as any,
+      gc_response_payload: createResp.json as any,
+      gc_emit_response: emitResp.json as any,
+      gc_detail_response: detailResponseJson as any,
     };
     if (resolvedCompanyId) nfeRecord.company_id = resolvedCompanyId;
 
