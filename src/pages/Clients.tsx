@@ -13,6 +13,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
+import { BulkActionsBar } from '@/components/ui/bulk-actions-bar';
+import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
+import { confirmAndBulkDelete } from '@/lib/bulkConfirm';
 import { cn } from '@/lib/utils';
 import {
   useClients, useCreateClient, useUpdateClient, useDeleteClient,
