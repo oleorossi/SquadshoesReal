@@ -13,6 +13,10 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
+import { BulkActionsBar } from '@/components/ui/bulk-actions-bar';
+import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
+import { confirmAndBulkDelete } from '@/lib/bulkConfirm';
 import { SeveranceSimulator } from '@/components/hr/SeveranceSimulator';
 import {
   useEmployees, useAddEmployee, useUpdateEmployee, useDeleteEmployee,
@@ -85,6 +89,22 @@ export default function Employees() {
     const matchDept = deptFilter === 'all' || e.department === deptFilter;
     return matchSearch && matchStatus && matchDept;
   });
+
+  const sel = useMarqueeSelection(filteredEmployees, (e) => e.id);
+  const handleBulkDeleteEmployees = async () => {
+    const ids = Array.from(sel.selectedIds);
+    const sampleLines = filteredEmployees
+      .filter(e => sel.selectedIds.has(e.id))
+      .slice(0, 5)
+      .map(e => `• ${e.name}${e.role ? ` (${e.role})` : ''}`);
+    await confirmAndBulkDelete({
+      ids,
+      entityLabel: 'funcionário',
+      sampleLines,
+      deleteOne: (id) => deleteEmployee.mutateAsync(id),
+      onAfter: () => sel.clear(),
+    });
+  };
 
   const activeEmployees = employees.filter(e => e.active);
   const totalMonthlyPayroll = activeEmployees.reduce((s, e) => s + (e.salary || 0), 0);
@@ -198,6 +218,13 @@ export default function Employees() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                    <TableHead className="w-8">
+                      <Checkbox
+                        checked={filteredEmployees.length > 0 && filteredEmployees.every(e => sel.isSelected(e.id))}
+                        onCheckedChange={(v) => filteredEmployees.forEach(e => { if (!!v !== sel.isSelected(e.id)) sel.toggle(e.id); })}
+                        aria-label="Selecionar todos"
+                      />
+                    </TableHead>
                     <TableHead>Nome</TableHead>
                     <TableHead>Cargo / Depto</TableHead>
                     <TableHead>Admissão</TableHead>
@@ -212,7 +239,7 @@ export default function Employees() {
                 <TableBody>
                   {filteredEmployees.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={9} className="p-0">
+                      <TableCell colSpan={10} className="p-0">
                         <EmptyState icon={Users2} title="Nenhum funcionário encontrado" description="Ajuste os filtros ou cadastre um novo funcionário." />
                       </TableCell>
                     </TableRow>
@@ -228,9 +255,16 @@ export default function Employees() {
                     return (
                     <TableRow
                       key={e.id}
-                      className={`cursor-pointer hover:bg-muted/50 transition-colors ${!e.active ? 'opacity-60' : ''}`}
-                      onClick={(ev) => { if ((ev.target as HTMLElement).closest('button')) return; setEditing(e); setForm(e); setDialogOpen(true); }}
+                      className={`cursor-pointer hover:bg-muted/50 transition-colors ${!e.active ? 'opacity-60' : ''} ${sel.isSelected(e.id) ? 'bg-primary/5 hover:bg-primary/10' : ''}`}
+                      onClick={(ev) => { if ((ev.target as HTMLElement).closest('button,[role="checkbox"]')) return; setEditing(e); setForm(e); setDialogOpen(true); }}
                     >
+                      <TableCell onClick={(ev) => ev.stopPropagation()}>
+                        <Checkbox
+                          checked={sel.isSelected(e.id)}
+                          onCheckedChange={() => sel.toggle(e.id)}
+                          aria-label={`Selecionar ${e.name}`}
+                        />
+                      </TableCell>
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
                           <span>{e.name}</span>
@@ -498,6 +532,20 @@ export default function Employees() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <BulkActionsBar
+        selectedIds={sel.selectedIds}
+        onClear={sel.clear}
+        itemLabel={sel.selectedIds.size === 1 ? 'funcionário' : 'funcionários'}
+        actions={[
+          {
+            label: 'Excluir',
+            variant: 'destructive',
+            icon: <Trash2 className="h-3.5 w-3.5" />,
+            onClick: handleBulkDeleteEmployees,
+          },
+        ]}
+      />
     </>
   );
 }
