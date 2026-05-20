@@ -917,32 +917,36 @@ Deno.serve(async (req) => {
     if (fiscal.cidade) transportadorBlock.cidade = fiscal.cidade;
     if (fiscal.uf) transportadorBlock.estado = fiscal.uf;
 
-    const transporteBlock = (() => {
-      const vol: Record<string, string> = {
-        quantidade: qtdVolumesStr,
-        especie: "Volumes",
-      };
-      if (pesoLiquidoStr) vol.peso_liquido = pesoLiquidoStr;
-      if (pesoBrutoStr) vol.peso_bruto = pesoBrutoStr;
-      return {
-        modalidade_frete: "3",
-        ...(Object.keys(transportadorBlock).length > 0
-          ? { transportador: transportadorBlock }
-          : {}),
-        volumes: [vol],
-      };
-    })();
-
     // Resolve loja_id do GestaoClick — obrigatório segundo a doc da API.
-    // Cache em memória do isolate (resolveGcLojaId). Quando null, GC usa default.
     const gcLojaId = await resolveGcLojaId();
 
     // Resolve (cria se preciso) transportadora "Squad Shoes" no GestaoClick.
-    // modFrete=3 (transporte próprio do remetente) só preenche o bloco
-    // <transporta> do XML se houver `transportadora_id` apontando pra um
-    // registro de /transportadoras — o bloco transporte.transportador aninhado
-    // é silenciosamente ignorado pelo GC (não documentado em /notas_fiscais_produtos).
     const gcTransportadoraId = await resolveGcTransportadoraEmitenteId(fiscal);
+
+    // Estrutura reformulada 20/05/2026 — NF #248 saiu com modFrete=0 e volumes
+    // vazios mesmo passando "3" em ambos níveis. Hipóteses do que mudou:
+    //  1) GC espera modalidade_frete como INT (não string)
+    //  2) GC espera `transportadora.id` aninhado (não `transportador` com nome/cnpj)
+    //  3) GC espera `volumes` como OBJETO (não array)
+    //  4) Espécie correta é "VOLUME" caps (não "Volumes")
+    //  5) `marca` precisa ser explícita (pedido user: "Squad Shoes")
+    const volumesObj: Record<string, string | number> = {
+      especie: "VOLUME",
+      marca: orderBrand,
+    };
+    if (qtdVolumesStr) volumesObj.quantidade = qtdVolumesStr;
+    if (pesoLiquidoStr) volumesObj.peso_liquido = pesoLiquidoStr;
+    if (pesoBrutoStr) volumesObj.peso_bruto = pesoBrutoStr;
+    const transporteBlock: Record<string, unknown> = {
+      modalidade_frete: 3,
+      frete_por_conta: 3,
+      volumes: volumesObj,
+    };
+    if (gcTransportadoraId) {
+      transporteBlock.transportadora = { id: Number(gcTransportadoraId) };
+    } else if (Object.keys(transportadorBlock).length > 0) {
+      transporteBlock.transportador = transportadorBlock;
+    }
 
     const nfePayload = {
       // tipo_nf como INT (doc especifica int; antes mandávamos string "1").
@@ -967,21 +971,17 @@ Deno.serve(async (req) => {
       tipo_atendimento: "9",
       indicador_final: isContribuinte ? 0 : 1,
       informacoes_complementares: informacoesComplementares,
-      // modalidade_frete no top-level — campo aceito pelo GC em outras rotas
-      // (Vendas/Pedidos). Redundante com transporte.modalidade_frete (aninhado)
-      // pra cobrir as duas formas e garantir que o XML saia com modFrete=3.
-      modalidade_frete: "3",
-      // transportadora_id no top-level — FK pra /transportadoras (cadastro
-      // próprio Squad Shoes resolvido acima). Sem isso o XML sai com
-      // <transporta> vazio e DANFE mostra transportador em branco.
+      // Espelha modalidade_frete + transportadora_id no top-level como
+      // redundância — em algumas rotas do GC só o top-level pega (Vendas/Pedidos).
+      // Agora ambos com tipo INT (era "3" string e o GC ignorava).
+      modalidade_frete: 3,
+      frete_por_conta: 3,
       ...(gcTransportadoraId ? { transportadora_id: Number(gcTransportadoraId) } : {}),
-      // Peso/volumes também no top-level — Webmania-style. Não documentado
-      // em GC mas é o padrão de outros emissores brasileiros. Campos
-      // ignorados não afetam (GC filtra silenciosamente).
+      // Peso/volumes top-level (Webmania-style fallback).
       ...(pesoBrutoStr ? { peso_bruto: pesoBrutoStr } : {}),
       ...(pesoLiquidoStr ? { peso_liquido: pesoLiquidoStr } : {}),
       ...(qtdVolumesStr ? { quantidade_volumes: qtdVolumesStr } : {}),
-      especie_volumes: "Volumes",
+      especie_volumes: "VOLUME",
       produtos: produtosGC,
       ...(pagamentoArr.length ? { pagamento: pagamentoArr } : {}),
       transporte: transporteBlock,
@@ -1068,15 +1068,13 @@ Deno.serve(async (req) => {
           },
           transporte: {
             modalidade_frete: '3 (Transporte próprio por conta do remetente)',
-            // modFrete=3 → transportadora = própria Squad. ID resolvido via
-            // /transportadoras (cadastro idempotente por CNPJ). Quando null
-            // a transportadora será criada na emissão real.
             transportadora_id_gc: gcTransportadoraId,
             transportador: Object.keys(transportadorBlock).length > 0
               ? transportadorBlock
               : null,
             qtd_volumes: qtdVolumesStr,
-            especie: 'Volumes',
+            especie: 'VOLUME',
+            marca: orderBrand,
             peso_bruto_kg: pesoBrutoStr || null,
             peso_liquido_kg: pesoLiquidoStr || null,
           },
