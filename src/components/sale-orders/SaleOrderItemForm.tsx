@@ -421,8 +421,22 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         return { id: groupId, name: groupName };
       }
     }
+    // Fallback final: grupo do CABEDAL via upper_material textual. Adicionado
+    // 20/05/2026 — user reportou que ao cadastrar cor nova num PV cujo cabedal
+    // não tem variante (ex.: NAPA SANTORINE em ST 10), o botão "+ Cadastrar"
+    // sumia. Agora resolve o grupo pelo nome do upper_material.
+    if (sheetSpecs?.upper_material) {
+      const upperName = String(sheetSpecs.upper_material).trim();
+      const normalized = normalizeGroupValue(upperName);
+      const group = (productGroups as any[]).find((g: any) =>
+        normalizeGroupValue(g.name) === normalized
+      );
+      if (group?.id) {
+        return { id: group.id, name: group.name };
+      }
+    }
     return null;
-  }, [item.material_variant_id, activeMaterialVariants, refMaterials]);
+  }, [item.material_variant_id, activeMaterialVariants, refMaterials, sheetSpecs, productGroups]);
 
   const availableColors: string[] = useMemo(() => {
     // When a material group is selected and has specific colors defined, use those exclusively.
