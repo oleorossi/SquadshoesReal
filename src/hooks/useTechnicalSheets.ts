@@ -135,6 +135,11 @@ export type SheetFormData = {
    weight_per_pair_kg: number | null;
    /** Peso da caixinha individual de 1 par em kg. Soma ao peso bruto. */
    box_weight_kg: number | null;
+   /** NCM (Nomenclatura Comum do Mercosul) — 8 dígitos, obrigatório pra NF-e.
+    *  Adicionado ao type em 20/05/2026 — antes faltava aqui, então o
+    *  hidratador do form não copiava sheet.ncm → form.ncm (campo aparecia
+    *  vazio ao reabrir a ficha mesmo com NCM gravado no DB). */
+   ncm?: string | null;
 };
 
 export const emptySheetForm: SheetFormData = {
@@ -172,6 +177,7 @@ export const emptySheetForm: SheetFormData = {
    mesa_daily_capacity: 0,
    weight_per_pair_kg: null,
    box_weight_kg: null,
+   ncm: null,
 };
 
 export type SheetMaterialFormData = {
