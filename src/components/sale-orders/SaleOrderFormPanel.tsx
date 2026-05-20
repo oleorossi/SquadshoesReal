@@ -518,6 +518,7 @@ export default function SaleOrderFormPanel({
    const [selectedItemIndices, setSelectedItemIndices] = useState<Set<number>>(new Set());
    const [bulkPriceInput, setBulkPriceInput] = useState<string>('');
    const [bulkFichasInput, setBulkFichasInput] = useState<string>('');
+   const [bulkGradeInput, setBulkGradeInput] = useState<Record<string, string>>({});
    const toggleItemSelection = useCallback((idx: number) => {
      setSelectedItemIndices(prev => {
        const next = new Set(prev);
@@ -576,6 +577,40 @@ export default function SaleOrderFormPanel({
      toast.success(`${n} ${n === 1 ? 'ficha' : 'fichas'} aplicado em ${ids.length} ${ids.length === 1 ? 'item' : 'itens'}`);
      setBulkFichasInput('');
    }, [bulkFichasInput, selectedItemIndices, setItems]);
+
+   // União dos tamanhos das grades dos itens selecionados. Fallback 33-41
+   // quando nenhum item selecionado tem grade ainda (caso comum: PV novo).
+   const bulkGradeSizes = useMemo<string[]>(() => {
+     const set = new Set<string>();
+     selectedItemIndices.forEach(idx => {
+       const g = items[idx]?.grade || {};
+       Object.keys(g).forEach(s => set.add(s));
+     });
+     if (set.size === 0) {
+       // fallback: range adulto padrão
+       return ['33','34','35','36','37','38','39','40','41'];
+     }
+     return Array.from(set).sort((a, b) => Number(a) - Number(b));
+   }, [selectedItemIndices, items]);
+
+   const applyGradeTableToSelected = useCallback(() => {
+     const ids = Array.from(selectedItemIndices);
+     if (ids.length === 0) return;
+     // Filtra zeros e converte string→number
+     const cleanGrade: Record<string, number> = {};
+     for (const [size, val] of Object.entries(bulkGradeInput)) {
+       const n = parseInt(val, 10);
+       if (Number.isFinite(n) && n > 0) cleanGrade[size] = n;
+     }
+     if (Object.keys(cleanGrade).length === 0) {
+       toast.error('Preencha pelo menos um tamanho antes de aplicar.');
+       return;
+     }
+     const totalPairs = Object.values(cleanGrade).reduce((s, v) => s + v, 0);
+     setItems(prev => prev.map((item, i) => ids.includes(i) ? { ...item, grade: { ...cleanGrade } } : item));
+     toast.success(`Grade aplicada em ${ids.length} ${ids.length === 1 ? 'item' : 'itens'} (${totalPairs} pares por ficha)`);
+     setBulkGradeInput({});
+   }, [bulkGradeInput, selectedItemIndices, setItems]);
 
   const totalPairs = items.reduce((s, i) => s + (i.quantity || 0), 0);
   const totalValue = items.reduce((s, i) => s + (i.quantity || 0) * (i.unit_price || 0), 0);
@@ -1371,7 +1406,9 @@ export default function SaleOrderFormPanel({
           preço unitário, aplicar fichas. Não-flutuante (renderiza inline antes
           dos totais) pra não cobrir o rodapé sticky de Cancelar/Salvar. */}
       {selectedItemIndices.size > 0 && (
-        <div className="rounded-lg border-2 border-primary/40 bg-primary/5 px-4 py-3 mb-3 flex flex-wrap items-center gap-3">
+        <div className="rounded-lg border-2 border-primary/40 bg-primary/5 px-4 py-3 mb-3 space-y-3">
+          {/* Linha 1: contador + ações de preço/fichas + clear */}
+          <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-baseline gap-2 pr-3 border-r border-primary/30">
             <span className="font-display text-2xl leading-none tabular-nums text-primary">
               {selectedItemIndices.size}
@@ -1389,7 +1426,7 @@ export default function SaleOrderFormPanel({
             className="h-8 text-xs gap-1"
             title={selectedItemIndices.size < 2 ? 'Selecione 2+ itens (1º = fonte, demais recebem)' : 'Copia grade do menor índice selecionado pros demais'}
           >
-            Copiar grade do 1º
+            Copiar do 1º
           </Button>
           <div className="flex items-center gap-1 border-l border-primary/30 pl-3">
             <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Preço R$</Label>
@@ -1454,6 +1491,63 @@ export default function SaleOrderFormPanel({
               className="h-8 text-xs"
             >
               Limpar
+            </Button>
+          </div>
+          </div>
+
+          {/* Linha 2: tabela de grade editável (aparece sempre que há 1+ selecionado).
+              Tamanhos = união dos tamanhos das grades dos itens selecionados,
+              ou fallback 33-41 quando nenhum item tem grade ainda. Aplicar
+              sobrescreve a grade dos itens selecionados (decisão user 20/05/2026). */}
+          <div className="border-t border-primary/30 pt-3 flex flex-wrap items-end gap-3">
+            <div className="flex flex-col gap-1">
+              <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                Grade · digite e aplique em todos os selecionados
+              </Label>
+              <div className="flex flex-wrap items-center gap-2">
+                {bulkGradeSizes.map(size => (
+                  <div key={size} className="flex flex-col items-center">
+                    <span className="text-[10px] font-mono font-bold text-muted-foreground">{size}</span>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={bulkGradeInput[size] || ''}
+                      onChange={(e) => setBulkGradeInput(prev => ({ ...prev, [size]: e.target.value }))}
+                      placeholder="0"
+                      className="h-8 w-14 text-xs text-center"
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyGradeTableToSelected(); } }}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                Total / ficha
+              </span>
+              <div className="h-8 px-3 flex items-center font-mono font-bold text-sm bg-background border rounded">
+                {Object.values(bulkGradeInput).reduce((s, v) => s + (parseInt(v, 10) || 0), 0)}
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              onClick={applyGradeTableToSelected}
+              disabled={Object.values(bulkGradeInput).every(v => !v || parseInt(v, 10) === 0)}
+              className="h-8 text-xs gap-1"
+            >
+              Aplicar grade
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setBulkGradeInput({})}
+              className="h-8 text-xs"
+              disabled={Object.keys(bulkGradeInput).length === 0}
+            >
+              Zerar tabela
             </Button>
           </div>
         </div>
