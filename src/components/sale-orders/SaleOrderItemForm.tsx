@@ -445,8 +445,13 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       }
     });
 
-    // Also merge BOM lining/insole group names from sheet specs
+    // Also merge BOM lining/insole + CABEDAL group names from sheet specs.
+    // upper_material adicionado em 20/05/2026 — user reportou que ao definir
+    // cabedal "Napa Santorine" (que é um grupo de produtos com várias cores),
+    // as cores não apareciam pra escolher no PV. As cores do cabedal são
+    // tão válidas quanto as de forração/palmilha pra o item do PV.
     const sheetGroupNames: string[] = [
+      sheetSpecs?.upper_material,
       sheetSpecs?.lining_material,
       sheetSpecs?.insole_material,
     ].filter(Boolean) as string[];
