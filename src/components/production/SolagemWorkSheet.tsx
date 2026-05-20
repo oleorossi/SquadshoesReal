@@ -266,7 +266,11 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
         date={date}
       />
 
-      <div className="flex-1 space-y-3">
+      {/* Fix 20/05/2026: era `flex-1` que combinado com flex-col do container
+          raiz expandia o conteúdo verticalmente sem limite — em print isso
+          empurrava o footer pra próxima página, gerando folha em branco
+          intermediária. Mesma classe de problema do mt-auto corrigido antes. */}
+      <div className="space-y-3">
         {bands.length === 0 ? (
           <div className="text-center py-10 text-black italic text-sm">
             Nenhum dado de solagem para exibir.
