@@ -671,7 +671,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     const soleProductId = soleMapping?.sole_product_id;
     const soleProductName = (soleMapping as any)?.products?.name;
     const soleGroupId = (soleMapping as any)?.products?.group_id;
-    if (!soleProductId && !soleProductName) return undefined;
+    // BUG fix 20/05/2026: early return aqui quebrava a cascata quando a ficha
+    // não tinha mapping em technical_sheet_sole_colors (caía no fallback
+    // textual sole_material). Resultado: silk do cliente NUNCA aparecia
+    // nessas fichas — o user reportou logomarca não aparecendo na ficha de
+    // operador de Silk. Removido — fallback de cliente/grupo/Squad sempre roda.
 
     const saleOrder = saleOrders.find((so: any) => so.id === order.sale_order_id);
     const clientId = saleOrder?.client_id;
