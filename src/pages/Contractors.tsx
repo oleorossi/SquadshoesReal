@@ -165,7 +165,7 @@ function StatCard({ icon: Icon, label, value, sub, color }: { icon: any; label: 
       <div className="min-w-0">
         <p className="text-xs text-muted-foreground truncate">{label}</p>
         <p className="text-lg font-bold leading-tight">{value}</p>
-        {sub && <p className="text-[11px] text-muted-foreground">{sub}</p>}
+        {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
       </div>
     </div>
   );
@@ -1177,7 +1177,7 @@ export default function Contractors() {
                 <div className="rounded-md border-0 overflow-auto">
                   <Table>
                     <TableHeader>
-                      <TableRow className="bg-muted/40 [&_th]:text-[11px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                      <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                         <TableHead className="w-[90px]">Nº OS</TableHead>
                         <TableHead>Prestador</TableHead>
                         <TableHead className="w-[100px]">Pedido (PV)</TableHead>
@@ -1206,7 +1206,7 @@ export default function Contractors() {
                                 return so ? (
                                   <div>
                                     <span className="font-mono text-xs font-semibold text-primary">{so.order_number}</span>
-                                    {so.client_order_number && <span className="text-[11px] text-muted-foreground block">{so.client_order_number}</span>}
+                                    {so.client_order_number && <span className="text-xs text-muted-foreground block">{so.client_order_number}</span>}
                                   </div>
                                 ) : <span className="text-xs text-muted-foreground">—</span>;
                               })()}
@@ -1220,7 +1220,7 @@ export default function Contractors() {
                               </div>
                               {o.artisanal_output_name && (
                                 <div className="flex items-center gap-1 mt-0.5">
-                                  <span className="text-[11px] text-muted-foreground">{o.artisanal_output_name} ({o.artisanal_output_color}) · {Number(o.artisanal_output_meters).toFixed(2)}m</span>
+                                  <span className="text-xs text-muted-foreground">{o.artisanal_output_name} ({o.artisanal_output_color}) · {Number(o.artisanal_output_meters).toFixed(2)}m</span>
                                   {o.artisanal_stock_entry_done && <CheckCircle2 className="h-3 w-3 text-emerald-600" />}
                                 </div>
                               )}
@@ -1297,15 +1297,15 @@ export default function Contractors() {
                                           ? new Date(o.quoted_deadline + 'T00:00:00').toLocaleDateString('pt-BR')
                                           : '—'}
                                       </span>
-                                      {isLate && <Badge variant="outline" className="h-4 text-[9px] bg-red-500/10 text-red-700 border-red-500/30 dark:text-red-400">atrasado</Badge>}
+                                      {isLate && <Badge variant="outline" className="h-4 text-xs bg-red-500/10 text-red-700 border-red-500/30 dark:text-red-400">atrasado</Badge>}
                                     </div>
                                     {o.target_sector && (
-                                      <div className="text-[11px] text-muted-foreground">
+                                      <div className="text-xs text-muted-foreground">
                                         Setor: {(o.target_sector in SECTOR_LABEL) ? SECTOR_LABEL[o.target_sector as SectorKey] : o.target_sector}
                                       </div>
                                     )}
                                     {isPendingReceive && o.order_id && (
-                                      <div className="flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-400">
+                                      <div className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
                                         <Lock className="h-3 w-3" /> OP bloqueada
                                       </div>
                                     )}
@@ -1315,7 +1315,7 @@ export default function Contractors() {
                             </TableCell>
                             <TableCell>
                               <div className="flex flex-col gap-1">
-                                <Badge variant={statusColor(o.status)} className="text-[11px] w-fit">{statusLabel(o.status)}</Badge>
+                                <Badge variant={statusColor(o.status)} className="text-xs w-fit">{statusLabel(o.status)}</Badge>
                                 {/* Botão "Marcar recebido" só aparece em OS de gargalo ainda não recebidas */}
                                 {!!o.target_sector &&
                                  o.status !== 'received' && o.status !== 'Concluído' &&
@@ -1323,7 +1323,7 @@ export default function Contractors() {
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    className="h-6 px-1.5 text-[11px] gap-1"
+                                    className="h-6 px-1.5 text-xs gap-1"
                                     onClick={e => { e.stopPropagation(); openReceiveDialog(o); }}
                                   >
                                     <CheckCircle2 className="h-3 w-3" />
@@ -1400,7 +1400,7 @@ export default function Contractors() {
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <p className="font-semibold text-sm">{r.name}</p>
-                          {!r.active && <Badge variant="outline" className="text-[11px] mt-0.5">Inativo</Badge>}
+                          {!r.active && <Badge variant="outline" className="text-xs mt-0.5">Inativo</Badge>}
                         </div>
                         <div className="flex gap-0.5 shrink-0">
                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditingRecipe(r); setIsEditingRecipe(true); setRecipeDialog(true); }}><Pencil className="h-3.5 w-3.5" /></Button>
@@ -1467,7 +1467,7 @@ export default function Contractors() {
                 <div className="rounded-md border-0 overflow-auto">
                   <Table>
                     <TableHeader>
-                      <TableRow className="bg-muted/40 [&_th]:text-[11px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                      <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                         <TableHead className="w-8">
                           <Checkbox
                             checked={filteredContractors.length > 0 && filteredContractors.every(c => sel.isSelected(c.id))}
@@ -1507,7 +1507,7 @@ export default function Contractors() {
                           <TableCell className="text-sm">{c.phone || '—'}</TableCell>
                           <TableCell className="text-sm">{c.city && c.state ? `${c.city}/${c.state}` : '—'}</TableCell>
                           <TableCell className="text-sm font-mono text-center">{c.payment_days}d</TableCell>
-                          <TableCell><Badge variant={c.active ? 'default' : 'secondary'} className="text-[11px]">{c.active ? 'Ativo' : 'Inativo'}</Badge></TableCell>
+                          <TableCell><Badge variant={c.active ? 'default' : 'secondary'} className="text-xs">{c.active ? 'Ativo' : 'Inativo'}</Badge></TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-0.5">
                               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditContractor(c)}><Pencil className="h-3.5 w-3.5" /></Button>
@@ -1613,7 +1613,7 @@ export default function Contractors() {
                   <Label className="text-xs text-muted-foreground">Rendimento (m saída / 1m base) *</Label>
                   <Input type="number" step="0.01" min={0.01} value={editingRecipe.yield_per_meter || ''} onChange={e => setEditingRecipe(p => ({ ...p, yield_per_meter: Number(e.target.value) }))} className="h-9 font-mono" placeholder="Ex: 88" />
                   {(editingRecipe.yield_per_meter || 0) > 0 && (
-                    <p className="text-[11px] text-muted-foreground">1m base → {editingRecipe.yield_per_meter}m saída</p>
+                    <p className="text-xs text-muted-foreground">1m base → {editingRecipe.yield_per_meter}m saída</p>
                   )}
                 </div>
                 <div className="space-y-1.5">
@@ -2216,7 +2216,7 @@ export default function Contractors() {
                               disabled={!editingOrder.sale_order_id}
                             />
                             {!editingOrder.sale_order_id && (
-                              <p className="text-[11px] text-muted-foreground">Vincule um PV na aba Dados</p>
+                              <p className="text-xs text-muted-foreground">Vincule um PV na aba Dados</p>
                             )}
                           </div>
                           <div className="space-y-1.5">
@@ -2261,7 +2261,7 @@ export default function Contractors() {
                         </div>
                       )}
 
-                      <p className="text-[11px] text-muted-foreground italic">
+                      <p className="text-xs text-muted-foreground italic">
                         A baixa da MP e a entrada do produto artesanal ocorrem automaticamente quando a OS é marcada como{' '}
                         <strong>Concluído</strong>.
                       </p>

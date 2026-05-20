@@ -133,7 +133,7 @@ export function BatchColorDialog({ open, onOpenChange, onSubmit }: BatchColorDia
                 value={groupId ? deriveCategoryFromGroup(groups.find(g => g.id === groupId)?.name) : 'Selecione um grupo'}
                 disabled
               />
-              <p className="text-[10px] text-muted-foreground mt-1">Derivado do grupo</p>
+              <p className="text-xs text-muted-foreground mt-1">Derivado do grupo</p>
             </div>
 
             <div>

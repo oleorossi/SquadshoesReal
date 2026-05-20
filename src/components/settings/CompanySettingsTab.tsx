@@ -119,7 +119,7 @@ export default function CompanySettingsTab() {
           <div>
             <Label className="text-xs">CNPJ</Label>
             <Input value={form.cnpj} onChange={e => setForm(f => ({ ...f, cnpj: e.target.value }))} className={`h-9 font-mono ${!cnpjValid && cnpjClean ? 'border-destructive' : ''}`} placeholder="14 dígitos" maxLength={18} />
-            {cnpjClean && !cnpjValid && <p className="text-[10px] text-destructive mt-0.5">CNPJ precisa ter 14 dígitos</p>}
+            {cnpjClean && !cnpjValid && <p className="text-xs text-destructive mt-0.5">CNPJ precisa ter 14 dígitos</p>}
           </div>
           <div>
             <Label className="text-xs">CEI</Label>

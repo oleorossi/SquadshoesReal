@@ -351,7 +351,7 @@ function Field({
 }) {
   return (
     <div className={className}>
-      <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">{label}</Label>
+      <Label className="text-xs text-muted-foreground uppercase font-bold mb-1 block">{label}</Label>
       <Input
         value={value}
         onChange={e => onChange(e.target.value)}

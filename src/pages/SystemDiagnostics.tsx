@@ -302,7 +302,7 @@ export default function SystemDiagnostics() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-semibold text-foreground">{d.label}</p>
-                      <Badge variant="outline" className="text-[10px] uppercase">{d.status}</Badge>
+                      <Badge variant="outline" className="text-xs uppercase">{d.status}</Badge>
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5 break-all">{d.detail}</p>
                     {d.hint && <p className="text-xs text-warning mt-1">💡 {d.hint}</p>}
@@ -343,9 +343,9 @@ export default function SystemDiagnostics() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <code className="text-sm font-semibold text-foreground">{o.name}</code>
-                      <Badge variant="outline" className="text-[10px] uppercase">{o.type}</Badge>
+                      <Badge variant="outline" className="text-xs uppercase">{o.type}</Badge>
                       {required.includes(o.name) && (
-                        <Badge variant="secondary" className="text-[10px]">obrigatório</Badge>
+                        <Badge variant="secondary" className="text-xs">obrigatório</Badge>
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">{o.description}</p>
@@ -370,7 +370,7 @@ export default function SystemDiagnostics() {
                         <code className="text-xs font-mono text-foreground">{m.version}</code>
                         {m.name && <p className="text-xs text-muted-foreground truncate">{m.name}</p>}
                       </div>
-                      <Badge variant="outline" className="text-[10px] shrink-0">
+                      <Badge variant="outline" className="text-xs shrink-0">
                         {m.statements_count} stmt{m.statements_count === 1 ? '' : 's'}
                       </Badge>
                     </div>

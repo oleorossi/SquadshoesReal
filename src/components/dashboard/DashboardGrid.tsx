@@ -17,7 +17,7 @@ function FinHighlightCard({ label, value, positive }: { label: string; value: st
     <div
       className="rounded-lg p-4 border flex flex-col gap-1.5 hover:shadow-md transition-shadow cursor-pointer bg-primary border-primary/50"
     >
-      <span className="text-[10px] font-semibold uppercase tracking-[0.07em] text-primary-foreground/50">
+      <span className="text-xs font-semibold uppercase tracking-[0.07em] text-primary-foreground/50">
         {label}
       </span>
       <span className={cn(
@@ -26,7 +26,7 @@ function FinHighlightCard({ label, value, positive }: { label: string; value: st
       )}>
         {value}
       </span>
-      <span className="text-[11px] text-primary-foreground/50">{positive ? 'positivo' : 'negativo'}</span>
+      <span className="text-xs text-primary-foreground/50">{positive ? 'positivo' : 'negativo'}</span>
     </div>
   );
 }

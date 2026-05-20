@@ -96,19 +96,19 @@ export default function SolesHistoricoTab({ sole }: Props) {
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card><CardContent className="p-3">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Movimentações</p>
+          <p className="text-xs uppercase tracking-wider text-muted-foreground">Movimentações</p>
           <p className="display text-xl tabular-nums">{stats.count}</p>
         </CardContent></Card>
         <Card><CardContent className="p-3">
-          <p className="text-[10px] uppercase tracking-wider text-emerald-600">Entradas</p>
+          <p className="text-xs uppercase tracking-wider text-emerald-600">Entradas</p>
           <p className="display text-xl tabular-nums text-emerald-600">+{stats.entradas}</p>
         </CardContent></Card>
         <Card><CardContent className="p-3">
-          <p className="text-[10px] uppercase tracking-wider text-rose-600">Saídas (PVs)</p>
+          <p className="text-xs uppercase tracking-wider text-rose-600">Saídas (PVs)</p>
           <p className="display text-xl tabular-nums text-rose-600">-{stats.saidas}</p>
         </CardContent></Card>
         <Card><CardContent className="p-3">
-          <p className="text-[10px] uppercase tracking-wider text-amber-600">Ajustes</p>
+          <p className="text-xs uppercase tracking-wider text-amber-600">Ajustes</p>
           <p className="display text-xl tabular-nums text-amber-600">{stats.ajustes}</p>
         </CardContent></Card>
       </div>
@@ -146,7 +146,7 @@ export default function SolesHistoricoTab({ sole }: Props) {
                         {new Date(m.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className={`text-[10px] gap-1 ${meta.color}`}>
+                        <Badge variant="outline" className={`text-xs gap-1 ${meta.color}`}>
                           <Icon className="h-3 w-3" /> {meta.label}
                         </Badge>
                       </TableCell>

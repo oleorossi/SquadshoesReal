@@ -60,10 +60,10 @@ export function TimeEstimationCard({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {stages.map((s) => (
             <div key={s.key} className="text-center p-2 bg-muted/50 rounded-lg space-y-1">
-              <p className="text-[10px] text-muted-foreground uppercase">{s.label}</p>
+              <p className="text-xs text-muted-foreground uppercase">{s.label}</p>
               <p className="text-lg font-bold font-mono text-foreground">{s.hours}h</p>
               <div className="flex items-center justify-center gap-1">
-                <span className="text-[10px] text-muted-foreground">Op:</span>
+                <span className="text-xs text-muted-foreground">Op:</span>
                 <Input
                   type="number"
                   min={1}
@@ -82,7 +82,7 @@ export function TimeEstimationCard({
           <span className="text-xs text-muted-foreground">Prazo Estimado (Gargalo):</span>
           <Badge variant="default">{workingDays} Dia{workingDays !== 1 ? 's' : ''} Útei{workingDays !== 1 ? 's' : 'l'}</Badge>
         </div>
-        <p className="text-[9px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           * Jornada de {journeyHours}h/dia e {(efficiency * 100).toFixed(0)}% de eficiência.
         </p>
       </CardContent>

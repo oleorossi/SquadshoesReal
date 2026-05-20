@@ -127,7 +127,7 @@ export default function StockAlerts() {
                     <div className="rounded-md border border-border/60 overflow-hidden">
                       <Table>
                         <TableHeader>
-                          <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                          <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                             <TableHead>Produto</TableHead>
                             <TableHead>Grupo</TableHead>
                             <TableHead>Categoria</TableHead>
@@ -143,7 +143,7 @@ export default function StockAlerts() {
                               <TableCell className="text-xs">
                                 <div className="font-medium">{p.product_name}</div>
                                 {p.sku && (
-                                  <div className="text-[10px] text-muted-foreground font-mono">
+                                  <div className="text-xs text-muted-foreground font-mono">
                                     {p.sku}
                                   </div>
                                 )}
@@ -183,7 +183,7 @@ export default function StockAlerts() {
                     <div className="rounded-md border border-border/60 overflow-hidden">
                       <Table>
                         <TableHeader>
-                          <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                          <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                             <TableHead>Solado</TableHead>
                             <TableHead>Grupo</TableHead>
                             <TableHead>Numeração</TableHead>
@@ -198,7 +198,7 @@ export default function StockAlerts() {
                               <TableCell className="text-xs">
                                 <div className="font-medium">{p.product_name}</div>
                                 {p.sku && (
-                                  <div className="text-[10px] text-muted-foreground font-mono">
+                                  <div className="text-xs text-muted-foreground font-mono">
                                     {p.sku}
                                   </div>
                                 )}
@@ -207,7 +207,7 @@ export default function StockAlerts() {
                                 {p.group_name ?? '—'}
                               </TableCell>
                               <TableCell className="text-xs">
-                                <Badge variant="outline" className="text-[10px]">{p.size}</Badge>
+                                <Badge variant="outline" className="text-xs">{p.size}</Badge>
                               </TableCell>
                               <TableCell className="text-xs text-right font-mono">
                                 {p.quantity}

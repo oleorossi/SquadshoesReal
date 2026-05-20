@@ -212,21 +212,21 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
               <div className="rounded-md border p-2.5 bg-muted/30">
                 <div className="flex items-center gap-1.5 text-muted-foreground mb-0.5">
                   <Timer className="h-3 w-3" />
-                  <span className="text-[10px] uppercase font-semibold">Tempo Padrão</span>
+                  <span className="text-xs uppercase font-semibold">Tempo Padrão</span>
                 </div>
                 <span className="text-sm font-bold font-mono">{standardTime.toFixed(1)} min</span>
               </div>
               <div className="rounded-md border p-2.5 bg-muted/30">
                 <div className="flex items-center gap-1.5 text-muted-foreground mb-0.5">
                   <DollarSign className="h-3 w-3" />
-                  <span className="text-[10px] uppercase font-semibold">R$/hora</span>
+                  <span className="text-xs uppercase font-semibold">R$/hora</span>
                 </div>
                 <span className="text-sm font-bold font-mono">{formatCurrency(costPerHour)}</span>
               </div>
               <div className="rounded-md border p-2.5 bg-muted/30">
                 <div className="flex items-center gap-1.5 text-muted-foreground mb-0.5">
                   <DollarSign className="h-3 w-3" />
-                  <span className="text-[10px] uppercase font-semibold">Custo/Par</span>
+                  <span className="text-xs uppercase font-semibold">Custo/Par</span>
                 </div>
                 <span className="text-sm font-bold font-mono text-primary">{formatCurrency(standardCostPerPair)}</span>
               </div>
@@ -295,7 +295,7 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
                 <div className="flex items-center gap-3 mt-2 text-xs">
                   <span>Custo real/par: <strong className="font-mono">{formatCurrency(actualCostPerPair)}</strong></span>
                   {costVariance !== 0 && (
-                    <Badge variant={costVariance > 0 ? 'destructive' : 'default'} className="text-[10px]">
+                    <Badge variant={costVariance > 0 ? 'destructive' : 'default'} className="text-xs">
                       {costVariance > 0 ? '+' : ''}{formatCurrency(costVariance)} variação
                     </Badge>
                   )}
@@ -352,7 +352,7 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
               <Label className="text-xs font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300">
                 Operário responsável *
               </Label>
-              <p className="text-[10px] text-muted-foreground mb-1.5">
+              <p className="text-xs text-muted-foreground mb-1.5">
                 Quem fisicamente executou este setor. Obrigatório para finalizar — fica registrado para
                 relatórios de produtividade e auditoria de qualidade.
               </p>

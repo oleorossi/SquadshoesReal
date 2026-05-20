@@ -349,7 +349,7 @@ export function SoleStandardMaterialsEditor({ soleGroupId, soleClassification }:
             <Package2 className="h-4 w-4 text-primary" />
             Consumos padrão por par
           </h4>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Materiais que aparecem automaticamente no BOM de toda ficha técnica que usar este solado.
           </p>
         </div>
@@ -376,7 +376,7 @@ export function SoleStandardMaterialsEditor({ soleGroupId, soleClassification }:
         <div className="text-center py-6 px-4 rounded border border-dashed text-xs text-muted-foreground">
           Nenhum material padrão cadastrado.
           <br />
-          <span className="text-[10px]">Ex.: Cola PU 0,02 kg/par · Linha 60 1,5 m/par · Forro 4 dm²/par</span>
+          <span className="text-xs">Ex.: Cola PU 0,02 kg/par · Linha 60 1,5 m/par · Forro 4 dm²/par</span>
         </div>
       )}
 
@@ -385,7 +385,7 @@ export function SoleStandardMaterialsEditor({ soleGroupId, soleClassification }:
         <div className="rounded border-2 border-primary/30 bg-primary/5 p-3 space-y-2 animate-in fade-in slide-in-from-top-1">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
             <div className="md:col-span-5">
-              <Label className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Material</Label>
+              <Label className="text-xs uppercase tracking-wider font-bold text-muted-foreground">Material</Label>
               <Select
                 value={newMaterial.productId}
                 onValueChange={(v) => {
@@ -404,7 +404,7 @@ export function SoleStandardMaterialsEditor({ soleGroupId, soleClassification }:
               </Select>
             </div>
             <div className="md:col-span-2">
-              <Label className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Qtd/par</Label>
+              <Label className="text-xs uppercase tracking-wider font-bold text-muted-foreground">Qtd/par</Label>
               <NumberInput
                 value={newMaterial.qty}
                 onChange={v => setNewMaterial({ ...newMaterial, qty: v })}
@@ -414,7 +414,7 @@ export function SoleStandardMaterialsEditor({ soleGroupId, soleClassification }:
               />
             </div>
             <div className="md:col-span-2">
-              <Label className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Unidade</Label>
+              <Label className="text-xs uppercase tracking-wider font-bold text-muted-foreground">Unidade</Label>
               <Input
                 value={newMaterial.unit}
                 onChange={e => setNewMaterial({ ...newMaterial, unit: e.target.value })}
@@ -424,7 +424,7 @@ export function SoleStandardMaterialsEditor({ soleGroupId, soleClassification }:
             </div>
             <div className="md:col-span-3">
               <div className="flex items-center gap-1">
-                <Label className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Aplicar quando</Label>
+                <Label className="text-xs uppercase tracking-wider font-bold text-muted-foreground">Aplicar quando</Label>
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -456,7 +456,7 @@ export function SoleStandardMaterialsEditor({ soleGroupId, soleClassification }:
             value={newMaterial.notes}
             onChange={e => setNewMaterial({ ...newMaterial, notes: e.target.value })}
             placeholder="Observação (opcional)"
-            className="h-7 text-[11px]"
+            className="h-7 text-xs"
           />
           <div className="flex justify-end gap-2 pt-1">
             <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowAddRow(false)}>Cancelar</Button>
@@ -482,10 +482,10 @@ export function SoleStandardMaterialsEditor({ soleGroupId, soleClassification }:
             isHighlighted ? 'opacity-100 border-border' : 'opacity-50 border-dashed'
           )}>
             <div className="px-3 py-1.5 bg-muted/40 flex items-center justify-between">
-              <Badge variant="outline" className={cn('text-[10px] h-5', APPLIES_TO_BADGE[group])}>
+              <Badge variant="outline" className={cn('text-xs h-5', APPLIES_TO_BADGE[group])}>
                 {APPLIES_TO_LABEL[group]}
               </Badge>
-              <span className="text-[10px] text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 {items.length} {items.length === 1 ? 'material' : 'materiais'}
               </span>
             </div>
@@ -519,7 +519,7 @@ export function SoleStandardMaterialsEditor({ soleGroupId, soleClassification }:
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-semibold truncate">{m.products?.name || '—'}</div>
-                    <div className="text-[10px] text-muted-foreground flex items-center gap-2">
+                    <div className="text-xs text-muted-foreground flex items-center gap-2">
                       {m.products?.sku && <span>SKU {m.products.sku}</span>}
                       {m.products?.category && <span>· {m.products.category}</span>}
                       {m.notes && <span className="italic">· {m.notes}</span>}
@@ -573,7 +573,7 @@ export function SoleStandardMaterialsEditor({ soleGroupId, soleClassification }:
                   {groupsWithMaterials.map(g => (
                     <SelectItem key={g.id} value={g.id}>
                       <span className="text-sm">{g.name}</span>
-                      <span className="text-[10px] text-muted-foreground ml-2">({g.count} {g.count === 1 ? 'material' : 'materiais'})</span>
+                      <span className="text-xs text-muted-foreground ml-2">({g.count} {g.count === 1 ? 'material' : 'materiais'})</span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -589,7 +589,7 @@ export function SoleStandardMaterialsEditor({ soleGroupId, soleClassification }:
               />
               <label htmlFor="copy-overwrite" className="text-xs cursor-pointer">
                 <strong>Sobrescrever materiais atuais</strong>
-                <span className="block text-[10px] text-muted-foreground mt-0.5">
+                <span className="block text-xs text-muted-foreground mt-0.5">
                   Se marcado, remove os materiais existentes deste solado antes de copiar. Caso contrário, só adiciona os que faltam (sem duplicar).
                 </span>
               </label>
@@ -664,7 +664,7 @@ export function SoleStandardMaterialsEditor({ soleGroupId, soleClassification }:
               />
               <label htmlFor="apply-overwrite" className="text-xs cursor-pointer">
                 <strong>Sobrescrever materiais existentes nos destinos</strong>
-                <span className="block text-[10px] text-muted-foreground mt-0.5">
+                <span className="block text-xs text-muted-foreground mt-0.5">
                   Marcado: apaga os materiais atuais dos destinos antes de aplicar. Desmarcado: só adiciona os que faltam (não duplica).
                 </span>
               </label>

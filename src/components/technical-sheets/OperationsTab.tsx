@@ -289,7 +289,7 @@ export function OperationsTab({
             Salvar
           </Button>
         </div>
-        <p className="text-[11px] text-muted-foreground -mt-2">
+        <p className="text-xs text-muted-foreground -mt-2">
           Cada setor tem <strong>capacidade</strong> (pares/dia) e <strong>lead time fallback</strong> (dias —
           usado se capacidade = 0). O sistema escolhe automaticamente: capacidade quando preenchida, fallback
           quando 0.
@@ -340,25 +340,25 @@ export function OperationsTab({
                 title={!sectorIsActive ? 'Este setor não faz parte do modelo de produção configurado pra esta ficha' : undefined}
               >
                 <div className="flex items-center justify-between">
-                  <Badge className={`text-[10px] ${
+                  <Badge className={`text-xs ${
                     !sectorIsActive
                       ? 'bg-muted/50 text-muted-foreground border-muted-foreground/20'
                       : STAGE_COLORS[s.label] || 'bg-muted text-muted-foreground'
                   }`}>
                     {s.label}
                   </Badge>
-                  <span className={`text-[9px] uppercase tracking-wide font-bold ${
+                  <span className={`text-xs uppercase tracking-wide font-bold ${
                     !sectorIsActive ? 'text-muted-foreground/60' : 'text-muted-foreground'
                   }`}>
                     {!sectorIsActive ? '— não usado —' : usingCapacity ? '✓ capacidade' : 'lead time'}
                   </span>
                 </div>
                 <div>
-                  <Label className="text-[10px] text-muted-foreground">Capacidade (pares/dia)</Label>
+                  <Label className="text-xs text-muted-foreground">Capacidade (pares/dia)</Label>
                   <NumberInput value={s.cap} onChange={s.setCap} className="h-8 text-sm font-mono mt-0.5" min={0} step="1" />
                 </div>
                 <div>
-                  <Label className="text-[10px] text-muted-foreground">Lead time fallback (dias)</Label>
+                  <Label className="text-xs text-muted-foreground">Lead time fallback (dias)</Label>
                   <NumberInput value={s.lt} onChange={s.setLt} className="h-8 text-sm font-mono mt-0.5" min={0} step="1" />
                 </div>
               </div>
@@ -372,7 +372,7 @@ export function OperationsTab({
         <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
         <div className="flex-1">
           <Label className="text-xs font-medium">Buffer de material (dias)</Label>
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Margem entre data de chegada do material e início da produção. Aplicado globalmente, não por setor.
           </p>
         </div>
@@ -386,41 +386,41 @@ export function OperationsTab({
         <div className="rounded-lg border-2 border-primary/40 p-3 bg-primary/5">
           <div className="flex items-center gap-2 text-primary mb-1">
             <Calendar className="h-3.5 w-3.5" />
-            <span className="text-[10px] uppercase tracking-wider font-bold">Pares/Dia</span>
+            <span className="text-xs uppercase tracking-wider font-bold">Pares/Dia</span>
           </div>
           <span className="text-2xl font-bold font-mono text-primary">{calculatedDailyCapacity}</span>
-          <p className="text-[10px] text-muted-foreground mt-0.5">em {safeToFixed(DAILY_WORK_MINUTES / 60, 0)}h de trabalho</p>
+          <p className="text-xs text-muted-foreground mt-0.5">em {safeToFixed(DAILY_WORK_MINUTES / 60, 0)}h de trabalho</p>
         </div>
         <div className="rounded-lg border p-3 bg-muted/30">
           <div className="flex items-center gap-2 text-muted-foreground mb-1">
             <TrendingUp className="h-3.5 w-3.5" />
-            <span className="text-[10px] uppercase tracking-wider font-semibold">Pares/Semana</span>
+            <span className="text-xs uppercase tracking-wider font-semibold">Pares/Semana</span>
           </div>
           <span className="text-2xl font-bold font-mono">{weeklyCapacity}</span>
-          <p className="text-[10px] text-muted-foreground mt-0.5">
+          <p className="text-xs text-muted-foreground mt-0.5">
             <span className="font-mono">{calculatedDailyCapacity} × 5</span> dias úteis
           </p>
         </div>
         <div className="rounded-lg border p-3 bg-muted/30">
           <div className="flex items-center gap-2 text-muted-foreground mb-1">
             <TrendingUp className="h-3.5 w-3.5" />
-            <span className="text-[10px] uppercase tracking-wider font-semibold">Pares/Mês</span>
+            <span className="text-xs uppercase tracking-wider font-semibold">Pares/Mês</span>
           </div>
           <span className="text-2xl font-bold font-mono">{monthlyCapacity}</span>
-          <p className="text-[10px] text-muted-foreground mt-0.5">
+          <p className="text-xs text-muted-foreground mt-0.5">
             <span className="font-mono">{calculatedDailyCapacity} × 22</span> dias úteis
           </p>
         </div>
         <div className={`rounded-lg border p-3 ${demandTotal > weeklyCapacity ? 'border-amber-500/40 bg-amber-500/5' : 'bg-muted/30'}`}>
           <div className={`flex items-center gap-2 mb-1 ${demandTotal > weeklyCapacity ? 'text-amber-600' : 'text-muted-foreground'}`}>
             <Gauge className="h-3.5 w-3.5" />
-            <span className="text-[10px] uppercase tracking-wider font-semibold">Demanda Aberta</span>
+            <span className="text-xs uppercase tracking-wider font-semibold">Demanda Aberta</span>
           </div>
           <span className={`text-2xl font-bold font-mono ${demandTotal > weeklyCapacity ? 'text-amber-700 dark:text-amber-400' : ''}`}>
             {demandTotal}
           </span>
           {daysNeeded > 0 && (
-            <p className="text-[10px] text-muted-foreground mt-0.5">
+            <p className="text-xs text-muted-foreground mt-0.5">
               ≈ <strong className="text-foreground">{daysNeeded} dia{daysNeeded > 1 ? 's' : ''}</strong> para atender
             </p>
           )}
@@ -437,10 +437,10 @@ export function OperationsTab({
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/20">
-                <TableHead className="text-[11px]">OP</TableHead>
-                <TableHead className="text-[11px] text-right">Qtd</TableHead>
-                <TableHead className="text-[11px]">Status</TableHead>
-                <TableHead className="text-[11px]">Entrega</TableHead>
+                <TableHead className="text-xs">OP</TableHead>
+                <TableHead className="text-xs text-right">Qtd</TableHead>
+                <TableHead className="text-xs">Status</TableHead>
+                <TableHead className="text-xs">Entrega</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -448,7 +448,7 @@ export function OperationsTab({
                 <TableRow key={o.id}>
                   <TableCell className="text-xs font-mono">{o.order_number}</TableCell>
                   <TableCell className="text-xs text-right font-mono">{o.quantity}</TableCell>
-                  <TableCell><Badge variant="outline" className="text-[10px]">{o.status}</Badge></TableCell>
+                  <TableCell><Badge variant="outline" className="text-xs">{o.status}</Badge></TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     {o.delivery_date ? new Date(o.delivery_date).toLocaleDateString('pt-BR') : '—'}
                   </TableCell>
@@ -481,21 +481,21 @@ export function OperationsTab({
         <div className="rounded-lg border p-3 bg-muted/30">
           <div className="flex items-center gap-2 text-muted-foreground mb-1">
             <Clock className="h-3.5 w-3.5" />
-            <span className="text-[10px] uppercase tracking-wider font-semibold">Tempo Total</span>
+            <span className="text-xs uppercase tracking-wider font-semibold">Tempo Total</span>
           </div>
           <span className="text-lg font-bold font-mono">{safeToFixed(totalTimeMin, 1)} min</span>
         </div>
         <div className="rounded-lg border p-3 bg-muted/30">
           <div className="flex items-center gap-2 text-muted-foreground mb-1">
             <Wrench className="h-3.5 w-3.5" />
-            <span className="text-[10px] uppercase tracking-wider font-semibold">MOD / Par</span>
+            <span className="text-xs uppercase tracking-wider font-semibold">MOD / Par</span>
           </div>
           <span className="text-lg font-bold font-mono text-primary">{formatCurrency(totalMODCost)}</span>
         </div>
         <div className="rounded-lg border p-3 bg-muted/30">
           <div className="flex items-center gap-2 text-muted-foreground mb-1">
             <DollarSign className="h-3.5 w-3.5" />
-            <span className="text-[10px] uppercase tracking-wider font-semibold">Overhead / Par</span>
+            <span className="text-xs uppercase tracking-wider font-semibold">Overhead / Par</span>
           </div>
           <span className="text-lg font-bold font-mono">{formatCurrency(overheadPerPair)}</span>
         </div>
@@ -549,13 +549,13 @@ export function OperationsTab({
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/30">
-                <TableHead className="text-[11px]">Nº</TableHead>
-                <TableHead className="text-[11px]">Operação</TableHead>
-                <TableHead className="text-[11px]">Estágio</TableHead>
-                <TableHead className="text-[11px]">Recurso</TableHead>
-                <TableHead className="text-[11px] text-right">Tempo (min)</TableHead>
-                <TableHead className="text-[11px] text-right">R$/hora</TableHead>
-                <TableHead className="text-[11px] text-right">Custo/Par</TableHead>
+                <TableHead className="text-xs">Nº</TableHead>
+                <TableHead className="text-xs">Operação</TableHead>
+                <TableHead className="text-xs">Estágio</TableHead>
+                <TableHead className="text-xs">Recurso</TableHead>
+                <TableHead className="text-xs text-right">Tempo (min)</TableHead>
+                <TableHead className="text-xs text-right">R$/hora</TableHead>
+                <TableHead className="text-xs text-right">Custo/Par</TableHead>
                 <TableHead className="w-16"></TableHead>
               </TableRow>
             </TableHeader>
@@ -565,7 +565,7 @@ export function OperationsTab({
                   <TableCell className="text-xs font-mono text-muted-foreground">{idx + 1}</TableCell>
                   <TableCell className="text-xs font-medium">{op.operation_name}</TableCell>
                   <TableCell>
-                    <Badge className={`text-[10px] ${STAGE_COLORS[op.stage] || 'bg-muted text-muted-foreground'}`}>
+                    <Badge className={`text-xs ${STAGE_COLORS[op.stage] || 'bg-muted text-muted-foreground'}`}>
                       {op.stage}
                     </Badge>
                   </TableCell>

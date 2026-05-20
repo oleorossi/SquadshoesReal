@@ -240,7 +240,7 @@ function FactoringField({ form, setForm, totalValue }: {
       {form.is_factoring && (
         <div className="space-y-3">
           <div>
-            <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">
+            <Label className="text-xs text-muted-foreground uppercase font-bold mb-1 block">
               Factoring <span className="text-destructive">*</span>
             </Label>
             {/* Audit visual: factoring marcado mas sem config selecionada gerava
@@ -257,7 +257,7 @@ function FactoringField({ form, setForm, totalValue }: {
               </SelectContent>
             </Select>
             {!form.factoring_config_id && (
-              <p className="text-[10px] text-destructive mt-1">Selecione qual factoring está antecipando este pedido.</p>
+              <p className="text-xs text-destructive mt-1">Selecione qual factoring está antecipando este pedido.</p>
             )}
           </div>
 
@@ -266,7 +266,7 @@ function FactoringField({ form, setForm, totalValue }: {
                cálculo cai no fallback de receiving_days, subestimando o desconto. */
             <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-2 flex items-start gap-2">
               <span className="text-amber-600 mt-0.5">⚠</span>
-              <div className="text-[11px] text-amber-700 dark:text-amber-300">
+              <div className="text-xs text-amber-700 dark:text-amber-300">
                 <span className="font-semibold">Informe a condição de pagamento</span> (ex: 30/60/90 DIAS)
                 no campo correspondente — sem ela o desconto factoring é calculado por estimativa
                 e pode divergir do valor real.
@@ -284,16 +284,16 @@ function FactoringField({ form, setForm, totalValue }: {
               {/* Resumo sempre visível — 1 linha */}
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[10px] font-bold uppercase text-amber-700 dark:text-amber-300 tracking-wide">
+                  <span className="text-xs font-bold uppercase text-amber-700 dark:text-amber-300 tracking-wide">
                     Desconto factoring
                   </span>
                   {simulation.source === 'delivery+payment' ? (
-                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30"
+                    <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30"
                       title="Cálculo exato">
                       EXATO
                     </span>
                   ) : (
-                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-orange-500/15 text-orange-700 dark:text-orange-300 border border-orange-500/40"
+                    <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-orange-500/15 text-orange-700 dark:text-orange-300 border border-orange-500/40"
                       title="Cálculo aproximado — faltam dados">
                       ESTIMADO
                     </span>
@@ -309,7 +309,7 @@ function FactoringField({ form, setForm, totalValue }: {
                   <button
                     type="button"
                     onClick={() => setShowSimDetails(s => !s)}
-                    className="text-[10px] font-medium text-muted-foreground hover:text-foreground underline underline-offset-2"
+                    className="text-xs font-medium text-muted-foreground hover:text-foreground underline underline-offset-2"
                   >
                     {showSimDetails ? 'Ocultar' : 'Detalhar'}
                   </button>
@@ -319,7 +319,7 @@ function FactoringField({ form, setForm, totalValue }: {
               {showSimDetails && (
                 <div className="mt-2 pt-2 border-t border-amber-500/20 text-xs space-y-1">
                   {simulation.source === 'fallback' && (
-                    <p className="text-[10px] text-orange-700 dark:text-orange-300">
+                    <p className="text-xs text-orange-700 dark:text-orange-300">
                       ⚠ Preencha <span className="font-semibold">mês + semana de faturamento</span> e
                       <span className="font-semibold"> condição de pagamento</span> pra simulação ficar exata.
                     </p>
@@ -344,7 +344,7 @@ function FactoringField({ form, setForm, totalValue }: {
               )}
             </div>
           ) : selectedConfig && totalValue > 0 && (
-            <p className="text-[11px] text-muted-foreground italic">
+            <p className="text-xs text-muted-foreground italic">
               Informe a condição de pagamento (ex: 30/60/90 DIAS) para simular o desconto.
             </p>
           )}
@@ -753,7 +753,7 @@ export default function SaleOrderFormPanel({
             <CardContent className="p-4 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Representante</Label>
+                  <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Representante</Label>
                   <Select value={form.representative} onValueChange={v => setForm(f => ({ ...f, representative: v }))}>
                     <SelectTrigger className="h-9"><SelectValue placeholder="Selecione..." /></SelectTrigger>
                     <SelectContent>
@@ -764,7 +764,7 @@ export default function SaleOrderFormPanel({
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Cliente (Cadastro)</Label>
+                  <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Cliente (Cadastro)</Label>
                   <SearchableClientSelect
                     clients={clients.filter(c => c.active)}
                     value={selectedClientId}
@@ -794,7 +794,7 @@ export default function SaleOrderFormPanel({
                     </div>
                   )}
                   {commercialDefaults && commercialDefaults.inherited_from === 'grupo econômico' && (
-                    <div className="mt-1.5 flex items-center gap-1.5 text-[10px] rounded px-2 py-1 bg-primary/5 text-primary border border-primary/20">
+                    <div className="mt-1.5 flex items-center gap-1.5 text-xs rounded px-2 py-1 bg-primary/5 text-primary border border-primary/20">
                       <Info className="h-3 w-3 shrink-0" />
                       <span>Condições herdadas do grupo econômico (pgto, factoring, desconto)</span>
                     </div>
@@ -816,7 +816,7 @@ export default function SaleOrderFormPanel({
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold truncate">{form.client_name || '—'}</p>
                     {form.client_cnpj && (
-                      <p className="text-[11px] font-mono text-muted-foreground">{form.client_cnpj}</p>
+                      <p className="text-xs font-mono text-muted-foreground">{form.client_cnpj}</p>
                     )}
                   </div>
                   <button
@@ -825,7 +825,7 @@ export default function SaleOrderFormPanel({
                       onClientSelect('');
                       setForm(f => ({ ...f, client_id: null as any, client_name: '', client_cnpj: '' }));
                     }}
-                    className="text-[11px] text-muted-foreground hover:text-foreground underline shrink-0"
+                    className="text-xs text-muted-foreground hover:text-foreground underline shrink-0"
                   >
                     Trocar cliente
                   </button>
@@ -833,9 +833,9 @@ export default function SaleOrderFormPanel({
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="md:col-span-2">
-                    <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">
+                    <Label className="text-xs text-muted-foreground uppercase font-bold mb-1 block">
                       Razão Social / Nome Fantasia *
-                      <span className="ml-2 text-[10px] text-muted-foreground/70 normal-case font-normal">(pedido avulso — sem cadastro)</span>
+                      <span className="ml-2 text-xs text-muted-foreground/70 normal-case font-normal">(pedido avulso — sem cadastro)</span>
                     </Label>
                     <Input
                       value={form.client_name}
@@ -845,7 +845,7 @@ export default function SaleOrderFormPanel({
                     />
                   </div>
                   <div>
-                    <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">CNPJ / CPF</Label>
+                    <Label className="text-xs text-muted-foreground uppercase font-bold mb-1 block">CNPJ / CPF</Label>
                     {(() => {
                       const digits = (form.client_cnpj || '').replace(/\D/g, '');
                       const isInvalidLength = digits.length > 0 && digits.length !== 11 && digits.length !== 14;
@@ -858,7 +858,7 @@ export default function SaleOrderFormPanel({
                             placeholder="00.000.000/0001-00 ou 000.000.000-00"
                           />
                           {isInvalidLength && (
-                            <p className="text-[10px] text-destructive mt-0.5">
+                            <p className="text-xs text-destructive mt-0.5">
                               CNPJ deve ter 14 dígitos · CPF deve ter 11 dígitos. Tem {digits.length}.
                             </p>
                           )}
@@ -886,7 +886,7 @@ export default function SaleOrderFormPanel({
                   via monthWeekToISODate. O comercial só raciocina por
                   semana de faturamento — data exata é detalhe técnico. */}
               <div>
-                <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">Condição de Pagamento</Label>
+                <Label className="text-xs text-muted-foreground uppercase font-bold mb-1 block">Condição de Pagamento</Label>
                 <Input value={form.payment_condition} onChange={e => setForm(f => ({ ...f, payment_condition: e.target.value }))} className="h-9" placeholder="Ex: 30/60/90 DIAS" />
                 {(() => {
                   // Preview do cronograma de parcelas que SERÁ gravado em
@@ -897,7 +897,7 @@ export default function SaleOrderFormPanel({
                   // distribuído proporcionalmente entre as parcelas).
                   if (!form.delivery_deadline || totalValue <= 0) {
                     return (
-                      <div className="mt-2 text-[11px] text-muted-foreground">
+                      <div className="mt-2 text-xs text-muted-foreground">
                         {totalValue <= 0
                           ? 'Adicione itens com valor pra ver o cronograma de vencimento.'
                           : 'Defina mês + semana de faturamento abaixo pra ver o cronograma de vencimento.'}
@@ -937,7 +937,7 @@ export default function SaleOrderFormPanel({
                           {schedule.length === 1 ? '1 parcela' : `${schedule.length} parcelas`} — base: {baseLabel}
                         </span>
                         {factoringDiscount > 0 && (
-                          <span className="text-[10px] text-amber-600 dark:text-amber-500">desconto factoring −{fmtMoney(factoringDiscount)}</span>
+                          <span className="text-xs text-amber-600 dark:text-amber-500">desconto factoring −{fmtMoney(factoringDiscount)}</span>
                         )}
                       </div>
                       <div className="space-y-0.5">
@@ -961,7 +961,7 @@ export default function SaleOrderFormPanel({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">Mês de Faturamento <span className="text-destructive">*</span></Label>
+                  <Label className="text-xs text-muted-foreground uppercase font-bold mb-1 block">Mês de Faturamento <span className="text-destructive">*</span></Label>
                   <Select value={form.delivery_month} onValueChange={v => setForm(f => ({ ...f, delivery_month: v, delivery_week: '' }))}>
                     <SelectTrigger className={`h-9 ${submitAttempted && !form.delivery_month ? 'border-destructive focus:ring-destructive' : ''}`}><SelectValue placeholder="Selecione o mês..." /></SelectTrigger>
                     <SelectContent>
@@ -980,7 +980,7 @@ export default function SaleOrderFormPanel({
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">Semana de Faturamento <span className="text-destructive">*</span></Label>
+                  <Label className="text-xs text-muted-foreground uppercase font-bold mb-1 block">Semana de Faturamento <span className="text-destructive">*</span></Label>
                   <Select value={form.delivery_week} onValueChange={v => setForm(f => ({ ...f, delivery_week: v }))}>
                     <SelectTrigger className={`h-9 ${submitAttempted && !form.delivery_week ? 'border-destructive focus:ring-destructive' : ''}`}><SelectValue placeholder="Selecione a semana..." /></SelectTrigger>
                     <SelectContent>
@@ -1032,7 +1032,7 @@ export default function SaleOrderFormPanel({
                     <AlertTriangle className="h-3.5 w-3.5" />
                     Pedido informal (sem NF-e)
                   </Label>
-                  <p className="text-[11px] text-muted-foreground mt-1 leading-snug">
+                  <p className="text-xs text-muted-foreground mt-1 leading-snug">
                     Marque pra pedidos que <strong>não precisam de NF-e</strong> (venda no atacado direta, amostra, brinde).
                     Material e produção debitam normal, mas: <strong>não emite nota</strong>, <strong>não gera conta a receber</strong> e termina
                     em "Finalizado s/ NF" ao ser expedido.
@@ -1054,13 +1054,13 @@ export default function SaleOrderFormPanel({
             <CardContent className="p-4 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
-                  <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">Nº Pedido Cliente</Label>
+                  <Label className="text-xs text-muted-foreground uppercase font-bold mb-1 block">Nº Pedido Cliente</Label>
                   <Input value={form.client_order_number} onChange={e => setForm(f => ({ ...f, client_order_number: e.target.value }))} className="h-9" />
                 </div>
                 <div>
-                  <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">
+                  <Label className="text-xs text-muted-foreground uppercase font-bold mb-1 block">
                     Marca (NF-e)
-                    <span className="ml-1 text-[9px] font-normal normal-case text-muted-foreground">xMarca no XML</span>
+                    <span className="ml-1 text-xs font-normal normal-case text-muted-foreground">xMarca no XML</span>
                   </Label>
                   <Input
                     value={form.brand || 'Squad Shoes'}
@@ -1070,11 +1070,11 @@ export default function SaleOrderFormPanel({
                   />
                 </div>
                 <div>
-                  <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">NF-e</Label>
+                  <Label className="text-xs text-muted-foreground uppercase font-bold mb-1 block">NF-e</Label>
                   <Input value={form.nfe} onChange={e => setForm(f => ({ ...f, nfe: e.target.value }))} className="h-9 font-mono" />
                 </div>
                 <div>
-                  <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">Remessa</Label>
+                  <Label className="text-xs text-muted-foreground uppercase font-bold mb-1 block">Remessa</Label>
                   <Input value={form.remessa} onChange={e => setForm(f => ({ ...f, remessa: e.target.value }))} className="h-9 font-mono" />
                 </div>
               </div>
@@ -1086,13 +1086,13 @@ export default function SaleOrderFormPanel({
                     <Calculator className="h-3.5 w-3.5 text-primary" />
                     Calculadora de Frete (Estimativa)
                   </Label>
-                  <Badge variant="secondary" className="text-[10px]">
+                  <Badge variant="secondary" className="text-xs">
                     {totalPairs} pares
                   </Badge>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <Label className="text-[10px] uppercase font-bold text-muted-foreground">Taxa por Par (R$)</Label>
+                    <Label className="text-xs uppercase font-bold text-muted-foreground">Taxa por Par (R$)</Label>
                     {/* type="text" + inputMode="decimal" aceita "," ou "." e
                         teclado mobile vem com decimal. type="number" estrangulava
                         valores como 0,33 no locale pt-BR. */}
@@ -1120,13 +1120,13 @@ export default function SaleOrderFormPanel({
                     />
                   </div>
                   <div>
-                    <Label className="text-[10px] uppercase font-bold text-muted-foreground">Pares × Taxa</Label>
+                    <Label className="text-xs uppercase font-bold text-muted-foreground">Pares × Taxa</Label>
                     <div className="h-9 mt-1 flex items-center px-3 rounded-md border border-border bg-muted/30 font-mono text-xs text-muted-foreground">
                       {totalPairs} × {formatCurrency(shippingRate)}
                     </div>
                   </div>
                   <div>
-                    <Label className="text-[10px] uppercase font-bold text-muted-foreground">Custo Estimado</Label>
+                    <Label className="text-xs uppercase font-bold text-muted-foreground">Custo Estimado</Label>
                     <div className="h-9 mt-1 flex items-center px-3 rounded-md border border-primary/40 bg-primary/5 font-mono font-bold text-foreground text-sm">
                       {formatCurrency(estimatedShippingCost)}
                     </div>
@@ -1146,7 +1146,7 @@ export default function SaleOrderFormPanel({
                       <Truck className="h-3.5 w-3.5 text-primary" />
                       Frete próprio (entregar com nossa frota)
                     </Label>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                    <p className="text-xs text-muted-foreground mt-0.5">
                       {form.own_delivery
                         ? 'Este pedido entrará no planejamento de rota em Entregas, com projeção de combustível e desgaste do veículo.'
                         : 'Quando ativo, o pedido aparece em Entregas para montar rota, escolher veículo/motorista e ver custo estimado por viagem.'}
@@ -1157,7 +1157,7 @@ export default function SaleOrderFormPanel({
 
               {onPackagingProductChange && (
                 <div className="mt-4 p-3 rounded-lg bg-muted/20 border border-border/50 space-y-4">
-                  <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Modo de Embalagem</Label>
+                  <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Modo de Embalagem</Label>
                   <RadioGroup
                     value={form.packaging_mode}
                     onValueChange={(v) => setForm(f => ({ ...f, packaging_mode: v as PackagingMode }))}
@@ -1193,7 +1193,7 @@ export default function SaleOrderFormPanel({
                   {/* Show packaging configs from technical sheets */}
                   {sheetPackagingConfigs.length > 0 && (
                     <div className="space-y-2">
-                      <Label className="text-[10px] text-muted-foreground uppercase font-bold">📦 Embalagens das Fichas Técnicas</Label>
+                      <Label className="text-xs text-muted-foreground uppercase font-bold">📦 Embalagens das Fichas Técnicas</Label>
                       {(() => {
                         const mode = form.packaging_mode;
                         // Filter configs based on packaging mode
@@ -1207,7 +1207,7 @@ export default function SaleOrderFormPanel({
 
                         if (relevantConfigs.length === 0) {
                           return (
-                            <p className="text-[11px] text-amber-500">
+                            <p className="text-xs text-amber-500">
                               ⚠ Nenhuma embalagem do tipo selecionado configurada nas fichas técnicas.
                             </p>
                           );
@@ -1238,16 +1238,16 @@ export default function SaleOrderFormPanel({
                           <div className="space-y-1.5">
                             {Array.from(bySheet.entries()).map(([sheetId, cfgs]) => (
                               <div key={sheetId} className="p-2 rounded bg-background border border-border/40 space-y-1">
-                                <p className="text-[10px] font-bold text-foreground truncate">{refNames[sheetId] || sheetId}</p>
+                                <p className="text-xs font-bold text-foreground truncate">{refNames[sheetId] || sheetId}</p>
                                 {cfgs.map(cfg => {
                                   const pairsForRef = itemsByRef.get(sheetId) || 0;
                                   const boxesNeeded = cfg.pairs_per_box > 0 ? Math.ceil(pairsForRef / cfg.pairs_per_box) : 0;
                                   const typeLabel = cfg.packaging_type === 'individual' ? 'Individual' : cfg.packaging_type === 'master' ? 'Master' : 'Colméia';
                                   const linkedProduct = (cfg as any).products;
                                   return (
-                                    <div key={cfg.id} className="flex items-center justify-between text-[11px] text-muted-foreground">
+                                    <div key={cfg.id} className="flex items-center justify-between text-xs text-muted-foreground">
                                       <span>
-                                        <Badge variant="outline" className="text-[9px] mr-1">{typeLabel}</Badge>
+                                        <Badge variant="outline" className="text-xs mr-1">{typeLabel}</Badge>
                                         {cfg.nome || typeLabel} — {Number(cfg.comprimento_cm)}×{Number(cfg.largura_cm)}×{Number(cfg.altura_cm)} cm
                                         {Number(cfg.peso_kg) > 0 ? ` | ${Number(cfg.peso_kg)}g` : ''}
                                         {cfg.pairs_per_box > 1 ? ` | ${cfg.pairs_per_box} pares/cx` : ''}
@@ -1255,7 +1255,7 @@ export default function SaleOrderFormPanel({
                                       <span className="font-mono font-medium text-foreground ml-2 whitespace-nowrap">
                                         {boxesNeeded > 0 ? `${boxesNeeded} cx` : '—'}
                                         {linkedProduct && (
-                                          <span className="text-[9px] text-muted-foreground ml-1">(est: {linkedProduct.quantity})</span>
+                                          <span className="text-xs text-muted-foreground ml-1">(est: {linkedProduct.quantity})</span>
                                         )}
                                       </span>
                                     </div>
@@ -1270,7 +1270,7 @@ export default function SaleOrderFormPanel({
                   )}
 
                   {sheetPackagingConfigs.length === 0 && selectedSheetIds.length > 0 && (
-                    <p className="text-[11px] text-amber-500">
+                    <p className="text-xs text-amber-500">
                       ⚠ Nenhuma embalagem configurada nas fichas técnicas das referências selecionadas.
                     </p>
                   )}
@@ -1290,11 +1290,11 @@ export default function SaleOrderFormPanel({
             </CardHeader>
             <CardContent className="p-4 space-y-4">
               <div>
-                <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">Contato no Cliente</Label>
+                <Label className="text-xs text-muted-foreground uppercase font-bold mb-1 block">Contato no Cliente</Label>
                 <Input value={form.client_contact} onChange={e => setForm(f => ({ ...f, client_contact: e.target.value }))} className="h-9" />
               </div>
               <div>
-                <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">Observações do Pedido</Label>
+                <Label className="text-xs text-muted-foreground uppercase font-bold mb-1 block">Observações do Pedido</Label>
                 <Textarea
                   value={form.notes}
                   onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
@@ -1303,9 +1303,9 @@ export default function SaleOrderFormPanel({
                 />
               </div>
               <div>
-                <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">
+                <Label className="text-xs text-muted-foreground uppercase font-bold mb-1 block">
                   Informações Complementares (NF-e)
-                  <span className="ml-2 text-[9px] font-normal normal-case text-amber-700">aparece no rodapé da NF</span>
+                  <span className="ml-2 text-xs font-normal normal-case text-amber-700">aparece no rodapé da NF</span>
                 </Label>
                 <Textarea
                   value={form.informacoes_complementares_nf || ''}
@@ -1316,10 +1316,10 @@ export default function SaleOrderFormPanel({
               </div>
               {selectedRep && (
                 <div className="p-3 rounded-lg bg-primary/5 border border-primary/10">
-                  <p className="text-[10px] font-bold text-primary uppercase mb-1">Dados do Representante</p>
+                  <p className="text-xs font-bold text-primary uppercase mb-1">Dados do Representante</p>
                   <p className="text-xs font-medium truncate">{selectedRep.name}</p>
-                  {selectedRep.phone && <p className="text-[11px] text-muted-foreground">📞 {selectedRep.phone}</p>}
-                  {selectedRep.email && <p className="text-[11px] text-muted-foreground truncate">✉️ {selectedRep.email}</p>}
+                  {selectedRep.phone && <p className="text-xs text-muted-foreground">📞 {selectedRep.phone}</p>}
+                  {selectedRep.email && <p className="text-xs text-muted-foreground truncate">✉️ {selectedRep.email}</p>}
                 </div>
               )}
             </CardContent>
@@ -1376,7 +1376,7 @@ export default function SaleOrderFormPanel({
                     : ''
               }>
               {isSameRefAndColor && item.color && (
-                <div className="absolute -top-2 left-3 px-2 py-0.5 rounded-full bg-destructive text-destructive-foreground text-[9px] font-bold uppercase tracking-wider shadow-sm z-10">
+                <div className="absolute -top-2 left-3 px-2 py-0.5 rounded-full bg-destructive text-destructive-foreground text-xs font-bold uppercase tracking-wider shadow-sm z-10">
                   Duplicado · mesma ref+cor
                 </div>
               )}
@@ -1420,7 +1420,7 @@ export default function SaleOrderFormPanel({
             <span className="font-display text-2xl leading-none tabular-nums text-primary">
               {selectedItemIndices.size}
             </span>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-primary">
+            <span className="text-xs font-bold uppercase tracking-wider text-primary">
               {selectedItemIndices.size === 1 ? 'item selecionado' : 'itens selecionados'}
             </span>
           </div>
@@ -1436,7 +1436,7 @@ export default function SaleOrderFormPanel({
             Copiar do 1º
           </Button>
           <div className="flex items-center gap-1 border-l border-primary/30 pl-3">
-            <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Preço R$</Label>
+            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Preço R$</Label>
             <Input
               type="text"
               inputMode="decimal"
@@ -1458,7 +1458,7 @@ export default function SaleOrderFormPanel({
             </Button>
           </div>
           <div className="flex items-center gap-1 border-l border-primary/30 pl-3">
-            <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Fichas</Label>
+            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Fichas</Label>
             <Input
               type="number"
               min="1"
@@ -1508,13 +1508,13 @@ export default function SaleOrderFormPanel({
               sobrescreve a grade dos itens selecionados (decisão user 20/05/2026). */}
           <div className="border-t border-primary/30 pt-3 flex flex-wrap items-end gap-3">
             <div className="flex flex-col gap-1">
-              <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                 Grade · digite e aplique em todos os selecionados
               </Label>
               <div className="flex flex-wrap items-center gap-2">
                 {bulkGradeSizes.map(size => (
                   <div key={size} className="flex flex-col items-center">
-                    <span className="text-[10px] font-mono font-bold text-muted-foreground">{size}</span>
+                    <span className="text-xs font-mono font-bold text-muted-foreground">{size}</span>
                     <Input
                       type="number"
                       min="0"
@@ -1529,7 +1529,7 @@ export default function SaleOrderFormPanel({
               </div>
             </div>
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                 Total / ficha
               </span>
               <div className="h-8 px-3 flex items-center font-mono font-bold text-sm bg-background border rounded">
@@ -1609,22 +1609,22 @@ export default function SaleOrderFormPanel({
               {/* Resumo de totais — grid em mobile pra evitar squeeze, inline em sm+ */}
               <div className="grid grid-cols-3 sm:flex sm:items-center sm:gap-6 sm:flex-1 sm:min-w-0">
                 <div className="flex flex-col">
-                  <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Itens</span>
+                  <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Itens</span>
                   <span className="font-mono font-bold text-base sm:text-lg tracking-tight leading-none">{validItemsCount}</span>
                 </div>
                 <div className="hidden sm:block h-8 w-px bg-border" />
                 <div className="flex flex-col">
-                  <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Pares</span>
+                  <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Pares</span>
                   <span className="font-mono font-bold text-base sm:text-lg tracking-tight leading-none">{totalPairs}</span>
                 </div>
                 <div className="hidden sm:block h-8 w-px bg-border" />
                 <div className="flex flex-col">
-                  <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Valor Total</span>
+                  <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Valor Total</span>
                   <span className="font-mono font-bold text-base sm:text-xl text-primary tracking-tight leading-none">
                     {formatCurrency(totalValue + estimatedShippingCost)}
                   </span>
                   {estimatedShippingCost > 0 && (
-                    <span className="text-[10px] text-muted-foreground font-mono mt-0.5">
+                    <span className="text-xs text-muted-foreground font-mono mt-0.5">
                       mercadoria {formatCurrency(totalValue)} + frete {formatCurrency(estimatedShippingCost)}
                     </span>
                   )}
@@ -1662,7 +1662,7 @@ export default function SaleOrderFormPanel({
                       <div className="space-y-1">
                         {errors.length > 0 && (
                           <>
-                            <p className="text-[10px] font-bold text-destructive uppercase tracking-wider mb-1.5">Erros bloqueantes</p>
+                            <p className="text-xs font-bold text-destructive uppercase tracking-wider mb-1.5">Erros bloqueantes</p>
                             {errors.map((issue, i) => (
                               <div key={`e-${i}`} className="flex items-start gap-2 text-xs text-destructive/90 py-0.5">
                                 <span className="mt-0.5">•</span>
@@ -1674,7 +1674,7 @@ export default function SaleOrderFormPanel({
                         {warnings.length > 0 && (
                           <>
                             {errors.length > 0 && <div className="h-px bg-border my-2" />}
-                            <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-1.5">Avisos</p>
+                            <p className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-1.5">Avisos</p>
                             {warnings.map((issue, i) => (
                               <div key={`w-${i}`} className="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-300 py-0.5">
                                 <span className="mt-0.5">•</span>

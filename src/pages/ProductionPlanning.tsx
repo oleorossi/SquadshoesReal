@@ -71,7 +71,7 @@
                      {kpi.sector}
                    </CardTitle>
                    {kpi.risk_level !== 'normal' && (
-                     <Badge variant={kpi.risk_level === 'crítico' ? 'destructive' : 'outline'} className={cn("text-[10px]", kpi.risk_level === 'atenção' && "border-amber-500 text-amber-600")}>
+                     <Badge variant={kpi.risk_level === 'crítico' ? 'destructive' : 'outline'} className={cn("text-xs", kpi.risk_level === 'atenção' && "border-amber-500 text-amber-600")}>
                        {kpi.risk_level}
                      </Badge>
                    )}
@@ -79,7 +79,7 @@
                </CardHeader>
                <CardContent className="space-y-2">
                  <div className="display text-2xl tabular-nums">{kpi.total_pairs.toLocaleString()}p</div>
-                 <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                    <span>Backlog: {kpi.days_of_backlog} dias</span>
                    <span>Capacidade: {kpi.daily_capacity}/dia</span>
                  </div>
@@ -98,7 +98,7 @@
        >
              <Table>
                <TableHeader>
-                 <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                 <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                    <TableHead>OP / Ref</TableHead>
                    <TableHead>Limite Compra</TableHead>
                      <TableHead>Início Corte</TableHead>
@@ -113,7 +113,7 @@
                </TableHeader>
                <TableBody>
                  {timeline.map((row: any) => (
-                   <TableRow key={row.order_id} className="text-[11px]">
+                   <TableRow key={row.order_id} className="text-xs">
                      <TableCell>
                        <div className="font-bold">{row.pedido_ref}</div>
                        <div className="text-muted-foreground">{row.referencia_nome}</div>

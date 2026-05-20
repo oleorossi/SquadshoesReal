@@ -803,7 +803,7 @@ export default function StockAdjustmentPage() {
                <col style={{ width: 76 }} />
             </colgroup>
             <thead className="sticky top-0 z-10">
-              <tr className="bg-muted/40 backdrop-blur-sm border-b border-border [&_th]:text-[11px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+              <tr className="bg-muted/40 backdrop-blur-sm border-b border-border [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                  <th className="text-center py-2 border-r border-border/40">#</th>
                  <th className="text-center py-2 border-r border-border/40">Hist.</th>
                 <th className="text-left px-3 py-2 border-r border-border/40">Produto</th>
@@ -893,7 +893,7 @@ export default function StockAdjustmentPage() {
                           isExpanded && "border-b-0"
                         )}
                       >
-                         <td className="text-[11px] text-muted-foreground/50 text-center select-none border-r border-border/30 py-0">{rowIndex + 1}</td>
+                         <td className="text-xs text-muted-foreground/50 text-center select-none border-r border-border/30 py-0">{rowIndex + 1}</td>
                          <td className="text-center border-r border-border/30 py-0">
                            <TooltipProvider>
                              <Tooltip>
@@ -916,20 +916,20 @@ export default function StockAdjustmentPage() {
                             {isLow && <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />}
                             {conflictedIds.has(product.id) && (
                               <span
-                                className="text-[11px] font-bold uppercase tracking-wide bg-destructive/15 text-destructive border border-destructive/40 rounded px-1 py-0.5 shrink-0"
+                                className="text-xs font-bold uppercase tracking-wide bg-destructive/15 text-destructive border border-destructive/40 rounded px-1 py-0.5 shrink-0"
                                 title="Outra sessão alterou este produto enquanto você editava. Recarregue antes de salvar."
                               >
                                 conflito
                               </span>
                             )}
-                            {!product.active && <span className="text-[11px] font-semibold uppercase tracking-wide bg-muted text-muted-foreground rounded px-1 py-0.5 shrink-0">inativo</span>}
+                            {!product.active && <span className="text-xs font-semibold uppercase tracking-wide bg-muted text-muted-foreground rounded px-1 py-0.5 shrink-0">inativo</span>}
                             <span className="truncate font-medium text-foreground text-[13px]">{product.name}</span>
                           </div>
                         </td>
                         <td className="px-2 py-1.5 text-[12px] text-muted-foreground border-r border-border/30 truncate">{product.color ?? "—"}</td>
-                        <td className="px-2 py-1.5 font-mono text-[11px] text-muted-foreground border-r border-border/30">{product.sku ?? "—"}</td>
+                        <td className="px-2 py-1.5 font-mono text-xs text-muted-foreground border-r border-border/30">{product.sku ?? "—"}</td>
                         <td className="px-2 py-1.5 text-[12px] text-muted-foreground border-r border-border/30 truncate">{product.category ?? "—"}</td>
-                        <td className="text-[11px] text-muted-foreground text-center border-r border-border/30">{product.unit}</td>
+                        <td className="text-xs text-muted-foreground text-center border-r border-border/30">{product.unit}</td>
                         <td className="px-3 py-1.5 text-right font-mono text-[13px] border-r border-border/30 tabular-nums select-none">
                           <span className={isLow ? "text-amber-600 font-semibold" : "text-foreground"}>{product.quantity.toLocaleString("pt-BR")}</span>
                         </td>
@@ -958,7 +958,7 @@ export default function StockAdjustmentPage() {
                               {isExpanded
                                 ? <ChevronDown className="h-3 w-3 shrink-0" />
                                 : <ChevronRight className="h-3 w-3 shrink-0" />}
-                              <span className="text-[11px] font-semibold uppercase tracking-wide opacity-60">
+                              <span className="text-xs font-semibold uppercase tracking-wide opacity-60">
                                 {keys.length > 0
                                   ? (range ? `Grade ${range.from}–${range.to}` : `${keys.length} ${keys.length === 1 ? 'chave' : 'chaves'}`)
                                   : "Sem grade"}
@@ -970,13 +970,13 @@ export default function StockAdjustmentPage() {
                                 <TooltipProvider>
                                   <Tooltip>
                                     <TooltipTrigger asChild>
-                                      <span className="text-[11px] font-bold text-primary bg-primary/10 px-1 rounded cursor-help">
+                                      <span className="text-xs font-bold text-primary bg-primary/10 px-1 rounded cursor-help">
                                         conj.
                                       </span>
                                     </TooltipTrigger>
                                     <TooltipContent className="max-w-xs">
                                       <p className="text-xs font-semibold mb-1">Numerações conjugadas:</p>
-                                      <p className="text-[11px]">
+                                      <p className="text-xs">
                                         {conjs.map((c) => c.size_key).join(' · ')}
                                       </p>
                                     </TooltipContent>
@@ -1020,7 +1020,7 @@ export default function StockAdjustmentPage() {
                                 return (
                                   <div key={key} className="flex flex-col items-center gap-0.5">
                                     <span className={cn(
-                                      "text-[11px] font-semibold tabular-nums",
+                                      "text-xs font-semibold tabular-nums",
                                       isConjugated ? "text-primary" : "text-muted-foreground",
                                     )}>{key}</span>
                                     <input
@@ -1053,7 +1053,7 @@ export default function StockAdjustmentPage() {
 
                               {/* Totals */}
                               <div className="ml-4 pl-4 border-l border-border/40 flex flex-col items-start gap-0.5">
-                                <span className="text-[11px] text-muted-foreground">Total</span>
+                                <span className="text-xs text-muted-foreground">Total</span>
                                 <div className="flex items-baseline gap-1.5">
                                   <span className="font-mono text-[13px] text-muted-foreground">{product.quantity}</span>
                                   {hasSoleDraft && (
@@ -1067,7 +1067,7 @@ export default function StockAdjustmentPage() {
                                       </span>
                                     </>
                                   )}
-                                  <span className="text-[11px] text-muted-foreground">{product.unit}</span>
+                                  <span className="text-xs text-muted-foreground">{product.unit}</span>
                                 </div>
                               </div>
 
@@ -1075,7 +1075,7 @@ export default function StockAdjustmentPage() {
                               {hasSoleDraft && (
                                 <button
                                   onClick={() => setSoleDrafts((prev) => { const next = { ...prev }; delete next[product.id]; return next; })}
-                                  className="ml-2 text-[11px] text-muted-foreground hover:text-destructive transition-colors"
+                                  className="ml-2 text-xs text-muted-foreground hover:text-destructive transition-colors"
                                   title="Desfazer alterações deste solado"
                                 >
                                   <X className="h-3.5 w-3.5" />
@@ -1105,7 +1105,7 @@ export default function StockAdjustmentPage() {
                           : isDirty ? "bg-amber-50/70 dark:bg-amber-950/25" : isEven ? "bg-background" : "bg-muted/20"
                       )}
                     >
-                       <td className="text-[11px] text-muted-foreground/50 text-center select-none border-r border-border/30 py-0">{rowIndex + 1}</td>
+                       <td className="text-xs text-muted-foreground/50 text-center select-none border-r border-border/30 py-0">{rowIndex + 1}</td>
                        <td className="text-center border-r border-border/30 py-0">
                          <TooltipProvider>
                            <Tooltip>
@@ -1126,14 +1126,14 @@ export default function StockAdjustmentPage() {
                       <td className="px-3 py-1.5 border-r border-border/30">
                         <div className="flex items-center gap-1.5 min-w-0">
                           {isLow && <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />}
-                          {!product.active && <span className="text-[11px] font-semibold uppercase tracking-wide bg-muted text-muted-foreground rounded px-1 py-0.5 shrink-0">inativo</span>}
+                          {!product.active && <span className="text-xs font-semibold uppercase tracking-wide bg-muted text-muted-foreground rounded px-1 py-0.5 shrink-0">inativo</span>}
                           <span className="truncate font-medium text-foreground text-[13px]">{product.name}</span>
                         </div>
                       </td>
                       <td className="px-2 py-1.5 text-[12px] text-muted-foreground border-r border-border/30 truncate">{product.color ?? "—"}</td>
-                      <td className="px-2 py-1.5 font-mono text-[11px] text-muted-foreground border-r border-border/30">{product.sku ?? "—"}</td>
+                      <td className="px-2 py-1.5 font-mono text-xs text-muted-foreground border-r border-border/30">{product.sku ?? "—"}</td>
                       <td className="px-2 py-1.5 text-[12px] text-muted-foreground border-r border-border/30 truncate">{product.category ?? "—"}</td>
-                      <td className="text-[11px] text-muted-foreground text-center border-r border-border/30">{product.unit}</td>
+                      <td className="text-xs text-muted-foreground text-center border-r border-border/30">{product.unit}</td>
                       <td className="px-3 py-1.5 text-right font-mono text-[13px] border-r border-border/30 tabular-nums select-none">
                         <span className={isLow ? "text-amber-600 font-semibold" : "text-foreground"}>
                           {product.quantity % 1 === 0
@@ -1181,7 +1181,7 @@ export default function StockAdjustmentPage() {
       )}
 
       {/* Status bar */}
-      <div className="flex items-center justify-between pt-2 shrink-0 text-[11px] text-muted-foreground select-none">
+      <div className="flex items-center justify-between pt-2 shrink-0 text-xs text-muted-foreground select-none">
         <span>
           {filtered.length.toLocaleString("pt-BR")} produto{filtered.length !== 1 ? "s" : ""}
           {products.length !== filtered.length && ` (de ${products.length.toLocaleString("pt-BR")})`}

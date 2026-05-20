@@ -292,7 +292,7 @@ export default function LeadTime() {
                         />
                       </div>
                     </div>
-                    <p className="text-[11px] text-muted-foreground flex items-center gap-1.5 px-1">
+                    <p className="text-xs text-muted-foreground flex items-center gap-1.5 px-1">
                       <Info className="h-3 w-3" />
                       Esses valores são usados para o cronograma reverso quando a capacidade diária da ficha técnica é 0.
                     </p>
@@ -339,18 +339,18 @@ export default function LeadTime() {
                            onChange={(v) => setForm({ ...form, finishing_capacity_per_day: v })}
                          />
                           <div className="space-y-1.5">
-                            <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Expedição</Label>
+                            <Label className="text-xs uppercase font-bold text-muted-foreground tracking-wider">Expedição</Label>
                             <Input
                               type="number"
                               className="h-8 text-xs font-semibold"
                               value={form.expedition_capacity_per_day}
                               onChange={(e) => setForm({ ...form, expedition_capacity_per_day: parseInt(e.target.value) || 0 })}
                             />
-                            <span className="text-[9px] text-muted-foreground/70">prs/dia</span>
+                            <span className="text-xs text-muted-foreground/70">prs/dia</span>
                           </div>
                        </div>
                      </div>
-                     <p className="text-[11px] text-amber-600 flex items-center gap-1.5 px-1 font-medium">
+                     <p className="text-xs text-amber-600 flex items-center gap-1.5 px-1 font-medium">
                        <Zap className="h-3 w-3" />
                        Usado para calcular o Lead Time Dinâmico baseado no backlog atual de ordens.
                      </p>
@@ -410,7 +410,7 @@ export default function LeadTime() {
           ) : (
             <Table>
               <TableHeader>
-                <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <TableHead>Categoria</TableHead>
                   <TableHead className="text-center">Corte</TableHead>
                   <TableHead className="text-center">Forração</TableHead>
@@ -445,14 +445,14 @@ export default function LeadTime() {
                     </TableCell>
                     <TableCell>
                        <div className="flex flex-wrap gap-1 justify-center max-w-[220px]">
-                          {lt.cutting_capacity_per_day > 0 && <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 border-amber-200 bg-amber-50">Corte: {lt.cutting_capacity_per_day}</Badge>}
-                          {lt.sewing_capacity_per_day > 0 && <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 border-amber-200 bg-amber-50">Forr: {lt.sewing_capacity_per_day}</Badge>}
-                         {lt.silk_capacity_per_day > 0 && <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 border-amber-200 bg-amber-50">Silk: {lt.silk_capacity_per_day}</Badge>}
-                         {lt.gluing_capacity_per_day > 0 && <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 border-amber-200 bg-amber-50">Colag: {lt.gluing_capacity_per_day}</Badge>}
-                         {lt.assembly_capacity_per_day > 0 && <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 border-amber-200 bg-amber-50">Mont: {lt.assembly_capacity_per_day}</Badge>}
-                         {lt.finishing_capacity_per_day > 0 && <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 border-amber-200 bg-amber-50">Acab: {lt.finishing_capacity_per_day}</Badge>}
-                          {lt.expedition_capacity_per_day > 0 && <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 border-amber-200 bg-amber-50">Exp: {lt.expedition_capacity_per_day}</Badge>}
-                          {!(lt.sewing_capacity_per_day || lt.cutting_capacity_per_day || lt.silk_capacity_per_day || lt.gluing_capacity_per_day || lt.assembly_capacity_per_day || lt.finishing_capacity_per_day || lt.expedition_capacity_per_day) && <span className="text-[10px] text-muted-foreground">Não def.</span>}
+                          {lt.cutting_capacity_per_day > 0 && <Badge variant="outline" className="text-xs px-1 py-0 h-4 border-amber-200 bg-amber-50">Corte: {lt.cutting_capacity_per_day}</Badge>}
+                          {lt.sewing_capacity_per_day > 0 && <Badge variant="outline" className="text-xs px-1 py-0 h-4 border-amber-200 bg-amber-50">Forr: {lt.sewing_capacity_per_day}</Badge>}
+                         {lt.silk_capacity_per_day > 0 && <Badge variant="outline" className="text-xs px-1 py-0 h-4 border-amber-200 bg-amber-50">Silk: {lt.silk_capacity_per_day}</Badge>}
+                         {lt.gluing_capacity_per_day > 0 && <Badge variant="outline" className="text-xs px-1 py-0 h-4 border-amber-200 bg-amber-50">Colag: {lt.gluing_capacity_per_day}</Badge>}
+                         {lt.assembly_capacity_per_day > 0 && <Badge variant="outline" className="text-xs px-1 py-0 h-4 border-amber-200 bg-amber-50">Mont: {lt.assembly_capacity_per_day}</Badge>}
+                         {lt.finishing_capacity_per_day > 0 && <Badge variant="outline" className="text-xs px-1 py-0 h-4 border-amber-200 bg-amber-50">Acab: {lt.finishing_capacity_per_day}</Badge>}
+                          {lt.expedition_capacity_per_day > 0 && <Badge variant="outline" className="text-xs px-1 py-0 h-4 border-amber-200 bg-amber-50">Exp: {lt.expedition_capacity_per_day}</Badge>}
+                          {!(lt.sewing_capacity_per_day || lt.cutting_capacity_per_day || lt.silk_capacity_per_day || lt.gluing_capacity_per_day || lt.assembly_capacity_per_day || lt.finishing_capacity_per_day || lt.expedition_capacity_per_day) && <span className="text-xs text-muted-foreground">Não def.</span>}
                        </div>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground max-w-[240px] truncate">
@@ -497,7 +497,7 @@ export default function LeadTime() {
             ) : (
               <Table>
                 <TableHeader>
-                   <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                   <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                      <TableHead>Categoria</TableHead>
                      <TableHead className="text-center">Corte</TableHead>
                      <TableHead className="text-center">Forração</TableHead>
@@ -515,31 +515,31 @@ export default function LeadTime() {
                       <TableCell className="font-medium">{dlt.shoe_category}</TableCell>
                         <TableCell className="text-center text-muted-foreground">
                           {dlt.dynamic_days_corte}d
-                          <div className="text-[10px] opacity-70">{dlt.current_load_corte} prs</div>
+                          <div className="text-xs opacity-70">{dlt.current_load_corte} prs</div>
                         </TableCell>
                         <TableCell className="text-center text-muted-foreground">
                           {dlt.dynamic_days_forracao}d
-                          <div className="text-[10px] opacity-70">{dlt.current_load_forracao} prs</div>
+                          <div className="text-xs opacity-70">{dlt.current_load_forracao} prs</div>
                         </TableCell>
                        <TableCell className="text-center text-muted-foreground">
                          {dlt.dynamic_days_silk}d
-                         <div className="text-[10px] opacity-70">{dlt.current_load_silk} prs</div>
+                         <div className="text-xs opacity-70">{dlt.current_load_silk} prs</div>
                        </TableCell>
                        <TableCell className="text-center text-muted-foreground">
                          {dlt.dynamic_days_colagem}d
-                         <div className="text-[10px] opacity-70">{dlt.current_load_colagem} prs</div>
+                         <div className="text-xs opacity-70">{dlt.current_load_colagem} prs</div>
                        </TableCell>
                        <TableCell className="text-center text-muted-foreground">
                          {dlt.dynamic_days_montagem}d
-                         <div className="text-[10px] opacity-70">{dlt.current_load_montagem} prs</div>
+                         <div className="text-xs opacity-70">{dlt.current_load_montagem} prs</div>
                        </TableCell>
                        <TableCell className="text-center text-muted-foreground">
                          {dlt.dynamic_days_acabamento}d
-                         <div className="text-[10px] opacity-70">{dlt.current_load_acabamento} prs</div>
+                         <div className="text-xs opacity-70">{dlt.current_load_acabamento} prs</div>
                        </TableCell>
                         <TableCell className="text-center text-muted-foreground">
                           {dlt.dynamic_days_expedicao}d
-                          <div className="text-[10px] opacity-70">{dlt.current_load_expedicao} prs</div>
+                          <div className="text-xs opacity-70">{dlt.current_load_expedicao} prs</div>
                         </TableCell>
                       <TableCell className="text-center">
                         <Badge className="bg-amber-600 hover:bg-amber-700">
@@ -581,7 +581,7 @@ function NumField({
 }) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-[11px] font-medium leading-none text-muted-foreground uppercase tracking-wider">{label}</Label>
+      <Label className="text-xs font-medium leading-none text-muted-foreground uppercase tracking-wider">{label}</Label>
       <div className="relative">
         <Input
           type="number"
@@ -590,7 +590,7 @@ function NumField({
           value={value}
           onChange={(e) => onChange(Math.max(0, Number(e.target.value || 0)))}
         />
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
           {unit}
         </span>
       </div>

@@ -298,7 +298,7 @@ export default function InputCostsPage() {
           <Panel flush bodyClassName="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <TableHead className="min-w-[220px]">Material</TableHead>
                   <TableHead className="w-[110px]">Categoria</TableHead>
                   <TableHead className="w-[110px] text-center">Un. Consumo</TableHead>
@@ -352,10 +352,10 @@ export default function InputCostsPage() {
                         <div className="font-medium text-sm leading-tight">{p.name}</div>
                         <div className="text-xs text-muted-foreground">{p.sku}</div>
                         {p.color && (
-                          <div className="text-[10px] text-muted-foreground">{p.color}</div>
+                          <div className="text-xs text-muted-foreground">{p.color}</div>
                         )}
                         {!p.active && (
-                          <Badge variant="secondary" className="text-[10px] h-4 mt-0.5">inativo</Badge>
+                          <Badge variant="secondary" className="text-xs h-4 mt-0.5">inativo</Badge>
                         )}
                       </TableCell>
 

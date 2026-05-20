@@ -159,7 +159,7 @@ export default function NfeDiagnosticPanel() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card className="border-green-500/30">
           <CardContent className="p-3">
-            <div className="text-[10px] uppercase text-green-600 font-bold flex items-center gap-1">
+            <div className="text-xs uppercase text-green-600 font-bold flex items-center gap-1">
               <CheckCircle2 className="w-3 h-3" /> OK
             </div>
             <div className="text-2xl font-bold tabular-nums mt-0.5">{counts.ok}</div>
@@ -167,7 +167,7 @@ export default function NfeDiagnosticPanel() {
         </Card>
         <Card className="border-amber-500/30">
           <CardContent className="p-3">
-            <div className="text-[10px] uppercase text-amber-600 font-bold flex items-center gap-1">
+            <div className="text-xs uppercase text-amber-600 font-bold flex items-center gap-1">
               <AlertTriangle className="w-3 h-3" /> Atenção
             </div>
             <div className="text-2xl font-bold tabular-nums mt-0.5">{counts.warn}</div>
@@ -175,7 +175,7 @@ export default function NfeDiagnosticPanel() {
         </Card>
         <Card className="border-red-500/30">
           <CardContent className="p-3">
-            <div className="text-[10px] uppercase text-red-600 font-bold flex items-center gap-1">
+            <div className="text-xs uppercase text-red-600 font-bold flex items-center gap-1">
               <XCircle className="w-3 h-3" /> Erro
             </div>
             <div className="text-2xl font-bold tabular-nums mt-0.5">{counts.error}</div>
@@ -183,7 +183,7 @@ export default function NfeDiagnosticPanel() {
         </Card>
         <Card>
           <CardContent className="p-3">
-            <div className="text-[10px] uppercase text-muted-foreground font-bold flex items-center gap-1">
+            <div className="text-xs uppercase text-muted-foreground font-bold flex items-center gap-1">
               <Clock className="w-3 h-3" /> Pendente
             </div>
             <div className="text-2xl font-bold tabular-nums mt-0.5">{counts.pending}</div>
@@ -237,7 +237,7 @@ export default function NfeDiagnosticPanel() {
                   <p className="text-sm font-medium">{d.label}</p>
                   <p className="text-xs text-muted-foreground">{d.description}</p>
                   {d.detail && (
-                    <p className="text-[10px] text-muted-foreground/70 mt-0.5">{d.detail}</p>
+                    <p className="text-xs text-muted-foreground/70 mt-0.5">{d.detail}</p>
                   )}
                 </div>
               </div>

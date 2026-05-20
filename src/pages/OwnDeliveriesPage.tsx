@@ -137,12 +137,12 @@ function OrdersTab() {
                         <span className="font-bold text-sm">PV #{o.order_number}</span>
                         <span className="text-sm truncate">{o.client?.razao_social || o.client_name || '—'}</span>
                         {o.client?.branch_code && (
-                          <Badge variant="outline" className="text-[10px] font-mono">
+                          <Badge variant="outline" className="text-xs font-mono">
                             {o.client.branch_code}
                             {o.client.branch_name ? ` · ${o.client.branch_name}` : ''}
                           </Badge>
                         )}
-                        <Badge variant="secondary" className="text-[10px]">{o.status}</Badge>
+                        <Badge variant="secondary" className="text-xs">{o.status}</Badge>
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5 truncate">
                         {[o.client?.endereco, o.client?.bairro, o.client?.cidade, o.client?.estado]
@@ -248,7 +248,7 @@ function RoutesTab() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-sm truncate">{r.name || `Rota ${r.id.slice(0, 6)}`}</span>
-                    <Badge className={`text-[10px] ${STATUS_COLOR[r.status]}`}>{STATUS_LABEL[r.status]}</Badge>
+                    <Badge className={`text-xs ${STATUS_COLOR[r.status]}`}>{STATUS_LABEL[r.status]}</Badge>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                     <Calendar className="h-3 w-3" /> {formatDate(r.scheduled_date)}
@@ -273,7 +273,7 @@ function RoutesTab() {
                 <Stat icon={<Coins className="h-3 w-3" />} label="Total" value={formatBrl(r.total_cost_brl)} highlight />
               </div>
               {r.cost_per_pair != null && (
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   Custo de entrega por par: <strong className="text-foreground">{formatBrl(r.cost_per_pair)}</strong>
                 </p>
               )}
@@ -314,7 +314,7 @@ function Stat({
 }: { icon: React.ReactNode; label: string; value: string; highlight?: boolean }) {
   return (
     <div className={`rounded p-1.5 ${highlight ? 'bg-primary/5 border border-primary/30' : 'bg-muted/30'}`}>
-      <div className="flex items-center gap-1 text-[10px] uppercase font-bold tracking-wider text-muted-foreground">
+      <div className="flex items-center gap-1 text-xs uppercase font-bold tracking-wider text-muted-foreground">
         {icon}{label}
       </div>
       <div className={`font-mono text-xs leading-tight ${highlight ? 'text-foreground font-bold' : ''}`}>{value}</div>

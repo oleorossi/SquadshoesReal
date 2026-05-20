@@ -92,7 +92,7 @@ function ExpandedWaveRow({ waveId }: { waveId: string }) {
               ) : (
                 <Table>
                   <TableHeader>
-                    <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                    <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                       <TableHead className="px-3 py-2 h-auto">Pedido</TableHead>
                       <TableHead className="px-3 py-2 h-auto">Cliente</TableHead>
                       <TableHead className="px-3 py-2 h-auto text-right">Pares</TableHead>
@@ -147,7 +147,7 @@ function ExpandedWaveRow({ waveId }: { waveId: string }) {
               ) : (
                 <Table>
                   <TableHeader>
-                    <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                    <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                       <TableHead className="px-3 py-2 h-auto">Solado</TableHead>
                       <TableHead className="px-3 py-2 h-auto">Referência</TableHead>
                       <TableHead className="px-3 py-2 h-auto">Cor</TableHead>
@@ -164,7 +164,7 @@ function ExpandedWaveRow({ waveId }: { waveId: string }) {
                           {it.reference_name}
                         </TableCell>
                         <TableCell className="px-3 py-2 text-xs">
-                          <Badge variant="outline" className="text-[10px]">
+                          <Badge variant="outline" className="text-xs">
                             {it.color || '—'}
                           </Badge>
                         </TableCell>
@@ -231,7 +231,7 @@ function WaveRow({
           </div>
         </TableCell>
         <TableCell className="px-3 py-3">
-          <div className="flex flex-col gap-1 text-[10px] font-mono">
+          <div className="flex flex-col gap-1 text-xs font-mono">
             <Badge variant="outline" className="gap-1 px-1.5 py-0 bg-blue-500/10 text-blue-600 border-blue-500/30 w-fit">
               <Truck className="w-3 h-3" />
               Ter {formatDate(wave.pickup_tuesday_date)}
@@ -490,7 +490,7 @@ export default function ProductionWavesPage({ embedded = false }: { embedded?: b
       <Panel flush>
           <Table>
             <TableHeader>
-              <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+              <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                 <TableHead className="w-10 px-3 py-2 h-auto"></TableHead>
                 <TableHead className="px-3 py-2 h-auto">Código</TableHead>
                 <TableHead className="px-3 py-2 h-auto">Semana</TableHead>
@@ -539,7 +539,7 @@ export default function ProductionWavesPage({ embedded = false }: { embedded?: b
                         <span className="text-muted-foreground font-normal normal-case tracking-normal">
                           · {fmtDayMonthBR(wg.monday)} – {fmtDayMonthBR(wg.sunday)}
                         </span>
-                        <span className="ml-auto text-[10px] text-muted-foreground font-normal">
+                        <span className="ml-auto text-xs text-muted-foreground font-normal">
                           {wg.waves.length} onda{wg.waves.length !== 1 ? 's' : ''} · {wg.totalPairs.toLocaleString('pt-BR')} pares
                         </span>
                       </div>

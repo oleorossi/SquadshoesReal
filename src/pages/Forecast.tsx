@@ -66,7 +66,7 @@ export default function Forecast() {
             />
           ) : (
             <div className="divide-y">
-              <div className="grid grid-cols-[1fr_80px_80px_80px_80px] gap-3 p-3 bg-muted/30 text-[10px] font-bold uppercase text-muted-foreground">
+              <div className="grid grid-cols-[1fr_80px_80px_80px_80px] gap-3 p-3 bg-muted/30 text-xs font-bold uppercase text-muted-foreground">
                 <span>Modelo / Cor</span>
                 <span className="text-right">Tamanhos</span>
                 <span className="text-right">Vendido 6m</span>

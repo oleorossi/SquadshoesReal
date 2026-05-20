@@ -165,10 +165,10 @@ function ModelCard({ active, onClick, icon, title, subtitle, routing, children }
             <span className={cn('text-sm font-semibold', active ? 'text-foreground' : 'text-muted-foreground')}>
               {title}
             </span>
-            {active && <Badge className="text-[10px] h-4 px-1.5">Selecionado</Badge>}
+            {active && <Badge className="text-xs h-4 px-1.5">Selecionado</Badge>}
           </div>
-          <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">{subtitle}</p>
-          <p className="text-[10px] text-muted-foreground/70 mt-1">
+          <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{subtitle}</p>
+          <p className="text-xs text-muted-foreground/70 mt-1">
             <span className="font-medium">Roteiro:</span> {routing}
           </p>
         </div>
@@ -320,7 +320,7 @@ export function ConstructionConfigPanel({
               </div>
               {has_colored_lining && (
                 <div className="pl-6 space-y-2">
-                  <Label className="text-[10px] text-muted-foreground">Modo de cor da forração</Label>
+                  <Label className="text-xs text-muted-foreground">Modo de cor da forração</Label>
                   <div className="space-y-1.5">
                     {(['standard', 'follows_variant', 'manual_mapping'] as ColoredLiningMode[]).map(m => (
                       <label key={m} className="flex items-center gap-2 cursor-pointer">
@@ -335,7 +335,7 @@ export function ConstructionConfigPanel({
                             else onChange('insole_color_mode', 'restricted_palette');
                           }}
                         />
-                        <span className="text-[11px]">
+                        <span className="text-xs">
                           {m === 'standard' ? 'Cor única fixa' : m === 'follows_variant' ? 'Segue a cor da variante' : 'Mapeamento manual (paleta restrita)'}
                         </span>
                       </label>
@@ -343,7 +343,7 @@ export function ConstructionConfigPanel({
                   </div>
                   {colored_lining_mode === 'manual_mapping' && (
                     <div className="flex items-center gap-2 pt-1">
-                      <Label className="text-[10px] text-muted-foreground whitespace-nowrap">Máx. cores:</Label>
+                      <Label className="text-xs text-muted-foreground whitespace-nowrap">Máx. cores:</Label>
                       <NumberInput
                         value={max_insole_colors}
                         onChange={v => onChange('max_insole_colors', v || 3)}
@@ -372,7 +372,7 @@ export function ConstructionConfigPanel({
             <div className="flex items-center gap-3 rounded-lg border border-dashed bg-muted/20 px-3 py-2.5">
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-medium">Capacidade diária no Aviamento</div>
-                <div className="text-[10px] text-muted-foreground mt-0.5">
+                <div className="text-xs text-muted-foreground mt-0.5">
                   Pares processados no Aviamento por dia (montagem de tiras/aviamentos).
                 </div>
               </div>
@@ -385,7 +385,7 @@ export function ConstructionConfigPanel({
                   step="1"
                   min={0}
                 />
-                <span className="text-[10px] text-muted-foreground">pares/dia</span>
+                <span className="text-xs text-muted-foreground">pares/dia</span>
               </div>
             </div>
           </div>
@@ -407,7 +407,7 @@ export function ConstructionConfigPanel({
           <Label className={cn('text-xs font-semibold cursor-pointer', hasSilk ? 'text-violet-700 dark:text-violet-300' : '')}>
             Setor Silk / Serigrafia
           </Label>
-          <p className="text-[10px] text-muted-foreground leading-tight">
+          <p className="text-xs text-muted-foreground leading-tight">
             Adiciona o setor Silk ao roteiro antes da Colagem — para impressão de logo, estampa ou acabamento serigráfico.
           </p>
         </div>

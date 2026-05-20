@@ -327,7 +327,7 @@ function CfopField({
         maxLength={4}
         className="h-9 mt-1 font-mono"
       />
-      <p className="text-[10px] text-muted-foreground mt-0.5">{hint} · sugerido <strong>{suggestion}</strong></p>
+      <p className="text-xs text-muted-foreground mt-0.5">{hint} · sugerido <strong>{suggestion}</strong></p>
     </div>
   );
 }

@@ -123,7 +123,7 @@ function FuelPriceRow({
         </Button>
       </div>
       {updatedAt && (
-        <p className="text-[10px] text-muted-foreground mt-1.5">
+        <p className="text-xs text-muted-foreground mt-1.5">
           Atualizado em {new Date(updatedAt).toLocaleString('pt-BR')}
         </p>
       )}
@@ -186,8 +186,8 @@ function VehiclesPanel() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-bold font-mono text-sm">{v.plate}</span>
-                    <Badge variant="outline" className="text-[10px] uppercase">{v.fuel_type}</Badge>
-                    {!v.active && <Badge variant="secondary" className="text-[10px]">Inativo</Badge>}
+                    <Badge variant="outline" className="text-xs uppercase">{v.fuel_type}</Badge>
+                    {!v.active && <Badge variant="secondary" className="text-xs">Inativo</Badge>}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
                     {v.model || '—'} · {v.type || 'sem tipo'}
@@ -283,7 +283,7 @@ function VehiclesPanel() {
                   value={form.wear_cost_per_km}
                   onChange={(e) => setForm((f) => ({ ...f, wear_cost_per_km: Number(e.target.value) || 0 }))}
                 />
-                <p className="text-[10px] text-muted-foreground mt-0.5">Pneus, manutenção e depreciação amortizadas.</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Pneus, manutenção e depreciação amortizadas.</p>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -380,7 +380,7 @@ function DriversPanel() {
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="font-bold text-sm">{d.name}</span>
-                  {!d.active && <Badge variant="secondary" className="text-[10px]">Inativo</Badge>}
+                  {!d.active && <Badge variant="secondary" className="text-xs">Inativo</Badge>}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
                   CNH: {d.cnh || '—'} · {d.phone || 'sem telefone'}

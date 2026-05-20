@@ -65,7 +65,7 @@ export function SectorWorkloadAggregated({ stageName, groupByColor = true }: Pro
           <CardContent className="py-3 px-4">
             <div className="text-xs text-muted-foreground uppercase tracking-wider">Blocos consolidados</div>
             <div className="display text-2xl tabular-nums font-mono mt-1">{totals.blocks}</div>
-            <div className="text-[10px] text-muted-foreground">
+            <div className="text-xs text-muted-foreground">
               {groupByColor ? 'por modelo + cor' : 'só por modelo'}
             </div>
           </CardContent>
@@ -74,21 +74,21 @@ export function SectorWorkloadAggregated({ stageName, groupByColor = true }: Pro
           <CardContent className="py-3 px-4">
             <div className="text-xs text-muted-foreground uppercase tracking-wider">Total pares</div>
             <div className="display text-2xl tabular-nums font-mono mt-1">{totals.pairs.toLocaleString('pt-BR')}</div>
-            <div className="text-[10px] text-muted-foreground">somados de {totals.ops} OPs individuais</div>
+            <div className="text-xs text-muted-foreground">somados de {totals.ops} OPs individuais</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="py-3 px-4">
             <div className="text-xs text-muted-foreground uppercase tracking-wider">A produzir</div>
             <div className="display text-2xl tabular-nums font-mono mt-1">{totals.remaining.toLocaleString('pt-BR')}</div>
-            <div className="text-[10px] text-muted-foreground">restantes a processar</div>
+            <div className="text-xs text-muted-foreground">restantes a processar</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="py-3 px-4">
             <div className="text-xs text-muted-foreground uppercase tracking-wider">OPs cobertas</div>
             <div className="display text-2xl tabular-nums font-mono mt-1">{totals.ops}</div>
-            <div className="text-[10px] text-muted-foreground">
+            <div className="text-xs text-muted-foreground">
               fator de consolidação: {totals.blocks > 0 ? (totals.ops / totals.blocks).toFixed(1) : '0'}x
             </div>
           </CardContent>
@@ -120,17 +120,17 @@ export function SectorWorkloadAggregated({ stageName, groupByColor = true }: Pro
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-sm">{row.model_name}</span>
-                      {row.color && <Badge variant="outline" className="text-[10px]">{row.color}</Badge>}
+                      {row.color && <Badge variant="outline" className="text-xs">{row.color}</Badge>}
                       {!groupByColor && (
-                        <Badge variant="outline" className="text-[10px] bg-muted">
+                        <Badge variant="outline" className="text-xs bg-muted">
                           todas as cores agregadas
                         </Badge>
                       )}
                       {row.shoe_category && (
-                        <span className="text-[10px] text-muted-foreground">{row.shoe_category}</span>
+                        <span className="text-xs text-muted-foreground">{row.shoe_category}</span>
                       )}
                       {isLate && (
-                        <Badge variant="outline" className="text-[10px] bg-red-500/10 text-red-700 border-red-500/30 dark:text-red-400">
+                        <Badge variant="outline" className="text-xs bg-red-500/10 text-red-700 border-red-500/30 dark:text-red-400">
                           atrasado
                         </Badge>
                       )}
@@ -165,13 +165,13 @@ export function SectorWorkloadAggregated({ stageName, groupByColor = true }: Pro
                   <div className="mt-3 pl-7 space-y-2 border-t border-border/40 pt-3">
                     {row.aggregated_grade && Object.keys(row.aggregated_grade).length > 0 && (
                       <div>
-                        <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Grade agregada (pares por tamanho)</div>
+                        <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Grade agregada (pares por tamanho)</div>
                         <div className="flex flex-wrap gap-1">
                           {Object.entries(row.aggregated_grade)
                             .filter(([k]) => /^\d+/.test(k))
                             .sort(([a], [b]) => Number(a) - Number(b))
                             .map(([size, qty]) => (
-                              <Badge key={size} variant="outline" className="text-[10px] font-mono">
+                              <Badge key={size} variant="outline" className="text-xs font-mono">
                                 {size}: {qty}
                               </Badge>
                             ))}
@@ -179,12 +179,12 @@ export function SectorWorkloadAggregated({ stageName, groupByColor = true }: Pro
                       </div>
                     )}
                     <div>
-                      <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">
+                      <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
                         OPs cobertas neste bloco ({row.order_numbers.length})
                       </div>
                       <div className="flex flex-wrap gap-1">
                         {row.order_numbers.map((num) => (
-                          <Badge key={num} variant="outline" className="text-[10px] font-mono">{num}</Badge>
+                          <Badge key={num} variant="outline" className="text-xs font-mono">{num}</Badge>
                         ))}
                       </div>
                     </div>

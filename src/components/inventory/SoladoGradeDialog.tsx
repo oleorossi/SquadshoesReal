@@ -270,7 +270,7 @@ function AddToGroupDialog({ open, onOpenChange, groupId, groupName }: {
             <div className="space-y-3">
               {available.length > 0 && (
                 <div className="space-y-1">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-1 pb-0.5">
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground px-1 pb-0.5">
                     Disponíveis ({available.length})
                   </p>
                   {available.map(p => (
@@ -297,7 +297,7 @@ function AddToGroupDialog({ open, onOpenChange, groupId, groupName }: {
               )}
               {alreadyInGroup.length > 0 && (
                 <div className="space-y-1 pt-2 border-t border-border/50">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-1 pb-0.5">
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground px-1 pb-0.5">
                     Já no grupo ({alreadyInGroup.length})
                   </p>
                   {alreadyInGroup.map(p => (
@@ -314,7 +314,7 @@ function AddToGroupDialog({ open, onOpenChange, groupId, groupName }: {
                           {p.color && <><span>•</span><span>{p.color}</span></>}
                         </div>
                       </div>
-                      <Badge variant="secondary" className="text-[10px] shrink-0">no grupo</Badge>
+                      <Badge variant="secondary" className="text-xs shrink-0">no grupo</Badge>
                     </div>
                   ))}
                 </div>
@@ -590,7 +590,7 @@ export function SoladoGradeDialog({ open, onOpenChange, product }: SoladoGradeDi
               {hasAnyConjugation && (
                 <Badge
                   variant="outline"
-                  className="text-[10px] h-5 gap-1 px-1.5 border-primary/40 text-primary bg-primary/5"
+                  className="text-xs h-5 gap-1 px-1.5 border-primary/40 text-primary bg-primary/5"
                   title="Esta grade contém numerações conjugadas (ex: 23/24)"
                 >
                   <Link2 className="h-3 w-3" /> Conjugado
@@ -613,7 +613,7 @@ export function SoladoGradeDialog({ open, onOpenChange, product }: SoladoGradeDi
                         className="flex-1 min-w-[100px] gap-1.5 text-xs py-2"
                       >
                         <span className="truncate">{v.color || 'Sem cor'}</span>
-                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 ml-1">
+                        <Badge variant="secondary" className="text-xs px-1.5 py-0 ml-1">
                           {qty}
                         </Badge>
                       </TabsTrigger>

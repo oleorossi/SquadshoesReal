@@ -205,7 +205,7 @@ function InvoiceItemsRow({ invoice, supplierName }: { invoice: Invoice; supplier
       <div className="rounded-md border overflow-x-auto">
         <Table>
           <TableHeader>
-            <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+            <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
               <TableHead>Código</TableHead>
               <TableHead>Produto</TableHead>
               <TableHead>NCM</TableHead>
@@ -228,9 +228,9 @@ function InvoiceItemsRow({ invoice, supplierName }: { invoice: Invoice; supplier
                 <TableCell className="text-xs text-right font-mono">{fmt(item.total_price)}</TableCell>
                 <TableCell className="text-xs text-center">
                   {item.added_to_stock ? (
-                    <Badge className="bg-success/15 text-success border-success/30 text-[10px]">Lançado</Badge>
+                    <Badge className="bg-success/15 text-success border-success/30 text-xs">Lançado</Badge>
                   ) : (
-                    <Badge variant="outline" className="text-[10px] cursor-pointer hover:bg-primary/10" onClick={() => setStockDialogOpen(true)}>
+                    <Badge variant="outline" className="text-xs cursor-pointer hover:bg-primary/10" onClick={() => setStockDialogOpen(true)}>
                       Pendente
                     </Badge>
                   )}
@@ -317,7 +317,7 @@ function SupplierPriceHistory({ supplierId }: { supplierId: string }) {
          <div className="overflow-x-auto">
            <Table>
              <TableHeader>
-               <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+               <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                  <TableHead>Material</TableHead>
                  <TableHead className="text-right">Último Preço</TableHead>
                  <TableHead className="text-right">Anterior</TableHead>
@@ -507,11 +507,11 @@ export default function Suppliers() {
                             <div className="flex items-center gap-2">
                               <p className="font-semibold truncate">{s.name}</p>
                               <div className="flex flex-wrap items-center gap-1.5">
-                                <Badge variant="outline" className={`text-[10px] shrink-0 ${s.active ? 'bg-success/15 text-success border-success/30' : 'bg-muted text-muted-foreground'}`}>
+                                <Badge variant="outline" className={`text-xs shrink-0 ${s.active ? 'bg-success/15 text-success border-success/30' : 'bg-muted text-muted-foreground'}`}>
                                   {s.active ? 'Ativo' : 'Inativo'}
                                 </Badge>
                                 {s.is_own_manufacturing && (
-                                  <Badge variant="outline" className="text-[10px] shrink-0 bg-blue-500/10 text-blue-600 border-blue-500/30">
+                                  <Badge variant="outline" className="text-xs shrink-0 bg-blue-500/10 text-blue-600 border-blue-500/30">
                                     Fabricação Própria
                                   </Badge>
                                 )}
@@ -627,7 +627,7 @@ function SupplierItemsDialog({ supplier, onOpenChange }: { supplier: Supplier | 
             <div className="rounded-md border overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <TableHead>SKU</TableHead>
                     <TableHead>Nome</TableHead>
                     <TableHead>Categoria</TableHead>

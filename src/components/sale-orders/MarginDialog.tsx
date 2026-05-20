@@ -177,33 +177,33 @@ export default function MarginDialog({ open, onOpenChange, saleOrderId, orderNum
             {/* KPIs principais */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="rounded-lg border bg-muted/30 p-3">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Receita Total</p>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Receita Total</p>
                 <p className="text-lg font-bold tabular-nums mt-1">{fmt(totalRevenue)}</p>
                 {Math.abs(totalRevenue - total) > 0.01 && (
-                  <p className="text-[10px] text-amber-600 mt-1">
+                  <p className="text-xs text-amber-600 mt-1">
                     PV total cadastrado: {fmt(total)} — divergência {fmt(Math.abs(totalRevenue - total))}
                   </p>
                 )}
               </div>
               <div className="rounded-lg border bg-muted/30 p-3">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Custo Total</p>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Custo Total</p>
                 <p className="text-lg font-bold tabular-nums mt-1">{fmt(totalCost)}</p>
-                <div className="text-[10px] text-muted-foreground mt-1 space-y-0.5">
+                <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
                   <div>Mat: {fmt(totalMaterial)}</div>
                   <div>MOD: {fmt(totalLabor)} · GGF: {fmt(totalOverhead)}</div>
                 </div>
               </div>
               <div className="rounded-lg border bg-muted/30 p-3">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Margem Líquida</p>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Margem Líquida</p>
                 <p className={cn(
                   'text-lg font-bold tabular-nums mt-1',
                   totalMargin >= 0 ? 'text-emerald-700' : 'text-red-700'
                 )}>{fmt(totalMargin)}</p>
               </div>
               <div className="rounded-lg border bg-muted/30 p-3">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Margem %</p>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Margem %</p>
                 <div className="mt-1.5"><MarginBadge pct={totalMarginPct} /></div>
-                <p className="text-[11px] text-muted-foreground mt-1">{successCount} {successCount === 1 ? 'item calculado' : 'itens calculados'}</p>
+                <p className="text-xs text-muted-foreground mt-1">{successCount} {successCount === 1 ? 'item calculado' : 'itens calculados'}</p>
               </div>
             </div>
 
@@ -245,7 +245,7 @@ export default function MarginDialog({ open, onOpenChange, saleOrderId, orderNum
                     <TableRow key={it.itemId}>
                       <TableCell>
                         <div className="font-medium text-sm">{it.refName}</div>
-                        {it.refCode && <div className="text-[10px] text-muted-foreground font-mono">{it.refCode}</div>}
+                        {it.refCode && <div className="text-xs text-muted-foreground font-mono">{it.refCode}</div>}
                       </TableCell>
                       <TableCell>{it.color}</TableCell>
                       <TableCell className="text-right font-mono">{it.quantity}</TableCell>
@@ -266,7 +266,7 @@ export default function MarginDialog({ open, onOpenChange, saleOrderId, orderNum
               </Table>
             </div>
 
-            <p className="text-[10px] text-muted-foreground italic">
+            <p className="text-xs text-muted-foreground italic">
               Custo inclui matéria-prima, mão-de-obra, overhead (GGF) e embalagem — fonte: <code>calculate_order_cost</code>.
               Cálculo só pra exibição, não persiste em <code>order_costs</code>.
             </p>

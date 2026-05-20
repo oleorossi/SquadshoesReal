@@ -110,16 +110,16 @@ export default function SolesHub() {
           actions={
             <div className="flex gap-3">
               <Card className="px-3 py-2">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Solados</p>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Solados</p>
                 <p className="text-lg font-bold font-mono">{stats.totalSoles}</p>
               </Card>
               <Card className="px-3 py-2">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Pares em estoque</p>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Pares em estoque</p>
                 <p className="text-lg font-bold font-mono">{stats.totalPairs.toLocaleString('pt-BR')}</p>
               </Card>
               {stats.lowStock > 0 && (
                 <Card className="px-3 py-2 border-amber-300/60 bg-amber-50/30 dark:bg-amber-950/20">
-                  <p className="text-[10px] uppercase tracking-wider text-amber-700 dark:text-amber-400 flex items-center gap-1">
+                  <p className="text-xs uppercase tracking-wider text-amber-700 dark:text-amber-400 flex items-center gap-1">
                     <AlertTriangle className="h-3 w-3" /> Abaixo do mínimo
                   </p>
                   <p className="text-lg font-bold font-mono text-amber-700 dark:text-amber-400">{stats.lowStock}</p>
@@ -135,7 +135,7 @@ export default function SolesHub() {
           <Panel
             className="col-span-12 md:col-span-4 lg:col-span-3 flex flex-col"
             title="Solados ativos"
-            actions={<Badge variant="secondary" className="text-[10px]">{filtered.length}</Badge>}
+            actions={<Badge variant="secondary" className="text-xs">{filtered.length}</Badge>}
             flush
             bodyClassName="flex flex-col flex-1 min-h-0"
           >
@@ -177,10 +177,10 @@ export default function SolesHub() {
                       <div key={group.base}>
                         {/* Header do grupo (modelo) */}
                         <div className="px-3 py-1.5 bg-muted/30 border-b border-border/60 flex items-center justify-between">
-                          <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+                          <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground truncate">
                             {group.base}
                           </span>
-                          <Badge variant="secondary" className="text-[9px] h-4 px-1 leading-none">
+                          <Badge variant="secondary" className="text-xs h-4 px-1 leading-none">
                             {group.items.length} {group.items.length === 1 ? 'cor' : 'cores'}
                           </Badge>
                         </div>
@@ -290,12 +290,12 @@ function SoleListItem({ sole, selected, onSelect }: {
         </div>
         <div className="flex items-center gap-1.5 mt-0.5 ml-3.5">
           {sole.sku && (
-            <span className="font-mono text-[9px] text-muted-foreground/70 truncate max-w-[80px]">
+            <span className="font-mono text-xs text-muted-foreground/70 truncate max-w-[80px]">
               {sole.sku}
             </span>
           )}
           <span className={cn(
-            'text-[10px] font-mono',
+            'text-xs font-mono',
             isZero ? 'text-rose-600' : isLow ? 'text-amber-600' : 'text-muted-foreground'
           )}>
             {total} {total === 1 ? 'par' : 'pares'}

@@ -49,7 +49,7 @@ export function HubTabsList({ tabs, className, size = 'sm' }: HubTabsListProps) 
             )}
             {tab.label}
             {tab.badge !== undefined && (
-              <span className="ml-0.5 min-w-[18px] h-[18px] rounded-full bg-primary/15 text-primary text-[11px] font-bold flex items-center justify-center px-1 leading-none">
+              <span className="ml-0.5 min-w-[18px] h-[18px] rounded-full bg-primary/15 text-primary text-xs font-bold flex items-center justify-center px-1 leading-none">
                 {tab.badge}
               </span>
             )}

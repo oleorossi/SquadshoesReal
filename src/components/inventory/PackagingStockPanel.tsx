@@ -178,7 +178,7 @@ export default function PackagingStockPanel() {
                     <TableCell className="text-center">
                       <span className={`font-semibold ${isLow ? 'text-destructive' : ''}`}>
                         {qty}
-                        {isLow && <Badge variant="destructive" className="ml-1 text-[9px] px-1">BAIXO</Badge>}
+                        {isLow && <Badge variant="destructive" className="ml-1 text-xs px-1">BAIXO</Badge>}
                       </span>
                     </TableCell>
                     <TableCell className="text-center text-muted-foreground">{minStock}</TableCell>
@@ -228,7 +228,7 @@ export default function PackagingStockPanel() {
             <div>
               <Label className="text-xs">Consumo Unitário (unidades por par)</Label>
               <NumberInput value={editForm.yield_per_meter} onChange={v => setEditForm(f => ({ ...f, yield_per_meter: v }))} min={0} step="1" decimals={0} />
-              <p className="text-[10px] text-muted-foreground mt-1">Quantas unidades desta embalagem são consumidas por par produzido</p>
+              <p className="text-xs text-muted-foreground mt-1">Quantas unidades desta embalagem são consumidas por par produzido</p>
             </div>
 
             <div className="grid grid-cols-2 gap-3">

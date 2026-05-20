@@ -132,16 +132,16 @@ export default function CTe() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-xs font-bold">{r.cte_number}</span>
-                    <Badge variant="outline" className={`text-[10px] capitalize ${STATUS_COLOR[r.status]}`}>
+                    <Badge variant="outline" className={`text-xs capitalize ${STATUS_COLOR[r.status]}`}>
                       {r.status}
                     </Badge>
-                    <Badge variant="outline" className="text-[10px] capitalize">{r.cte_type}</Badge>
+                    <Badge variant="outline" className="text-xs capitalize">{r.cte_type}</Badge>
                     <span className="text-xs text-muted-foreground">
                       {format(new Date(r.emission_date), 'dd/MM/yy')} · {r.origin_uf} → {r.destination_uf}
                     </span>
                   </div>
                   <p className="text-sm mt-0.5">{r.transporter_name || '—'}</p>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     Frete: R$ {Number(r.freight_value || 0).toFixed(2)} · {r.freight_modality?.toUpperCase()}
                     {r.protocol && ` · Protocolo: ${r.protocol}`}
                     {r.related_nfe_chaves?.length ? ` · ${r.related_nfe_chaves.length} NF-e(s) vinculada(s)` : ''}

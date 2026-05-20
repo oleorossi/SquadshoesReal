@@ -180,7 +180,7 @@ const PackagingManagementPage = ({ embedded = false }: { embedded?: boolean }) =
                 <Icon className="h-4 w-4" />
                 {s.label}
                 {s.id === 'alerts' && alertsCount > 0 && (
-                  <span className="ml-1 rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-bold text-destructive-foreground">
+                  <span className="ml-1 rounded-full bg-destructive px-1.5 py-0.5 text-xs font-bold text-destructive-foreground">
                     {alertsCount > 99 ? '99+' : alertsCount}
                   </span>
                 )}

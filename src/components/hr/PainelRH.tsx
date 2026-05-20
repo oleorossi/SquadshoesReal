@@ -204,7 +204,7 @@ export default function PainelRH({ onNavigateTab }: Props) {
               <div className="min-w-0">
                 <p className="text-xs text-muted-foreground">Ativos</p>
                 <p className="display text-2xl tabular-nums">{data.totalActive}</p>
-                {data.totalInactive > 0 && <p className="text-[10px] text-muted-foreground">{data.totalInactive} inativo{data.totalInactive > 1 ? 's' : ''}</p>}
+                {data.totalInactive > 0 && <p className="text-xs text-muted-foreground">{data.totalInactive} inativo{data.totalInactive > 1 ? 's' : ''}</p>}
               </div>
             </div>
           </CardContent>
@@ -218,7 +218,7 @@ export default function PainelRH({ onNavigateTab }: Props) {
               <div className="min-w-0">
                 <p className="text-xs text-muted-foreground">Folha Mensal</p>
                 <p className="text-lg font-bold font-mono leading-tight">{fmt(data.totalSalaries)}</p>
-                <p className="text-[10px] text-muted-foreground">Média {fmt(data.avgSalary)}/func</p>
+                <p className="text-xs text-muted-foreground">Média {fmt(data.avgSalary)}/func</p>
               </div>
             </div>
           </CardContent>
@@ -233,7 +233,7 @@ export default function PainelRH({ onNavigateTab }: Props) {
                 <p className="text-xs text-muted-foreground">Adiantamentos (mês)</p>
                 <p className="text-lg font-bold font-mono leading-tight">{fmt(data.totalAdvances)}</p>
                 {data.pendingAdvancesCount > 0 && (
-                  <p className="text-[10px] text-amber-600">{data.pendingAdvancesCount} pendente{data.pendingAdvancesCount > 1 ? 's' : ''}</p>
+                  <p className="text-xs text-amber-600">{data.pendingAdvancesCount} pendente{data.pendingAdvancesCount > 1 ? 's' : ''}</p>
                 )}
               </div>
             </div>
@@ -248,7 +248,7 @@ export default function PainelRH({ onNavigateTab }: Props) {
               <div className="min-w-0">
                 <p className="text-xs text-muted-foreground">Ausências (mês)</p>
                 <p className="display text-2xl tabular-nums">{data.absentDays}</p>
-                <p className="text-[10px] text-muted-foreground">{data.absencesMonth} ocorrência{data.absencesMonth > 1 ? 's' : ''}</p>
+                <p className="text-xs text-muted-foreground">{data.absencesMonth} ocorrência{data.absencesMonth > 1 ? 's' : ''}</p>
               </div>
             </div>
           </CardContent>
@@ -327,7 +327,7 @@ export default function PainelRH({ onNavigateTab }: Props) {
                     <span className="font-medium truncate">{d.name}</span>
                     <div className="flex items-center gap-2 shrink-0">
                       <span className="text-xs text-muted-foreground font-mono">{fmt(d.salary)}</span>
-                      <Badge variant="secondary" className="text-[10px]">{d.count}</Badge>
+                      <Badge variant="secondary" className="text-xs">{d.count}</Badge>
                     </div>
                   </div>
                   <Progress
@@ -350,7 +350,7 @@ export default function PainelRH({ onNavigateTab }: Props) {
           <CardContent className="space-y-3">
             {data.birthdays.length > 0 && (
               <div>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Este mês</p>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1.5">Este mês</p>
                 <div className="space-y-1.5">
                   {data.birthdays.map(b => (
                     <div key={b.name} className="flex items-center justify-between text-sm">
@@ -359,7 +359,7 @@ export default function PainelRH({ onNavigateTab }: Props) {
                         <span className="font-mono text-xs text-muted-foreground">
                           {String(b.admDate.getDate()).padStart(2, '0')}/{String(b.admDate.getMonth() + 1).padStart(2, '0')}
                         </span>
-                        <Badge variant="secondary" className="text-[10px]">{b.yearsAtCompany} ano{b.yearsAtCompany !== 1 ? 's' : ''}</Badge>
+                        <Badge variant="secondary" className="text-xs">{b.yearsAtCompany} ano{b.yearsAtCompany !== 1 ? 's' : ''}</Badge>
                       </div>
                     </div>
                   ))}
@@ -368,7 +368,7 @@ export default function PainelRH({ onNavigateTab }: Props) {
             )}
             {data.upcomingAnniv.length > 0 && (
               <div>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Próximos 30 dias</p>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1.5">Próximos 30 dias</p>
                 <div className="space-y-1">
                   {data.upcomingAnniv.map(a => (
                     <div key={a.name} className="flex items-center justify-between text-xs text-muted-foreground">
@@ -397,28 +397,28 @@ export default function PainelRH({ onNavigateTab }: Props) {
               <AlarmClock className="h-4 w-4 text-primary shrink-0" />
               <div className="text-left">
                 <p className="text-sm font-medium">Ponto</p>
-                <p className="text-[10px] text-muted-foreground">Importar / lançar batidas</p>
+                <p className="text-xs text-muted-foreground">Importar / lançar batidas</p>
               </div>
             </Button>
             <Button variant="outline" className="justify-start gap-2 h-auto py-3" onClick={() => onNavigateTab('funcionarios')}>
               <Users2 className="h-4 w-4 text-primary shrink-0" />
               <div className="text-left">
                 <p className="text-sm font-medium">Funcionários</p>
-                <p className="text-[10px] text-muted-foreground">Cadastros, salários</p>
+                <p className="text-xs text-muted-foreground">Cadastros, salários</p>
               </div>
             </Button>
             <Button variant="outline" className="justify-start gap-2 h-auto py-3" onClick={() => onNavigateTab('folha')}>
               <DollarSign className="h-4 w-4 text-primary shrink-0" />
               <div className="text-left">
                 <p className="text-sm font-medium">Folha</p>
-                <p className="text-[10px] text-muted-foreground">Banco de horas, vales</p>
+                <p className="text-xs text-muted-foreground">Banco de horas, vales</p>
               </div>
             </Button>
             <Button variant="outline" className="justify-start gap-2 h-auto py-3" onClick={() => onNavigateTab('relatorios')}>
               <FileText className="h-4 w-4 text-primary shrink-0" />
               <div className="text-left">
                 <p className="text-sm font-medium">Relatórios</p>
-                <p className="text-[10px] text-muted-foreground">Custo, HE, produtividade</p>
+                <p className="text-xs text-muted-foreground">Custo, HE, produtividade</p>
               </div>
             </Button>
           </div>
@@ -467,7 +467,7 @@ function BankHoursAlertList({
           <button
             type="button"
             onClick={() => setExpanded(v => !v)}
-            className="text-[10px] text-primary hover:underline self-center"
+            className="text-xs text-primary hover:underline self-center"
           >
             {expanded ? '− recolher' : `+${bhAlertas.length - VISIBLE} mostrar todos`}
           </button>

@@ -161,7 +161,7 @@ export function PackagingTab({ sheetId, soleGroupId }: PackagingTabProps) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium text-sm">{b.nome}</span>
-            <Badge variant="outline" className={`text-[10px] ${KIND_BADGE[k].tone}`}>{KIND_LABEL[k]}</Badge>
+            <Badge variant="outline" className={`text-xs ${KIND_BADGE[k].tone}`}>{KIND_LABEL[k]}</Badge>
             {checked && <Check className="h-3.5 w-3.5 text-primary" />}
           </div>
           <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-3 flex-wrap">
@@ -192,12 +192,12 @@ export function PackagingTab({ sheetId, soleGroupId }: PackagingTabProps) {
             <Icon className="h-4 w-4 text-primary" />
             {KIND_LABEL[kind]}
             {selectedCount > 0 && (
-              <Badge variant="secondary" className="ml-auto text-[10px]">
+              <Badge variant="secondary" className="ml-auto text-xs">
                 {selectedCount} vinculada{selectedCount > 1 ? 's' : ''}
               </Badge>
             )}
           </CardTitle>
-          <p className="text-[11px] text-muted-foreground">{cfg.helper}</p>
+          <p className="text-xs text-muted-foreground">{cfg.helper}</p>
         </CardHeader>
         <CardContent className="space-y-2">
           {list.map(renderRow)}
@@ -227,7 +227,7 @@ export function PackagingTab({ sheetId, soleGroupId }: PackagingTabProps) {
         <h3 className="text-sm font-semibold flex items-center gap-2">
           <Box className="h-4 w-4 text-primary" /> Embalagens vinculadas
         </h3>
-        <Badge variant="secondary" className="text-[10px]">
+        <Badge variant="secondary" className="text-xs">
           {linkedCount} de {boxTypes.length}
         </Badge>
       </div>

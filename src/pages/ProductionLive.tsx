@@ -166,17 +166,17 @@ export default function ProductionLive() {
             </div>
             <div className="grid grid-cols-3 gap-8">
               <div>
-                <div className="eyebrow text-[9px]">OPs ativas</div>
+                <div className="eyebrow text-xs">OPs ativas</div>
                 <div className="display text-2xl mt-1">{stats.running}</div>
               </div>
               <div>
-                <div className="eyebrow text-[9px]">Total pares</div>
+                <div className="eyebrow text-xs">Total pares</div>
                 <div className="display text-2xl mt-1 tabular-nums">
                   {stats.totalPairs.toLocaleString('pt-BR')}
                 </div>
               </div>
               <div>
-                <div className="eyebrow text-[9px]">Atrasadas</div>
+                <div className="eyebrow text-xs">Atrasadas</div>
                 <div className={cn('display text-2xl mt-1', stats.late > 0 && 'text-primary')}>
                   {stats.late}
                 </div>
@@ -227,11 +227,11 @@ export default function ProductionLive() {
                           {(order.order_number || '').replace(/^OP-/, '') || '—'}
                         </span>
                         {late ? (
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary">
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-bold uppercase tracking-wider text-primary">
                             <span className="h-1.5 w-1.5 rounded-full bg-primary" /> Atraso
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-500">
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-bold uppercase tracking-wider text-emerald-500">
                             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Rodando
                           </span>
                         )}
@@ -240,7 +240,7 @@ export default function ProductionLive() {
                       {current && (
                         <div className="flex items-center gap-2 mt-3">
                           <span
-                            className="font-mono text-[10px] font-bold uppercase tracking-widest"
+                            className="font-mono text-xs font-bold uppercase tracking-widest"
                             style={{ color: stageColor }}
                           >
                             {current.sector_name}
@@ -254,7 +254,7 @@ export default function ProductionLive() {
 
                       <div className="flex items-center justify-between mt-4">
                         <div>
-                          <div className="eyebrow text-[9px]">Pares</div>
+                          <div className="eyebrow text-xs">Pares</div>
                           <div className="display text-2xl mt-1 tabular-nums">
                             {order.quantity}
                           </div>
@@ -287,7 +287,7 @@ export default function ProductionLive() {
                       {late && order.due_date && (
                         <div className="mt-3 p-2 rounded border border-primary/30 bg-primary/5 flex items-center gap-2">
                           <AlertTriangle className="h-3 w-3 text-primary shrink-0" />
-                          <span className="text-[10px] text-primary">
+                          <span className="text-xs text-primary">
                             Vencida em {new Date(order.due_date).toLocaleDateString('pt-BR')}
                           </span>
                         </div>

@@ -279,28 +279,28 @@ export default function LateArrivalsTab() {
             <Card>
               <CardContent className="p-4 text-center">
                 <AlertCircle className="h-5 w-5 mx-auto mb-1 text-amber-500" />
-                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Ocorrências</p>
+                <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Ocorrências</p>
                 <p className="text-2xl font-black font-mono text-amber-600">{totalLateOccurrences}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
                 <Users2 className="h-5 w-5 mx-auto mb-1 text-destructive" />
-                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Funcionários</p>
+                <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Funcionários</p>
                 <p className="text-2xl font-black font-mono text-destructive">{uniqueLateEmployees}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
                 <Clock className="h-5 w-5 mx-auto mb-1 text-orange-500" />
-                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Total Atraso</p>
+                <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Total Atraso</p>
                 <p className="text-2xl font-black font-mono text-orange-600">{minutesToHHMM(totalLateMinutes)}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
                 <Clock className="h-5 w-5 mx-auto mb-1 text-muted-foreground" />
-                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Média/ocorr.</p>
+                <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Média/ocorr.</p>
                 <p className="text-2xl font-black font-mono">
                   {totalLateOccurrences > 0 ? minutesToHHMM(Math.round(totalLateMinutes / totalLateOccurrences)) : '—'}
                 </p>
@@ -351,10 +351,10 @@ export default function LateArrivalsTab() {
                     {expanded ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
                     <span className="font-semibold text-sm flex-1">{wg.weekLabel}</span>
                     <div className="flex items-center gap-3">
-                      <Badge variant="outline" className="text-[10px] font-mono text-amber-700 border-amber-500/30 bg-amber-500/10">
+                      <Badge variant="outline" className="text-xs font-mono text-amber-700 border-amber-500/30 bg-amber-500/10">
                         {wg.records.length} atraso{wg.records.length !== 1 ? 's' : ''}
                       </Badge>
-                      <Badge variant="outline" className="text-[10px] font-mono">
+                      <Badge variant="outline" className="text-xs font-mono">
                         {wg.employeeCount} func.
                       </Badge>
                       <span className="font-mono text-xs text-orange-600 font-semibold">

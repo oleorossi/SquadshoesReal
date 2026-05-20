@@ -43,7 +43,7 @@ const QuickActionsFAB = () => {
             </div>
             <div>
               <p className="font-medium">Pedido de Venda</p>
-              <p className="text-[11px] text-muted-foreground">Criar novo PV</p>
+              <p className="text-xs text-muted-foreground">Criar novo PV</p>
             </div>
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => navigate('/orders')} className="gap-3 cursor-pointer py-3 text-[13px]">
@@ -52,7 +52,7 @@ const QuickActionsFAB = () => {
             </div>
             <div>
               <p className="font-medium">Ordem de Produção</p>
-              <p className="text-[11px] text-muted-foreground">Criar nova OP</p>
+              <p className="text-xs text-muted-foreground">Criar nova OP</p>
             </div>
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => navigate('/estoque')} className="gap-3 cursor-pointer py-3 text-[13px]">
@@ -61,7 +61,7 @@ const QuickActionsFAB = () => {
             </div>
             <div>
               <p className="font-medium">Entrada de Estoque</p>
-              <p className="text-[11px] text-muted-foreground">Registrar entrada</p>
+              <p className="text-xs text-muted-foreground">Registrar entrada</p>
             </div>
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -193,7 +193,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-[13px] font-extrabold text-sidebar-foreground leading-tight tracking-tight">Squad Shoes</p>
-                  <p className="text-[9px] text-sidebar-muted leading-tight mt-0.5 font-semibold tracking-[0.15em] uppercase">Gestão Industrial</p>
+                  <p className="text-xs text-sidebar-muted leading-tight mt-0.5 font-semibold tracking-[0.15em] uppercase">Gestão Industrial</p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <ModeToggle className="h-7 w-7 text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-accent" />
@@ -249,7 +249,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
           {/* Favoritos */}
           {!isCollapsed && filteredFavorites.length > 0 && (
             <div className="px-2 pb-2">
-              <div className="flex items-center gap-2 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-sidebar-muted">
+              <div className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-sidebar-muted">
                 <Star className="h-3 w-3 fill-primary text-primary" />
                 <span>Favoritos</span>
               </div>
@@ -346,7 +346,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
                     <button
                       onClick={() => toggleGroup(group.label)}
                       className={cn(
-                        "w-full flex items-center justify-between px-3 py-1.5 rounded-md text-[11px] font-bold uppercase tracking-wider transition-colors mt-2",
+                        "w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-colors mt-2",
                         active ? "text-sidebar-primary" : "text-sidebar-muted hover:text-sidebar-foreground"
                       )}
                     >
@@ -396,7 +396,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
               {/* Seção Sistema — visível para admins no final da sidebar */}
               {filteredSystemItems.length > 0 && (
                 <div className="mt-3 pt-3 border-t border-sidebar-border/40">
-                  <p className="px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-sidebar-muted">Sistema</p>
+                  <p className="px-3 py-1 text-xs font-bold uppercase tracking-wider text-sidebar-muted">Sistema</p>
                   {filteredSystemItems.map((item) => (
                     <NavLink
                       key={item.to}
@@ -443,16 +443,16 @@ export default function AppLayout({ children, printMode = false }: { children: R
             <div className="flex flex-col gap-1.5">
               {/* User row */}
               <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg bg-sidebar-accent/40">
-                <div className="h-7 w-7 rounded-full bg-sidebar-primary/20 ring-1 ring-sidebar-primary/30 flex items-center justify-center shrink-0 text-sidebar-primary font-bold text-[11px]">
+                <div className="h-7 w-7 rounded-full bg-sidebar-primary/20 ring-1 ring-sidebar-primary/30 flex items-center justify-center shrink-0 text-sidebar-primary font-bold text-xs">
                   {currentProfile?.full_name
                     ? currentProfile.full_name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('')
                     : '?'}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[11px] font-semibold text-sidebar-foreground/90 truncate leading-tight">
+                  <p className="text-xs font-semibold text-sidebar-foreground/90 truncate leading-tight">
                     {currentProfile?.full_name || 'Usuário'}
                   </p>
-                  <p className="text-[9px] text-sidebar-muted truncate leading-tight">
+                  <p className="text-xs text-sidebar-muted truncate leading-tight">
                     {currentRoles.length > 0
                       ? ROLES.find(r => r.key === currentRoles[0].role)?.label || currentRoles[0].role
                       : (import.meta.env.VITE_APP_VERSION?.split('-')[0] || 'ERP Industrial')}
@@ -563,7 +563,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-[13px] font-extrabold text-foreground leading-tight tracking-tight truncate">Squad Shoes</p>
-                <p className="text-[9px] text-muted-foreground leading-tight mt-0.5 font-semibold tracking-[0.05em] uppercase truncate">
+                <p className="text-xs text-muted-foreground leading-tight mt-0.5 font-semibold tracking-[0.05em] uppercase truncate">
                   {isDashboard ? "Gestão Industrial" : "Sistema"}
                 </p>
               </div>

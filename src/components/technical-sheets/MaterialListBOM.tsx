@@ -29,7 +29,7 @@ export function MaterialListBOM({ materials, onAddMaterial, onRemoveMaterial }: 
       <div className="border rounded-lg overflow-hidden bg-card shadow-sm">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-muted/50 border-b text-muted-foreground uppercase text-[10px] font-bold">
+            <tr className="bg-muted/50 border-b text-muted-foreground uppercase text-xs font-bold">
               <th className="px-4 py-3 text-left">Componente</th>
               <th className="px-4 py-3 text-left">Material / Insumo</th>
               <th className="px-4 py-3 text-center">Unid.</th>
@@ -44,7 +44,7 @@ export function MaterialListBOM({ materials, onAddMaterial, onRemoveMaterial }: 
                   <Input placeholder="Peça..." className="h-8 text-xs" />
                 </td>
                 <td className="px-4 py-2">
-                  <Button variant="outline" className="h-8 w-full justify-start text-[10px] text-muted-foreground font-normal px-2">
+                  <Button variant="outline" className="h-8 w-full justify-start text-xs text-muted-foreground font-normal px-2">
                     {/* Busca no seu estoque global */}
                     Selecionar material do estoque...
                   </Button>

@@ -154,14 +154,14 @@ export function MinBillingDateSuggestionDialog({
                 a partir de <strong className="text-foreground">{formatBR(minDateISO)}</strong>
               </div>
               {materialShortage ? (
-                <div className="mt-2 flex items-start gap-1.5 text-[11px] text-amber-700">
+                <div className="mt-2 flex items-start gap-1.5 text-xs text-amber-700">
                   <AlertTriangle className="h-3.5 w-3.5 mt-px shrink-0" />
                   <span>
                     Material precisa ser comprado{supplierLeadDays > 0 ? <> — somados <strong>{supplierLeadDays} dias úteis</strong> de lead time do fornecedor.</> : '.'}
                   </span>
                 </div>
               ) : (
-                <div className="mt-2 flex items-start gap-1.5 text-[11px] text-emerald-700">
+                <div className="mt-2 flex items-start gap-1.5 text-xs text-emerald-700">
                   <Package className="h-3.5 w-3.5 mt-px shrink-0" />
                   <span>Material disponível em estoque — sem espera por compra.</span>
                 </div>
@@ -207,10 +207,10 @@ export function MinBillingDateSuggestionDialog({
             </p>
             {bottleneck === 'material' && materialShortfalls.length > 0 && (
               <div className="mt-2 space-y-1">
-                <p className="text-[10px] uppercase font-bold text-amber-700 tracking-wide flex items-center gap-1">
+                <p className="text-xs uppercase font-bold text-amber-700 tracking-wide flex items-center gap-1">
                   <Info className="h-3 w-3" /> Materiais em falta
                 </p>
-                <ul className="text-[11px] space-y-0.5 max-h-32 overflow-y-auto">
+                <ul className="text-xs space-y-0.5 max-h-32 overflow-y-auto">
                   {materialShortfalls.slice(0, 8).map(m => (
                     <li key={m.product_id} className="flex items-center justify-between gap-2 border-b border-amber-500/20 pb-0.5">
                       <span className="truncate">
@@ -223,7 +223,7 @@ export function MinBillingDateSuggestionDialog({
                     </li>
                   ))}
                   {materialShortfalls.length > 8 && (
-                    <li className="text-[10px] text-muted-foreground italic">
+                    <li className="text-xs text-muted-foreground italic">
                       ... e mais {materialShortfalls.length - 8} item(ns)
                     </li>
                   )}
@@ -237,7 +237,7 @@ export function MinBillingDateSuggestionDialog({
           <div className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <Label className="text-[10px] uppercase font-bold text-muted-foreground mb-1 block">
+                <Label className="text-xs uppercase font-bold text-muted-foreground mb-1 block">
                   Mês de Faturamento
                 </Label>
                 <Select value={manualMonth} onValueChange={(v) => { setManualMonth(v); setManualWeek(''); }}>
@@ -248,7 +248,7 @@ export function MinBillingDateSuggestionDialog({
                 </Select>
               </div>
               <div>
-                <Label className="text-[10px] uppercase font-bold text-muted-foreground mb-1 block">
+                <Label className="text-xs uppercase font-bold text-muted-foreground mb-1 block">
                   Semana de Faturamento
                 </Label>
                 <Select value={manualWeek} onValueChange={setManualWeek}>
@@ -264,12 +264,12 @@ export function MinBillingDateSuggestionDialog({
               </div>
             </div>
             {computedManualDate && (
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Faturamento previsto: <strong className="text-foreground font-mono">{formatBR(computedManualDate)}</strong>
                 {' '}(segunda-feira da semana selecionada)
               </p>
             )}
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Se a data escolhida for anterior à mínima, o pedido será marcado como
               <strong> override manual</strong> (destacado em âmbar no Kanban).
             </p>

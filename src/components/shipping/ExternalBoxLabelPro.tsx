@@ -108,7 +108,7 @@ export function ExternalBoxLabelPro({
         <div className="border-b border-foreground py-0.5 px-0.5">
           <div className="flex items-baseline gap-1">
             <span className="text-[7px] font-bold uppercase text-muted-foreground tracking-wider">Para:</span>
-            <span className="text-[10px] font-black uppercase truncate flex-1 leading-tight">
+            <span className="text-xs font-black uppercase truncate flex-1 leading-tight">
               {razaoSocial || '—'}
             </span>
             {branchLabel && (
@@ -150,8 +150,8 @@ export function ExternalBoxLabelPro({
         )}
         <div className="flex flex-col justify-center min-w-0 flex-1">
           {/* Referência = nome do modelo. SKU/refCode removido em 2026-05. */}
-          <p className="text-[11px] font-black uppercase truncate leading-tight">{refName || refCode || '—'}</p>
-          <p className="text-[9px] leading-tight">
+          <p className="text-xs font-black uppercase truncate leading-tight">{refName || refCode || '—'}</p>
+          <p className="text-xs leading-tight">
             <span className="font-bold">Cor:</span> {colorName}
           </p>
           {strapsLabel && (
@@ -179,7 +179,7 @@ export function ExternalBoxLabelPro({
               <div className="bg-foreground text-background text-[7px] leading-none py-px font-bold">
                 {size}
               </div>
-              <div className="text-[10px] font-black leading-none py-px">
+              <div className="text-xs font-black leading-none py-px">
                 {grid[size] || '-'}
               </div>
             </div>

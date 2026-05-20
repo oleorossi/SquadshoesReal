@@ -476,7 +476,7 @@ ${styles}
                                        <SignedImage src={item.silk.silk_url} className="h-full w-full object-contain" />
                                      </div>
                                    )}
-                                   <span className="text-[10px] font-bold uppercase tracking-wider">Silk: {item.silk.silk_name}</span>
+                                   <span className="text-xs font-bold uppercase tracking-wider">Silk: {item.silk.silk_name}</span>
                                  </Badge>
                                )}
                              </div>
@@ -509,7 +509,7 @@ ${styles}
                                       <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">
                                         <div className="font-medium text-foreground">{ig.opNumber}</div>
                                         {sectorKey === 'aviamento' && ig.fichaCount > 0 ? (
-                                          <div className="text-[11px] text-muted-foreground">
+                                          <div className="text-xs text-muted-foreground">
                                             {Number.isInteger(ig.fichaCount)
                                               ? `${ig.fichaCount} ficha${ig.fichaCount === 1 ? '' : 's'}`
                                               : `${ig.fichaCount.toFixed(2).replace('.', ',')} fichas`}

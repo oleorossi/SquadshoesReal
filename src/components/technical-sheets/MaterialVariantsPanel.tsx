@@ -106,8 +106,8 @@ function ColorTagInput({
           onBlur={() => { if (input.trim()) add(input); }}
         />
       </div>
-      <p className="text-[10px] text-muted-foreground">
-        Pressione <kbd className="px-1 rounded bg-muted border text-[9px]">Enter</kbd> ou vírgula para adicionar cada cor. Backspace remove a última.
+      <p className="text-xs text-muted-foreground">
+        Pressione <kbd className="px-1 rounded bg-muted border text-xs">Enter</kbd> ou vírgula para adicionar cada cor. Backspace remove a última.
       </p>
     </div>
   );
@@ -192,7 +192,7 @@ function VariantFormDialog({
               onChange={e => set('material_name', e.target.value)}
               autoFocus
             />
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Material principal da sandália — cada grupo terá seu próprio SKU e NCM na NF-e
             </p>
           </div>
@@ -207,7 +207,7 @@ function VariantFormDialog({
                 value={form.sku}
                 onChange={e => set('sku', e.target.value)}
               />
-              <p className="text-[10px] text-muted-foreground">Substitui o código da ficha na NF-e</p>
+              <p className="text-xs text-muted-foreground">Substitui o código da ficha na NF-e</p>
             </div>
             <div className="space-y-1">
               <Label className="text-xs font-semibold">Código de barras</Label>
@@ -227,7 +227,7 @@ function VariantFormDialog({
                 value={form.ncm}
                 onChange={e => set('ncm', e.target.value)}
               />
-              <p className="text-[10px] text-muted-foreground">Deixe em branco para herdar</p>
+              <p className="text-xs text-muted-foreground">Deixe em branco para herdar</p>
             </div>
             <div className="space-y-1">
               <Label className="text-xs font-semibold">Preço unitário (opcional)</Label>
@@ -261,7 +261,7 @@ function VariantFormDialog({
               value={form.description_override}
               onChange={e => set('description_override', e.target.value)}
             />
-            <p className="text-[10px] text-muted-foreground">Substitui "{`{nome} - {cor}`}" na linha da NF-e</p>
+            <p className="text-xs text-muted-foreground">Substitui "{`{nome} - {cor}`}" na linha da NF-e</p>
           </div>
 
           <div className="flex items-center gap-3">
@@ -348,16 +348,16 @@ export function MaterialVariantsPanel({ referenceId, referenceName, referenceNcm
                       </Badge>
                     )}
                     {v.ncm && (
-                      <Badge variant="secondary" className="text-[10px]">NCM: {v.ncm}</Badge>
+                      <Badge variant="secondary" className="text-xs">NCM: {v.ncm}</Badge>
                     )}
                     {!v.sku && (
-                      <Badge variant="destructive" className="text-[10px]">Sem SKU</Badge>
+                      <Badge variant="destructive" className="text-xs">Sem SKU</Badge>
                     )}
                   </div>
                   {v.available_colors && v.available_colors.length > 0 && (
                     <div className="flex flex-wrap gap-1">
                       {v.available_colors.map(c => (
-                        <span key={c} className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-muted text-[10px] text-muted-foreground border">
+                        <span key={c} className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-muted text-xs text-muted-foreground border">
                           {c}
                         </span>
                       ))}

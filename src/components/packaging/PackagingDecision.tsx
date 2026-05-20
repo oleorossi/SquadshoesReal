@@ -172,7 +172,7 @@ export function PackagingDecision({ order }: PackagingDecisionProps) {
                         <div className="flex items-center gap-2">
                           <PackageCheck className="h-3.5 w-3.5 text-primary shrink-0" />
                           <span className="font-medium text-xs">{b.nome}</span>
-                          <Badge variant="outline" className="text-[9px] h-4">{b.type}</Badge>
+                          <Badge variant="outline" className="text-xs h-4">{b.type}</Badge>
                         </div>
                       </td>
                       <td className="p-2 text-center text-xs font-mono">{b.pairsPerBox}</td>
@@ -183,7 +183,7 @@ export function PackagingDecision({ order }: PackagingDecisionProps) {
                         {b.stockAvail !== null ? (
                           <span className={b.hasShortage ? 'text-destructive font-semibold' : 'text-muted-foreground'}>
                             {b.stockAvail}
-                            {b.hasShortage && <span className="ml-1 text-[10px] text-destructive">⚠ FALTA {b.boxesNeeded - b.stockAvail}</span>}
+                            {b.hasShortage && <span className="ml-1 text-xs text-destructive">⚠ FALTA {b.boxesNeeded - b.stockAvail}</span>}
                           </span>
                         ) : <span className="text-muted-foreground">—</span>}
                       </td>

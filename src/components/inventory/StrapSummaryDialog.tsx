@@ -230,7 +230,7 @@ export default function StrapSummaryDialog({ open, onOpenChange, movements }: Pr
                   <p className="display text-xl tabular-nums">{fmt(projections.nextWeekDemand)} m</p>
                   <span className="text-xs text-muted-foreground">demanda projetada</span>
                   {projections.nextWeekDemand > projections.totalStrapStock && (
-                    <Badge variant="destructive" className="text-[10px] ml-auto">Estoque insuficiente</Badge>
+                    <Badge variant="destructive" className="text-xs ml-auto">Estoque insuficiente</Badge>
                   )}
                 </CardContent>
               </Card>
@@ -245,7 +245,7 @@ export default function StrapSummaryDialog({ open, onOpenChange, movements }: Pr
                   <p className="display text-xl tabular-nums">{fmt(projections.nextMonthDemand)} m</p>
                   <span className="text-xs text-muted-foreground">demanda projetada</span>
                   {projections.nextMonthDemand > projections.totalStrapStock && (
-                    <Badge variant="destructive" className="text-[10px] ml-auto">Estoque insuficiente</Badge>
+                    <Badge variant="destructive" className="text-xs ml-auto">Estoque insuficiente</Badge>
                   )}
                 </CardContent>
               </Card>

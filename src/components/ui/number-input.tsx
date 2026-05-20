@@ -130,7 +130,7 @@ export function NumberInput({ value, onChange, id, className, required, min = 0,
       {input}
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 select-none font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+        className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 select-none font-mono text-xs font-semibold uppercase tracking-wider text-muted-foreground"
       >
         {unit}
       </span>

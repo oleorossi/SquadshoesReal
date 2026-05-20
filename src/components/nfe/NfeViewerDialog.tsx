@@ -87,29 +87,29 @@ export function NfeViewerDialog({ nfe, open, onOpenChange, clientLabel, orderNum
 
         <div className="px-6 py-3 border-b border-border/60 bg-muted/30 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2 text-xs">
           <div>
-            <div className="text-muted-foreground uppercase tracking-wider text-[10px]">Destinatário</div>
+            <div className="text-muted-foreground uppercase tracking-wider text-xs">Destinatário</div>
             <div className="font-medium truncate" title={clientLabel || nfe.nome_destinatario || ''}>
               {clientLabel || nfe.nome_destinatario || '—'}
             </div>
           </div>
           <div>
-            <div className="text-muted-foreground uppercase tracking-wider text-[10px]">CNPJ Destinatário</div>
+            <div className="text-muted-foreground uppercase tracking-wider text-xs">CNPJ Destinatário</div>
             <div className="font-mono">{formatCnpj(nfe.cnpj_destinatario) || '—'}</div>
           </div>
           <div>
-            <div className="text-muted-foreground uppercase tracking-wider text-[10px]">Emitente</div>
+            <div className="text-muted-foreground uppercase tracking-wider text-xs">Emitente</div>
             <div className="font-mono">{formatCnpj(nfe.cnpj_emitente) || '—'}</div>
           </div>
           <div>
-            <div className="text-muted-foreground uppercase tracking-wider text-[10px]">Valor Total</div>
+            <div className="text-muted-foreground uppercase tracking-wider text-xs">Valor Total</div>
             <div className="font-bold">
               R$ {Number(nfe.valor_total).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </div>
           </div>
           <div className="col-span-2 md:col-span-3">
-            <div className="text-muted-foreground uppercase tracking-wider text-[10px]">Chave de Acesso</div>
+            <div className="text-muted-foreground uppercase tracking-wider text-xs">Chave de Acesso</div>
             <div className="flex items-center gap-2">
-              <span className="font-mono text-[11px] truncate">{formatChave(nfe.chave_acesso)}</span>
+              <span className="font-mono text-xs truncate">{formatChave(nfe.chave_acesso)}</span>
               {nfe.chave_acesso && (
                 <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={handleCopyChave} title="Copiar chave">
                   <Copy className="h-3 w-3" />
@@ -118,7 +118,7 @@ export function NfeViewerDialog({ nfe, open, onOpenChange, clientLabel, orderNum
             </div>
           </div>
           <div>
-            <div className="text-muted-foreground uppercase tracking-wider text-[10px]">Emissão</div>
+            <div className="text-muted-foreground uppercase tracking-wider text-xs">Emissão</div>
             <div>
               {nfe.data_emissao
                 ? new Date(nfe.data_emissao).toLocaleString('pt-BR')
@@ -127,7 +127,7 @@ export function NfeViewerDialog({ nfe, open, onOpenChange, clientLabel, orderNum
           </div>
           {nfe.motivo_rejeicao && (
             <div className="col-span-full">
-              <div className="text-red-600 uppercase tracking-wider text-[10px] font-bold flex items-center gap-1">
+              <div className="text-red-600 uppercase tracking-wider text-xs font-bold flex items-center gap-1">
                 <AlertTriangle className="h-3 w-3" /> Motivo Rejeição
               </div>
               <div className="text-red-700 text-xs">{nfe.motivo_rejeicao}</div>
@@ -135,8 +135,8 @@ export function NfeViewerDialog({ nfe, open, onOpenChange, clientLabel, orderNum
           )}
           {nfe.protocolo_cancelamento && (
             <div className="col-span-full">
-              <div className="text-muted-foreground uppercase tracking-wider text-[10px]">Protocolo Cancelamento</div>
-              <div className="font-mono text-[11px]">{nfe.protocolo_cancelamento}</div>
+              <div className="text-muted-foreground uppercase tracking-wider text-xs">Protocolo Cancelamento</div>
+              <div className="font-mono text-xs">{nfe.protocolo_cancelamento}</div>
             </div>
           )}
         </div>

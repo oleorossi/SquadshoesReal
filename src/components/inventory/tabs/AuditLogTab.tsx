@@ -107,7 +107,7 @@ export default function AuditLogTab() {
                         {config.label}
                       </Badge>
                       {log.reversed && (
-                        <Badge variant="secondary" className="ml-1 text-[10px]">
+                        <Badge variant="secondary" className="ml-1 text-xs">
                           Revertido
                         </Badge>
                       )}

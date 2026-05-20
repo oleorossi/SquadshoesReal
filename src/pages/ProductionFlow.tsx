@@ -178,16 +178,16 @@ export default function ProductionFlow() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="display text-sm tracking-[0.06em]">{s.key}</div>
-                    <div className="font-mono text-[10px] text-muted-foreground">
+                    <div className="font-mono text-xs text-muted-foreground">
                       {String(i + 1).padStart(2, '0')} / 05
                     </div>
                   </div>
-                  <span className="font-mono text-[11px] font-bold text-muted-foreground">{colOps.length}</span>
+                  <span className="font-mono text-xs font-bold text-muted-foreground">{colOps.length}</span>
                 </div>
 
                 {/* OP cards */}
                 {colOps.length === 0 ? (
-                  <div className="text-center text-[11px] text-muted-foreground/50 italic py-6">
+                  <div className="text-center text-xs text-muted-foreground/50 italic py-6">
                     Nenhuma OP nesta etapa
                   </div>
                 ) : (
@@ -211,15 +211,15 @@ export default function ProductionFlow() {
                         />
                       )}
                       <div className="flex justify-between items-center">
-                        <span className="font-mono text-[10.5px] text-muted-foreground">{o.id}</span>
-                        <span className="font-mono text-[9.5px] text-muted-foreground border border-border rounded px-1 py-px">
+                        <span className="font-mono text-xs text-muted-foreground">{o.id}</span>
+                        <span className="font-mono text-xs text-muted-foreground border border-border rounded px-1 py-px">
                           {o.line}
                         </span>
                       </div>
                       <div className="text-[12.5px] font-semibold mt-1.5 leading-tight">{o.modelo}</div>
                       <div className="flex items-baseline gap-1 mt-1">
                         <span className="display text-xl tabular-nums">{o.pairs}</span>
-                        <span className="font-mono text-[10px] text-muted-foreground">pares</span>
+                        <span className="font-mono text-xs text-muted-foreground">pares</span>
                       </div>
                       <div className="h-[3px] bg-border rounded-sm mt-2 overflow-hidden">
                         <div
@@ -231,9 +231,9 @@ export default function ProductionFlow() {
                         />
                       </div>
                       <div className="flex justify-between mt-1.5">
-                        <span className="font-mono text-[9.5px] text-muted-foreground">{o.prog}%</span>
+                        <span className="font-mono text-xs text-muted-foreground">{o.prog}%</span>
                         <span
-                          className="font-mono text-[9.5px]"
+                          className="font-mono text-xs"
                           style={{ color: o.late ? 'hsl(var(--primary))' : undefined }}
                         >
                           {o.late ? 'ATRASADA' : o.due}

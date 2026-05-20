@@ -206,7 +206,7 @@ export function ConversionReportTab() {
               </ul>
             </div>
           </div>
-          <p className="text-muted-foreground text-[11px] pt-1">
+          <p className="text-muted-foreground text-xs pt-1">
             Linha vermelha na tabela abaixo = material que vai gerar custo errado ou bloquear cálculo
             de consumo até ser ajustado.
           </p>
@@ -324,7 +324,7 @@ export function ConversionReportTab() {
                         <TableCell>
                           <div>
                             <p className="text-sm font-medium">{p.name}</p>
-                            <p className="text-[10px] text-muted-foreground">
+                            <p className="text-xs text-muted-foreground">
                               {p.category || '—'}
                               {p.product_groups?.name ? ` · ${p.product_groups.name}` : ''}
                               {p.sku ? ` · ${p.sku}` : ''}
@@ -335,12 +335,12 @@ export function ConversionReportTab() {
                           {Number(p.quantity || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}
                         </TableCell>
                         <TableCell className="text-center text-xs">
-                          <Badge variant="outline" className="font-mono text-[10px]">
+                          <Badge variant="outline" className="font-mono text-xs">
                             {p.purchase_unit || p.unit}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-center text-xs">
-                          <Badge variant="outline" className="font-mono text-[10px]">
+                          <Badge variant="outline" className="font-mono text-xs">
                             {consumeUnit}
                           </Badge>
                         </TableCell>
@@ -356,7 +356,7 @@ export function ConversionReportTab() {
                                 'secondary'
                               }
                               className={cn(
-                                'text-[10px] gap-1 w-fit',
+                                'text-xs gap-1 w-fit',
                                 issue.level === 'soft' && 'border-amber-500/50 text-amber-700 dark:text-amber-400'
                               )}
                             >
@@ -366,7 +366,7 @@ export function ConversionReportTab() {
                               {issue.label}
                             </Badge>
                             {issue.hint && (
-                              <span className="text-[10px] text-muted-foreground">{issue.hint}</span>
+                              <span className="text-xs text-muted-foreground">{issue.hint}</span>
                             )}
                           </div>
                         </TableCell>

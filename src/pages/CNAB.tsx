@@ -107,11 +107,11 @@ export default function CNAB() {
         displayLabel={(r: any) => `• ${r.filename} (${r.cnab_layout})`}
         columns={[
           { key: 'filename', label: 'Arquivo', render: r => <span className="font-mono text-xs">{r.filename}</span> },
-          { key: 'cnab_layout', label: 'Layout', render: r => <Badge variant="outline" className="text-[10px]">{r.cnab_layout}</Badge> },
+          { key: 'cnab_layout', label: 'Layout', render: r => <Badge variant="outline" className="text-xs">{r.cnab_layout}</Badge> },
           { key: 'generated_at', label: 'Gerado', render: r => <span className="text-xs">{format(new Date(r.generated_at), 'dd/MM/yy HH:mm')}</span> },
           { key: 'total_records', label: 'Registros', align: 'right' },
           { key: 'total_value', label: 'Valor Total', align: 'right', render: r => <span className="font-mono text-xs font-bold">R$ {Number(r.total_value || 0).toFixed(2)}</span> },
-          { key: 'status', label: 'Status', render: r => <Badge variant="outline" className={`${STATUS[r.status]} text-[10px] capitalize`}>{r.status}</Badge> },
+          { key: 'status', label: 'Status', render: r => <Badge variant="outline" className={`${STATUS[r.status]} text-xs capitalize`}>{r.status}</Badge> },
         ]}
       />
 
@@ -161,7 +161,7 @@ export default function CNAB() {
                       <Checkbox checked={form.selected_ar.has(ar.id)} onCheckedChange={() => toggleAr(ar.id)} />
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-xs truncate">{ar.customer_name || ar.description || '—'}</p>
-                        <p className="text-[10px] text-muted-foreground">
+                        <p className="text-xs text-muted-foreground">
                           Venc.: {ar.due_date ? format(new Date(ar.due_date), 'dd/MM/yy') : '—'}
                         </p>
                       </div>
@@ -171,7 +171,7 @@ export default function CNAB() {
                 </div>
               )}
             </div>
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               O CNAB de remessa fica disponível pra download e envio ao banco via internet banking.
               O retorno (.RET) é processado em uma operação separada após o banco confirmar pagamentos.
             </p>

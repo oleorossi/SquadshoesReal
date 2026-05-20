@@ -329,7 +329,7 @@ export default function RoutePlannerOwn({ open, onOpenChange, orders, onCreated 
                           {s.order.client?.razao_social || s.order.client_name || '—'}
                         </span>
                         {s.order.client?.branch_code && (
-                          <Badge variant="outline" className="text-[10px] font-mono">
+                          <Badge variant="outline" className="text-xs font-mono">
                             {s.order.client.branch_code}
                             {s.order.client.branch_name ? ` · ${s.order.client.branch_name}` : ''}
                           </Badge>
@@ -341,7 +341,7 @@ export default function RoutePlannerOwn({ open, onOpenChange, orders, onCreated 
                           .filter(Boolean).join(' · ') || 'Sem endereço cadastrado'}
                       </p>
                       {s.geoError && (
-                        <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5 flex items-center gap-1">
+                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5 flex items-center gap-1">
                           <AlertTriangle className="h-3 w-3" />{s.geoError}
                         </p>
                       )}
@@ -351,11 +351,11 @@ export default function RoutePlannerOwn({ open, onOpenChange, orders, onCreated 
                       {(() => {
                         const w = weightByOrderId.get(s.order.id);
                         return w && w.grossWeightKg > 0 ? (
-                          <div className="text-[10px] text-muted-foreground">{w.grossWeightKg.toFixed(2)} kg</div>
+                          <div className="text-xs text-muted-foreground">{w.grossWeightKg.toFixed(2)} kg</div>
                         ) : null;
                       })()}
                       {s.distanceFromPreviousKm !== undefined && (
-                        <div className="text-[10px] text-muted-foreground">
+                        <div className="text-xs text-muted-foreground">
                           +{s.distanceFromPreviousKm.toFixed(1)} km
                         </div>
                       )}
@@ -399,7 +399,7 @@ export default function RoutePlannerOwn({ open, onOpenChange, orders, onCreated 
             }`}>
               <div className="flex items-center gap-2">
                 <Weight className={`h-3.5 w-3.5 ${exceedsCapacity ? 'text-destructive' : 'text-primary'}`} />
-                <span className={`text-[10px] uppercase font-bold tracking-wider ${
+                <span className={`text-xs uppercase font-bold tracking-wider ${
                   exceedsCapacity ? 'text-destructive' : 'text-muted-foreground'
                 }`}>Carga total da rota</span>
                 <span className={`ml-auto font-mono text-sm ${exceedsCapacity ? 'text-destructive font-bold' : 'text-foreground'}`}>
@@ -412,7 +412,7 @@ export default function RoutePlannerOwn({ open, onOpenChange, orders, onCreated 
                 </span>
               </div>
               {exceedsCapacity && (
-                <p className="text-[11px] text-destructive mt-1 flex items-center gap-1">
+                <p className="text-xs text-destructive mt-1 flex items-center gap-1">
                   <AlertTriangle className="h-3 w-3" />
                   Excede capacidade do veículo. Escolha um veículo maior ou divida a rota.
                 </p>
@@ -449,13 +449,13 @@ function CostBadge({
 }) {
   return (
     <div className={`rounded-md border p-2 ${highlight ? 'border-primary/40 bg-primary/5' : 'border-border bg-muted/20'}`}>
-      <div className="flex items-center gap-1 text-[10px] uppercase font-bold tracking-wider text-muted-foreground">
+      <div className="flex items-center gap-1 text-xs uppercase font-bold tracking-wider text-muted-foreground">
         {icon}{label}
       </div>
       <div className={`mt-1 font-mono ${highlight ? 'text-foreground font-bold' : 'text-foreground'} text-sm leading-tight`}>
         {value}
       </div>
-      {hint && <div className="text-[10px] text-muted-foreground mt-0.5">{hint}</div>}
+      {hint && <div className="text-xs text-muted-foreground mt-0.5">{hint}</div>}
     </div>
   );
 }

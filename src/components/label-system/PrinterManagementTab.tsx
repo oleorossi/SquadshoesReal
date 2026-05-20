@@ -202,10 +202,10 @@ export function PrinterManagementTab() {
                   <Printer className={`h-5 w-5 ${p.status === 'online' ? 'text-primary' : 'text-muted-foreground'}`} />
                   <div>
                     <CardTitle className="text-sm">{p.name}</CardTitle>
-                    <p className="text-[11px] text-muted-foreground">{p.brand} {p.model}</p>
+                    <p className="text-xs text-muted-foreground">{p.brand} {p.model}</p>
                   </div>
                 </div>
-                <Badge variant={p.status === 'online' ? 'default' : 'secondary'} className="text-[10px]">
+                <Badge variant={p.status === 'online' ? 'default' : 'secondary'} className="text-xs">
                   {p.status === 'online' ? '● Online' : '○ Offline'}
                 </Badge>
               </div>
@@ -222,7 +222,7 @@ export function PrinterManagementTab() {
 
               {/* Paper level */}
               <div className="space-y-1">
-                <div className="flex justify-between text-[11px]">
+                <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">Papel</span>
                   <span className={p.paper_level < 20 ? 'text-destructive font-medium' : ''}>{p.paper_level}%</span>
                 </div>
@@ -230,7 +230,7 @@ export function PrinterManagementTab() {
               </div>
 
               {p.jobs_in_queue > 0 && (
-                <div className="text-[11px] text-muted-foreground flex items-center gap-1">
+                <div className="text-xs text-muted-foreground flex items-center gap-1">
                   <Layers className="h-3 w-3" /> {p.jobs_in_queue} job(s) na fila
                 </div>
               )}
@@ -265,19 +265,19 @@ export function PrinterManagementTab() {
           <CardContent className="space-y-3">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div>
-                <p className="text-[10px] font-semibold uppercase text-muted-foreground">Conexão</p>
+                <p className="text-xs font-semibold uppercase text-muted-foreground">Conexão</p>
                 <p>{selectedPrinter.connection_type} · {selectedPrinter.address}</p>
               </div>
               <div>
-                <p className="text-[10px] font-semibold uppercase text-muted-foreground">Resolução</p>
+                <p className="text-xs font-semibold uppercase text-muted-foreground">Resolução</p>
                 <p>{selectedPrinter.dpi} DPI</p>
               </div>
               <div>
-                <p className="text-[10px] font-semibold uppercase text-muted-foreground">Largura Máx.</p>
+                <p className="text-xs font-semibold uppercase text-muted-foreground">Largura Máx.</p>
                 <p>{selectedPrinter.max_width_mm} mm</p>
               </div>
               <div>
-                <p className="text-[10px] font-semibold uppercase text-muted-foreground">Custo/Etiqueta</p>
+                <p className="text-xs font-semibold uppercase text-muted-foreground">Custo/Etiqueta</p>
                 <p>R$ {selectedPrinter.cost_per_label.toFixed(2)}</p>
               </div>
             </div>

@@ -342,7 +342,7 @@ export default function Automations() {
             <Activity className="h-3.5 w-3.5" />
             Histórico
             {executions.length > 0 && (
-              <Badge variant="secondary" className="h-4 px-1 text-[10px] font-mono">{executions.length}</Badge>
+              <Badge variant="secondary" className="h-4 px-1 text-xs font-mono">{executions.length}</Badge>
             )}
           </TabsTrigger>
         </TabsList>
@@ -384,35 +384,35 @@ export default function Automations() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="font-semibold text-sm">{wf.name}</h3>
-                          <Badge variant="outline" className="text-[10px]">{cat.label}</Badge>
+                          <Badge variant="outline" className="text-xs">{cat.label}</Badge>
                           {wf.enabled
-                            ? <Badge variant="default" className="text-[10px] bg-success/15 text-success border-success/30">Ativo</Badge>
-                            : <Badge variant="secondary" className="text-[10px]">Inativo</Badge>
+                            ? <Badge variant="default" className="text-xs bg-success/15 text-success border-success/30">Ativo</Badge>
+                            : <Badge variant="secondary" className="text-xs">Inativo</Badge>
                           }
                         </div>
                         <p className="text-xs text-muted-foreground mt-0.5">{wf.description}</p>
 
                         {/* Flow visualization */}
                         <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                          <Badge variant="outline" className="text-[10px] gap-1">
+                          <Badge variant="outline" className="text-xs gap-1">
                             <Zap className="h-2.5 w-2.5" />{wf.trigger_label}
                           </Badge>
                           {wf.conditions.length > 0 && (
                             <>
                               <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                              <Badge variant="outline" className="text-[10px] gap-1">
+                              <Badge variant="outline" className="text-xs gap-1">
                                 <Filter className="h-2.5 w-2.5" />{wf.conditions.length} {wf.conditions.length === 1 ? 'condição' : 'condições'}
                               </Badge>
                             </>
                           )}
                           <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                          <Badge variant="outline" className="text-[10px] gap-1">
+                          <Badge variant="outline" className="text-xs gap-1">
                             <Play className="h-2.5 w-2.5" />{wf.actions.length} {wf.actions.length === 1 ? 'ação' : 'ações'}
                           </Badge>
                         </div>
 
                         {/* Stats */}
-                        <div className="flex items-center gap-4 mt-2 text-[11px] text-muted-foreground">
+                        <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
                           <span>{wf.execution_count} execuções</span>
                           {wf.execution_count > 0 && (
                             <span>{Math.round((wf.success_count / wf.execution_count) * 100)}% sucesso</span>
@@ -509,7 +509,7 @@ export default function Automations() {
                               <p className="text-xs text-destructive mt-0.5">{ex.error_message}</p>
                             )}
                             {ex.status === 'success' && (ex.result as any)?.actions_queued?.length > 0 && (
-                              <p className="text-[10px] text-muted-foreground mt-0.5">
+                              <p className="text-xs text-muted-foreground mt-0.5">
                                 Ações: {((ex.result as any).actions_queued as { label: string }[]).map(a => a.label).join(', ')}
                               </p>
                             )}
@@ -517,11 +517,11 @@ export default function Automations() {
                           <div className="text-right shrink-0">
                             <Badge
                               variant="outline"
-                              className={cn('text-[10px]', isOk ? 'text-success border-success/40' : 'text-destructive border-destructive/40')}
+                              className={cn('text-xs', isOk ? 'text-success border-success/40' : 'text-destructive border-destructive/40')}
                             >
                               {isOk ? 'sucesso' : 'erro'}
                             </Badge>
-                            <p className="text-[10px] text-muted-foreground mt-1">
+                            <p className="text-xs text-muted-foreground mt-1">
                               {new Date(ex.executed_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                             </p>
                           </div>
@@ -589,7 +589,7 @@ export default function Automations() {
                         }, {})
                       ).map(([group, triggers]) => (
                         <div key={group}>
-                          <p className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">{group}</p>
+                          <p className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{group}</p>
                           {triggers.map(t => (
                             <SelectItem key={t.value} value={t.value} className="text-xs pl-4">{t.label}</SelectItem>
                           ))}
@@ -689,7 +689,7 @@ export default function Automations() {
                     return (
                       <div key={action.id} className="border rounded-lg overflow-hidden">
                         <div className="flex items-center gap-2 px-3 py-2 bg-muted/30">
-                          <Badge variant="outline" className="text-[10px] h-4 px-1 shrink-0">{i + 1}</Badge>
+                          <Badge variant="outline" className="text-xs h-4 px-1 shrink-0">{i + 1}</Badge>
                           <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                           <span className="text-xs font-medium flex-1">{action.label}</span>
                           <Button size="icon" variant="ghost" className="h-6 w-6 text-destructive shrink-0" onClick={() => removeAction(action.id)}>
@@ -700,7 +700,7 @@ export default function Automations() {
                           <div className="px-3 pb-3 pt-2 grid grid-cols-2 gap-2 bg-muted/10">
                             {fields.map(field => (
                               <div key={field.key} className={cn(field.key === 'message' || field.key === 'notes' || field.key === 'url' ? 'col-span-2' : '')}>
-                                <Label className="text-[10px] text-muted-foreground">{field.label}</Label>
+                                <Label className="text-xs text-muted-foreground">{field.label}</Label>
                                 {field.type === 'select' ? (
                                   <Select
                                     value={action.config[field.key] ?? ''}
@@ -783,7 +783,7 @@ export default function Automations() {
                       <div key={a.id} className="flex items-center gap-2 p-2 rounded-lg bg-success/5 border border-success/20 ml-8">
                         <Icon className="h-3.5 w-3.5 text-success shrink-0" />
                         <span className="text-xs flex-1">{a.label}</span>
-                        <Badge variant="outline" className="text-[10px]">{i + 1}</Badge>
+                        <Badge variant="outline" className="text-xs">{i + 1}</Badge>
                       </div>
                     );
                   })}
@@ -795,7 +795,7 @@ export default function Automations() {
               <div className="grid grid-cols-3 gap-3 text-center">
                 <div>
                   <p className="text-lg font-bold font-mono">{detailWf.execution_count}</p>
-                  <p className="text-[10px] text-muted-foreground">Execuções</p>
+                  <p className="text-xs text-muted-foreground">Execuções</p>
                 </div>
                 <div>
                   <p className="text-lg font-bold font-mono">
@@ -803,7 +803,7 @@ export default function Automations() {
                       ? `${Math.round((detailWf.success_count / detailWf.execution_count) * 100)}%`
                       : '—'}
                   </p>
-                  <p className="text-[10px] text-muted-foreground">Sucesso</p>
+                  <p className="text-xs text-muted-foreground">Sucesso</p>
                 </div>
                 <div>
                   <p className="text-lg font-bold font-mono">
@@ -811,7 +811,7 @@ export default function Automations() {
                       ? new Date(detailWf.last_run_at).toLocaleDateString('pt-BR')
                       : '—'}
                   </p>
-                  <p className="text-[10px] text-muted-foreground">Última exec.</p>
+                  <p className="text-xs text-muted-foreground">Última exec.</p>
                 </div>
               </div>
 

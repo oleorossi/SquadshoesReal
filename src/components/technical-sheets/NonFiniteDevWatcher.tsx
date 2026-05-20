@@ -51,7 +51,7 @@ export function NonFiniteDevWatcher() {
           <p className="font-semibold text-amber-700 dark:text-amber-400">
             [DEV] Valores não-finitos detectados ({events.length})
           </p>
-          <ul className="mt-1 space-y-0.5 font-mono text-[11px] text-amber-800 dark:text-amber-300">
+          <ul className="mt-1 space-y-0.5 font-mono text-xs text-amber-800 dark:text-amber-300">
             {events.map((e) => (
               <li key={e.label} className="truncate">
                 <span className="font-semibold">{e.label}</span>

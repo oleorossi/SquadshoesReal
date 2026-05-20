@@ -39,7 +39,7 @@
                <div className="flex items-center gap-2">
                  <AlertTriangle className="h-4 w-4 text-destructive" />
                  <span className="font-semibold text-sm text-destructive">Materiais com Estoque Baixo</span>
-                 <Badge variant="destructive" className="text-[10px]">{stats.criticalStock.length}</Badge>
+                 <Badge variant="destructive" className="text-xs">{stats.criticalStock.length}</Badge>
                </div>
                <div className="rounded-lg border border-destructive/20 overflow-hidden">
                  <table className="w-full text-sm">
@@ -55,7 +55,7 @@
                        <tr key={p.id} className="border-t border-border/50 hover:bg-muted/30">
                          <td className="px-3 py-2">
                            <div className="font-medium text-xs">{p.name}</div>
-                           {p.color && <span className="text-[10px] text-muted-foreground">{p.color}</span>}
+                           {p.color && <span className="text-xs text-muted-foreground">{p.color}</span>}
                          </td>
                          <td className="text-right px-3 py-2 font-mono text-xs font-bold">
                            <span className={p.quantity === 0 ? 'text-destructive' : 'text-warning'}>

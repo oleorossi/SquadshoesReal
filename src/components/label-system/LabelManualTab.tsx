@@ -352,7 +352,7 @@ export function LabelManualTab() {
             <Import className="h-4 w-4 text-primary" />
             Importar dados de um pedido
             {importedRef && (
-              <Badge variant="outline" className="ml-2 bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800 text-[10px]">
+              <Badge variant="outline" className="ml-2 bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800 text-xs">
                 {importedRef.kind === 'pv' ? 'PV' : 'OP'}: {importedRef.label}
               </Badge>
             )}

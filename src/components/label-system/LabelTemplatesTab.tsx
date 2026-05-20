@@ -91,7 +91,7 @@ export function LabelTemplatesTab() {
                     <div className="flex gap-2 mt-1">
                       <Badge variant="outline">{CATEGORY_LABELS[t.category] || t.category}</Badge>
                       <Badge variant={t.is_active ? 'default' : 'secondary'}>{t.is_active ? 'Ativo' : 'Inativo'}</Badge>
-                      {isDefault && <Badge variant="outline" className="text-[9px] border-amber-500/50 text-amber-600">Padrão</Badge>}
+                      {isDefault && <Badge variant="outline" className="text-xs border-amber-500/50 text-amber-600">Padrão</Badge>}
                     </div>
                   </div>
                 </div>

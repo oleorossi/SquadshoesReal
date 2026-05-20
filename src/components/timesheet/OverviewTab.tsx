@@ -303,42 +303,42 @@ export default function OverviewTab() {
             <Card>
               <CardContent className="p-4 text-center">
                 <Users2 className="h-5 w-5 mx-auto mb-1 text-primary" />
-                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Funcionários</p>
+                <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Funcionários</p>
                 <p className="text-2xl font-black font-mono">{totals.employees}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
                 <Clock className="h-5 w-5 mx-auto mb-1 text-primary" />
-                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Total Trabalhadas</p>
+                <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Total Trabalhadas</p>
                 <p className="text-2xl font-black font-mono">{minutesToDisplay(totals.worked)}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
                 <TrendingUp className="h-5 w-5 mx-auto mb-1 text-amber-500" />
-                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Horas Extras</p>
+                <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Horas Extras</p>
                 <p className="text-2xl font-black font-mono text-amber-600">{minutesToDisplay(totals.overtime)}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
                 <XCircle className="h-5 w-5 mx-auto mb-1 text-destructive" />
-                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Faltas</p>
+                <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Faltas</p>
                 <p className="text-2xl font-black font-mono text-destructive">{totals.absences}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
                 <AlertTriangle className="h-5 w-5 mx-auto mb-1 text-amber-500" />
-                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Incompletos</p>
+                <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Incompletos</p>
                 <p className="text-2xl font-black font-mono text-amber-600">{totals.incomplete}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
                 <CheckCircle2 className="h-5 w-5 mx-auto mb-1 text-green-500" />
-                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Aderência</p>
+                <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Aderência</p>
                 <p className="text-2xl font-black font-mono text-green-600">{totals.adherencePct.toFixed(1)}%</p>
               </CardContent>
             </Card>
@@ -398,7 +398,7 @@ export default function OverviewTab() {
                         <TableCell className="text-right font-mono text-sm text-muted-foreground">{minutesToDisplay(emp.expectedMinutes)}</TableCell>
                         <TableCell className="text-right font-mono text-sm">
                           {emp.overtimeMinutes > 0 ? (
-                            <Badge className="text-[10px] bg-amber-500/15 text-amber-700 border-amber-500/30 hover:bg-amber-500/15 font-mono">{minutesToDisplay(emp.overtimeMinutes)}</Badge>
+                            <Badge className="text-xs bg-amber-500/15 text-amber-700 border-amber-500/30 hover:bg-amber-500/15 font-mono">{minutesToDisplay(emp.overtimeMinutes)}</Badge>
                           ) : <span className="text-muted-foreground">—</span>}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm">
@@ -408,17 +408,17 @@ export default function OverviewTab() {
                         </TableCell>
                         <TableCell className="text-right text-sm">
                           {emp.absences > 0 ? (
-                            <Badge variant="outline" className="text-[10px] text-destructive border-destructive/40 font-mono">{emp.absences}</Badge>
+                            <Badge variant="outline" className="text-xs text-destructive border-destructive/40 font-mono">{emp.absences}</Badge>
                           ) : <span className="text-green-600 text-xs">✓</span>}
                         </TableCell>
                         <TableCell className="text-right text-sm">
                           {emp.incomplete > 0 ? (
-                            <Badge variant="outline" className="text-[10px] text-amber-700 border-amber-500/40 font-mono">{emp.incomplete}</Badge>
+                            <Badge variant="outline" className="text-xs text-amber-700 border-amber-500/40 font-mono">{emp.incomplete}</Badge>
                           ) : <span className="text-muted-foreground text-xs">—</span>}
                         </TableCell>
                         <TableCell className="text-right text-sm">
                           {emp.holidaysWorked > 0 ? (
-                            <Badge variant="outline" className="text-[10px] text-blue-700 border-blue-500/40 font-mono">{emp.holidaysWorked}</Badge>
+                            <Badge variant="outline" className="text-xs text-blue-700 border-blue-500/40 font-mono">{emp.holidaysWorked}</Badge>
                           ) : <span className="text-muted-foreground text-xs">—</span>}
                         </TableCell>
                         <TableCell className="text-right text-sm">

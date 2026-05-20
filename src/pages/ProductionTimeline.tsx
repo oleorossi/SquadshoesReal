@@ -184,7 +184,7 @@ export default function ProductionTimeline() {
               <>
                 {/* Header row */}
                 <div
-                  className="grid gap-2 mb-3 pb-3 border-b text-[9px] font-bold uppercase tracking-widest text-muted-foreground"
+                  className="grid gap-2 mb-3 pb-3 border-b text-xs font-bold uppercase tracking-widest text-muted-foreground"
                   style={{ gridTemplateColumns: '210px repeat(5, 1fr) 100px' }}
                 >
                   <div>Ordem · Modelo</div>
@@ -210,7 +210,7 @@ export default function ProductionTimeline() {
                       {/* OP label */}
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
-                          <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
+                          <span className="font-mono text-xs text-muted-foreground tabular-nums">
                             {order.order_number || '—'}
                           </span>
                           {late && <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />}
@@ -218,7 +218,7 @@ export default function ProductionTimeline() {
                         <div className="text-xs font-semibold mt-0.5 truncate text-foreground">
                           {order.technical_sheets?.name || '—'}
                         </div>
-                        <div className="font-mono text-[9px] text-muted-foreground mt-0.5 tabular-nums">
+                        <div className="font-mono text-xs text-muted-foreground mt-0.5 tabular-nums">
                           {order.quantity} pares
                         </div>
                       </div>
@@ -268,7 +268,7 @@ export default function ProductionTimeline() {
                       <div className="text-right">
                         <span
                           className={cn(
-                            'font-mono text-[10px] font-bold',
+                            'font-mono text-xs font-bold',
                             late ? 'text-primary' : 'text-foreground',
                           )}
                         >
@@ -280,7 +280,7 @@ export default function ProductionTimeline() {
                 })}
 
                 {/* Legend */}
-                <div className="flex items-center gap-6 mt-5 pt-4 text-[10px] text-muted-foreground">
+                <div className="flex items-center gap-6 mt-5 pt-4 text-xs text-muted-foreground">
                   <div className="flex items-center gap-1.5">
                     <span className="h-1.5 w-3 bg-muted-foreground rounded" />
                     <span>Concluído</span>

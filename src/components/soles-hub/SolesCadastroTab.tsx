@@ -237,11 +237,11 @@ export default function SolesCadastroTab({ sole }: Props) {
   // Helper visual: badge "Preenchido" / "Pendente" pra cabeçalho de card.
   const StatusBadge = ({ filled, label }: { filled: boolean; label?: string }) =>
     filled ? (
-      <Badge variant="outline" className="ml-auto bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800 gap-1 text-[10px] font-bold uppercase tracking-wider">
+      <Badge variant="outline" className="ml-auto bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800 gap-1 text-xs font-bold uppercase tracking-wider">
         <CheckCircle className="h-3 w-3" /> {label || 'Preenchido'}
       </Badge>
     ) : (
-      <Badge variant="outline" className="ml-auto bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-800 gap-1 text-[10px] font-bold uppercase tracking-wider">
+      <Badge variant="outline" className="ml-auto bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-800 gap-1 text-xs font-bold uppercase tracking-wider">
         <WarningCircle className="h-3 w-3" /> {label || 'Pendente'}
       </Badge>
     );
@@ -254,16 +254,16 @@ export default function SolesCadastroTab({ sole }: Props) {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-xl sm:text-2xl font-bold tracking-tight truncate">{form.name || sole.name}</h2>
-              <Badge variant="outline" className="text-[10px] uppercase tracking-wider font-bold">
+              <Badge variant="outline" className="text-xs uppercase tracking-wider font-bold">
                 {SOLE_CLASSIFICATION_LABEL[classification]}
               </Badge>
               {isFachetado && (
-                <Badge variant="outline" className="text-[10px] uppercase tracking-wider font-bold bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-400 border-violet-300 dark:border-violet-800 gap-1">
+                <Badge variant="outline" className="text-xs uppercase tracking-wider font-bold bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-400 border-violet-300 dark:border-violet-800 gap-1">
                   <Crown className="h-3 w-3" /> Fachetado
                 </Badge>
               )}
             </div>
-            <div className="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground flex-wrap">
+            <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground flex-wrap">
               {form.color && <span className="flex items-center gap-1"><Palette className="h-3 w-3" /> {form.color}</span>}
               {form.sku && <span className="font-mono">SKU: {form.sku}</span>}
               <span>{form.size_from}–{form.size_to}</span>
@@ -271,9 +271,9 @@ export default function SolesCadastroTab({ sole }: Props) {
             </div>
           </div>
           <div className="text-right shrink-0">
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">Preenchimento</div>
+            <div className="text-xs text-muted-foreground uppercase tracking-wider font-bold">Preenchimento</div>
             <div className="text-2xl font-bold tabular-nums">{progressPct}%</div>
-            <div className="text-[10px] text-muted-foreground">{filledCount} de {totalSlots} essenciais</div>
+            <div className="text-xs text-muted-foreground">{filledCount} de {totalSlots} essenciais</div>
           </div>
         </div>
         {/* Barra de progresso */}
@@ -314,7 +314,7 @@ export default function SolesCadastroTab({ sole }: Props) {
             <div className="space-y-1.5">
               <Label className="text-xs flex items-center gap-1.5">
                 Nome do solado
-                {groupId && <span className="text-[9px] text-primary uppercase tracking-wider font-bold">· compartilhado</span>}
+                {groupId && <span className="text-xs text-primary uppercase tracking-wider font-bold">· compartilhado</span>}
               </Label>
               <Input
                 value={form.name}
@@ -325,7 +325,7 @@ export default function SolesCadastroTab({ sole }: Props) {
             <div className="space-y-1.5">
               <Label className="text-xs flex items-center gap-1.5">
                 SKU
-                <span className="text-[9px] text-muted-foreground uppercase tracking-wider font-bold">· por cor</span>
+                <span className="text-xs text-muted-foreground uppercase tracking-wider font-bold">· por cor</span>
               </Label>
               <Input
                 value={form.sku}
@@ -336,7 +336,7 @@ export default function SolesCadastroTab({ sole }: Props) {
             <div className="space-y-1.5">
               <Label className="text-xs flex items-center gap-1.5">
                 <Palette className="h-3 w-3" /> Cor
-                <span className="text-[9px] text-muted-foreground uppercase tracking-wider font-bold">· por variante</span>
+                <span className="text-xs text-muted-foreground uppercase tracking-wider font-bold">· por variante</span>
               </Label>
               <Input
                 value={form.color}
@@ -366,7 +366,7 @@ export default function SolesCadastroTab({ sole }: Props) {
                   <SelectItem value="conjugado">Conjugado</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-[10px] text-muted-foreground leading-tight">
+              <p className="text-xs text-muted-foreground leading-tight">
                 {classification === 'palmilha_pronta'
                   ? 'Palmilha já fixada no solado · cor depende do cabedal (ver Coligações)'
                   : classification === 'conjugado'
@@ -389,7 +389,7 @@ export default function SolesCadastroTab({ sole }: Props) {
           <div className="space-y-1.5">
             <Label className="text-xs flex items-center gap-1.5">
               Range de numeração
-              {groupId && <span className="text-[9px] text-primary uppercase tracking-wider font-bold">· compartilhado</span>}
+              {groupId && <span className="text-xs text-primary uppercase tracking-wider font-bold">· compartilhado</span>}
             </Label>
             <div className="flex gap-2 items-center">
               <Input
@@ -410,7 +410,7 @@ export default function SolesCadastroTab({ sole }: Props) {
                 className={`w-20 ${rangeInvalid ? 'border-destructive focus-visible:ring-destructive' : ''}`}
               />
               {rangeInvalid && (
-                <span className="text-[10px] text-destructive ml-2">
+                <span className="text-xs text-destructive ml-2">
                   Inicial &gt; final ({form.size_from} &gt; {form.size_to})
                 </span>
               )}
@@ -420,7 +420,7 @@ export default function SolesCadastroTab({ sole }: Props) {
           {/* PRÉVIA DA GRADE: bloco destacado mostrando os tamanhos finais */}
           {!rangeInvalid && gridKeys.length > 0 && (
             <div className="rounded-md border bg-muted/30 p-3">
-              <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold mb-2">
+              <div className="text-xs text-muted-foreground uppercase tracking-wider font-bold mb-2">
                 Grade resultante ({gridKeys.length} numerações)
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -439,7 +439,7 @@ export default function SolesCadastroTab({ sole }: Props) {
                 ))}
               </div>
               {gridKeys.some(k => k.includes('/')) && (
-                <p className="text-[10px] text-muted-foreground mt-2">
+                <p className="text-xs text-muted-foreground mt-2">
                   Numerações em destaque são <strong>conjugadas</strong> (1 par único).
                 </p>
               )}
@@ -452,7 +452,7 @@ export default function SolesCadastroTab({ sole }: Props) {
               <summary className="px-3 py-2 cursor-pointer text-xs font-semibold flex items-center gap-2 select-none">
                 <Link2 className="h-3.5 w-3.5 text-primary" />
                 Conjugações de Numeração
-                <span className="text-[10px] text-muted-foreground font-normal ml-1">
+                <span className="text-xs text-muted-foreground font-normal ml-1">
                   (ex.: 33/34, 39/40 — quando 2 tamanhos compartilham estoque)
                 </span>
               </summary>
@@ -490,14 +490,14 @@ export default function SolesCadastroTab({ sole }: Props) {
             />
             <Label htmlFor="sole-fachetado" className="text-sm cursor-pointer flex-1">
               <span className="font-semibold">Salto fachetado</span>
-              <span className="block text-[11px] text-muted-foreground font-normal">
+              <span className="block text-xs text-muted-foreground font-normal">
                 Com forração no salto — exige cadastro de consumo de fachete
               </span>
             </Label>
           </div>
           {isFachetado && (
             <div className="rounded-md border border-violet-300/60 bg-violet-50/30 dark:bg-violet-950/10 px-3 py-2">
-              <p className="text-[11px] text-violet-900 dark:text-violet-200">
+              <p className="text-xs text-violet-900 dark:text-violet-200">
                 Configure o consumo de fachete por numeração em <strong>Consumos → Forração/Palmilha</strong>.
                 Na ficha técnica vai aparecer só o <em>material</em> do fachete.
               </p>
@@ -512,7 +512,7 @@ export default function SolesCadastroTab({ sole }: Props) {
           <CardHeader className="pb-3 flex flex-row items-center gap-2">
             <Palette className="h-4 w-4 text-primary" />
             <CardTitle className="text-sm">4. Coligações de cor</CardTitle>
-            <span className="text-[10px] text-muted-foreground">cabedal → palmilha</span>
+            <span className="text-xs text-muted-foreground">cabedal → palmilha</span>
             {!groupId && <StatusBadge filled={false} label="Falta grupo" />}
           </CardHeader>
           <CardContent>
@@ -693,7 +693,7 @@ function GroupBindingFallback({ soleId }: { soleId: string }) {
         placeholder="Ex.: Solado Saltinho Bloco"
         className="h-9"
       />
-      <p className="text-[10px] text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         O grupo agrupa este solado com outras variantes de cor (ex.: Saltinho Preto, Saltinho Caramelo).
         Conjugações configuradas aqui valem pra todas as variantes.
       </p>

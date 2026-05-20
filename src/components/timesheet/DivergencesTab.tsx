@@ -286,7 +286,7 @@ export default function DivergencesTab() {
                                 }
                               >
                                 {cleanPunch(p)}
-                                {isManualPunch(p) && <span className="ml-1 text-[10px]">manual</span>}
+                                {isManualPunch(p) && <span className="ml-1 text-xs">manual</span>}
                               </Badge>
                             ))}
                           </div>

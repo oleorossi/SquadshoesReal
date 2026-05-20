@@ -115,7 +115,7 @@ export function SoleDriverPicker({
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
         <div className="md:col-span-7">
-          <Label className="text-[10px] font-bold text-muted-foreground uppercase">Solado principal</Label>
+          <Label className="text-xs font-bold text-muted-foreground uppercase">Solado principal</Label>
           <select
             className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
             value={primarySoleId ?? ''}
@@ -141,18 +141,18 @@ export function SoleDriverPicker({
         </div>
 
         <div className="md:col-span-2">
-          <Label className="text-[10px] font-bold text-muted-foreground uppercase">Tamanho ref.</Label>
+          <Label className="text-xs font-bold text-muted-foreground uppercase">Tamanho ref.</Label>
           <Input
             type="number" min={20} max={50}
             value={referenceSize}
             onChange={(e) => onChangeReferenceSize(Number(e.target.value || 37))}
             className="h-10"
           />
-          <p className="text-[10px] text-muted-foreground mt-1">Usado nas specs do solado</p>
+          <p className="text-xs text-muted-foreground mt-1">Usado nas specs do solado</p>
         </div>
 
         <div className="md:col-span-3 flex flex-col justify-start">
-          <Label className="text-[10px] font-bold text-muted-foreground uppercase mb-2">Modo de consumo</Label>
+          <Label className="text-xs font-bold text-muted-foreground uppercase mb-2">Modo de consumo</Label>
           <div className="flex items-center gap-2 p-2 bg-card rounded-md border border-border">
             <Switch
               checked={soleDrivesConsumption}

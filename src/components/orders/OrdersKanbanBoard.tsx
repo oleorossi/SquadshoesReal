@@ -181,9 +181,9 @@ export default function OrdersKanbanBoard({
               <div className="flex items-baseline justify-between gap-2">
                 <div>
                   <div className="eyebrow">{g.label}</div>
-                  <div className="text-[11px] text-muted-foreground mt-0.5 truncate">{g.short}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5 truncate">{g.short}</div>
                 </div>
-                <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
+                <span className="font-mono text-xs text-muted-foreground tabular-nums">
                   {String(STAGE_GROUPS.indexOf(g) + 1).padStart(2, '0')}/05
                 </span>
               </div>
@@ -194,9 +194,9 @@ export default function OrdersKanbanBoard({
                 >
                   {colOrders.length}
                 </span>
-                <span className="font-mono text-[11px] text-muted-foreground">OPs</span>
+                <span className="font-mono text-xs text-muted-foreground">OPs</span>
               </div>
-              <div className="font-mono text-[11px] text-muted-foreground mt-0.5 tabular-nums">
+              <div className="font-mono text-xs text-muted-foreground mt-0.5 tabular-nums">
                 {totalPairs.toLocaleString('pt-BR')} pares
               </div>
             </div>
@@ -232,14 +232,14 @@ export default function OrdersKanbanBoard({
               {/* Column header */}
               <div className="flex items-center gap-2 pb-3 border-b border-border/50 mb-3">
                 <div
-                  className="h-7 w-7 rounded border bg-card flex items-center justify-center font-mono text-[11px] font-bold tabular-nums"
+                  className="h-7 w-7 rounded border bg-card flex items-center justify-center font-mono text-xs font-bold tabular-nums"
                   style={{ color: `hsl(var(${g.colorVar}))` }}
                 >
                   {String(STAGE_GROUPS.indexOf(g) + 1).padStart(2, '0')}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="display text-sm tracking-wider truncate">{g.label}</div>
-                  <div className="font-mono text-[9px] text-muted-foreground truncate">{g.short}</div>
+                  <div className="font-mono text-xs text-muted-foreground truncate">{g.short}</div>
                 </div>
                 <span className="font-mono text-xs font-bold text-muted-foreground">
                   {colOrders.length}
@@ -249,7 +249,7 @@ export default function OrdersKanbanBoard({
               {/* OP cards */}
               <div className="flex-1 space-y-2 overflow-y-auto">
                 {colOrders.length === 0 ? (
-                  <div className="text-center text-[11px] text-muted-foreground/60 py-8 italic">
+                  <div className="text-center text-xs text-muted-foreground/60 py-8 italic">
                     Nenhuma OP
                   </div>
                 ) : (
@@ -282,13 +282,13 @@ export default function OrdersKanbanBoard({
                         )}
 
                         {/* Header: OP number + sale order */}
-                        <div className="flex items-center justify-between text-[11px]">
+                        <div className="flex items-center justify-between text-xs">
                           <span className="font-mono text-muted-foreground tabular-nums">
                             {order.order_number || '—'}
                           </span>
                           {so && (
                             <span
-                              className="font-mono text-muted-foreground/70 px-1 py-0.5 border rounded text-[9px]"
+                              className="font-mono text-muted-foreground/70 px-1 py-0.5 border rounded text-xs"
                               title={so.client_name}
                             >
                               {so.order_number?.replace(/^PV-/, '') || '—'}
@@ -306,7 +306,7 @@ export default function OrdersKanbanBoard({
                           <span className="display text-2xl text-foreground tabular-nums">
                             {order.quantity}
                           </span>
-                          <span className="font-mono text-[9px] text-muted-foreground">pares</span>
+                          <span className="font-mono text-xs text-muted-foreground">pares</span>
                         </div>
 
                         {/* Color swatch + name */}
@@ -317,7 +317,7 @@ export default function OrdersKanbanBoard({
                               style={{ backgroundColor: colorHex(order.color) }}
                               aria-hidden
                             />
-                            <span className="text-[11px] text-muted-foreground truncate">
+                            <span className="text-xs text-muted-foreground truncate">
                               {order.color}
                             </span>
                           </div>
@@ -338,12 +338,12 @@ export default function OrdersKanbanBoard({
 
                         {/* Footer: % + deadline */}
                         <div className="flex items-center justify-between mt-1.5">
-                          <span className="font-mono text-[9px] text-muted-foreground tabular-nums">
+                          <span className="font-mono text-xs text-muted-foreground tabular-nums">
                             {progress}%
                           </span>
                           <span
                             className={cn(
-                              'font-mono text-[9px] flex items-center gap-1',
+                              'font-mono text-xs flex items-center gap-1',
                               late ? 'text-primary font-bold' : 'text-muted-foreground',
                             )}
                           >

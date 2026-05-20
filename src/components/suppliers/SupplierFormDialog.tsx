@@ -116,7 +116,7 @@ export default function SupplierFormDialog({ open, onOpenChange, editing, onSubm
               <div>
                 <Label>Prazo de Entrega (dias)</Label>
                 <Input type="number" min={0} value={form.lead_time_days} onChange={e => set('lead_time_days', Number(e.target.value))} className="mt-1" placeholder="10" />
-                <p className="text-[10px] text-muted-foreground mt-0.5">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   Quando preenchido (&gt; 0), todos os materiais deste fornecedor usam este prazo automaticamente — sem precisar configurar item por item.
                 </p>
               </div>

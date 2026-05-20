@@ -337,11 +337,11 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="bg-muted/50 border-b">
-                        <th className="text-left py-2 px-3 font-semibold uppercase tracking-wider text-[11px] text-muted-foreground">Material</th>
-                        <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-[11px] text-muted-foreground">Consumo/par</th>
-                        <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-[11px] text-muted-foreground">R$/un</th>
-                        <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-[11px] text-muted-foreground">Perda</th>
-                        <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-[11px] text-muted-foreground">Custo</th>
+                        <th className="text-left py-2 px-3 font-semibold uppercase tracking-wider text-xs text-muted-foreground">Material</th>
+                        <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-xs text-muted-foreground">Consumo/par</th>
+                        <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-xs text-muted-foreground">R$/un</th>
+                        <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-xs text-muted-foreground">Perda</th>
+                        <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-xs text-muted-foreground">Custo</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
@@ -359,13 +359,13 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
                         </tr>
                       ))}
                       <tr className="bg-muted/30 font-bold">
-                        <td className="py-2 px-3 uppercase tracking-wider text-[11px]" colSpan={4}>Total matéria-prima por par</td>
+                        <td className="py-2 px-3 uppercase tracking-wider text-xs" colSpan={4}>Total matéria-prima por par</td>
                         <td className="py-2 px-3 text-right font-mono text-base text-primary">{fmtBRL(totalMaterialCost)}</td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
-                <p className="text-[11px] text-muted-foreground mt-2">
+                <p className="text-xs text-muted-foreground mt-2">
                   Fórmula: Σ (consumo/par × preço unitário × (1 + perda %)) por material do BOM.
                 </p>
               </>
@@ -381,7 +381,7 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
             <CardTitle className="text-sm flex items-center gap-2">
               <UserCheck className="h-4 w-4 text-primary" />
               Mão de obra por par
-              <Badge variant="secondary" className="ml-auto text-[11px]">
+              <Badge variant="secondary" className="ml-auto text-xs">
                 {laborBreakdown.length} {laborBreakdown.length === 1 ? 'operação' : 'operações'}
               </Badge>
             </CardTitle>
@@ -407,10 +407,10 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="bg-muted/50 border-b">
-                      <th className="text-left py-2 px-3 font-semibold uppercase tracking-wider text-[11px] text-muted-foreground">Operação</th>
-                      <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-[11px] text-muted-foreground">R$/hora</th>
-                      <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-[11px] text-muted-foreground">min/par</th>
-                      <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-[11px] text-muted-foreground">Custo/par</th>
+                      <th className="text-left py-2 px-3 font-semibold uppercase tracking-wider text-xs text-muted-foreground">Operação</th>
+                      <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-xs text-muted-foreground">R$/hora</th>
+                      <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-xs text-muted-foreground">min/par</th>
+                      <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-xs text-muted-foreground">Custo/par</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
@@ -423,7 +423,7 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
                       </tr>
                     ))}
                     <tr className="bg-muted/30 font-bold">
-                      <td className="py-2 px-3 uppercase tracking-wider text-[11px]" colSpan={3}>Total mão de obra por par</td>
+                      <td className="py-2 px-3 uppercase tracking-wider text-xs" colSpan={3}>Total mão de obra por par</td>
                       <td className="py-2 px-3 text-right font-mono text-base text-primary">{fmtBRL(policyLaborCost)}</td>
                     </tr>
                   </tbody>
@@ -447,7 +447,7 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
             {/* Factoring config — auto-preenche taxa + dias */}
             {factoringConfigs.length > 0 && (
               <div className="rounded-md border bg-primary/5 border-primary/20 p-2.5 space-y-1.5">
-                <Label className="text-[11px] uppercase tracking-wider font-bold text-primary flex items-center gap-1">
+                <Label className="text-xs uppercase tracking-wider font-bold text-primary flex items-center gap-1">
                   <Percent className="h-3 w-3" /> Factoring cadastrado
                 </Label>
                 <Select value={factoringConfigId} onValueChange={setFactoringConfigId}>
@@ -462,7 +462,7 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   Selecionar uma config preenche automaticamente a taxa e o prazo abaixo. Você pode editar manualmente depois.
                 </p>
               </div>
@@ -470,7 +470,7 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div>
-                <Label className="text-[11px] text-muted-foreground">Margem desejada (%)</Label>
+                <Label className="text-xs text-muted-foreground">Margem desejada (%)</Label>
                 <Input
                   type="number" step="0.01" placeholder="Ex: 25"
                   value={profitMarginPct} onChange={e => setProfitMarginPct(e.target.value)}
@@ -478,7 +478,7 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
                 />
               </div>
               <div>
-                <Label className="text-[11px] text-muted-foreground">Impostos (%)</Label>
+                <Label className="text-xs text-muted-foreground">Impostos (%)</Label>
                 <Input
                   type="number" step="0.01"
                   placeholder={policyDefaultTaxPct > 0 ? `Política: ${fmt(policyDefaultTaxPct)}` : 'Ex: 7.65'}
@@ -486,11 +486,11 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
                   className="mt-1"
                 />
                 {policyDefaultTaxPct > 0 && !taxPct && (
-                  <p className="text-[11px] text-muted-foreground mt-0.5">Default da política: <strong>{fmt(policyDefaultTaxPct)}%</strong></p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Default da política: <strong>{fmt(policyDefaultTaxPct)}%</strong></p>
                 )}
               </div>
               <div>
-                <Label className="text-[11px] text-muted-foreground">Comissão (%)</Label>
+                <Label className="text-xs text-muted-foreground">Comissão (%)</Label>
                 <Input
                   type="number" step="0.01"
                   placeholder={policyDefaultCommissionPct > 0 ? `Política: ${fmt(policyDefaultCommissionPct)}` : 'Ex: 5'}
@@ -498,18 +498,18 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
                   className="mt-1"
                 />
                 {policyDefaultCommissionPct > 0 && !commissionPct && (
-                  <p className="text-[11px] text-muted-foreground mt-0.5">Default da política: <strong>{fmt(policyDefaultCommissionPct)}%</strong></p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Default da política: <strong>{fmt(policyDefaultCommissionPct)}%</strong></p>
                 )}
               </div>
               <div>
-                <Label className="text-[11px] text-muted-foreground">Frete (R$/par)</Label>
+                <Label className="text-xs text-muted-foreground">Frete (R$/par)</Label>
                 <Input
                   type="number" step="0.01" placeholder="Ex: 1.50"
                   value={freightValue} onChange={e => setFreightValue(e.target.value)}
                   className="mt-1"
                 />
                 {policyFreightAllocPct > 0 && (
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                  <p className="text-xs text-muted-foreground mt-0.5">
                     Ref. política: <strong>{fmt(policyFreightAllocPct)}%</strong> alocação
                   </p>
                 )}
@@ -518,7 +518,7 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <div>
-                <Label className="text-[11px] text-muted-foreground">Factoring/mês (%)</Label>
+                <Label className="text-xs text-muted-foreground">Factoring/mês (%)</Label>
                 <Input
                   type="number" step="0.01" placeholder="Ex: 1.99"
                   value={factoringRatePct} onChange={e => setFactoringRatePct(e.target.value)}
@@ -526,16 +526,16 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
                 />
               </div>
               <div>
-                <Label className="text-[11px] text-muted-foreground">Prazo de recebimento</Label>
+                <Label className="text-xs text-muted-foreground">Prazo de recebimento</Label>
                 <Input
                   placeholder="Ex: 30/60/90"
                   value={days} onChange={e => setDays(e.target.value)}
                   className="mt-1"
                 />
-                <p className="text-[11px] text-muted-foreground mt-0.5">Use barras pra média (30/60/90)</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Use barras pra média (30/60/90)</p>
               </div>
               <div>
-                <Label className="text-[11px] text-muted-foreground">
+                <Label className="text-xs text-muted-foreground">
                   Mão de obra/par <span className="font-mono">(R$)</span>
                 </Label>
                 <Input
@@ -544,12 +544,12 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
                   value={laborManual} onChange={e => setLaborManual(e.target.value)}
                   className="mt-1"
                 />
-                <p className="text-[11px] text-muted-foreground mt-0.5">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   Vazio usa <strong>{fmtBRL(policyLaborCost)}</strong> (operações ativas)
                 </p>
               </div>
               <div>
-                <Label className="text-[11px] text-muted-foreground">
+                <Label className="text-xs text-muted-foreground">
                   Overhead/par <span className="font-mono">(R$)</span>
                 </Label>
                 <Input
@@ -558,12 +558,12 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
                   value={overheadManual} onChange={e => setOverheadManual(e.target.value)}
                   className="mt-1"
                 />
-                <p className="text-[11px] text-muted-foreground mt-0.5">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   Vazio usa <strong>{fmtBRL(policyOverhead)}</strong> (cost_policies)
                 </p>
               </div>
               <div>
-                <Label className="text-[11px] text-muted-foreground flex items-center gap-1">
+                <Label className="text-xs text-muted-foreground flex items-center gap-1">
                   <Box className="h-3 w-3" /> Embalagem/par <span className="font-mono">(R$)</span>
                 </Label>
                 <Input
@@ -572,7 +572,7 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
                   value={packagingManual} onChange={e => setPackagingManual(e.target.value)}
                   className="mt-1"
                 />
-                <p className="text-[11px] text-muted-foreground mt-0.5">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   Vazio usa <strong>{fmtBRL(policyPackaging)}</strong> (cost_policies.packaging)
                 </p>
               </div>
@@ -625,7 +625,7 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
               <div className="rounded-lg bg-card p-3 border">
                 <p className="eyebrow">Custo total</p>
                 <p className="display text-2xl tabular-nums mt-1">{fmtBRL(results.totalCost)}</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   MP {fmtBRL(results.numCost)}
                   {results.numLabor > 0 && ` + MO ${fmtBRL(results.numLabor)}`}
                   + OH {fmtBRL(results.numOverhead)}
@@ -636,19 +636,19 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
               <div className="rounded-lg bg-card p-3 border border-primary/40">
                 <p className="eyebrow text-primary">Preço sugerido</p>
                 <p className="display text-2xl tabular-nums mt-1 text-primary">{fmtBRL(results.suggestedPrice)}</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   Markup divisor {(results.markupDivisor * 100).toFixed(1)}%
                 </p>
               </div>
               <div className="rounded-lg bg-card p-3 border">
                 <p className="eyebrow">Preço à vista</p>
                 <p className="display text-2xl tabular-nums mt-1">{fmtBRL(results.cashPrice)}</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5">7 dias de factoring</p>
+                <p className="text-xs text-muted-foreground mt-0.5">7 dias de factoring</p>
               </div>
               <div className="rounded-lg bg-card p-3 border border-success/40">
                 <p className="eyebrow text-success">Lucro real</p>
                 <p className="display text-2xl tabular-nums mt-1 text-success">{fmtBRL(results.realProfit)}</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   {profitMarginPct || 0}% sobre venda
                 </p>
               </div>
@@ -656,7 +656,7 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
 
             {/* Breakdown do markup */}
             <div className="text-xs space-y-1 pt-2 border-t">
-              <p className="font-semibold uppercase tracking-wider text-[11px] text-muted-foreground mb-2">
+              <p className="font-semibold uppercase tracking-wider text-xs text-muted-foreground mb-2">
                 Decomposição do preço
               </p>
               <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1 font-mono">
@@ -698,7 +698,7 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
             <CardTitle className="text-sm flex items-center gap-2">
               <History className="h-4 w-4 text-primary" />
               Histórico de simulações
-              <Badge variant="secondary" className="ml-auto text-[11px]">
+              <Badge variant="secondary" className="ml-auto text-xs">
                 {simulations.length} {simulations.length === 1 ? 'registro' : 'registros'}
               </Badge>
             </CardTitle>
@@ -711,12 +711,12 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
               <table className="w-full text-xs">
                 <thead>
                   <tr className="bg-muted/50 border-b">
-                    <th className="text-left py-2 px-3 font-semibold uppercase tracking-wider text-[11px] text-muted-foreground">Quando</th>
-                    <th className="text-left py-2 px-3 font-semibold uppercase tracking-wider text-[11px] text-muted-foreground">Ficha</th>
-                    <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-[11px] text-muted-foreground">Custo</th>
-                    <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-[11px] text-muted-foreground">Margem</th>
-                    <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-[11px] text-muted-foreground">Preço</th>
-                    <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-[11px] text-muted-foreground">Lucro</th>
+                    <th className="text-left py-2 px-3 font-semibold uppercase tracking-wider text-xs text-muted-foreground">Quando</th>
+                    <th className="text-left py-2 px-3 font-semibold uppercase tracking-wider text-xs text-muted-foreground">Ficha</th>
+                    <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-xs text-muted-foreground">Custo</th>
+                    <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-xs text-muted-foreground">Margem</th>
+                    <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-xs text-muted-foreground">Preço</th>
+                    <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-xs text-muted-foreground">Lucro</th>
                     <th className="w-10"></th>
                   </tr>
                 </thead>

@@ -205,7 +205,7 @@
                          <TableCell className="font-medium">
                            <div>{item.product_name}</div>
                            {hasConversion && (
-                             <div className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                             <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                                <ArrowRightLeft className="h-2.5 w-2.5" />
                                {describeConversion({
                                  unit: item.stock_unit,
@@ -226,12 +226,12 @@
                                step={0.01}
                                className="h-8 w-20"
                              />
-                             <span className="text-[11px] text-muted-foreground font-mono shrink-0">
+                             <span className="text-xs text-muted-foreground font-mono shrink-0">
                                {item.purchase_unit}
                              </span>
                            </div>
                            {hasConversion && (
-                             <div className="text-[10px] text-primary mt-0.5 font-mono">
+                             <div className="text-xs text-primary mt-0.5 font-mono">
                                = {inStockUnit.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} {item.stock_unit}
                              </div>
                            )}
@@ -246,7 +246,7 @@
                                step={0.01}
                                className="h-8 w-24"
                              />
-                             <span className="text-[10px] text-muted-foreground shrink-0">
+                             <span className="text-xs text-muted-foreground shrink-0">
                                R$/{item.purchase_unit}
                              </span>
                            </div>
@@ -268,7 +268,7 @@
            </div>
 
            {items.some(i => i.unit !== i.stock_unit) && (
-             <div className="text-[11px] text-muted-foreground flex items-start gap-1.5 px-2">
+             <div className="text-xs text-muted-foreground flex items-start gap-1.5 px-2">
                <ArrowRightLeft className="h-3 w-3 mt-0.5 shrink-0" />
                <span>
                  Itens com conversão configurada são salvos na OC em <strong>unidade de compra</strong>

@@ -62,7 +62,7 @@ function ViewControls() {
         <Button variant="outline" size="sm" className="h-9 gap-2">
           {density === 'compact' ? <Rows2 className="h-4 w-4" /> : <Rows3 className="h-4 w-4" />}
           <span className="hidden sm:inline">Visualização</span>
-          <Badge variant="secondary" className="h-5 px-1.5 text-[10px] hidden md:inline-flex">{visibleCount}</Badge>
+          <Badge variant="secondary" className="h-5 px-1.5 text-xs hidden md:inline-flex">{visibleCount}</Badge>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-60">
@@ -90,7 +90,7 @@ function ViewControls() {
           <span>Colunas visíveis</span>
           <button
             type="button"
-            className="text-[10px] text-primary hover:underline font-normal"
+            className="text-xs text-primary hover:underline font-normal"
             onClick={resetColumns}
           >
             Restaurar

@@ -396,9 +396,9 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium">{p.name}</p>
                         <div className="mt-1 flex items-center gap-2">
-                          {p.color && <Badge variant="outline" className="text-[10px]">{p.color}</Badge>}
-                          {p.category && <Badge variant="secondary" className="text-[10px]">{p.category}</Badge>}
-                          <span className="text-[10px] text-muted-foreground">
+                          {p.color && <Badge variant="outline" className="text-xs">{p.color}</Badge>}
+                          {p.category && <Badge variant="secondary" className="text-xs">{p.category}</Badge>}
+                          <span className="text-xs text-muted-foreground">
                             Estoque: {p.quantity} {p.unit}
                           </span>
                         </div>
@@ -539,7 +539,7 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
                   <div className="col-span-2">
                     <Label className="text-xs">Estoque Inicial ({unit})</Label>
                     <NumberInput value={initialStock} onChange={setInitialStock} min={0} step="0.01" className="h-9 text-sm" />
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                    <p className="text-xs text-muted-foreground mt-0.5">
                       Quantidade que entra no estoque agora (deixe 0 se for ajustar depois).
                     </p>
                   </div>
@@ -560,19 +560,19 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
                     <p className="text-xs font-semibold text-muted-foreground">Dimensões</p>
                     <div className="grid grid-cols-4 gap-2">
                       <div>
-                        <Label className="text-[10px]">Comp.</Label>
+                        <Label className="text-xs">Comp.</Label>
                         <NumberInput value={dimLength} onChange={setDimLength} min={0} className="h-8 text-xs" />
                       </div>
                       <div>
-                        <Label className="text-[10px]">Larg.</Label>
+                        <Label className="text-xs">Larg.</Label>
                         <NumberInput value={dimWidth} onChange={setDimWidth} min={0} className="h-8 text-xs" />
                       </div>
                       <div>
-                        <Label className="text-[10px]">Espess.</Label>
+                        <Label className="text-xs">Espess.</Label>
                         <NumberInput value={dimThickness} onChange={setDimThickness} min={0} className="h-8 text-xs" />
                       </div>
                       <div>
-                        <Label className="text-[10px]">Un.</Label>
+                        <Label className="text-xs">Un.</Label>
                         <Select value={dimUnit} onValueChange={setDimUnit}>
                           <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                           <SelectContent>

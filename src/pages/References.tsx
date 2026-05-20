@@ -244,7 +244,7 @@ export default function References({ embedded }: { embedded?: boolean } = {}) {
                 ) : (
                   <div className="text-center">
                     <Upload className="h-5 w-5 mx-auto text-muted-foreground" />
-                    <span className="text-[10px] text-muted-foreground">Foto</span>
+                    <span className="text-xs text-muted-foreground">Foto</span>
                   </div>
                 )}
               </div>
@@ -535,11 +535,11 @@ function MaterialsList({ referenceId, imageUrl, shoeCategory }: { referenceId: s
           <TabsList>
             <TabsTrigger value="ficha" className="gap-1.5">
               <Package className="h-4 w-4" /> Ficha Técnica
-              <Badge variant="outline" className="font-mono text-[10px] ml-1">{materials.length}</Badge>
+              <Badge variant="outline" className="font-mono text-xs ml-1">{materials.length}</Badge>
             </TabsTrigger>
             <TabsTrigger value="cores" className="gap-1.5">
               <Droplets className="h-4 w-4" /> Cores Liberadas
-              <Badge variant="outline" className="font-mono text-[10px] ml-1">{materialColors.length}</Badge>
+              <Badge variant="outline" className="font-mono text-xs ml-1">{materialColors.length}</Badge>
             </TabsTrigger>
           </TabsList>
 
@@ -592,7 +592,7 @@ function MaterialsList({ referenceId, imageUrl, shoeCategory }: { referenceId: s
                   <input type="checkbox" checked={selectedRecent.has(m.product_id)} onChange={() => toggleRecent(m.product_id)} className="rounded" />
                   <span className="font-medium">{prod?.name ?? '—'}</span>
                   <span className="text-xs text-muted-foreground font-mono">{prod?.sku ?? ''}</span>
-                  <Badge variant="outline" className="text-[10px] ml-auto">{prod?.category ?? ''}</Badge>
+                  <Badge variant="outline" className="text-xs ml-auto">{prod?.category ?? ''}</Badge>
                 </label>
               );
             })}
@@ -711,7 +711,7 @@ function MaterialsList({ referenceId, imageUrl, shoeCategory }: { referenceId: s
                 <button
                   type="button"
                   onClick={() => setForm(f => ({ ...f, sizes: MATERIAL_SIZES.join(', ') }))}
-                  className="h-8 px-3 rounded-md text-[10px] border border-dashed border-border hover:border-primary/50 text-muted-foreground"
+                  className="h-8 px-3 rounded-md text-xs border border-dashed border-border hover:border-primary/50 text-muted-foreground"
                 >
                   Todos
                 </button>
@@ -754,13 +754,13 @@ function MaterialsList({ referenceId, imageUrl, shoeCategory }: { referenceId: s
                     <div className="flex items-center gap-2">
                       <CatIcon className={`h-4 w-4 ${catConfig.color}`} />
                       <span className="text-xs font-semibold">{catConfig.label}</span>
-                      <Badge variant="outline" className="text-[10px] font-mono">{catMaterials.length}</Badge>
+                      <Badge variant="outline" className="text-xs font-mono">{catMaterials.length}</Badge>
                     </div>
                     <span className="text-xs font-mono text-muted-foreground">{formatCurrency(catCost)}</span>
                   </div>
                   <Table>
                     <TableHeader>
-                      <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                      <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                         <TableHead>Material</TableHead>
                         <TableHead>SKU</TableHead>
                         <TableHead>Cor</TableHead>
@@ -829,11 +829,11 @@ function MaterialsList({ referenceId, imageUrl, shoeCategory }: { referenceId: s
                   <div className="bg-muted/40 px-3 py-2 flex items-center gap-2">
                     <Package className="h-4 w-4 text-muted-foreground" />
                     <span className="text-xs font-semibold">Outros</span>
-                    <Badge variant="outline" className="text-[10px] font-mono">{uncatMaterials.length}</Badge>
+                    <Badge variant="outline" className="text-xs font-mono">{uncatMaterials.length}</Badge>
                   </div>
                   <Table>
                     <TableHeader>
-                      <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                      <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                         <TableHead>Material</TableHead>
                         <TableHead>SKU</TableHead>
                         <TableHead>Categoria</TableHead>
@@ -850,7 +850,7 @@ function MaterialsList({ referenceId, imageUrl, shoeCategory }: { referenceId: s
                           <TableRow key={m.id}>
                             <TableCell className="text-xs font-medium">{prod?.name ?? '—'}</TableCell>
                             <TableCell className="text-xs font-mono text-muted-foreground">{prod?.sku ?? '—'}</TableCell>
-                            <TableCell className="text-xs"><Badge variant="outline" className="text-[10px]">{prod?.category ?? '—'}</Badge></TableCell>
+                            <TableCell className="text-xs"><Badge variant="outline" className="text-xs">{prod?.category ?? '—'}</Badge></TableCell>
                             <TableCell className="text-xs text-right font-mono">{Number(m.quantity_per_unit).toLocaleString('pt-BR', { maximumFractionDigits: 4 })} {prod?.unit ?? ''}</TableCell>
                             <TableCell className="text-xs text-right font-mono text-muted-foreground">{formatCurrency(costPerUnit)}</TableCell>
                             <TableCell className="text-right">
@@ -871,7 +871,7 @@ function MaterialsList({ referenceId, imageUrl, shoeCategory }: { referenceId: s
             <div className="rounded-lg border overflow-hidden">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <TableHead>Componente</TableHead>
                     <TableHead className="text-center">Qtd Materiais</TableHead>
                     <TableHead className="text-right">Custo Total</TableHead>
@@ -943,7 +943,7 @@ function MaterialsList({ referenceId, imageUrl, shoeCategory }: { referenceId: s
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
-                        <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                        <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                           <TableHead>Material</TableHead>
                           <TableHead>Categoria</TableHead>
                           <TableHead>Consumo</TableHead>
@@ -962,7 +962,7 @@ function MaterialsList({ referenceId, imageUrl, shoeCategory }: { referenceId: s
                             <TableRow key={m.id}>
                               <TableCell className="text-xs font-medium">{prod?.name ?? '—'}</TableCell>
                               <TableCell className="text-xs">
-                                <Badge variant="outline" className="text-[10px]">{prod?.category ?? '—'}</Badge>
+                                <Badge variant="outline" className="text-xs">{prod?.category ?? '—'}</Badge>
                               </TableCell>
                               <TableCell className="text-xs font-mono">
                                 {Number(m.quantity_per_unit).toLocaleString('pt-BR', { maximumFractionDigits: 4 })} {prod?.unit ?? ''}
@@ -970,7 +970,7 @@ function MaterialsList({ referenceId, imageUrl, shoeCategory }: { referenceId: s
                               {sortedSizes.map(size => (
                                 <TableCell key={size} className="text-center">
                                   {mSizes.includes(size) ? (
-                                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary/15 text-primary text-[10px] font-bold">✓</span>
+                                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary/15 text-primary text-xs font-bold">✓</span>
                                   ) : (
                                     <span className="text-muted-foreground/20 text-xs">—</span>
                                   )}
@@ -1081,7 +1081,7 @@ function ColorsWithRecolor({
           Cores disponíveis para este modelo, derivadas dos materiais cadastrados na ficha técnica.
         </p>
         {imageUrl && (
-          <Badge variant="secondary" className="gap-1 text-[10px]">
+          <Badge variant="secondary" className="gap-1 text-xs">
             <Wand2 className="h-3 w-3" /> IA pode recolorir a foto
           </Badge>
         )}
@@ -1100,7 +1100,7 @@ function ColorsWithRecolor({
                   <div className="h-4 w-4 rounded-full border bg-muted" />
                   <span className="text-sm font-semibold">{color}</span>
                 </div>
-                <Badge variant="outline" className="text-[10px] font-mono">{totalMaterials} material(is)</Badge>
+                <Badge variant="outline" className="text-xs font-mono">{totalMaterials} material(is)</Badge>
               </div>
 
               {/* Image preview (original or recolored) */}
@@ -1112,7 +1112,7 @@ function ColorsWithRecolor({
                     className="w-full h-full object-cover"
                   />
                   {recoloredUrl && (
-                    <Badge className="absolute top-1.5 left-1.5 text-[9px] gap-1 bg-primary/90">
+                    <Badge className="absolute top-1.5 left-1.5 text-xs gap-1 bg-primary/90">
                       <Wand2 className="h-2.5 w-2.5" /> IA
                     </Badge>
                   )}
@@ -1124,7 +1124,7 @@ function ColorsWithRecolor({
                   const catConfig = COMPONENT_CATEGORIES.find(c => c.key === cat);
                   return (
                     <div key={cat} className="flex items-start gap-1.5 text-xs">
-                      <Badge variant="secondary" className="text-[10px] shrink-0">{catConfig?.label || cat}</Badge>
+                      <Badge variant="secondary" className="text-xs shrink-0">{catConfig?.label || cat}</Badge>
                       <span className="text-muted-foreground">{prods.join(', ')}</span>
                     </div>
                   );
@@ -1205,16 +1205,16 @@ function LinkedSheetView({ sheetId }: { sheetId: string }) {
       <div className="flex items-center gap-2">
         <FileText className="h-4 w-4 text-primary" />
         <span className="text-sm font-semibold">Ficha Técnica: {sheet?.name || '—'}</span>
-        <Badge variant="outline" className="font-mono text-[10px]">{materials.length} materiais</Badge>
+        <Badge variant="outline" className="font-mono text-xs">{materials.length} materiais</Badge>
         {materialColors.length > 0 && (
-          <Badge variant="secondary" className="text-[10px]">{materialColors.length} cor(es)</Badge>
+          <Badge variant="secondary" className="text-xs">{materialColors.length} cor(es)</Badge>
         )}
       </div>
 
       {materials.length > 0 ? (
         <Table>
           <TableHeader>
-            <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+            <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
               <TableHead>Material</TableHead>
               <TableHead>Categoria</TableHead>
               <TableHead>Cor</TableHead>
@@ -1230,7 +1230,7 @@ function LinkedSheetView({ sheetId }: { sheetId: string }) {
               return (
                 <TableRow key={m.id}>
                   <TableCell className="text-xs font-medium">{prod?.name ?? '—'}</TableCell>
-                  <TableCell className="text-xs"><Badge variant="outline" className="text-[10px]">{prod?.category ?? '—'}</Badge></TableCell>
+                  <TableCell className="text-xs"><Badge variant="outline" className="text-xs">{prod?.category ?? '—'}</Badge></TableCell>
                   <TableCell className="text-xs">{m.color || '—'}</TableCell>
                   <TableCell className="text-xs">{m.supplier || '—'}</TableCell>
                   <TableCell className="text-xs text-right font-mono">

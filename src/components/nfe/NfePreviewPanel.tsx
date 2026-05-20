@@ -103,7 +103,7 @@ export function NfePreviewPanel({ preview }: { preview: NfePreviewResponse['prev
                     <td className="px-2 py-1.5">
                       {p.descricao}
                       {p.gc_status === 'pending_create' && (
-                        <span className="ml-1 text-amber-600 text-[10px]" title="Será cadastrado no GestaoClick na emissão">(novo)</span>
+                        <span className="ml-1 text-amber-600 text-xs" title="Será cadastrado no GestaoClick na emissão">(novo)</span>
                       )}
                     </td>
                     <td className="px-2 py-1.5 font-mono">{p.ncm}</td>
@@ -145,7 +145,7 @@ export function NfePreviewPanel({ preview }: { preview: NfePreviewResponse['prev
             </div>
             {transporte.transportador && (
               <div className="mt-2 pt-2 border-t border-border space-y-0.5">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Transportador (modFrete 3 — próprio)</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Transportador (modFrete 3 — próprio)</p>
                 {transporte.transportador.nome && (
                   <div className="text-xs"><span className="text-muted-foreground">Razão social:</span> {transporte.transportador.nome}</div>
                 )}

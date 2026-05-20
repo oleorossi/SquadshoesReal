@@ -121,7 +121,7 @@ export function NetMarginChart() {
             <TrendingUp className="h-4 w-4 text-primary" />
             Margem Líquida — Evolução por Período
           </CardTitle>
-          <p className="text-[11px] text-muted-foreground mt-1">
+          <p className="text-xs text-muted-foreground mt-1">
             Receita × Custo (matéria-prima + MOD + GGF + embalagem) com margem % por mês.
             Fonte: <code>order_costs</code> (cálculos persistidos via "Calcular Custos" no PV).
           </p>
@@ -147,29 +147,29 @@ export function NetMarginChart() {
           <div className="h-72 flex items-center justify-center flex-col gap-2 text-muted-foreground">
             <TrendingDown className="h-8 w-8 opacity-30" />
             <p className="text-sm">Nenhum custo calculado no período.</p>
-            <p className="text-[11px]">Rode "Calcular Custos" nos PVs pra ver a evolução de margem aqui.</p>
+            <p className="text-xs">Rode "Calcular Custos" nos PVs pra ver a evolução de margem aqui.</p>
           </div>
         ) : (
           <>
             {/* KPIs do período */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
               <div className="rounded-md bg-muted/30 p-2.5">
-                <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Receita</p>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Receita</p>
                 <p className="text-sm font-bold tabular-nums mt-0.5">{fmt(totals.revenue)}</p>
               </div>
               <div className="rounded-md bg-muted/30 p-2.5">
-                <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Custo</p>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Custo</p>
                 <p className="text-sm font-bold tabular-nums mt-0.5">{fmt(totals.cost)}</p>
               </div>
               <div className="rounded-md bg-muted/30 p-2.5">
-                <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Margem</p>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Margem</p>
                 <p className={cn(
                   'text-sm font-bold tabular-nums mt-0.5',
                   totals.margin >= 0 ? 'text-emerald-700' : 'text-red-700',
                 )}>{fmt(totals.margin)}</p>
               </div>
               <div className="rounded-md bg-muted/30 p-2.5">
-                <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Margem %</p>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Margem %</p>
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <p className={cn(
                     'text-sm font-bold tabular-nums',
@@ -180,7 +180,7 @@ export function NetMarginChart() {
                     <Badge
                       variant="outline"
                       className={cn(
-                        'text-[9px] h-4 px-1.5',
+                        'text-xs h-4 px-1.5',
                         trend.delta > 0
                           ? 'border-emerald-500/40 text-emerald-700'
                           : 'border-red-500/40 text-red-700',
@@ -232,7 +232,7 @@ export function NetMarginChart() {
               </ResponsiveContainer>
             </div>
 
-            <p className="text-[10px] text-muted-foreground italic mt-3">
+            <p className="text-xs text-muted-foreground italic mt-3">
               Pedidos contabilizados pelo <strong>delivery_deadline</strong>. Apenas PVs com cálculo de
               custo persistido (<code>order_costs</code>) entram. {totals.orderCount} PV(s) no período.
             </p>

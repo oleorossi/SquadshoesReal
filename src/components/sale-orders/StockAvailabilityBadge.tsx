@@ -46,7 +46,7 @@ export default function StockAvailabilityBadge({ referenceId, quantity, color }:
         <TooltipTrigger asChild>
           <Badge
             variant={allOk ? 'secondary' : 'destructive'}
-            className={`text-[9px] h-4 px-1.5 gap-0.5 cursor-default ${allOk ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800' : ''}`}
+            className={`text-xs h-4 px-1.5 gap-0.5 cursor-default ${allOk ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800' : ''}`}
           >
             {allOk ? (
               <><PackageCheck className="h-2.5 w-2.5" /> Estoque OK</>

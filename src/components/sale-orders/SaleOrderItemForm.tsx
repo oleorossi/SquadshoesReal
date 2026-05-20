@@ -675,7 +675,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             </div>
             <div className="flex flex-col text-left">
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Ref</span>
+                <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Ref</span>
                 <span className="font-mono font-bold text-sm">{selectedRef?.code || '—'}</span>
                 {/* Badge NCM da ficha — fica amber quando inválido (faltando ou
                     fora do formato 8 dígitos). NF-e exige NCM válido pra emissão;
@@ -686,20 +686,20 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   const valid = ncm && /^\d{8}$/.test(ncm);
                   if (!ncm) {
                     return (
-                      <Badge variant="outline" className="h-4 text-[9px] bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800" title="Ficha sem NCM — NF-e será bloqueada">
+                      <Badge variant="outline" className="h-4 text-xs bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800" title="Ficha sem NCM — NF-e será bloqueada">
                         ⚠ NCM
                       </Badge>
                     );
                   }
                   if (!valid) {
                     return (
-                      <Badge variant="outline" className="h-4 text-[9px] bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800 font-mono" title="NCM precisa de 8 dígitos">
+                      <Badge variant="outline" className="h-4 text-xs bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800 font-mono" title="NCM precisa de 8 dígitos">
                         NCM {ncm}
                       </Badge>
                     );
                   }
                   return (
-                    <Badge variant="outline" className="h-4 text-[9px] font-mono opacity-60" title="NCM válido">
+                    <Badge variant="outline" className="h-4 text-xs font-mono opacity-60" title="NCM válido">
                       {ncm}
                     </Badge>
                   );
@@ -711,7 +711,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           {item.color && (
             <>
               <div className="h-8 w-px bg-border mx-1" />
-              <Badge variant="outline" className="h-5 px-1.5 text-[10px] bg-primary/5 text-primary border-primary/20">
+              <Badge variant="outline" className="h-5 px-1.5 text-xs bg-primary/5 text-primary border-primary/20">
                 {item.color}
               </Badge>
             </>
@@ -722,7 +722,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               return (
                 <>
                   <div className="h-8 w-px bg-border mx-1" />
-                  <Badge variant="secondary" className="h-5 px-1.5 text-[10px] gap-1 font-normal">
+                  <Badge variant="secondary" className="h-5 px-1.5 text-xs gap-1 font-normal">
                     <span className="font-medium">{sel.material_name}</span>
                     {sel.sku && <span className="font-mono text-primary opacity-70">· {sel.sku}</span>}
                   </Badge>
@@ -733,7 +733,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             return (
               <>
                 <div className="h-8 w-px bg-border mx-1" />
-                <Badge variant="destructive" className="h-5 px-1.5 text-[10px] gap-1 font-normal">
+                <Badge variant="destructive" className="h-5 px-1.5 text-xs gap-1 font-normal">
                   Material inativo — NF-e será bloqueada
                 </Badge>
               </>
@@ -747,12 +747,12 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         </div>
         <div className="flex items-center gap-4">
           <div className="text-right">
-            <p className="text-[9px] text-muted-foreground uppercase font-bold leading-none">Pares</p>
+            <p className="text-xs text-muted-foreground uppercase font-bold leading-none">Pares</p>
             <p className="font-mono font-bold text-sm leading-tight">{totalPairs}</p>
           </div>
           {canSeeFinancialValues && (
             <div className="text-right">
-              <p className="text-[9px] text-muted-foreground uppercase font-bold leading-none">Subtotal</p>
+              <p className="text-xs text-muted-foreground uppercase font-bold leading-none">Subtotal</p>
               <p className="font-mono font-bold text-sm text-primary leading-tight">{formatCurrency(itemTotal)}</p>
             </div>
           )}
@@ -778,7 +778,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               user clica "+ Novo Item" → picker aparece direto pra digitar
               a referência. Pedido user 20/05/2026. */}
           <div className={cn("md:col-span-4", activeMaterialVariants.length > 0 && "md:col-span-3")}>
-            <Label className="text-[10px] font-bold text-muted-foreground uppercase mb-1 block">Modelo / Referência</Label>
+            <Label className="text-xs font-bold text-muted-foreground uppercase mb-1 block">Modelo / Referência</Label>
             <ReferencePickerControlled
               references={references}
               variantsByRef={allVariantsByRef}
@@ -791,7 +791,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           {/* Material — shown BEFORE color when groups exist (fiscal SKU varies by material) */}
           {activeMaterialVariants.length > 0 && (
             <div className="md:col-span-3">
-              <Label className="text-[10px] font-bold text-muted-foreground uppercase mb-1 block">
+              <Label className="text-xs font-bold text-muted-foreground uppercase mb-1 block">
                 Material *
               </Label>
               <Select
@@ -827,12 +827,12 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               aparecer nada no PV. */}
           {activeMaterialVariants.length === 0 && sheetSpecs?.upper_material && (
             <div className="md:col-span-3">
-              <Label className="text-[10px] font-bold text-muted-foreground uppercase mb-1 block">
+              <Label className="text-xs font-bold text-muted-foreground uppercase mb-1 block">
                 Cabedal
               </Label>
               <div className="h-9 px-3 rounded-md border bg-muted/30 flex items-center text-xs text-muted-foreground">
                 {sheetSpecs.upper_material}
-                <span className="ml-auto text-[9px] text-muted-foreground/70 uppercase tracking-wider">
+                <span className="ml-auto text-xs text-muted-foreground/70 uppercase tracking-wider">
                   da ficha
                 </span>
               </div>
@@ -848,12 +848,12 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             isLocked && "pointer-events-none"
           )}>
             <Label className={cn(
-              "text-[10px] font-bold uppercase mb-1 block flex items-center gap-1",
+              "text-xs font-bold uppercase mb-1 block flex items-center gap-1",
               isLocked ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'
             )}>
               Cor Principal
               {isLocked && (
-                <span className="inline-flex items-center gap-1 ml-1 px-1.5 py-0.5 rounded bg-amber-500/15 text-[9px] font-bold border border-amber-500/30 normal-case">
+                <span className="inline-flex items-center gap-1 ml-1 px-1.5 py-0.5 rounded bg-amber-500/15 text-xs font-bold border border-amber-500/30 normal-case">
                   🔒 Escolha o material primeiro
                 </span>
               )}
@@ -893,7 +893,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
 
           {canSeeFinancialValues && (
             <div className="md:col-span-2">
-              <Label className="text-[10px] font-bold text-muted-foreground uppercase mb-1 block">Preço Unitário</Label>
+              <Label className="text-xs font-bold text-muted-foreground uppercase mb-1 block">Preço Unitário</Label>
               <div className="relative">
                 <NumberInput
                   value={item.unit_price}
@@ -907,7 +907,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           )}
 
           <div className="md:col-span-1">
-            <Label className="text-[10px] font-bold text-muted-foreground uppercase mb-1 block text-center">Fichas</Label>
+            <Label className="text-xs font-bold text-muted-foreground uppercase mb-1 block text-center">Fichas</Label>
               <NumberInput
                 value={fichas}
                 onChange={(v) => setFichas(Math.max(1, v))}
@@ -925,7 +925,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-9 px-3 gap-1.5 text-[10px] font-bold uppercase tracking-widest w-full"
+                className="h-9 px-3 gap-1.5 text-xs font-bold uppercase tracking-widest w-full"
                 onClick={() => onCopyGradeFromPrevious?.(index)}
                 disabled={index === 0}
               >
@@ -941,7 +941,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               grade mostra números individuais vs conjugados, e qual a regra
               de palmilha (cortada vs pronta na cor). */}
           {soleSizeRange?.classification && (
-            <div className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider flex items-center gap-2
+            <div className={`px-3 py-1 text-xs font-bold uppercase tracking-wider flex items-center gap-2
               ${soleSizeRange.classification === 'tradicional' ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-b border-emerald-200 dark:border-emerald-800' : ''}
               ${soleSizeRange.classification === 'palmilha_pronta' ? 'bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-400 border-b border-violet-200 dark:border-violet-800' : ''}
               ${soleSizeRange.classification === 'conjugado' ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border-b border-amber-200 dark:border-amber-800' : ''}
@@ -957,7 +957,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             </div>
           )}
           <div className="bg-muted/30 px-3 py-1.5 border-b flex items-center justify-between">
-            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Distribuição por Numeração</span>
+            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Distribuição por Numeração</span>
             <div className="flex items-center gap-2">
               {/* Grade copy button moves here when material groups are present */}
               {activeMaterialVariants.length > 0 && index > 0 && (
@@ -965,13 +965,13 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-6 px-2 gap-1 text-[9px] font-bold uppercase tracking-widest text-muted-foreground"
+                  className="h-6 px-2 gap-1 text-xs font-bold uppercase tracking-widest text-muted-foreground"
                   onClick={() => onCopyGradeFromPrevious?.(index)}
                 >
                   <Check className="h-3 w-3 text-primary" /> Copiar grade
                 </Button>
               )}
-              <div className="text-[10px] font-bold">
+              <div className="text-xs font-bold">
                 {fichas > 1 ? (
                   <>
                     {gradeTotal} <span className="text-muted-foreground font-normal">×</span> {fichas} ={' '}
@@ -999,7 +999,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   <div key={size} className="text-center relative" style={{ width: isConjugated ? '5.2rem' : (isInfantil ? '3.5rem' : '3.8rem') }}>
                     {isOrphan && (
                       <span
-                        className="absolute -top-1 -right-1 z-10 inline-flex items-center justify-center h-4 w-4 rounded-full bg-amber-500 text-white text-[9px] font-bold border border-background shadow-sm"
+                        className="absolute -top-1 -right-1 z-10 inline-flex items-center justify-center h-4 w-4 rounded-full bg-amber-500 text-white text-xs font-bold border border-background shadow-sm"
                         title={`Tamanho ${size} fora do range atual do solado, mas preservado do PV original`}
                       >
                         ⚠
@@ -1007,7 +1007,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                     )}
                     <label
                       className={cn(
-                        "text-[11px] font-bold block mb-1",
+                        "text-xs font-bold block mb-1",
                         isOrphan
                           ? 'text-amber-700 dark:text-amber-300'
                           : isConjugated ? 'text-primary' : 'text-muted-foreground',
@@ -1066,7 +1066,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           // mostra placeholder com hint em vez da section completa.
           if (!principalDefined && !anyStrapHasColor) {
             return (
-              <div className="rounded-lg border border-dashed border-border/60 bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground italic flex items-center gap-2">
+              <div className="rounded-lg border border-dashed border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground italic flex items-center gap-2">
                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-muted-foreground/40" />
                 Defina a <strong className="text-foreground">Cor Principal</strong> acima para abrir as <strong className="text-foreground">cores das {straps.length} tira{straps.length > 1 ? 's' : ''}</strong>.
               </div>
@@ -1096,10 +1096,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           return (
             <div className={`rounded-lg border overflow-hidden ${hasMissing ? 'border-amber-500/50' : 'border-border/60'}`}>
               <div className={`px-3 py-1.5 border-b flex items-center justify-between ${hasMissing ? 'bg-amber-500/10' : 'bg-muted/30'}`}>
-                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
                   Cores das Tiras{hasMissing && <span className="text-amber-700 ml-1">⚠ {missing.length} sem estoque</span>}
                 </span>
-                <Button variant="link" size="sm" className="h-auto p-0 text-[10px]" onClick={() => {
+                <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => {
                   const updated = straps.map((s: any) => ({ ...s, color: item.color }));
                   onUpdate(index, 'strap_colors', updated);
                 }}>Igualar à principal</Button>
@@ -1122,7 +1122,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                           type="button"
                           variant="outline"
                           size="sm"
-                          className="h-7 text-[11px] gap-1 border-amber-500/40 bg-card hover:bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                          className="h-7 text-xs gap-1 border-amber-500/40 bg-card hover:bg-amber-500/10 text-amber-700 dark:text-amber-400"
                           onClick={() => {
                             setPendingStrapGroupId(strap.group_id);
                             setPendingStrapGroupName(strap.group_name || '');
@@ -1147,8 +1147,8 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   return (
                     <div key={strap.id || sIdx} className="space-y-1">
                       <div className="flex items-center justify-between gap-1">
-                        <span className="text-[10px] font-bold text-muted-foreground uppercase truncate">{strap.label || `Tira ${sIdx + 1}`}</span>
-                        {strap.group_name && <span className="text-[9px] text-muted-foreground opacity-70 truncate max-w-[80px]">({strap.group_name})</span>}
+                        <span className="text-xs font-bold text-muted-foreground uppercase truncate">{strap.label || `Tira ${sIdx + 1}`}</span>
+                        {strap.group_name && <span className="text-xs text-muted-foreground opacity-70 truncate max-w-[80px]">({strap.group_name})</span>}
                       </div>
                       <ColorPickerDropdown
                         value={strap.color || ''}
@@ -1168,7 +1168,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                         } : undefined}
                       />
                       {isMissing && (
-                        <p className="text-[10px] text-amber-700 leading-tight">sem produto no estoque</p>
+                        <p className="text-xs text-amber-700 leading-tight">sem produto no estoque</p>
                       )}
                     </div>
                   );
@@ -1183,11 +1183,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           {item.observation !== null && item.observation !== undefined ? (
             <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <Label className="text-[10px] font-bold text-muted-foreground uppercase">Observação</Label>
+                <Label className="text-xs font-bold text-muted-foreground uppercase">Observação</Label>
                 <button
                   type="button"
                   onClick={() => onUpdate(index, 'observation', null)}
-                  className="text-[10px] text-muted-foreground hover:text-destructive underline underline-offset-2"
+                  className="text-xs text-muted-foreground hover:text-destructive underline underline-offset-2"
                 >
                   remover
                 </button>
@@ -1201,7 +1201,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   className="w-full rounded-md border border-input bg-background px-3 py-2 pr-14 text-xs ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
                   placeholder="Observação para esta referência (aparece nos relatórios)..."
                 />
-                <span className="absolute bottom-1.5 right-2 text-[9px] text-muted-foreground/70 font-mono bg-background/80 px-1 rounded pointer-events-none">
+                <span className="absolute bottom-1.5 right-2 text-xs text-muted-foreground/70 font-mono bg-background/80 px-1 rounded pointer-events-none">
                   {(item.observation || '').length}/300
                 </span>
               </div>
@@ -1211,7 +1211,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               type="button"
               variant="outline"
               size="sm"
-              className="gap-1.5 h-7 text-[11px]"
+              className="gap-1.5 h-7 text-xs"
               onClick={() => onUpdate(index, 'observation', '')}
             >
               <MessageSquare className="h-3 w-3" /> Observação
@@ -1361,7 +1361,7 @@ function ReferenceSearch({
         />
       </div>
       {filtered.length > 50 && !search && (
-        <p className="px-2 text-[10px] text-muted-foreground">
+        <p className="px-2 text-xs text-muted-foreground">
           {filtered.length} referências — busque por código ou nome para filtrar.
         </p>
       )}
@@ -1391,14 +1391,14 @@ function ReferenceSearch({
                   <span className="font-mono bg-muted px-1.5 rounded text-muted-foreground w-fit">{ref.code}</span>
                   <span className="truncate max-w-[200px] font-medium">{ref.name}</span>
                   {variants.length > 0 && (
-                    <span className="text-[9px] text-primary/70 font-medium">
+                    <span className="text-xs text-primary/70 font-medium">
                       {variants.length} grupo{variants.length !== 1 ? 's' : ''} de material
                     </span>
                   )}
                 </div>
               </div>
               {ref.shoe_category && (
-                <Badge variant="outline" className="text-[9px] h-4 px-1 shrink-0 mt-0.5">{ref.shoe_category}</Badge>
+                <Badge variant="outline" className="text-xs h-4 px-1 shrink-0 mt-0.5">{ref.shoe_category}</Badge>
               )}
             </button>
           );
@@ -1417,7 +1417,7 @@ function ColorPickerDropdown({ value, colors, onChange, disabled, onAddNew }: { 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" disabled={disabled} className={cn("w-full h-8 justify-between text-[11px] font-normal", !value && "text-muted-foreground")}>
+        <Button variant="outline" size="sm" disabled={disabled} className={cn("w-full h-8 justify-between text-xs font-normal", !value && "text-muted-foreground")}>
           {value || 'Escolha a cor...'}
           <ChevronsUpDown className="h-3 w-3 opacity-50" />
         </Button>

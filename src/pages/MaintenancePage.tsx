@@ -281,7 +281,7 @@ export default function MaintenancePage() {
           >
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                  <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <TableHead>Nome</TableHead>
                     <TableHead>Código</TableHead>
                     <TableHead>Setor</TableHead>
@@ -327,7 +327,7 @@ export default function MaintenancePage() {
           >
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                  <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <TableHead>Equipamento</TableHead>
                     <TableHead>Descrição</TableHead>
                     <TableHead>Frequência</TableHead>
@@ -396,7 +396,7 @@ export default function MaintenancePage() {
               </div>
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                  <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <TableHead>Data</TableHead>
                     <TableHead>Equipamento</TableHead>
                     <TableHead>Tipo</TableHead>

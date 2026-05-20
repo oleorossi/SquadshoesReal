@@ -141,13 +141,13 @@ export default function BottlenecksPage() {
                 }
                 actions={
                   <>
-                    <Badge variant="outline" className={cn(style.badge, 'text-[11px]')}>
+                    <Badge variant="outline" className={cn(style.badge, 'text-xs')}>
                       {b.utilization_pct}% utilizado
                     </Badge>
                     <Button
                       size="sm"
                       variant="default"
-                      className="h-7 text-[11px] gap-1"
+                      className="h-7 text-xs gap-1"
                       onClick={() => openBulkDialog(b)}
                     >
                       <Buildings className="h-3 w-3" />
@@ -158,7 +158,7 @@ export default function BottlenecksPage() {
               >
                   <Table>
                     <TableHeader>
-                      <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                      <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                         <TableHead>OP</TableHead>
                         <TableHead>Modelo / Cor</TableHead>
                         <TableHead className="text-right">Pares</TableHead>
@@ -195,7 +195,7 @@ export default function BottlenecksPage() {
         <Panel title="Carga por setor × semana (todos)" flush>
             <Table>
               <TableHeader>
-                <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <TableHead>Setor</TableHead>
                   <TableHead>Semana</TableHead>
                   <TableHead className="text-right">OPs</TableHead>
@@ -215,7 +215,7 @@ export default function BottlenecksPage() {
                       <TableCell className="text-right tabular-nums text-xs">{b.total_pairs_planned.toLocaleString('pt-BR')}</TableCell>
                       <TableCell className="text-right tabular-nums text-xs text-muted-foreground">{b.total_capacity_week.toLocaleString('pt-BR')}</TableCell>
                       <TableCell className="text-right">
-                        <Badge variant="outline" className={cn(style.badge, 'text-[10px]')}>{b.utilization_pct}%</Badge>
+                        <Badge variant="outline" className={cn(style.badge, 'text-xs')}>{b.utilization_pct}%</Badge>
                       </TableCell>
                     </TableRow>
                   );

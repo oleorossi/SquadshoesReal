@@ -163,7 +163,7 @@ export default function MaterialFormDialog({ open, onOpenChange, editing, onSubm
                        placeholder="Ex: 1.40" 
                        className="h-8 mt-1"
                      />
-                     <p className="text-[10px] text-muted-foreground mt-1">Informe a largura útil em metros.</p>
+                     <p className="text-xs text-muted-foreground mt-1">Informe a largura útil em metros.</p>
                    </div>
                    <div>
                      <Label className="text-xs">Consumo em dm²</Label>
@@ -189,7 +189,7 @@ export default function MaterialFormDialog({ open, onOpenChange, editing, onSubm
                        <div className="text-lg font-bold text-primary mt-1">
                          {calculatedLinear.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 4 })} metros lineares
                        </div>
-                       <p className="text-[10px] text-muted-foreground mt-1">
+                       <p className="text-xs text-muted-foreground mt-1">
                          Fórmula: dm² / (Largura × 10)
                        </p>
                      </AlertDescription>
@@ -218,7 +218,7 @@ export default function MaterialFormDialog({ open, onOpenChange, editing, onSubm
                   <SelectContent>
                     {Object.entries(CONSUMPTION_UNITS_BY_GROUP).map(([groupName, units]) => (
                       <React.Fragment key={groupName}>
-                        <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground bg-muted/50">
+                        <div className="px-2 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground bg-muted/50">
                           {groupName}
                         </div>
                         {units.map(u => <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>)}

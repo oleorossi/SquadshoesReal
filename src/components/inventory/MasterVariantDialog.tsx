@@ -196,7 +196,7 @@ function VariantDetailSheet({ open, onOpenChange, product, otherVariants }: {
             <div className="flex items-center justify-between rounded-md border px-3 py-2">
               <div>
                 <Label className="text-xs font-medium">Ativa</Label>
-                <p className="text-[11px] text-muted-foreground">Variantes inativas não aparecem em pedidos.</p>
+                <p className="text-xs text-muted-foreground">Variantes inativas não aparecem em pedidos.</p>
               </div>
               <Switch checked={!!form.active} onCheckedChange={v => update('active', v)} />
             </div>
@@ -206,7 +206,7 @@ function VariantDetailSheet({ open, onOpenChange, product, otherVariants }: {
           <section className="space-y-3">
             <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">Estoque</h4>
             {form.unit && form.unit !== (product?.unit || 'un') && (
-              <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-2 text-[11px] text-amber-700 dark:text-amber-400">
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-2 text-xs text-amber-700 dark:text-amber-400">
                 ⚠ Você mudou a unidade de <strong>{product?.unit}</strong> para <strong>{form.unit}</strong>.
                 Os valores numéricos abaixo NÃO são convertidos automaticamente — confira se Quantidade,
                 Custo e Estoque mínimo precisam ser reescritos pra nova unidade.
@@ -735,7 +735,7 @@ export function MasterVariantDialog({
                         return (
                           <TabsTrigger key={v.id} value={v.id} className="flex-1 min-w-[90px] gap-1 text-xs py-1.5">
                             <span className="truncate">{v.color || 'Sem cor'}</span>
-                            <Badge variant="secondary" className="text-[10px] px-1 py-0">{label}</Badge>
+                            <Badge variant="secondary" className="text-xs px-1 py-0">{label}</Badge>
                           </TabsTrigger>
                         );
                       })}
@@ -987,7 +987,7 @@ export function MasterVariantDialog({
                       <section className="flex items-center justify-between rounded-md border px-3 py-2">
                         <div>
                           <Label className="text-xs font-medium">Status Ativo (Grupo)</Label>
-                          <p className="text-[11px] text-muted-foreground">Desativar remove todas as variantes de novos pedidos.</p>
+                          <p className="text-xs text-muted-foreground">Desativar remove todas as variantes de novos pedidos.</p>
                         </div>
                         <Switch checked={groupForm.active} onCheckedChange={v => updateGroup('active', v)} />
                       </section>

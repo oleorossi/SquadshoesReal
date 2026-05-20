@@ -87,7 +87,7 @@ export function PvOutdatedBadge({ saleOrderId }: { saleOrderId: string | null })
             className="bg-amber-500/10 text-amber-700 border-amber-500/40 gap-1.5 cursor-help"
           >
             <AlertTriangle className="h-3 w-3" />
-            <span className="text-[10px] font-medium">{meta.text}</span>
+            <span className="text-xs font-medium">{meta.text}</span>
             {data.status_label === 'reservations_outdated' && (
               <RefreshCw className="h-3 w-3 animate-spin opacity-60" />
             )}

@@ -234,7 +234,7 @@ export function SolesComponentSheetTab() {
             <Package className="h-4 w-4 text-muted-foreground" />
             <div>
               <p className="text-lg font-bold leading-none">{soleGroups.length}</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">Modelos de solado</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Modelos de solado</p>
             </div>
           </CardContent>
         </Card>
@@ -245,7 +245,7 @@ export function SolesComponentSheetTab() {
               <p className="text-lg font-bold leading-none">
                 {soleGroups.filter((g) => g.hasSheet).length}
               </p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">Com ficha</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Com ficha</p>
             </div>
           </CardContent>
         </Card>
@@ -256,7 +256,7 @@ export function SolesComponentSheetTab() {
               <p className="text-lg font-bold leading-none">
                 {soleGroups.filter((g) => !g.hasSheet).length}
               </p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">Sem ficha</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Sem ficha</p>
             </div>
           </CardContent>
         </Card>
@@ -265,7 +265,7 @@ export function SolesComponentSheetTab() {
             <Save className="h-4 w-4 text-primary" />
             <div>
               <p className="text-lg font-bold leading-none">{dirtyCount}</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">Alterações pendentes</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Alterações pendentes</p>
             </div>
           </CardContent>
         </Card>
@@ -325,7 +325,7 @@ export function SolesComponentSheetTab() {
                         </TableCell>
                         <TableCell>
                           <div className="font-medium text-sm text-foreground">{group.name}</div>
-                          <div className="text-[11px] text-muted-foreground font-mono">
+                          <div className="text-xs text-muted-foreground font-mono">
                             {group.variants.length} {group.variants.length === 1 ? 'variante' : 'variantes'} de cor
                           </div>
                         </TableCell>
@@ -335,7 +335,7 @@ export function SolesComponentSheetTab() {
                               <Badge
                                 key={v.id}
                                 variant="secondary"
-                                className="text-[10px] font-normal"
+                                className="text-xs font-normal"
                                 title={`SKU: ${v.sku || '—'}`}
                               >
                                 {v.color || 'sem cor'}
@@ -366,7 +366,7 @@ export function SolesComponentSheetTab() {
                               decimals={4}
                               className="h-8 w-20 text-center text-sm"
                             />
-                            <span className="text-[11px] text-muted-foreground font-mono">par</span>
+                            <span className="text-xs text-muted-foreground font-mono">par</span>
                           </div>
                         </TableCell>
                         <TableCell className="text-center">
@@ -379,7 +379,7 @@ export function SolesComponentSheetTab() {
                               decimals={2}
                               className="h-8 w-16 text-center text-sm"
                             />
-                            <span className="text-[11px] text-muted-foreground">%</span>
+                            <span className="text-xs text-muted-foreground">%</span>
                           </div>
                         </TableCell>
                         <TableCell className="text-right pr-3">
@@ -429,7 +429,7 @@ export function SolesComponentSheetTab() {
         </CardContent>
       </Card>
 
-      <p className="text-[11px] text-muted-foreground px-1">
+      <p className="text-xs text-muted-foreground px-1">
         <span className="font-semibold">Dica:</span> o consumo padrão de um solado é{' '}
         <span className="font-mono">1 par/par</span>. Use valores fracionários apenas quando houver perda de
         pareamento (ex.: <span className="font-mono">1.05</span> = 5% de reposição).

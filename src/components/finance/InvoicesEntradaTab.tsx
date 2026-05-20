@@ -59,11 +59,11 @@ function InvoiceItemsRow({ invoiceId, onLaunchStock }: { invoiceId: string; onLa
               <TableCell className="text-xs text-right font-mono">{fmt(item.total_price)}</TableCell>
               <TableCell className="text-xs text-center">
                 {item.added_to_stock ? (
-                  <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[10px]">
+                  <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-xs">
                     <CheckCircle2 className="h-3 w-3 mr-0.5" /> Lançado
                   </Badge>
                 ) : (
-                  <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-[10px]">
+                  <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-xs">
                     Pendente
                   </Badge>
                 )}

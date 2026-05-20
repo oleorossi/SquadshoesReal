@@ -33,7 +33,7 @@ export default function DeliveryTracking() {
         { key: 'expected_delivery_date', label: 'Previsto', render: r => r.expected_delivery_date ? format(new Date(r.expected_delivery_date), 'dd/MM/yy') : '—' },
         { key: 'actual_delivery_date', label: 'Entregue', render: r => r.actual_delivery_date ? format(new Date(r.actual_delivery_date), 'dd/MM/yy') : '—' },
         { key: 'last_update_at', label: 'Última Atualização', render: r => <span className="text-xs">{format(new Date(r.last_update_at), 'dd/MM HH:mm')}</span> },
-        { key: 'status', label: 'Status', render: r => <Badge variant="outline" className={`${STATUS[r.status]} text-[10px] capitalize`}>{r.status.replace(/_/g, ' ')}</Badge> },
+        { key: 'status', label: 'Status', render: r => <Badge variant="outline" className={`${STATUS[r.status]} text-xs capitalize`}>{r.status.replace(/_/g, ' ')}</Badge> },
       ]}
     />
   );

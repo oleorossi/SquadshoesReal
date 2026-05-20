@@ -152,7 +152,7 @@ export default function MrpPage() {
             >
                 <Table>
                   <TableHeader>
-                    <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                    <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                       <TableHead>Material</TableHead>
                       <TableHead>SKU</TableHead>
                       <TableHead className="text-right">Estoque</TableHead>
@@ -220,7 +220,7 @@ export default function MrpPage() {
             >
                 <Table>
                   <TableHeader>
-                    <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                    <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                       <TableHead>Tipo</TableHead>
                       <TableHead>Material</TableHead>
                       <TableHead className="text-right">Necessário</TableHead>

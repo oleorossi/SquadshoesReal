@@ -197,7 +197,7 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
                 <div className="px-4 py-2.5 border-b flex items-center gap-2">
                   <Building2 className="h-4 w-4 text-primary" />
                   <h3 className="text-sm font-bold">Identificação</h3>
-                  <span className="text-[10px] text-muted-foreground ml-auto">Dados oficiais da empresa</span>
+                  <span className="text-xs text-muted-foreground ml-auto">Dados oficiais da empresa</span>
                 </div>
                 <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="md:col-span-2">
@@ -246,7 +246,7 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
                         <SelectItem value="nao">Não — Isento / Não contribuinte</SelectItem>
                       </SelectContent>
                     </Select>
-                    <p className="text-[10px] text-muted-foreground mt-1">
+                    <p className="text-xs text-muted-foreground mt-1">
                       Define como o destinatário entra na NF-e: contribuinte exige IE numérica;
                       isento preenche IE como <span className="font-mono font-semibold">ISENTO</span> automaticamente.
                     </p>
@@ -262,7 +262,7 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
                       placeholder={form.icms_contribuinte === false ? 'ISENTO' : 'IE numérica'}
                       disabled={form.icms_contribuinte === false}
                     />
-                    <p className="text-[10px] text-muted-foreground mt-1">
+                    <p className="text-xs text-muted-foreground mt-1">
                       {form.icms_contribuinte === true
                         ? 'Obrigatória — informe a IE numérica do cliente.'
                         : form.icms_contribuinte === false
@@ -278,7 +278,7 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
                       className="mt-1 h-9 font-mono"
                       placeholder='ex: "L12", "SP-03"'
                     />
-                    <p className="text-[10px] text-muted-foreground mt-1">Código que o cliente passa pra identificar a unidade dele.</p>
+                    <p className="text-xs text-muted-foreground mt-1">Código que o cliente passa pra identificar a unidade dele.</p>
                   </div>
                   <div>
                     <Label className="text-xs">Nome da Filial</Label>
@@ -297,7 +297,7 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
                 <div className="px-4 py-2.5 border-b flex items-center gap-2">
                   <MapPin className="h-4 w-4 text-primary" />
                   <h3 className="text-sm font-bold">Endereço</h3>
-                  <span className="text-[10px] text-muted-foreground ml-auto">CEP busca dados automaticamente</span>
+                  <span className="text-xs text-muted-foreground ml-auto">CEP busca dados automaticamente</span>
                 </div>
                 <div className="p-4 grid grid-cols-1 md:grid-cols-4 gap-3">
                   <div>
@@ -350,7 +350,7 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
                 <div className="px-4 py-2.5 border-b flex items-center gap-2">
                   <Phone className="h-4 w-4 text-primary" />
                   <h3 className="text-sm font-bold">Contato</h3>
-                  <span className="text-[10px] text-muted-foreground ml-auto">Canais de comunicação</span>
+                  <span className="text-xs text-muted-foreground ml-auto">Canais de comunicação</span>
                 </div>
                 <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div>
@@ -373,7 +373,7 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
                 <div className="px-4 py-2.5 border-b flex items-center gap-2">
                   <DollarSign className="h-4 w-4 text-primary" />
                   <h3 className="text-sm font-bold">Comercial & Configurações</h3>
-                  <span className="text-[10px] text-muted-foreground ml-auto">Grupo, crédito e regras</span>
+                  <span className="text-xs text-muted-foreground ml-auto">Grupo, crédito e regras</span>
                 </div>
                 <div className="p-4 space-y-3">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -386,7 +386,7 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
                           {economicGroups.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
                         </SelectContent>
                       </Select>
-                      <p className="text-[10px] text-muted-foreground mt-1">Lojas do mesmo grupo aparecem agrupadas na lista.</p>
+                      <p className="text-xs text-muted-foreground mt-1">Lojas do mesmo grupo aparecem agrupadas na lista.</p>
                     </div>
                     <div>
                       <Label className="text-xs">Limite de Crédito (R$)</Label>

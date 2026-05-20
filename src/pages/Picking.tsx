@@ -97,17 +97,17 @@ function PickingList({ onOpen, onCreate }: { onOpen: (id: string) => void; onCre
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-mono font-bold text-xs">{r.session_number}</span>
-                      <Badge variant="outline" className={`text-[10px] capitalize ${STATUS_COLOR[r.status]}`}>
+                      <Badge variant="outline" className={`text-xs capitalize ${STATUS_COLOR[r.status]}`}>
                         {r.status.replace('_', ' ')}
                       </Badge>
-                      <Badge variant="outline" className="text-[10px] capitalize">{r.picking_type}</Badge>
+                      <Badge variant="outline" className="text-xs capitalize">{r.picking_type}</Badge>
                       {r.sale_orders?.order_number && (
                         <span className="text-xs text-muted-foreground">
                           {r.sale_orders.order_number} · {r.sale_orders.client_name}
                         </span>
                       )}
                     </div>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                    <p className="text-xs text-muted-foreground mt-0.5">
                       {r.total_pairs} pares · {r.total_volumes} volumes · {r.total_weight_kg} kg
                       {r.started_at && ` · iniciada ${format(new Date(r.started_at), 'dd/MM HH:mm')}`}
                     </p>
@@ -187,7 +187,7 @@ function PickingSession({ id, onBack }: { id: string; onBack: () => void }) {
           <div>
             <h1 className="text-xl font-bold flex items-center gap-2">
               <ClipboardCheck className="h-5 w-5 text-primary" /> {session.session_number}
-              <Badge variant="outline" className={`text-[10px] capitalize ${STATUS_COLOR[session.status]}`}>
+              <Badge variant="outline" className={`text-xs capitalize ${STATUS_COLOR[session.status]}`}>
                 {session.status.replace('_', ' ')}
               </Badge>
             </h1>
@@ -229,15 +229,15 @@ function PickingSession({ id, onBack }: { id: string; onBack: () => void }) {
       <div className="grid sm:grid-cols-3 gap-3">
         <Card>
           <CardContent className="p-3">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase">Esperado</p>
+            <p className="text-xs font-bold text-muted-foreground uppercase">Esperado</p>
             <p className="text-2xl font-bold">{totalExpected}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-3 space-y-1.5">
             <div className="flex items-center justify-between">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase">Separados</p>
-              <span className="text-[11px] font-mono">{totalPicked}/{totalExpected}</span>
+              <p className="text-xs font-bold text-muted-foreground uppercase">Separados</p>
+              <span className="text-xs font-mono">{totalPicked}/{totalExpected}</span>
             </div>
             <p className="text-2xl font-bold text-amber-600">{totalPicked}</p>
             <Progress value={pickProgress} className="h-1.5" />
@@ -246,8 +246,8 @@ function PickingSession({ id, onBack }: { id: string; onBack: () => void }) {
         <Card>
           <CardContent className="p-3 space-y-1.5">
             <div className="flex items-center justify-between">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase">Conferidos</p>
-              <span className="text-[11px] font-mono">{totalConferred}/{totalPicked}</span>
+              <p className="text-xs font-bold text-muted-foreground uppercase">Conferidos</p>
+              <span className="text-xs font-mono">{totalConferred}/{totalPicked}</span>
             </div>
             <p className="text-2xl font-bold text-emerald-600">{totalConferred}</p>
             <Progress value={confProgress} className="h-1.5" />
@@ -416,7 +416,7 @@ function PickingItemsTable({
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                <tr className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <th className="text-left p-2">Produto</th>
                   <th className="text-left p-2">Cor / Tam</th>
                   <th className="text-left p-2">Bin</th>
@@ -434,7 +434,7 @@ function PickingItemsTable({
                     <tr key={it.id} className="border-b border-border/40">
                       <td className="p-2">
                         <p className="font-medium">{it.products?.name || it.technical_sheets?.name || '—'}</p>
-                        <p className="text-[10px] text-muted-foreground font-mono">
+                        <p className="text-xs text-muted-foreground font-mono">
                           {it.products?.code || it.technical_sheets?.code || it.product_id?.slice(0, 8)}
                           {it.products?.ean && ` · EAN ${it.products.ean}`}
                         </p>
@@ -506,7 +506,7 @@ function PickingItemsTable({
                         )}
                       </td>
                       <td className="p-2">
-                        <Badge variant="outline" className="text-[10px] capitalize">{it.status?.replace('_', ' ')}</Badge>
+                        <Badge variant="outline" className="text-xs capitalize">{it.status?.replace('_', ' ')}</Badge>
                       </td>
                       <td className="p-2 text-right">
                         {editable && (

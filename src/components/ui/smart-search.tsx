@@ -177,7 +177,7 @@ function SmartSearchInner({
           const Icon = FIELD_ICON[field];
           return (
             <div key={field}>
-              <div className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted/40 sticky top-0">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-muted/40 sticky top-0">
                 <Icon className="h-3 w-3" />
                 {FIELD_LABEL[field]}
               </div>

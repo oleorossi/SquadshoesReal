@@ -165,7 +165,7 @@ export default function SupplierPanel({ groupId }: { groupId: string }) {
                       <div className="flex items-center gap-3 text-xs text-muted-foreground">
                         {s.supplier_cnpj && <span>{s.supplier_cnpj}</span>}
                         {s.supplier_phone && <span>{s.supplier_phone}</span>}
-                        {s.payment_terms && <Badge variant="outline" className="text-[10px] h-4">{s.payment_terms}</Badge>}
+                        {s.payment_terms && <Badge variant="outline" className="text-xs h-4">{s.payment_terms}</Badge>}
                         {s.lead_time_days > 0 && <span>{s.lead_time_days} dias</span>}
                       </div>
                     </div>

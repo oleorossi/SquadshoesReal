@@ -162,11 +162,11 @@ export default function BaseConsumption() {
                       >
                         <div className="text-xs font-semibold truncate">{model.displayName}</div>
                         <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                          <Badge variant="secondary" className="text-xs px-1.5 py-0">
                             {model.variantCount} {model.variantCount === 1 ? 'cor' : 'cores'}
                           </Badge>
                           {model.representative?.sku && (
-                            <span className="text-[10px] text-muted-foreground font-mono truncate">
+                            <span className="text-xs text-muted-foreground font-mono truncate">
                               {model.representative.sku}
                             </span>
                           )}
@@ -191,14 +191,14 @@ export default function BaseConsumption() {
                     <CardTitle className="text-base flex items-center gap-2 flex-wrap">
                       <Footprints className="h-4 w-4 text-primary" />
                       {selectedModel.displayName}
-                      <Badge variant="outline" className="text-[10px]">
+                      <Badge variant="outline" className="text-xs">
                         {selectedModel.variantCount} {selectedModel.variantCount === 1 ? 'variante' : 'variantes'}
                       </Badge>
                     </CardTitle>
                     {selectedModel.variantColors.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1.5">
                         {selectedModel.variantColors.map((c) => (
-                          <Badge key={c} variant="secondary" className="text-[10px] px-1.5 py-0">{c}</Badge>
+                          <Badge key={c} variant="secondary" className="text-xs px-1.5 py-0">{c}</Badge>
                         ))}
                       </div>
                     )}
@@ -374,7 +374,7 @@ function TechnicalInfoCard({ product, onEdit }: { product: any; onEdit: () => vo
       icon: <Settings2 className="h-3.5 w-3.5" />,
       label: 'Solado fachetado',
       value: product.is_fachetado ? (
-        <Badge className="text-[10px] bg-amber-500/15 text-amber-700 border-amber-500/30 hover:bg-amber-500/15">Sim</Badge>
+        <Badge className="text-xs bg-amber-500/15 text-amber-700 border-amber-500/30 hover:bg-amber-500/15">Sim</Badge>
       ) : (
         <span className="text-muted-foreground">Não</span>
       ),
@@ -383,7 +383,7 @@ function TechnicalInfoCard({ product, onEdit }: { product: any; onEdit: () => vo
       icon: <Settings2 className="h-3.5 w-3.5" />,
       label: 'Item padrão (BOM automático)',
       value: product.is_standard_sole_item ? (
-        <Badge className="text-[10px]" variant="secondary">Ativo</Badge>
+        <Badge className="text-xs" variant="secondary">Ativo</Badge>
       ) : (
         <span className="text-muted-foreground">Não</span>
       ),
@@ -403,7 +403,7 @@ function TechnicalInfoCard({ product, onEdit }: { product: any; onEdit: () => vo
       </div>
       {product.sole_technical_notes && (
         <div className="rounded-md border bg-muted/30 p-3">
-          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">Notas técnicas</p>
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Notas técnicas</p>
           <p className="text-xs">{product.sole_technical_notes}</p>
         </div>
       )}

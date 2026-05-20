@@ -318,7 +318,7 @@ export function SoleStandardItemsPanel({ soleProductId }: Props) {
               <p className="text-xs font-semibold text-primary truncate">
                 "{highlightedEntry.displayName}" disponível como Item Padrão de Solado
               </p>
-              <p className="text-[11px] text-muted-foreground truncate">
+              <p className="text-xs text-muted-foreground truncate">
                 {highlightedAlreadyAdded
                   ? 'Já adicionado a este solado — confira abaixo.'
                   : 'Selecione no campo abaixo para configurar o consumo por numeração.'}
@@ -347,11 +347,11 @@ export function SoleStandardItemsPanel({ soleProductId }: Props) {
           <div>
             <h4 className="text-sm font-semibold flex items-center gap-2">
               Itens padrão deste solado
-              <Badge variant="outline" className="text-[10px]">
+              <Badge variant="outline" className="text-xs">
                 {sizes.length} numerações • {sizes[0]}–{sizes[sizes.length - 1]}
               </Badge>
             </h4>
-            <p className="text-[10px] text-muted-foreground mt-0.5">
+            <p className="text-xs text-muted-foreground mt-0.5">
               Define o consumo de <strong>Cola</strong>, <strong>Palmilha</strong>, <strong>Linha</strong>, EVA e outros materiais que vão junto com este solado em toda referência que o usar.
             </p>
           </div>
@@ -372,7 +372,7 @@ export function SoleStandardItemsPanel({ soleProductId }: Props) {
                        value={searchTerm}
                        onChange={(e) => setSearchTerm(e.target.value)}
                        onKeyDown={(e) => e.stopPropagation()}
-                       className="h-7 text-[11px] pl-7 pr-7"
+                       className="h-7 text-xs pl-7 pr-7"
                      />
                      {searchTerm && (
                        <button
@@ -402,7 +402,7 @@ export function SoleStandardItemsPanel({ soleProductId }: Props) {
                      >
                        <div className="flex flex-col">
                          <span>{entry.displayName}</span>
-                         <span className="text-[10px] text-muted-foreground">
+                         <span className="text-xs text-muted-foreground">
                            {entry.category} {entry.variantCount > 1 && `• ${entry.variantCount} cores`}
                          </span>
                        </div>
@@ -445,12 +445,12 @@ export function SoleStandardItemsPanel({ soleProductId }: Props) {
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-sm font-medium truncate">{entry?.displayName || itemId}</span>
                     {entry && entry.variantCount > 1 && (
-                      <Badge variant="secondary" className="text-[10px]">{entry.variantCount} cores</Badge>
+                      <Badge variant="secondary" className="text-xs">{entry.variantCount} cores</Badge>
                     )}
-                    <Badge variant="outline" className="text-[10px]">{entry?.category}</Badge>
+                    <Badge variant="outline" className="text-xs">{entry?.category}</Badge>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-muted-foreground">Unidade:</span>
+                    <span className="text-xs text-muted-foreground">Unidade:</span>
                     <Select value={draft.unit} onValueChange={(v) => updateUnit(itemId, v)}>
                       <SelectTrigger className="h-7 w-24 text-xs">
                         <SelectValue />
@@ -478,9 +478,9 @@ export function SoleStandardItemsPanel({ soleProductId }: Props) {
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-muted/30">
-                        <TableHead className="w-20 text-[11px]">Numeração</TableHead>
+                        <TableHead className="w-20 text-xs">Numeração</TableHead>
                         {sizes.map((s) => (
-                          <TableHead key={s} className="text-center text-[11px] min-w-[64px]">
+                          <TableHead key={s} className="text-center text-xs min-w-[64px]">
                             {s}
                           </TableHead>
                         ))}
@@ -489,7 +489,7 @@ export function SoleStandardItemsPanel({ soleProductId }: Props) {
                     <TableBody>
                       <TableRow>
                         <TableCell
-                          className="text-[11px] text-muted-foreground font-mono"
+                          className="text-xs text-muted-foreground font-mono"
                           title={
                             draft.unit === 'par'
                               ? 'Pares de solado consumidos por par de sapato (1:1 para solados normais)'

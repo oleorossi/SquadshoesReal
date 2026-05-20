@@ -155,7 +155,7 @@ function WorkScheduleTab() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <h4 className="font-semibold text-sm">{s.name}</h4>
-                    {s.is_default && <Badge className="text-[10px]">Padrão</Badge>}
+                    {s.is_default && <Badge className="text-xs">Padrão</Badge>}
                   </div>
                   <div className="flex gap-1">
                     <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(s)}>
@@ -340,7 +340,7 @@ function HolidaysTab() {
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <TableHead>Nome</TableHead>
                   <TableHead>Data</TableHead>
                   <TableHead>Recorrente</TableHead>
@@ -352,7 +352,7 @@ function HolidaysTab() {
                   <TableRow key={h.id}>
                     <TableCell className="font-medium text-sm">{h.name}</TableCell>
                     <TableCell className="font-mono text-sm">{new Date(h.holiday_date + 'T12:00:00').toLocaleDateString('pt-BR')}</TableCell>
-                    <TableCell>{h.recurring ? <Badge variant="outline" className="text-[10px]">Sim</Badge> : '—'}</TableCell>
+                    <TableCell>{h.recurring ? <Badge variant="outline" className="text-xs">Sim</Badge> : '—'}</TableCell>
                     <TableCell>
                       <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteHoliday.mutate(h.id)}>
                         <Trash2 className="h-3.5 w-3.5" />
@@ -906,7 +906,7 @@ function TimesheetRecordsTab() {
                 </p>
               )}
 
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 💡 Funcionários vinculados terão salário e dados usados automaticamente nos cálculos de horas extras.
               </p>
               <div className="flex gap-2 justify-end">
@@ -1118,7 +1118,7 @@ function TimesheetRecordsTab() {
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <TableHead>Funcionário</TableHead>
                   <TableHead className="text-right">Dias</TableHead>
                   <TableHead className="text-right">Trabalhadas</TableHead>
@@ -1142,7 +1142,7 @@ function TimesheetRecordsTab() {
                       {emp.absent > 0 ? <span className="text-destructive font-medium">{emp.absent}</span> : '—'}
                     </TableCell>
                     <TableCell className="text-right text-sm">
-                      {emp.incomplete > 0 ? <Badge variant="outline" className="text-[10px] text-amber-600">{emp.incomplete}</Badge> : '—'}
+                      {emp.incomplete > 0 ? <Badge variant="outline" className="text-xs text-amber-600">{emp.incomplete}</Badge> : '—'}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1220,7 +1220,7 @@ function TimesheetRecordsTab() {
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
-                    <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                    <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                       <TableHead>Data</TableHead>
                       <TableHead>Dia</TableHead>
                       <TableHead>Batidas</TableHead>
@@ -1235,12 +1235,12 @@ function TimesheetRecordsTab() {
                         <TableCell className="text-xs">{DAYS_PT[d.dayOfWeek]}</TableCell>
                         <TableCell>
                           <div className="flex flex-wrap gap-1">
-                            {d.punches.map((p, i) => <Badge key={i} variant="outline" className="text-[10px] font-mono">{p}</Badge>)}
+                            {d.punches.map((p, i) => <Badge key={i} variant="outline" className="text-xs font-mono">{p}</Badge>)}
                           </div>
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm font-medium text-amber-600">{d.overtimeFormatted}</TableCell>
                         <TableCell>
-                          <Badge variant={d.isHoliday ? 'default' : 'outline'} className="text-[10px]">
+                          <Badge variant={d.isHoliday ? 'default' : 'outline'} className="text-xs">
                             {d.isHoliday ? `Feriado ${defaultSchedule.holiday_multiplier}x` : `Normal ${defaultSchedule.overtime_multiplier}x`}
                           </Badge>
                         </TableCell>
@@ -1262,7 +1262,7 @@ function TimesheetRecordsTab() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <TableHead className="w-10"></TableHead>
                     <TableHead>Data</TableHead>
                     <TableHead>Dia</TableHead>
@@ -1287,7 +1287,7 @@ function TimesheetRecordsTab() {
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
                           {d.punches.map((p, i) => (
-                            <Badge key={i} variant="outline" className="text-[10px] font-mono">{p}</Badge>
+                            <Badge key={i} variant="outline" className="text-xs font-mono">{p}</Badge>
                           ))}
                           {d.punches.length === 0 && <span className="text-xs text-muted-foreground">—</span>}
                         </div>
@@ -1340,19 +1340,19 @@ function TimesheetRecordsTab() {
                 {/* Summary cards */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <Card><CardContent className="p-3 text-center">
-                    <p className="text-[10px] text-muted-foreground uppercase">Trabalhadas</p>
+                    <p className="text-xs text-muted-foreground uppercase">Trabalhadas</p>
                     <p className="text-lg font-bold font-mono">{minutesToDisplay(totalWorked)}</p>
                   </CardContent></Card>
                   <Card><CardContent className="p-3 text-center">
-                    <p className="text-[10px] text-muted-foreground uppercase">Esperadas</p>
+                    <p className="text-xs text-muted-foreground uppercase">Esperadas</p>
                     <p className="text-lg font-bold font-mono">{minutesToDisplay(totalExpected)}</p>
                   </CardContent></Card>
                   <Card><CardContent className="p-3 text-center">
-                    <p className="text-[10px] text-muted-foreground uppercase">HE Líquida</p>
+                    <p className="text-xs text-muted-foreground uppercase">HE Líquida</p>
                     <p className="text-lg font-bold font-mono text-green-600">{minutesToDisplay(compensatedOvertime)}</p>
                   </CardContent></Card>
                   <Card><CardContent className="p-3 text-center">
-                    <p className="text-[10px] text-muted-foreground uppercase">Faltas</p>
+                    <p className="text-xs text-muted-foreground uppercase">Faltas</p>
                     <p className="text-lg font-bold text-destructive">{absences}</p>
                   </CardContent></Card>
                 </div>
@@ -1407,9 +1407,9 @@ function TimesheetRecordsTab() {
                             <TableRow key={d.date}>
                               <TableCell className="font-mono text-sm">{new Date(d.date + 'T12:00:00').toLocaleDateString('pt-BR')}</TableCell>
                               <TableCell className="text-xs">{DAYS_PT[d.dayOfWeek]}</TableCell>
-                              <TableCell><div className="flex flex-wrap gap-1">{d.punches.map((p, i) => <Badge key={i} variant="outline" className="text-[10px] font-mono">{p}</Badge>)}</div></TableCell>
+                              <TableCell><div className="flex flex-wrap gap-1">{d.punches.map((p, i) => <Badge key={i} variant="outline" className="text-xs font-mono">{p}</Badge>)}</div></TableCell>
                               <TableCell className="text-right font-mono text-sm font-medium text-amber-600">{d.overtimeFormatted}</TableCell>
-                              <TableCell><Badge variant={d.isHoliday ? 'default' : 'outline'} className="text-[10px]">{d.isHoliday ? 'Feriado' : 'Normal'}</Badge></TableCell>
+                              <TableCell><Badge variant={d.isHoliday ? 'default' : 'outline'} className="text-xs">{d.isHoliday ? 'Feriado' : 'Normal'}</Badge></TableCell>
                             </TableRow>
                           ))}
                         </TableBody>
@@ -1436,7 +1436,7 @@ function TimesheetRecordsTab() {
                             <TableRow key={d.date}>
                               <TableCell className="font-mono text-sm">{new Date(d.date + 'T12:00:00').toLocaleDateString('pt-BR')}</TableCell>
                               <TableCell className="text-xs">{DAYS_PT[d.dayOfWeek]}</TableCell>
-                              <TableCell><div className="flex flex-wrap gap-1">{d.punches.map((p, i) => <Badge key={i} variant="outline" className="text-[10px] font-mono">{p}</Badge>)}</div></TableCell>
+                              <TableCell><div className="flex flex-wrap gap-1">{d.punches.map((p, i) => <Badge key={i} variant="outline" className="text-xs font-mono">{p}</Badge>)}</div></TableCell>
                               <TableCell className="text-right font-mono text-sm">{d.workedFormatted}</TableCell>
                               <TableCell className="text-right font-mono text-sm text-muted-foreground">{minutesToDisplay(d.expectedMinutes)}</TableCell>
                               <TableCell className="text-right font-mono text-sm font-medium text-destructive">{minutesToDisplay(d.expectedMinutes - d.workedMinutes)}</TableCell>

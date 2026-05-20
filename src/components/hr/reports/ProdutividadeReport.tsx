@@ -235,7 +235,7 @@ export default function ProdutividadeReport() {
           <div className="px-4 py-5 border-l border-border">
             <p className="section-label mb-2">Custo médio/par</p>
             <p className="font-mono font-bold leading-none tracking-tight text-2xl text-primary">{totals.pairs > 0 ? fmt(totals.costPerPair) : '—'}</p>
-            <p className="text-[10px] text-muted-foreground mt-1">Proxy via folha base</p>
+            <p className="text-xs text-muted-foreground mt-1">Proxy via folha base</p>
           </div>
         </div>
       </section>
@@ -307,9 +307,9 @@ export default function ProdutividadeReport() {
                 <TableCell className="font-medium">{r.sector}</TableCell>
                 <TableCell>
                   {r.deptName === '—' ? (
-                    <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700">sem casamento</Badge>
+                    <Badge variant="outline" className="text-xs border-amber-300 text-amber-700">sem casamento</Badge>
                   ) : (
-                    <Badge variant="secondary" className="text-[10px]">{r.deptName}</Badge>
+                    <Badge variant="secondary" className="text-xs">{r.deptName}</Badge>
                   )}
                 </TableCell>
                 <TableCell className="text-right font-mono font-bold">{r.pairs.toLocaleString('pt-BR')}</TableCell>

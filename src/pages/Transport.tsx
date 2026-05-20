@@ -392,7 +392,7 @@ function CapacityTab() {
               {/* Detailed Results */}
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <TableHead>Item</TableHead>
                     <TableHead className="text-center">Arranjo</TableHead>
                     <TableHead className="text-center">Qtd Max</TableHead>
@@ -667,7 +667,7 @@ function CarriersTab() {
       <Panel flush>
         <Table>
           <TableHeader>
-            <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+            <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
               <TableHead>Nome</TableHead>
               <TableHead>CNPJ/CPF</TableHead>
               <TableHead>Contato</TableHead>
@@ -1049,7 +1049,7 @@ function SimulatorTab() {
                 </SelectContent>
               </Select>
               {selectedBox && (
-                <p className="text-[10px] text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   Caixa: {selectedBox.nome} ({selectedBox.comprimento_cm}x{selectedBox.largura_cm}x{selectedBox.altura_cm}cm)
                 </p>
               )}

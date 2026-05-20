@@ -126,7 +126,7 @@ export default function RelatoriosHub() {
           <div className="flex items-center gap-2">
             <h2 className="display text-lg">{GROUP_LABELS[groupKey as ReportEntry['group']]}</h2>
             <div className="flex-1 h-px bg-border" />
-            <Badge variant="secondary" className="text-[10px]">
+            <Badge variant="secondary" className="text-xs">
               {items.length} {items.length === 1 ? 'relatório' : 'relatórios'}
             </Badge>
           </div>
@@ -151,7 +151,7 @@ export default function RelatoriosHub() {
                   </div>
 
                   <div className="flex items-baseline gap-2 mb-1">
-                    <span className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
+                    <span className="font-mono text-xs text-muted-foreground uppercase tracking-wider">
                       {r.slug}
                     </span>
                     <span className="display text-lg leading-tight">{r.shortName}</span>
@@ -162,10 +162,10 @@ export default function RelatoriosHub() {
                   </p>
 
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <Badge variant="outline" className="text-[9px] uppercase tracking-wider">
+                    <Badge variant="outline" className="text-xs uppercase tracking-wider">
                       {r.orientation === 'portrait' ? 'Portrait' : 'Landscape'}
                     </Badge>
-                    <Badge variant="outline" className="text-[9px] uppercase tracking-wider">
+                    <Badge variant="outline" className="text-xs uppercase tracking-wider">
                       {r.frequency}
                     </Badge>
                   </div>

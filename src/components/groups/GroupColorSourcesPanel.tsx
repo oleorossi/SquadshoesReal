@@ -137,7 +137,7 @@ export default function GroupColorSourcesPanel({ groupId, groupName }: Props) {
           <ArrowDownUp className="h-4 w-4 text-primary" />
           Fontes de cores
         </CardTitle>
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           Vincule grupos cujas cores cadastradas podem ser importadas pra paleta de <strong>{groupName}</strong>.
           Útil quando este grupo é derivado de outro (ex: tira feita de napa). Importação é sempre manual —
           você escolhe quais cores quer disponíveis aqui.
@@ -189,7 +189,7 @@ export default function GroupColorSourcesPanel({ groupId, groupName }: Props) {
               <Badge
                 key={s.source_group_id}
                 variant="secondary"
-                className="gap-1 pl-2 pr-1 py-0.5 text-[11px]"
+                className="gap-1 pl-2 pr-1 py-0.5 text-xs"
               >
                 {s.source_group_name}
                 <button
@@ -254,7 +254,7 @@ export default function GroupColorSourcesPanel({ groupId, groupName }: Props) {
                         <span className="text-xs font-semibold">{grp.sourceGroupName}</span>
                         <button
                           onClick={() => toggleAllOfSource(grp.sourceGroupId, allSelected)}
-                          className="text-[10px] text-primary hover:underline"
+                          className="text-xs text-primary hover:underline"
                         >
                           {allSelected ? 'desmarcar todas' : 'marcar todas'}
                         </button>

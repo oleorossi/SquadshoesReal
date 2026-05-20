@@ -60,7 +60,7 @@ export function OrderStatusStepper({ currentStatus = 'Pendente', className }: Pr
               </div>
               <span
                 className={cn(
-                  'text-[10px] uppercase font-semibold tracking-wide whitespace-nowrap',
+                  'text-xs uppercase font-semibold tracking-wide whitespace-nowrap',
                   isActive && activeText,
                   isDone && 'text-foreground',
                   !isDone && !isActive && 'text-muted-foreground'

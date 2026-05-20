@@ -185,7 +185,7 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-[10px] text-muted-foreground mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 Use pra agrupar variações do mesmo material (ex: "Componentes" → "Tira chata", "Tira Strass").
               </p>
             </div>

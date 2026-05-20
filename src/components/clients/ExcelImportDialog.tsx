@@ -156,7 +156,7 @@ export default function ExcelImportDialog({ open, onOpenChange, onImport }: Prop
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           {(['upload', 'preview', 'importing'] as ImportStep[]).map((s, i) => (
             <div key={s} className="flex items-center gap-2">
-              <div className={cn("h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold",
+              <div className={cn("h-5 w-5 rounded-full flex items-center justify-center text-xs font-bold",
                 step === s ? "bg-primary text-primary-foreground" :
                 (['upload','preview','importing'].indexOf(step) > i) ? "bg-success text-success-foreground" :
                 "bg-muted text-muted-foreground")}>
@@ -210,7 +210,7 @@ export default function ExcelImportDialog({ open, onOpenChange, onImport }: Prop
                   <p className="text-muted-foreground text-xs mt-0.5">{validationSummary.valid} de {validationSummary.total} registros serão importados</p>
                   {validationSummary.withErrors > 0 && (
                     <div className="flex flex-wrap gap-1 mt-2">
-                      {[...validationSummary.errorTypes].map(e => <Badge key={e} variant="outline" className="text-[10px] border-warning/40 text-warning">{e}</Badge>)}
+                      {[...validationSummary.errorTypes].map(e => <Badge key={e} variant="outline" className="text-xs border-warning/40 text-warning">{e}</Badge>)}
                     </div>
                   )}
                 </div>
@@ -239,7 +239,7 @@ export default function ExcelImportDialog({ open, onOpenChange, onImport }: Prop
                             <TableCell className="text-sm">{[c.cidade, c.estado].filter(Boolean).join('/') || '—'}</TableCell>
                             <TableCell>
                               {hasError
-                                ? <div className="flex items-center gap-1"><XCircle className="h-3.5 w-3.5 text-destructive" /><span className="text-[10px] text-destructive">{errs[0]}</span></div>
+                                ? <div className="flex items-center gap-1"><XCircle className="h-3.5 w-3.5 text-destructive" /><span className="text-xs text-destructive">{errs[0]}</span></div>
                                 : <CheckCircle2 className="h-3.5 w-3.5 text-success" />}
                             </TableCell>
                           </TableRow>

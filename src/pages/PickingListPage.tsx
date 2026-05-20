@@ -607,7 +607,7 @@ export default function PickingListPage() {
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
-                        <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                        <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                           <TableHead className="w-10 py-2">✓</TableHead>
                           <TableHead className="py-2 min-w-[200px]">Solado</TableHead>
                           <TableHead className="py-2 min-w-[100px]">Cor</TableHead>
@@ -690,7 +690,7 @@ export default function PickingListPage() {
                 ) : (
                   <Table>
                     <TableHeader>
-                      <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                      <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                         <TableHead className="w-10 py-2">✓</TableHead>
                         <TableHead className="py-2">Grupo de Material</TableHead>
                         <TableHead className="py-2">Aplicação</TableHead>

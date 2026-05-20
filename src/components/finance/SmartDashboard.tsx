@@ -67,7 +67,7 @@ export function SmartDashboard({ onNavigate }: { onNavigate?: (tab: string) => v
              <Sparkles className="h-4 w-4 text-primary" />
              Alertas Inteligentes
              {!loadingAlerts && alerts.length > 0 && (
-               <Badge variant="outline" className="ml-1 text-[10px]">{alerts.length}</Badge>
+               <Badge variant="outline" className="ml-1 text-xs">{alerts.length}</Badge>
              )}
            </CardTitle>
          </CardHeader>
@@ -85,7 +85,7 @@ export function SmartDashboard({ onNavigate }: { onNavigate?: (tab: string) => v
                  <p className="text-xs text-destructive/80 mt-0.5">
                    {(alertsError as Error)?.message || 'Erro desconhecido na consulta financeira.'}
                  </p>
-                 <p className="text-[10px] text-muted-foreground mt-1">
+                 <p className="text-xs text-muted-foreground mt-1">
                    Verifique se as tabelas bank_accounts, accounts_payable, accounts_receivable estão acessíveis.
                  </p>
                </div>
@@ -202,7 +202,7 @@ export function SmartDashboard({ onNavigate }: { onNavigate?: (tab: string) => v
               {kpis.revenueGrowth !== 0 && (
                 <Badge
                   variant={kpis.revenueGrowth > 0 ? 'default' : 'destructive'}
-                  className="text-[10px] gap-0.5"
+                  className="text-xs gap-0.5"
                 >
                   {kpis.revenueGrowth > 0 ? <TrendingUp className="h-2.5 w-2.5" /> : <TrendingDown className="h-2.5 w-2.5" />}
                   {kpis.revenueGrowth > 0 ? '+' : ''}{kpis.revenueGrowth.toFixed(1)}%
@@ -237,7 +237,7 @@ export function SmartDashboard({ onNavigate }: { onNavigate?: (tab: string) => v
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm">Projeção de Saldo — Próximos 30 dias</CardTitle>
             {cashflow?.firstNegativeDay && (
-              <Badge variant="destructive" className="text-[10px]">
+              <Badge variant="destructive" className="text-xs">
                 Saldo zera em {format(parseISO(cashflow.firstNegativeDay), "dd 'de' MMM", { locale: ptBR })}
               </Badge>
             )}

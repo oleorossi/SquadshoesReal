@@ -75,7 +75,7 @@ export function ReceivePiecesDialog({ open, onOpenChange, serviceOrder }: Props)
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Setor coberto:</span>
-              <Badge variant="outline" className="text-[10px]">{sectorLabel}</Badge>
+              <Badge variant="outline" className="text-xs">{sectorLabel}</Badge>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Pares contratados:</span>
@@ -88,7 +88,7 @@ export function ReceivePiecesDialog({ open, onOpenChange, serviceOrder }: Props)
                 </span>
                 <span className={isLate ? 'text-red-600 font-medium' : ''}>
                   {new Date(serviceOrder.quoted_deadline + 'T00:00:00').toLocaleDateString('pt-BR')}
-                  {isLate && <span className="text-[10px] ml-1">(atrasado)</span>}
+                  {isLate && <span className="text-xs ml-1">(atrasado)</span>}
                 </span>
               </div>
             )}
@@ -110,7 +110,7 @@ export function ReceivePiecesDialog({ open, onOpenChange, serviceOrder }: Props)
               <CheckCircle2 className="h-3.5 w-3.5" /> Ao confirmar:
             </p>
             <ul className="list-disc list-inside text-emerald-800 dark:text-emerald-300 space-y-0.5">
-              <li>OS muda pra <code className="text-[10px]">received</code></li>
+              <li>OS muda pra <code className="text-xs">received</code></li>
               <li>OP vinculada <strong>destrava</strong> e pode avançar pra Montagem</li>
               <li>Lançamento financeiro (AP) já criado é mantido</li>
             </ul>

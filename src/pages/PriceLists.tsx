@@ -158,7 +158,7 @@ export default function PriceLists() {
                   {pl.name}
                 </CardTitle>
                 <div className="flex items-center gap-1">
-                  <Badge variant={pl.active ? 'default' : 'secondary'} className="text-[10px]">
+                  <Badge variant={pl.active ? 'default' : 'secondary'} className="text-xs">
                     {pl.active ? 'Ativa' : 'Inativa'}
                   </Badge>
                   <Pencil className="h-3 w-3 text-muted-foreground/50 group-hover:text-primary" />
@@ -192,7 +192,7 @@ export default function PriceLists() {
                 </span>
               </div>
               {pl.is_promotional && (
-                <Badge variant="outline" className="text-[9px] mt-1">PROMOCIONAL</Badge>
+                <Badge variant="outline" className="text-xs mt-1">PROMOCIONAL</Badge>
               )}
             </CardContent>
           </Card>

@@ -688,7 +688,7 @@ function CarrierRateCard({ company, state, city, weight, volume }: {
                 <p className="text-xl font-black text-primary">R$ {cost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
               </>
             ) : (
-              <Badge variant="outline" className="text-[10px]">Sem tarifa para {state}</Badge>
+              <Badge variant="outline" className="text-xs">Sem tarifa para {state}</Badge>
             )}
           </div>
         </div>

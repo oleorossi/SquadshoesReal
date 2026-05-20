@@ -787,7 +787,7 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
         {/* Resumo por coluna (impacto do filtro) */}
         {hasActiveFilter && (
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] text-muted-foreground">Por coluna:</span>
+            <span className="text-xs text-muted-foreground">Por coluna:</span>
             {KANBAN_SECTORS.map((s) => {
               const c = sectorCounts[s.key];
               if (!c || c.total === 0) return null;
@@ -795,7 +795,7 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
               return (
                 <span
                   key={s.key}
-                  className={`inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded border transition-all ${
+                  className={`inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border transition-all ${
                     hidden
                       ? 'border-destructive/50 bg-destructive/10 text-destructive ring-1 ring-destructive/30 animate-fade-in'
                       : 'border-border bg-muted/40 text-foreground'
@@ -867,7 +867,7 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
 
         {!search && searchHistory.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] text-muted-foreground">Buscas recentes:</span>
+            <span className="text-xs text-muted-foreground">Buscas recentes:</span>
             {searchHistory.map((h) => (
               <button
                 key={h}
@@ -884,7 +884,7 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
                 setSearchHistory([]);
                 try { localStorage.removeItem(HISTORY_KEY); } catch { /* noop */ }
               }}
-              className="text-[11px] text-muted-foreground hover:text-destructive ml-1"
+              className="text-xs text-muted-foreground hover:text-destructive ml-1"
               aria-label="Limpar histórico de buscas"
             >
               limpar
@@ -965,11 +965,11 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
         </div>
       </div>
 
-      <p className="text-[11px] text-muted-foreground italic">
+      <p className="text-xs text-muted-foreground italic">
         💡 Dica: arraste uma OP e solte em qualquer setor à frente para pulá-la diretamente para lá. As etapas intermediárias serão tratadas conforme sua escolha.
       </p>
 
-      <div className="text-[11px] flex items-center gap-2 text-muted-foreground bg-muted/40 border border-border/50 rounded-md px-2.5 py-1.5">
+      <div className="text-xs flex items-center gap-2 text-muted-foreground bg-muted/40 border border-border/50 rounded-md px-2.5 py-1.5">
         <Layers className="h-3.5 w-3.5 text-primary shrink-0" />
         <span>
           <span className="font-medium text-foreground">Corte Palmilha</span> ‖ <span className="font-medium text-foreground">Corte Forração</span> ‖ <span className="font-medium text-foreground">Aviamento</span> rodam <span className="font-medium text-primary">em paralelo</span>; Costura só inicia quando os 3 estiverem prontos.
@@ -1008,21 +1008,21 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
                       <h3 className="font-semibold text-xs text-foreground">{sector.label}</h3>
                       {sector.parallel && (
                         <span
-                          className="text-[9px] font-bold text-primary bg-primary/10 px-1 rounded leading-tight"
+                          className="text-xs font-bold text-primary bg-primary/10 px-1 rounded leading-tight"
                           title="Roda em paralelo com os outros setores prep (Corte Palmilha ‖ Corte Forração ‖ Aviamento). Costura só inicia quando os 3 finalizam."
                         >
                           ‖ PREP
                         </span>
                       )}
                     </div>
-                    <Badge variant="secondary" className="rounded-full px-1.5 py-0 text-[10px] h-5 min-w-[20px] flex items-center justify-center">
+                    <Badge variant="secondary" className="rounded-full px-1.5 py-0 text-xs h-5 min-w-[20px] flex items-center justify-center">
                       {sectorOrders.length}
                     </Badge>
                   </div>
                   {/* Bulk-finalize toolbar — only on the last sector (Acabamento) */}
                   {sector.key === 'Acabamento' && sectorOrders.length > 0 && (
                     <div className="flex items-center justify-between gap-1.5 pt-1 border-t border-border/30">
-                      <label className="flex items-center gap-1 cursor-pointer text-[10px] text-muted-foreground select-none">
+                      <label className="flex items-center gap-1 cursor-pointer text-xs text-muted-foreground select-none">
                         <Checkbox
                           checked={
                             sectorOrders.length > 0 &&
@@ -1042,7 +1042,7 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
                       <Button
                         size="sm"
                         variant="default"
-                        className="h-6 px-2 text-[10px]"
+                        className="h-6 px-2 text-xs"
                         disabled={acabamentoSelected.size === 0 || bulkFinalizing}
                         onClick={(e) => { e.stopPropagation(); handleBulkFinalizeAcabamento(); }}
                       >
@@ -1065,7 +1065,7 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
                   <div className="p-2 space-y-2">
                     {sectorOrders.length === 0 ? (
                       <div className="py-8 text-center">
-                        <p className="text-[10px] text-muted-foreground/50">
+                        <p className="text-xs text-muted-foreground/50">
                           {isDragOver
                             ? <span className="text-primary font-bold animate-pulse">↓ Soltar aqui ↓</span>
                             : 'Nenhuma OP'}
@@ -1106,7 +1106,7 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
                               ) : (
                                 <GripVertical className="h-3 w-3 text-muted-foreground/40" />
                               )}
-                              <p className="font-mono text-[9px] font-bold text-primary bg-primary/10 px-1 py-0.5 rounded leading-none flex items-center gap-0.5">
+                              <p className="font-mono text-xs font-bold text-primary bg-primary/10 px-1 py-0.5 rounded leading-none flex items-center gap-0.5">
                                 <Hash className="h-2 w-2" />#{order.order_number}
                               </p>
                               {(() => {
@@ -1204,17 +1204,17 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
                             {order.reference_name || 'Ref. sem nome'}
                           </p>
                           {order.color && (
-                            <p className="text-[10px] text-muted-foreground truncate">
+                            <p className="text-xs text-muted-foreground truncate">
                               {order.color}
                             </p>
                           )}
-                          <p className="text-[10px] text-muted-foreground/70 truncate italic">
+                          <p className="text-xs text-muted-foreground/70 truncate italic">
                             {order.client_name || 'Cliente'}
                           </p>
 
                           <div className="flex justify-between items-center pt-1.5 mt-1.5 border-t border-border/30">
                             <div className="flex items-center gap-1">
-                              <Badge variant="outline" className="text-[9px] font-medium py-0 h-4">
+                              <Badge variant="outline" className="text-xs font-medium py-0 h-4">
                                 {order.quantity}p
                               </Badge>
                               {order.billing_week && (
@@ -1283,7 +1283,7 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
                         <Badge key={s} variant="outline" className="text-xs">{s}</Badge>
                       ))}
                     </div>
-                    <p className="text-[11px] text-muted-foreground mt-2">
+                    <p className="text-xs text-muted-foreground mt-2">
                       Estas etapas serão marcadas como <strong>concluídas</strong> automaticamente.
                     </p>
                   </div>

@@ -73,12 +73,12 @@ export default function SolePurchaseTab() {
              Itens sem fornecedor
            </div>
            <p className="text-xs">Não é possível gerar OCs enquanto houver itens bloqueados:</p>
-           <ul className="text-[10px] list-disc pl-4 max-h-32 overflow-y-auto">
+           <ul className="text-xs list-disc pl-4 max-h-32 overflow-y-auto">
              {missingSuppliers.map(s => (
                <li key={s.sole_product_id}>{s.sole_name} ({s.sole_color})</li>
              ))}
            </ul>
-           <p className="text-[10px] italic">Associe um fornecedor em cada linha para continuar.</p>
+           <p className="text-xs italic">Associe um fornecedor em cada linha para continuar.</p>
          </div>,
          { duration: 5000 }
        );
@@ -239,10 +239,10 @@ export default function SolePurchaseTab() {
                         </SelectContent>
                       </Select>
                       {s.supplier_id && s.resolved_supplier_id !== s.supplier_id && (
-                        <span className="text-[10px] text-muted-foreground">Fornecedor alterado manualmente</span>
+                        <span className="text-xs text-muted-foreground">Fornecedor alterado manualmente</span>
                       )}
                       {!s.supplier_id && s.has_valid_supplier && (
-                        <span className="text-[10px] text-blue-600 font-medium">Associação manual</span>
+                        <span className="text-xs text-blue-600 font-medium">Associação manual</span>
                       )}
                     </div>
                   </TableCell>

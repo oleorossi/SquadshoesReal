@@ -83,7 +83,7 @@ const variantConfig: Record<string, {
          <div className="flex items-center gap-1">
            {trend === 'up'   && <ArrowUpRight   className="h-3 w-3 text-green-500 shrink-0" />}
            {trend === 'down' && <ArrowDownRight  className="h-3 w-3 text-destructive shrink-0" />}
-           <span className="text-[10.5px] text-muted-foreground truncate">
+           <span className="text-xs text-muted-foreground truncate">
              {trendLabel || displaySubtitle}
            </span>
          </div>

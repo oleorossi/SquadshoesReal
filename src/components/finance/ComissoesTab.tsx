@@ -337,7 +337,7 @@ export default function ComissoesTab() {
                           <TableCell className="text-xs text-center">{o.commissionPct}%</TableCell>
                           <TableCell className="text-xs text-right font-mono font-semibold text-primary">{fmt(o.commissionValue)}</TableCell>
                           <TableCell className="text-center">
-                            <Badge variant={o.status === 'finalizado' ? 'default' : 'outline'} className="text-[10px]">
+                            <Badge variant={o.status === 'finalizado' ? 'default' : 'outline'} className="text-xs">
                               {o.status}
                             </Badge>
                           </TableCell>

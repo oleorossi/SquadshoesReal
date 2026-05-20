@@ -64,7 +64,7 @@ export function NotificationsTab() {
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 text-destructive" />
               <span className="font-semibold text-sm text-destructive">Estoque Zerado</span>
-              <Badge variant="destructive" className="text-[10px]">{zeroStockItems.length}</Badge>
+              <Badge variant="destructive" className="text-xs">{zeroStockItems.length}</Badge>
             </div>
             <div className="space-y-1.5 max-h-48 overflow-y-auto">
               {zeroStockItems.map(p => (
@@ -73,7 +73,7 @@ export function NotificationsTab() {
                     <span className="font-medium">{p.name}</span>
                     {p.color && <span className="text-muted-foreground ml-1">({p.color})</span>}
                   </div>
-                  <Badge variant="outline" className="text-[10px] font-mono">{p.sku}</Badge>
+                  <Badge variant="outline" className="text-xs font-mono">{p.sku}</Badge>
                 </div>
               ))}
             </div>
@@ -87,7 +87,7 @@ export function NotificationsTab() {
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 text-amber-500" />
               <span className="font-semibold text-sm text-amber-500">Estoque Baixo</span>
-              <Badge variant="outline" className="text-[10px] text-amber-500 border-amber-500/30">{lowStockItems.length}</Badge>
+              <Badge variant="outline" className="text-xs text-amber-500 border-amber-500/30">{lowStockItems.length}</Badge>
             </div>
             <div className="space-y-1.5 max-h-48 overflow-y-auto">
               {lowStockItems.map(p => (
@@ -98,7 +98,7 @@ export function NotificationsTab() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-medium">{p.quantity} {p.unit}</span>
-                    <Badge variant="outline" className="text-[10px] font-mono">{p.sku}</Badge>
+                    <Badge variant="outline" className="text-xs font-mono">{p.sku}</Badge>
                   </div>
                 </div>
               ))}

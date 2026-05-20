@@ -64,7 +64,7 @@ export function PackagingCalculator({
               {result.method === 'master' ? 'Caixas Master' : result.method === 'colmeia' ? 'Colmeias' : 'Amarrados'}
             </span>
             <span className="display text-3xl tabular-nums text-foreground">{result.quantityMaster}</span>
-            <span className="text-[10px] text-muted-foreground font-medium mt-1">
+            <span className="text-xs text-muted-foreground font-medium mt-1">
               (Contendo 12 pares cada)
             </span>
           </div>
@@ -75,7 +75,7 @@ export function PackagingCalculator({
             </div>
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Amarrado</span>
             <span className="display text-3xl tabular-nums text-foreground">0</span>
-            <span className="text-[10px] text-muted-foreground font-medium mt-1">Nenhum adicional</span>
+            <span className="text-xs text-muted-foreground font-medium mt-1">Nenhum adicional</span>
           </div>
 
           <div className="flex flex-col items-center p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 transition-all hover:shadow-md">
@@ -84,7 +84,7 @@ export function PackagingCalculator({
             </div>
             <span className="text-xs font-semibold uppercase tracking-wider text-amber-600 mb-1">Sobra Indiv.</span>
             <span className="display text-3xl tabular-nums text-foreground">{result.remainingIndividual}</span>
-            <span className="text-[10px] text-amber-600/70 font-medium mt-1">pares avulsos</span>
+            <span className="text-xs text-amber-600/70 font-medium mt-1">pares avulsos</span>
           </div>
         </div>
 
@@ -103,7 +103,7 @@ export function PackagingCalculator({
           </div>
         </div>
 
-        <div className="mt-4 flex justify-between items-center text-[10px] text-muted-foreground px-1 italic">
+        <div className="mt-4 flex justify-between items-center text-xs text-muted-foreground px-1 italic">
           <span>* Cálculo sugerido com base nas dimensões do modelo e volume total</span>
           <span className="flex items-center gap-1">Total: {totalPairs} pares <ArrowRight className="w-3 h-3" /></span>
         </div>

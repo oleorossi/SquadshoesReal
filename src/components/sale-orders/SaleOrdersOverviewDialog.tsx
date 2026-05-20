@@ -252,7 +252,7 @@ export default function SaleOrdersOverviewDialog({ open, onOpenChange, orders }:
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                   <div>
-                    <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">Novo Mês</Label>
+                    <Label className="text-xs text-muted-foreground uppercase font-bold mb-1 block">Novo Mês</Label>
                     <Select value={bulkMonth} onValueChange={(v) => { setBulkMonth(v); setBulkWeek(''); }}>
                       <SelectTrigger className="h-9"><SelectValue placeholder="Selecione..." /></SelectTrigger>
                       <SelectContent>
@@ -261,7 +261,7 @@ export default function SaleOrdersOverviewDialog({ open, onOpenChange, orders }:
                     </Select>
                   </div>
                   <div>
-                    <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">Nova Semana</Label>
+                    <Label className="text-xs text-muted-foreground uppercase font-bold mb-1 block">Nova Semana</Label>
                     <Select value={bulkWeek} onValueChange={setBulkWeek} disabled={!bulkMonth}>
                       <SelectTrigger className="h-9">
                         <SelectValue placeholder={bulkMonth ? 'Selecione...' : 'Defina o mês'} />
@@ -272,7 +272,7 @@ export default function SaleOrdersOverviewDialog({ open, onOpenChange, orders }:
                     </Select>
                   </div>
                   <div>
-                    <Label className="text-[10px] text-muted-foreground uppercase font-bold mb-1 block">Prazo (data)</Label>
+                    <Label className="text-xs text-muted-foreground uppercase font-bold mb-1 block">Prazo (data)</Label>
                     <Input type="date" value={bulkDeadline} onChange={e => setBulkDeadline(e.target.value)} className="h-9" />
                   </div>
                   <div className="flex items-end gap-2">
@@ -285,7 +285,7 @@ export default function SaleOrdersOverviewDialog({ open, onOpenChange, orders }:
                     </Button>
                   </div>
                 </div>
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   Aplica os campos preenchidos a todos os {orders.length} pedidos selecionados. Campos vazios são ignorados.
                 </p>
               </CardContent>
@@ -417,7 +417,7 @@ export default function SaleOrdersOverviewDialog({ open, onOpenChange, orders }:
                           <TableCell className="font-mono text-xs">{o.order_number}</TableCell>
                           <TableCell className="text-sm max-w-[200px] truncate">{o.client_name}</TableCell>
                           <TableCell>
-                            <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[o.status] || ''}`}>
+                            <Badge variant="outline" className={`text-xs ${STATUS_COLORS[o.status] || ''}`}>
                               {o.status}
                             </Badge>
                           </TableCell>
@@ -467,7 +467,7 @@ function KpiCard({ icon, label, value }: { icon: React.ReactNode; label: string;
       <CardContent className="p-3 flex items-center gap-3">
         <div className="h-9 w-9 rounded-lg bg-muted flex items-center justify-center shrink-0">{icon}</div>
         <div className="min-w-0">
-          <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">{label}</p>
+          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">{label}</p>
           <p className="text-base font-bold truncate">{value}</p>
         </div>
       </CardContent>

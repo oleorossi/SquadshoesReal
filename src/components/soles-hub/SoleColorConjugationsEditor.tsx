@@ -154,7 +154,7 @@ export function SoleColorConjugationsEditor({ soleGroupId }: Props) {
       {/* Regra default (catch-all) */}
       <div className="rounded-md border border-dashed bg-muted/20 p-3 space-y-2">
         <div className="flex items-center gap-2">
-          <Badge variant="outline" className="text-[9px] uppercase">Default</Badge>
+          <Badge variant="outline" className="text-xs uppercase">Default</Badge>
           <span className="text-xs text-muted-foreground">Cabedal não listado abaixo:</span>
         </div>
         <div className="flex items-center gap-2">
@@ -223,7 +223,7 @@ export function SoleColorConjugationsEditor({ soleGroupId }: Props) {
       <div className="space-y-2">
         <Label className="text-xs">Exceções específicas</Label>
         {specificRules.length === 0 && (
-          <p className="text-[11px] text-muted-foreground italic">
+          <p className="text-xs text-muted-foreground italic">
             Nenhuma exceção cadastrada — só a regra default se aplica.
           </p>
         )}
@@ -297,7 +297,7 @@ export function SoleColorConjugationsEditor({ soleGroupId }: Props) {
       </div>
 
       {variants.length === 0 && (
-        <p className="text-[11px] text-amber-600 dark:text-amber-400">
+        <p className="text-xs text-amber-600 dark:text-amber-400">
           Nenhuma variante de cor encontrada pra este solado. Cadastre pelo menos
           uma variante (ex: Preto, Caramelo) em <em>Estoque</em> antes de configurar
           coligações.

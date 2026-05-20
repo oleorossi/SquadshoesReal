@@ -213,7 +213,7 @@ function UserCard({
                 {profile.full_name || 'Sem nome'}
               </p>
               {isCurrentUser && (
-                <Badge variant="outline" className="text-[10px] h-4 px-1.5 bg-muted">Você</Badge>
+                <Badge variant="outline" className="text-xs h-4 px-1.5 bg-muted">Você</Badge>
               )}
             </div>
             <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
@@ -222,16 +222,16 @@ function UserCard({
             </p>
             <div className="flex items-center gap-2 mt-1.5 flex-wrap">
               {profile.approved ? (
-                <Badge variant="outline" className="text-[10px] h-5 bg-success/10 text-success border-success/30 gap-1">
+                <Badge variant="outline" className="text-xs h-5 bg-success/10 text-success border-success/30 gap-1">
                   <ShieldCheck className="h-3 w-3" /> Aprovado
                 </Badge>
               ) : (
-                <Badge variant="outline" className="text-[10px] h-5 bg-warning/10 text-warning border-warning/30 gap-1">
+                <Badge variant="outline" className="text-xs h-5 bg-warning/10 text-warning border-warning/30 gap-1">
                   <ShieldAlert className="h-3 w-3" /> Pendente
                 </Badge>
               )}
               {roles.map(r => (
-                <Badge key={r.id} variant="outline" className={cn('text-[10px] h-5 gap-1', ROLE_COLORS[r.role] || '')}>
+                <Badge key={r.id} variant="outline" className={cn('text-xs h-5 gap-1', ROLE_COLORS[r.role] || '')}>
                   {ROLE_ICONS[r.role]}
                   {ROLES.find(rl => rl.key === r.role)?.label || r.role}
                 </Badge>
@@ -326,7 +326,7 @@ function UserCard({
                       {ROLE_ICONS[role.key]}
                       <div className="min-w-0">
                         <p className="text-xs font-semibold">{role.label}</p>
-                        <p className="text-[10px] opacity-70 leading-tight">{role.description}</p>
+                        <p className="text-xs opacity-70 leading-tight">{role.description}</p>
                       </div>
                     </button>
                   );
@@ -449,7 +449,7 @@ export default function SettingsPage() {
               <Users className="h-3.5 w-3.5" />
               Usuários
               {pendingCount > 0 && (
-                <Badge variant="destructive" className="h-4 min-w-4 px-1 text-[10px] ml-1">{pendingCount}</Badge>
+                <Badge variant="destructive" className="h-4 min-w-4 px-1 text-xs ml-1">{pendingCount}</Badge>
               )}
             </TabsTrigger>
             <TabsTrigger value="representatives" className="gap-1.5">

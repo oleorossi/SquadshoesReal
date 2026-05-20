@@ -188,7 +188,7 @@ export default function WeeklyPurchasingPlan() {
             <div className="overflow-auto max-h-[70vh]">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <TableHead className="sticky left-0 bg-muted/40 z-10 min-w-[200px]">Material</TableHead>
                     <TableHead className="text-right">Unid.</TableHead>
                     <TableHead className="text-right">Estoque Atual</TableHead>

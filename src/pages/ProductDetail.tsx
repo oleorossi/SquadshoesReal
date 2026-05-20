@@ -622,9 +622,9 @@ export default function ProductDetail() {
               </div>
               <div className="flex items-end">
                 {existingSheet
-                  ? <Badge variant="secondary" className="text-[10px]">Ficha existente</Badge>
+                  ? <Badge variant="secondary" className="text-xs">Ficha existente</Badge>
                   : Object.values(yieldPerSize).some(v => v > 0)
-                    ? <Badge variant="outline" className="text-[10px] text-primary border-primary/30">Nova ficha será criada</Badge>
+                    ? <Badge variant="outline" className="text-xs text-primary border-primary/30">Nova ficha será criada</Badge>
                     : <span className="text-xs text-muted-foreground italic">Sem ficha de componente</span>
                 }
               </div>
@@ -689,7 +689,7 @@ export default function ProductDetail() {
               <div>
                 <Label className="text-xs text-muted-foreground">Fator de Conversão</Label>
                 <NumberInput value={form.conversion_rate ?? 1} onChange={v => update('conversion_rate', v)} min={0.0001} step="0.01" className="mt-1" />
-                <p className="text-[10px] text-muted-foreground mt-0.5">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   1 {normalizePurchaseUnit(form.purchase_unit)} = {form.conversion_rate ?? 1} {normalizeProductionUnit(form.production_unit)}
                 </p>
               </div>
@@ -835,26 +835,26 @@ export default function ProductDetail() {
        <CardContent className="space-y-3">
          <div className="grid grid-cols-2 gap-3">
            <div className="space-y-1">
-             <Label className="text-[10px] uppercase text-muted-foreground">Quantidade ({product.unit})</Label>
+             <Label className="text-xs uppercase text-muted-foreground">Quantidade ({product.unit})</Label>
              <NumberInput value={quantity} onChange={setQuantity} min={0} step="0.0001" />
            </div>
            <div className="space-y-1">
-             <Label className="text-[10px] uppercase text-muted-foreground">Data</Label>
+             <Label className="text-xs uppercase text-muted-foreground">Data</Label>
              <Input type="date" value={date} onChange={e => setDate(e.target.value)} />
            </div>
          </div>
          <div className="grid grid-cols-2 gap-3">
            <div className="space-y-1">
-             <Label className="text-[10px] uppercase text-muted-foreground">Lote</Label>
+             <Label className="text-xs uppercase text-muted-foreground">Lote</Label>
              <Input value={lotNumber} onChange={e => setLotNumber(e.target.value)} placeholder="Opcional" />
            </div>
            <div className="space-y-1">
-             <Label className="text-[10px] uppercase text-muted-foreground">Responsável</Label>
+             <Label className="text-xs uppercase text-muted-foreground">Responsável</Label>
              <Input value={responsible} onChange={e => setResponsible(e.target.value)} placeholder="Nome..." />
            </div>
          </div>
          <div className="space-y-1">
-           <Label className="text-[10px] uppercase text-muted-foreground">Motivo / Descrição</Label>
+           <Label className="text-xs uppercase text-muted-foreground">Motivo / Descrição</Label>
            <Input value={description} onChange={e => setDescription(e.target.value)} placeholder="Ex: Compra NF 123, Ajuste..." />
          </div>
          <Button

@@ -111,7 +111,7 @@ export function ReportTab() {
                  <TrendingUp className="h-4 w-4 text-primary" />
                  Top Modelos
                </CardTitle>
-               <Button variant="ghost" size="sm" className="h-7 text-[10px]" onClick={() => navigate('/produtos')}>
+               <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => navigate('/produtos')}>
                  Ver todos
                </Button>
              </div>
@@ -135,7 +135,7 @@ export function ReportTab() {
                    </div>
                    <div className="min-w-0">
                      <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">{product.name}</p>
-                     <p className="text-[10px] text-muted-foreground truncate">{product.shoe_category || 'Sem categoria'}</p>
+                     <p className="text-xs text-muted-foreground truncate">{product.shoe_category || 'Sem categoria'}</p>
                    </div>
                  </div>
                ))

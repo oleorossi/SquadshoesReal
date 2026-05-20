@@ -74,12 +74,12 @@ export default function SPED() {
         entityLabel="SPED"
         displayLabel={(r: any) => `• ${r.sped_type} (${r.filename || 'sem arquivo'})`}
         columns={[
-          { key: 'sped_type', label: 'Tipo', render: r => <Badge variant="outline" className="text-[10px]">{r.sped_type}</Badge> },
+          { key: 'sped_type', label: 'Tipo', render: r => <Badge variant="outline" className="text-xs">{r.sped_type}</Badge> },
           { key: 'period', label: 'Período', render: r => <span className="text-xs">{format(new Date(r.period_start), 'MM/yy')} – {format(new Date(r.period_end), 'MM/yy')}</span> },
           { key: 'filename', label: 'Arquivo', render: r => <span className="font-mono text-xs">{r.filename}</span> },
           { key: 'generated_at', label: 'Gerado em', render: r => <span className="text-xs">{format(new Date(r.generated_at), 'dd/MM/yy HH:mm')}</span> },
           { key: 'total_records', label: 'Registros', align: 'right' },
-          { key: 'status', label: 'Status', render: r => <Badge variant="outline" className={`${STATUS[r.status]} text-[10px] capitalize`}>{r.status}</Badge> },
+          { key: 'status', label: 'Status', render: r => <Badge variant="outline" className={`${STATUS[r.status]} text-xs capitalize`}>{r.status}</Badge> },
         ]}
       />
 
@@ -118,7 +118,7 @@ export default function SPED() {
                 onChange={e => setForm({ ...form, notes: e.target.value })}
                 placeholder="Ex.: SPED mensal 04/2026 — fechamento contábil" />
             </div>
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               O arquivo TXT é registrado no histórico. Geração efetiva, validação
               no PVA e transmissão à Receita são feitas pela contabilidade externa.
             </p>

@@ -101,7 +101,7 @@ export function SectorColumn({
               style={{ width: `${row.active_wave.progress_pct}%` }}
             />
           </div>
-          <div className="text-[10px] text-right text-muted-foreground mt-1">
+          <div className="text-xs text-right text-muted-foreground mt-1">
             {row.active_wave.progress_pct.toFixed(0)}%
           </div>
 
@@ -172,7 +172,7 @@ export function SectorColumn({
 
       {/* contador de concluídas */}
       {row.completed_count > 0 && (
-        <div className="text-[10px] text-muted-foreground mt-2 text-right">
+        <div className="text-xs text-muted-foreground mt-2 text-right">
           {row.completed_count} onda(s) já concluída(s) neste setor
         </div>
       )}

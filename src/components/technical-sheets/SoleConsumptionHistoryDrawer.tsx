@@ -145,22 +145,22 @@ export function SoleConsumptionHistoryDrawer({ open, onOpenChange, soleProductId
                         <div className="flex items-center gap-2 min-w-0">
                           <ActionIcon action={r.action} />
                           <span className="font-medium truncate">{itemName}</span>
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                          <Badge variant="outline" className="text-xs px-1.5 py-0">
                             num. {r.size}
                           </Badge>
                         </div>
-                        <span className="text-[11px] text-muted-foreground shrink-0">
+                        <span className="text-xs text-muted-foreground shrink-0">
                           {formatDateTime(r.changed_at)} · {user}
                         </span>
                       </div>
-                      <div className="mt-1.5 flex items-center gap-2 font-mono text-[11px]">
+                      <div className="mt-1.5 flex items-center gap-2 font-mono text-xs">
                         {r.action === 'INSERT' && (
-                          <Badge className="bg-green-500/10 text-green-700 hover:bg-green-500/10 border-green-500/30 text-[10px]">
+                          <Badge className="bg-green-500/10 text-green-700 hover:bg-green-500/10 border-green-500/30 text-xs">
                             +{Number(r.new_consumption ?? 0)} {r.new_unit ?? ''}
                           </Badge>
                         )}
                         {r.action === 'DELETE' && (
-                          <Badge variant="outline" className="text-destructive border-destructive/40 text-[10px]">
+                          <Badge variant="outline" className="text-destructive border-destructive/40 text-xs">
                             removido ({Number(r.old_consumption ?? 0)} {r.old_unit ?? ''})
                           </Badge>
                         )}

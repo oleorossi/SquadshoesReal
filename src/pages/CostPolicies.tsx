@@ -121,7 +121,7 @@ export default function CostPolicies() {
                   <span className="eyebrow">Overhead por par (calculado)</span>
                   <span className="display text-xl tabular-nums text-primary">{fmtBRL(derivedOverhead)}</span>
                 </div>
-                <p className="text-[10px] text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   Total ÷ capacidade. Atualiza ao mudar os campos acima.
                 </p>
               </div>
@@ -144,7 +144,7 @@ export default function CostPolicies() {
                   onChange={e => setForm(f => ({ ...f, packaging_cost_per_pair: e.target.value }))}
                   className="mt-1"
                 />
-                <p className="text-[10px] text-muted-foreground mt-0.5">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   Soma das caixas + fitilho + acessórios de embalagem médios por par.
                 </p>
               </div>
@@ -158,7 +158,7 @@ export default function CostPolicies() {
                   onChange={e => setForm(f => ({ ...f, freight_allocation_pct: e.target.value }))}
                   className="mt-1"
                 />
-                <p className="text-[10px] text-muted-foreground mt-0.5">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   Referência de frete sobre receita — usada como hint no Markup.
                 </p>
               </div>
@@ -205,7 +205,7 @@ export default function CostPolicies() {
                 <div className="flex items-center gap-2">
                   <AlertCircle className="h-3.5 w-3.5 text-primary shrink-0" />
                   <span className="font-semibold">Política ativa:</span>
-                  <span className="font-mono text-[10px] text-muted-foreground">{policy.id.slice(0, 8)}…</span>
+                  <span className="font-mono text-xs text-muted-foreground">{policy.id.slice(0, 8)}…</span>
                 </div>
                 <p className="text-muted-foreground">
                   Custo/par estimado (sem material/MO):

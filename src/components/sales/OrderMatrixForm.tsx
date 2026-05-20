@@ -116,7 +116,7 @@ export function OrderMatrixForm({
             <div key={size} className="flex flex-col items-center gap-1 min-w-[60px]">
               <div className="flex items-center gap-1 h-4">
                 <label className={cn(
-                  'text-[10px] font-bold uppercase',
+                  'text-xs font-bold uppercase',
                   conjugated ? 'text-blue-700 dark:text-blue-400' : 'text-muted-foreground',
                 )}>
                   {size}

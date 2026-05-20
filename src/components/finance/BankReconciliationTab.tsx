@@ -340,7 +340,7 @@ export default function BankReconciliationTab() {
                           <div className="space-y-0.5">
                             <div className="flex items-center gap-1.5">
                               <Badge
-                                className={`text-[10px] gap-1 ${
+                                className={`text-xs gap-1 ${
                                   top.confidence === 'alta'
                                     ? 'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20'
                                     : top.confidence === 'media'
@@ -351,20 +351,20 @@ export default function BankReconciliationTab() {
                                 {top.confidence === 'alta' ? <CheckCircle2 className="h-2.5 w-2.5" /> : <AlertTriangle className="h-2.5 w-2.5" />}
                                 {top.confidence}
                               </Badge>
-                              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                              <span className="text-xs uppercase tracking-wide text-muted-foreground">
                                 {top.type === 'payable' ? 'A pagar' : 'A receber'}
                               </span>
                             </div>
                             <p className="text-xs font-medium">{top.party}</p>
-                            <p className="text-[11px] text-muted-foreground truncate max-w-[260px]" title={top.description}>
+                            <p className="text-xs text-muted-foreground truncate max-w-[260px]" title={top.description}>
                               {top.description} · venc {format(parseISO(top.due_date), 'dd/MM/yy')}
                             </p>
                             {lm.matches.length > 1 && (
-                              <p className="text-[10px] text-muted-foreground italic">+{lm.matches.length - 1} outro(s) match(es) possível(eis)</p>
+                              <p className="text-xs text-muted-foreground italic">+{lm.matches.length - 1} outro(s) match(es) possível(eis)</p>
                             )}
                           </div>
                         ) : (
-                          <span className="text-[11px] text-muted-foreground italic">Sem candidato</span>
+                          <span className="text-xs text-muted-foreground italic">Sem candidato</span>
                         )}
                       </TableCell>
                       <TableCell className="text-right">

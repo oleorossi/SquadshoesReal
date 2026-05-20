@@ -138,9 +138,9 @@ export function SoleSilkPanel({ soleProductId, soleName }: Props) {
   };
 
   const scopeLabel = (r: any) => {
-    if (r.client_id) return <Badge variant="outline" className="gap-1 text-[10px]"><User className="h-3 w-3" />{r.clients?.nome_fantasia}</Badge>;
-    if (r.economic_group_id) return <Badge variant="secondary" className="gap-1 text-[10px]"><UsersIcon className="h-3 w-3" />{r.economic_groups?.name}</Badge>;
-    return <Badge variant="outline" className="text-[10px]">Padrão Geral</Badge>;
+    if (r.client_id) return <Badge variant="outline" className="gap-1 text-xs"><User className="h-3 w-3" />{r.clients?.nome_fantasia}</Badge>;
+    if (r.economic_group_id) return <Badge variant="secondary" className="gap-1 text-xs"><UsersIcon className="h-3 w-3" />{r.economic_groups?.name}</Badge>;
+    return <Badge variant="outline" className="text-xs">Padrão Geral</Badge>;
   };
 
   return (

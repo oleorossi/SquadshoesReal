@@ -57,7 +57,7 @@ export default function PendingTimeRecordsPanel() {
         </h2>
         <p className="text-xs text-muted-foreground">
           Dias com batidas ímpares. Complete manualmente o horário de saída (ou outro punch faltante)
-          pra que o saldo seja calculado corretamente. As batidas adicionadas ficam marcadas com <code className="text-[10px] bg-muted px-1 rounded">*</code> no histórico.
+          pra que o saldo seja calculado corretamente. As batidas adicionadas ficam marcadas com <code className="text-xs bg-muted px-1 rounded">*</code> no histórico.
         </p>
       </div>
 
@@ -65,27 +65,27 @@ export default function PendingTimeRecordsPanel() {
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <Card>
           <CardContent className="p-3">
-            <div className="text-[10px] uppercase text-muted-foreground font-bold">Total pendente</div>
+            <div className="text-xs uppercase text-muted-foreground font-bold">Total pendente</div>
             <div className="text-2xl font-bold tabular-nums mt-0.5">
               {loadingSummary ? <Skeleton className="h-7 w-12" /> : totalPending}
             </div>
-            <div className="text-[10px] text-muted-foreground mt-0.5">dias precisando revisão</div>
+            <div className="text-xs text-muted-foreground mt-0.5">dias precisando revisão</div>
           </CardContent>
         </Card>
         <Card className="border-amber-500/30">
           <CardContent className="p-3">
-            <div className="text-[10px] uppercase text-amber-600 font-bold flex items-center gap-1">
+            <div className="text-xs uppercase text-amber-600 font-bold flex items-center gap-1">
               <Users2 className="w-3 h-3" /> Funcionários afetados
             </div>
             <div className="text-2xl font-bold tabular-nums mt-0.5">
               {loadingSummary ? <Skeleton className="h-7 w-12" /> : empWithPending}
             </div>
-            <div className="text-[10px] text-muted-foreground mt-0.5">com pendências em aberto</div>
+            <div className="text-xs text-muted-foreground mt-0.5">com pendências em aberto</div>
           </CardContent>
         </Card>
         <Card className="border-primary/30">
           <CardContent className="p-3">
-            <div className="text-[10px] uppercase text-primary font-bold">Como funciona</div>
+            <div className="text-xs uppercase text-primary font-bold">Como funciona</div>
             <div className="text-xs mt-1 leading-tight">
               Saldo de banco de horas <strong>ignora dias pendentes</strong>. Após preenchimento, recalcula automático.
             </div>
@@ -175,17 +175,17 @@ function EmployeeCard({
               {emp.pending_count} dia{emp.pending_count !== 1 ? 's' : ''}
             </Badge>
             {emp.only_one_punch > 0 && (
-              <Badge variant="outline" className="text-[10px]">
+              <Badge variant="outline" className="text-xs">
                 {emp.only_one_punch} c/ 1 batida
               </Badge>
             )}
             {emp.missing_exit > 0 && (
-              <Badge variant="outline" className="text-[10px]">
+              <Badge variant="outline" className="text-xs">
                 {emp.missing_exit} falta saída
               </Badge>
             )}
             {emp.extra_punch > 0 && (
-              <Badge variant="outline" className="text-[10px] bg-red-500/10 text-red-700 border-red-500/30">
+              <Badge variant="outline" className="text-xs bg-red-500/10 text-red-700 border-red-500/30">
                 {emp.extra_punch} extra
               </Badge>
             )}
@@ -241,7 +241,7 @@ function PendingDayRow({ p, onSaved }: { p: PendingTimeRecord; onSaved: () => vo
         <span className="text-muted-foreground ml-1">({DOW_LABEL[p.dow]})</span>
       </div>
 
-      <Badge variant="outline" className="text-[10px] gap-1 bg-amber-500/10 text-amber-700 border-amber-500/30">
+      <Badge variant="outline" className="text-xs gap-1 bg-amber-500/10 text-amber-700 border-amber-500/30">
         <AlertTriangle className="w-3 h-3" />
         {ISSUE_LABEL[p.issue_type]}
       </Badge>
@@ -249,7 +249,7 @@ function PendingDayRow({ p, onSaved }: { p: PendingTimeRecord; onSaved: () => vo
       <div className="flex items-center gap-1 flex-wrap">
         {p.punches.map((punch, i) => (
           <Badge key={i} variant="outline" className={cn(
-            'text-[10px] font-mono',
+            'text-xs font-mono',
             punch.includes('*') && 'bg-blue-500/10 text-blue-700 border-blue-500/30',
           )}>
             <Clock className="w-2.5 h-2.5 mr-1" />

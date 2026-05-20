@@ -341,13 +341,13 @@ import { supabase } from '@/integrations/supabase/client';
                    <TableCell className="font-medium">
                      <div className="flex flex-col">
                        <span>{v.material_name}</span>
-                       {v.ncm && <span className="text-[10px] text-muted-foreground font-mono">NCM: {v.ncm}</span>}
+                       {v.ncm && <span className="text-xs text-muted-foreground font-mono">NCM: {v.ncm}</span>}
                      </div>
                    </TableCell>
                    <TableCell>
                      <div className="flex flex-col gap-1">
-                       {v.sku && <Badge variant="outline" className="w-fit text-[10px] font-mono py-0">{v.sku}</Badge>}
-                       {v.barcode && <div className="flex items-center gap-1 text-[10px] text-muted-foreground"><Barcode className="h-3 w-3" /> {v.barcode}</div>}
+                       {v.sku && <Badge variant="outline" className="w-fit text-xs font-mono py-0">{v.sku}</Badge>}
+                       {v.barcode && <div className="flex items-center gap-1 text-xs text-muted-foreground"><Barcode className="h-3 w-3" /> {v.barcode}</div>}
                      </div>
                    </TableCell>
                    <TableCell>
@@ -465,7 +465,7 @@ import { supabase } from '@/integrations/supabase/client';
                                   />
                                   <div className="flex flex-col">
                                     <span className="font-medium">{product.name}</span>
-                                    <span className="text-[10px] text-muted-foreground font-mono">
+                                    <span className="text-xs text-muted-foreground font-mono">
                                       SKU: {product.sku} | Estoque: {product.quantity} {product.unit}
                                     </span>
                                   </div>

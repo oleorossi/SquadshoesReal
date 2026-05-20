@@ -185,12 +185,12 @@ function MaterialNeedsPanel({ needs, wavePurchaseDeadline }: {
                     <span className="font-medium">{n.product_name}</span>
                     {n.color && <span className="text-muted-foreground">· {n.color}</span>}
                     {n.shortage > 0
-                      ? <Badge variant="outline" className="text-[10px] py-0 bg-red-500/10 text-red-600 border-red-500/20">Falta {n.shortage.toFixed(2)} {n.unit}</Badge>
-                      : <Badge variant="outline" className="text-[10px] py-0 bg-green-500/10 text-green-600 border-green-500/20">Em estoque</Badge>
+                      ? <Badge variant="outline" className="text-xs py-0 bg-red-500/10 text-red-600 border-red-500/20">Falta {n.shortage.toFixed(2)} {n.unit}</Badge>
+                      : <Badge variant="outline" className="text-xs py-0 bg-green-500/10 text-green-600 border-green-500/20">Em estoque</Badge>
                     }
                   </div>
                   {n.os_send_date && (
-                    <Badge variant="outline" className={cn('text-[10px] gap-1 shrink-0', new Date(n.os_send_date + 'T00:00:00') < new Date() ? 'bg-red-500/10 text-red-600 border-red-500/20' : 'bg-amber-500/10 text-amber-600 border-amber-500/20')}>
+                    <Badge variant="outline" className={cn('text-xs gap-1 shrink-0', new Date(n.os_send_date + 'T00:00:00') < new Date() ? 'bg-red-500/10 text-red-600 border-red-500/20' : 'bg-amber-500/10 text-amber-600 border-amber-500/20')}>
                       <Clock className="h-2.5 w-2.5" /> OS até {fmtDateLong(n.os_send_date)}
                     </Badge>
                   )}
@@ -510,9 +510,9 @@ export function WaveBuilder({
                           <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                           <span className="font-semibold text-sm flex-1 truncate">{group.client}</span>
                           <div className="flex items-center gap-2 shrink-0">
-                            {group.hasConflict && <Badge variant="destructive" className="text-[10px] gap-1 py-0"><AlertTriangle className="h-2.5 w-2.5" />Conflito</Badge>}
-                            <Badge variant="secondary" className="text-[10px] py-0">{group.orders.length} ped.</Badge>
-                            <Badge variant="outline" className="text-[10px] py-0 font-mono">{group.totalPairs} pares</Badge>
+                            {group.hasConflict && <Badge variant="destructive" className="text-xs gap-1 py-0"><AlertTriangle className="h-2.5 w-2.5" />Conflito</Badge>}
+                            <Badge variant="secondary" className="text-xs py-0">{group.orders.length} ped.</Badge>
+                            <Badge variant="outline" className="text-xs py-0 font-mono">{group.totalPairs} pares</Badge>
                           </div>
                         </div>
                         {!isCollapsed && (
@@ -533,7 +533,7 @@ export function WaveBuilder({
                                     </td>
                                     <td className="px-2 py-2 text-center">
                                       {o.delivery_deadline && (
-                                        <Badge variant="outline" className={cn('text-[10px] font-mono py-0',
+                                        <Badge variant="outline" className={cn('text-xs font-mono py-0',
                                           o.delivery_deadline < todayISO() ? 'border-destructive/50 text-destructive' : '')}>
                                           Entrega {fmtDate(o.delivery_deadline)}
                                         </Badge>

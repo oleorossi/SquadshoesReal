@@ -43,7 +43,7 @@ export function ShippingWizard({ order, vehicles }: { order: Order, vehicles: Ve
           }`}
         >
           <Truck className={`h-8 w-8 mb-2 ${shippingType === 'PROPRIO' ? 'text-primary' : 'text-muted-foreground'}`} />
-          <span className="text-[11px] font-black uppercase tracking-tighter text-foreground">Frota Própria</span>
+          <span className="text-xs font-black uppercase tracking-tighter text-foreground">Frota Própria</span>
         </button>
         <button
           onClick={() => setShippingType('TERCEIRO')}
@@ -52,7 +52,7 @@ export function ShippingWizard({ order, vehicles }: { order: Order, vehicles: Ve
           }`}
         >
           <Truck className={`h-8 w-8 mb-2 ${shippingType === 'TERCEIRO' ? 'text-primary' : 'text-muted-foreground'}`} />
-          <span className="text-[11px] font-black uppercase tracking-tighter text-foreground">Transportadora</span>
+          <span className="text-xs font-black uppercase tracking-tighter text-foreground">Transportadora</span>
         </button>
       </div>
 
@@ -61,13 +61,13 @@ export function ShippingWizard({ order, vehicles }: { order: Order, vehicles: Ve
           <div className="flex justify-between items-start mb-6">
             <div>
               <h4 className="text-xs font-black uppercase text-primary-foreground/70">Configuração de Carga</h4>
-              <p className="text-[11px] text-primary-foreground/40 uppercase font-bold tracking-widest">
+              <p className="text-xs text-primary-foreground/40 uppercase font-bold tracking-widest">
                 Carga: {order.category} | {order.totalPairs} PARES
               </p>
             </div>
             <div className="text-right">
               <p className="text-2xl font-black font-mono leading-none">{orderVolumeM3.toFixed(2)}m³</p>
-              <p className="text-[9px] font-bold text-primary-foreground/40 uppercase">Volume Total do Pedido</p>
+              <p className="text-xs font-bold text-primary-foreground/40 uppercase">Volume Total do Pedido</p>
             </div>
           </div>
 
@@ -85,7 +85,7 @@ export function ShippingWizard({ order, vehicles }: { order: Order, vehicles: Ve
 
             {selectedVehicle && (
               <div className="pt-4 space-y-3">
-                <div className="flex justify-between text-[11px] font-black uppercase tracking-widest">
+                <div className="flex justify-between text-xs font-black uppercase tracking-widest">
                   <span>Ocupação do Baú</span>
                   <span className={hasSpace ? 'text-lime-400' : 'text-red-400'}>
                     {occupancyPercentage.toFixed(1)}%
@@ -103,14 +103,14 @@ export function ShippingWizard({ order, vehicles }: { order: Order, vehicles: Ve
                 {!hasSpace ? (
                   <div className="bg-red-500/10 border border-red-500/50 p-3 rounded-xl flex gap-3 items-center mt-4">
                     <AlertCircle className="h-5 w-5 text-red-400 shrink-0" />
-                    <p className="text-[11px] leading-tight font-bold uppercase text-red-200">
+                    <p className="text-xs leading-tight font-bold uppercase text-red-200">
                       Excesso de Carga detectado. O pedido excede em {(orderVolumeM3 - vehicleVolume).toFixed(2)}m³ a capacidade do baú.
                     </p>
                   </div>
                 ) : (
                   <div className="bg-emerald-500/10 border border-emerald-500/50 p-3 rounded-xl flex gap-3 items-center mt-4">
                     <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
-                    <p className="text-[11px] leading-tight font-bold uppercase text-emerald-200">
+                    <p className="text-xs leading-tight font-bold uppercase text-emerald-200">
                       Carga aprovada. O veículo comporta o pedido com {(vehicleVolume - orderVolumeM3).toFixed(2)}m³ de sobra.
                     </p>
                   </div>

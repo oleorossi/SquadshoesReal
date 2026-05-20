@@ -314,7 +314,7 @@ function OrderAuditRow({ audit }: { audit: OrderAudit }) {
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-sm">{audit.orderNumber}</span>
             <span className="text-xs text-muted-foreground truncate">{audit.clientName}</span>
-            <Badge variant="outline" className="text-[10px]">{audit.status}</Badge>
+            <Badge variant="outline" className="text-xs">{audit.status}</Badge>
           </div>
           <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
             <span>{audit.totalPairs} pares</span>
@@ -367,7 +367,7 @@ function ProductionAuditTab({ stages }: { stages: any[] }) {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-muted/40 border-b border-border [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+              <tr className="bg-muted/40 border-b border-border [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                 <th className="text-left p-3">Data/Hora</th>
                 <th className="text-left p-3">OP</th>
                 <th className="text-left p-3">Setor</th>
@@ -386,12 +386,12 @@ function ProductionAuditTab({ stages }: { stages: any[] }) {
               ) : (
                 stages.map((s) => (
                   <tr key={s.id} className="hover:bg-muted/30 transition-colors">
-                    <td className="p-3 font-mono text-[11px] whitespace-nowrap">
+                    <td className="p-3 font-mono text-xs whitespace-nowrap">
                       {format(parseISO(s.completed_at), 'dd/MM/yyyy HH:mm')}
                     </td>
                     <td className="p-3 font-bold text-primary">{s.order_number || '—'}</td>
                     <td className="p-3">
-                      <Badge variant="secondary" className="font-black uppercase text-[9px] px-2 py-0.5">
+                      <Badge variant="secondary" className="font-black uppercase text-xs px-2 py-0.5">
                         {s.stage_name}
                       </Badge>
                     </td>
@@ -403,11 +403,11 @@ function ProductionAuditTab({ stages }: { stages: any[] }) {
                     </td>
                     <td className="p-3 text-right">
                       {s.isAdiantado ? (
-                        <Badge className="bg-amber-500 text-white text-[9px] px-1.5 uppercase font-black border-none animate-pulse">
+                        <Badge className="bg-amber-500 text-white text-xs px-1.5 uppercase font-black border-none animate-pulse">
                           Adiantado
                         </Badge>
                       ) : (
-                        <Badge variant="outline" className="text-[9px] uppercase font-bold text-green-600 border-green-200 bg-green-50/50">
+                        <Badge variant="outline" className="text-xs uppercase font-bold text-green-600 border-green-200 bg-green-50/50">
                           No Prazo
                         </Badge>
                       )}
@@ -473,10 +473,10 @@ export default function OrderFlowAudit() {
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="bg-muted/50 p-1 h-12 inline-flex">
-            <TabsTrigger value="flow" className="gap-2 px-6 font-bold uppercase text-[11px] data-[state=active]:bg-background shadow-none">
+            <TabsTrigger value="flow" className="gap-2 px-6 font-bold uppercase text-xs data-[state=active]:bg-background shadow-none">
               <Layers className="h-4 w-4" /> Fluxo de Pedidos
             </TabsTrigger>
-            <TabsTrigger value="production" className="gap-2 px-6 font-bold uppercase text-[11px] data-[state=active]:bg-background shadow-none">
+            <TabsTrigger value="production" className="gap-2 px-6 font-bold uppercase text-xs data-[state=active]:bg-background shadow-none">
               <Factory className="h-4 w-4" /> Auditoria de Produção
             </TabsTrigger>
           </TabsList>

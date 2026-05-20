@@ -351,7 +351,7 @@ export default function Costura() {
               {isGroupCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
               <Building2 className="h-4 w-4 text-muted-foreground" />
               <span className="font-semibold text-sm">{eg.name}</span>
-              <Badge variant="outline" className="ml-auto text-[10px]">{groupTotalOps} OPs — {groupTotalPairs} pares</Badge>
+              <Badge variant="outline" className="ml-auto text-xs">{groupTotalOps} OPs — {groupTotalPairs} pares</Badge>
             </button>
 
             {!isGroupCollapsed && eg.entries.map(([soId, group]) => {
@@ -370,7 +370,7 @@ export default function Costura() {
                     <Store className="h-3.5 w-3.5 text-muted-foreground" />
                     <span className="text-xs font-medium">{pvLabel}</span>
                     {clientLabel && <span className="text-xs text-muted-foreground">— {clientLabel}</span>}
-                    <Badge variant="outline" className="ml-auto text-[10px]">{group.orders.length} OPs — {soTotalPairs} pares</Badge>
+                    <Badge variant="outline" className="ml-auto text-xs">{group.orders.length} OPs — {soTotalPairs} pares</Badge>
                   </button>
 
                   {!isSoCollapsed && (
@@ -402,8 +402,8 @@ export default function Costura() {
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span className="font-mono text-xs font-bold">{order.order_number}</span>
                                     {ref?.code && <RefChip code={ref.code} />}
-                                    <Badge variant="secondary" className="text-[10px]">{order.color || '—'}</Badge>
-                                    {strapsLabel && <Badge variant="outline" className="text-[10px]">🔗 {strapsLabel}</Badge>}
+                                    <Badge variant="secondary" className="text-xs">{order.color || '—'}</Badge>
+                                    {strapsLabel && <Badge variant="outline" className="text-xs">🔗 {strapsLabel}</Badge>}
                                   </div>
                                   <div className="text-xs text-muted-foreground mt-0.5">
                                     {ref?.name || ''} — {totalPairs} pares
@@ -412,7 +412,7 @@ export default function Costura() {
                                 <div className="flex items-center gap-1.5">
                                   <Badge
                                     variant={stageStatus === 'concluido' ? 'default' : stageStatus === 'em_andamento' ? 'secondary' : 'outline'}
-                                    className="text-[10px]"
+                                    className="text-xs"
                                   >
                                     {stageStatus === 'concluido' ? '✅ Concluído' : stageStatus === 'em_andamento' ? '🔄 Em andamento' : '⏳ Pendente'}
                                   </Badge>

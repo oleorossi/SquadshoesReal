@@ -48,7 +48,7 @@ export function FinCard({
             {value}
           </div>
           {sub && (
-            <div className="text-[11px] font-medium text-primary-foreground/60">{sub}</div>
+            <div className="text-xs font-medium text-primary-foreground/60">{sub}</div>
           )}
         </div>
       </div>
@@ -69,7 +69,7 @@ export function FinCard({
           {value}
         </div>
         {sub && (
-          <div className={cn('flex items-center gap-1 text-[11px] font-medium', subCls)}>
+          <div className={cn('flex items-center gap-1 text-xs font-medium', subCls)}>
             {SubIcon ? <SubIcon className="w-3 h-3 shrink-0" /> : <DefaultTrend className="w-3 h-3 shrink-0" />}
             {sub}
           </div>

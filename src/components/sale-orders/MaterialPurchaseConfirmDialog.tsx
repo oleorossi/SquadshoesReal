@@ -198,9 +198,9 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
                     <div className="flex flex-col gap-1">
                       <span>{s.product_name}</span>
                       <div className="flex flex-wrap gap-1">
-                        {s.product_sku && <Badge variant="outline" className="font-mono text-[10px]">{s.product_sku}</Badge>}
+                        {s.product_sku && <Badge variant="outline" className="font-mono text-xs">{s.product_sku}</Badge>}
                         {s.reference_labels.slice(0, 2).map((label, i) => (
-                          <Badge key={i} variant="secondary" className="text-[10px]">{label}</Badge>
+                          <Badge key={i} variant="secondary" className="text-xs">{label}</Badge>
                         ))}
                       </div>
                     </div>
@@ -210,9 +210,9 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
                       <Truck className="h-3 w-3 text-muted-foreground" />
                       {s.supplier_name}
                     </div>
-                    {s.moq > 0 && <span className="text-[10px] text-muted-foreground">MOQ: {s.moq}</span>}
+                    {s.moq > 0 && <span className="text-xs text-muted-foreground">MOQ: {s.moq}</span>}
                   </TableCell>
-                  <TableCell className="text-right font-mono">{s.required.toFixed(2)} <span className="text-[10px] text-muted-foreground">{s.unit}</span></TableCell>
+                  <TableCell className="text-right font-mono">{s.required.toFixed(2)} <span className="text-xs text-muted-foreground">{s.unit}</span></TableCell>
                   <TableCell className="text-right font-mono text-muted-foreground">{s.available.toFixed(2)}</TableCell>
                   <TableCell className="text-right font-mono text-destructive font-semibold">{s.shortage.toFixed(2)}</TableCell>
                    <TableCell className="text-right font-mono font-bold">{s.suggested_qty.toFixed(2)}</TableCell>

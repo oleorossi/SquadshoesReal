@@ -249,7 +249,7 @@ export default function GroupColorsManager({ groupId, groupName }: GroupColorsMa
                     )}
                     <span className="truncate">{color.nome}</span>
                     {color.referencia_pantone && (
-                      <span className="text-[11px] text-muted-foreground ml-auto shrink-0">{color.referencia_pantone}</span>
+                      <span className="text-xs text-muted-foreground ml-auto shrink-0">{color.referencia_pantone}</span>
                     )}
                   </button>
                 );
@@ -261,7 +261,7 @@ export default function GroupColorsManager({ groupId, groupName }: GroupColorsMa
 
       {/* Legenda */}
       {unified.length > 0 && (
-        <div className="flex flex-wrap gap-3 text-[11px] text-muted-foreground border-b border-border/40 pb-2">
+        <div className="flex flex-wrap gap-3 text-xs text-muted-foreground border-b border-border/40 pb-2">
           <span className="flex items-center gap-1"><Check className="h-3 w-3 text-emerald-600" /> Pronta (produto + vínculo)</span>
           <span className="flex items-center gap-1"><PackagePlus className="h-3 w-3 text-amber-600" /> Sem produto (só vínculo)</span>
           <span className="flex items-center gap-1"><AlertCircle className="h-3 w-3 text-blue-600" /> Detectada (produto, sem vínculo)</span>
@@ -309,7 +309,7 @@ export default function GroupColorsManager({ groupId, groupName }: GroupColorsMa
                 {statusIcon}
                 <span className="font-medium">{row.name}</span>
                 {row.product && (
-                  <span className="text-[11px] text-muted-foreground font-mono">
+                  <span className="text-xs text-muted-foreground font-mono">
                     · {row.product.quantity}
                   </span>
                 )}
@@ -320,7 +320,7 @@ export default function GroupColorsManager({ groupId, groupName }: GroupColorsMa
                     type="button"
                     size="sm"
                     variant="ghost"
-                    className="h-6 px-1.5 text-[11px] gap-1"
+                    className="h-6 px-1.5 text-xs gap-1"
                     onClick={() => handleCreateProduct(row)}
                     disabled={creatingFor === row.name}
                     title="Criar produto nesta cor"
@@ -334,7 +334,7 @@ export default function GroupColorsManager({ groupId, groupName }: GroupColorsMa
                     type="button"
                     size="sm"
                     variant="ghost"
-                    className="h-6 px-1.5 text-[11px] gap-1"
+                    className="h-6 px-1.5 text-xs gap-1"
                     onClick={() => handleVincularDetected(row)}
                     title="Vincular essa cor ao catálogo"
                   >

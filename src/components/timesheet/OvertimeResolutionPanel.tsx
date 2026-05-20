@@ -244,7 +244,7 @@ function EmployeeResolutionRow({
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex-1 min-w-[200px]">
             <p className="font-bold text-sm">{row.name}</p>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               HE: <strong className="font-mono">{formatMinutes(row.overtime_minutes)}</strong>
               {' · '}Hora: R$ {row.hourly_rate_resolved.toFixed(2)}
               {' · '}×{row.overtime_multiplier.toFixed(2)}

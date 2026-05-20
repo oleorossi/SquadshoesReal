@@ -369,18 +369,18 @@ const formatCurrency = (v: number) =>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
                           <h3 className="font-semibold text-sm text-foreground truncate">{baseName}</h3>
-                          <Badge variant="secondary" className="text-[10px] shrink-0">{prod?.category}</Badge>
+                          <Badge variant="secondary" className="text-xs shrink-0">{prod?.category}</Badge>
                         </div>
                         <p className="text-xs text-muted-foreground font-mono mt-0.5">{prod?.sku}</p>
                         <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                           {colors.length > 0 && (
-                            <Badge variant="outline" className="text-[10px] gap-1 h-5 px-1.5 bg-muted/40">
+                            <Badge variant="outline" className="text-xs gap-1 h-5 px-1.5 bg-muted/40">
                               <Palette className="h-2.5 w-2.5" />
                               {colors.length} {colors.length === 1 ? 'variante' : 'variantes'}
                             </Badge>
                           )}
                           {sheet.default_sole_group?.name && (
-                            <Badge variant="outline" className="text-[10px] gap-1 h-5 px-1.5 bg-primary/5 text-primary border-primary/30">
+                            <Badge variant="outline" className="text-xs gap-1 h-5 px-1.5 bg-primary/5 text-primary border-primary/30">
                               <Footprints className="h-2.5 w-2.5" />
                               Solado: {sheet.default_sole_group.name}
                             </Badge>
@@ -506,10 +506,10 @@ const formatCurrency = (v: number) =>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-foreground truncate">{baseName}</p>
                     <div className="flex items-center gap-2 mt-0.5">
-                      <Badge variant="secondary" className="text-[10px]">{prod?.category}</Badge>
-                      <span className="text-[10px] text-muted-foreground">{group.length} {group.length === 1 ? 'item' : 'itens'}</span>
+                      <Badge variant="secondary" className="text-xs">{prod?.category}</Badge>
+                      <span className="text-xs text-muted-foreground">{group.length} {group.length === 1 ? 'item' : 'itens'}</span>
                       {colors.length > 0 && (
-                        <span className="text-[10px] text-muted-foreground truncate">{colors.slice(0, 3).join(', ')}{colors.length > 3 ? '...' : ''}</span>
+                        <span className="text-xs text-muted-foreground truncate">{colors.slice(0, 3).join(', ')}{colors.length > 3 ? '...' : ''}</span>
                       )}
                     </div>
                   </div>
@@ -713,13 +713,13 @@ function CreateComponentForm({ onCreated }: { onCreated: (id: string) => void })
           <p className="text-xs font-semibold text-muted-foreground">Itens do grupo ({selectedGroup.products.length})</p>
           <div className="flex flex-wrap gap-1.5">
             {selectedGroup.products.map((p: any) => (
-              <Badge key={p.id} variant="outline" className="text-[10px] py-0.5 font-normal">
+              <Badge key={p.id} variant="outline" className="text-xs py-0.5 font-normal">
                 {p.color || p.name}
                 <span className="text-muted-foreground ml-1 font-mono">({p.sku})</span>
               </Badge>
             ))}
           </div>
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Uma ficha será criada para cada item, compartilhando as mesmas especificações.
           </p>
         </div>
@@ -822,7 +822,7 @@ function CreateComponentForm({ onCreated }: { onCreated: (id: string) => void })
               const sizeStr = String(size);
               return (
                 <div key={size} className="text-center">
-                  <Label className="text-[11px] text-muted-foreground">{size}</Label>
+                  <Label className="text-xs text-muted-foreground">{size}</Label>
                   <Input
                     type="number"
                     min={0}
@@ -1015,7 +1015,7 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
                       <p className="text-xs font-medium text-accent-foreground">
                         Consumo compartilhado por grupo
                       </p>
-                      <p className="text-[10px] text-accent-foreground/80 mt-0.5">
+                      <p className="text-xs text-accent-foreground/80 mt-0.5">
                         No consumo por par, a cor não altera o consumo. Tudo o que for salvo aqui será aplicado automaticamente às {groupItems.length} cores deste grupo.
                       </p>
                     </div>
@@ -1023,7 +1023,7 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
                 ) : (
                   <>
                     <div className="flex items-center justify-between mb-2">
-                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
+                      <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
                         <Palette className="h-3 w-3" />
                         Cores Disponíveis no Grupo
                       </p>
@@ -1031,13 +1031,13 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
                         <Button
                           variant={allColorsSelected ? "default" : "outline"}
                           size="sm"
-                          className="h-6 text-[10px] px-2 gap-1"
+                          className="h-6 text-xs px-2 gap-1"
                           onClick={() => setAllColorsSelected(!allColorsSelected)}
                         >
                           <Check className="h-3 w-3" />
                           {allColorsSelected ? 'Todas selecionadas' : 'Selecionar Todas'}
                         </Button>
-                        <Badge variant="outline" className="text-[9px] font-mono h-4 px-1.5">
+                        <Badge variant="outline" className="text-xs font-mono h-4 px-1.5">
                           {allColorsSelected ? `${groupItems.length}/${groupItems.length}` : `1/${groupItems.length}`} itens
                         </Badge>
                       </div>
@@ -1045,7 +1045,7 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
                     {allColorsSelected && (
                       <div className="flex items-center gap-2 mb-2 px-3 py-1.5 bg-primary/5 rounded-md border border-primary/20">
                         <FolderEdit className="h-3.5 w-3.5 text-primary shrink-0" />
-                        <p className="text-[10px] text-primary font-medium">
+                        <p className="text-xs text-primary font-medium">
                           Modo lote ativo — as alterações serão salvas em todas as {groupItems.length} cores simultaneamente.
                         </p>
                       </div>
@@ -1090,7 +1090,7 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
                         );
                       })}
                     </div>
-                    <p className="text-[10px] text-muted-foreground mt-2 italic">
+                    <p className="text-xs text-muted-foreground mt-2 italic">
                       {allColorsSelected
                         ? '* Todas as cores selecionadas. As alterações serão aplicadas a todos os itens.'
                         : '* Clique em uma cor para editar individualmente, ou use "Selecionar Todas" para edição em lote.'}
@@ -1111,7 +1111,7 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
             <span className="text-sm text-accent-foreground font-medium block">
               Edição em lote — todas as {siblingIds.length} cores
             </span>
-            <p className="text-[10px] text-accent-foreground/70">As alterações abaixo serão aplicadas simultaneamente a todos os itens deste grupo.</p>
+            <p className="text-xs text-accent-foreground/70">As alterações abaixo serão aplicadas simultaneamente a todos os itens deste grupo.</p>
           </div>
         </div>
       )}
@@ -1167,24 +1167,24 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
           {/* Info cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="rounded-lg border border-border/40 bg-muted/20 p-3">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Preço Unit.</p>
+              <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Preço Unit.</p>
               <p className="text-sm font-mono font-bold text-foreground mt-1">{formatCurrency(prod?.unit_price || 0)}</p>
-              <p className="text-[10px] text-muted-foreground">por {prod?.unit}</p>
+              <p className="text-xs text-muted-foreground">por {prod?.unit}</p>
             </div>
             <div className="rounded-lg border border-border/40 bg-muted/20 p-3">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Estoque</p>
+              <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Estoque</p>
               <p className="text-sm font-mono font-bold text-foreground mt-1">{prod?.quantity}</p>
-              <p className="text-[10px] text-muted-foreground">{prod?.unit}</p>
+              <p className="text-xs text-muted-foreground">{prod?.unit}</p>
             </div>
             <div className="rounded-lg border border-border/40 bg-muted/20 p-3">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Perda</p>
+              <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Perda</p>
               <p className="text-sm font-mono font-bold text-foreground mt-1">{form.waste_pct}%</p>
-              <p className="text-[10px] text-muted-foreground">estimada</p>
+              <p className="text-xs text-muted-foreground">estimada</p>
             </div>
             <div className="rounded-lg border border-border/40 bg-muted/20 p-3">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Variantes</p>
+              <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Variantes</p>
               <p className="text-sm font-mono font-bold text-foreground mt-1">{colors.length || 1}</p>
-              <p className="text-[10px] text-muted-foreground">{colors.length === 1 ? 'cor' : 'cores'}</p>
+              <p className="text-xs text-muted-foreground">{colors.length === 1 ? 'cor' : 'cores'}</p>
             </div>
           </div>
 
@@ -1285,9 +1285,9 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
                 ].map((grade) => (
                   <div key={grade.label} className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <h4 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{grade.label}</h4>
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{grade.label}</h4>
                       <div className="flex gap-2">
-                        <Button variant="ghost" size="sm" className="h-6 text-[9px] px-2" onClick={() => {
+                        <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={() => {
                           const val = prompt(`Preencher toda a ${grade.label} com qual valor?`);
                           if (val && !isNaN(Number(val))) {
                             const newYield = { ...form.yield_per_size };
@@ -1295,7 +1295,7 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
                             updateField('yield_per_size', newYield);
                           }
                         }}>Preencher</Button>
-                        <Button variant="ghost" size="sm" className="h-6 text-[9px] px-2 text-destructive" onClick={() => {
+                        <Button variant="ghost" size="sm" className="h-6 text-xs px-2 text-destructive" onClick={() => {
                           const newYield = { ...form.yield_per_size };
                           grade.sizes.forEach(s => { delete newYield[String(s)]; });
                           updateField('yield_per_size', newYield);
@@ -1305,7 +1305,7 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
                     <div className="rounded-md border overflow-hidden">
                       <div className="grid grid-cols-7 bg-muted/40 border-b" style={{ gridTemplateColumns: `repeat(${grade.sizes.length}, 1fr)` }}>
                         {grade.sizes.map(size => (
-                          <div key={size} className="text-center py-2 px-1 text-[10px] font-semibold text-muted-foreground border-r last:border-r-0">
+                          <div key={size} className="text-center py-2 px-1 text-xs font-semibold text-muted-foreground border-r last:border-r-0">
                             {size}
                           </div>
                         ))}
@@ -1344,7 +1344,7 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
                             const areaDm2 = calcAreaDm2(form.dimensions_length, form.dimensions_width, form.dimensions_unit || 'mm');
                             const pairsPerPlate = consumption > 0 ? Math.floor(areaDm2 / consumption) : 0;
                             return (
-                              <div key={size} className="text-center py-1 text-[9px] font-mono font-medium text-accent-foreground border-r last:border-r-0">
+                              <div key={size} className="text-center py-1 text-xs font-mono font-medium text-accent-foreground border-r last:border-r-0">
                                 {pairsPerPlate > 0 ? `${pairsPerPlate} pr` : '—'}
                               </div>
                             );
@@ -1355,27 +1355,27 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
                   </div>
                 ))}
 
-                <p className="text-[10px] text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   * Consumo em dm²/par. Pares/placa calculado com base nas dimensões informadas.
                 </p>
                 {/* Cost row */}
                 <div className="rounded-lg border border-border/40 overflow-hidden mt-4">
                   <div className="bg-muted/40 border-b border-border/40 px-3 py-2">
-                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Custo por Par Estimado</h4>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Custo por Par Estimado</h4>
                   </div>
                   <div className="grid" style={{ gridTemplateColumns: `repeat(${sizes.length}, 1fr)` }}>
                     {sizes.map(size => {
                       const sizeStr = String(size);
                       const cost = costPerPairBySize[sizeStr];
                       return (
-                        <div key={size} className="text-center py-2 px-0.5 text-[9px] font-mono text-muted-foreground border-r border-border/30 last:border-r-0">
+                        <div key={size} className="text-center py-2 px-0.5 text-xs font-mono text-muted-foreground border-r border-border/30 last:border-r-0">
                           {cost ? formatCurrency(cost) : '—'}
                         </div>
                       );
                     })}
                   </div>
                 </div>
-                <p className="text-[10px] text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   * Custo/par = preço unitário × consumo dm² × (1 + {form.waste_pct}% perda)
                   {form.dimensions_length > 0 && form.dimensions_width > 0 && ' | Pares/placa = área da placa ÷ consumo dm²'}
                 </p>
@@ -1429,12 +1429,12 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
                   className="h-10 text-sm"
                 />
               </div>
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 {isUnitCategory(prod?.category)
                   ? 'Ex: 1 un por par (cada par usa 1 unidade deste item)'
                   : `Ex: 0,005 ${getConsumptionUnit(prod?.category)} por par. Use vírgula como separador decimal.`}
               </p>
-              <p className="text-[10px] text-primary">
+              <p className="text-xs text-primary">
                 💡 Preencha as dimensões da placa na aba Especificações para habilitar o consumo por numeração em dm².
               </p>
             </div>
@@ -1442,11 +1442,11 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
             {/* Cost calculation */}
             {(form.yield_per_size['unit'] || 0) > 0 && (
               <div className="rounded-lg border border-border/40 bg-muted/20 p-4">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Custo por Par</p>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Custo por Par</p>
                 <p className="text-lg font-mono font-bold text-foreground mt-1">
                   {formatCurrency((prod?.unit_price || 0) * (form.yield_per_size['unit'] || 0) * (1 + form.waste_pct / 100))}
                 </p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   {formatCurrency(prod?.unit_price || 0)}/{isUnitCategory(prod?.category) ? 'un' : getConsumptionUnit(prod?.category)} × {form.yield_per_size['unit']} {isUnitCategory(prod?.category) ? 'un' : getConsumptionUnit(prod?.category)} × (1 + {form.waste_pct}% perda)
                 </p>
               </div>
@@ -1724,11 +1724,11 @@ function GroupColorsPanel({ groupId, groupColors }: {
               <Palette className="h-4 w-4 text-primary" />
               Catálogo de Cores do Grupo
             </h3>
-            <p className="text-[10px] text-muted-foreground mt-0.5">
+            <p className="text-xs text-muted-foreground mt-0.5">
               Defina os nomes das cores que este material (grupo) pode possuir.
             </p>
           </div>
-          <Badge variant="outline" className="text-[9px] font-mono h-4 px-1.5 uppercase tracking-widest">
+          <Badge variant="outline" className="text-xs font-mono h-4 px-1.5 uppercase tracking-widest">
             Metadados do Grupo
           </Badge>
         </div>
@@ -1790,7 +1790,7 @@ function GroupColorsPanel({ groupId, groupColors }: {
             }}
             className="h-8 flex-1 max-w-xs text-xs"
           />
-          <Button type="button" variant="outline" size="sm" onClick={addColor} disabled={!newColor.trim()} className="h-8 text-[10px] gap-1.5">
+          <Button type="button" variant="outline" size="sm" onClick={addColor} disabled={!newColor.trim()} className="h-8 text-xs gap-1.5">
             <Plus className="h-3.5 w-3.5" /> Adicionar
           </Button>
         </div>
@@ -1802,7 +1802,7 @@ function GroupColorsPanel({ groupId, groupColors }: {
             <Layers className="h-4 w-4 text-primary" />
             Itens (SKUs) Existentes no Grupo
           </h3>
-          <p className="text-[10px] text-muted-foreground mt-0.5">
+          <p className="text-xs text-muted-foreground mt-0.5">
             Estes são os produtos reais vinculados a este grupo e suas respectivas cores.
           </p>
         </div>
@@ -1811,10 +1811,10 @@ function GroupColorsPanel({ groupId, groupColors }: {
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/30">
-                <TableHead className="h-8 text-[10px] font-bold uppercase tracking-wider px-4">Cor do Item</TableHead>
-                <TableHead className="h-8 text-[10px] font-bold uppercase tracking-wider">SKU</TableHead>
-                <TableHead className="h-8 text-[10px] font-bold uppercase tracking-wider text-right">Estoque</TableHead>
-                <TableHead className="h-8 text-[10px] font-bold uppercase tracking-wider text-right px-4">Preço</TableHead>
+                <TableHead className="h-8 text-xs font-bold uppercase tracking-wider px-4">Cor do Item</TableHead>
+                <TableHead className="h-8 text-xs font-bold uppercase tracking-wider">SKU</TableHead>
+                <TableHead className="h-8 text-xs font-bold uppercase tracking-wider text-right">Estoque</TableHead>
+                <TableHead className="h-8 text-xs font-bold uppercase tracking-wider text-right px-4">Preço</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1826,13 +1826,13 @@ function GroupColorsPanel({ groupId, groupColors }: {
                       <span className="text-xs font-medium">{p.color || 'Padrão'}</span>
                     </div>
                   </TableCell>
-                  <TableCell className="py-2 text-[10px] font-mono text-muted-foreground">{p.sku}</TableCell>
+                  <TableCell className="py-2 text-xs font-mono text-muted-foreground">{p.sku}</TableCell>
                   <TableCell className="py-2 text-right text-xs">
-                    <Badge variant={p.quantity > 0 ? "secondary" : "outline"} className="text-[9px] h-4 font-mono">
+                    <Badge variant={p.quantity > 0 ? "secondary" : "outline"} className="text-xs h-4 font-mono">
                       {p.quantity} {p.unit}
                     </Badge>
                   </TableCell>
-                  <TableCell className="py-2 text-right text-[10px] font-mono pr-4">
+                  <TableCell className="py-2 text-right text-xs font-mono pr-4">
                     {p.unit_price ? formatCurrency(p.unit_price) : '—'}
                   </TableCell>
                 </TableRow>
@@ -1858,7 +1858,7 @@ function GroupColorsPanel({ groupId, groupColors }: {
                 <Percent className="h-4 w-4 text-primary" />
                 Consumo por Item ({consumptionUnit} por par)
               </h3>
-              <p className="text-[10px] text-muted-foreground mt-0.5">
+              <p className="text-xs text-muted-foreground mt-0.5">
                 Defina o consumo individual de cada {groupCategory.toLowerCase()} no grupo. Salvo automaticamente ao sair do campo.
               </p>
             </div>
@@ -1866,15 +1866,15 @@ function GroupColorsPanel({ groupId, groupColors }: {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/30">
-                    <TableHead className="h-8 text-[10px] font-bold uppercase tracking-wider px-4">Item</TableHead>
-                    <TableHead className="h-8 text-[10px] font-bold uppercase tracking-wider">SKU</TableHead>
-                    <TableHead className="h-8 text-[10px] font-bold uppercase tracking-wider w-44">
+                    <TableHead className="h-8 text-xs font-bold uppercase tracking-wider px-4">Item</TableHead>
+                    <TableHead className="h-8 text-xs font-bold uppercase tracking-wider">SKU</TableHead>
+                    <TableHead className="h-8 text-xs font-bold uppercase tracking-wider w-44">
                       Consumo / par ({consumptionUnit})
                     </TableHead>
-                    <TableHead className="h-8 text-[10px] font-bold uppercase tracking-wider w-32">
+                    <TableHead className="h-8 text-xs font-bold uppercase tracking-wider w-32">
                       Perda (%)
                     </TableHead>
-                    <TableHead className="h-8 text-[10px] font-bold uppercase tracking-wider text-right px-4">Custo / par</TableHead>
+                    <TableHead className="h-8 text-xs font-bold uppercase tracking-wider text-right px-4">Custo / par</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1891,7 +1891,7 @@ function GroupColorsPanel({ groupId, groupColors }: {
                             <span className="text-xs font-medium">{p.color || p.name}</span>
                           </div>
                         </TableCell>
-                        <TableCell className="py-2 text-[10px] font-mono text-muted-foreground">{p.sku}</TableCell>
+                        <TableCell className="py-2 text-xs font-mono text-muted-foreground">{p.sku}</TableCell>
                         <TableCell className="py-2">
                           <ConsumptionEditCell
                             initialValue={consumption}
@@ -1914,7 +1914,7 @@ function GroupColorsPanel({ groupId, groupColors }: {
                             }}
                           />
                         </TableCell>
-                        <TableCell className="py-2 text-right text-[10px] font-mono pr-4">
+                        <TableCell className="py-2 text-right text-xs font-mono pr-4">
                           {costPerPair > 0 ? formatCurrency(costPerPair) : '—'}
                         </TableCell>
                       </TableRow>
@@ -1973,12 +1973,12 @@ function GroupColorsPanel({ groupId, groupColors }: {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium text-foreground truncate">{p.color || p.name}</span>
-                  {!p.active && <Badge variant="secondary" className="text-[9px]">Inativo</Badge>}
+                  {!p.active && <Badge variant="secondary" className="text-xs">Inativo</Badge>}
                 </div>
                 <div className="flex items-center gap-3 mt-0.5">
-                  <span className="text-[10px] text-muted-foreground font-mono">{p.sku}</span>
-                  <span className="text-[10px] text-muted-foreground">Estoque: {p.quantity} {p.unit}</span>
-                  <span className="text-[10px] text-muted-foreground">
+                  <span className="text-xs text-muted-foreground font-mono">{p.sku}</span>
+                  <span className="text-xs text-muted-foreground">Estoque: {p.quantity} {p.unit}</span>
+                  <span className="text-xs text-muted-foreground">
                     {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.unit_price)}/{p.unit}
                   </span>
                 </div>
@@ -2100,7 +2100,7 @@ function SoleConsumptionMatrixReadOnly({ groupId, category }: { groupId: string;
             <div className="grid grid-cols-4 sm:grid-cols-8 md:grid-cols-12 gap-1">
               {filledSizes.map(size => (
                 <div key={size} className="text-center">
-                  <div className="text-[9px] font-bold text-muted-foreground bg-muted/50 rounded py-0.5">{size}</div>
+                  <div className="text-xs font-bold text-muted-foreground bg-muted/50 rounded py-0.5">{size}</div>
                   <div className="text-xs font-mono mt-0.5">{soleSpecs[size]?.[field] || '—'}</div>
                 </div>
               ))}
@@ -2140,7 +2140,7 @@ function DefaultSoleSection({ sheet }: { sheet: any }) {
         <Footprints className="h-4 w-4 text-primary" />
         <h3 className="text-sm font-semibold text-primary">Solado Padrão</h3>
         {currentName && (
-          <Badge variant="outline" className="text-[10px] bg-background">
+          <Badge variant="outline" className="text-xs bg-background">
             Atual: {currentName}
           </Badge>
         )}

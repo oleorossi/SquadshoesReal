@@ -842,7 +842,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                       <SelectItem value="__none__">Nenhuma (definida por item)</SelectItem>
                       {Object.entries(CONSUMPTION_UNITS_BY_GROUP).map(([groupName, units]) => (
                         <React.Fragment key={groupName}>
-                          <div className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground bg-muted/50">
+                          <div className="px-2 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground bg-muted/50">
                             {groupName}
                           </div>
                           {units.map(u => (
@@ -852,7 +852,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-[11px] text-muted-foreground mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     {sharedSpecs
                       ? 'Esta unidade será aplicada a TODOS os itens deste grupo ao salvar (inclusive estoque).'
                       : 'Ao alterar esta unidade, ela será aplicada a todos os itens do grupo para padronização.'}
@@ -935,7 +935,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                       </Select>
                     </div>
                     {artYieldPerMeter > 0 && (
-                      <p className="text-[11px] text-amber-700 bg-amber-100 rounded px-2 py-1">
+                      <p className="text-xs text-amber-700 bg-amber-100 rounded px-2 py-1">
                         Cada 1 m de base gera {artYieldPerMeter.toFixed(2)} m² de produto acabado
                         {artLaborCost > 0 ? ` · MO: R$ ${artLaborCost.toFixed(2)}/m` : ''}
                       </p>
@@ -980,7 +980,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-[11px] text-muted-foreground mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     Use pra agrupar variações (ex.: "Componentes" → "Tira chata", "Tira Strass").
                     Próprio grupo e descendentes ficam ocultos pra evitar ciclos.
                   </p>
@@ -1029,7 +1029,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                                   </span>
                                   <span className="truncate">{g.name}</span>
                                   {g.parent_group_id && (
-                                    <Badge variant="outline" className="ml-auto text-[9px] h-4">
+                                    <Badge variant="outline" className="ml-auto text-xs h-4">
                                       tem pai
                                     </Badge>
                                   )}
@@ -1056,7 +1056,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                           <div className="flex items-center gap-2 min-w-0">
                             <span className="text-muted-foreground text-xs font-mono shrink-0">└</span>
                             <span className="text-sm font-medium truncate">{c.name}</span>
-                            <Badge variant="secondary" className="text-[11px] h-4 font-mono shrink-0">
+                            <Badge variant="secondary" className="text-xs h-4 font-mono shrink-0">
                               {itemCountByGroup.get(c.id) ?? 0} itens
                             </Badge>
                           </div>
@@ -1101,7 +1101,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                     className="mt-1"
                     placeholder="Ex: 0.250"
                   />
-                  <p className="text-[11px] text-muted-foreground mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     Peso de uma unidade (par de solados, um cabedal ou uma caixa) usado para cálculo do peso total de despacho.
                   </p>
                 </div>
@@ -1127,7 +1127,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                       onChange={v => setUnitPrice(v || 0)}
                       className="h-9"
                     />
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       Se preenchido, aplicará este preço a TODOS os itens do grupo.
                     </p>
                   </div>
@@ -1139,7 +1139,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                       placeholder="Ex: Prateleira A1"
                       className="h-9"
                     />
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       Se preenchido, aplicará esta localização a TODOS os itens.
                     </p>
                   </div>

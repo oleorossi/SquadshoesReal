@@ -153,7 +153,7 @@ import { normalizeForSearch } from '@/lib/searchUtils';
  
          <div className="flex gap-2">
            <div className="flex flex-col gap-1">
-             <Label className="text-[10px] text-muted-foreground ml-1">De</Label>
+             <Label className="text-xs text-muted-foreground ml-1">De</Label>
              <Input 
                type="date" 
                className="h-9 w-[140px]" 
@@ -162,7 +162,7 @@ import { normalizeForSearch } from '@/lib/searchUtils';
              />
            </div>
            <div className="flex flex-col gap-1">
-             <Label className="text-[10px] text-muted-foreground ml-1">Até</Label>
+             <Label className="text-xs text-muted-foreground ml-1">Até</Label>
              <Input 
                type="date" 
                className="h-9 w-[140px]" 
@@ -192,7 +192,7 @@ import { normalizeForSearch } from '@/lib/searchUtils';
          items={paginatedMovements}
         getId={(mov) => mov.id}
         headers={headers}
-        headerClassName="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground"
+        headerClassName="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground"
         emptyMessage="Nenhuma movimentação registrada"
        renderRow={(mov: StockMovementWithProduct) => {
          const prod = mov.products;
@@ -219,7 +219,7 @@ import { normalizeForSearch } from '@/lib/searchUtils';
                <TableCell className="text-sm text-muted-foreground flex items-center gap-1.5">
                  {mov.user_email || mov.responsible || '—'}
                  {mov.lot_number && (
-                   <Badge variant="outline" className="text-[10px] py-0 h-4 font-mono">
+                   <Badge variant="outline" className="text-xs py-0 h-4 font-mono">
                      Lote: {mov.lot_number}
                    </Badge>
                  )}

@@ -71,22 +71,22 @@ export default function Security() {
         <div className="space-y-3 text-sm">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-[10px] uppercase font-bold">Tamanho mínimo</Label>
+              <Label className="text-xs uppercase font-bold">Tamanho mínimo</Label>
               <Input type="number" value={settings.password_min_length}
                 onChange={e => update.mutate({ password_min_length: +e.target.value })} className="h-8" />
             </div>
             <div>
-              <Label className="text-[10px] uppercase font-bold">Histórico de senhas</Label>
+              <Label className="text-xs uppercase font-bold">Histórico de senhas</Label>
               <Input type="number" value={settings.password_history_count}
                 onChange={e => update.mutate({ password_history_count: +e.target.value })} className="h-8" />
             </div>
             <div>
-              <Label className="text-[10px] uppercase font-bold">Expiração (dias)</Label>
+              <Label className="text-xs uppercase font-bold">Expiração (dias)</Label>
               <Input type="number" value={settings.password_expiry_days || ''}
                 onChange={e => update.mutate({ password_expiry_days: e.target.value ? +e.target.value : null })} className="h-8" />
             </div>
             <div>
-              <Label className="text-[10px] uppercase font-bold">Tentativas máx.</Label>
+              <Label className="text-xs uppercase font-bold">Tentativas máx.</Label>
               <Input type="number" value={settings.max_failed_attempts}
                 onChange={e => update.mutate({ max_failed_attempts: +e.target.value })} className="h-8" />
             </div>
@@ -125,16 +125,16 @@ export default function Security() {
             )}
             {sensitive.map((s: any) => (
               <div key={s.id} className="p-3 flex items-center gap-3 text-sm">
-                <Badge variant="outline" className={`text-[10px] capitalize ${
+                <Badge variant="outline" className={`text-xs capitalize ${
                   s.sensitivity_level === 'alta' ? 'bg-destructive/10 text-destructive border-destructive/30' :
                   s.sensitivity_level === 'media' ? 'bg-amber-100 text-amber-700' :
                   'bg-muted text-muted-foreground'
                 }`}>{s.sensitivity_level}</Badge>
                 <div className="flex-1 min-w-0">
                   <p className="font-mono text-xs font-semibold">{s.table_name}.{s.column_name}</p>
-                  <p className="text-[11px] text-muted-foreground">{s.reason}</p>
+                  <p className="text-xs text-muted-foreground">{s.reason}</p>
                 </div>
-                <Badge variant="outline" className="text-[10px] capitalize">{s.masking_rule}</Badge>
+                <Badge variant="outline" className="text-xs capitalize">{s.masking_rule}</Badge>
               </div>
             ))}
           </div>
@@ -213,7 +213,7 @@ function MfaCard() {
             <div className="flex items-center justify-between rounded-md border p-3">
               <div className="flex-1">
                 <p className="text-sm font-medium">MFA ativo</p>
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   Quando ativado, login pedirá um código TOTP (Google Authenticator/Authy) além da senha.
                   {mfa?.enrolled_at && ` · Configurado em ${new Date(mfa.enrolled_at).toLocaleDateString('pt-BR')}`}
                   {mfa?.last_used_at && ` · Último uso ${new Date(mfa.last_used_at).toLocaleDateString('pt-BR')}`}
@@ -232,7 +232,7 @@ function MfaCard() {
               <>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-[10px] uppercase font-bold">Método</Label>
+                    <Label className="text-xs uppercase font-bold">Método</Label>
                     <select
                       value={mfa?.mfa_method ?? 'totp'}
                       onChange={(e) => upsert.mutate({ mfa_method: e.target.value })}
@@ -244,7 +244,7 @@ function MfaCard() {
                     </select>
                   </div>
                   <div>
-                    <Label className="text-[10px] uppercase font-bold">Telefone recuperação</Label>
+                    <Label className="text-xs uppercase font-bold">Telefone recuperação</Label>
                     <Input
                       value={mfa?.recovery_phone ?? ''}
                       onChange={(e) => upsert.mutate({ recovery_phone: e.target.value })}
@@ -253,7 +253,7 @@ function MfaCard() {
                     />
                   </div>
                   <div className="col-span-2">
-                    <Label className="text-[10px] uppercase font-bold">E-mail de recuperação</Label>
+                    <Label className="text-xs uppercase font-bold">E-mail de recuperação</Label>
                     <Input
                       type="email"
                       value={mfa?.recovery_email ?? ''}
@@ -267,7 +267,7 @@ function MfaCard() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium">Códigos de backup</p>
-                      <p className="text-[11px] text-muted-foreground">
+                      <p className="text-xs text-muted-foreground">
                         {codes.length > 0 ? `${codes.length} códigos disponíveis` : 'Nenhum código gerado'}
                       </p>
                     </div>
@@ -283,7 +283,7 @@ function MfaCard() {
                   {codes.length > 0 && (
                     <div className="grid grid-cols-4 gap-1.5 mt-2">
                       {codes.map((c, i) => (
-                        <code key={i} className="text-[11px] font-mono bg-muted px-2 py-1 rounded text-center">
+                        <code key={i} className="text-xs font-mono bg-muted px-2 py-1 rounded text-center">
                           {c}
                         </code>
                       ))}

@@ -40,9 +40,9 @@ function SizeGradeTable({ breakdown }: { breakdown: Record<string, number> }) {
       <table className="w-full text-xs border rounded-md">
         <thead>
           <tr className="bg-muted/40">
-            <th className="text-left px-2 py-1.5 font-semibold uppercase text-[10px] tracking-wide text-muted-foreground">Numeração</th>
+            <th className="text-left px-2 py-1.5 font-semibold uppercase text-xs tracking-wide text-muted-foreground">Numeração</th>
             {sizes.map(sz => <th key={sz} className="px-2 py-1.5 font-bold text-center">{sz}</th>)}
-            <th className="px-2 py-1.5 text-right font-bold uppercase text-[10px] text-muted-foreground">Total</th>
+            <th className="px-2 py-1.5 text-right font-bold uppercase text-xs text-muted-foreground">Total</th>
           </tr>
         </thead>
         <tbody>
@@ -61,19 +61,19 @@ function StockSummary({ required, available, shortage, suggested }: { required: 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
       <div className="rounded bg-muted/30 px-2 py-1.5">
-        <div className="text-[10px] uppercase text-muted-foreground">Necessário</div>
+        <div className="text-xs uppercase text-muted-foreground">Necessário</div>
         <div className="font-mono font-semibold">{required}</div>
       </div>
       <div className="rounded bg-muted/30 px-2 py-1.5">
-        <div className="text-[10px] uppercase text-muted-foreground">Estoque</div>
+        <div className="text-xs uppercase text-muted-foreground">Estoque</div>
         <div className="font-mono">{available}</div>
       </div>
       <div className="rounded bg-destructive/10 px-2 py-1.5">
-        <div className="text-[10px] uppercase text-destructive">Faltam</div>
+        <div className="text-xs uppercase text-destructive">Faltam</div>
         <div className="font-mono font-bold text-destructive">{shortage}</div>
       </div>
       <div className="rounded bg-primary/10 px-2 py-1.5">
-        <div className="text-[10px] uppercase text-primary">Comprar</div>
+        <div className="text-xs uppercase text-primary">Comprar</div>
         <div className="font-mono font-bold">{suggested}</div>
       </div>
     </div>
@@ -220,21 +220,21 @@ export function SolePurchaseConfirmDialog({ open, onOpenChange, result, onConfir
             <div className="flex items-center gap-2">
               <Package className="h-4 w-4 text-primary" />
               <h3 className="text-sm font-bold">Solados</h3>
-              <Badge variant="outline" className="text-[10px]">{shortages.length} item(ns)</Badge>
+              <Badge variant="outline" className="text-xs">{shortages.length} item(ns)</Badge>
             </div>
             {grouped.map((group) => (
               <div key={group.type} className="rounded-lg border bg-card overflow-hidden">
                 <div className="flex items-center gap-2 bg-muted/60 px-4 py-2.5 border-b">
                   <Package className="h-4 w-4 text-primary" />
                   <h3 className="text-sm font-bold uppercase tracking-wide">{group.type}</h3>
-                  <Badge variant="outline" className="ml-auto text-[10px]">{group.colors.length} cor(es)</Badge>
+                  <Badge variant="outline" className="ml-auto text-xs">{group.colors.length} cor(es)</Badge>
                 </div>
                 <div className="divide-y">
                   {group.colors.map((s) => (
                     <div key={s.sole_product_id} className="p-4 space-y-3">
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge variant="secondary" className="font-semibold">{s.sole_color || 'Cor padrão'}</Badge>
-                        {s.sole_sku && <Badge variant="outline" className="font-mono text-[10px]">{s.sole_sku}</Badge>}
+                        {s.sole_sku && <Badge variant="outline" className="font-mono text-xs">{s.sole_sku}</Badge>}
                         <span className="text-xs text-muted-foreground flex items-center gap-1 ml-auto">
                           <Truck className="h-3 w-3" />{s.supplier_name} · {s.lead_time_days}d
                           {s.moq > 0 && <span className="ml-1">· MOQ {s.moq}</span>}
@@ -248,8 +248,8 @@ export function SolePurchaseConfirmDialog({ open, onOpenChange, result, onConfir
                       {s.order_numbers.length > 0 && (
                         <div className="flex items-start gap-1.5 flex-wrap pt-1 border-t">
                           <FileText className="h-3.5 w-3.5 text-muted-foreground mt-0.5" />
-                          <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mt-0.5">Pedidos:</span>
-                          {s.order_numbers.map(on => <Badge key={on} variant="outline" className="font-mono text-[10px]">{on}</Badge>)}
+                          <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold mt-0.5">Pedidos:</span>
+                          {s.order_numbers.map(on => <Badge key={on} variant="outline" className="font-mono text-xs">{on}</Badge>)}
                         </div>
                       )}
                     </div>
@@ -266,7 +266,7 @@ export function SolePurchaseConfirmDialog({ open, onOpenChange, result, onConfir
             <div className="flex items-center gap-2">
               <Shield className="h-4 w-4 text-blue-600" />
               <h3 className="text-sm font-bold text-blue-700 dark:text-blue-400">Palmilhas</h3>
-              <Badge variant="outline" className="text-[10px]">{insoleShortages.length} item(ns)</Badge>
+              <Badge variant="outline" className="text-xs">{insoleShortages.length} item(ns)</Badge>
             </div>
             <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20 overflow-hidden">
               <div className="divide-y divide-blue-100 dark:divide-blue-900">
@@ -274,14 +274,14 @@ export function SolePurchaseConfirmDialog({ open, onOpenChange, result, onConfir
                   <div key={s.insole_product_id} className="p-4 space-y-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant="secondary" className="font-semibold">{s.insole_color || 'Cor padrão'}</Badge>
-                      {s.insole_sku && <Badge variant="outline" className="font-mono text-[10px]">{s.insole_sku}</Badge>}
-                      <span className="text-xs text-muted-foreground italic text-[11px]">{s.insole_name}</span>
+                      {s.insole_sku && <Badge variant="outline" className="font-mono text-xs">{s.insole_sku}</Badge>}
+                      <span className="text-xs text-muted-foreground italic text-xs">{s.insole_name}</span>
                       <span className="text-xs text-muted-foreground flex items-center gap-1 ml-auto">
                         <Truck className="h-3 w-3" />{s.supplier_name} · {s.lead_time_days}d
                       </span>
                     </div>
                     {s.cabedal_colors.length > 0 && (
-                      <p className="text-[10px] text-blue-700 dark:text-blue-400">
+                      <p className="text-xs text-blue-700 dark:text-blue-400">
                         Cabedal que origina esta palmilha: {s.cabedal_colors.join(', ')}
                       </p>
                     )}
@@ -293,8 +293,8 @@ export function SolePurchaseConfirmDialog({ open, onOpenChange, result, onConfir
                     {s.order_numbers.length > 0 && (
                       <div className="flex items-start gap-1.5 flex-wrap pt-1 border-t">
                         <FileText className="h-3.5 w-3.5 text-muted-foreground mt-0.5" />
-                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mt-0.5">Pedidos:</span>
-                        {s.order_numbers.map(on => <Badge key={on} variant="outline" className="font-mono text-[10px]">{on}</Badge>)}
+                        <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold mt-0.5">Pedidos:</span>
+                        {s.order_numbers.map(on => <Badge key={on} variant="outline" className="font-mono text-xs">{on}</Badge>)}
                       </div>
                     )}
                   </div>

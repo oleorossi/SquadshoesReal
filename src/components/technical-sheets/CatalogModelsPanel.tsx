@@ -165,7 +165,7 @@ export function CatalogModelsPanel({ sheetId, strapColors }: Props) {
         <div className="flex items-center gap-2">
           <Palette className="h-4 w-4 text-primary" />
           <h4 className="text-sm font-semibold">Modelos de Catálogo</h4>
-          <Badge variant="secondary" className="text-[10px]">{models.length}</Badge>
+          <Badge variant="secondary" className="text-xs">{models.length}</Badge>
         </div>
         {!addingNew && (
           <Button type="button" variant="outline" size="sm" className="gap-1 text-xs" onClick={() => setAddingNew(true)}>
@@ -224,7 +224,7 @@ export function CatalogModelsPanel({ sheetId, strapColors }: Props) {
                 const colors = getColorsForStrap(strap);
                 return (
                   <div key={strap.id} className="flex items-center gap-3">
-                    <Badge variant="outline" className="text-[10px] whitespace-nowrap min-w-[60px] justify-center">
+                    <Badge variant="outline" className="text-xs whitespace-nowrap min-w-[60px] justify-center">
                       {strap.label}
                     </Badge>
                     <Select

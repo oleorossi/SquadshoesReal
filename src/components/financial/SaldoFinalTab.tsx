@@ -334,7 +334,7 @@ export default function SaldoFinalTab() {
                   <TableHead className="text-right min-w-[100px]">Estoque Atual</TableHead>
                   {visibleWeeks.map(wl => (
                     <TableHead key={wl} className="text-right min-w-[120px]">
-                      <div className="text-[11px] text-muted-foreground">Saldo</div>
+                      <div className="text-xs text-muted-foreground">Saldo</div>
                       <div className="text-xs">{wl}</div>
                     </TableHead>
                   ))}
@@ -353,21 +353,21 @@ export default function SaldoFinalTab() {
                     <TableRow key={mat.key} className={mat.final_balance < 0 ? 'bg-destructive/5' : ''}>
                       <TableCell className="sticky left-0 bg-background z-10">
                         <p className="font-medium text-sm">{mat.name}</p>
-                        <Badge variant="outline" className="text-[9px]">{mat.type}</Badge>
+                        <Badge variant="outline" className="text-xs">{mat.type}</Badge>
                       </TableCell>
                       <TableCell className="text-right font-mono text-sm">
-                        {fmtQty(mat.current_stock)} <span className="text-[11px] text-muted-foreground">{mat.unit}</span>
+                        {fmtQty(mat.current_stock)} <span className="text-xs text-muted-foreground">{mat.unit}</span>
                       </TableCell>
                       {mat.weeks.filter(w => selectedWeeks.has(w.week_label)).map(w => (
                         <TableCell key={w.week_label} className={`text-right font-mono text-sm ${w.balance < 0 ? 'text-destructive font-bold' : ''}`}>
                           {fmtQty(w.balance)}
                           {w.consumption > 0 && (
-                            <div className="text-[9px] text-muted-foreground">-{fmtQty(w.consumption)}</div>
+                            <div className="text-xs text-muted-foreground">-{fmtQty(w.consumption)}</div>
                           )}
                         </TableCell>
                       ))}
                       <TableCell className={`text-right font-mono text-sm font-bold ${mat.final_balance < 0 ? 'text-destructive' : 'text-green-600'}`}>
-                        {fmtQty(mat.final_balance)} <span className="text-[11px] text-muted-foreground">{mat.unit}</span>
+                        {fmtQty(mat.final_balance)} <span className="text-xs text-muted-foreground">{mat.unit}</span>
                       </TableCell>
                     </TableRow>
                   ))

@@ -342,12 +342,12 @@ function CapCell({ blocks, viewMode }: { blocks: CapBlock[]; viewMode: ViewMode 
           <TooltipProvider key={`${b.waveId}-${b.referenceCode}-${i}`} delayDuration={200}>
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className={`rounded border px-1.5 py-1 text-[10px] leading-tight cursor-default ${palette.chip}`}>
+                <div className={`rounded border px-1.5 py-1 text-xs leading-tight cursor-default ${palette.chip}`}>
                   <div className="font-semibold truncate max-w-[100px]">{b.waveCode}</div>
                   <div className="text-muted-foreground truncate max-w-[100px]">{b.referenceCode}{b.itemColor ? ` · ${b.itemColor}` : ''}</div>
                   {cap > 0 && (
                     <div className="mt-1">
-                      <div className="flex justify-between text-[9px] mb-0.5">
+                      <div className="flex justify-between text-xs mb-0.5">
                         <span>{Math.round(qty)}<span className="opacity-60">/{cap}</span></span>
                         <span className={pct >= 90 ? 'text-red-600 font-bold' : pct >= 70 ? 'text-amber-600 font-semibold' : ''}>{pct}%</span>
                       </div>
@@ -357,7 +357,7 @@ function CapCell({ blocks, viewMode }: { blocks: CapBlock[]; viewMode: ViewMode 
                     </div>
                   )}
                   {cap === 0 && (
-                    <div className="text-[9px] opacity-60 mt-0.5">{Math.round(b.totalQty)} pares · {b.leadTimeDays}d</div>
+                    <div className="text-xs opacity-60 mt-0.5">{Math.round(b.totalQty)} pares · {b.leadTimeDays}d</div>
                   )}
                 </div>
               </TooltipTrigger>
@@ -367,7 +367,7 @@ function CapCell({ blocks, viewMode }: { blocks: CapBlock[]; viewMode: ViewMode 
                 <p>Total: {b.totalQty} pares em {b.leadTimeDays} dia{b.leadTimeDays !== 1 ? 's' : ''}</p>
                 <p>Ritmo: {Math.round(qty)} pares/dia</p>
                 {cap > 0 && <p>Capacidade: {cap} pares/dia ({pct}%)</p>}
-                <p className="opacity-70 text-[10px]">
+                <p className="opacity-70 text-xs">
                   {format(b.startDate, 'dd/MM')} → {format(addDays(b.endDate, -1), 'dd/MM')}
                 </p>
               </TooltipContent>
@@ -546,7 +546,7 @@ export default function ProductionCapacityCalendar() {
             <table className="w-full border-collapse min-w-[600px]">
               <thead>
                 <tr>
-                  <th className="sticky left-0 z-10 bg-muted/40 border-b border-r border-border px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground w-36 min-w-[140px]">
+                  <th className="sticky left-0 z-10 bg-muted/40 border-b border-r border-border px-3 py-2 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground w-36 min-w-[140px]">
                     Setor
                   </th>
                   {columns.map((col, ci) => {
@@ -554,11 +554,11 @@ export default function ProductionCapacityCalendar() {
                     return (
                       <th
                         key={ci}
-                        className={`border-b border-r border-border px-2 py-2 text-center text-[10px] font-bold uppercase tracking-wider min-w-[120px]
+                        className={`border-b border-r border-border px-2 py-2 text-center text-xs font-bold uppercase tracking-wider min-w-[120px]
                           ${isToday ? 'bg-primary/10 text-primary' : 'bg-muted/40 text-muted-foreground'}`}
                       >
                         <div className="capitalize">{col.label}</div>
-                        <div className={`font-normal text-[11px] ${isToday ? 'text-primary' : 'text-muted-foreground'}`}>{col.sub}</div>
+                        <div className={`font-normal text-xs ${isToday ? 'text-primary' : 'text-muted-foreground'}`}>{col.sub}</div>
                       </th>
                     );
                   })}

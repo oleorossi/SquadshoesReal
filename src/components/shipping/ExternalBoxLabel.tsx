@@ -50,7 +50,7 @@ export function ExternalBoxLabel({
           </div>
         )}
         <div className="leading-tight min-w-0 flex-1">
-          <span className="text-[10px] font-black uppercase">Caixa Externa</span>
+          <span className="text-xs font-black uppercase">Caixa Externa</span>
           <h2 className="text-xs font-bold truncate">
             {refName} - {colorName}
           </h2>
@@ -74,7 +74,7 @@ export function ExternalBoxLabel({
               <div className="bg-foreground text-background text-[7px] leading-none py-0.5">
                 {size}
               </div>
-              <div className="text-[10px] font-bold leading-none py-0.5">
+              <div className="text-xs font-bold leading-none py-0.5">
                 {grid[size] || 0}
               </div>
             </div>

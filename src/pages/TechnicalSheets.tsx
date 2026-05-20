@@ -42,7 +42,7 @@
          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-2 text-sm overflow-x-auto no-scrollbar pb-2 sm:pb-0">
            {/* 1. Referência */}
            <div className="flex items-center gap-2 bg-background p-2 rounded-lg border shadow-sm min-w-[200px]">
-             <div className="h-6 w-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold">1</div>
+             <div className="h-6 w-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold">1</div>
              <Select value={selectedRef || ''} onValueChange={v => { setSelectedRef(v); setSelectedMaterial(null); setSelectedColor(null); }}>
                <SelectTrigger className="border-none focus:ring-0 h-7 bg-transparent px-1">
                  <SelectValue placeholder="Selecione Referência" />
@@ -62,7 +62,7 @@
              "flex items-center gap-2 p-2 rounded-lg border shadow-sm min-w-[180px] transition-all",
              selectedRef ? "bg-background border-primary/20" : "bg-muted/30 opacity-50 grayscale"
            )}>
-             <div className="h-6 w-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold">2</div>
+             <div className="h-6 w-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold">2</div>
              <Select value={selectedMaterial || ''} onValueChange={setSelectedMaterial} disabled={!selectedRef}>
                <SelectTrigger className="border-none focus:ring-0 h-7 bg-transparent px-1">
                  <SelectValue placeholder="Selecione Material *" />
@@ -83,7 +83,7 @@
              "flex items-center gap-2 p-2 rounded-lg border shadow-sm min-w-[150px] transition-all",
              selectedMaterial ? "bg-background border-primary/20" : "bg-muted/30 opacity-50 grayscale"
            )}>
-             <div className="h-6 w-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold">3</div>
+             <div className="h-6 w-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold">3</div>
              <Select value={selectedColor || ''} onValueChange={setSelectedColor} disabled={!selectedMaterial}>
                <SelectTrigger className="border-none focus:ring-0 h-7 bg-transparent px-1">
                  <SelectValue placeholder="Cor (filtrada)" />
@@ -108,7 +108,7 @@
                <Calculator className="h-3 w-3" />
              </div>
              <div className="flex flex-col">
-               <span className="text-[10px] text-muted-foreground uppercase font-bold leading-none mb-0.5">Preço</span>
+               <span className="text-xs text-muted-foreground uppercase font-bold leading-none mb-0.5">Preço</span>
                <span className="font-mono font-bold text-sm leading-none">
                  {totalPrice > 0 ? globalFormatCurrency(totalPrice) : '---'}
                </span>
@@ -243,7 +243,7 @@ function YieldFromPlate({ groupName, consumptionDm2, groups }: { groupName: stri
   const pairs = Math.floor(safeArea / safeConsumption);
   const aproveitamento = ((pairs * safeConsumption) / safeArea * 100).toFixed(1);
   return (
-    <div className="text-[10px] text-muted-foreground mt-0.5 font-mono leading-tight">
+    <div className="text-xs text-muted-foreground mt-0.5 font-mono leading-tight">
       Placa: {safeArea.toFixed(1)} dm² → <span className="font-semibold text-primary">{pairs} pares/placa</span>
       <span className="ml-1 opacity-70">({aproveitamento}%)</span>
     </div>
@@ -515,7 +515,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   Apenas solados com pelo menos uma ficha de referência (com consumo, processo ou grupo definidos) podem ser aplicados.
                 </p>
               </div>
@@ -530,7 +530,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                   <Label htmlFor="bulk-sole-overwrite" className="text-sm font-medium cursor-pointer">
                     Sobrescrever valores existentes
                   </Label>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     Se desmarcado, apenas campos vazios serão preenchidos.
                   </p>
                 </div>
@@ -646,7 +646,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                        )}
                         <div className="flex flex-col">
                           <h3 className="font-bold text-lg truncate leading-tight">{sheet.name}</h3>
-                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground uppercase font-bold flex-wrap">
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase font-bold flex-wrap">
                             <span>{sheet.upper_material || 'Material s/ def.'}</span>
                             <ChevronRight className="h-2.5 w-2.5" />
                             <span className="text-primary truncate max-w-[150px]">{sheet.reference_color_variants?.[0]?.color || 'Sem cores'}</span>
@@ -660,11 +660,11 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                         {/* Badge "tem variante de material" — sinaliza que essa ref pode ser
                             cadastrada no PV em N versões de material principal (Napa, Santorini,…) */}
                         {(materialVariantsBySheet?.get(sheet.id)?.length ?? 0) > 0 && (
-                          <Badge variant="secondary" className="px-2 py-0 h-5 text-[10px] bg-amber-100 text-amber-800 border-amber-300 gap-1 shrink-0" title={materialVariantsBySheet!.get(sheet.id)!.map(v => v.material_name).join(', ')}>
+                          <Badge variant="secondary" className="px-2 py-0 h-5 text-xs bg-amber-100 text-amber-800 border-amber-300 gap-1 shrink-0" title={materialVariantsBySheet!.get(sheet.id)!.map(v => v.material_name).join(', ')}>
                             <Package className="h-3 w-3" /> {materialVariantsBySheet!.get(sheet.id)!.length} Materiais
                           </Badge>
                         )}
-                        {sheet.shoe_category && <Badge variant="outline" className="text-[10px] shrink-0">{sheet.shoe_category}</Badge>}
+                        {sheet.shoe_category && <Badge variant="outline" className="text-xs shrink-0">{sheet.shoe_category}</Badge>}
                      </div>
                    </div>
  
@@ -753,7 +753,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                           <span className="font-semibold text-sm flex items-center gap-1.5">
                             {sheet.name}
                             {(materialVariantsBySheet?.get(sheet.id)?.length ?? 0) > 0 && (
-                              <Badge variant="secondary" className="px-1.5 py-0 h-4 text-[9px] bg-amber-100 text-amber-800 border-amber-300" title={materialVariantsBySheet!.get(sheet.id)!.map(v => v.material_name).join(', ')}>
+                              <Badge variant="secondary" className="px-1.5 py-0 h-4 text-xs bg-amber-100 text-amber-800 border-amber-300" title={materialVariantsBySheet!.get(sheet.id)!.map(v => v.material_name).join(', ')}>
                                 <Package className="h-2.5 w-2.5 mr-0.5" /> {materialVariantsBySheet!.get(sheet.id)!.length} Materiais
                               </Badge>
                             )}
@@ -767,28 +767,28 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                       <TableCell className="hidden md:table-cell">
                         <div className="flex flex-col gap-0.5">
                           {sheet.sole_material && (
-                            <span className="text-[10px] text-muted-foreground">
+                            <span className="text-xs text-muted-foreground">
                               <Footprints className="h-3 w-3 inline mr-1 opacity-60" />{sheet.sole_material}
                             </span>
                           )}
                           {sheet.upper_material && (
-                            <span className="text-[10px] text-muted-foreground">
+                            <span className="text-xs text-muted-foreground">
                               <Layers className="h-3 w-3 inline mr-1 opacity-60" />{sheet.upper_material}
                             </span>
                           )}
                           {!sheet.sole_material && !sheet.upper_material && (
-                            <span className="text-[10px] text-muted-foreground/40">—</span>
+                            <span className="text-xs text-muted-foreground/40">—</span>
                           )}
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="text-[10px] uppercase tracking-wider font-medium">
+                        <Badge variant="outline" className="text-xs uppercase tracking-wider font-medium">
                           {sheet.shoe_category || 'Geral'}
                         </Badge>
                       </TableCell>
                       <TableCell>
                         {sheet.status_ficha && (
-                          <span className={cn('text-[10px] font-medium px-2 py-0.5 rounded-full border', statusFichaColors[sheet.status_ficha] || statusFichaColors.rascunho)}>
+                          <span className={cn('text-xs font-medium px-2 py-0.5 rounded-full border', statusFichaColors[sheet.status_ficha] || statusFichaColors.rascunho)}>
                             {STATUS_FICHA_LABELS[sheet.status_ficha] || sheet.status_ficha}
                           </span>
                         )}
@@ -862,7 +862,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                       }`}
                     >
                       <span className="truncate">{s.name || '(sem nome)'}</span>
-                      <span className="text-[10px] text-muted-foreground shrink-0 ml-2 font-mono">{s.code}</span>
+                      <span className="text-xs text-muted-foreground shrink-0 ml-2 font-mono">{s.code}</span>
                     </button>
                   ))}
               </div>
@@ -878,7 +878,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                   placeholder="Nome da nova referência..."
                   autoFocus
                 />
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   Serão copiados: identificação, materiais (BOM), embalagens, mapeamentos de cor de solado e palmilha.
                 </p>
               </div>
@@ -1064,7 +1064,7 @@ function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => v
                     {uploading ? <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /> : (
                       <>
                         <Package className="h-6 w-6 text-muted-foreground/50" />
-                        <span className="text-[11px] text-muted-foreground">Clique pra adicionar foto</span>
+                        <span className="text-xs text-muted-foreground">Clique pra adicionar foto</span>
                       </>
                     )}
                   </div>
@@ -1157,10 +1157,10 @@ function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => v
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/50">
-                  <TableHead className="h-7 text-[10px] text-center px-1">BR</TableHead>
-                  <TableHead className="h-7 text-[10px] text-center px-1">EU</TableHead>
-                  <TableHead className="h-7 text-[10px] text-center px-1">US</TableHead>
-                  <TableHead className="h-7 text-[10px] text-center px-1">UK</TableHead>
+                  <TableHead className="h-7 text-xs text-center px-1">BR</TableHead>
+                  <TableHead className="h-7 text-xs text-center px-1">EU</TableHead>
+                  <TableHead className="h-7 text-xs text-center px-1">US</TableHead>
+                  <TableHead className="h-7 text-xs text-center px-1">UK</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1169,7 +1169,7 @@ function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => v
                     const mappings = getShoeSizeMappings(size);
                     return (
                       <TableCell key={size} className="p-0 border-r last:border-0">
-                        <div className="grid grid-rows-4 text-[10px] font-mono">
+                        <div className="grid grid-rows-4 text-xs font-mono">
                           <div className="px-2 py-0.5 border-b bg-primary/10 font-bold text-center">{mappings.br}</div>
                           <div className="px-2 py-0.5 border-b text-center">{mappings.eu}</div>
                           <div className="px-2 py-0.5 border-b text-center">{mappings.us}</div>
@@ -1224,11 +1224,11 @@ function SheetCompleteness({ sheet }: { sheet: any }) {
       <div className="flex items-center gap-3 mb-2">
         <div className="flex items-center gap-2 flex-1">
           <span className="text-xs font-semibold text-muted-foreground">Preenchimento da Ficha</span>
-          <Badge variant={pct === 100 ? 'default' : pct >= 60 ? 'secondary' : 'destructive'} className="text-[10px] font-mono">
+          <Badge variant={pct === 100 ? 'default' : pct >= 60 ? 'secondary' : 'destructive'} className="text-xs font-mono">
             {pct}%
           </Badge>
         </div>
-        <span className="text-[10px] text-muted-foreground">{completed}/{checks.length} itens</span>
+        <span className="text-xs text-muted-foreground">{completed}/{checks.length} itens</span>
       </div>
       <div className="w-full h-2 rounded-full bg-muted overflow-hidden mb-3">
         <div
@@ -1246,7 +1246,7 @@ function SheetCompleteness({ sheet }: { sheet: any }) {
             <div
               key={c.label}
               className={cn(
-                'flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium border transition-colors',
+                'flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium border transition-colors',
                 c.ok
                   ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950/30 dark:text-green-400 dark:border-green-800'
                   : 'bg-muted/50 text-muted-foreground border-border'
@@ -1883,12 +1883,12 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 <span className="font-bold text-sm truncate">{form.name || sheet.name || '(sem nome)'}</span>
                 {/* SKU/code removido do header sticky em 2026-05: referência = Nome do Modelo. */}
                 {form.shoe_category && (
-                  <Badge variant="secondary" className="text-[10px] h-4.5">{form.shoe_category}</Badge>
+                  <Badge variant="secondary" className="text-xs h-4.5">{form.shoe_category}</Badge>
                 )}
                 {form.status_ficha && (
                   <Badge
                     className={cn(
-                      'text-[10px] h-4.5 uppercase tracking-wider',
+                      'text-xs h-4.5 uppercase tracking-wider',
                       form.status_ficha === 'publicada' && 'bg-emerald-500/15 text-emerald-700 border-emerald-300 dark:text-emerald-400 dark:border-emerald-800',
                       form.status_ficha === 'em_revisao' && 'bg-amber-500/15 text-amber-700 border-amber-300 dark:text-amber-400 dark:border-amber-800',
                       form.status_ficha === 'rascunho' && 'bg-muted text-muted-foreground border-border',
@@ -1898,7 +1898,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   </Badge>
                 )}
               </div>
-              <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-0.5 flex-wrap">
+              <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5 flex-wrap">
                 {form.ncm && (
                   <span className="font-mono">
                     NCM <span className={cn('font-bold', /^\d{8}$/.test(form.ncm) ? 'text-foreground' : 'text-amber-600')}>{form.ncm}</span>
@@ -1919,7 +1919,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 <Save className="h-3.5 w-3.5" /> Salvar
               </Button>
             ) : (
-              <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+              <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
                 <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" /> Salvo
               </span>
             )}
@@ -1934,15 +1934,15 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
           <TabsTrigger value="id" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
             <Tag className="h-3.5 w-3.5" /> Identificação
             {form.name && form.code && form.shoe_category ? (
-              <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold">✓</span>
+              <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-xs font-bold">✓</span>
             ) : (
-              <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 text-[10px] font-bold">!</span>
+              <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 text-xs font-bold">!</span>
             )}
           </TabsTrigger>
           <Separator orientation="vertical" className="h-5 mx-0.5" />
           <TabsTrigger value="engineering" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
             <Wrench className="h-3.5 w-3.5" /> BOM & Custos
-            <Badge variant="outline" className="ml-1 h-4 px-1.5 text-[9px] font-mono">
+            <Badge variant="outline" className="ml-1 h-4 px-1.5 text-xs font-mono">
               {sheetMaterials.length}
             </Badge>
           </TabsTrigger>
@@ -1950,16 +1950,16 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
           <TabsTrigger value="production" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
             <Factory className="h-3.5 w-3.5" /> Produção
             {form.sole_group_id ? (
-              <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold">✓</span>
+              <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-xs font-bold">✓</span>
             ) : (
-              <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-muted text-muted-foreground text-[10px] font-bold">·</span>
+              <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-muted text-muted-foreground text-xs font-bold">·</span>
             )}
           </TabsTrigger>
           <Separator orientation="vertical" className="h-5 mx-0.5" />
           <TabsTrigger value="costs" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
             <DollarSign className="h-3.5 w-3.5" /> Custos
             {materialCost > 0 && (
-              <span className="ml-1 text-[9px] font-mono text-muted-foreground">
+              <span className="ml-1 text-xs font-mono text-muted-foreground">
                 {formatCurrency(materialCost).replace('R$', '')}
               </span>
             )}
@@ -1987,7 +1987,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             <div className="px-4 py-3 border-b flex items-center gap-2">
               <Tag className="h-4 w-4 text-primary" />
               <h3 className="text-sm font-bold">Dados Principais</h3>
-              <span className="text-[10px] text-muted-foreground ml-auto">Identificação comercial do produto</span>
+              <span className="text-xs text-muted-foreground ml-auto">Identificação comercial do produto</span>
             </div>
             <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
               <FieldInput label="SKU / Código" value={form.code || ''} onChange={v => updateField('code', v)} placeholder="MON-893767-003" mono />
@@ -2013,7 +2013,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             <div className="px-4 py-3 border-b flex items-center gap-2">
               <Footprints className="h-4 w-4 text-primary" />
               <h3 className="text-sm font-bold">Categoria & Grade</h3>
-              <span className="text-[10px] text-muted-foreground ml-auto">Define numeração automaticamente</span>
+              <span className="text-xs text-muted-foreground ml-auto">Define numeração automaticamente</span>
             </div>
             <div className="p-4 space-y-3">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2032,12 +2032,12 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               <div className="rounded-md border bg-muted/30 px-3 py-2.5 flex items-center gap-3 text-xs">
                 <Footprints className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <span className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider">Grade Resultante</span>
+                  <span className="font-semibold text-muted-foreground uppercase text-xs tracking-wider">Grade Resultante</span>
                   <div className="text-sm font-mono text-foreground font-bold mt-0.5 break-words">
                     {soleSizeKeys.length > 0
                       ? soleSizeKeys.join(', ')
                       : (form.sizes || (form.shoe_category === 'Infantil' ? '25-36' : '34-40'))}
-                    <span className="text-muted-foreground text-[10px] ml-2 font-sans normal-case font-normal">
+                    <span className="text-muted-foreground text-xs ml-2 font-sans normal-case font-normal">
                       derivada da categoria{form.sole_material ? ` + solado "${form.sole_material}"` : ''}
                     </span>
                   </div>
@@ -2053,7 +2053,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   <summary className="px-3 py-2 cursor-pointer text-xs font-semibold flex items-center gap-2 select-none">
                     <Link2 className="h-3.5 w-3.5 text-primary" />
                     Numerações Conjugadas
-                    <span className="text-[10px] text-muted-foreground font-normal ml-1">
+                    <span className="text-xs text-muted-foreground font-normal ml-1">
                       (ex: 33/34 = 1 par único)
                     </span>
                   </summary>
@@ -2074,7 +2074,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             <div className="px-4 py-3 border-b flex items-center gap-2">
               <Shield className="h-4 w-4 text-primary" />
               <h3 className="text-sm font-bold">Status da Ficha & Custos</h3>
-              <span className="text-[10px] text-muted-foreground ml-auto">Revisão e overhead customizado</span>
+              <span className="text-xs text-muted-foreground ml-auto">Revisão e overhead customizado</span>
             </div>
             <div className="p-4 space-y-3">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2113,7 +2113,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                       min={0}
                     />
                   </div>
-                  <p className="text-[10px] text-muted-foreground mt-1">Se vazio, usa o overhead global.</p>
+                  <p className="text-xs text-muted-foreground mt-1">Se vazio, usa o overhead global.</p>
                 </div>
               </div>
 
@@ -2143,7 +2143,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             <div className="px-4 py-3 border-b flex items-center gap-2">
               <Package className="h-4 w-4 text-primary" />
               <h3 className="text-sm font-bold">Peso &amp; Embalagem</h3>
-              <span className="text-[10px] text-muted-foreground ml-auto">Usado em NF-e, romaneio, MDF-e e rota</span>
+              <span className="text-xs text-muted-foreground ml-auto">Usado em NF-e, romaneio, MDF-e e rota</span>
             </div>
             <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -2159,7 +2159,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   step="0.001"
                   min={0}
                 />
-                <p className="text-[10px] text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   Cabedal + forro + solado + ferragens montados. Sem este valor, o PV deste item entra como "peso incompleto" nas telas fiscais.
                 </p>
               </div>
@@ -2176,7 +2176,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   step="0.001"
                   min={0}
                 />
-                <p className="text-[10px] text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   Soma ao peso bruto da NF-e. Deixe vazio se a caixinha individual já está embutida no peso do par.
                 </p>
               </div>
@@ -2188,7 +2188,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             <div className="px-4 py-3 border-b flex items-center gap-2">
               <History className="h-4 w-4 text-primary" />
               <h3 className="text-sm font-bold">Fotos do Produto</h3>
-              <span className="text-[10px] text-muted-foreground ml-auto">Primeira foto vira capa do produto</span>
+              <span className="text-xs text-muted-foreground ml-auto">Primeira foto vira capa do produto</span>
             </div>
             <div className="p-4">
               <SheetImageUpload images={form.images} onChange={(imgs) => updateField('images', imgs)} />
@@ -2205,20 +2205,20 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               Status. Ajuda o usuário a entender onde está antes de scrollar. */}
           <div className="rounded-xl border bg-gradient-to-r from-card to-muted/20 p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
             <div>
-              <div className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Materiais no BOM</div>
+              <div className="text-xs uppercase tracking-wider font-bold text-muted-foreground">Materiais no BOM</div>
               <div className="text-xl font-bold font-mono mt-1">{sheetMaterials.length}</div>
             </div>
             <div>
-              <div className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Custo de Material</div>
+              <div className="text-xs uppercase tracking-wider font-bold text-muted-foreground">Custo de Material</div>
               <div className="text-xl font-bold font-mono mt-1">{formatCurrency(materialCost)}</div>
-              <div className="text-[9px] text-muted-foreground">por par</div>
+              <div className="text-xs text-muted-foreground">por par</div>
             </div>
             <div>
-              <div className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Solado</div>
+              <div className="text-xs uppercase tracking-wider font-bold text-muted-foreground">Solado</div>
               <div className="text-sm font-bold mt-1">{form.sole_material || <span className="text-muted-foreground italic font-normal">não definido</span>}</div>
             </div>
             <div>
-              <div className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Grade</div>
+              <div className="text-xs uppercase tracking-wider font-bold text-muted-foreground">Grade</div>
               <div className="text-sm font-bold font-mono mt-1">{form.sizes || '—'}</div>
             </div>
           </div>
@@ -2239,11 +2239,11 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               </div>
               <div>
                 <h3 className="text-base font-bold text-foreground">Solado · Item Principal do Modelo</h3>
-                <p className="text-[11px] text-muted-foreground mt-0.5">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   Define grade, classificação (tradicional/palmilha pronta/conjugado) e materiais de consumo padrão (cola, linha, forração…). Tudo aplicado ao BOM ao salvar.
                 </p>
               </div>
-              <Badge variant="outline" className="text-[9px] bg-muted text-muted-foreground ml-auto">
+              <Badge variant="outline" className="text-xs bg-muted text-muted-foreground ml-auto">
                 Driver técnico
               </Badge>
             </div>
@@ -2335,11 +2335,11 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 <Label className="text-xs text-muted-foreground flex items-center gap-2">
                   NCM da ficha
                   {form.ncm && /^\d{8}$/.test(form.ncm) ? (
-                    <Badge variant="outline" className="h-4 text-[9px] font-mono">válido</Badge>
+                    <Badge variant="outline" className="h-4 text-xs font-mono">válido</Badge>
                   ) : form.ncm ? (
-                    <Badge variant="outline" className="h-4 text-[9px] bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800">precisa 8 dígitos</Badge>
+                    <Badge variant="outline" className="h-4 text-xs bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800">precisa 8 dígitos</Badge>
                   ) : (
-                    <Badge variant="outline" className="h-4 text-[9px] bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800">obrigatório p/ NF-e</Badge>
+                    <Badge variant="outline" className="h-4 text-xs bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800">obrigatório p/ NF-e</Badge>
                   )}
                 </Label>
                 <Input
@@ -2374,7 +2374,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 Sugerir do solado
               </Button>
             </div>
-            <p className="text-[11px] text-muted-foreground -mt-2">
+            <p className="text-xs text-muted-foreground -mt-2">
               O NCM é definido principalmente pelo solado. Quando você troca o solado acima, o campo é preenchido automaticamente com o NCM da última ficha cadastrada para esse solado.
             </p>
             {form.sole_material && (
@@ -2425,7 +2425,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                        <Label className="text-xs font-bold text-amber-800">Forração de Salto (Fachete)</Label>
                      </div>
                      <div>
-                       <Label className="text-[10px] text-muted-foreground uppercase">Material do Fachete</Label>
+                       <Label className="text-xs text-muted-foreground uppercase">Material do Fachete</Label>
                        <Select
                          value={form.fachete_material || ''}
                          onValueChange={v => updateField('fachete_material', v)}
@@ -2439,7 +2439,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                            ))}
                          </SelectContent>
                        </Select>
-                       <p className="text-[10px] text-muted-foreground mt-1">
+                       <p className="text-xs text-muted-foreground mt-1">
                          Consumo de fachete por numeração é configurado em <strong>Solados → Cadastro</strong>.
                        </p>
                      </div>
@@ -2494,14 +2494,14 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   return (
                     <div className={`mt-2 p-2.5 rounded-md border bg-muted/30 ${colorClass}`}>
                       <div className="flex items-center justify-between mb-1.5">
-                        <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                           Consumo desta Opção ({unit}/par) — custo por cor/material
                         </Label>
                         {/* Quando o modelo tem TIRAS, o consumo é número-a-número
                             (cada tira tem seu cm/par). A "média" é enganosa nesse
                             caso — ocultamos pra evitar leitura errada. */}
                         {!form.has_straps && (
-                          <span className="text-[10px] text-muted-foreground">
+                          <span className="text-xs text-muted-foreground">
                             Média: <strong>{avg.toFixed(4)}</strong>
                           </span>
                         )}
@@ -2511,14 +2511,14 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           const sizeKey = String(size);
                           return (
                             <div key={size} className="flex flex-col items-center gap-0.5">
-                              <span className="text-[10px] font-mono text-muted-foreground">{size}</span>
+                              <span className="text-xs font-mono text-muted-foreground">{size}</span>
                               <NumberInput
                                 value={perSize[sizeKey] || 0}
                                 onChange={v => {
                                   const next = { ...perSize, [sizeKey]: v };
                                   onChangeGrid(next);
                                 }}
-                                className="w-[58px] h-7 text-[10px] text-center"
+                                className="w-[58px] h-7 text-xs text-center"
                                 placeholder="0"
                                 step="0.0001"
                               />
@@ -2530,7 +2530,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                             type="button"
                             variant="ghost"
                             size="sm"
-                            className="h-7 text-[10px]"
+                            className="h-7 text-xs"
                             onClick={async () => {
                               const grid = await fetchSoleGradeForCabedal();
                               if (grid) {
@@ -2547,7 +2547,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                             type="button"
                             variant="ghost"
                             size="sm"
-                            className="h-7 text-[10px]"
+                            className="h-7 text-xs"
                             onClick={() => {
                               const firstFilled = cabedalSizes.map(s => perSize[String(s)] || 0).find(v => v > 0);
                               if (!firstFilled || firstFilled <= 0) {
@@ -2610,10 +2610,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                         const upperUnit = getUnitForGroupName(form.upper_material);
                         return (
                           <div>
-                            <Label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                               Consumo de Cabedal por Numeração ({upperUnit}/par)
                             </Label>
-                            <p className="text-[10px] text-muted-foreground mt-0.5 mb-1.5">
+                            <p className="text-xs text-muted-foreground mt-0.5 mb-1.5">
                               Preencha o consumo de cabedal número a número.
                               A média alimenta o custo do PV automaticamente.
                             </p>
@@ -2697,7 +2697,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                       <div className="mt-3 pt-3 border-t border-dashed border-emerald-300 dark:border-emerald-800">
                         <div className="flex items-center gap-2 mb-2">
                           <Check className="h-3.5 w-3.5 text-emerald-600" />
-                          <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">Materiais Sempre Consumidos</span>
+                          <span className="text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">Materiais Sempre Consumidos</span>
                         </div>
                         {(form.components_accessories || []).map((extra: any, rawIdx: number) => ({ extra, rawIdx })).filter(({ extra }) => extra.mandatory === true).map(({ extra, rawIdx }, displayIdx) => {
                           const unit = getUnitForGroupName(extra.material || '', extra.material_unit);
@@ -2781,7 +2781,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-7 text-[10px] gap-1"
+                      className="h-7 text-xs gap-1"
                       onClick={() => {
                         const soleId = products.find(p => p.group_id === form.sole_group_id)?.id;
                         if (soleId) autoFillFromSoleSpecs(soleId);
@@ -2812,7 +2812,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-7 text-[10px] gap-1"
+                      className="h-7 text-xs gap-1"
                       onClick={() => {
                         const soleId = products.find(p => p.group_id === form.sole_group_id)?.id;
                         if (soleId) autoFillFromSoleSpecs(soleId);
@@ -2834,7 +2834,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                     if (mode === 'pronta_na_cor') {
                       return (
                         <div className="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg p-2">
-                          <p className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">
+                          <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">
                             Modo <strong>Pronta na cor</strong> ativo: consumo automático de 1 par por unidade.
                           </p>
                         </div>
@@ -2970,11 +2970,11 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 <table className="w-full border-collapse">
                   <thead>
                     <tr>
-                      <th className="text-left text-[10px] font-semibold text-muted-foreground py-1.5 pr-3 min-w-[80px]">Material</th>
+                      <th className="text-left text-xs font-semibold text-muted-foreground py-1.5 pr-3 min-w-[80px]">Material</th>
                       {visibleSizes.map(s => (
-                        <th key={s} className="text-center text-[10px] font-mono text-muted-foreground py-1.5 px-0.5 w-[62px]">{s}</th>
+                        <th key={s} className="text-center text-xs font-mono text-muted-foreground py-1.5 px-0.5 w-[62px]">{s}</th>
                       ))}
-                      <th className="text-right text-[10px] font-semibold text-muted-foreground py-1.5 pl-3 min-w-[72px]">Média</th>
+                      <th className="text-right text-xs font-semibold text-muted-foreground py-1.5 pl-3 min-w-[72px]">Média</th>
                       <th className="min-w-[90px]"></th>
                     </tr>
                   </thead>
@@ -2991,14 +2991,14 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           key={row.field}
                           className={`border-t border-border/40 transition-colors duration-700 ${isFlashing ? 'bg-green-500/10' : ''}`}
                         >
-                          <td className="text-[11px] font-medium py-1.5 pr-3">
+                          <td className="text-xs font-medium py-1.5 pr-3">
                             {row.label}
                             {isFlashing && (
-                              <span className="ml-1 text-[9px] font-bold text-green-600 dark:text-green-400 animate-pulse">
+                              <span className="ml-1 text-xs font-bold text-green-600 dark:text-green-400 animate-pulse">
                                 ✓ importado
                               </span>
                             )}
-                            <span className="ml-1 text-[9px] font-normal text-muted-foreground">({resolveGroupUnit(row.groupName)})</span>
+                            <span className="ml-1 text-xs font-normal text-muted-foreground">({resolveGroupUnit(row.groupName)})</span>
                           </td>
                           {visibleSizes.map(size => {
                             const sizeKey = String(size);
@@ -3012,14 +3012,14 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                                     const vals = Object.values(next).filter((x: any) => Number(x) > 0).map(Number);
                                     if (vals.length > 0) updateField(row.scalarField, Number((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(4)));
                                   }}
-                                  className="w-[62px] h-7 text-[10px] text-center"
+                                  className="w-[62px] h-7 text-xs text-center"
                                   placeholder="0"
                                   step="0.0001"
                                 />
                               </td>
                             );
                           })}
-                          <td className="text-right text-[10px] font-mono text-muted-foreground pl-3">
+                          <td className="text-right text-xs font-mono text-muted-foreground pl-3">
                             {avg > 0 ? avg.toFixed(4) : '—'}
                           </td>
                           <td className="pl-1">
@@ -3027,7 +3027,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                               type="button"
                               variant="ghost"
                               size="sm"
-                              className="h-7 text-[10px] whitespace-nowrap"
+                              className="h-7 text-xs whitespace-nowrap"
                               onClick={() => {
                                 const firstFilled = sizes.map((s: number) => perSize[String(s)] || 0).find((v: number) => v > 0);
                                 if (!firstFilled || firstFilled <= 0) { toast.info("Preencha o primeiro número antes de replicar."); return; }
@@ -3061,7 +3061,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-7 text-[10px] gap-1"
+                      className="h-7 text-xs gap-1"
                       onClick={() => {
                         const soleId = products.find((p: any) => p.group_id === form.sole_group_id)?.id;
                         if (soleId) autoFillFromSoleSpecs(soleId);
@@ -3200,7 +3200,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                             <strong className="text-foreground">{strap.group_name}</strong>
                           </span>
                         ) : (
-                          <span className="text-[11px] text-destructive font-medium">
+                          <span className="text-xs text-destructive font-medium">
                             ⚠ selecione o grupo do material desta tira
                           </span>
                         )}
@@ -3212,7 +3212,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                             const sizeKey = String(size);
                             return (
                               <div key={size} className="flex flex-col items-center gap-0.5">
-                                <span className="text-[10px] font-mono text-muted-foreground">{size}</span>
+                                <span className="text-xs font-mono text-muted-foreground">{size}</span>
                                 <NumberInput
                                   value={consumptionPerSize[sizeKey] || 0}
                                   onChange={(val) => {
@@ -3225,7 +3225,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                                     updated[idx] = { ...updated[idx], consumption_per_size: newPerSize, consumption: Math.round(avg * 100) / 100 };
                                     updateField('strap_colors', updated);
                                   }}
-                                  className="w-[52px] h-7 text-[10px] text-center"
+                                  className="w-[52px] h-7 text-xs text-center"
                                   placeholder="0"
                                   step="0.1"
                                 />
@@ -3236,7 +3236,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                             type="button"
                             variant="ghost"
                             size="sm"
-                            className="h-7 text-[10px] self-end"
+                            className="h-7 text-xs self-end"
                             onClick={() => {
                               const firstVal = consumptionPerSize[String(strapSizes[0])] || 0;
                               if (firstVal <= 0) return;
@@ -3251,7 +3251,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           </Button>
                         </div>
                       </div>
-                      <span className="text-[10px] text-muted-foreground">Cor definida no pedido</span>
+                      <span className="text-xs text-muted-foreground">Cor definida no pedido</span>
                     </div>
                   );
                 })}
@@ -3346,7 +3346,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
              <Factory className="h-4 w-4 text-primary shrink-0" />
              <div>
                <div className="text-sm font-bold">Fluxo de Produção</div>
-               <div className="text-[11px] text-muted-foreground">
+               <div className="text-xs text-muted-foreground">
                  Setores ativos + capacidades por dia + lead times. Define como a ficha entra no sistema de ondas.
                </div>
              </div>
@@ -3393,7 +3393,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             <DollarSign className="h-4 w-4 text-primary shrink-0" />
             <div>
               <div className="text-sm font-bold">Preço de Custo</div>
-              <div className="text-[11px] text-muted-foreground">
+              <div className="text-xs text-muted-foreground">
                 Rollup de material (BOM) + mão de obra + overhead. Defina preço de venda e margem por canal.
               </div>
             </div>
@@ -3545,7 +3545,7 @@ function PhotosByColorTab({ sheetId, form, groups, products }: {
                 ) : (
                   <div className="flex flex-col items-center gap-1 text-muted-foreground/40">
                     <ImagePlus className="h-8 w-8" />
-                    <span className="text-[9px]">Sem foto</span>
+                    <span className="text-xs">Sem foto</span>
                   </div>
                 )}
                 {uploading === color ? (
@@ -3554,7 +3554,7 @@ function PhotosByColorTab({ sheetId, form, groups, products }: {
                   <label className="absolute inset-0 cursor-pointer flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 bg-black/60 transition-opacity">
                     <input type="file" accept="image/*" className="hidden" onChange={(e) => handleUpload(color, e)} />
                     <Plus className="h-6 w-6 text-white mb-1" />
-                    <span className="text-[10px] text-white font-bold">{hasImage ? 'Alterar' : 'Upload'}</span>
+                    <span className="text-xs text-white font-bold">{hasImage ? 'Alterar' : 'Upload'}</span>
                   </label>
                 )}
                 {hasImage && !uploading && (
@@ -3564,7 +3564,7 @@ function PhotosByColorTab({ sheetId, form, groups, products }: {
                   </Button>
                 )}
               </div>
-              <span className="text-[10px] font-semibold mt-1.5 truncate w-full text-center px-1" title={color}>{color}</span>
+              <span className="text-xs font-semibold mt-1.5 truncate w-full text-center px-1" title={color}>{color}</span>
               {hasImage && <Badge variant="default" className="text-[8px] h-3.5 px-1 mt-0.5">✓ com foto</Badge>}
             </div>
           );
@@ -3673,7 +3673,7 @@ function ProductionSectorsTab({
           <div className="flex items-center gap-2 text-amber-700">
             <Factory className="h-4 w-4 shrink-0" />
             <span className="text-sm font-bold">Etapas de Aviamento</span>
-            <span className="text-[11px] text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               Marque quais aplicar nesta ficha · vira checklist na ficha de operador
             </span>
           </div>
@@ -3699,7 +3699,7 @@ function ProductionSectorsTab({
             })}
           </div>
           {localSteps.length === 0 && (
-            <p className="text-[11px] text-amber-700">
+            <p className="text-xs text-amber-700">
               ⚠ Nenhuma etapa marcada — ficha de operador vai aparecer sem checklist de Aviamento.
             </p>
           )}
@@ -3894,7 +3894,7 @@ function ModelColorGallery({ colorPredominanteId, products, colorImages, onChang
         <Droplets className="h-4 w-4 text-primary" />
         <SectionTitle>Fotos por Cor do Modelo</SectionTitle>
       </div>
-      <p className="text-[10px] text-muted-foreground mb-4">
+      <p className="text-xs text-muted-foreground mb-4">
         Estas fotos serão exibidas no estoque de pronta entrega e no catálogo ao selecionar a cor.
       </p>
       <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
@@ -3910,7 +3910,7 @@ function ModelColorGallery({ colorPredominanteId, products, colorImages, onChang
                   <ImagePlus className="h-6 w-6 text-muted-foreground/30" />
                 )}
                 {colorStock > 0 && (
-                  <div className="absolute top-1 left-1 px-1.5 py-0.5 rounded-md bg-background/90 backdrop-blur border text-[9px] font-bold text-primary shadow-sm z-10">
+                  <div className="absolute top-1 left-1 px-1.5 py-0.5 rounded-md bg-background/90 backdrop-blur border text-xs font-bold text-primary shadow-sm z-10">
                     {colorStock}p
                   </div>
                 )}
@@ -3922,7 +3922,7 @@ function ModelColorGallery({ colorPredominanteId, products, colorImages, onChang
                   <label className="absolute inset-0 cursor-pointer flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 bg-black/60 transition-opacity">
                     <input type="file" accept="image/*" className="hidden" onChange={(e) => handleUpload(color, e)} />
                     <Plus className="h-6 w-6 text-white mb-1" />
-                    <span className="text-[10px] text-white font-bold">{ci?.url ? 'Alterar' : 'Subir'}</span>
+                    <span className="text-xs text-white font-bold">{ci?.url ? 'Alterar' : 'Subir'}</span>
                   </label>
                 )}
                 {ci?.url && !uploading && (
@@ -3940,7 +3940,7 @@ function ModelColorGallery({ colorPredominanteId, products, colorImages, onChang
                    </Button>
                 )}
               </div>
-              <span className="text-[10px] font-semibold mt-1.5 truncate w-full text-center px-1" title={color}>{color}</span>
+              <span className="text-xs font-semibold mt-1.5 truncate w-full text-center px-1" title={color}>{color}</span>
             </div>
           );
         })}
@@ -3984,14 +3984,14 @@ function ComponentGroupSelect({ label, value, onChange, groups, products, requir
       </Select>
       {availableColors.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1">
-          <span className="text-[10px] text-muted-foreground mr-1">Cores disponíveis:</span>
+          <span className="text-xs text-muted-foreground mr-1">Cores disponíveis:</span>
           {availableColors.map(c => (
-            <Badge key={c} variant="outline" className="text-[10px] h-5">{c}</Badge>
+            <Badge key={c} variant="outline" className="text-xs h-5">{c}</Badge>
           ))}
         </div>
       )}
       {value && availableColors.length === 0 && (
-        <p className="text-[10px] text-amber-600 mt-1 flex items-center gap-1">
+        <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
           <AlertTriangle className="h-3 w-3" /> Nenhuma cor cadastrada neste grupo
         </p>
       )}
@@ -4122,7 +4122,7 @@ function SoleColorMappingPanel({ sheetId, corPredominanteId, groups, products, s
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-7 text-[11px] gap-1"
+                className="h-7 text-xs gap-1"
                 onClick={() => fillAllWith(opt.key)}
               >
                 <Wand2 className="h-3 w-3" />
@@ -4155,7 +4155,7 @@ function SoleColorMappingPanel({ sheetId, corPredominanteId, groups, products, s
           );
         })}
       </div>
-      <p className="text-[10px] text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         Selecione o modelo de solado (agrupado por base, independente de cor). O sistema identifica automaticamente a variante correta para débito.
       </p>
     </div>
@@ -4203,7 +4203,7 @@ function GroupMaterialSelect({ label, value, onChange }: { label: string; value:
                     <Check className={cn("mr-2 h-4 w-4", value === g.name ? "opacity-100" : "opacity-0")} />
                     <div className="flex flex-col">
                       <span className="text-sm">{g.name}</span>
-                      {g.description && <span className="text-[10px] text-muted-foreground">{g.description}</span>}
+                      {g.description && <span className="text-xs text-muted-foreground">{g.description}</span>}
                     </div>
                   </CommandItem>
                 ))}
@@ -4264,7 +4264,7 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
                     <Check className={cn("mr-2 h-4 w-4", value === (p.name + (p.color ? ` (${p.color})` : '')) ? "opacity-100" : "opacity-0")} />
                     <div className="flex flex-col">
                       <span className="text-sm">{p.name} {p.color ? `(${p.color})` : ''}</span>
-                      <span className="text-[10px] text-muted-foreground">{p.groupName} • {p.sku || 'sem SKU'} • Estoque: {Number(p.quantity || 0).toLocaleString('pt-BR')}</span>
+                      <span className="text-xs text-muted-foreground">{p.groupName} • {p.sku || 'sem SKU'} • Estoque: {Number(p.quantity || 0).toLocaleString('pt-BR')}</span>
                     </div>
                   </CommandItem>
                 ))}
@@ -4323,7 +4323,7 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
          <div className="flex items-center gap-2">
            <Scissors className="h-4 w-4 text-purple-600" />
            <h3 className="text-sm font-bold">Cor da Forração por Cor de Cabedal</h3>
-           <Badge variant="outline" className="text-[9px] ml-auto">
+           <Badge variant="outline" className="text-xs ml-auto">
              {liningColorMappings.filter((m: any) => m.cabedal_color !== LINING_DEFAULT_KEY).length}/{cabedelColors.length} mapeados
            </Badge>
          </div>
@@ -4334,7 +4334,7 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
                 <div key={colorName} className="flex flex-col gap-2 p-2 rounded-md border bg-card">
                   <div className="flex items-center gap-2">
                     <div className="flex flex-col min-w-0 flex-1">
-                      <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Cabedal</span>
+                      <span className="text-xs text-muted-foreground uppercase tracking-wider">Cabedal</span>
                       <span className="text-xs font-medium truncate">{colorName}</span>
                     </div>
                     <span className="text-muted-foreground text-xs">→</span>
@@ -4437,7 +4437,7 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
 
    if (sourceColors.length === 0) {
     return (
-      <p className="text-[10px] text-amber-600 flex items-center gap-1">
+      <p className="text-xs text-amber-600 flex items-center gap-1">
         <AlertTriangle className="h-3 w-3" />
         Nenhuma cor encontrada no grupo de cor predominante. Configure as cores do produto primeiro.
       </p>
@@ -4449,7 +4449,7 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
       <div className="flex items-center gap-2">
         <Shield className="h-4 w-4 text-blue-600" />
         <h3 className="text-sm font-bold">Cor da Palmilha por Cor de Cabedal</h3>
-        <Badge variant="outline" className="text-[9px] ml-auto">
+        <Badge variant="outline" className="text-xs ml-auto">
          {palmilhaColorMappings.filter((m: any) => m.cabedal_color !== PALMILHA_DEFAULT_KEY && m.sole_color !== PALMILHA_DEFAULT_KEY).length}/{sourceColors.length} mapeados
         </Badge>
       </div>
@@ -4459,7 +4459,7 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
 
        {palmilhaModels.length > 0 && (
          <div className="flex flex-col gap-2 max-w-sm">
-           <label className="text-[10px] font-medium uppercase text-muted-foreground">Modelo de Palmilha (Opcional p/ Unidades)</label>
+           <label className="text-xs font-medium uppercase text-muted-foreground">Modelo de Palmilha (Opcional p/ Unidades)</label>
            <Select value={selectedModelKey || 'none'} onValueChange={v => setSelectedModelKey(v === 'none' ? null : v)}>
              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione o modelo..." /></SelectTrigger>
              <SelectContent>
@@ -4483,7 +4483,7 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
             <div key={colorName} className="flex flex-col gap-2 p-2 rounded-md border bg-card">
               <div className="flex items-center gap-2">
                 <div className="flex flex-col min-w-0 flex-1">
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                  <span className="text-xs text-muted-foreground uppercase tracking-wider">
                     {sourceType === 'cabedal' ? 'Cabedal' : 'Solado'}
                   </span>
                   <span className="text-xs font-medium truncate">{colorName}</span>
@@ -4535,7 +4535,7 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
                         </SelectContent>
                       </Select>
                     ) : (
-                      <p className="text-[10px] text-amber-600">Sem cores no grupo</p>
+                      <p className="text-xs text-amber-600">Sem cores no grupo</p>
                     )
                   )}
                 </div>
@@ -4552,7 +4552,7 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
                        upsertPalmilha.mutate({ sheetId, cabedelColor: PALMILHA_DEFAULT_KEY, palmilhaColor: palmilhaToSet });
                      }
                    }}
-                   className={`text-[10px] px-2 py-1 rounded-md border transition-colors ${
+                   className={`text-xs px-2 py-1 rounded-md border transition-colors ${
                      defaultPalmilhaColor && defaultPalmilhaColor === currentPalmilhaColor
                        ? 'bg-blue-100 dark:bg-blue-900/50 border-blue-400 dark:border-blue-600 text-blue-700 dark:text-blue-300 font-semibold'
                        : 'bg-muted/50 border-border text-muted-foreground hover:bg-muted'
@@ -4564,7 +4564,7 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
                  </button>
                )}
                {isPreto && (
-                 <p className="text-[9px] text-blue-600 dark:text-blue-400">
+                 <p className="text-xs text-blue-600 dark:text-blue-400">
                    Regra recomendada: cabedal preto → palmilha preta.
                  </p>
                )}
@@ -4627,7 +4627,7 @@ function InsoleColorMappingPanel({ sheetId, soleGroupId, insoleGroupName, insole
       <div className="flex items-center gap-2">
         <Shield className="h-4 w-4 text-blue-600" />
         <h3 className="text-sm font-bold">Cor do Solado pela Cor da Palmilha</h3>
-        <Badge variant="outline" className="text-[9px] ml-auto">
+        <Badge variant="outline" className="text-xs ml-auto">
           {insoleColorMappings.filter((m: any) => m.insole_color !== TODAS_AS_CORES_KEY).length}/{insoleColors.length} mapeados
         </Badge>
       </div>
@@ -4643,7 +4643,7 @@ function InsoleColorMappingPanel({ sheetId, soleGroupId, insoleGroupName, insole
             <div key={insoleColor} className="flex flex-col gap-2 p-2 rounded-md border bg-card">
               <div className="flex items-center gap-2">
                 <div className="flex flex-col min-w-0 flex-1">
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Palmilha</span>
+                  <span className="text-xs text-muted-foreground uppercase tracking-wider">Palmilha</span>
                   <span className="text-xs font-medium truncate">{insoleColor}</span>
                 </div>
                 <span className="text-muted-foreground text-xs">→</span>
@@ -4669,7 +4669,7 @@ function InsoleColorMappingPanel({ sheetId, soleGroupId, insoleGroupName, insole
                 <button
                   type="button"
                   onClick={() => handleToggleTodas(currentSole || 'Caramelo')}
-                  className={`text-[10px] px-2 py-1 rounded-md border transition-colors ${
+                  className={`text-xs px-2 py-1 rounded-md border transition-colors ${
                     defaultSoleColor === currentSole && currentSole
                       ? 'bg-blue-100 dark:bg-blue-900/50 border-blue-400 dark:border-blue-600 text-blue-700 dark:text-blue-300 font-semibold'
                       : 'bg-muted/50 border-border text-muted-foreground hover:bg-muted'
@@ -4679,7 +4679,7 @@ function InsoleColorMappingPanel({ sheetId, soleGroupId, insoleGroupName, insole
                 </button>
               )}
               {isPreto && (
-                <p className="text-[9px] text-blue-600 dark:text-blue-400">
+                <p className="text-xs text-blue-600 dark:text-blue-400">
                   Regra recomendada: palmilha preta usa solado preto.
                 </p>
               )}
@@ -4743,14 +4743,14 @@ function SoleClassificationBadge({ groupId, soleMaterial, process, products }: {
           {soleMaterial}{process && ` • ${process}`}
         </span>
         {classification === 'conjugado' && extras && (
-          <Badge variant="outline" className="text-[10px] h-5">
+          <Badge variant="outline" className="text-xs h-5">
             {extras.conjCount} conjugação{extras.conjCount !== 1 ? 'ões' : ''} cadastrada{extras.conjCount !== 1 ? 's' : ''}
           </Badge>
         )}
       </div>
-      <p className={`text-[10px] mt-1 ${s.fg} opacity-80`}>{s.hint}</p>
+      <p className={`text-xs mt-1 ${s.fg} opacity-80`}>{s.hint}</p>
       {classification === 'conjugado' && extras?.conjCount === 0 && (
-        <p className="text-[10px] mt-1 text-destructive font-semibold">
+        <p className="text-xs mt-1 text-destructive font-semibold">
           ⚠ Nenhuma conjugação cadastrada — configure em Solados → editar este solado → aba Conjugações.
         </p>
       )}
@@ -4876,7 +4876,7 @@ function SoleProductSelect({ label, value, onChange }: { label: string; value: s
                     <Check className={cn("mr-2 h-4 w-4", value === m.name ? "opacity-100" : "opacity-0")} />
                     <div className="flex flex-col">
                       <span className="text-sm font-medium">{m.name}</span>
-                      <span className="text-[10px] text-muted-foreground">
+                      <span className="text-xs text-muted-foreground">
                         {m.groupName} • {m.variantCount} cor{m.variantCount !== 1 ? 'es' : ''} • Estoque total: {m.totalStock.toLocaleString('pt-BR')}
                       </span>
                     </div>
@@ -4941,9 +4941,9 @@ function DirectComponentSelect({ label, value, onChange }: { label: string; valu
                     <div className="flex flex-col">
                       <span className="text-sm">
                         {p.name} {p.color ? `(${p.color})` : ''}
-                        <span className="text-[10px] text-muted-foreground font-mono ml-1">[{p.unit || 'un'}]</span>
+                        <span className="text-xs text-muted-foreground font-mono ml-1">[{p.unit || 'un'}]</span>
                       </span>
-                      {p.sku && <span className="text-[10px] text-muted-foreground font-mono">{p.sku}</span>}
+                      {p.sku && <span className="text-xs text-muted-foreground font-mono">{p.sku}</span>}
                     </div>
                   </CommandItem>
                 ))}
@@ -5022,7 +5022,7 @@ function NcmInlineEditor({ productId, currentNcm }: { productId: string; current
         <button
           type="button"
           className={cn(
-            'px-1.5 py-0.5 rounded text-[11px] font-mono w-full text-left hover:bg-muted transition-colors',
+            'px-1.5 py-0.5 rounded text-xs font-mono w-full text-left hover:bg-muted transition-colors',
             !isCurrentValid && 'text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30',
             !currentNcm && 'text-muted-foreground/60 italic',
           )}
@@ -5032,7 +5032,7 @@ function NcmInlineEditor({ productId, currentNcm }: { productId: string; current
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-72 p-3 space-y-2">
-        <Label className="text-[10px] uppercase tracking-wider font-bold">NCM (8 dígitos)</Label>
+        <Label className="text-xs uppercase tracking-wider font-bold">NCM (8 dígitos)</Label>
         <Input
           autoFocus
           value={value}
@@ -5043,21 +5043,21 @@ function NcmInlineEditor({ productId, currentNcm }: { productId: string; current
           onKeyDown={e => { if (e.key === 'Enter') save.mutate(); if (e.key === 'Escape') setOpen(false); }}
         />
         {cleaned && !isFormatValid && (
-          <p className="text-[10px] text-destructive">⚠ NCM precisa ter exatamente 8 dígitos (atual: {cleaned.length})</p>
+          <p className="text-xs text-destructive">⚠ NCM precisa ter exatamente 8 dígitos (atual: {cleaned.length})</p>
         )}
         {cleaned && isFormatValid && !isChapterValid && (
-          <p className="text-[10px] text-destructive">⚠ Capítulo "{chapter}" é reservado/inválido. Use 01-97.</p>
+          <p className="text-xs text-destructive">⚠ Capítulo "{chapter}" é reservado/inválido. Use 01-97.</p>
         )}
         {!cleaned && (
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Usado na emissão de NF-e. Validação: 8 dígitos numéricos + capítulo válido (01-97).
           </p>
         )}
         {history.length > 0 && (
           <div className="pt-2 border-t space-y-1">
-            <Label className="text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Últimas mudanças</Label>
+            <Label className="text-xs uppercase tracking-wider font-bold text-muted-foreground">Últimas mudanças</Label>
             {history.map((h, i) => (
-              <div key={i} className="text-[10px] font-mono text-muted-foreground">
+              <div key={i} className="text-xs font-mono text-muted-foreground">
                 <span>{new Date(h.changed_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })} · </span>
                 <span>{h.old_ncm || '—'} → <strong className="text-foreground">{h.new_ncm || '—'}</strong></span>
               </div>
@@ -5450,8 +5450,8 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
                             <Check className={cn("mr-2 h-4 w-4", form.group_id === g.id ? "opacity-100" : "opacity-0")} />
                             <div className="flex flex-col">
                               <span className="text-sm">{g.name}</span>
-                              {g.description && <span className="text-[10px] text-muted-foreground">{g.description}</span>}
-                              {g.colors && <span className="text-[10px] text-muted-foreground">Cores: {g.colors}</span>}
+                              {g.description && <span className="text-xs text-muted-foreground">{g.description}</span>}
+                              {g.colors && <span className="text-xs text-muted-foreground">Cores: {g.colors}</span>}
                             </div>
                           </CommandItem>
                         ))}
@@ -5473,7 +5473,7 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
                       <SelectItem key={p.id} value={p.id}>
                         <span className="flex items-center gap-2">
                           <span className="font-medium">{p.name}</span>
-                          {p.color && <Badge variant="outline" className="text-[10px]">{p.color}</Badge>}
+                          {p.color && <Badge variant="outline" className="text-xs">{p.color}</Badge>}
                           <span className="text-xs text-muted-foreground font-mono">{p.unit}</span>
                           <span className="text-xs text-muted-foreground font-mono">
                             {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.unit_price || 0)}
@@ -5483,7 +5483,7 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-[10px] text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   {groupProductsForSelection.length} itens no grupo — cada item pode ter preço e consumo diferentes
                 </p>
               </div>
@@ -5492,7 +5492,7 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
             {/* Fallback: individual product for items without group */}
             {!form.group_id && (
               <div className="col-span-2 sm:col-span-3">
-                <Label className="text-[10px] text-muted-foreground">Ou selecione um produto individual (sem grupo)</Label>
+                <Label className="text-xs text-muted-foreground">Ou selecione um produto individual (sem grupo)</Label>
                 <Select value={form.product_id} onValueChange={handleProductSelect}>
                   <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="Produto individual..." /></SelectTrigger>
                   <SelectContent>
@@ -5501,7 +5501,7 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
                         <span className="flex items-center gap-2">
                           {p.name}
                           <span className="text-xs text-muted-foreground font-mono">{p.sku}</span>
-                          <Badge variant="outline" className="text-[10px]">{p.category}</Badge>
+                          <Badge variant="outline" className="text-xs">{p.category}</Badge>
                         </span>
                       </SelectItem>
                     ))}
@@ -5520,8 +5520,8 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
                   <div className="flex items-center gap-2">
                     <Package className="h-4 w-4 text-primary" />
                     <span className="text-xs font-semibold">{prod.name}</span>
-                    {prod.color && <Badge variant="outline" className="text-[10px]">{prod.color}</Badge>}
-                    <Badge variant="secondary" className="text-[10px] ml-auto">{getConsumptionUnit(prod.id)}</Badge>
+                    {prod.color && <Badge variant="outline" className="text-xs">{prod.color}</Badge>}
+                    <Badge variant="secondary" className="text-xs ml-auto">{getConsumptionUnit(prod.id)}</Badge>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                     <div><span className="text-muted-foreground">Preço un.:</span> <span className="font-mono font-semibold">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(prod.unit_price || 0)}</span></div>
@@ -5534,7 +5534,7 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
                   {!cs && (
                     <div className="flex items-center gap-2 mt-1 text-amber-600 dark:text-amber-400">
                       <AlertTriangle className="h-3.5 w-3.5" />
-                      <span className="text-[10px]">Sem Ficha de Componente — custo será Qtd/par × Preço unitário</span>
+                      <span className="text-xs">Sem Ficha de Componente — custo será Qtd/par × Preço unitário</span>
                     </div>
                   )}
                 </div>
@@ -5550,7 +5550,7 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
           {/* Per-size consumption grid */}
           <div>
             <Label className="text-xs font-semibold">Consumo por Numeração ({getConsumptionUnit(form.product_id)}/par)</Label>
-            <p className="text-[10px] text-muted-foreground mb-1.5">
+            <p className="text-xs text-muted-foreground mb-1.5">
               Defina o consumo unitário para cada tamanho. O cálculo industrial usa exclusivamente estes valores por numeração.
             </p>
             <div className="flex flex-wrap gap-1.5">
@@ -5559,7 +5559,7 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
                 const perSize = form.consumption_per_size || {};
                 return (
                   <div key={size} className="flex flex-col items-center gap-0.5">
-                    <span className="text-[10px] font-mono text-muted-foreground">{size}</span>
+                    <span className="text-xs font-mono text-muted-foreground">{size}</span>
                     <NumberInput
                       value={perSize[sizeKey] || 0}
                       onChange={(val) => {
@@ -5571,7 +5571,7 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
                           quantity_per_unit: avg > 0 ? Math.round(avg * 10000) / 10000 : f.quantity_per_unit,
                         }));
                       }}
-                      className="w-[78px] h-7 text-[10px] text-center font-mono"
+                      className="w-[78px] h-7 text-xs text-center font-mono"
                       placeholder="0"
                       step="0.001"
                       unit={getConsumptionUnit(form.product_id)}
@@ -5584,7 +5584,7 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-7 text-[10px]"
+                  className="h-7 text-xs"
                   onClick={() => {
                     const perSize = form.consumption_per_size || {};
                     // Find the last filled value
@@ -5624,16 +5624,16 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/30">
-                <TableHead className="text-[11px]">Material / Grupo</TableHead>
-                <TableHead className="text-[11px]">Cat.</TableHead>
-                <TableHead className="text-[11px] font-mono">NCM</TableHead>
-                <TableHead className="text-[11px] font-mono">SKU</TableHead>
-                <TableHead className="text-[11px]">Dimensões</TableHead>
-                <TableHead className="text-[11px]">Un.</TableHead>
-                <TableHead className="text-[11px] text-right">Qtd/Par</TableHead>
-                <TableHead className="text-[11px] text-center">Rend.</TableHead>
-                <TableHead className="text-[11px]">Forn.</TableHead>
-                <TableHead className="text-[11px] text-right">Custo/Par</TableHead>
+                <TableHead className="text-xs">Material / Grupo</TableHead>
+                <TableHead className="text-xs">Cat.</TableHead>
+                <TableHead className="text-xs font-mono">NCM</TableHead>
+                <TableHead className="text-xs font-mono">SKU</TableHead>
+                <TableHead className="text-xs">Dimensões</TableHead>
+                <TableHead className="text-xs">Un.</TableHead>
+                <TableHead className="text-xs text-right">Qtd/Par</TableHead>
+                <TableHead className="text-xs text-center">Rend.</TableHead>
+                <TableHead className="text-xs">Forn.</TableHead>
+                <TableHead className="text-xs text-right">Custo/Par</TableHead>
                 <TableHead className="w-16"></TableHead>
               </TableRow>
             </TableHeader>
@@ -5658,7 +5658,7 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
                             <span className="text-xs font-bold uppercase tracking-wider text-primary">
                               {section === 'base' ? '📐 Base do Solado — Consumo padrão' : '🎨 Depende do Modelo'}
                             </span>
-                            <span className="text-[10px] text-muted-foreground">
+                            <span className="text-xs text-muted-foreground">
                               {section === 'base' ? '(indiferente à cor do solado)' : '(específico por referência)'}
                             </span>
                           </div>
@@ -5673,7 +5673,7 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
                         <div className="flex items-center gap-2">
                           <CatIcon className={`h-3.5 w-3.5 ${catConfig?.color || 'text-muted-foreground'}`} />
                           <span className="text-xs font-semibold">{catConfig?.label || cat}</span>
-                          <Badge variant="outline" className="text-[10px]">{mats.length}</Badge>
+                          <Badge variant="outline" className="text-xs">{mats.length}</Badge>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -5725,25 +5725,25 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
                               )}
                             </div>
                             {conversionIssue && (
-                              <span className="text-[10px] text-amber-600 dark:text-amber-400">{conversionIssue}</span>
+                              <span className="text-xs text-amber-600 dark:text-amber-400">{conversionIssue}</span>
                             )}
                             {prod?.name && groupInfo && prod.name !== groupInfo.name && (
-                              <span className="text-[10px] text-muted-foreground">Item: {prod.name}{prod.color ? ` (${prod.color})` : ''}</span>
+                              <span className="text-xs text-muted-foreground">Item: {prod.name}{prod.color ? ` (${prod.color})` : ''}</span>
                             )}
                             {perSizeEntries.length > 0 && (
                               <div className="flex flex-wrap gap-0.5 mt-0.5">
                                 {perSizeEntries.map(([size, qty]: [string, any]) => (
-                                  <span key={size} className="text-[9px] font-mono bg-muted px-1 rounded">{size}:{safeToFixed(qty, 2)}</span>
+                                  <span key={size} className="text-xs font-mono bg-muted px-1 rounded">{size}:{safeToFixed(qty, 2)}</span>
                                 ))}
                               </div>
                             )}
                           </div>
                         </TableCell>
                         <TableCell className="text-xs">{prod?.category ?? '—'}</TableCell>
-                        <TableCell className="text-[11px] font-mono p-1">
+                        <TableCell className="text-xs font-mono p-1">
                           <NcmInlineEditor productId={m.product_id} currentNcm={prod?.ncm || ''} />
                         </TableCell>
-                        <TableCell className="text-[11px] font-mono text-muted-foreground">
+                        <TableCell className="text-xs font-mono text-muted-foreground">
                           {prod?.sku || '—'}
                         </TableCell>
                         <TableCell className="text-xs font-mono">
@@ -5824,7 +5824,7 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
                           <SelectItem key={p.id} value={p.id}>
                             <span className="flex items-center gap-2">
                               <span>{p.name}</span>
-                              {p.color && <Badge variant="outline" className="text-[10px]">{p.color}</Badge>}
+                              {p.color && <Badge variant="outline" className="text-xs">{p.color}</Badge>}
                               <span className="text-xs text-muted-foreground font-mono">{p.unit}</span>
                             </span>
                           </SelectItem>
@@ -5851,7 +5851,7 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
                     const perSize = editing.data.consumption_per_size || {};
                     return (
                       <div key={size} className="flex flex-col items-center gap-0.5">
-                        <span className="text-[10px] font-mono text-muted-foreground">{size}</span>
+                        <span className="text-xs font-mono text-muted-foreground">{size}</span>
                         <NumberInput
                           value={perSize[sizeKey] || 0}
                           onChange={(val) => {
@@ -5859,7 +5859,7 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
                             const avg = recalcAvgFromPerSize(newPerSize);
                             setEditing(ed => ed ? { ...ed, data: { ...ed.data, consumption_per_size: newPerSize, quantity_per_unit: avg > 0 ? Math.round(avg * 10000) / 10000 : ed.data.quantity_per_unit } } : null);
                           }}
-                          className="w-[78px] h-7 text-[10px] text-center font-mono"
+                          className="w-[78px] h-7 text-xs text-center font-mono"
                           placeholder="0"
                           step="0.001"
                           unit={getConsumptionUnit(editing.data.product_id)}
@@ -5872,7 +5872,7 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
                       type="button"
                       variant="ghost"
                       size="sm"
-                      className="h-7 text-[10px]"
+                      className="h-7 text-xs"
                       onClick={() => {
                         const perSize = editing.data.consumption_per_size || {};
                         let lastVal = 0;
@@ -6111,7 +6111,7 @@ function CostsTab({ sheetId, form, groups }: {
         {overheadHistory.length > 0 && (
            <Popover>
              <PopoverTrigger asChild>
-               <Button variant="outline" size="sm" className="gap-2 h-7 text-[10px]">
+               <Button variant="outline" size="sm" className="gap-2 h-7 text-xs">
                  <History className="h-3 w-3" />
                  Histórico de GGF
                </Button>
@@ -6119,16 +6119,16 @@ function CostsTab({ sheetId, form, groups }: {
              <PopoverContent className="w-80 p-0" align="end">
                <div className="p-3 border-b bg-muted/30">
                  <h4 className="text-xs font-semibold">Histórico de Alterações GGF</h4>
-                 <p className="text-[10px] text-muted-foreground">Últimas mudanças no overhead customizado</p>
+                 <p className="text-xs text-muted-foreground">Últimas mudanças no overhead customizado</p>
                </div>
                <div className="max-h-60 overflow-y-auto">
                  {overheadHistory.map((entry) => (
-                   <div key={entry.id} className="p-3 border-b last:border-0 text-[11px] space-y-1 hover:bg-muted/20 transition-colors">
+                   <div key={entry.id} className="p-3 border-b last:border-0 text-xs space-y-1 hover:bg-muted/20 transition-colors">
                      <div className="flex items-center justify-between">
                        <span className="font-semibold text-primary">
                          {entry.new_value !== null ? formatCurrency(entry.new_value) : "Padrão"}
                        </span>
-                       <span className="text-[10px] text-muted-foreground font-mono">
+                       <span className="text-xs text-muted-foreground font-mono">
                          {new Date(entry.created_at).toLocaleDateString('pt-BR')}
                        </span>
                      </div>

@@ -117,7 +117,7 @@ export default function SolesEstoqueTab({ sole }: Props) {
         }>
           <CardContent className="py-2.5 px-4 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 min-w-0">
-              <span className={`text-[10px] font-bold uppercase tracking-wider
+              <span className={`text-xs font-bold uppercase tracking-wider
                 ${(sole as any).sole_classification === 'tradicional' ? 'text-emerald-700 dark:text-emerald-400' : ''}
                 ${(sole as any).sole_classification === 'palmilha_pronta' ? 'text-violet-700 dark:text-violet-400' : ''}
                 ${(sole as any).sole_classification === 'conjugado' ? 'text-amber-700 dark:text-amber-400' : ''}
@@ -127,7 +127,7 @@ export default function SolesEstoqueTab({ sole }: Props) {
                 {(sole as any).sole_classification === 'conjugado' ? 'Solado Conjugado' : ''}
               </span>
             </div>
-            <span className="text-[11px] text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               {(sole as any).sole_classification === 'tradicional' && 'Cada número individual · palmilha em dm²'}
               {(sole as any).sole_classification === 'palmilha_pronta' && 'Palmilha em un · coligação cor cabedal'}
               {(sole as any).sole_classification === 'conjugado' && 'Algumas numerações agrupadas'}
@@ -146,8 +146,8 @@ export default function SolesEstoqueTab({ sole }: Props) {
             <p className="text-xs text-muted-foreground mt-1">
               Total: <span className="font-mono font-bold">{total}</span> pares
               {minTotal > 0 && <> · Mínimo: <span className="font-mono">{minTotal}</span></>}
-              {isZero && <Badge variant="destructive" className="ml-2 text-[10px]">Zerado</Badge>}
-              {isLow && !isZero && <Badge className="ml-2 text-[10px] bg-amber-500/15 text-amber-700 border-amber-300">Abaixo do mínimo</Badge>}
+              {isZero && <Badge variant="destructive" className="ml-2 text-xs">Zerado</Badge>}
+              {isLow && !isZero && <Badge className="ml-2 text-xs bg-amber-500/15 text-amber-700 border-amber-300">Abaixo do mínimo</Badge>}
             </p>
           </div>
           <Button size="sm" onClick={() => setEditOpen(true)} disabled={!fullProduct} className="gap-1.5">

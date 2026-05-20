@@ -64,8 +64,8 @@ export default function PCPHub() {
       {/* Atalhos pra visualizações de produção que não estão no sidebar (Fluxo/Live/Timeline/etc).
           Stripe discreto pra discoverability — só aparece se houver rotas no grupo. */}
       {getSecondaryRoutesForGroup('Produção').length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 -mt-2 mb-1 text-[11px] text-muted-foreground">
-          <span className="font-medium uppercase tracking-wider text-[10px] text-muted-foreground/70">Visualizações</span>
+        <div className="flex flex-wrap items-center gap-1.5 -mt-2 mb-1 text-xs text-muted-foreground">
+          <span className="font-medium uppercase tracking-wider text-xs text-muted-foreground/70">Visualizações</span>
           {getSecondaryRoutesForGroup('Produção').map((r) => (
             <Link
               key={r.path}

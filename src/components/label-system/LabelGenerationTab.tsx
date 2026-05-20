@@ -261,7 +261,7 @@ export function LabelGenerationTab() {
                   <Clock className="h-3 w-3" />~{estimatedTime}s
                 </span>
                 {perFichaMode && (
-                  <Badge variant="outline" className="text-[10px]">
+                  <Badge variant="outline" className="text-xs">
                     <Layers className="h-2.5 w-2.5 mr-1" />
                     {fichasCount} fichas/OP
                   </Badge>
@@ -318,10 +318,10 @@ export function LabelGenerationTab() {
             <Progress value={batchResult.progress} className="h-2" />
             {batchResult.status === 'done' && (
               <div className="flex items-center gap-3 text-xs">
-                <Badge variant="outline" className="text-[10px] gap-1">
+                <Badge variant="outline" className="text-xs gap-1">
                   <FileText className="h-2.5 w-2.5" />Individuais
                 </Badge>
-                <Badge variant="outline" className="text-[10px] gap-1">
+                <Badge variant="outline" className="text-xs gap-1">
                   <Package className="h-2.5 w-2.5" />Master
                 </Badge>
                 <Button variant="link" size="sm" className="text-xs ml-auto p-0 h-auto" onClick={handleClearBatch}>
@@ -383,7 +383,7 @@ export function LabelGenerationTab() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-mono font-bold text-sm">{o.order_number}</span>
-                        <Badge variant="outline" className="text-[10px]">{o.status}</Badge>
+                        <Badge variant="outline" className="text-xs">{o.status}</Badge>
                         {o.client_name && (
                           <span className="text-xs text-muted-foreground">· {o.client_name}</span>
                         )}
@@ -398,7 +398,7 @@ export function LabelGenerationTab() {
                       </div>
                     </div>
                     {perFichaMode && selected && (
-                      <Badge variant="secondary" className="text-[10px] shrink-0">
+                      <Badge variant="secondary" className="text-xs shrink-0">
                         {sizeKeys.length > 0
                           ? `${Object.values(sizes).reduce((a: number, b: any) => a + (Number(b) || 0), 0)} × ${fichasCount}`
                           : `${o.quantity || 0} × ${fichasCount}`

@@ -273,17 +273,17 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
                           <span className="font-semibold text-sm">{g.name}</span>
                           <Badge variant="secondary" className="text-xs font-mono">{g.items.length} itens</Badge>
                           {g.childCount > 0 && (
-                            <Badge variant="outline" className="text-[10px] h-5 border-primary/40 text-primary bg-primary/5">
+                            <Badge variant="outline" className="text-xs h-5 border-primary/40 text-primary bg-primary/5">
                               {g.childCount} subgrupo{g.childCount > 1 ? 's' : ''}
                             </Badge>
                           )}
                           {(g as any).auto_component_sheet && (
-                            <Badge variant="outline" className="text-[10px] gap-1 h-5 border-primary/40 text-primary bg-primary/5">
+                            <Badge variant="outline" className="text-xs gap-1 h-5 border-primary/40 text-primary bg-primary/5">
                               <FileBox className="h-3 w-3" /> BOM
                             </Badge>
                           )}
                           {(g as any).is_bom_color_source && (
-                            <Badge variant="outline" className="text-[10px] gap-1 h-5 border-amber-500/40 text-amber-600 bg-amber-50 dark:bg-amber-500/10">
+                            <Badge variant="outline" className="text-xs gap-1 h-5 border-amber-500/40 text-amber-600 bg-amber-50 dark:bg-amber-500/10">
                               <Palette className="h-3 w-3" /> Cores
                             </Badge>
                           )}
@@ -410,7 +410,7 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
                                 <GripVertical className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
                                 <Package className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                                 <span className="text-sm truncate">{stripColorFromName(p.name, p.color)}</span>
-                                {p.color && <Badge variant="secondary" className="text-[10px]">{p.color}</Badge>}
+                                {p.color && <Badge variant="secondary" className="text-xs">{p.color}</Badge>}
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
                                 <Badge variant="outline" className="text-xs font-mono">{p.sku}</Badge>
@@ -461,7 +461,7 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
                               <GripVertical className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
                               <Package className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                               <span className="text-sm truncate">{stripColorFromName(p.name, p.color)}</span>
-                              {p.color && <Badge variant="secondary" className="text-[10px]">{p.color}</Badge>}
+                              {p.color && <Badge variant="secondary" className="text-xs">{p.color}</Badge>}
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
                               <Badge variant="outline" className="text-xs font-mono">{p.sku}</Badge>

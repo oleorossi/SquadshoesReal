@@ -119,7 +119,7 @@ export function MrpNeedsTable() {
                     <div className="flex flex-col items-end">
                       <Badge variant="destructive">{n.suggested_qty} {n.unit}</Badge>
                       {n.conversion_rate !== 1 && (
-                        <span className="text-[10px] text-muted-foreground mt-0.5">
+                        <span className="text-xs text-muted-foreground mt-0.5">
                           ({(n.suggested_qty / n.conversion_rate).toFixed(2)} {n.purchase_unit || n.purchase_order_unit || 'un'})
                         </span>
                       )}

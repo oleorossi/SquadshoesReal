@@ -33,11 +33,11 @@ export function ProductTechnicalSheet({ product }: ProductTechnicalSheetProps) {
           </div>
           <div className="space-y-2">
             <div>
-              <label className="text-[10px] font-bold text-muted-foreground uppercase">REFERÊNCIA</label>
+              <label className="text-xs font-bold text-muted-foreground uppercase">REFERÊNCIA</label>
               <InlineEdit value={product.sku} productId={product.id} column="sku" />
             </div>
             <div className="mt-2">
-              <label className="text-[10px] font-bold text-muted-foreground uppercase">DESCRIÇÃO</label>
+              <label className="text-xs font-bold text-muted-foreground uppercase">DESCRIÇÃO</label>
               <InlineEdit value={product.name} productId={product.id} column="name" />
             </div>
           </div>
@@ -50,7 +50,7 @@ export function ProductTechnicalSheet({ product }: ProductTechnicalSheetProps) {
           </div>
           <div className="space-y-3">
             <div className="bg-muted/50 p-2 rounded">
-              <label className="text-[10px] font-bold text-muted-foreground uppercase">SOLADO (Fator Principal)</label>
+              <label className="text-xs font-bold text-muted-foreground uppercase">SOLADO (Fator Principal)</label>
               <div className="font-medium text-primary">
                 <select className="w-full bg-transparent border-none focus:ring-0 text-sm">
                   <option>Selecione um Solado...</option>
@@ -59,11 +59,11 @@ export function ProductTechnicalSheet({ product }: ProductTechnicalSheetProps) {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="bg-muted/50 p-2 rounded">
-                <label className="text-[10px] font-bold text-muted-foreground uppercase">FÔRMA</label>
+                <label className="text-xs font-bold text-muted-foreground uppercase">FÔRMA</label>
                 <div className="text-sm font-medium">--</div>
               </div>
               <div className="bg-muted/50 p-2 rounded">
-                <label className="text-[10px] font-bold text-muted-foreground uppercase">PALMILHA</label>
+                <label className="text-xs font-bold text-muted-foreground uppercase">PALMILHA</label>
                 <div className="text-sm font-medium">--</div>
               </div>
             </div>
@@ -95,7 +95,7 @@ export function ProductTechnicalSheet({ product }: ProductTechnicalSheetProps) {
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-muted-foreground uppercase text-[10px] border-b">
+            <thead className="bg-muted/40 text-muted-foreground uppercase text-xs border-b">
               <tr>
                 <th className="p-3 text-left font-medium">Setor</th>
                 <th className="p-3 text-left font-medium">Componente</th>
@@ -138,7 +138,7 @@ export function ProductTechnicalSheet({ product }: ProductTechnicalSheetProps) {
           </table>
 
           <div className="bg-muted/30 p-4 text-right border-t">
-            <span className="text-muted-foreground mr-4 uppercase text-[10px] font-bold">Custo Total de Materiais:</span>
+            <span className="text-muted-foreground mr-4 uppercase text-xs font-bold">Custo Total de Materiais:</span>
             <span className="text-lg font-bold text-foreground">
               R$ {safeToFixed(product.total_cost, 2)}
             </span>

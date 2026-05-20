@@ -251,28 +251,28 @@ export default function ExceptionsTab() {
         <Card>
           <CardContent className="p-4 text-center">
             <AlertTriangle className="h-5 w-5 mx-auto mb-1 text-amber-500" />
-            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Total</p>
+            <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Total</p>
             <p className="text-2xl font-black font-mono">{stats.total}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
             <Clock className="h-5 w-5 mx-auto mb-1 text-destructive" />
-            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Pendentes</p>
+            <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Pendentes</p>
             <p className="text-2xl font-black font-mono text-destructive">{stats.pending}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
             <XCircle className="h-5 w-5 mx-auto mb-1 text-orange-500" />
-            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Críticos</p>
+            <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Críticos</p>
             <p className="text-2xl font-black font-mono text-orange-600">{stats.critical}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
             <CheckCircle2 className="h-5 w-5 mx-auto mb-1 text-green-500" />
-            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Resolvidos</p>
+            <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Resolvidos</p>
             <p className="text-2xl font-black font-mono text-green-600">{stats.resolved}</p>
           </CardContent>
         </Card>
@@ -353,13 +353,13 @@ export default function ExceptionsTab() {
                         {new Date(exc.record_date + 'T12:00:00').toLocaleDateString('pt-BR')}
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="text-[10px]">
+                        <Badge variant="outline" className="text-xs">
                           {TYPE_MAP[exc.type] || exc.type}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-xs max-w-[250px] truncate">{exc.description}</TableCell>
                       <TableCell>
-                        <Badge variant={st.variant} className="text-[10px]">{st.label}</Badge>
+                        <Badge variant={st.variant} className="text-xs">{st.label}</Badge>
                       </TableCell>
                       <TableCell className="text-right">
                         {exc.status !== 'resolved' && exc.status !== 'ignored' && (
@@ -383,7 +383,7 @@ export default function ExceptionsTab() {
                           </div>
                         )}
                         {exc.status === 'resolved' && exc.resolution_notes && (
-                          <span className="text-[10px] text-muted-foreground italic truncate max-w-[120px] inline-block">
+                          <span className="text-xs text-muted-foreground italic truncate max-w-[120px] inline-block">
                             {exc.resolution_notes}
                           </span>
                         )}

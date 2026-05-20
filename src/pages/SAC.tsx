@@ -170,17 +170,17 @@ function TicketCard({ t, onStatusChange }: { t: any; onStatusChange: (newStatus:
           <div className="flex-1 min-w-0 space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-mono text-xs font-bold">{t.ticket_number}</span>
-              <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[t.status]}`}>
+              <Badge variant="outline" className={`text-xs ${STATUS_COLORS[t.status]}`}>
                 {statusLabel(t.status)}
               </Badge>
-              <Badge variant="outline" className="text-[10px] capitalize">{t.ticket_type}</Badge>
+              <Badge variant="outline" className="text-xs capitalize">{t.ticket_type}</Badge>
               {t.defect_category && (
-                <Badge variant="outline" className="text-[10px] capitalize">{t.defect_category}</Badge>
+                <Badge variant="outline" className="text-xs capitalize">{t.defect_category}</Badge>
               )}
             </div>
             <p className="text-sm font-semibold">{t.clients?.razao_social || '—'}</p>
             <p className="text-xs text-muted-foreground line-clamp-2">{t.description}</p>
-            <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
               {t.technical_sheets?.name && (
                 <span>{t.technical_sheets.code} · {t.technical_sheets.name}</span>
               )}
@@ -199,21 +199,21 @@ function TicketCard({ t, onStatusChange }: { t: any; onStatusChange: (newStatus:
             {historyOpen && (
               <div className="mt-2 ml-2 pl-3 border-l-2 border-muted space-y-1.5">
                 {history.length === 0 ? (
-                  <p className="text-[10px] text-muted-foreground italic">Sem alterações registradas além da criação.</p>
+                  <p className="text-xs text-muted-foreground italic">Sem alterações registradas além da criação.</p>
                 ) : (
                   history.map((h: any) => (
-                    <div key={h.id} className="text-[11px]">
+                    <div key={h.id} className="text-xs">
                       <p className="flex items-center gap-1 flex-wrap">
                         <span className="text-muted-foreground">
                           {format(new Date(h.changed_at), 'dd/MM HH:mm', { locale: ptBR })}
                         </span>
                         {h.from_status && (
-                          <Badge variant="outline" className="text-[9px] py-0 px-1">
+                          <Badge variant="outline" className="text-xs py-0 px-1">
                             {statusLabel(h.from_status)}
                           </Badge>
                         )}
                         <span className="text-muted-foreground">→</span>
-                        <Badge variant="outline" className={`text-[9px] py-0 px-1 ${STATUS_COLORS[h.to_status]}`}>
+                        <Badge variant="outline" className={`text-xs py-0 px-1 ${STATUS_COLORS[h.to_status]}`}>
                           {statusLabel(h.to_status)}
                         </Badge>
                         {h.profiles?.full_name && (

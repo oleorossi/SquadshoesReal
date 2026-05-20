@@ -383,11 +383,11 @@ export default function Clients() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-bold text-sm">{group.name}</span>
-                              <span className="font-mono text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                              <span className="font-mono text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
                                 #{group.group_number}
                               </span>
                             </div>
-                            <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-0.5">
+                            <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
                               <span><strong className="text-foreground">{gc.length}</strong> {gc.length === 1 ? 'loja' : 'lojas'}{activeCount < gc.length ? ` (${activeCount} ativas)` : ''}</span>
                               {cities.size > 0 && <span>· {cities.size} {cities.size === 1 ? 'cidade' : 'cidades'}</span>}
                               {totalCredit > 0 && (
@@ -395,7 +395,7 @@ export default function Clients() {
                               )}
                             </div>
                           </div>
-                          <Badge variant="outline" className="text-[10px] shrink-0 bg-background">
+                          <Badge variant="outline" className="text-xs shrink-0 bg-background">
                             {gc.length} {gc.length === 1 ? 'loja' : 'lojas'}
                           </Badge>
                         </button>
@@ -403,13 +403,13 @@ export default function Clients() {
                         <div className="px-4 py-2 bg-muted/20 border-b flex items-center gap-2">
                           <Users className="h-3.5 w-3.5 text-muted-foreground" />
                           <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Clientes sem Grupo</span>
-                          <Badge variant="outline" className="ml-auto text-[10px]">{gc.length}</Badge>
+                          <Badge variant="outline" className="ml-auto text-xs">{gc.length}</Badge>
                         </div>
                       )}
                       {(!group || !isCollapsed) && (
                         <Table>
                           <TableHeader>
-                            <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground [&_th]:h-9">
+                            <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground [&_th]:h-9">
                               <TableHead className="w-8">
                                 <Checkbox
                                   checked={gc.length > 0 && gc.every(c => sel.isSelected(c.id))}
@@ -502,7 +502,7 @@ export default function Clients() {
               >
                 <Table>
                   <TableHeader>
-                    <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground [&_th]:h-9">
+                    <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground [&_th]:h-9">
                       <TableHead className="w-24">Nº</TableHead>
                       <TableHead>Nome</TableHead>
                       <TableHead>Descrição</TableHead>

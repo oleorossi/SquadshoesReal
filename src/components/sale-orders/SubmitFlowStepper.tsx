@@ -17,7 +17,7 @@ export function SubmitFlowStepper({ current }: { current: SubmitStep }) {
 
   return (
     <div className="mb-3 -mt-1 space-y-1.5">
-      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+      <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
         Etapa {idx + 1} de {total} · Verificações antes de salvar
       </p>
       <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap">
@@ -29,7 +29,7 @@ export function SubmitFlowStepper({ current }: { current: SubmitStep }) {
             <Fragment key={s.key}>
               <div
                 className={cn(
-                  'flex items-center gap-1 sm:gap-1.5 px-1.5 py-1 rounded text-[10px] font-medium border whitespace-nowrap',
+                  'flex items-center gap-1 sm:gap-1.5 px-1.5 py-1 rounded text-xs font-medium border whitespace-nowrap',
                   isActive  && 'bg-primary text-primary-foreground border-primary',
                   isPast    && 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
                   !isActive && !isPast && 'bg-muted text-muted-foreground border-border/50',

@@ -198,7 +198,7 @@ export default function TimeValidationPanel() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium">{rule.name}</span>
-                      <Badge variant={SEVERITY_BADGE[rule.severity] || 'outline'} className="text-[10px]">
+                      <Badge variant={SEVERITY_BADGE[rule.severity] || 'outline'} className="text-xs">
                         {rule.severity}
                       </Badge>
                     </div>
@@ -243,7 +243,7 @@ export default function TimeValidationPanel() {
                     {ruleResults.slice(0, 100).map((v, i) => (
                       <TableRow key={`${v.record_id}-${v.rule_id}-${i}`}>
                         <TableCell>
-                          <Badge variant={SEVERITY_BADGE[v.severity] || 'outline'} className="text-[10px]">
+                          <Badge variant={SEVERITY_BADGE[v.severity] || 'outline'} className="text-xs">
                             {v.rule_id.replace(/_/g, ' ')}
                           </Badge>
                         </TableCell>

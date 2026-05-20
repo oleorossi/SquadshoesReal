@@ -78,11 +78,11 @@ export function ExplosionPanel({ selectedOrders, onConfirmIssue, onPrintRequisit
                   </td>
                   <td className="p-4 text-center">
                     {mat.hasEnough ? (
-                      <span className="text-[10px] text-primary font-bold uppercase flex items-center justify-center gap-1">
+                      <span className="text-xs text-primary font-bold uppercase flex items-center justify-center gap-1">
                         <PackageCheck className="h-3 w-3" /> Disponível
                       </span>
                     ) : (
-                      <span className="text-[10px] text-destructive font-bold uppercase flex items-center justify-center gap-1">
+                      <span className="text-xs text-destructive font-bold uppercase flex items-center justify-center gap-1">
                         <AlertTriangle className="h-3 w-3" /> Insuficiente
                       </span>
                     )}

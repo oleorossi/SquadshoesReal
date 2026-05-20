@@ -369,7 +369,7 @@ export default function OrdersSummary() {
           >
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <TableHead>Cor</TableHead>
                     <TableHead className="text-right">Quantidade</TableHead>
                   </TableRow>
@@ -427,7 +427,7 @@ export default function OrdersSummary() {
         >
             <Table>
               <TableHeader>
-                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <TableHead className="min-w-[140px]">Referência</TableHead>
                   <TableHead className="min-w-[100px]">Cor</TableHead>
                   <TableHead className="text-center">OPs</TableHead>
@@ -485,7 +485,7 @@ export default function OrdersSummary() {
                 </div>
                 <Table>
                   <TableHeader>
-                    <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                    <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                       <TableHead>OP</TableHead>
                       <TableHead>Referência</TableHead>
                       <TableHead>Cor</TableHead>

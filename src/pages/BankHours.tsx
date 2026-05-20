@@ -304,7 +304,7 @@ export default function BankHours() {
                     {/* R12 (audit): hint sobre formatos aceitos. Antes: usuário
                         digitava "1h30", "1,5", "90min" e descobria pelo erro
                         que só HH:MM ou decimal funcionam. */}
-                    <p className="text-[11px] text-muted-foreground mt-1">
+                    <p className="text-xs text-muted-foreground mt-1">
                       Formatos aceitos: <span className="font-mono">1:30</span> (1h30min) ou <span className="font-mono">1.5</span> (1h30min decimal). Vírgula não funciona.
                     </p>
                   </div>
@@ -386,7 +386,7 @@ export default function BankHours() {
                       via RPC) e na lista de lançamentos. Lista geral de saldo
                       acumulado segue sem filtro (vem da view bank_hours_balance). */}
                   <div className="flex items-center gap-1 rounded-md border bg-background px-2 py-1">
-                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Período</span>
+                    <span className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Período</span>
                     <Input
                       type="date"
                       value={dateFrom}
@@ -420,7 +420,7 @@ export default function BankHours() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-7 px-2 text-[11px]"
+                      className="h-7 px-2 text-xs"
                       onClick={() => {
                         const today = new Date();
                         const d = (n: number) => {
@@ -434,7 +434,7 @@ export default function BankHours() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-7 px-2 text-[11px]"
+                      className="h-7 px-2 text-xs"
                       onClick={() => {
                         const today = new Date();
                         const d = new Date(today); d.setDate(d.getDate() - 30);
@@ -445,7 +445,7 @@ export default function BankHours() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-7 px-2 text-[11px]"
+                      className="h-7 px-2 text-xs"
                       onClick={() => {
                         const today = new Date();
                         const first = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -517,15 +517,15 @@ export default function BankHours() {
                           <div className="font-medium text-sm truncate">{emp.employee_name}</div>
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                             {emp.department && (
-                              <Badge variant="outline" className="text-[10px] h-4 px-1.5">
+                              <Badge variant="outline" className="text-xs h-4 px-1.5">
                                 {emp.department}
                               </Badge>
                             )}
                             {emp.role && (
-                              <span className="text-[11px] text-muted-foreground">{emp.role}</span>
+                              <span className="text-xs text-muted-foreground">{emp.role}</span>
                             )}
                             {emp.movement_count > 0 && (
-                              <span className="text-[11px] text-muted-foreground tabular-nums">
+                              <span className="text-xs text-muted-foreground tabular-nums">
                                 · {emp.movement_count} lançamento{emp.movement_count !== 1 && 's'}
                               </span>
                             )}
@@ -536,7 +536,7 @@ export default function BankHours() {
                             {formatHours(emp.balance_min)}
                           </div>
                           {emp.last_movement_date && (
-                            <div className="text-[10px] text-muted-foreground mt-0.5">
+                            <div className="text-xs text-muted-foreground mt-0.5">
                               últ. {new Date(emp.last_movement_date).toLocaleDateString('pt-BR')}
                             </div>
                           )}
@@ -572,24 +572,24 @@ export default function BankHours() {
                       <div key={s.department || '__none__'} className="px-4 py-3 grid grid-cols-2 sm:grid-cols-12 gap-2 sm:gap-3 items-start sm:items-center">
                         <div className="col-span-2 sm:col-span-4 min-w-0">
                           <div className="font-medium text-sm">{s.department || 'Sem setor'}</div>
-                          <div className="text-[11px] text-muted-foreground">
+                          <div className="text-xs text-muted-foreground">
                             {s.employee_count} func.{s.movement_count > 0 && ` · ${s.movement_count} lançamentos`}
                           </div>
                         </div>
                         <div className="col-span-1 sm:col-span-2 text-left sm:text-right">
-                          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Crédito</div>
+                          <div className="text-xs uppercase tracking-wider text-muted-foreground">Crédito</div>
                           <div className="font-mono text-sm text-emerald-600 dark:text-emerald-400 tabular-nums">
                             {formatHours(s.total_credit_min)}
                           </div>
                         </div>
                         <div className="col-span-1 sm:col-span-2 text-left sm:text-right">
-                          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Débito</div>
+                          <div className="text-xs uppercase tracking-wider text-muted-foreground">Débito</div>
                           <div className="font-mono text-sm text-primary tabular-nums">
                             {formatHours(s.total_debit_min)}
                           </div>
                         </div>
                         <div className="col-span-2 sm:col-span-4 text-left sm:text-right">
-                          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Saldo</div>
+                          <div className="text-xs uppercase tracking-wider text-muted-foreground">Saldo</div>
                           <div className={cn('font-mono text-base font-bold tabular-nums', balanceClass(s.total_balance_min))}>
                             {formatHours(s.total_balance_min)}
                           </div>
@@ -628,7 +628,7 @@ export default function BankHours() {
                           {(dateFrom || dateTo) ? 'Saldo no período' : 'Saldo total'} (movements + batidas)
                         </div>
                         {(dateFrom || dateTo) && (
-                          <div className="text-[10px] text-muted-foreground mt-1">
+                          <div className="text-xs text-muted-foreground mt-1">
                             {dateFrom ? new Date(dateFrom).toLocaleDateString('pt-BR') : '—'}
                             {' '}até{' '}
                             {dateTo ? new Date(dateTo).toLocaleDateString('pt-BR') : 'hoje'}
@@ -669,7 +669,7 @@ export default function BankHours() {
                   <div className="grid grid-cols-2 gap-3">
                     <Card>
                       <CardContent className="p-3">
-                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Lançamentos</div>
+                        <div className="text-xs uppercase tracking-wider text-muted-foreground">Lançamentos</div>
                         <div className={cn('font-mono text-lg font-bold mt-1 tabular-nums', balanceClass(detailQ.data.movements_min))}>
                           {formatHours(detailQ.data.movements_min)}
                         </div>
@@ -677,7 +677,7 @@ export default function BankHours() {
                     </Card>
                     <Card>
                       <CardContent className="p-3">
-                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Derivado batidas</div>
+                        <div className="text-xs uppercase tracking-wider text-muted-foreground">Derivado batidas</div>
                         <div className={cn('font-mono text-lg font-bold mt-1 tabular-nums', balanceClass(detailQ.data.timesheet_min))}>
                           {formatHours(detailQ.data.timesheet_min)}
                         </div>
@@ -693,8 +693,8 @@ export default function BankHours() {
                       <Card>
                         <CardContent className="p-3">
                           <div className="flex items-center justify-between">
-                            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">HE 50% (dia útil/sáb)</div>
-                            <Badge variant="outline" className="text-[9px] h-4 px-1.5">+50%</Badge>
+                            <div className="text-xs uppercase tracking-wider text-muted-foreground">HE 50% (dia útil/sáb)</div>
+                            <Badge variant="outline" className="text-xs h-4 px-1.5">+50%</Badge>
                           </div>
                           <div className={cn('font-mono text-base font-bold mt-1 tabular-nums', balanceClass(detailQ.data.balance_50_min ?? 0))}>
                             {formatHours(detailQ.data.balance_50_min ?? 0)}
@@ -704,8 +704,8 @@ export default function BankHours() {
                       <Card>
                         <CardContent className="p-3">
                           <div className="flex items-center justify-between">
-                            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">HE 100% (dom/feriado)</div>
-                            <Badge variant="outline" className="text-[9px] h-4 px-1.5">+100%</Badge>
+                            <div className="text-xs uppercase tracking-wider text-muted-foreground">HE 100% (dom/feriado)</div>
+                            <Badge variant="outline" className="text-xs h-4 px-1.5">+100%</Badge>
                           </div>
                           <div className={cn('font-mono text-base font-bold mt-1 tabular-nums', balanceClass(detailQ.data.balance_100_min ?? 0))}>
                             {formatHours(detailQ.data.balance_100_min ?? 0)}
@@ -761,7 +761,7 @@ export default function BankHours() {
                                     <Badge
                                       variant={isPayout ? 'default' : 'outline'}
                                       className={cn(
-                                        'text-[10px] h-4 px-1.5',
+                                        'text-xs h-4 px-1.5',
                                         isPayout && 'bg-blue-500/15 text-blue-700 border-blue-500/30 hover:bg-blue-500/15'
                                       )}
                                     >
@@ -771,13 +771,13 @@ export default function BankHours() {
                                       {new Date(mov.movement_date).toLocaleDateString('pt-BR')}
                                     </span>
                                     {isPayout && createdAt && (
-                                      <span className="text-[10px] text-muted-foreground">
+                                      <span className="text-xs text-muted-foreground">
                                         · registrado {createdAt.toLocaleDateString('pt-BR')} {createdAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                                       </span>
                                     )}
                                   </div>
                                   {mov.reason && (
-                                    <div className="text-[11px] text-muted-foreground mt-0.5 truncate">{mov.reason}</div>
+                                    <div className="text-xs text-muted-foreground mt-0.5 truncate">{mov.reason}</div>
                                   )}
                                 </div>
                                 <div className={cn('font-mono text-sm font-bold tabular-nums', balanceClass(mov.minutes))}>
@@ -798,7 +798,7 @@ export default function BankHours() {
                     </CardContent>
                   </Card>
 
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     Saldo combina lançamentos manuais com derivação automática das batidas
                     de ponto vs jornada esperada (work_schedules). Tolerância e mínimo de
                     overtime aplicados.

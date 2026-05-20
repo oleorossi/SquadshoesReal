@@ -236,13 +236,13 @@ export default function CustoTotalReport() {
                 <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-12">Nenhum funcionário ativo.</TableCell></TableRow>
               ) : rows.map(r => (
                 <TableRow key={r.id} className={`border-b border-border/60 ${r.hasRun ? '' : 'opacity-60'}`}>
-                  <TableCell className="font-medium">{r.name}{!r.hasRun && <span className="ml-2 text-[10px] uppercase tracking-wider text-muted-foreground">só base</span>}</TableCell>
+                  <TableCell className="font-medium">{r.name}{!r.hasRun && <span className="ml-2 text-xs uppercase tracking-wider text-muted-foreground">só base</span>}</TableCell>
                   <TableCell className="text-muted-foreground text-xs">{r.department}</TableCell>
                   <TableCell className="text-right font-mono text-xs">{fmt(r.baseSalary)}</TableCell>
                   <TableCell className="text-right font-mono text-xs text-amber-600">{r.heValue > 0 ? fmt(r.heValue) : '—'}</TableCell>
                   <TableCell className="text-right font-mono text-xs text-emerald-600">{r.beneficios > 0 ? fmt(r.beneficios) : '—'}</TableCell>
                   <TableCell className="text-right font-mono font-bold">{fmt(r.custoTotal)}</TableCell>
-                  <TableCell className="text-center text-[10px] font-mono">
+                  <TableCell className="text-center text-xs font-mono">
                     {r.bhCreditoMin > 0 && <span className="text-emerald-600">+{Math.round(r.bhCreditoMin / 60 * 10) / 10}h</span>}
                     {r.bhCreditoMin > 0 && r.bhDebitoMin > 0 && ' / '}
                     {r.bhDebitoMin > 0 && <span className="text-rose-600">-{Math.round(r.bhDebitoMin / 60 * 10) / 10}h</span>}

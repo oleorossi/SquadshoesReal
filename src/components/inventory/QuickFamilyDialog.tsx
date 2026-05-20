@@ -213,7 +213,7 @@ export function QuickFamilyDialog({ open, onOpenChange, defaultGroupId }: Props)
                   placeholder="Ex: Tira Chata 10mm"
                   autoFocus
                 />
-                <p className="text-[10px] text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   Cada produto cadastrado vai usar este nome + a cor (ex: "Tira Chata 10mm - Preto")
                 </p>
               </div>
@@ -227,7 +227,7 @@ export function QuickFamilyDialog({ open, onOpenChange, defaultGroupId }: Props)
                   className="mt-1 h-10 font-mono"
                   placeholder="TIRA"
                 />
-                <p className="text-[10px] text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   SKU final: <span className="font-mono">{(skuPrefix || 'TIRA')}-PRETO</span>
                 </p>
               </div>
@@ -305,7 +305,7 @@ export function QuickFamilyDialog({ open, onOpenChange, defaultGroupId }: Props)
               </div>
             )}
 
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Serão criados <span className="font-bold text-primary">{colors.length} produto(s)</span> — um por cor, todos vinculados à mesma família.
             </p>
           </div>

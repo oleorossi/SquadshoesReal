@@ -153,13 +153,13 @@ export default function SectorDistributionPlanner() {
               <table className="w-full text-xs">
                 <thead className="bg-muted/40 border-b border-border/60">
                   <tr>
-                    <th className="text-left px-3 py-2 font-bold uppercase tracking-wider text-[10px] text-muted-foreground">Setor</th>
-                    <th className="text-right px-3 py-2 font-bold uppercase tracking-wider text-[10px] text-muted-foreground">Refs</th>
-                    <th className="text-right px-3 py-2 font-bold uppercase tracking-wider text-[10px] text-muted-foreground">Pares</th>
-                    <th className="text-right px-3 py-2 font-bold uppercase tracking-wider text-[10px] text-muted-foreground">Cap/dia (média)</th>
-                    <th className="text-right px-3 py-2 font-bold uppercase tracking-wider text-[10px] text-muted-foreground">Dias necessários</th>
-                    <th className="text-center px-3 py-2 font-bold uppercase tracking-wider text-[10px] text-muted-foreground">Status</th>
-                    <th className="text-right px-3 py-2 font-bold uppercase tracking-wider text-[10px] text-muted-foreground"></th>
+                    <th className="text-left px-3 py-2 font-bold uppercase tracking-wider text-xs text-muted-foreground">Setor</th>
+                    <th className="text-right px-3 py-2 font-bold uppercase tracking-wider text-xs text-muted-foreground">Refs</th>
+                    <th className="text-right px-3 py-2 font-bold uppercase tracking-wider text-xs text-muted-foreground">Pares</th>
+                    <th className="text-right px-3 py-2 font-bold uppercase tracking-wider text-xs text-muted-foreground">Cap/dia (média)</th>
+                    <th className="text-right px-3 py-2 font-bold uppercase tracking-wider text-xs text-muted-foreground">Dias necessários</th>
+                    <th className="text-center px-3 py-2 font-bold uppercase tracking-wider text-xs text-muted-foreground">Status</th>
+                    <th className="text-right px-3 py-2 font-bold uppercase tracking-wider text-xs text-muted-foreground"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/40">
@@ -186,7 +186,7 @@ export default function SectorDistributionPlanner() {
                           </td>
                           <td className="px-3 py-2 text-center">
                             <Badge variant="outline" className={cn(
-                              'text-[10px] uppercase tracking-wider',
+                              'text-xs uppercase tracking-wider',
                               statusColor === 'destructive' && 'border-destructive/40 text-destructive',
                               statusColor === 'warning' && 'border-amber-500/40 text-amber-600 dark:text-amber-500',
                               statusColor === 'success' && 'border-emerald-500/40 text-emerald-600 dark:text-emerald-500',
@@ -198,7 +198,7 @@ export default function SectorDistributionPlanner() {
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="h-7 text-[11px]"
+                              className="h-7 text-xs"
                               onClick={() => setExpandedSector(isExpanded ? null : sector)}
                             >
                               {isExpanded ? 'Ocultar' : 'Editar dias'}
@@ -258,7 +258,7 @@ function SectorDayEditor({
     <div className="p-3">
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-muted-foreground text-[10px] uppercase tracking-wider">
+          <tr className="text-muted-foreground text-xs uppercase tracking-wider">
             <th className="text-left px-2 py-1">Referência</th>
             <th className="text-right px-2 py-1">Total OP</th>
             <th className="text-right px-2 py-1">Cap/dia</th>
@@ -278,16 +278,16 @@ function SectorDayEditor({
               <tr key={ref.tech_sheet_id} className="border-t border-border/30">
                 <td className="px-2 py-1">
                   <div className="font-medium text-foreground">{ref.reference_code}</div>
-                  <div className="text-[10px] text-muted-foreground truncate max-w-[160px]">{ref.reference_name}</div>
+                  <div className="text-xs text-muted-foreground truncate max-w-[160px]">{ref.reference_name}</div>
                 </td>
                 <td className="px-2 py-1 text-right font-mono">{ref.total_qty}</td>
                 <td className="px-2 py-1 text-right">
                   <span className="font-mono text-muted-foreground">{ref.cap}</span>
                   {ref.capacity_source === 'categoria' && (
-                    <span className="ml-1 text-[9px] uppercase tracking-wider text-amber-600 dark:text-amber-500" title={`Capacidade veio do default de ${ref.shoe_category || 'categoria'} — defina valor próprio na ficha pra customizar`}>cat</span>
+                    <span className="ml-1 text-xs uppercase tracking-wider text-amber-600 dark:text-amber-500" title={`Capacidade veio do default de ${ref.shoe_category || 'categoria'} — defina valor próprio na ficha pra customizar`}>cat</span>
                   )}
                   {ref.capacity_source === 'nenhuma' && (
-                    <span className="ml-1 text-[9px] uppercase tracking-wider text-destructive" title="Sem capacidade configurada — defina na ficha ou em default_lead_times">—</span>
+                    <span className="ml-1 text-xs uppercase tracking-wider text-destructive" title="Sem capacidade configurada — defina na ficha ou em default_lead_times">—</span>
                   )}
                 </td>
                 {[1, 2, 3, 4, 5].map((d) => {
@@ -336,14 +336,14 @@ function SectorDayEditor({
             );
           })}
           <tr className="border-t-2 border-border bg-muted/30 font-semibold">
-            <td className="px-2 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">Total dia</td>
+            <td className="px-2 py-1.5 text-xs uppercase tracking-wider text-muted-foreground">Total dia</td>
             <td colSpan={2}></td>
             {dayTotals.map((t, i) => {
               const pct = weightedDailyCap > 0 ? (t / weightedDailyCap) * 100 : 0;
               return (
                 <td key={i} className="px-2 py-1.5 text-center">
                   <div className="font-mono">{t}</div>
-                  <div className={cn('text-[9px]',
+                  <div className={cn('text-xs',
                     pct > 100 ? 'text-destructive font-bold' : pct > 80 ? 'text-amber-600 dark:text-amber-500' : 'text-muted-foreground'
                   )}>
                     {pct.toFixed(0)}%

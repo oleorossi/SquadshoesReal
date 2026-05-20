@@ -21,8 +21,8 @@ interface RefChipProps {
 }
 
 const SIZE_CLASSES: Record<NonNullable<RefChipProps['size']>, string> = {
-  sm: 'text-[9px] px-1.5 py-0.5 tracking-[0.08em]',
-  md: 'text-[10px] px-2 py-0.5 tracking-[0.08em]',
+  sm: 'text-xs px-1.5 py-0.5 tracking-[0.08em]',
+  md: 'text-xs px-2 py-0.5 tracking-[0.08em]',
   lg: 'text-xs px-2.5 py-1 tracking-[0.08em]',
 };
 

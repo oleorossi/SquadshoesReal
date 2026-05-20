@@ -111,9 +111,9 @@ export default function Transporters() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-sm truncate">{r.name}</p>
-                    {r.cnpj && <p className="text-[11px] font-mono text-muted-foreground">{r.cnpj}</p>}
+                    {r.cnpj && <p className="text-xs font-mono text-muted-foreground">{r.cnpj}</p>}
                   </div>
-                  <Badge variant="outline" className={`text-[10px] ${r.active ? 'border-emerald-500/30 text-emerald-700' : ''}`}>
+                  <Badge variant="outline" className={`text-xs ${r.active ? 'border-emerald-500/30 text-emerald-700' : ''}`}>
                     {r.active ? 'ativa' : 'inativa'}
                   </Badge>
                 </div>
@@ -126,12 +126,12 @@ export default function Transporters() {
                 {(r.service_modes ?? []).length > 0 && (
                   <div className="flex flex-wrap gap-1">
                     {(r.service_modes as string[]).map(m => (
-                      <Badge key={m} variant="secondary" className="text-[10px] capitalize">{m}</Badge>
+                      <Badge key={m} variant="secondary" className="text-xs capitalize">{m}</Badge>
                     ))}
                   </div>
                 )}
                 {r.contact_name && (
-                  <div className="text-[11px] space-y-0.5">
+                  <div className="text-xs space-y-0.5">
                     <p>{r.contact_name}</p>
                     {r.contact_phone && (
                       <p className="text-muted-foreground flex items-center gap-1"><Phone className="h-3 w-3" />{r.contact_phone}</p>
@@ -301,7 +301,7 @@ function TransporterDialog({
           <div className="col-span-2 flex items-center justify-between rounded-md border p-2.5">
             <div>
               <p className="text-sm font-medium">Integração API</p>
-              <p className="text-[11px] text-muted-foreground">Ativar quando a transportadora oferece API de rastreamento/etiqueta</p>
+              <p className="text-xs text-muted-foreground">Ativar quando a transportadora oferece API de rastreamento/etiqueta</p>
             </div>
             <Switch checked={form.has_api_integration} onCheckedChange={v => setForm({ ...form, has_api_integration: v })} />
           </div>
@@ -314,7 +314,7 @@ function TransporterDialog({
           <div className="col-span-2 flex items-center justify-between rounded-md border p-2.5">
             <div>
               <p className="text-sm font-medium">Ativa</p>
-              <p className="text-[11px] text-muted-foreground">Inativas continuam visíveis em registros antigos mas não aparecem na seleção</p>
+              <p className="text-xs text-muted-foreground">Inativas continuam visíveis em registros antigos mas não aparecem na seleção</p>
             </div>
             <Switch checked={form.active} onCheckedChange={v => setForm({ ...form, active: v })} />
           </div>

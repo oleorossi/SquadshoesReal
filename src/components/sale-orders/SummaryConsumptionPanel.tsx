@@ -629,7 +629,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
                        <div key={soleType} className="rounded-lg border overflow-hidden">
                          <div className="bg-muted/30 px-3 py-1.5 flex items-center gap-2">
                            <span className="text-xs font-semibold text-muted-foreground uppercase">Solado {soleType}</span>
-                           <Badge variant="outline" className="text-[10px]">
+                           <Badge variant="outline" className="text-xs">
                              {(() => { const total = Object.values(sizes).reduce((s, v) => s + Math.round(v), 0); return `${total} ${total === 1 ? 'par' : 'pares'}`; })()}
                            </Badge>
                          </div>
@@ -644,7 +644,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
                                <div key={size} className="flex flex-col items-center bg-muted/40 rounded-md px-3 py-1.5 min-w-[56px]">
                                  <span className="text-xs text-muted-foreground font-medium">Nº {size}</span>
                                  <span className="text-sm font-mono font-bold">{Math.round(total)}</span>
-                                 <span className="text-[11px] text-muted-foreground">pares</span>
+                                 <span className="text-xs text-muted-foreground">pares</span>
                                </div>
                              ))}
                          </div>
@@ -720,7 +720,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
                        else acc.push({ unit, total: row.totalQuantity });
                        return acc;
                      }, [] as {unit: string, total: number}[]).map(t => (
-                       <Badge key={t.unit} variant="outline" className="text-[10px]">
+                       <Badge key={t.unit} variant="outline" className="text-xs">
                          {t.total.toFixed(2)} {formatUnit(t.unit)}
                        </Badge>
                      ))}
@@ -759,19 +759,19 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
                                             else acc.push({ unit, total: r.totalQuantity });
                                             return acc;
                                           }, [] as {unit: string, total: number}[]).map(t => (
-                                            <span key={t.unit} className="text-[9px] font-bold text-muted-foreground/80 bg-muted px-1.5 py-0.5 rounded border border-muted-foreground/10">
+                                            <span key={t.unit} className="text-xs font-bold text-muted-foreground/80 bg-muted px-1.5 py-0.5 rounded border border-muted-foreground/10">
                                               Total: {t.total.toFixed(2)} {formatUnit(t.unit)}
                                             </span>
                                           ))}
                                         </div>
                                       </div>
                                     ) : (
-                                      <div className="pl-5 text-[10px] text-muted-foreground/40 italic">continuação...</div>
+                                      <div className="pl-5 text-xs text-muted-foreground/40 italic">continuação...</div>
                                     )}
                                   </TableCell>
                                  <TableCell className="py-2">
                                    <div className="flex items-center gap-2">
-                                     <Badge variant="secondary" className="text-[10px] h-5 px-1.5 font-normal">
+                                     <Badge variant="secondary" className="text-xs h-5 px-1.5 font-normal">
                                        {row.componentType}
                                      </Badge>
                                      <span className="text-xs text-muted-foreground">{row.materialName}</span>

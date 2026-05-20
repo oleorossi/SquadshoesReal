@@ -115,7 +115,7 @@ export default function LotTestingTab() {
                   </TableCell>
                   <TableCell>
                     <div className="font-medium">{i.quality_checklists?.name || 'Inspeção Geral'}</div>
-                    <div className="text-[10px] text-muted-foreground uppercase">ID: {i.checklist_id?.slice(0,8)}</div>
+                    <div className="text-xs text-muted-foreground uppercase">ID: {i.checklist_id?.slice(0,8)}</div>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1.5">

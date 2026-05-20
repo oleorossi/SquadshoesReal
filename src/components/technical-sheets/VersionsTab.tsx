@@ -111,12 +111,12 @@ export function VersionsTab({ sheetId, form, updateField }: {
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/40 border-b-2 border-border">
-                <TableHead className="text-[11px] font-bold uppercase tracking-wider">Versão</TableHead>
-                <TableHead className="text-[11px] font-bold uppercase tracking-wider">Data</TableHead>
-                <TableHead className="text-[11px] font-bold uppercase tracking-wider">Descrição</TableHead>
-                <TableHead className="text-[11px] font-bold uppercase tracking-wider">Criado por</TableHead>
-                <TableHead className="text-[11px] font-bold uppercase tracking-wider">Status</TableHead>
-                <TableHead className="text-[11px] font-bold uppercase tracking-wider">Aprovador</TableHead>
+                <TableHead className="text-xs font-bold uppercase tracking-wider">Versão</TableHead>
+                <TableHead className="text-xs font-bold uppercase tracking-wider">Data</TableHead>
+                <TableHead className="text-xs font-bold uppercase tracking-wider">Descrição</TableHead>
+                <TableHead className="text-xs font-bold uppercase tracking-wider">Criado por</TableHead>
+                <TableHead className="text-xs font-bold uppercase tracking-wider">Status</TableHead>
+                <TableHead className="text-xs font-bold uppercase tracking-wider">Aprovador</TableHead>
                 <TableHead className="w-20"></TableHead>
               </TableRow>
             </TableHeader>
@@ -133,7 +133,7 @@ export function VersionsTab({ sheetId, form, updateField }: {
                     <TableCell className="text-xs max-w-[200px] truncate">{v.description || '—'}</TableCell>
                     <TableCell className="text-xs">{v.created_by || '—'}</TableCell>
                     <TableCell>
-                      <Badge className={`text-[11px] gap-1 ${cfg.color}`}>
+                      <Badge className={`text-xs gap-1 ${cfg.color}`}>
                         <StatusIcon className="h-3 w-3" />
                         {cfg.label}
                       </Badge>
@@ -145,18 +145,18 @@ export function VersionsTab({ sheetId, form, updateField }: {
                           <Eye className="h-3 w-3" />
                         </Button>
                         {v.status === 'draft' && (
-                          <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px]"
+                          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs"
                             onClick={() => updateStatus.mutate({ id: v.id, status: 'pending_approval' })}>
                             Enviar
                           </Button>
                         )}
                         {v.status === 'pending_approval' && (
                           <>
-                            <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px] text-green-600"
+                            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-green-600"
                               onClick={() => updateStatus.mutate({ id: v.id, status: 'approved', approvedBy: '' })}>
                               Aprovar
                             </Button>
-                            <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px] text-destructive"
+                            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-destructive"
                               onClick={() => updateStatus.mutate({ id: v.id, status: 'rejected' })}>
                               Rejeitar
                             </Button>
@@ -182,19 +182,19 @@ export function VersionsTab({ sheetId, form, updateField }: {
             <div className="space-y-4 text-xs">
               <div>
                 <p className="font-semibold mb-1">Dados da Ficha:</p>
-                <pre className="bg-muted p-3 rounded-md overflow-auto max-h-48 text-[11px] font-mono">
+                <pre className="bg-muted p-3 rounded-md overflow-auto max-h-48 text-xs font-mono">
                   {JSON.stringify(viewingVersion.snapshot, null, 2)}
                 </pre>
               </div>
               <div>
                 <p className="font-semibold mb-1">Materiais ({Array.isArray(viewingVersion.materials_snapshot) ? viewingVersion.materials_snapshot.length : 0}):</p>
-                <pre className="bg-muted p-3 rounded-md overflow-auto max-h-48 text-[11px] font-mono">
+                <pre className="bg-muted p-3 rounded-md overflow-auto max-h-48 text-xs font-mono">
                   {JSON.stringify(viewingVersion.materials_snapshot, null, 2)}
                 </pre>
               </div>
               <div>
                 <p className="font-semibold mb-1">Operações ({Array.isArray(viewingVersion.operations_snapshot) ? viewingVersion.operations_snapshot.length : 0}):</p>
-                <pre className="bg-muted p-3 rounded-md overflow-auto max-h-48 text-[11px] font-mono">
+                <pre className="bg-muted p-3 rounded-md overflow-auto max-h-48 text-xs font-mono">
                   {JSON.stringify(viewingVersion.operations_snapshot, null, 2)}
                 </pre>
               </div>
@@ -240,10 +240,10 @@ function ChangeLogEditor({ value, onChange }: { value: any[]; onChange: (v: any[
         <div className="rounded-lg border overflow-hidden">
           <Table>
             <TableHeader><TableRow className="bg-muted/30">
-              <TableHead className="text-[11px]">Data</TableHead>
-              <TableHead className="text-[11px]">O quê</TableHead>
-              <TableHead className="text-[11px]">Quem</TableHead>
-              <TableHead className="text-[11px]">Por quê</TableHead>
+              <TableHead className="text-xs">Data</TableHead>
+              <TableHead className="text-xs">O quê</TableHead>
+              <TableHead className="text-xs">Quem</TableHead>
+              <TableHead className="text-xs">Por quê</TableHead>
               <TableHead className="w-8"></TableHead>
             </TableRow></TableHeader>
             <TableBody>

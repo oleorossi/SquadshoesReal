@@ -113,7 +113,7 @@ export function SoleTechnicalEditDialog({ open, onOpenChange, product }: Props) 
           <DialogDescription className="flex flex-wrap items-center gap-2 pt-1">
             <Badge variant="outline">{product.name}</Badge>
             {product.color && <Badge variant="secondary">{product.color}</Badge>}
-            {product.sku && <Badge variant="outline" className="font-mono text-[10px]">{product.sku}</Badge>}
+            {product.sku && <Badge variant="outline" className="font-mono text-xs">{product.sku}</Badge>}
           </DialogDescription>
         </DialogHeader>
 
@@ -130,32 +130,32 @@ export function SoleTechnicalEditDialog({ open, onOpenChange, product }: Props) 
                 <SelectItem value="tradicional">
                   <div className="py-1">
                     <div className="font-semibold">Tradicional</div>
-                    <div className="text-[10px] text-muted-foreground">Cada número individual · palmilha cortada (dm²)</div>
+                    <div className="text-xs text-muted-foreground">Cada número individual · palmilha cortada (dm²)</div>
                   </div>
                 </SelectItem>
                 <SelectItem value="palmilha_pronta">
                   <div className="py-1">
                     <div className="font-semibold">Palmilha Pronta</div>
-                    <div className="text-[10px] text-muted-foreground">Palmilha já vem pronta (un) · coligação cor cabedal/palmilha</div>
+                    <div className="text-xs text-muted-foreground">Palmilha já vem pronta (un) · coligação cor cabedal/palmilha</div>
                   </div>
                 </SelectItem>
                 <SelectItem value="conjugado">
                   <div className="py-1">
                     <div className="font-semibold">Conjugado</div>
-                    <div className="text-[10px] text-muted-foreground">Alguns números agrupados (ex.: 33/34, 39/40)</div>
+                    <div className="text-xs text-muted-foreground">Alguns números agrupados (ex.: 33/34, 39/40)</div>
                   </div>
                 </SelectItem>
               </SelectContent>
             </Select>
             {soleClassification === 'palmilha_pronta' && (
-              <div className="text-[11px] text-foreground/80 bg-amber-500/10 border border-amber-500/30 rounded p-2">
+              <div className="text-xs text-foreground/80 bg-amber-500/10 border border-amber-500/30 rounded p-2">
                 <strong>Atenção:</strong> Solados deste tipo têm coligação <em>cor cabedal → cor palmilha</em>.
                 Configure essa coligação na <strong>ficha técnica</strong> (campo "Cores Palmilha"). O sistema vai usar essa
                 tabela pra escolher a palmilha certa quando emitir a ficha de produção.
               </div>
             )}
             {soleClassification === 'conjugado' && (
-              <div className="text-[11px] text-foreground/80 bg-amber-500/10 border border-amber-500/30 rounded p-2">
+              <div className="text-xs text-foreground/80 bg-amber-500/10 border border-amber-500/30 rounded p-2">
                 <strong>Atenção:</strong> Solados conjugados têm algumas numerações agrupadas. Configure as conjugações
                 na aba <strong>Conjugações</strong> deste cadastro (ex.: 33/34 conta como 1 par para essa numeração).
               </div>
@@ -184,7 +184,7 @@ export function SoleTechnicalEditDialog({ open, onOpenChange, product }: Props) 
               <div>
                 <Label className="text-xs">Lead time do solado (dias)</Label>
                 <NumberInput min={0} value={leadTime} onChange={setLeadTime} className="mt-1" />
-                <p className="text-[10px] text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   Prazo entre OC e chegada à fábrica. Usado no cálculo de data mínima de faturamento.
                 </p>
              </div>
@@ -208,7 +208,7 @@ export function SoleTechnicalEditDialog({ open, onOpenChange, product }: Props) 
                  <Label htmlFor="is-standard-sole-item-edit" className="text-sm font-medium leading-none cursor-pointer">
                    Item Padrão de Solado
                  </Label>
-                 <p className="text-[10px] text-muted-foreground">
+                 <p className="text-xs text-muted-foreground">
                    Se marcado, este item será adicionado automaticamente ao Bill of Materials (BOM) de todas as fichas técnicas que utilizarem este solado.
                  </p>
                </div>
@@ -232,7 +232,7 @@ export function SoleTechnicalEditDialog({ open, onOpenChange, product }: Props) 
               <div>
                 <Label className="text-xs">MOQ — pedido mínimo (pares)</Label>
                 <NumberInput min={0} value={moq} onChange={setMoq} className="mt-1" />
-                <p className="text-[10px] text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   Quantidade mínima exigida pelo fornecedor por OC. OCs automáticas serão arredondadas para cima.
                 </p>
               </div>
@@ -272,18 +272,18 @@ export function SoleTechnicalEditDialog({ open, onOpenChange, product }: Props) 
                   <SelectItem value="pronta_na_cor">Pronta na cor (consome por par/numeração)</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-[10px] text-muted-foreground mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 Define como a palmilha vinculada a este solado será debitada do estoque e contabilizada na ficha técnica.
               </p>
             </div>
           )}
           {soleClassification === 'palmilha_pronta' && (
-            <div className="text-[11px] text-muted-foreground italic">
+            <div className="text-xs text-muted-foreground italic">
               Modo da palmilha definido automaticamente como <strong>Pronta na cor</strong> por causa do tipo do solado.
             </div>
           )}
           {soleClassification === 'conjugado' && (
-            <div className="text-[11px] text-muted-foreground italic">
+            <div className="text-xs text-muted-foreground italic">
               Modo da palmilha definido automaticamente como <strong>Cortar (dm²)</strong> por causa do tipo do solado.
             </div>
           )}
@@ -297,7 +297,7 @@ export function SoleTechnicalEditDialog({ open, onOpenChange, product }: Props) 
                 <Label htmlFor="is-fachetado" className="text-sm font-medium leading-none cursor-pointer">
                   Solado Fachetado
                 </Label>
-                <p className="text-[10px] text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   Solados fachetados levam forração aplicada sobre eles, sempre na cor da palmilha. Configure o consumo (dm²) por numeração na aba de especificações técnicas.
                 </p>
               </div>

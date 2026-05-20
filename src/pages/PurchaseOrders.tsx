@@ -250,7 +250,7 @@ export default function PurchaseOrders() {
             <Panel flush>
               <Table className="[&_td]:py-2 [&_th]:py-2">
                 <TableHeader>
-                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <TableHead className="w-10">
                       <Checkbox
                         checked={allFilteredSelected}
@@ -290,7 +290,7 @@ export default function PurchaseOrders() {
                             {(o.linked_sale_order_ids?.length ?? 0) > 1 && (
                               <Badge
                                 variant="outline"
-                                className="text-[10px] h-4 px-1.5 font-normal"
+                                className="text-xs h-4 px-1.5 font-normal"
                                 title={`PVs vinculados: ${o.linked_sale_order_ids?.length}`}
                               >
                                 {o.linked_sale_order_ids?.length} PVs
@@ -714,7 +714,7 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
           <div className="rounded-lg border overflow-hidden">
             <Table>
               <TableHeader>
-                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <TableHead>Material</TableHead>
                   <TableHead className="text-center">Estoque Atual</TableHead>
                   <TableHead className="text-center">Mín</TableHead>
@@ -811,14 +811,14 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
             <div className="mt-4">
               <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
                 Demanda por Numeração × Cor
-                <Badge variant="secondary" className="text-[10px]">
+                <Badge variant="secondary" className="text-xs">
                   {grandTotal} pares · {allSizes.length} numerações · {gradeItems.length} cor{gradeItems.length !== 1 ? 'es' : ''}
                 </Badge>
               </h3>
               <div className="rounded-lg border overflow-x-auto">
                 <Table>
                   <TableHeader>
-                    <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                    <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                       <TableHead className="min-w-[180px]">Solado</TableHead>
                       <TableHead className="min-w-[100px]">Cor</TableHead>
                       {allSizes.map(s => (
@@ -1123,7 +1123,7 @@ function PendingSummaryDialog({ orderIds, orders, onClose }: { orderIds: string[
                   <div className="rounded-lg border overflow-hidden">
                     <Table>
                       <TableHeader>
-                        <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                        <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                           <TableHead>Material</TableHead>
                           <TableHead>SKU</TableHead>
                           <TableHead className="text-center">Qtd Total</TableHead>

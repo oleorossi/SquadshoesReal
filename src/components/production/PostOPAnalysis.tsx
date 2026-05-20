@@ -232,7 +232,7 @@ export default function PostOPAnalysis() {
                   <p className={`display text-xl tabular-nums ${kpis.onTimeRate >= 90 ? "text-green-600" : kpis.onTimeRate >= 70 ? "text-amber-600" : "text-red-600"}`}>
                     {kpis.onTimeRate.toFixed(0)}%
                   </p>
-                  <p className="text-[10px] text-muted-foreground">Entrega no Prazo ({kpis.onTimeCount}/{kpis.withTimeCount})</p>
+                  <p className="text-xs text-muted-foreground">Entrega no Prazo ({kpis.onTimeCount}/{kpis.withTimeCount})</p>
                 </div>
               </div>
             </CardContent>
@@ -246,7 +246,7 @@ export default function PostOPAnalysis() {
                   <p className={`display text-xl tabular-nums ${kpis.avgVariance > 5 ? "text-red-600" : kpis.avgVariance < -2 ? "text-green-600" : "text-foreground"}`}>
                     {kpis.avgVariance > 0 ? "+" : ""}{kpis.avgVariance.toFixed(1)}%
                   </p>
-                  <p className="text-[10px] text-muted-foreground">Variação Custo ({kpis.opsWithCost} OPs)</p>
+                  <p className="text-xs text-muted-foreground">Variação Custo ({kpis.opsWithCost} OPs)</p>
                 </div>
               </div>
             </CardContent>
@@ -258,7 +258,7 @@ export default function PostOPAnalysis() {
                 <div className="p-2 rounded-md bg-muted/50"><Clock className="h-4 w-4 text-violet-600" /></div>
                 <div>
                   <p className="display text-xl tabular-nums">{kpis.avgLeadTimeDays.toFixed(1)}d</p>
-                  <p className="text-[10px] text-muted-foreground">Lead Time Médio</p>
+                  <p className="text-xs text-muted-foreground">Lead Time Médio</p>
                 </div>
               </div>
             </CardContent>
@@ -272,7 +272,7 @@ export default function PostOPAnalysis() {
                   <p className={`display text-xl tabular-nums ${kpis.defectRate > 5 ? "text-red-600" : "text-foreground"}`}>
                     {kpis.defectRate.toFixed(1)}%
                   </p>
-                  <p className="text-[10px] text-muted-foreground">Taxa de Defeitos</p>
+                  <p className="text-xs text-muted-foreground">Taxa de Defeitos</p>
                 </div>
               </div>
             </CardContent>
@@ -289,7 +289,7 @@ export default function PostOPAnalysis() {
                   <p className="display text-xl tabular-nums">
                     {kpis.timeEfficiency > 0 ? `${kpis.timeEfficiency.toFixed(0)}%` : "—"}
                   </p>
-                  <p className="text-[10px] text-muted-foreground">Eficiência Produtiva</p>
+                  <p className="text-xs text-muted-foreground">Eficiência Produtiva</p>
                 </div>
               </div>
             </CardContent>
@@ -301,7 +301,7 @@ export default function PostOPAnalysis() {
                 <div className="p-2 rounded-md bg-muted/50"><Layers className="h-4 w-4 text-muted-foreground" /></div>
                 <div>
                   <p className="text-sm font-medium">{fmtBRL(kpis.totalMat)}</p>
-                  <p className="text-[10px] text-muted-foreground">Total Material</p>
+                  <p className="text-xs text-muted-foreground">Total Material</p>
                 </div>
               </div>
             </CardContent>
@@ -313,7 +313,7 @@ export default function PostOPAnalysis() {
                 <div className="p-2 rounded-md bg-muted/50"><Layers className="h-4 w-4 text-muted-foreground" /></div>
                 <div>
                   <p className="text-sm font-medium">{fmtBRL(kpis.totalLab)}</p>
-                  <p className="text-[10px] text-muted-foreground">Total MOD</p>
+                  <p className="text-xs text-muted-foreground">Total MOD</p>
                 </div>
               </div>
             </CardContent>
@@ -329,7 +329,7 @@ export default function PostOPAnalysis() {
                       <p className={`text-sm font-medium ${kpis.totalActCost > kpis.totalStdCost ? "text-red-600" : "text-green-600"}`}>
                         {fmtBRL(kpis.totalActCost - kpis.totalStdCost)}
                       </p>
-                      <p className="text-[10px] text-muted-foreground">Desvio Absoluto</p>
+                      <p className="text-xs text-muted-foreground">Desvio Absoluto</p>
                     </div>
                   </div>
                 </TooltipTrigger>
@@ -425,7 +425,7 @@ export default function PostOPAnalysis() {
                       <TableCell className="whitespace-nowrap">
                         {op.last_sector_finished_at ? format(new Date(op.last_sector_finished_at), "dd/MM/yy", { locale: ptBR }) : "—"}
                         {onTime !== null && (
-                          <Badge className={`ml-1 text-[9px] ${onTime ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"}`}>
+                          <Badge className={`ml-1 text-xs ${onTime ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"}`}>
                             {onTime ? "OK" : "Atraso"}
                           </Badge>
                         )}

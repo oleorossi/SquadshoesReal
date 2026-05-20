@@ -148,7 +148,7 @@ export default function Dashboard() {
                 ))}
               </SelectContent>
             </Select>
-            <Badge variant="outline" className="text-[10px] capitalize hidden sm:flex">
+            <Badge variant="outline" className="text-xs capitalize hidden sm:flex">
               {range.label}
             </Badge>
           </div>

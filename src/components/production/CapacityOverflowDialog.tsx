@@ -146,7 +146,7 @@ export function CapacityOverflowDialog({ open, onClose, orderIds, onComplete }: 
                       <span className="text-sm font-semibold text-amber-900 dark:text-amber-200">
                         {SECTOR_LABEL[sector] || sector}
                       </span>
-                      <Badge variant="outline" className="text-[10px] bg-amber-500/10 border-amber-500/30 text-amber-700">
+                      <Badge variant="outline" className="text-xs bg-amber-500/10 border-amber-500/30 text-amber-700">
                         Semana {first.week_start}
                       </Badge>
                     </div>
@@ -168,7 +168,7 @@ export function CapacityOverflowDialog({ open, onClose, orderIds, onComplete }: 
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-mono font-semibold">{r.order_number}</span>
                               <span className="text-muted-foreground truncate">{r.sheet_name} · {r.color || '—'}</span>
-                              <Badge variant="secondary" className="text-[10px] tabular-nums">{r.quantity} pares</Badge>
+                              <Badge variant="secondary" className="text-xs tabular-nums">{r.quantity} pares</Badge>
                             </div>
                           </div>
                           <div className="shrink-0 w-56">

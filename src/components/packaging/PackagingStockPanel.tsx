@@ -306,7 +306,7 @@ export default function PackagingStockPanel() {
               <SelectItem value="fitilho">Fitilho — material linear (NF: cada par = 1 volume)</SelectItem>
             </SelectContent>
           </Select>
-          <p className="text-[10px] text-muted-foreground mt-1">{KIND_HELPER[form.tipo]}</p>
+          <p className="text-xs text-muted-foreground mt-1">{KIND_HELPER[form.tipo]}</p>
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div>
@@ -555,7 +555,7 @@ export default function PackagingStockPanel() {
                             {kind === 'fitilho' ? 'pares/amarrado' : 'pares/caixa'}
                           </span>
                           {kind === 'fitilho' && mpa ? (
-                            <div className="text-[10px] text-muted-foreground">{mpa} m/amarrado</div>
+                            <div className="text-xs text-muted-foreground">{mpa} m/amarrado</div>
                           ) : null}
                         </>
                       ) : (
@@ -572,7 +572,7 @@ export default function PackagingStockPanel() {
                       <span className={`font-semibold ${isLow ? 'text-destructive' : ''}`}>
                         {qty}
                         {isLow && (
-                          <Badge variant="destructive" className="ml-1 text-[9px] px-1">
+                          <Badge variant="destructive" className="ml-1 text-xs px-1">
                             BAIXO
                           </Badge>
                         )}

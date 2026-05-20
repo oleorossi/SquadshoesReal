@@ -333,7 +333,7 @@ export default function OrderPickingPage() {
                 >
                   <Truck className="h-3.5 w-3.5" />
                   {g.label}
-                  {dateLabel && <span className="font-mono text-[10px] opacity-80">{dateLabel}</span>}
+                  {dateLabel && <span className="font-mono text-xs opacity-80">{dateLabel}</span>}
                   <span className="opacity-60">({g.orders.length})</span>
                 </TabsTrigger>
               );
@@ -382,7 +382,7 @@ export default function OrderPickingPage() {
         >
             <Table>
               <TableHeader>
-                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <TableHead className="w-10 pl-4" />
                   <TableHead className="w-8" />
                   <TableHead>Pedido</TableHead>
@@ -432,7 +432,7 @@ export default function OrderPickingPage() {
                           {order.total_pairs}
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="text-[10px]">
+                          <Badge variant="outline" className="text-xs">
                             {order.packaging_mode || 'Padrão'}
                           </Badge>
                         </TableCell>
@@ -474,7 +474,7 @@ export default function OrderPickingPage() {
                                     {item.reference_name ?? '—'}
                                   </span>
                                   {item.color && (
-                                    <Badge variant="outline" className="text-[10px] shrink-0">
+                                    <Badge variant="outline" className="text-xs shrink-0">
                                       {item.color}
                                     </Badge>
                                   )}

@@ -196,7 +196,7 @@ export default function CreateUserDialog({ open, onOpenChange }: CreateUserDialo
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-semibold text-sm">{role.label}</span>
-                          <code className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{role.key}</code>
+                          <code className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{role.key}</code>
                         </div>
                         <p className="text-xs text-muted-foreground mt-0.5">{role.description}</p>
                       </div>
@@ -214,8 +214,8 @@ export default function CreateUserDialog({ open, onOpenChange }: CreateUserDialo
                 {(Object.keys(grouped) as MenuOption['group'][]).map(group => (
                   <div key={group} className="space-y-1">
                     <div className="flex items-center justify-between">
-                      <h4 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{group}</h4>
-                      <button type="button" onClick={() => markAllModulesInGroup(group)} className="text-[10px] text-primary hover:underline">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{group}</h4>
+                      <button type="button" onClick={() => markAllModulesInGroup(group)} className="text-xs text-primary hover:underline">
                         Marcar todos
                       </button>
                     </div>
@@ -238,10 +238,10 @@ export default function CreateUserDialog({ open, onOpenChange }: CreateUserDialo
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-1.5">
                                 <span className="text-sm font-medium">{opt.label}</span>
-                                {opt.adminOnly && <Badge variant="outline" className="text-[9px] h-4 px-1">admin</Badge>}
-                                {opt.alwaysOn && <Badge variant="outline" className="text-[9px] h-4 px-1 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">sempre</Badge>}
+                                {opt.adminOnly && <Badge variant="outline" className="text-xs h-4 px-1">admin</Badge>}
+                                {opt.alwaysOn && <Badge variant="outline" className="text-xs h-4 px-1 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">sempre</Badge>}
                               </div>
-                              <p className="text-[11px] text-muted-foreground leading-tight">{opt.description}</p>
+                              <p className="text-xs text-muted-foreground leading-tight">{opt.description}</p>
                             </div>
                           </label>
                         );
@@ -250,7 +250,7 @@ export default function CreateUserDialog({ open, onOpenChange }: CreateUserDialo
                   </div>
                 ))}
               </div>
-              <div className="text-[11px] text-muted-foreground">
+              <div className="text-xs text-muted-foreground">
                 Esses menus são gravados em <code>user_permissions</code> e sobrepõem o RBAC tradicional. Pra ajustar depois, edite direto na tabela ou em Configurações → Usuários.
               </div>
             </TabsContent>

@@ -54,7 +54,7 @@ export default function PurchasePlanning() {
         <Card className="border-dashed bg-muted/20 mt-3 mb-1">
           <CardContent className="py-2.5 px-4 flex items-start gap-2">
             <Info className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
-            <p className="text-[11px] text-muted-foreground leading-relaxed">
+            <p className="text-xs text-muted-foreground leading-relaxed">
               <strong>Plano de Compras</strong> = wizard guiado a partir dos PVs ativos ·
               <strong> Projeção de Compras</strong> = histórico estatístico (curva ABC + giro + reorder sugerido) ·
               <strong> Plano Semanal</strong> = consolidado por semana ·

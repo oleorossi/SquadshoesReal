@@ -107,7 +107,7 @@ export function BulkAssignServiceOrderDialog({ open, onOpenChange, sector, weekS
               <span className="tabular-nums">
                 {pendingOrders.length}
                 {coveredOrderIds.size > 0 && (
-                  <span className="text-[10px] text-muted-foreground ml-1">
+                  <span className="text-xs text-muted-foreground ml-1">
                     ({coveredOrderIds.size} já coberta{coveredOrderIds.size > 1 ? 's' : ''})
                   </span>
                 )}
@@ -135,7 +135,7 @@ export function BulkAssignServiceOrderDialog({ open, onOpenChange, sector, weekS
                   <SelectItem key={c.id} value={c.id}>
                     {c.name}
                     {activeOS.some((os: any) => os.contractor_id === c.id) && (
-                      <Badge variant="outline" className="h-4 text-[9px] ml-2">já usada</Badge>
+                      <Badge variant="outline" className="h-4 text-xs ml-2">já usada</Badge>
                     )}
                   </SelectItem>
                 ))}
@@ -168,7 +168,7 @@ export function BulkAssignServiceOrderDialog({ open, onOpenChange, sector, weekS
               </span>
             </div>
             {quotedDeadline && selectedContractor && (
-              <div className="flex items-center justify-between text-[11px] text-muted-foreground border-t border-border/40 pt-1 mt-1">
+              <div className="flex items-center justify-between text-xs text-muted-foreground border-t border-border/40 pt-1 mt-1">
                 <span>Pagamento ({paymentDays}d após recebimento):</span>
                 <span className="font-medium text-foreground">
                   ~ {(() => {

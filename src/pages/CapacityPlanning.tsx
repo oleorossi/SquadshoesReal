@@ -455,13 +455,13 @@ export default function CapacityPlanning() {
                       {kpi.label}
                     </span>
                   </div>
-                  <Badge variant="outline" className={cn('text-[10px]', BADGE_CLS[kpi.status])}>
+                  <Badge variant="outline" className={cn('text-xs', BADGE_CLS[kpi.status])}>
                     {kpi.occupancy}%
                   </Badge>
                 </div>
 
                 <div className="display text-2xl tabular-nums font-mono">{kpi.queuePairs}</div>
-                <p className="text-[10px] text-muted-foreground">pares na fila</p>
+                <p className="text-xs text-muted-foreground">pares na fila</p>
 
                 {/* Progress bar */}
                 <div className="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
@@ -476,16 +476,16 @@ export default function CapacityPlanning() {
                 </div>
 
                 <div className="mt-2 space-y-0.5">
-                  <div className="flex items-center justify-between text-[10px]">
+                  <div className="flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">Capacidade/dia</span>
                     <span className="font-mono font-medium">{kpi.avgCap} pares</span>
                   </div>
-                  <div className="flex items-center justify-between text-[10px]">
+                  <div className="flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">OPs ativas</span>
                     <span className="font-mono">{kpi.opsCount}</span>
                   </div>
                   {kpi.daysToComplete > 0 && (
-                    <div className="flex items-center justify-between text-[10px]">
+                    <div className="flex items-center justify-between text-xs">
                       <span className="text-muted-foreground">Dias p/ zerar fila</span>
                       <span className={cn('font-mono font-semibold', {
                         'text-red-600': kpi.daysToComplete > 5,
@@ -529,7 +529,7 @@ export default function CapacityPlanning() {
           >
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                  <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <TableHead>Setor</TableHead>
                     <TableHead className="text-right">OPs Ativas</TableHead>
                     <TableHead className="text-right">Fila (pares)</TableHead>
@@ -585,7 +585,7 @@ export default function CapacityPlanning() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className={cn('text-[10px]', BADGE_CLS[kpi.status])}>
+                          <Badge variant="outline" className={cn('text-xs', BADGE_CLS[kpi.status])}>
                             {kpi.status === 'ok' ? 'Normal' : kpi.status === 'warning' ? 'Atenção' : 'Crítico'}
                           </Badge>
                         </TableCell>
@@ -614,7 +614,7 @@ export default function CapacityPlanning() {
                   key={kpi.key}
                   title={kpi.label}
                   actions={
-                    <span className="text-[10px] text-muted-foreground">
+                    <span className="text-xs text-muted-foreground">
                       {kpi.avgCap} pares/dia (média)
                     </span>
                   }
@@ -642,7 +642,7 @@ export default function CapacityPlanning() {
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
-                    <p className="text-[10px] text-muted-foreground mt-1 text-center">
+                    <p className="text-xs text-muted-foreground mt-1 text-center">
                       — linha vermelha = capacidade/dia ({kpi.avgCap} pares)
                     </p>
                 </Panel>
@@ -787,7 +787,7 @@ export default function CapacityPlanning() {
               <div className="max-h-[520px] overflow-y-auto">
                 <Table>
                   <TableHeader>
-                    <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                    <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                       <TableHead>OP</TableHead>
                       <TableHead>Referência / Cor</TableHead>
                       <TableHead className="text-right">Qtd</TableHead>
@@ -833,7 +833,7 @@ export default function CapacityPlanning() {
                               {sc ? (
                                 <Badge
                                   variant="outline"
-                                  className="text-[10px]"
+                                  className="text-xs"
                                   style={{
                                     borderColor: `${sc.color}50`,
                                     color: sc.color,
@@ -843,7 +843,7 @@ export default function CapacityPlanning() {
                                   {o.activeStage?.stage_name || sc.label}
                                 </Badge>
                               ) : (
-                                <span className="text-[10px] text-muted-foreground">
+                                <span className="text-xs text-muted-foreground">
                                   {o.orderStages.length === 0
                                     ? 'Sem etapas'
                                     : o.activeStage?.stage_name || '—'}
@@ -851,7 +851,7 @@ export default function CapacityPlanning() {
                               )}
                             </TableCell>
                             <TableCell>
-                              <Badge variant="outline" className="text-[10px]">
+                              <Badge variant="outline" className="text-xs">
                                 {o.status}
                               </Badge>
                             </TableCell>
@@ -860,7 +860,7 @@ export default function CapacityPlanning() {
                                 <>
                                   {format(parseISO(o.planned_delivery), 'dd/MM/yy')}
                                   {isLate && (
-                                    <span className="ml-1 text-[9px] font-bold"> ATRASADA</span>
+                                    <span className="ml-1 text-xs font-bold"> ATRASADA</span>
                                   )}
                                 </>
                               ) : (

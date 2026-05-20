@@ -200,7 +200,7 @@ const SectorProgressDots = ({
           );
         })}
       </span>
-      <span className="text-[10px] font-mono text-muted-foreground tabular-nums">
+      <span className="text-xs font-mono text-muted-foreground tabular-nums">
         {completed}/{total}
       </span>
     </span>
@@ -1131,7 +1131,7 @@ function getWeekOptions() {
               >
                 {opt.label}
                 {normalizedStatusFilter === opt.value && filteredOrders.length > 0 && (
-                  <span className="ml-1 opacity-60 font-mono text-[10px]">{filteredOrders.length}</span>
+                  <span className="ml-1 opacity-60 font-mono text-xs">{filteredOrders.length}</span>
                 )}
               </button>
             ))}
@@ -1170,7 +1170,7 @@ function getWeekOptions() {
           >
             <Filter className="h-3.5 w-3.5" />
             {activeFilterCount > 0 ? (
-              <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px]">{activeFilterCount}</Badge>
+              <Badge variant="secondary" className="h-4 min-w-4 px-1 text-xs">{activeFilterCount}</Badge>
             ) : (
               <span className="hidden sm:inline">Filtros</span>
             )}
@@ -1209,7 +1209,7 @@ function getWeekOptions() {
                 <span className="hidden sm:inline">Imprimir</span>
                 <ChevronDown className="h-3.5 w-3.5 opacity-60" />
                 {selectedOrderIds.size > 0 && (
-                  <Badge variant="secondary" className="h-4 px-1 text-[10px] ml-0.5">{selectedOrderIds.size}</Badge>
+                  <Badge variant="secondary" className="h-4 px-1 text-xs ml-0.5">{selectedOrderIds.size}</Badge>
                 )}
               </Button>
             </DropdownMenuTrigger>
@@ -1805,7 +1805,7 @@ function getWeekOptions() {
                         ) : (
                           <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground">
                             <ImageIcon className="h-8 w-8 mb-1 opacity-20" />
-                            <span className="text-[10px]">Sem foto</span>
+                            <span className="text-xs">Sem foto</span>
                           </div>
                         );
                       })()}

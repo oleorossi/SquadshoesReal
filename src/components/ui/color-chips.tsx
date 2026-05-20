@@ -34,10 +34,10 @@ const DIM: Record<NonNullable<ColorChipsProps['size']>, number> = {
   xs: 12, sm: 16, md: 22, lg: 30,
 };
 const LABEL_FS: Record<NonNullable<ColorChipsProps['size']>, string> = {
-  xs: 'text-[6.5px]', sm: 'text-[7px]', md: 'text-[7.5px]', lg: 'text-[9px]',
+  xs: 'text-[6.5px]', sm: 'text-[7px]', md: 'text-[7.5px]', lg: 'text-xs',
 };
 const NAME_FS: Record<NonNullable<ColorChipsProps['size']>, string> = {
-  xs: 'text-[7px]', sm: 'text-[8px]', md: 'text-[9px]', lg: 'text-[10.5px]',
+  xs: 'text-[7px]', sm: 'text-[8px]', md: 'text-xs', lg: 'text-xs',
 };
 
 export function ColorChips({

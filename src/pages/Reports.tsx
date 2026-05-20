@@ -444,7 +444,7 @@ export default function Reports() {
                         <p className="text-sm font-semibold">{template.name}</p>
                         <p className="text-xs text-muted-foreground mt-0.5">{template.description}</p>
                         <div className="flex items-center gap-2 mt-2">
-                          <Badge variant="outline" className="text-[10px]">{template.category}</Badge>
+                          <Badge variant="outline" className="text-xs">{template.category}</Badge>
                           <ChevronRight className="h-3.5 w-3.5 text-muted-foreground ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
                         </div>
                       </div>

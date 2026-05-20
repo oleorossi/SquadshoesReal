@@ -135,7 +135,7 @@ export function SectorOverloadDialog({ open, onOpenChange, result, onKeepDateAnd
               mesmo com capacidade interna insuficiente. O pedido será marcado como override manual.
             </p>
             <div className="space-y-1.5">
-              <Label htmlFor="override-reason" className="text-[10px] uppercase font-bold text-muted-foreground">
+              <Label htmlFor="override-reason" className="text-xs uppercase font-bold text-muted-foreground">
                 Motivo (obrigatório)
               </Label>
               <Textarea

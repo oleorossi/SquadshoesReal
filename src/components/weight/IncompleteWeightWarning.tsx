@@ -34,7 +34,7 @@ export function IncompleteWeightWarning({ items, scope, compact = false }: Props
 
   if (compact) {
     return (
-      <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
+      <span className={`inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
         tone === 'emerald'
           ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-500/10'
           : 'text-amber-700 dark:text-amber-400 bg-amber-500/10'
@@ -68,7 +68,7 @@ export function IncompleteWeightWarning({ items, scope, compact = false }: Props
             : `Peso incompleto: ${items.length} ficha${items.length > 1 ? 's' : ''}${estimatedItems.length > 0 ? ` (${estimatedItems.length} estimadas)` : ' sem cadastro'}`}
           {scope ? ` ${scope}` : ''}
         </span>
-        <span className="text-[10px] text-muted-foreground ml-auto">
+        <span className="text-xs text-muted-foreground ml-auto">
           {totalPairs} par{totalPairs > 1 ? 'es' : ''} afetado{totalPairs > 1 ? 's' : ''}
         </span>
       </button>
@@ -84,13 +84,13 @@ export function IncompleteWeightWarning({ items, scope, compact = false }: Props
                 <span className="font-mono text-muted-foreground">{it.pairs} prs</span>
                 {hasEstimate ? (
                   <span
-                    className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                    className="font-mono text-xs px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
                     title={`Média de fichas com mesmo solado: ${est.toFixed(3)} kg/par`}
                   >
                     ~{est.toFixed(3)} kg/par
                   </span>
                 ) : (
-                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-400">
+                  <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-400">
                     sem estimativa
                   </span>
                 )}
@@ -113,7 +113,7 @@ export function IncompleteWeightWarning({ items, scope, compact = false }: Props
       )}
       {/* Footnote explicando a estimativa quando houver pelo menos uma */}
       {estimatedItems.length > 0 && (
-        <p className="text-[10px] text-muted-foreground mt-2 pl-6">
+        <p className="text-xs text-muted-foreground mt-2 pl-6">
           Peso estimado = média de outras fichas com o mesmo solado. Cadastre <code>weight_per_pair_kg</code> nas fichas pra peso real.
         </p>
       )}

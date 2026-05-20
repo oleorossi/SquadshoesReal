@@ -464,7 +464,7 @@ export function LabelCalibrationTab() {
                 value={cal.darkness} min={0} max={30} step={1} unit=""
                 onChange={v => update({ darkness: v })}
               />
-              <div className="flex justify-between text-[10px] text-muted-foreground -mt-3">
+              <div className="flex justify-between text-xs text-muted-foreground -mt-3">
                 <span>Claro</span><span>Médio</span><span>Escuro</span>
               </div>
 
@@ -473,7 +473,7 @@ export function LabelCalibrationTab() {
                 value={cal.printSpeed} min={1} max={5} step={1} unit=""
                 onChange={v => update({ printSpeed: v })}
               />
-              <div className="flex justify-between text-[10px] text-muted-foreground -mt-3">
+              <div className="flex justify-between text-xs text-muted-foreground -mt-3">
                 <span>Lenta (mais escura)</span><span>Rápida</span>
               </div>
             </CardContent>
@@ -530,19 +530,19 @@ export function LabelCalibrationTab() {
             <CardHeader className="py-3 bg-muted/40">
               <CardTitle className="text-xs font-bold flex items-center gap-2 uppercase tracking-wide">
                 <Eye className="h-3.5 w-3.5" /> Prévia das Etiquetas
-                <Badge variant="secondary" className="text-[10px] ml-auto normal-case font-normal">
+                <Badge variant="secondary" className="text-xs ml-auto normal-case font-normal">
                   {dim.label}
                 </Badge>
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-4">
-              <p className="text-[10px] text-muted-foreground mb-3">
+              <p className="text-xs text-muted-foreground mb-3">
                 As faixas azuis claras representam as margens configuradas. Ajuste os controles à esquerda e veja o impacto em tempo real.
               </p>
               <div className="flex flex-col gap-4 items-start overflow-x-auto pb-2">
                 {SAMPLES.map((s, i) => (
                   <div key={i} className="flex items-center gap-3">
-                    <span className="text-[10px] text-muted-foreground w-4 text-right flex-shrink-0">{i + 1}</span>
+                    <span className="text-xs text-muted-foreground w-4 text-right flex-shrink-0">{i + 1}</span>
                     <LabelMiniature
                       sample={s}
                       widthMm={dim.width}
@@ -550,14 +550,14 @@ export function LabelCalibrationTab() {
                       cal={cal}
                       scale={previewScale}
                     />
-                    <div className="text-[10px] text-muted-foreground leading-tight">
+                    <div className="text-xs text-muted-foreground leading-tight">
                       <div className="font-semibold">{s.refName}</div>
                       <div>{s.color} · Tam. {s.size}</div>
                     </div>
                   </div>
                 ))}
               </div>
-              <div className="mt-3 p-2 rounded bg-muted/30 text-[10px] text-muted-foreground">
+              <div className="mt-3 p-2 rounded bg-muted/30 text-xs text-muted-foreground">
                 Tamanho real: <strong>{dim.width} × {dim.height} mm</strong> · Prévia em escala reduzida (~{Math.round(previewScale * 100)}%)
               </div>
             </CardContent>

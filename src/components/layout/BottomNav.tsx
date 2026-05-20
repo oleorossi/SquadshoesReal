@@ -47,7 +47,7 @@ export function BottomNav() {
           <div className="px-4 pb-4 space-y-4 max-h-[70vh] overflow-y-auto">
             {menuGroups.map((group) => (
               <div key={group.label}>
-                <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
+                <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
                   <group.icon className="h-3 w-3" />
                   {group.label}
                 </div>
@@ -59,7 +59,7 @@ export function BottomNav() {
                         key={item.path}
                         onClick={() => { navigate(item.path); setMoreOpen(false); }}
                         className={cn(
-                          "flex flex-col items-center gap-1 px-2 py-2.5 rounded-xl text-[11px] font-medium transition-all",
+                          "flex flex-col items-center gap-1 px-2 py-2.5 rounded-xl text-xs font-medium transition-all",
                           active
                             ? "bg-primary/10 text-primary"
                             : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -93,7 +93,7 @@ export function BottomNav() {
                   active ? "w-8 opacity-100" : "w-0 opacity-0"
                 )} />
                 <item.icon className={cn("h-5 w-5 transition-all duration-200", active ? "text-primary scale-110" : "text-muted-foreground")} />
-                <span className={cn("text-[10px] font-medium transition-colors leading-none", active ? "text-primary font-semibold" : "text-muted-foreground")}>
+                <span className={cn("text-xs font-medium transition-colors leading-none", active ? "text-primary font-semibold" : "text-muted-foreground")}>
                   {item.label}
                 </span>
               </NavLink>
@@ -110,7 +110,7 @@ export function BottomNav() {
               moreOpen ? "w-8 opacity-100" : "w-0 opacity-0"
             )} />
             <MoreHorizontal className={cn("h-5 w-5 transition-all duration-200", moreOpen ? "text-primary scale-110" : "text-muted-foreground")} />
-            <span className={cn("text-[10px] font-medium transition-colors leading-none", moreOpen ? "text-primary font-semibold" : "text-muted-foreground")}>
+            <span className={cn("text-xs font-medium transition-colors leading-none", moreOpen ? "text-primary font-semibold" : "text-muted-foreground")}>
               Mais
             </span>
           </button>

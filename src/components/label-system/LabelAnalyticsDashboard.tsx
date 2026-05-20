@@ -216,7 +216,7 @@ export function LabelAnalyticsDashboard() {
                 <div className="flex items-center gap-2 min-w-[180px]">
                   <Printer className="h-4 w-4 text-muted-foreground" />
                   <span className="font-medium text-sm">{p.name}</span>
-                  <Badge variant={p.status === 'online' ? 'default' : 'secondary'} className="text-[10px]">
+                  <Badge variant={p.status === 'online' ? 'default' : 'secondary'} className="text-xs">
                     {p.status === 'online' ? '● Online' : '○ Offline'}
                   </Badge>
                 </div>

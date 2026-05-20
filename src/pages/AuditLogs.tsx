@@ -178,7 +178,7 @@ export default function AuditLogs() {
         <Panel flush>
           <Table>
             <TableHeader>
-              <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+              <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                 <TableHead className="w-[180px]">Timestamp</TableHead>
                 <TableHead className="w-[120px]">Recurso</TableHead>
                 <TableHead className="w-[120px]">Ação</TableHead>
@@ -214,7 +214,7 @@ export default function AuditLogs() {
                     <TableCell>
                       <Badge
                         variant="outline"
-                        className="text-[11px] tracking-wide"
+                        className="text-xs tracking-wide"
                         title={log.resource}
                       >
                         {humanizeResource(log.resource)}
@@ -246,7 +246,7 @@ export default function AuditLogs() {
                       <div className="flex items-center gap-2 overflow-hidden">
                         {log.old_data && (
                           <div
-                            className="text-[11px] bg-muted px-1.5 py-0.5 rounded truncate max-w-[180px]"
+                            className="text-xs bg-muted px-1.5 py-0.5 rounded truncate max-w-[180px]"
                             title={JSON.stringify(log.old_data, null, 2)}
                           >
                             Antes: {summarizeJson(log.old_data, 50)}
@@ -255,14 +255,14 @@ export default function AuditLogs() {
                         {log.old_data && log.new_data && <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" aria-hidden="true" />}
                         {log.new_data && (
                           <div
-                            className="text-[11px] bg-emerald-500/10 text-emerald-700 px-1.5 py-0.5 rounded truncate max-w-[220px]"
+                            className="text-xs bg-emerald-500/10 text-emerald-700 px-1.5 py-0.5 rounded truncate max-w-[220px]"
                             title={JSON.stringify(log.new_data, null, 2)}
                           >
                             Depois: {summarizeJson(log.new_data, 60)}
                           </div>
                         )}
                         {log.error_message && (
-                          <div className="text-[11px] bg-destructive/10 text-destructive px-1.5 py-0.5 rounded">
+                          <div className="text-xs bg-destructive/10 text-destructive px-1.5 py-0.5 rounded">
                             Erro: {log.error_message}
                           </div>
                         )}

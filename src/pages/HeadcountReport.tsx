@@ -166,7 +166,7 @@ export default function HeadcountReport() {
         <Panel title="Detalhamento mês a mês" flush>
           <Table>
             <TableHeader>
-              <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground"><TableHead>Mês</TableHead><TableHead className="text-right">Ativos</TableHead><TableHead className="text-right">Admitidos</TableHead><TableHead className="text-right">Dispensados</TableHead><TableHead className="text-right">Saldo</TableHead></TableRow>
+              <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground"><TableHead>Mês</TableHead><TableHead className="text-right">Ativos</TableHead><TableHead className="text-right">Admitidos</TableHead><TableHead className="text-right">Dispensados</TableHead><TableHead className="text-right">Saldo</TableHead></TableRow>
             </TableHeader>
             <TableBody>
                 {series.map(p => (
@@ -187,7 +187,7 @@ export default function HeadcountReport() {
         <Panel title="Headcount por setor (atual)" flush>
           <Table>
             <TableHeader>
-              <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground"><TableHead>Setor</TableHead><TableHead className="text-right">Funcionários</TableHead><TableHead className="text-right">% do total</TableHead></TableRow>
+              <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground"><TableHead>Setor</TableHead><TableHead className="text-right">Funcionários</TableHead><TableHead className="text-right">% do total</TableHead></TableRow>
             </TableHeader>
             <TableBody>
               {byDepartment.map(d => {

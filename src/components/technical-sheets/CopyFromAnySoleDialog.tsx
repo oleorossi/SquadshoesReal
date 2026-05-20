@@ -150,7 +150,7 @@ export function CopyFromAnySoleDialog({
             <div className="text-center py-12 text-muted-foreground flex flex-col items-center gap-2">
               <Footprints className="h-8 w-8 opacity-30" />
               <p className="text-sm">Nenhum solado com specs disponíveis.</p>
-              <p className="text-[11px]">
+              <p className="text-xs">
                 Cadastre specs em algum solado primeiro pra usá-lo como base.
               </p>
             </div>
@@ -172,15 +172,15 @@ export function CopyFromAnySoleDialog({
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-sm">{sole.name}</span>
                       {sole.color && (
-                        <Badge variant="outline" className="text-[9px] h-4">{sole.color}</Badge>
+                        <Badge variant="outline" className="text-xs h-4">{sole.color}</Badge>
                       )}
                       {sole.is_fachetado && (
-                        <Badge variant="outline" className="bg-blue-500/10 text-blue-700 border-blue-500/40 text-[9px] h-4">
+                        <Badge variant="outline" className="bg-blue-500/10 text-blue-700 border-blue-500/40 text-xs h-4">
                           fachetado
                         </Badge>
                       )}
                     </div>
-                    <div className="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground">
+                    <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
                       <span className="inline-flex items-center gap-1">
                         <Footprints className="h-3 w-3" />
                         {sole.sizes_count} tamanho(s) — {sole.sizes_list}

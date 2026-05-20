@@ -119,7 +119,7 @@ export function TechnicalReferencePanel({ sheetId, sheetName }: Props) {
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="font-medium text-sm">{ref.name}</span>
-                      <Badge variant="outline" className="text-[10px] font-mono">{ref.reference_code}</Badge>
+                      <Badge variant="outline" className="text-xs font-mono">{ref.reference_code}</Badge>
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
                       <StatusBadge status={ref.status} />
@@ -184,7 +184,7 @@ function ValidationBadge({ ref_ }: { ref_: TechnicalReferenceRow }) {
 
 function StatusBadge({ status }: { status: string }) {
   const s = STATUSES.find((st) => st.value === status) || STATUSES[0];
-  return <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${s.color}`}>{s.label}</span>;
+  return <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${s.color}`}>{s.label}</span>;
 }
 
 function TechnicalReferenceDetail({ ref_ }: { ref_: TechnicalReferenceRow }) {
@@ -481,15 +481,15 @@ function MaterialsSection({ refId, products }: { refId: string; products: any[] 
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/40">
-                <TableHead className="text-[10px] w-10">#</TableHead>
-                <TableHead className="text-[10px]">Material</TableHead>
-                <TableHead className="text-[10px] w-20">Qtd</TableHead>
-                <TableHead className="text-[10px] w-16">Unid.</TableHead>
-                <TableHead className="text-[10px] w-16">Perda %</TableHead>
-                <TableHead className="text-[10px] w-28">Dim. Corte (mm)</TableHead>
-                <TableHead className="text-[10px] w-14">Crítico</TableHead>
-                <TableHead className="text-[10px] w-24">Estoque</TableHead>
-                <TableHead className="text-[10px] w-10" />
+                <TableHead className="text-xs w-10">#</TableHead>
+                <TableHead className="text-xs">Material</TableHead>
+                <TableHead className="text-xs w-20">Qtd</TableHead>
+                <TableHead className="text-xs w-16">Unid.</TableHead>
+                <TableHead className="text-xs w-16">Perda %</TableHead>
+                <TableHead className="text-xs w-28">Dim. Corte (mm)</TableHead>
+                <TableHead className="text-xs w-14">Crítico</TableHead>
+                <TableHead className="text-xs w-24">Estoque</TableHead>
+                <TableHead className="text-xs w-10" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -565,7 +565,7 @@ function MaterialsSection({ refId, products }: { refId: string; products: any[] 
                     <Plus className="h-3 w-3 text-primary shrink-0" />
                     <div className="flex-1 min-w-0">
                       <div className="font-medium truncate">{p.name}</div>
-                      <div className="text-muted-foreground text-[10px] flex gap-2">
+                      <div className="text-muted-foreground text-xs flex gap-2">
                         <span className="font-mono">{p.sku}</span>
                         <span>{p.category}</span>
                         <span>
@@ -578,7 +578,7 @@ function MaterialsSection({ refId, products }: { refId: string; products: any[] 
               </div>
             )}
             {catalogProducts.length > 30 && (
-              <p className="text-[10px] text-muted-foreground text-center">
+              <p className="text-xs text-muted-foreground text-center">
                 Mostrando 30 de {catalogProducts.length} — refine a busca
               </p>
             )}
@@ -621,10 +621,10 @@ function MaterialRow({
         <div>
           <span className="font-medium">{product?.name || 'Produto não encontrado'}</span>
           {product?.sku && (
-            <span className="text-muted-foreground ml-1 font-mono text-[10px]">{product.sku}</span>
+            <span className="text-muted-foreground ml-1 font-mono text-xs">{product.sku}</span>
           )}
           {product?.category && (
-            <Badge variant="outline" className="ml-1 text-[9px] h-4">{product.category}</Badge>
+            <Badge variant="outline" className="ml-1 text-xs h-4">{product.category}</Badge>
           )}
         </div>
       </TableCell>
@@ -657,15 +657,15 @@ function MaterialRow({
             value={mat.cut_length ?? ''}
             onChange={(e) => onUpdate({ cut_length: e.target.value ? Number(e.target.value) : null })}
             placeholder="C"
-            className="h-7 text-[10px] w-9 px-1 text-center"
+            className="h-7 text-xs w-9 px-1 text-center"
             title="Comprimento de corte (mm)"
           />
-          <span className="text-muted-foreground self-center text-[10px]">×</span>
+          <span className="text-muted-foreground self-center text-xs">×</span>
           <Input
             value={mat.cut_width ?? ''}
             onChange={(e) => onUpdate({ cut_width: e.target.value ? Number(e.target.value) : null })}
             placeholder="L"
-            className="h-7 text-[10px] w-9 px-1 text-center"
+            className="h-7 text-xs w-9 px-1 text-center"
             title="Largura de corte (mm)"
           />
         </div>
@@ -680,7 +680,7 @@ function MaterialRow({
         <div className="flex items-center gap-1">
           <Badge
             variant={isShort ? 'destructive' : 'default'}
-            className="text-[10px] font-mono"
+            className="text-xs font-mono"
           >
             {safeToFixed(available, 1)}
           </Badge>
@@ -689,7 +689,7 @@ function MaterialRow({
           )}
         </div>
         {isShort && (
-          <span className="text-[9px] text-destructive">
+          <span className="text-xs text-destructive">
             Falta {safeToFixed(totalNeeded - available, 1)}
           </span>
         )}

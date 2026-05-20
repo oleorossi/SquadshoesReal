@@ -567,8 +567,8 @@ export default function Acabamento() {
                             const info = getDeliveryInfo(order);
                             return info.deadline ? (
                               <span className="flex items-center gap-1.5">
-                                {info.isAdiantado && <Badge className="bg-amber-500 text-white text-[9px] px-1.5">ADIANTADO</Badge>}
-                                <span className="text-[10px] text-muted-foreground font-normal">Fat: {info.deadlineFormatted}</span>
+                                {info.isAdiantado && <Badge className="bg-amber-500 text-white text-xs px-1.5">ADIANTADO</Badge>}
+                                <span className="text-xs text-muted-foreground font-normal">Fat: {info.deadlineFormatted}</span>
                               </span>
                             ) : null;
                           })()}
@@ -576,7 +576,7 @@ export default function Acabamento() {
                         {(() => {
                           const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
                           return so ? (
-                            <p className="text-[10px] text-muted-foreground ml-5 mt-0.5">
+                            <p className="text-xs text-muted-foreground ml-5 mt-0.5">
                               📦 <span className="font-semibold">{so.order_number}</span>
                               {so.client_order_number ? <> | Ped. Cliente: <span className="font-semibold">{so.client_order_number}</span></> : null}
                               {so.client_name ? <> | {(so as any).client_number ? <span className="font-bold text-primary">{(so as any).client_number}</span> : null}{(so as any).client_number ? ' — ' : ''}{so.client_name}</> : null}
@@ -592,7 +592,7 @@ export default function Acabamento() {
                           <span className="text-primary">{totalFichas} fichas</span>
                         </p>
                         {(() => { const sl = getStrapsLabel(order); return sl ? (
-                          <p className="text-[10px] ml-5 mt-0.5">
+                          <p className="text-xs ml-5 mt-0.5">
                             🎨 Tiras: <span className="font-bold text-red-600">{sl}</span>
                           </p>
                         ) : null; })()}
@@ -620,7 +620,7 @@ export default function Acabamento() {
                           ) : null; })()}
                           <p className="text-xs">Quantidade: <strong>{totalPairs} pares</strong></p>
                           <p className="text-xs">Fichas: <strong>{totalFichas}</strong> (12 pares/ficha)</p>
-                          <p className="text-xs">Status: <Badge variant="secondary" className="text-[10px]">{order.status}</Badge></p>
+                          <p className="text-xs">Status: <Badge variant="secondary" className="text-xs">{order.status}</Badge></p>
                         </div>
                       </div>
 
@@ -631,7 +631,7 @@ export default function Acabamento() {
                           <div className="overflow-x-auto">
                             <Table>
                               <TableHeader>
-                                <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                                <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                                   <TableHead></TableHead>
                                   {activeSizes.map(s => (
                                     <TableHead key={s} className="text-center w-14">{s}</TableHead>

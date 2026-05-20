@@ -58,7 +58,7 @@ export function ProductionPipeline({ currentStep }: { orderId?: string, currentS
               >
                 <step.icon className="w-4 h-4" />
               </div>
-              <span className={`mt-1 text-[10px] font-medium text-center leading-tight ${isCurrent ? 'text-foreground' : 'text-muted-foreground'}`}>
+              <span className={`mt-1 text-xs font-medium text-center leading-tight ${isCurrent ? 'text-foreground' : 'text-muted-foreground'}`}>
                 {step.label}
               </span>
             </div>

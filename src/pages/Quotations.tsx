@@ -98,7 +98,7 @@ function QuotationsList({ onOpen, onCreate }: { onOpen: (id: string) => void; on
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono font-bold text-xs">{r.quotation_number}</span>
-                    <Badge variant="outline" className={`text-[10px] capitalize ${STATUS_COLOR[r.status]}`}>
+                    <Badge variant="outline" className={`text-xs capitalize ${STATUS_COLOR[r.status]}`}>
                       {r.status}
                     </Badge>
                     <span className="text-xs text-muted-foreground">
@@ -237,7 +237,7 @@ function QuotationDetail({ id, onBack }: { id: string; onBack: () => void }) {
           <div>
             <h1 className="text-xl font-bold flex items-center gap-2">
               <FileSpreadsheet className="h-5 w-5 text-primary" /> {q.quotation_number}
-              <Badge variant="outline" className={`text-[10px] capitalize ${STATUS_COLOR[q.status]}`}>{q.status}</Badge>
+              <Badge variant="outline" className={`text-xs capitalize ${STATUS_COLOR[q.status]}`}>{q.status}</Badge>
             </h1>
             <p className="text-xs text-muted-foreground">
               Solicitada em {format(new Date(q.created_at), 'dd/MM/yyyy HH:mm')}
@@ -272,7 +272,7 @@ function QuotationDetail({ id, onBack }: { id: string; onBack: () => void }) {
               ) : (
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                    <tr className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                       <th className="text-left p-2">Produto</th>
                       <th className="text-right p-2">Qtd</th>
                       {responses.map((r: any) => (
@@ -293,7 +293,7 @@ function QuotationDetail({ id, onBack }: { id: string; onBack: () => void }) {
                             <td key={r.id} className="p-2 text-right font-mono">
                               R$ {Number(p.unit_price).toFixed(2)} / un
                               <br/>
-                              <span className="text-[10px] text-muted-foreground">total R$ {line.toFixed(2)}</span>
+                              <span className="text-xs text-muted-foreground">total R$ {line.toFixed(2)}</span>
                             </td>
                           );
                         })}

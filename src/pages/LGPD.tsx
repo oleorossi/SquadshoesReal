@@ -87,11 +87,11 @@ export default function LGPD() {
             displayLabel={(r: any) => `• ${r.request_number || '—'} (${r.subject_name || 'sem nome'})`}
             columns={[
               { key: 'request_number', label: 'Nº', render: r => <span className="font-mono font-bold text-xs">{r.request_number}</span> },
-              { key: 'request_type', label: 'Tipo', render: r => <Badge variant="outline" className="capitalize text-[10px]">{r.request_type}</Badge> },
+              { key: 'request_type', label: 'Tipo', render: r => <Badge variant="outline" className="capitalize text-xs">{r.request_type}</Badge> },
               { key: 'subject_type', label: 'Titular', render: r => <span className="text-xs capitalize">{r.subject_type}</span> },
               { key: 'subject_name', label: 'Nome' },
               { key: 'opened_at', label: 'Aberta', render: r => <span className="text-xs">{format(new Date(r.opened_at), 'dd/MM/yy')}</span> },
-              { key: 'status', label: 'Status', render: r => <Badge variant="outline" className={`${REQ_STATUS[r.status]} text-[10px] capitalize`}>{r.status.replace('_',' ')}</Badge> },
+              { key: 'status', label: 'Status', render: r => <Badge variant="outline" className={`${REQ_STATUS[r.status]} text-xs capitalize`}>{r.status.replace('_',' ')}</Badge> },
             ]}
           />
         </TabsContent>
@@ -102,7 +102,7 @@ export default function LGPD() {
             orderBy="granted_at"
             emptyText="Nenhum consentimento registrado"
             columns={[
-              { key: 'consent_type', label: 'Tipo', render: r => <Badge variant="outline" className="capitalize text-[10px]">{r.consent_type}</Badge> },
+              { key: 'consent_type', label: 'Tipo', render: r => <Badge variant="outline" className="capitalize text-xs">{r.consent_type}</Badge> },
               { key: 'consent_purpose', label: 'Finalidade' },
               { key: 'granted', label: 'Status', render: r => <Badge variant={r.granted ? 'default' : 'destructive'}>{r.granted ? 'Ativo' : 'Revogado'}</Badge> },
               { key: 'granted_at', label: 'Concedido em', render: r => <span className="text-xs">{format(new Date(r.granted_at), 'dd/MM/yy')}</span> },

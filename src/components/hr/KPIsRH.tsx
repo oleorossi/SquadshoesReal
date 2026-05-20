@@ -105,7 +105,7 @@ export function KPIsRH() {
               <p className={cn('display text-2xl tabular-nums', absSemaphore.text)}>
                 {data.absenteismoPct.toFixed(1)}%
               </p>
-              <p className="text-[10px] text-muted-foreground">Bench: &lt;3% saudável</p>
+              <p className="text-xs text-muted-foreground">Bench: &lt;3% saudável</p>
             </div>
           </div>
         </CardContent>
@@ -122,7 +122,7 @@ export function KPIsRH() {
               <p className={cn('display text-2xl tabular-nums', heSemaphore.text)}>
                 {data.hePct.toFixed(1)}%
               </p>
-              <p className="text-[10px] text-muted-foreground">Bench: &lt;5% normal</p>
+              <p className="text-xs text-muted-foreground">Bench: &lt;5% normal</p>
             </div>
           </div>
         </CardContent>
@@ -137,7 +137,7 @@ export function KPIsRH() {
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">Custo HE (mês)</p>
               <p className="text-lg font-bold font-mono leading-tight">{fmt(data.heCusto)}</p>
-              <p className="text-[10px] text-muted-foreground">50% + 100% + noturno</p>
+              <p className="text-xs text-muted-foreground">50% + 100% + noturno</p>
             </div>
           </div>
         </CardContent>
@@ -152,7 +152,7 @@ export function KPIsRH() {
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">Funcs c/ HE</p>
               <p className="display text-2xl tabular-nums">{data.funcsComHE}/{data.funcsAtivos}</p>
-              <p className="text-[10px] text-muted-foreground">{pctFuncsComHE.toFixed(0)}% do efetivo</p>
+              <p className="text-xs text-muted-foreground">{pctFuncsComHE.toFixed(0)}% do efetivo</p>
             </div>
           </div>
         </CardContent>

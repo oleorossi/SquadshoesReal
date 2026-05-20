@@ -125,7 +125,7 @@ export function NfeDevolucaoDialog({ open, onOpenChange, nfeId, nfeNumero, saleO
               <p className="font-semibold mb-2">Devoluções anteriores nessa NF:</p>
               <div className="space-y-1">
                 {devolucoesPrevias.map((d: any) => (
-                  <div key={d.id} className="flex items-center justify-between text-[11px]">
+                  <div key={d.id} className="flex items-center justify-between text-xs">
                     <span className="font-mono">#{d.numero || '—'} · {d.status}</span>
                     <span className="font-mono">{formatCurrency(Number(d.valor_total || 0))}</span>
                   </div>
@@ -163,7 +163,7 @@ export function NfeDevolucaoDialog({ open, onOpenChange, nfeId, nfeNumero, saleO
                         <tr key={it.id} className={`border-t ${blocked ? 'opacity-50' : ''}`}>
                           <td className="px-3 py-2">
                             <div className="font-semibold">{(it as any).technical_sheets?.code || '—'}</div>
-                            <div className="text-muted-foreground text-[10px]">{it.color || '—'}</div>
+                            <div className="text-muted-foreground text-xs">{it.color || '—'}</div>
                           </td>
                           <td className="px-3 py-2 text-right font-mono">{it.qtyOriginal}</td>
                           <td className="px-3 py-2 text-right font-mono text-amber-600">{it.qtyJaDevolvida}</td>
@@ -204,7 +204,7 @@ export function NfeDevolucaoDialog({ open, onOpenChange, nfeId, nfeNumero, saleO
 
           <div>
             <Label htmlFor="motivo-dev" className="text-xs font-bold uppercase text-muted-foreground mb-1 block">
-              Motivo <span className="text-destructive">*</span> <span className="font-normal normal-case text-[10px]">(mínimo 15 caracteres)</span>
+              Motivo <span className="text-destructive">*</span> <span className="font-normal normal-case text-xs">(mínimo 15 caracteres)</span>
             </Label>
             <Textarea
               id="motivo-dev"
@@ -214,9 +214,9 @@ export function NfeDevolucaoDialog({ open, onOpenChange, nfeId, nfeNumero, saleO
               rows={3}
               className={!validacaoMotivo && motivo.length > 0 ? 'border-destructive' : ''}
             />
-            <div className="text-[10px] text-muted-foreground mt-1">
+            <div className="text-xs text-muted-foreground mt-1">
               {motivo.trim().length}/15 caracteres mínimos
-              {validacaoMotivo && <Badge variant="outline" className="ml-2 h-4 text-[9px] bg-emerald-500/15 text-emerald-700 border-emerald-500/30">OK</Badge>}
+              {validacaoMotivo && <Badge variant="outline" className="ml-2 h-4 text-xs bg-emerald-500/15 text-emerald-700 border-emerald-500/30">OK</Badge>}
             </div>
           </div>
         </div>

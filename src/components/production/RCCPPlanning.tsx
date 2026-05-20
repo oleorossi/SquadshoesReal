@@ -236,7 +236,7 @@ export default function RCCPPlanning() {
               key={s.key}
               size="sm"
               variant={visibleSectors.has(s.key) ? "default" : "outline"}
-              className="h-6 text-[11px] px-2"
+              className="h-6 text-xs px-2"
               onClick={() => toggleSector(s.key)}
             >
               {s.label}
@@ -245,7 +245,7 @@ export default function RCCPPlanning() {
           <Button
             size="sm"
             variant="ghost"
-            className="h-6 text-[11px] px-2"
+            className="h-6 text-xs px-2"
             onClick={() => setVisibleSectors(new Set(SECTORS.map(s => s.key)))}
           >
             Todos
@@ -320,7 +320,7 @@ export default function RCCPPlanning() {
                     <Tooltip key={m.label}>
                       <TooltipTrigger asChild>
                         <div className="text-center space-y-1 cursor-default">
-                          <p className="text-[10px] font-medium uppercase">{m.label}</p>
+                          <p className="text-xs font-medium uppercase">{m.label}</p>
                           <div className="h-20 bg-muted/30 rounded relative overflow-hidden">
                             <div
                               className={`absolute bottom-0 w-full rounded transition-all ${
@@ -337,10 +337,10 @@ export default function RCCPPlanning() {
                               </div>
                             )}
                           </div>
-                          <p className="text-[10px] font-mono">{m.totalDemand}</p>
+                          <p className="text-xs font-mono">{m.totalDemand}</p>
                           <Badge
                             variant="outline"
-                            className={`text-[9px] px-1 ${
+                            className={`text-xs px-1 ${
                               isOver ? "border-red-500 text-red-600" : isHigh ? "border-amber-500 text-amber-600" : "border-green-500 text-green-600"
                             }`}
                           >

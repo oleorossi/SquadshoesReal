@@ -95,7 +95,7 @@ function ManifestsList({ onOpen, onCreate }: { onOpen: (id: string) => void; onC
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono font-bold text-xs">{r.manifest_number}</span>
-                    <Badge variant="outline" className={`text-[10px] capitalize ${STATUS_COLOR[r.status]}`}>
+                    <Badge variant="outline" className={`text-xs capitalize ${STATUS_COLOR[r.status]}`}>
                       {r.status.replace('_', ' ')}
                     </Badge>
                     <span className="text-xs text-muted-foreground">
@@ -104,7 +104,7 @@ function ManifestsList({ onOpen, onCreate }: { onOpen: (id: string) => void; onC
                       {(r.transporters?.name || r.transporter_name) && ` · ${r.transporters?.name || r.transporter_name}`}
                     </span>
                   </div>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                  <p className="text-xs text-muted-foreground mt-0.5">
                     {r.total_volumes} volumes · {r.total_pairs} pares · {Number(r.total_weight_kg || 0).toFixed(1)} kg · {r.destinations_count} destino(s)
                     {r.driver_name && ` · 👤 ${r.driver_name}`}
                   </p>
@@ -211,7 +211,7 @@ function ManifestDetail({ id, onBack }: { id: string; onBack: () => void }) {
           <div>
             <h1 className="text-xl font-bold flex items-center gap-2">
               <FileCheck2 className="h-5 w-5 text-primary" /> {manifest.manifest_number}
-              <Badge variant="outline" className={`text-[10px] capitalize ${STATUS_COLOR[manifest.status]}`}>
+              <Badge variant="outline" className={`text-xs capitalize ${STATUS_COLOR[manifest.status]}`}>
                 {manifest.status.replace('_', ' ')}
               </Badge>
             </h1>
@@ -302,7 +302,7 @@ function VolumesTab({
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                <tr className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <th className="text-left p-2">#</th>
                   <th className="text-left p-2">Pedido</th>
                   <th className="text-left p-2">Destino</th>
@@ -321,7 +321,7 @@ function VolumesTab({
                       {v.sale_orders?.order_number ? (
                         <>
                           <span className="font-medium">{v.sale_orders.order_number}</span>
-                          <p className="text-[10px] text-muted-foreground">{v.sale_orders.client_name}</p>
+                          <p className="text-xs text-muted-foreground">{v.sale_orders.client_name}</p>
                         </>
                       ) : '—'}
                     </td>
@@ -331,10 +331,10 @@ function VolumesTab({
                         {v.destination_city ?? '—'}/{v.destination_uf ?? '—'}
                       </span>
                     </td>
-                    <td className="p-2"><Badge variant="outline" className="text-[10px] capitalize">{v.volume_type?.replace('_', ' ')}</Badge></td>
+                    <td className="p-2"><Badge variant="outline" className="text-xs capitalize">{v.volume_type?.replace('_', ' ')}</Badge></td>
                     <td className="p-2 text-right font-mono">{v.total_pairs}</td>
                     <td className="p-2 text-right font-mono">{Number(v.weight_kg).toFixed(1)} kg</td>
-                    <td className="p-2 font-mono text-[10px]">{v.ean || '—'}</td>
+                    <td className="p-2 font-mono text-xs">{v.ean || '—'}</td>
                     <td className="p-2 text-right">
                       {editable && (
                         <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive" onClick={() => onDelete(v.id)}>
@@ -505,11 +505,11 @@ function AddVolumeDialog({
               <Input value={ean} onChange={e => setEan(e.target.value)} className="font-mono" />
             </div>
             <div>
-              <Label>Pares{autoFilled && <span className="ml-1 text-[9px] text-primary uppercase font-bold">auto</span>}</Label>
+              <Label>Pares{autoFilled && <span className="ml-1 text-xs text-primary uppercase font-bold">auto</span>}</Label>
               <Input type="number" min={0} value={totalPairs} onChange={e => { setTotalPairs(+e.target.value); setAutoFilled(false); }} />
             </div>
             <div>
-              <Label>Peso (kg){autoFilled && <span className="ml-1 text-[9px] text-primary uppercase font-bold">auto</span>}</Label>
+              <Label>Peso (kg){autoFilled && <span className="ml-1 text-xs text-primary uppercase font-bold">auto</span>}</Label>
               <Input type="number" step="0.001" min={0} value={weight} onChange={e => { setWeight(+e.target.value); setAutoFilled(false); }} />
             </div>
             <div>

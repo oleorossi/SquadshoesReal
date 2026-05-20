@@ -700,7 +700,7 @@ export function RouteOptimizerPanel() {
                                 </p>
                                 <p className="text-xs text-muted-foreground/70 truncate">{client.street || client.address || 'Endereço pendente'}</p>
                                 {!client.routeReady && (
-                                  <p className="text-[10px] text-destructive truncate flex items-center gap-1 mt-0.5">
+                                  <p className="text-xs text-destructive truncate flex items-center gap-1 mt-0.5">
                                     <AlertTriangle className="h-3 w-3 shrink-0" />
                                     Falta: {client.routeIssues.join(', ')}
                                   </p>

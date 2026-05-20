@@ -56,14 +56,14 @@ export function NavigationAuditWatcher() {
             <div className="flex gap-2">
               <Link
                 to="/navigation-audit"
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-destructive/20 text-destructive hover:bg-destructive/30 transition-colors text-[10px] font-semibold uppercase tracking-wider"
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-destructive/20 text-destructive hover:bg-destructive/30 transition-colors text-xs font-semibold uppercase tracking-wider"
               >
                 <ListFilter className="h-3 w-3" />
                 Ver Detalhes
               </Link>
               <Link
                 to="/settings"
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors text-[10px] font-semibold uppercase tracking-wider"
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors text-xs font-semibold uppercase tracking-wider"
               >
                 <SettingsIcon className="h-3 w-3" />
                 Abrir Permissões

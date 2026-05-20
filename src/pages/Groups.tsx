@@ -125,7 +125,7 @@ export default function Groups() {
         >
           <Table>
             <TableHeader>
-              <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+              <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                 <TableHead className="w-8">
                   <Checkbox
                     checked={groups.length > 0 && groups.every(g => sel.isSelected(g.id))}
@@ -215,7 +215,7 @@ export default function Groups() {
             </div>
             <div className="rounded-lg border p-3 bg-muted/30 space-y-2">
               <Label className="text-sm font-medium">Pares por embalagem (opcional)</Label>
-              <p className="text-[10px] text-muted-foreground -mt-1">
+              <p className="text-xs text-muted-foreground -mt-1">
                 Use somente os tipos de caixa aplicáveis a este grupo. Pode ajustar depois na edição.
               </p>
               <div className="grid grid-cols-2 gap-2">

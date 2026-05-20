@@ -1165,7 +1165,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                 if (sg && sg.package_weight_kg > 0 && sg.package_price > 0) {
                   const calcPrice = sg.package_price / sg.package_weight_kg;
                   return (
-                    <p className="text-[10px] text-muted-foreground mt-1">
+                    <p className="text-xs text-muted-foreground mt-1">
                       Grupo: {sg.package_weight_kg}kg por{' '}
                       {calcPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 4 })}/kg
                     </p>
@@ -1229,7 +1229,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-[10px] text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   Selecione um grupo diferente para mover este item
                 </p>
               </div>
@@ -1394,7 +1394,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
               <div className="col-span-2">
                 <Label className="text-xs font-semibold">Grade de Numeração (pares por tamanho)</Label>
                 {soleConjugations.length > 0 && (
-                  <p className="text-[10px] text-primary mt-1 mb-1">Numerações conjugadas ativas — grade usa chaves conjugadas</p>
+                  <p className="text-xs text-primary mt-1 mb-1">Numerações conjugadas ativas — grade usa chaves conjugadas</p>
                 )}
                 <div className={`grid gap-2 mt-2`} style={{ gridTemplateColumns: `repeat(${gradeSizes.length}, minmax(0, 1fr))` }}>
                   {gradeSizes.map(size => (
@@ -1494,9 +1494,9 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                 <Label className="text-sm font-semibold">Unidades de Medida</Label>
                 {/* Quick-fill: aplica template do CONVERSION_TEMPLATES */}
                 <div className="flex items-center gap-1.5">
-                  <Label className="text-[10px] text-muted-foreground">Atalho:</Label>
+                  <Label className="text-xs text-muted-foreground">Atalho:</Label>
                   <Select value="" onValueChange={v => v && applyConversionTemplate(v)}>
-                    <SelectTrigger className="h-7 text-[11px] w-56">
+                    <SelectTrigger className="h-7 text-xs w-56">
                       <SelectValue placeholder="Aplicar template..." />
                     </SelectTrigger>
                     <SelectContent>
@@ -1519,7 +1519,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                       {UNITS.map(u => <SelectItem key={u} value={u}>{UNIT_LABELS[u] ?? u}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Mesma unidade usada no estoque e nas fichas técnicas</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Mesma unidade usada no estoque e nas fichas técnicas</p>
                 </div>
                 <div>
                   <Label className="text-xs text-muted-foreground">Unidade de Compra (NF / OC)</Label>
@@ -1529,7 +1529,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                       {UNITS.map(u => <SelectItem key={u} value={u}>{UNIT_LABELS[u] ?? u}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Como o material chega/é faturado</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Como o material chega/é faturado</p>
                 </div>
               </div>
 
@@ -1546,7 +1546,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                         className="mt-1 h-9"
                         placeholder="Ex: 144"
                       />
-                      <p className="text-[10px] text-primary/80 mt-0.5 font-medium">
+                      <p className="text-xs text-primary/80 mt-0.5 font-medium">
                         {describeConversion({
                           unit: form.unit,
                           purchase_unit: form.purchase_unit,
@@ -1565,7 +1565,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                         className="mt-1 h-9"
                         placeholder="Ex: 50"
                       />
-                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                      <p className="text-xs text-muted-foreground mt-0.5">
                         Em {form.purchase_unit || form.unit}
                       </p>
                     </div>
@@ -1576,13 +1576,13 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                       <Label className="text-xs font-semibold flex items-center gap-1.5">
                         <ArrowRightLeft className="h-3 w-3" /> Largura do material (linear → área)
                       </Label>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                      <p className="text-xs text-muted-foreground mt-0.5">
                         Pra converter metro linear em dm², informe a largura do rolo. Sistema calcula:
                         <span className="font-mono ml-1">1 m × largura(dm) = dm²</span>.
                       </p>
                       <div className="grid grid-cols-2 gap-2 mt-2">
                         <div>
-                          <Label className="text-[10px] text-muted-foreground">Largura</Label>
+                          <Label className="text-xs text-muted-foreground">Largura</Label>
                           <NumberInput
                             value={form.dimensions_width ?? 0}
                             onChange={v => {
@@ -1602,7 +1602,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                           />
                         </div>
                         <div>
-                          <Label className="text-[10px] text-muted-foreground">Unidade da largura</Label>
+                          <Label className="text-xs text-muted-foreground">Unidade da largura</Label>
                           <Select value={form.dimensions_unit || 'dm'} onValueChange={v => { update('dimensions_unit', v); setPlateUnit(v); }}>
                             <SelectTrigger className="mt-0.5 h-8 text-xs"><SelectValue /></SelectTrigger>
                             <SelectContent>
@@ -1732,7 +1732,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                             }} 
                             className="mt-1 border-dashed bg-primary/5" 
                           />
-                          <p className="text-[9px] text-primary/70 mt-1">
+                          <p className="text-xs text-primary/70 mt-1">
                             Preço da unidade de compra (ex: rolo, saco, chapa)
                           </p>
                         </div>
@@ -1745,7 +1745,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
             <div>
               <Label>Lead Time Fornecedor (dias)</Label>
               <NumberInput value={form.supplier_lead_time_days ?? 10} onChange={v => update('supplier_lead_time_days', v)} min={0} step="1" className="mt-1" placeholder="10" />
-              <p className="text-[10px] text-muted-foreground mt-0.5">
+              <p className="text-xs text-muted-foreground mt-0.5">
                 Prazo do fornecedor (em dias). Usado na projeção de compras.
                 Quando o fornecedor tem lead time cadastrado, ele tem prioridade
                 e este valor é ignorado.
@@ -1780,7 +1780,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
               </div>
             )}
             {!isEditing && createComponentSheet && (
-              <p className="text-[10px] text-muted-foreground col-span-2 -mt-2">
+              <p className="text-xs text-muted-foreground col-span-2 -mt-2">
                 Ao ativar, este item (e todo o grupo) será adicionado automaticamente à lista de Fichas de Componentes.
               </p>
             )}
@@ -1818,7 +1818,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                 {propagationPrompt && (
                   <>
                     <div className="rounded-md border bg-muted/30 p-2.5">
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
                         Campos alterados
                       </p>
                       <ul className="text-xs space-y-0.5">
@@ -1833,7 +1833,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                       </ul>
                     </div>
                     <div className="rounded-md border bg-muted/30 p-2.5">
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
                         Variações que serão atualizadas
                       </p>
                       <ul className="text-xs space-y-0.5 max-h-32 overflow-y-auto">

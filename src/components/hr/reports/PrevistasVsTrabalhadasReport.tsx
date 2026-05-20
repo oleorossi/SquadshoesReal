@@ -269,10 +269,10 @@ export default function PrevistasVsTrabalhadasReport() {
                       {r.pct.toFixed(1)}%
                     </TableCell>
                     <TableCell className="text-center">
-                      <div className="text-[10px] flex flex-col items-center gap-0.5">
-                        <Badge variant="outline" className="h-4 px-1 text-[9px]">{r.diasComBatida} c/</Badge>
+                      <div className="text-xs flex flex-col items-center gap-0.5">
+                        <Badge variant="outline" className="h-4 px-1 text-xs">{r.diasComBatida} c/</Badge>
                         {r.diasSemBatida > 0 && (
-                          <Badge variant="outline" className="h-4 px-1 text-[9px] border-rose-300 text-rose-700">{r.diasSemBatida} s/</Badge>
+                          <Badge variant="outline" className="h-4 px-1 text-xs border-rose-300 text-rose-700">{r.diasSemBatida} s/</Badge>
                         )}
                       </div>
                     </TableCell>

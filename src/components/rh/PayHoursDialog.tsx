@@ -164,7 +164,7 @@ export function PayHoursDialog({
               className="mt-1"
             />
             {usesSalaryFallback && (
-              <p className="text-[11px] text-muted-foreground mt-1 flex items-start gap-1">
+              <p className="text-xs text-muted-foreground mt-1 flex items-start gap-1">
                 <Info className="h-3 w-3 mt-0.5 shrink-0" />
                 Funcionário sem "Valor da hora extra" cadastrado — sugerido salário ÷ 220h.
                 Cadastre na ficha do funcionário pra evitar ajustar aqui toda vez.
@@ -174,12 +174,12 @@ export function PayHoursDialog({
 
           {/* Total destacado */}
           <div className="rounded-lg border-2 border-primary/30 bg-primary/5 p-4 text-center">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Total a pagar</div>
+            <div className="text-xs uppercase tracking-wider text-muted-foreground">Total a pagar</div>
             <div className="display text-3xl font-bold text-primary mt-1 tabular-nums">
               {total > 0 ? fmtBRL(total) : '—'}
             </div>
             {hours > 0 && hourlyRate > 0 && (
-              <div className="text-[11px] text-muted-foreground mt-1">
+              <div className="text-xs text-muted-foreground mt-1">
                 {hours.toString().replace('.', ',')} h × {fmtBRL(hourlyRate)}
               </div>
             )}
@@ -231,7 +231,7 @@ export function PayHoursDialog({
           </div>
 
           {/* Avisos sobre o que vai acontecer */}
-          <div className="rounded-md bg-muted/40 p-3 text-[11px] text-muted-foreground space-y-1">
+          <div className="rounded-md bg-muted/40 p-3 text-xs text-muted-foreground space-y-1">
             <div className="flex items-start gap-1.5">
               <Clock className="h-3 w-3 mt-0.5 text-primary" />
               <span><strong className="text-foreground">{hours || 0} h</strong> serão debitadas do banco de horas.</span>

@@ -190,25 +190,25 @@ function ReferenceCard({ group, selected, onToggle, hasOverride }: { group: Grou
               <div className="flex items-center gap-2 min-w-0">
                 <span className="font-bold text-sm truncate">{group.refName}</span>
                 {group.refCode && group.refCode !== group.refName && (
-                  <Badge variant="outline" className="font-mono text-[10px] h-4.5 px-1.5 opacity-70">
+                  <Badge variant="outline" className="font-mono text-xs h-4.5 px-1.5 opacity-70">
                     {group.refCode}
                   </Badge>
                 )}
                 {hasOverride && (
-                  <Badge variant="outline" className="text-[9px] h-4.5 px-1.5 border-amber-500/50 text-amber-700 dark:text-amber-400 bg-amber-500/10 gap-0.5 shrink-0">
+                  <Badge variant="outline" className="text-xs h-4.5 px-1.5 border-amber-500/50 text-amber-700 dark:text-amber-400 bg-amber-500/10 gap-0.5 shrink-0">
                     <Pencil className="h-2.5 w-2.5" />
                     Editado
                   </Badge>
                 )}
               </div>
               {group.clientName && (
-                <Badge variant="secondary" className="text-[10px] h-4.5 max-w-[100px] truncate shrink-0">
+                <Badge variant="secondary" className="text-xs h-4.5 max-w-[100px] truncate shrink-0">
                   {group.clientName}
                 </Badge>
               )}
             </div>
 
-            <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
               <span className="font-medium text-foreground/80 truncate">
                 Cores: {group.colors.join(', ') || '—'}
               </span>
@@ -219,7 +219,7 @@ function ReferenceCard({ group, selected, onToggle, hasOverride }: { group: Grou
 
             {group.strapsLabel && (
               <div className="flex items-center gap-1">
-                <Badge variant="outline" className="text-[9px] h-4 bg-accent/50 border-accent text-accent-foreground">
+                <Badge variant="outline" className="text-xs h-4 bg-accent/50 border-accent text-accent-foreground">
                   🔗 {group.strapsLabel.replace(/\|/g, ' — ')}
                 </Badge>
               </div>
@@ -227,7 +227,7 @@ function ReferenceCard({ group, selected, onToggle, hasOverride }: { group: Grou
 
             {sizes && (
               <div className="bg-muted/40 rounded px-1.5 py-1">
-                <p className="text-[10px] text-muted-foreground font-mono leading-tight">
+                <p className="text-xs text-muted-foreground font-mono leading-tight">
                   <span className="font-semibold text-foreground/70 mr-1">Grade:</span>
                   {sizes}
                 </p>
@@ -235,10 +235,10 @@ function ReferenceCard({ group, selected, onToggle, hasOverride }: { group: Grou
             )}
 
             <div className="flex items-center justify-between gap-2 pt-0.5">
-              <Badge variant={pkgBadge.variant} className="text-[9px] h-4 px-1.5 uppercase tracking-wider">
+              <Badge variant={pkgBadge.variant} className="text-xs h-4 px-1.5 uppercase tracking-wider">
                 {pkgBadge.label}
               </Badge>
-              <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground font-medium uppercase tracking-tighter">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium uppercase tracking-tighter">
                 <span className={cn(allowed.thermal ? "text-primary" : "opacity-50")}>
                   {allowed.thermal ? '✓' : '✗'} Térmica
                 </span>
@@ -249,7 +249,7 @@ function ReferenceCard({ group, selected, onToggle, hasOverride }: { group: Grou
               </div>
             </div>
             
-            <p className="text-[10px] text-muted-foreground font-mono mt-1.5 pt-1.5 border-t border-border/40 opacity-70">
+            <p className="text-xs text-muted-foreground font-mono mt-1.5 pt-1.5 border-t border-border/40 opacity-70">
               OPs: {group.orderNumbers.join(', ')}
             </p>
 
@@ -292,7 +292,7 @@ function PrintHistoryTable() {
               <td className="p-4 text-muted-foreground text-xs">{new Date(j.created_at).toLocaleString('pt-BR')}</td>
               <td className="p-4 text-center font-mono text-xs">{j.total_labels}</td>
               <td className="p-4 text-center">
-                <Badge variant={j.status === 'completed' ? 'secondary' : 'outline'} className="text-[9px] uppercase tracking-tighter px-2 h-5">
+                <Badge variant={j.status === 'completed' ? 'secondary' : 'outline'} className="text-xs uppercase tracking-tighter px-2 h-5">
                   {j.status === 'completed' ? 'Processado' : j.status}
                 </Badge>
               </td>
@@ -1195,14 +1195,14 @@ export function LabelProductionTab() {
                     <Label className="text-xs">Pares por Ficha (Etiqueta)</Label>
                     <div className="flex items-center gap-3">
                       <Input type="number" value={pairsPerFicha} onChange={e => setPairsPerFicha(Number(e.target.value))} className="h-8 text-xs font-mono w-24" />
-                      <span className="text-[10px] text-muted-foreground italic">Gera 1 etiqueta p/ ficha</span>
+                      <span className="text-xs text-muted-foreground italic">Gera 1 etiqueta p/ ficha</span>
                     </div>
                   </div>
                   <div className="space-y-2">
                     <Label className="text-xs">Fichas por Caixa Master</Label>
                     <div className="flex items-center gap-3">
                       <Input type="number" value={fichasPerBox} onChange={e => setFichasPerBox(Number(e.target.value))} className="h-8 text-xs font-mono w-24" />
-                      <span className="text-[10px] text-muted-foreground italic">Quantas fichas p/ caixa</span>
+                      <span className="text-xs text-muted-foreground italic">Quantas fichas p/ caixa</span>
                     </div>
                   </div>
                 </div>
@@ -1274,8 +1274,8 @@ export function LabelProductionTab() {
             <div className="flex items-center gap-2">
               {printMode === 'batch' && (
                 <>
-                  <Button variant="outline" size="sm" onClick={() => setSelected(new Set(filtered.map(g => g.groupKey)))} className="h-8 text-[11px]">Selecionar Tudo</Button>
-                  <Button variant="outline" size="sm" onClick={() => setSelected(new Set())} className="h-8 text-[11px]">Limpar</Button>
+                  <Button variant="outline" size="sm" onClick={() => setSelected(new Set(filtered.map(g => g.groupKey)))} className="h-8 text-xs">Selecionar Tudo</Button>
+                  <Button variant="outline" size="sm" onClick={() => setSelected(new Set())} className="h-8 text-xs">Limpar</Button>
                 </>
               )}
             </div>
@@ -1301,7 +1301,7 @@ export function LabelProductionTab() {
                     <div className="flex items-center gap-1">
                       <Button onClick={handlePrintIndividual} variant="secondary" className="gap-2 h-9 border shadow-sm rounded-r-none"><Barcode className="h-4 w-4" />Térmicas</Button>
                       <Select value={thermalMode} onValueChange={(v: any) => setThermalMode(v)}>
-                        <SelectTrigger className="h-9 w-[130px] text-[10px] rounded-l-none border-l-0 bg-secondary"><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="h-9 w-[130px] text-xs rounded-l-none border-l-0 bg-secondary"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="quantity">Qtd. Total (1:1)</SelectItem>
                           <SelectItem value="ficha">Por Ficha (nº)</SelectItem>
@@ -1311,7 +1311,7 @@ export function LabelProductionTab() {
                         <Download className="h-3.5 w-3.5" />PDF
                       </Button>
                     </div>
-                    <span className="text-[9px] text-muted-foreground truncate max-w-[200px]">
+                    <span className="text-xs text-muted-foreground truncate max-w-[200px]">
                       Template: {thermalTemplates.find(t => t.id === selectedThermalTemplateId)?.name || 'Padrão'}
                     </span>
                   </div>
@@ -1335,7 +1335,7 @@ export function LabelProductionTab() {
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
                     </div>
-                    <span className="text-[9px] text-muted-foreground truncate max-w-[200px]">
+                    <span className="text-xs text-muted-foreground truncate max-w-[200px]">
                       Template: {boxTemplates.find(t => t.id === selectedBoxTemplateId)?.name || 'Padrão'}
                     </span>
                   </div>
@@ -1363,12 +1363,12 @@ export function LabelProductionTab() {
                     <Pencil className="h-3.5 w-3.5" />
                     Editar Etiqueta
                     {Object.keys(labelOverrides).length > 0 && (
-                      <Badge variant="secondary" className="ml-1 h-4 px-1.5 text-[9px] bg-amber-500/20 text-amber-700">
+                      <Badge variant="secondary" className="ml-1 h-4 px-1.5 text-xs bg-amber-500/20 text-amber-700">
                         {Object.keys(labelOverrides).length}
                       </Badge>
                     )}
                   </Button>
-                  <span className="text-[9px] text-muted-foreground truncate max-w-[180px]">
+                  <span className="text-xs text-muted-foreground truncate max-w-[180px]">
                     Aplica em térmica + caixa externa
                   </span>
                 </div>
@@ -1406,7 +1406,7 @@ export function LabelProductionTab() {
                   <h3 className="font-bold text-xs uppercase tracking-widest text-primary/80">{egName}</h3>
                   <div className="h-px bg-primary/10 flex-1"></div>
                   {printMode === 'batch' && (
-                    <Button variant="ghost" size="sm" className="text-[10px] h-6" onClick={() => {
+                    <Button variant="ghost" size="sm" className="text-xs h-6" onClick={() => {
                       const next = new Set(selected);
                       const allSelected = refs.every(r => next.has(r.groupKey));
                       refs.forEach(r => allSelected ? next.delete(r.groupKey) : next.add(r.groupKey));
@@ -1498,7 +1498,7 @@ export function LabelProductionTab() {
                 className="text-sm"
               />
             </div>
-            <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-[11px] text-amber-700 dark:text-amber-400">
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-xs text-amber-700 dark:text-amber-400">
               💡 Deixe um campo vazio pra usar o original. A edição vale só pra esta impressão.
             </div>
           </div>

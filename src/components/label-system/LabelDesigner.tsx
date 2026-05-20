@@ -193,10 +193,10 @@ export function LabelDesigner({ template: initialTemplate, onSave, onBack }: Lab
             </div>
             <Separator className="my-2" />
             <div className="px-3 pb-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Dados disponíveis</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Dados disponíveis</p>
               <div className="flex flex-wrap gap-1">
                 {Object.entries(DATA_SOURCE_LABELS).map(([k, v]) => (
-                  <Badge key={k} variant="outline" className="text-[10px] cursor-default">{v}</Badge>
+                  <Badge key={k} variant="outline" className="text-xs cursor-default">{v}</Badge>
                 ))}
               </div>
             </div>
@@ -322,7 +322,7 @@ function FieldProperties({
     <div className="space-y-4 text-sm">
       <div className="flex items-center gap-1">
         {FIELD_TYPE_ICON[field.type]}
-        <Badge variant="outline" className="text-[10px]">{field.type}</Badge>
+        <Badge variant="outline" className="text-xs">{field.type}</Badge>
         <div className="flex-1" />
         <Button size="icon" variant="ghost" className="h-6 w-6" onClick={onDuplicate} title="Duplicar">
           <Copy className="h-3 w-3" />
@@ -359,23 +359,23 @@ function FieldProperties({
       )}
 
       <Separator />
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Posição (mm)</p>
+      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Posição (mm)</p>
       <div className="grid grid-cols-2 gap-2">
-        <div><Label className="text-[10px]">X</Label><Input type="number" value={field.position.x} onChange={e => onUpdatePosition({ x: Number(e.target.value) })} className="h-7 text-xs" /></div>
-        <div><Label className="text-[10px]">Y</Label><Input type="number" value={field.position.y} onChange={e => onUpdatePosition({ y: Number(e.target.value) })} className="h-7 text-xs" /></div>
-        <div><Label className="text-[10px]">Largura</Label><Input type="number" value={field.position.width} onChange={e => onUpdatePosition({ width: Number(e.target.value) })} className="h-7 text-xs" /></div>
-        <div><Label className="text-[10px]">Altura</Label><Input type="number" value={field.position.height} onChange={e => onUpdatePosition({ height: Number(e.target.value) })} className="h-7 text-xs" /></div>
+        <div><Label className="text-xs">X</Label><Input type="number" value={field.position.x} onChange={e => onUpdatePosition({ x: Number(e.target.value) })} className="h-7 text-xs" /></div>
+        <div><Label className="text-xs">Y</Label><Input type="number" value={field.position.y} onChange={e => onUpdatePosition({ y: Number(e.target.value) })} className="h-7 text-xs" /></div>
+        <div><Label className="text-xs">Largura</Label><Input type="number" value={field.position.width} onChange={e => onUpdatePosition({ width: Number(e.target.value) })} className="h-7 text-xs" /></div>
+        <div><Label className="text-xs">Altura</Label><Input type="number" value={field.position.height} onChange={e => onUpdatePosition({ height: Number(e.target.value) })} className="h-7 text-xs" /></div>
       </div>
 
       <Separator />
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Estilo</p>
+      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Estilo</p>
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <Label className="text-[10px]">Tamanho</Label>
+          <Label className="text-xs">Tamanho</Label>
           <Input type="number" value={field.styling.font_size} onChange={e => onUpdateStyling({ font_size: Number(e.target.value) })} className="h-7 text-xs" />
         </div>
         <div>
-          <Label className="text-[10px]">Peso</Label>
+          <Label className="text-xs">Peso</Label>
           <Select value={field.styling.font_weight} onValueChange={v => onUpdateStyling({ font_weight: v as 'normal' | 'bold' })}>
             <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -385,7 +385,7 @@ function FieldProperties({
           </Select>
         </div>
         <div>
-          <Label className="text-[10px]">Alinhamento</Label>
+          <Label className="text-xs">Alinhamento</Label>
           <Select value={field.styling.text_align} onValueChange={v => onUpdateStyling({ text_align: v as 'left' | 'center' | 'right' })}>
             <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -396,7 +396,7 @@ function FieldProperties({
           </Select>
         </div>
         <div>
-          <Label className="text-[10px]">Transform</Label>
+          <Label className="text-xs">Transform</Label>
           <Select value={field.styling.text_transform} onValueChange={v => onUpdateStyling({ text_transform: v as 'none' | 'uppercase' | 'lowercase' })}>
             <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -411,9 +411,9 @@ function FieldProperties({
       {(field.type === 'barcode' || field.type === 'qr_code') && (
         <>
           <Separator />
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Código</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Código</p>
           <div>
-            <Label className="text-[10px]">Formato</Label>
+            <Label className="text-xs">Formato</Label>
             <Select value={field.barcode_format || 'CODE128'} onValueChange={v => onUpdate({ barcode_format: v as LabelField['barcode_format'] })}>
               <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>

@@ -252,7 +252,7 @@ export default function CRM() {
                           </p>
                           {i.notes && <p className="text-xs mt-1 text-muted-foreground">{i.notes}</p>}
                         </div>
-                        {i.outcome && <Badge variant="outline" className="text-[10px] capitalize">{i.outcome}</Badge>}
+                        {i.outcome && <Badge variant="outline" className="text-xs capitalize">{i.outcome}</Badge>}
                       </div>
                     );
                   })}

@@ -176,7 +176,7 @@ export default function ExpedicaoHub() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 mb-2">
-                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                      <Badge variant="secondary" className="text-xs px-1.5 py-0">
                         Etapa {section.step}
                       </Badge>
                       <h3 className="font-semibold text-base group-hover:text-primary transition-colors">
@@ -193,7 +193,7 @@ export default function ExpedicaoHub() {
                       <div className="grid grid-cols-2 gap-2">
                         {section.kpis.map((kpi) => (
                           <div key={kpi.label} className="p-2 rounded-md bg-muted/50">
-                            <p className="text-[10px] text-muted-foreground leading-tight">{kpi.label}</p>
+                            <p className="text-xs text-muted-foreground leading-tight">{kpi.label}</p>
                             <p className={`text-sm font-bold ${kpi.alert ? 'text-destructive' : ''}`}>
                               {kpi.alert && <AlertTriangle className="h-3 w-3 inline mr-1" />}
                               {kpi.value}
@@ -228,7 +228,7 @@ export default function ExpedicaoHub() {
               <ClipboardList className="h-4 w-4" />
               Pedidos Pendentes de Expedição
               {stats.overdueOrders > 0 && (
-                <Badge variant="destructive" className="text-[10px] gap-1 py-0">
+                <Badge variant="destructive" className="text-xs gap-1 py-0">
                   <XCircle className="h-2.5 w-2.5" />
                   {stats.overdueOrders} atrasado{stats.overdueOrders !== 1 ? 's' : ''}
                 </Badge>
@@ -239,7 +239,7 @@ export default function ExpedicaoHub() {
         >
             <Table>
               <TableHeader>
-                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <TableHead className="pl-4">Pedido</TableHead>
                   <TableHead>Cliente</TableHead>
                   <TableHead>Pares</TableHead>
@@ -292,7 +292,7 @@ function OrderRow({ order, onSimulate }: { order: PendingOrderItem; onSimulate: 
       <TableCell className="max-w-[180px] truncate">{order.client_name}</TableCell>
       <TableCell className="font-mono tabular-nums">{order.total_pairs > 0 ? order.total_pairs : '—'}</TableCell>
       <TableCell>
-        <Badge variant="outline" className="text-[10px]">
+        <Badge variant="outline" className="text-xs">
           {order.packaging_mode || 'Não definido'}
         </Badge>
       </TableCell>

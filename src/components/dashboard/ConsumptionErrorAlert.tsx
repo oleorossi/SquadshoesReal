@@ -54,17 +54,17 @@ export function ConsumptionErrorAlert({ error, context, onDismiss }: Props) {
       <AlertTitle className="flex items-center gap-2 flex-wrap">
         <span>Erro de validação no cálculo de consumo</span>
         {context && (
-          <Badge variant="outline" className="text-[10px] font-normal">
+          <Badge variant="outline" className="text-xs font-normal">
             {context}
           </Badge>
         )}
-        <Badge variant="destructive" className="text-[10px]">
+        <Badge variant="destructive" className="text-xs">
           {error.issues.length} {error.issues.length === 1 ? 'problema' : 'problemas'}
         </Badge>
       </AlertTitle>
       <AlertDescription className="space-y-3 mt-2">
         <p className="text-xs">
-          A RPC <code className="px-1 py-0.5 rounded bg-destructive/10 text-[11px]">calculate_order_consumption</code>{' '}
+          A RPC <code className="px-1 py-0.5 rounded bg-destructive/10 text-xs">calculate_order_consumption</code>{' '}
           retornou um payload com campos inválidos. Os{' '}
           {Math.min(MAX_ISSUES, error.issues.length)} primeiros são:
         </p>
@@ -88,7 +88,7 @@ export function ConsumptionErrorAlert({ error, context, onDismiss }: Props) {
         </ul>
 
         {hiddenCount > 0 && (
-          <p className="text-[11px] text-muted-foreground italic">
+          <p className="text-xs text-muted-foreground italic">
             …e mais {hiddenCount} problema{hiddenCount === 1 ? '' : 's'} oculto{hiddenCount === 1 ? '' : 's'}.
             Use "Copiar detalhes" para ver todos.
           </p>
@@ -129,7 +129,7 @@ export function ConsumptionErrorAlert({ error, context, onDismiss }: Props) {
         </div>
 
         {expanded && (
-          <pre className="mt-2 p-2.5 rounded-md bg-destructive/5 border border-destructive/20 text-[10px] font-mono overflow-x-auto max-h-60 whitespace-pre-wrap break-all">
+          <pre className="mt-2 p-2.5 rounded-md bg-destructive/5 border border-destructive/20 text-xs font-mono overflow-x-auto max-h-60 whitespace-pre-wrap break-all">
             {JSON.stringify(error.raw, null, 2)}
           </pre>
         )}

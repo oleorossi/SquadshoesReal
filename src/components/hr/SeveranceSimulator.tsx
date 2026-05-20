@@ -85,7 +85,7 @@ export function SeveranceSimulator({ salary, admissionDate, terminationDate }: P
         <span className="font-mono font-bold text-lg text-rose-700 dark:text-rose-400">{fmt(result.total)}</span>
       </div>
 
-      <p className="text-[10px] text-muted-foreground italic leading-relaxed">
+      <p className="text-xs text-muted-foreground italic leading-relaxed">
         Cálculo de referência baseado em rescisão CLT padrão. Multa FGTS é
         estimada (não consulta saldo real na Caixa). Contabilidade deve
         validar antes de qualquer pagamento oficial.

@@ -132,7 +132,7 @@ function ProductHoverPreview({ product, formatCurrency, children }: {
           <div className="flex items-center gap-2">
             <Package className="h-4 w-4 text-primary" />
             <span className="font-semibold text-sm truncate">{stripColorFromName(product.name, product.color)}</span>
-            {product.color && <Badge variant="secondary" className="text-[10px]">{product.color}</Badge>}
+            {product.color && <Badge variant="secondary" className="text-xs">{product.color}</Badge>}
           </div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
             <div><span className="text-muted-foreground">SKU:</span> <span className="font-mono">{product.sku}</span></div>
@@ -161,8 +161,8 @@ function ProductHoverPreview({ product, formatCurrency, children }: {
             )}
           </div>
           <div className="flex items-center gap-2 pt-1 border-t">
-            <Badge variant="outline" className={cn('text-[10px]', badgeVariantClasses[status.variant])}>{status.label}</Badge>
-            <span className="text-[10px] text-muted-foreground">Clique para ver detalhes</span>
+            <Badge variant="outline" className={cn('text-xs', badgeVariantClasses[status.variant])}>{status.label}</Badge>
+            <span className="text-xs text-muted-foreground">Clique para ver detalhes</span>
           </div>
         </div>
       </HoverCardContent>
@@ -233,10 +233,10 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
                      <TooltipTrigger asChild>
                        <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 gap-1 px-1.5 h-5">
                          <Settings2 className="h-3 w-3" />
-                         <span className="text-[9px] font-bold">PADRÃO</span>
+                         <span className="text-xs font-bold">PADRÃO</span>
                        </Badge>
                      </TooltipTrigger>
-                     <TooltipContent side="bottom" className="text-[11px]">Item padrão de solado: adicionado automaticamente ao BOM</TooltipContent>
+                     <TooltipContent side="bottom" className="text-xs">Item padrão de solado: adicionado automaticamente ao BOM</TooltipContent>
                    </Tooltip>
                  )}
               </div>
@@ -291,25 +291,25 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
                    <div className="flex flex-col items-end gap-0.5" onClick={e => e.stopPropagation()}>
                      <div className="flex items-center gap-1">
                        <span className="font-bold">{totalQty.toLocaleString('pt-BR')}</span>
-                       <span className="text-[10px] text-muted-foreground">{product.unit}</span>
+                       <span className="text-xs text-muted-foreground">{product.unit}</span>
                      </div>
                      {approxInPurchase && (
-                       <div className="text-[10px] text-muted-foreground whitespace-nowrap font-mono">
+                       <div className="text-xs text-muted-foreground whitespace-nowrap font-mono">
                          ≈ {approxInPurchase.qty.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} {approxInPurchase.unit}
                        </div>
                      )}
                      {reserved > 0 && (
-                       <div className="text-[10px] text-primary/80 font-medium whitespace-nowrap" title="Reservado por OPs aguardando picking">
+                       <div className="text-xs text-primary/80 font-medium whitespace-nowrap" title="Reservado por OPs aguardando picking">
                          Reservado: {reserved.toLocaleString('pt-BR')} {product.unit}
                        </div>
                      )}
                      {(reserved > 0 || inProd > 0) && (
-                       <div className="text-[10px] text-emerald-700 font-semibold whitespace-nowrap" title="Estoque livre para alocação">
+                       <div className="text-xs text-emerald-700 font-semibold whitespace-nowrap" title="Estoque livre para alocação">
                          Disp.: {available.toLocaleString('pt-BR')} {product.unit}
                        </div>
                      )}
                      {inProd > 0 && (
-                       <div className="text-[10px] text-amber-600 font-medium whitespace-nowrap">
+                       <div className="text-xs text-amber-600 font-medium whitespace-nowrap">
                          Em prod.: {inProd.toLocaleString('pt-BR')} {product.unit}
                        </div>
                      )}
@@ -675,7 +675,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
                 >
                   {sub.baseName}
                 </button>
-                <Badge variant="outline" className="text-[10px] px-1.5 bg-primary/5 text-primary border-primary/20 font-medium">
+                <Badge variant="outline" className="text-xs px-1.5 bg-primary/5 text-primary border-primary/20 font-medium">
                   {sub.products.length} {sub.products.length === 1 ? 'variante' : 'variantes'}
                 </Badge>
                  <Tooltip>

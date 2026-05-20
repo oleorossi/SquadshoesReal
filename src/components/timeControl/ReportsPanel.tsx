@@ -255,22 +255,22 @@ export default function ReportsPanel() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <Card><CardContent className="p-4 text-center">
               <Users2 className="h-5 w-5 mx-auto mb-1 text-primary" />
-              <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Funcionários</p>
+              <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Funcionários</p>
               <p className="text-2xl font-black font-mono">{filteredReportData.length}</p>
             </CardContent></Card>
             <Card><CardContent className="p-4 text-center">
               <Clock className="h-5 w-5 mx-auto mb-1 text-primary" />
-              <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Total HE</p>
+              <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Total HE</p>
               <p className="text-2xl font-black font-mono text-amber-600">{minutesToDisplay(totals.overtime)}</p>
             </CardContent></Card>
             <Card><CardContent className="p-4 text-center">
               <TrendingUp className="h-5 w-5 mx-auto mb-1 text-amber-500" />
-              <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Custo HE</p>
+              <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Custo HE</p>
               <p className="text-2xl font-black font-mono text-amber-600">{formatCurrency(totals.overtimeCost)}</p>
             </CardContent></Card>
             <Card><CardContent className="p-4 text-center">
               <TrendingUp className="h-5 w-5 mx-auto mb-1 text-destructive" />
-              <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Faltas</p>
+              <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Faltas</p>
               <p className="text-2xl font-black font-mono text-destructive">{totals.absences}</p>
             </CardContent></Card>
           </div>
@@ -305,7 +305,7 @@ export default function ReportsPanel() {
                         {emp.overtimeMinutes > 0 ? <span className="text-amber-600 font-medium">{minutesToDisplay(emp.overtimeMinutes)}</span> : '—'}
                       </TableCell>
                       <TableCell className="text-right text-sm">
-                        {emp.absences > 0 ? <Badge variant="outline" className="text-[10px] text-destructive border-destructive/30">{emp.absences}</Badge> : <span className="text-green-600">✓</span>}
+                        {emp.absences > 0 ? <Badge variant="outline" className="text-xs text-destructive border-destructive/30">{emp.absences}</Badge> : <span className="text-green-600">✓</span>}
                       </TableCell>
                       <TableCell className="text-right text-sm">
                         <div className="flex items-center gap-2 justify-end">

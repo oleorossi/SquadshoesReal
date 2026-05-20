@@ -103,7 +103,7 @@ export default function BankReconciliation() {
           { key: 'total_debits', label: 'Débitos', align: 'right', render: r => <span className="text-destructive font-mono text-xs">R$ {Number(r.total_debits).toFixed(2)}</span> },
           { key: 'matched_count', label: 'Conciliados', align: 'right' },
           { key: 'unmatched_count', label: 'Pendentes', align: 'right', render: r => <span className={r.unmatched_count > 0 ? 'text-amber-600 font-bold' : ''}>{r.unmatched_count}</span> },
-          { key: 'status', label: 'Status', render: r => <Badge variant="outline" className={`${STATUS[r.status]} text-[10px] capitalize`}>{r.status.replace('_',' ')}</Badge> },
+          { key: 'status', label: 'Status', render: r => <Badge variant="outline" className={`${STATUS[r.status]} text-xs capitalize`}>{r.status.replace('_',' ')}</Badge> },
         ]}
       />
 
@@ -146,7 +146,7 @@ export default function BankReconciliation() {
                 onChange={e => setForm({ ...form, notes: e.target.value })}
                 placeholder="Ex.: Conciliação mensal — extrato de abril/2026" />
             </div>
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               A sessão fica em "em_andamento" — você pode importar OFX e matchar
               contra AR/AP no módulo Financeiro &rarr; Conciliação pra fechar.
             </p>

@@ -165,9 +165,9 @@ export function BulkNfeDialog({ open, onOpenChange, saleOrders, mode }: Props) {
                 : `${stats.previewOk} OK · ${stats.previewErr} com erro de preview`}
             </span>
             <div className="flex gap-1">
-              {stats.previewOk > 0 && <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-[10px]">{stats.previewOk} OK</Badge>}
-              {stats.previewErr > 0 && <Badge variant="outline" className="bg-red-500/10 text-red-700 dark:text-red-400 text-[10px]">{stats.previewErr} erro</Badge>}
-              {stats.emitted > 0 && <Badge variant="outline" className="bg-blue-500/10 text-blue-700 dark:text-blue-400 text-[10px]">{stats.emitted} emitidas</Badge>}
+              {stats.previewOk > 0 && <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-xs">{stats.previewOk} OK</Badge>}
+              {stats.previewErr > 0 && <Badge variant="outline" className="bg-red-500/10 text-red-700 dark:text-red-400 text-xs">{stats.previewErr} erro</Badge>}
+              {stats.emitted > 0 && <Badge variant="outline" className="bg-blue-500/10 text-blue-700 dark:text-blue-400 text-xs">{stats.emitted} emitidas</Badge>}
             </div>
           </div>
           <Progress value={progressValue} className="h-1.5" />
@@ -205,18 +205,18 @@ export function BulkNfeDialog({ open, onOpenChange, saleOrders, mode }: Props) {
                     {it.client_name && <span className="text-xs text-muted-foreground truncate">{it.client_name}</span>}
                   </div>
                   {it.status === 'preview_error' && it.errorMsg && (
-                    <p className="text-[11px] text-red-600 mt-0.5 truncate">{it.errorMsg}</p>
+                    <p className="text-xs text-red-600 mt-0.5 truncate">{it.errorMsg}</p>
                   )}
                   {it.status === 'emit_error' && it.errorMsg && (
-                    <p className="text-[11px] text-red-600 mt-0.5">{it.errorMsg}</p>
+                    <p className="text-xs text-red-600 mt-0.5">{it.errorMsg}</p>
                   )}
                   {it.status === 'emitted' && (
-                    <p className="text-[11px] text-emerald-600 mt-0.5">NF-e enviada ao GestaoClick com sucesso.</p>
+                    <p className="text-xs text-emerald-600 mt-0.5">NF-e enviada ao GestaoClick com sucesso.</p>
                   )}
                 </div>
 
                 {it.status === 'preview_ok' && it.preview?.totais && (
-                  <Badge variant="outline" className="text-[10px] font-mono">
+                  <Badge variant="outline" className="text-xs font-mono">
                     {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(it.preview.totais.valor_total)}
                   </Badge>
                 )}

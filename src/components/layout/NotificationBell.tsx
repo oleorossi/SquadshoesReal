@@ -66,7 +66,7 @@ const SEVERITY_DOT: Record<string, string> = {
           {totalCount > 0 && (
             <span
               className={cn(
-                'absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] rounded-full text-[10px] font-bold flex items-center justify-center px-1 ring-2 ring-sidebar',
+                'absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] rounded-full text-xs font-bold flex items-center justify-center px-1 ring-2 ring-sidebar',
                 criticalCount > 0
                   ? 'bg-destructive text-destructive-foreground'
                   : 'bg-warning text-warning-foreground'
@@ -105,7 +105,7 @@ const SEVERITY_DOT: Record<string, string> = {
               const Icon = CATEGORY_ICON[category] || Bell;
               return (
                 <div key={category}>
-                  <div className="px-4 py-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground bg-muted/30">
+                  <div className="px-4 py-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground bg-muted/30">
                     <Icon className="h-3.5 w-3.5" />
                     {CATEGORY_LABEL[category] || category}
                   </div>

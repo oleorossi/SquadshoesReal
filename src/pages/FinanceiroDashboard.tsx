@@ -203,7 +203,7 @@ export default function FinanceiroDashboard() {
                       <div key={p.id} className="px-4 py-2.5 flex items-center justify-between gap-3 text-sm">
                         <div className="min-w-0 flex-1">
                           <p className="font-medium truncate">{p.description}</p>
-                          <p className="text-[11px] text-primary tabular-nums">
+                          <p className="text-xs text-primary tabular-nums">
                             Pagar · venceu em {format(new Date(p.due_date + 'T00:00:00'), 'dd/MM/yyyy')}
                           </p>
                         </div>
@@ -216,7 +216,7 @@ export default function FinanceiroDashboard() {
                       <div key={r.id} className="px-4 py-2.5 flex items-center justify-between gap-3 text-sm">
                         <div className="min-w-0 flex-1">
                           <p className="font-medium truncate">{r.client_name}</p>
-                          <p className="text-[11px] text-amber-600 dark:text-amber-400 tabular-nums">
+                          <p className="text-xs text-amber-600 dark:text-amber-400 tabular-nums">
                             Receber · venceu em {format(new Date(r.due_date + 'T00:00:00'), 'dd/MM/yyyy')}
                           </p>
                         </div>
@@ -252,7 +252,7 @@ export default function FinanceiroDashboard() {
                       <div key={p.id} className="px-4 py-2.5 flex items-center justify-between gap-3 text-sm">
                         <div className="min-w-0 flex-1">
                           <p className="font-medium truncate">{p.description}</p>
-                          <p className="text-[11px] text-muted-foreground tabular-nums">
+                          <p className="text-xs text-muted-foreground tabular-nums">
                             {format(new Date(p.due_date + 'T00:00:00'), 'dd/MM/yyyy')}
                           </p>
                         </div>

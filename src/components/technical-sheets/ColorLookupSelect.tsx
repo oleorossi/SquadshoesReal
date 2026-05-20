@@ -31,7 +31,7 @@ function StockIndicator({ colorId }: { colorId: string | null }) {
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Badge variant="outline" className={cn('text-[10px] gap-1 cursor-help', bgClass, colorClass)}>
+          <Badge variant="outline" className={cn('text-xs gap-1 cursor-help', bgClass, colorClass)}>
             <Circle className={cn('h-2 w-2 fill-current')} />
             {stock.totalStock.toLocaleString('pt-BR')} un
           </Badge>
@@ -113,7 +113,7 @@ export function ColorLookupSelect({ label, value, onChange, required }: ColorLoo
                     <span className="h-4 w-4 rounded-full border shrink-0" style={{ backgroundColor: selectedColor.referencia_hex }} />
                   )}
                   <span>{selectedColor.nome}</span>
-                  <span className="text-[10px] text-muted-foreground font-mono">{selectedColor.cor_id}</span>
+                  <span className="text-xs text-muted-foreground font-mono">{selectedColor.cor_id}</span>
                 </div>
               ) : (
                 <span className="text-muted-foreground">Selecionar cor...</span>
@@ -136,7 +136,7 @@ export function ColorLookupSelect({ label, value, onChange, required }: ColorLoo
                         )}
                         <div className="flex flex-col">
                           <span className="text-sm">{c.nome}</span>
-                          <span className="text-[10px] text-muted-foreground font-mono">
+                          <span className="text-xs text-muted-foreground font-mono">
                             {c.cor_id}
                             {c.referencia_hex && ` • ${c.referencia_hex}`}
                             {c.referencia_pantone && ` • ${c.referencia_pantone}`}

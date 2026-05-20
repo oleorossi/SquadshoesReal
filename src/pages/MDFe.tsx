@@ -138,10 +138,10 @@ export default function MDFe() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-xs font-bold">{r.mdfe_number}</span>
-                    <Badge variant="outline" className={`text-[10px] capitalize ${STATUS_COLOR[r.status]}`}>
+                    <Badge variant="outline" className={`text-xs capitalize ${STATUS_COLOR[r.status]}`}>
                       {r.status}
                     </Badge>
-                    <Badge variant="outline" className="text-[10px] capitalize">{r.modal}</Badge>
+                    <Badge variant="outline" className="text-xs capitalize">{r.modal}</Badge>
                     <span className="text-xs text-muted-foreground">
                       {format(new Date(r.emission_date), 'dd/MM/yy')} · {r.origin_uf} → {r.destination_uf}
                     </span>
@@ -150,7 +150,7 @@ export default function MDFe() {
                     {r.driver_name || '—'}
                     {r.vehicle_plate && ` · 🚛 ${r.vehicle_plate}`}
                   </p>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     {r.total_pairs} pares · R$ {Number(r.total_value || 0).toFixed(2)} · {Number(r.total_weight_kg || 0)} kg
                     {r.protocol && ` · Protocolo: ${r.protocol}`}
                     {r.related_nfe_chaves?.length ? ` · ${r.related_nfe_chaves.length} NF-e(s) vinculada(s)` : ''}
@@ -384,7 +384,7 @@ function MdfeEditorDialog({
             <Label>
               Total de pares
               {form.total_pairs === aggregated.totalPairs && aggregated.totalPairs > 0 && (
-                <span className="ml-1 text-[9px] text-primary uppercase font-bold">auto</span>
+                <span className="ml-1 text-xs text-primary uppercase font-bold">auto</span>
               )}
             </Label>
             <Input type="number" min={0} value={form.total_pairs} onChange={e => setForm({ ...form, total_pairs: +e.target.value })} />
@@ -393,7 +393,7 @@ function MdfeEditorDialog({
             <Label>
               Peso (kg)
               {form.total_weight_kg === aggregated.totalWeightKg && aggregated.totalWeightKg > 0 && (
-                <span className="ml-1 text-[9px] text-primary uppercase font-bold">auto</span>
+                <span className="ml-1 text-xs text-primary uppercase font-bold">auto</span>
               )}
             </Label>
             <Input type="number" step="0.001" min={0} value={form.total_weight_kg} onChange={e => setForm({ ...form, total_weight_kg: +e.target.value })} />

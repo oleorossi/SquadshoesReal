@@ -311,7 +311,7 @@ export default function Payroll() {
       <Panel title={`Folha de ${period}`} flush>
         <Table>
           <TableHeader>
-            <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+            <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
               <TableHead>Funcionário</TableHead>
               <TableHead className="text-right">Salário base</TableHead>
               <TableHead className="text-right">HE</TableHead>
@@ -657,7 +657,7 @@ function PayrollPendingInputsAlert({ period }: { period: string }) {
             <Button
               size="sm"
               variant="outline"
-              className="h-7 text-[11px] gap-1 border-amber-500/40"
+              className="h-7 text-xs gap-1 border-amber-500/40"
               onClick={() => navigate('/rh?tab=ponto&subtab=overtime')}
             >
               Resolver HE <ArrowRight className="h-3 w-3" />

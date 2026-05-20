@@ -255,7 +255,7 @@ export default function SystemMonitor() {
               <div className="max-h-[400px] overflow-auto">
                 <Table>
                   <TableHeader>
-                    <TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                    <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                       <TableHead>Data/Hora</TableHead>
                       <TableHead>Ação</TableHead>
                       <TableHead>Recurso</TableHead>
@@ -283,7 +283,7 @@ export default function SystemMonitor() {
                             {log.created_at ? format(new Date(log.created_at), 'dd/MM HH:mm:ss', { locale: ptBR }) : '—'}
                           </TableCell>
                           <TableCell>
-                            <Badge variant="outline" className="text-[10px]">{log.action}</Badge>
+                            <Badge variant="outline" className="text-xs">{log.action}</Badge>
                           </TableCell>
                           <TableCell className="text-xs">{log.resource}</TableCell>
                           <TableCell>

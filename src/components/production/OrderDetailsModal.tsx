@@ -148,7 +148,7 @@ export function OrderDetailsModal({ order, isOpen, onClose }: OrderDetailsModalP
                       <span>{SECTOR_ICONS[sector] || '📋'}</span>
                       {sector}
                       {stageData && (
-                        <span className="ml-1 text-[10px] opacity-80 font-mono">
+                        <span className="ml-1 text-xs opacity-80 font-mono">
                           {stageData.quantity_processed}/{stageData.quantity_total}
                         </span>
                       )}
@@ -161,7 +161,7 @@ export function OrderDetailsModal({ order, isOpen, onClose }: OrderDetailsModalP
             {/* Mini-pipeline com todos os setores */}
             {stages.length > 0 && (
               <div className="mt-4 pt-3 border-t border-border/50">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
                   Pipeline Completo
                 </p>
                 <div className="flex items-center gap-1 flex-wrap">
@@ -181,7 +181,7 @@ export function OrderDetailsModal({ order, isOpen, onClose }: OrderDetailsModalP
                         key={s.stage_name}
                         variant="outline"
                         title={`${s.stage_name}${isDone ? ' — concluído' : isRunning ? ' — em andamento' : ' — pendente'}${actualTimeStr ? ` (${actualTimeStr})` : ''}`}
-                        className={`text-[10px] py-0.5 px-1.5 gap-1 ${
+                        className={`text-xs py-0.5 px-1.5 gap-1 ${
                           isDone
                             ? 'bg-success/15 text-success border-success/30'
                             : isRunning
@@ -208,7 +208,7 @@ export function OrderDetailsModal({ order, isOpen, onClose }: OrderDetailsModalP
                 <User className="w-4 h-4 text-primary" />
               </div>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground leading-none mb-1">Cliente</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground leading-none mb-1">Cliente</p>
                 <p className="text-sm font-semibold text-foreground">{order.client_name || '—'}</p>
               </div>
             </div>
@@ -218,7 +218,7 @@ export function OrderDetailsModal({ order, isOpen, onClose }: OrderDetailsModalP
                 <Palette className="w-4 h-4 text-primary" />
               </div>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground leading-none mb-1">Cor / Material</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground leading-none mb-1">Cor / Material</p>
                 <p className="text-sm font-semibold text-foreground">{order.color || order.color_description || 'Padrão'}</p>
               </div>
             </div>

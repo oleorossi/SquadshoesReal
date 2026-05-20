@@ -602,7 +602,7 @@ export default function Silk() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <TableHead>Cor Solado</TableHead>
                     {activeSizes.map(s => (
                       <TableHead key={s} className="text-center w-16">{s}</TableHead>
@@ -663,14 +663,14 @@ export default function Silk() {
                               checked={selectedOrders.has(order.id)}
                               onCheckedChange={() => toggleOrderSelection(order.id)}
                             />
-                            <Badge variant="outline" className="text-[10px] shrink-0">{order.order_number}</Badge>
+                            <Badge variant="outline" className="text-xs shrink-0">{order.order_number}</Badge>
                             <span className="text-xs font-semibold">{ref?.code} {ref?.name}</span>
                             <span className="text-xs text-muted-foreground">Cor: <strong className="text-foreground">{order.color || '—'}</strong></span>
                             {(() => { const sl = getStrapsLabel(order); return sl ? (
-                              <span className="text-[10px] font-bold text-destructive">🎨 {sl}</span>
+                              <span className="text-xs font-bold text-destructive">🎨 {sl}</span>
                             ) : null; })()}
                             <Badge
-                              className="text-[10px]"
+                              className="text-xs"
                               variant="secondary"
                             >
                               Solado: {soleColorLabel}
@@ -678,7 +678,7 @@ export default function Silk() {
                             {(() => {
                               const soleRef = getSoleReferenceName(order);
                               return soleRef ? (
-                                <Badge className="text-[10px]" variant="outline">
+                                <Badge className="text-xs" variant="outline">
                                   Ref. Solo: {soleRef}
                                 </Badge>
                               ) : null;
@@ -687,8 +687,8 @@ export default function Silk() {
                               const info = getDeliveryInfo(order);
                               return info.deadline ? (
                                 <span className="flex items-center gap-1">
-                                  {info.isAdiantado && <Badge className="bg-amber-500 text-white text-[9px] px-1.5">ADIANTADO</Badge>}
-                                  <span className="text-[10px] text-muted-foreground">Fat: {info.deadlineFormatted}</span>
+                                  {info.isAdiantado && <Badge className="bg-amber-500 text-white text-xs px-1.5">ADIANTADO</Badge>}
+                                  <span className="text-xs text-muted-foreground">Fat: {info.deadlineFormatted}</span>
                                 </span>
                               ) : null;
                             })()}
@@ -698,7 +698,7 @@ export default function Silk() {
                         {(() => {
                           const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
                           return so ? (
-                            <p className="text-[10px] text-muted-foreground ml-7">
+                            <p className="text-xs text-muted-foreground ml-7">
                               📦 <span className="font-semibold">{so.order_number}</span>
                               {so.client_order_number ? <> | Ped. Cliente: <span className="font-semibold">{so.client_order_number}</span></> : null}
                               {so.client_name ? <> | {so.client_name}</> : null}
@@ -709,7 +709,7 @@ export default function Silk() {
                       <div className="overflow-x-auto">
                         <Table>
                           <TableHeader>
-                            <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                            <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                               <TableHead>Tipo</TableHead>
                               {orderActiveSizes.map(s => (
                                 <TableHead key={s} className="text-center w-14">{s}</TableHead>
@@ -719,14 +719,14 @@ export default function Silk() {
                           </TableHeader>
                           <TableBody>
                             <TableRow>
-                              <TableCell className="text-[10px] font-medium">Por ficha</TableCell>
+                              <TableCell className="text-xs font-medium">Por ficha</TableCell>
                               {orderActiveSizes.map(s => (
                                 <TableCell key={s} className="text-xs text-center font-mono">{baseGrade[s] || 0}</TableCell>
                               ))}
                               <TableCell className="text-xs text-center font-mono bg-muted">{gradeSum}</TableCell>
                             </TableRow>
                             <TableRow className="bg-muted/50 font-bold">
-                              <TableCell className="text-[10px] font-bold">Total ({Math.ceil(multiplier)} fichas)</TableCell>
+                              <TableCell className="text-xs font-bold">Total ({Math.ceil(multiplier)} fichas)</TableCell>
                               {orderActiveSizes.map(s => (
                                 <TableCell key={s} className="text-xs text-center font-mono font-bold">
                                   {scaledGrade[s] || 0}

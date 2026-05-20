@@ -91,7 +91,7 @@ export function NfeBillingHealthCard() {
                   <span className="font-mono font-medium">{r.order_number}</span>
                   <span className="text-muted-foreground">{r.client_name}</span>
                 </div>
-                <Badge variant="outline" className="text-[10px]">
+                <Badge variant="outline" className="text-xs">
                   {(HEALTH_LABELS[r.health]?.label) || r.health}
                 </Badge>
               </div>

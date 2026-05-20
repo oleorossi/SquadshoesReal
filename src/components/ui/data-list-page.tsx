@@ -194,7 +194,7 @@ export function DataListPage({
                   )}
                   {columns.map(c => (
                     <th key={c.key} style={{ width: c.width }}
-                      className={`px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground ${
+                      className={`px-3 py-2.5 text-xs font-bold uppercase tracking-wider text-muted-foreground ${
                         c.align === 'right' ? 'text-right' : c.align === 'center' ? 'text-center' : 'text-left'
                       }`}>
                       {c.label}

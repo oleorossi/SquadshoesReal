@@ -354,7 +354,7 @@ export default function ProductionControlCenter() {
           <TabsTrigger value="alertas" className="gap-1.5">
             <Bell className="h-3.5 w-3.5" /> Alertas
             {activeAlerts.length > 0 && (
-              <Badge variant="destructive" className="ml-1 h-4 px-1 text-[9px]">{activeAlerts.length}</Badge>
+              <Badge variant="destructive" className="ml-1 h-4 px-1 text-xs">{activeAlerts.length}</Badge>
             )}
           </TabsTrigger>
           <TabsTrigger value="historico" className="gap-1.5">
@@ -405,12 +405,12 @@ export default function ProductionControlCenter() {
               ) : (
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                    <tr className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                       <th className="text-left p-2 sticky left-0 bg-muted/40">Setor</th>
                       {weeks.map(w => (
                         <th key={isoWeekKey(w)} className="text-center p-2 min-w-[68px]">
                           <p>{weekHeader(w)}</p>
-                          <p className="text-[9px] text-muted-foreground font-normal normal-case tracking-normal">{format(w, 'dd/MM', { locale: ptBR })}</p>
+                          <p className="text-xs text-muted-foreground font-normal normal-case tracking-normal">{format(w, 'dd/MM', { locale: ptBR })}</p>
                         </th>
                       ))}
                     </tr>
@@ -420,7 +420,7 @@ export default function ProductionControlCenter() {
                       <tr key={s.key} className="border-b border-border/40">
                         <td className="p-2 font-medium sticky left-0 bg-card">
                           {s.label}
-                          <p className="text-[10px] text-muted-foreground">média {avgCapacities[s.key] || 0}/d</p>
+                          <p className="text-xs text-muted-foreground">média {avgCapacities[s.key] || 0}/d</p>
                         </td>
                         {weeks.map(w => {
                           const wk = isoWeekKey(w);
@@ -434,7 +434,7 @@ export default function ProductionControlCenter() {
                                 title={`${planned} pares planejados · capacidade ${cell?.capacityPairs ?? 0} pares/semana`}
                               >
                                 <p className="font-mono font-bold leading-none">{Math.round(pct)}%</p>
-                                <p className="text-[9px] leading-tight mt-0.5 opacity-80">{planned}p</p>
+                                <p className="text-xs leading-tight mt-0.5 opacity-80">{planned}p</p>
                               </div>
                             </td>
                           );
@@ -460,7 +460,7 @@ export default function ProductionControlCenter() {
                 <div className="divide-y divide-border/50">
                   {bottlenecks.slice(0, 50).map((b, i) => (
                     <div key={`${b.orderId}-${b.sector}-${i}`} className="p-3 flex items-center gap-3">
-                      <Badge variant="outline" className={`text-[10px] capitalize ${
+                      <Badge variant="outline" className={`text-xs capitalize ${
                         b.loadPct > 130 ? 'bg-destructive/10 text-destructive border-destructive/30'
                                         : 'bg-amber-500/10 text-amber-700 border-amber-500/30'
                       }`}>
@@ -474,7 +474,7 @@ export default function ProductionControlCenter() {
                           {b.quantity} pares · <span className="font-medium">{b.sector}</span> · {b.weekLabel}
                           <span className="ml-2 font-mono">{Math.round(b.dailyNeeded)}/{Math.round(b.fichaCapacity)} pares/dia</span>
                         </p>
-                        <p className="text-[11px] text-muted-foreground mt-0.5">{b.reason}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{b.reason}</p>
                       </div>
                       <Button size="sm" className="gap-1.5" onClick={() => setOutsourceTarget(b)}>
                         <Truck className="h-3.5 w-3.5" /> Terceirizar
@@ -482,7 +482,7 @@ export default function ProductionControlCenter() {
                     </div>
                   ))}
                   {bottlenecks.length > 50 && (
-                    <p className="text-[11px] text-muted-foreground text-center py-2">
+                    <p className="text-xs text-muted-foreground text-center py-2">
                       +{bottlenecks.length - 50} gargalos adicionais
                     </p>
                   )}
@@ -578,7 +578,7 @@ function AlertsSection({ alerts }: { alerts: any[] }) {
           <CardContent className="py-10 text-center space-y-2">
             <CheckCircle2 className="h-10 w-10 mx-auto text-emerald-500/40" />
             <p className="text-sm text-muted-foreground">Nenhum alerta ativo. 🎉</p>
-            <p className="text-[11px] text-muted-foreground">Alertas críticos param de aparecer aqui quando você dispensa ou quando o gargalo é resolvido.</p>
+            <p className="text-xs text-muted-foreground">Alertas críticos param de aparecer aqui quando você dispensa ou quando o gargalo é resolvido.</p>
           </CardContent>
         </Card>
       ) : (
@@ -592,25 +592,25 @@ function AlertsSection({ alerts }: { alerts: any[] }) {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-sm font-medium">{a.title}</p>
-                    <Badge variant="outline" className={`text-[10px] capitalize ${
+                    <Badge variant="outline" className={`text-xs capitalize ${
                       a.severity === 'critical' ? 'bg-destructive/10 text-destructive border-destructive/30'
                                                 : 'bg-amber-500/10 text-amber-700 border-amber-500/30'
                     }`}>
                       {a.severity}
                     </Badge>
                     {a.notification_status === 'sent' && (
-                      <Badge variant="outline" className="text-[9px] bg-emerald-500/10 text-emerald-700 border-emerald-500/30">
+                      <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-700 border-emerald-500/30">
                         WhatsApp enviado
                       </Badge>
                     )}
                     {a.notification_status === 'failed' && (
-                      <Badge variant="outline" className="text-[9px] bg-destructive/10 text-destructive border-destructive/30" title={a.notification_error}>
+                      <Badge variant="outline" className="text-xs bg-destructive/10 text-destructive border-destructive/30" title={a.notification_error}>
                         WhatsApp falhou
                       </Badge>
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">{a.body}</p>
-                  <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
+                  <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                     <Clock className="h-3 w-3" />
                     {format(parseISO(a.created_at), 'dd/MM HH:mm', { locale: ptBR })}
                   </p>
@@ -709,7 +709,7 @@ function OutsourceHistorySection() {
         <CardContent className="py-10 text-center space-y-2">
           <Award className="h-10 w-10 mx-auto text-muted-foreground/30" />
           <p className="text-sm text-muted-foreground">Nenhum histórico de terceirização ainda.</p>
-          <p className="text-[11px] text-muted-foreground">Após criar e concluir OSes, o ranking aparece aqui.</p>
+          <p className="text-xs text-muted-foreground">Após criar e concluir OSes, o ranking aparece aqui.</p>
         </CardContent>
       </Card>
     );
@@ -721,7 +721,7 @@ function OutsourceHistorySection() {
         <h2 className="text-sm font-bold flex items-center gap-2">
           <Award className="h-4 w-4 text-primary" /> Performance de costureiras / terceirizados
         </h2>
-        <span className="text-[11px] text-muted-foreground">{history.length} OSes históricas</span>
+        <span className="text-xs text-muted-foreground">{history.length} OSes históricas</span>
       </div>
 
       <div className="space-y-2">
@@ -736,32 +736,32 @@ function OutsourceHistorySection() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-sm">{s.contractorName}</p>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     {s.totalOses} OSes · {s.totalPairs} pares · R$ {s.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </p>
                 </div>
-                <div className="flex items-center gap-3 text-[11px] shrink-0">
+                <div className="flex items-center gap-3 text-xs shrink-0">
                   {onTimePct !== null && (
                     <div className="text-center">
                       <p className={`font-bold ${onTimePct >= 80 ? 'text-emerald-600' : onTimePct >= 60 ? 'text-amber-600' : 'text-destructive'}`}>
                         {onTimePct}%
                       </p>
-                      <p className="text-muted-foreground text-[9px]">no prazo</p>
+                      <p className="text-muted-foreground text-xs">no prazo</p>
                     </div>
                   )}
                   <div className="text-center">
                     <p className="font-bold text-emerald-600">{s.onTimeCount}</p>
-                    <p className="text-muted-foreground text-[9px]">concluídas</p>
+                    <p className="text-muted-foreground text-xs">concluídas</p>
                   </div>
                   {s.lateCount > 0 && (
                     <div className="text-center">
                       <p className="font-bold text-destructive">{s.lateCount}</p>
-                      <p className="text-muted-foreground text-[9px]">+{s.avgDelayDays.toFixed(1)}d médio</p>
+                      <p className="text-muted-foreground text-xs">+{s.avgDelayDays.toFixed(1)}d médio</p>
                     </div>
                   )}
                   <div className="text-center">
                     <p className="font-bold">{s.inProgressCount}</p>
-                    <p className="text-muted-foreground text-[9px]">em andamento</p>
+                    <p className="text-muted-foreground text-xs">em andamento</p>
                   </div>
                 </div>
               </CardContent>
@@ -868,7 +868,7 @@ function SettingsDialog({ open, onClose }: { open: boolean; onClose: () => void 
           <div>
             <Label className="text-xs font-bold uppercase">WhatsApp destinatário</Label>
             <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="+5521982622290" className="mt-1 font-mono" />
-            <p className="text-[10px] text-muted-foreground mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               Formato E.164 (com código do país). Ex: +5521982622290.
             </p>
           </div>
@@ -877,7 +877,7 @@ function SettingsDialog({ open, onClose }: { open: boolean; onClose: () => void 
             <Label className="text-xs font-bold uppercase">URL do webhook</Label>
             <Input value={webhook} onChange={e => setWebhook(e.target.value)}
               placeholder="https://api.z-api.io/instances/.../send-text" className="mt-1 font-mono text-xs" />
-            <p className="text-[10px] text-muted-foreground mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               POST que recebe <code className="font-mono">{`{phone, title, body, severity, payload}`}</code>.
               Use Z-API, Make.com, Zapier, WPPConnect ou Twilio. O endpoint deve enviar a mensagem pra WhatsApp.
             </p>
@@ -891,17 +891,17 @@ function SettingsDialog({ open, onClose }: { open: boolean; onClose: () => void 
             <div>
               <Label className="text-xs font-bold uppercase">Carga mínima (% alerta)</Label>
               <Input type="number" min={100} max={200} value={minPct} onChange={e => setMinPct(+e.target.value)} className="mt-1" />
-              <p className="text-[10px] text-muted-foreground mt-1">Acima desse % dispara warning.</p>
+              <p className="text-xs text-muted-foreground mt-1">Acima desse % dispara warning.</p>
             </div>
             <div>
               <Label className="text-xs font-bold uppercase">Carga crítica (% alerta)</Label>
               <Input type="number" min={100} max={300} value={critPct} onChange={e => setCritPct(+e.target.value)} className="mt-1" />
-              <p className="text-[10px] text-muted-foreground mt-1">Acima desse % vira critical.</p>
+              <p className="text-xs text-muted-foreground mt-1">Acima desse % vira critical.</p>
             </div>
           </div>
 
           <Card className="bg-muted/30 border-border/50">
-            <CardContent className="p-3 text-[11px] space-y-1 text-muted-foreground">
+            <CardContent className="p-3 text-xs space-y-1 text-muted-foreground">
               <p className="font-medium text-foreground">Como funciona:</p>
               <ul className="list-disc ml-4 space-y-0.5">
                 <li>Cron roda a cada 30min em horário comercial</li>
@@ -935,7 +935,7 @@ function OutsourceOsRow({ os, onConfirmDeadline }: { os: any; onConfirmDeadline:
 
   return (
     <div className="p-3 flex items-center gap-3">
-      <Badge variant="outline" className={`text-[10px] capitalize ${
+      <Badge variant="outline" className={`text-xs capitalize ${
         needsDeadline ? 'bg-amber-500/10 text-amber-700 border-amber-500/30'
                       : 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30'
       }`}>
@@ -951,7 +951,7 @@ function OutsourceOsRow({ os, onConfirmDeadline }: { os: any; onConfirmDeadline:
           {os.total_value ? ` · total R$ ${Number(os.total_value).toFixed(2)}` : ''}
           {os.service_date ? ` · prazo ${format(parseISO(os.service_date), 'dd/MM/yyyy')}` : ''}
         </p>
-        {os.description && <p className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5">{os.description}</p>}
+        {os.description && <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{os.description}</p>}
       </div>
       {needsDeadline && (
         <Button size="sm" variant="outline" className="gap-1.5" onClick={onConfirmDeadline}>
@@ -1056,7 +1056,7 @@ function OutsourceDialog({ target, onClose }: { target: BottleneckRow | null; on
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Truck className="h-4 w-4" /> Terceirizar OP {target.orderNumber}
-            <Badge variant="outline" className="text-[10px]">{target.sector}</Badge>
+            <Badge variant="outline" className="text-xs">{target.sector}</Badge>
           </DialogTitle>
         </DialogHeader>
 
@@ -1107,19 +1107,19 @@ function OutsourceDialog({ target, onClose }: { target: BottleneckRow | null; on
               <Label>Quantidade (pares) *</Label>
               <Input type="number" min={1} max={target.quantity} value={quantity}
                 onChange={e => setQuantity(+e.target.value)} />
-              <p className="text-[10px] text-muted-foreground mt-1">OP completa: {target.quantity} pares</p>
+              <p className="text-xs text-muted-foreground mt-1">OP completa: {target.quantity} pares</p>
             </div>
             <div>
               <Label>Valor unitário (R$/par)</Label>
               <Input type="number" step="0.01" min={0} value={unitPrice}
                 onChange={e => setUnitPrice(+e.target.value)} />
-              <p className="text-[10px] text-muted-foreground mt-1 font-mono">Total: R$ {total.toFixed(2)}</p>
+              <p className="text-xs text-muted-foreground mt-1 font-mono">Total: R$ {total.toFixed(2)}</p>
             </div>
 
             <div className="col-span-2">
               <Label>Prazo de entrega <span className="text-muted-foreground">(opcional)</span></Label>
               <Input type="date" value={deadline} onChange={e => setDeadline(e.target.value)} />
-              <p className="text-[10px] text-muted-foreground mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 Se definir agora, o setor seguinte da OP fica bloqueado até esta data.
               </p>
             </div>
@@ -1203,12 +1203,12 @@ function ConfirmDeadlineDialog({ os, onClose }: { os: any | null; onClose: () =>
           <div>
             <Label>Data prometida pela costureira *</Label>
             <Input type="date" value={deadline} onChange={e => setDeadline(e.target.value)} />
-            <p className="text-[10px] text-muted-foreground mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               Setor seguinte da OP fica bloqueado até esta data via trigger no banco.
             </p>
           </div>
 
-          <div className="text-[11px] text-muted-foreground flex items-center gap-1">
+          <div className="text-xs text-muted-foreground flex items-center gap-1">
             <ArrowRight className="h-3 w-3" />
             Após confirmar: status muda pra <strong>em andamento</strong>, bloqueio até <strong>{deadline ? format(parseISO(deadline), 'dd/MM/yyyy') : '—'}</strong>.
           </div>

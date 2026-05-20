@@ -92,7 +92,7 @@ export function BottomRow({ period = 'current_month' }: { period?: DashboardPeri
           <h3 className="text-[13px] font-semibold text-foreground tracking-tight">Top Modelos Produzidos</h3>
           <button
             onClick={() => navigate("/fichas-tecnicas")}
-            className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground border border-border rounded-lg px-2.5 py-1 hover:bg-muted/50 transition-colors"
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded-lg px-2.5 py-1 hover:bg-muted/50 transition-colors"
           >
             Ver todos <ArrowRight className="h-3 w-3" />
           </button>
@@ -102,7 +102,7 @@ export function BottomRow({ period = 'current_month' }: { period?: DashboardPeri
             <tr>
               {["Modelo", "Referência", "Qtd", "Volume"].map((h, i) => (
                 <th key={h} className={cn(
-                  "text-[11px] font-bold uppercase tracking-[0.07em] text-muted-foreground py-2.5 border-b border-border/60 bg-muted/30",
+                  "text-xs font-bold uppercase tracking-[0.07em] text-muted-foreground py-2.5 border-b border-border/60 bg-muted/30",
                   i === 0 ? "pl-5 text-left" : i === 3 ? "pr-5 text-right" : "px-4 text-left"
                 )}>
                   {h}
@@ -131,7 +131,7 @@ export function BottomRow({ period = 'current_month' }: { period?: DashboardPeri
                     <div className="w-24 h-1.5 bg-muted rounded-full overflow-hidden">
                       <div className="h-full bg-primary rounded-full transition-all duration-500" style={{ width: `${m.pct}%` }} />
                     </div>
-                    <span className="text-[11px] font-mono text-muted-foreground w-8 text-right tabular-nums">{m.pct}%</span>
+                    <span className="text-xs font-mono text-muted-foreground w-8 text-right tabular-nums">{m.pct}%</span>
                   </div>
                 </td>
               </tr>
@@ -146,7 +146,7 @@ export function BottomRow({ period = 'current_month' }: { period?: DashboardPeri
           <h3 className="text-[13px] font-semibold text-foreground tracking-tight">OPs Recentes</h3>
           <button
             onClick={() => navigate("/orders")}
-            className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground border border-border rounded-lg px-2.5 py-1 hover:bg-muted/50 transition-colors"
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded-lg px-2.5 py-1 hover:bg-muted/50 transition-colors"
           >
             Todas <ArrowRight className="h-3 w-3" />
           </button>
@@ -164,9 +164,9 @@ export function BottomRow({ period = 'current_month' }: { period?: DashboardPeri
             >
               <span className={cn("w-2 h-2 rounded-full shrink-0", STATUS_DOT[op.status as OPStatus])} />
               <span className="flex-1 text-[12px] font-medium text-foreground font-mono">{op.id}</span>
-              <span className="text-[11px] font-mono text-muted-foreground tabular-nums">{op.qty}</span>
+              <span className="text-xs font-mono text-muted-foreground tabular-nums">{op.qty}</span>
               <span className={cn(
-                "text-[9.5px] font-bold uppercase tracking-wider rounded-full px-2 py-0.5 border",
+                "text-xs font-bold uppercase tracking-wider rounded-full px-2 py-0.5 border",
                 STATUS_TAG[op.status as OPStatus]
               )}>
                 {op.label}

@@ -1538,7 +1538,7 @@ export default function SaleOrders() {
             )}
           >
             Pedidos Ativos
-            <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-[10px]">{activeCount}</Badge>
+            <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-xs">{activeCount}</Badge>
           </button>
           <button
             type="button"
@@ -1551,7 +1551,7 @@ export default function SaleOrders() {
             )}
           >
             Faturados / Sem NF
-            <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-[10px]">{billedCount}</Badge>
+            <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-xs">{billedCount}</Badge>
           </button>
         </div>
 
@@ -1606,7 +1606,7 @@ export default function SaleOrders() {
               <Filter className="h-3.5 w-3.5" />
               Filtros
               {activeFiltersCount > 0 && (
-                <Badge variant="default" className="ml-1 h-5 px-1.5 text-[10px]">{activeFiltersCount}</Badge>
+                <Badge variant="default" className="ml-1 h-5 px-1.5 text-xs">{activeFiltersCount}</Badge>
               )}
             </Button>
             {activeFiltersCount > 0 && (
@@ -1620,7 +1620,7 @@ export default function SaleOrders() {
           {showFilters && (
             <div className="flex flex-wrap items-center gap-3 p-3 rounded-lg border bg-muted/30">
               <div className="space-y-1">
-                <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Status</Label>
+                <Label className="text-xs text-muted-foreground uppercase tracking-wider">Status</Label>
                 <Select value={filterStatus} onValueChange={setFilterStatus}>
                   <SelectTrigger className="h-9 w-[140px] text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -1630,7 +1630,7 @@ export default function SaleOrders() {
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Representante</Label>
+                <Label className="text-xs text-muted-foreground uppercase tracking-wider">Representante</Label>
                 <Select value={filterRep} onValueChange={setFilterRep}>
                   <SelectTrigger className="h-9 w-[160px] text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -1640,7 +1640,7 @@ export default function SaleOrders() {
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Grupo Econômico</Label>
+                <Label className="text-xs text-muted-foreground uppercase tracking-wider">Grupo Econômico</Label>
                 <Select value={filterGroup} onValueChange={setFilterGroup}>
                   <SelectTrigger className="h-9 w-[160px] text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -1650,7 +1650,7 @@ export default function SaleOrders() {
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Segmento</Label>
+                <Label className="text-xs text-muted-foreground uppercase tracking-wider">Segmento</Label>
                 <Select value={filterSegment} onValueChange={setFilterSegment}>
                   <SelectTrigger className="h-9 w-[140px] text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -1661,7 +1661,7 @@ export default function SaleOrders() {
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Mês Fat.</Label>
+                <Label className="text-xs text-muted-foreground uppercase tracking-wider">Mês Fat.</Label>
                 <Select value={filterMonth} onValueChange={setFilterMonth}>
                   <SelectTrigger className="h-9 w-[160px] text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -1704,7 +1704,7 @@ export default function SaleOrders() {
           >
             <Table>
               <TableHeader>
-                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <TableHead className="w-10">
                     <Checkbox
                       checked={selectedIds.size === filteredOrders.length && filteredOrders.length > 0}
@@ -1782,12 +1782,12 @@ export default function SaleOrders() {
                               {order.order_number || '—'}
                             </button>
                             {isInformal && (
-                              <Badge variant="outline" className="h-4 px-1.5 text-[9px] uppercase font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40">
+                              <Badge variant="outline" className="h-4 px-1.5 text-xs uppercase font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40">
                                 Sem NF
                               </Badge>
                             )}
                           </div>
-                          <span className="text-[10px] text-muted-foreground uppercase font-medium">{formatDate(order.created_at)}</span>
+                          <span className="text-xs text-muted-foreground uppercase font-medium">{formatDate(order.created_at)}</span>
                         </div>
                       </TableCell>
                       <TableCell className="font-mono text-xs text-muted-foreground">
@@ -1796,7 +1796,7 @@ export default function SaleOrders() {
                       <TableCell>
                         <div className="flex flex-col max-w-[220px]">
                           <span className="font-semibold text-sm truncate">{order.client_name}</span>
-                          <span className="text-[10px] text-muted-foreground truncate">{order.client_cnpj || '—'}</span>
+                          <span className="text-xs text-muted-foreground truncate">{order.client_cnpj || '—'}</span>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -1866,15 +1866,15 @@ export default function SaleOrders() {
                         <div className="flex flex-col">
                           <span>
                             {formatDate(order.delivery_deadline)}
-                            {(isOverdue || isInfeasible) && <span className="ml-1 text-[10px]">⚠</span>}
+                            {(isOverdue || isInfeasible) && <span className="ml-1 text-xs">⚠</span>}
                           </span>
                           {isInfeasible && minBilling && (
-                            <span className="text-[10px] font-mono text-destructive font-bold">
+                            <span className="text-xs font-mono text-destructive font-bold">
                               MÍN: {formatDate(minBilling)}
                             </span>
                           )}
                           {!isInfeasible && (order.delivery_month || order.delivery_week) && (
-                            <span className="text-[10px] text-muted-foreground font-mono">
+                            <span className="text-xs text-muted-foreground font-mono">
                               {[order.delivery_month, order.delivery_week].filter(Boolean).join(' ')}
                             </span>
                           )}
@@ -2187,15 +2187,15 @@ export default function SaleOrders() {
                           )}
                         >
                           <div className="flex items-center gap-3">
-                            {refImage ? <img src={refImage} alt={refName} className="h-12 w-12 rounded object-cover border shrink-0" /> : <div className="h-12 w-12 rounded bg-muted flex items-center justify-center text-muted-foreground text-[10px] shrink-0">Sem foto</div>}
+                            {refImage ? <img src={refImage} alt={refName} className="h-12 w-12 rounded object-cover border shrink-0" /> : <div className="h-12 w-12 rounded bg-muted flex items-center justify-center text-muted-foreground text-xs shrink-0">Sem foto</div>}
                             <div className="space-y-0.5">
                               <p className="text-sm font-semibold">{refCode} - {refName}</p>
                               <p className="text-sm">{item.color || '—'}</p>
                               {(item.strap_colors as any[])?.length > 0 && (
                                 <div className="flex flex-wrap gap-2 mt-2 p-2 rounded bg-muted/30 border border-border/40">
-                                  <p className="text-[9px] font-bold text-muted-foreground uppercase w-full">Cores das Tiras:</p>
+                                  <p className="text-xs font-bold text-muted-foreground uppercase w-full">Cores das Tiras:</p>
                                   {(item.strap_colors as any[]).map((s: any, sIdx: number) => (
-                                    <div key={sIdx} className="flex items-center gap-1.5 bg-background px-2 py-0.5 rounded border text-[10px]">
+                                    <div key={sIdx} className="flex items-center gap-1.5 bg-background px-2 py-0.5 rounded border text-xs">
                                       <span className="font-semibold text-muted-foreground truncate max-w-[60px]">{s.label || `TIRA ${sIdx + 1}`}:</span>
                                       <span className="font-bold text-primary">{s.color || '—'}</span>
                                     </div>
@@ -2208,10 +2208,10 @@ export default function SaleOrders() {
                           <div className="w-[220px] text-center space-y-1 pt-0.5">
                             {gradeEntries.length > 0 ? (
                               <>
-                                <p className="text-[10px] text-muted-foreground">Grade: {gradePairs} pares × {fichas} fichas</p>
+                                <p className="text-xs text-muted-foreground">Grade: {gradePairs} pares × {fichas} fichas</p>
                                 <div className="flex justify-center gap-0">
                                   <table className="border-collapse">
-                                    <thead><tr>{gradeEntries.map(([size]) => <th key={size} className="px-1.5 py-0.5 text-[10px] text-muted-foreground font-medium border border-border/50 bg-muted/40">{size}</th>)}</tr></thead>
+                                    <thead><tr>{gradeEntries.map(([size]) => <th key={size} className="px-1.5 py-0.5 text-xs text-muted-foreground font-medium border border-border/50 bg-muted/40">{size}</th>)}</tr></thead>
                                     <tbody>
                                       <tr>{gradeEntries.map(([size, qty]) => <td key={size} className="px-1.5 py-0.5 text-xs font-mono font-semibold text-center border border-border/50">{qty}</td>)}</tr>
                                       {fichas > 1 && <tr className="bg-muted/40">{gradeEntries.map(([size, qty]) => <td key={size} className="px-1.5 py-0.5 text-xs font-mono font-bold text-center border border-border/50">{Number(qty) * fichas}</td>)}</tr>}

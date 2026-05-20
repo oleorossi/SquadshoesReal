@@ -67,10 +67,10 @@ export function WaveDetailPanel({
                                                 'bg-muted border-border';
                 return (
                   <div key={stage} className={`p-2 rounded border text-center ${statusClass}`}>
-                    <div className="text-[10px] font-bold uppercase">{STAGE_LABEL[stage]}</div>
+                    <div className="text-xs font-bold uppercase">{STAGE_LABEL[stage]}</div>
                     <div className="text-xs mt-1">{s?.status ?? '—'}</div>
                     {s?.progress_pct !== undefined && (
-                      <div className="text-[10px] mt-1">{s.progress_pct.toFixed(0)}%</div>
+                      <div className="text-xs mt-1">{s.progress_pct.toFixed(0)}%</div>
                     )}
                   </div>
                 );
@@ -85,7 +85,7 @@ export function WaveDetailPanel({
               </h4>
                <div className="border rounded-lg">
                  <Table>
-                   <TableHeader className="bg-muted/50 border-b text-[10px] uppercase text-muted-foreground">
+                   <TableHeader className="bg-muted/50 border-b text-xs uppercase text-muted-foreground">
                      <TableRow>
                        <TableHead className="px-3 py-2 h-auto text-left">Solado</TableHead>
                        <TableHead className="px-3 py-2 h-auto text-left">Referência</TableHead>
@@ -126,13 +126,13 @@ export function WaveDetailPanel({
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-mono text-xs font-semibold">{so.order_number ?? so.sale_order_id.slice(0, 8)}</span>
                             {so.client_name && <span className="text-xs text-muted-foreground truncate">{so.client_name}</span>}
-                            <Badge variant="outline" className="text-[10px] py-0 font-mono">{so.total_pairs} pares</Badge>
+                            <Badge variant="outline" className="text-xs py-0 font-mono">{so.total_pairs} pares</Badge>
                             {so.status && (
-                              <Badge variant="secondary" className="text-[10px] py-0">{so.status}</Badge>
+                              <Badge variant="secondary" className="text-xs py-0">{so.status}</Badge>
                             )}
                           </div>
                           {so.delivery_deadline && (
-                            <div className={cn('flex items-center gap-1 mt-0.5 text-[10px]', isLate ? 'text-destructive' : 'text-muted-foreground')}>
+                            <div className={cn('flex items-center gap-1 mt-0.5 text-xs', isLate ? 'text-destructive' : 'text-muted-foreground')}>
                               <CalendarDays className="h-2.5 w-2.5" />
                               Entrega {fmtDate(so.delivery_deadline)}
                               {isLate && ' ⚠'}

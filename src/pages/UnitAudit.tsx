@@ -137,7 +137,7 @@ export default function UnitAudit() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <CardTitle className="text-sm font-semibold">{check.description}</CardTitle>
-                            <Badge variant={sevColor(check.severity) as any} className="text-[10px]">
+                            <Badge variant={sevColor(check.severity) as any} className="text-xs">
                               {check.severity === 'high' ? 'CRÍTICO' : 'ATENÇÃO'}
                             </Badge>
                           </div>
@@ -157,7 +157,7 @@ export default function UnitAudit() {
                       </div>
                       {check.examples && check.examples.length > 0 && (
                         <div className="mt-2 rounded-md border border-border bg-muted/30 overflow-hidden">
-                          <div className="px-3 py-1.5 text-[11px] font-medium text-muted-foreground border-b border-border">
+                          <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground border-b border-border">
                             Exemplos ({check.examples.length})
                           </div>
                           <ul className="divide-y divide-border">
@@ -185,7 +185,7 @@ export default function UnitAudit() {
                   {passingChecks.map(c => (
                     <div key={c.key} className="flex items-center gap-2 px-3 py-1.5 rounded border border-border bg-muted/20">
                       <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
-                      <code className="font-mono text-[11px] truncate">{c.table}.{c.field}</code>
+                      <code className="font-mono text-xs truncate">{c.table}.{c.field}</code>
                     </div>
                   ))}
                 </div>
@@ -234,7 +234,7 @@ function AdditionalValidationHelpers() {
         <div>
           <div className="flex items-center justify-between mb-1">
             <span className="text-sm font-medium">Materiais lineares sem largura cadastrada</span>
-            <Badge variant={materials.length > 0 ? 'destructive' : 'secondary'} className="text-[10px]">
+            <Badge variant={materials.length > 0 ? 'destructive' : 'secondary'} className="text-xs">
               {loading ? '...' : materials.length}
             </Badge>
           </div>
@@ -256,7 +256,7 @@ function AdditionalValidationHelpers() {
         <div>
           <div className="flex items-center justify-between mb-1">
             <span className="text-sm font-medium">Solados sem consumo por tamanho completo</span>
-            <Badge variant={soles.length > 0 ? 'destructive' : 'secondary'} className="text-[10px]">
+            <Badge variant={soles.length > 0 ? 'destructive' : 'secondary'} className="text-xs">
               {loading ? '...' : soles.length}
             </Badge>
           </div>

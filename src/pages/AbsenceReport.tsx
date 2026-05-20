@@ -193,7 +193,7 @@ export default function AbsenceReport() {
         <Panel title="Por tipo de ausência" flush>
           <Table>
             <TableHeader>
-              <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+              <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                 <TableHead>Tipo</TableHead><TableHead className="text-right">Ocorrências</TableHead><TableHead className="text-right">Dias</TableHead>
               </TableRow>
             </TableHeader>
@@ -212,7 +212,7 @@ export default function AbsenceReport() {
         <Panel title="Top 10 — funcionários com mais dias ausentes" flush>
           <Table>
             <TableHeader>
-              <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+              <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                 <TableHead>Funcionário</TableHead><TableHead className="text-right">Dias</TableHead>
               </TableRow>
             </TableHeader>
@@ -248,7 +248,7 @@ export default function AbsenceReport() {
       >
         <Table>
           <TableHeader>
-            <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+            <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
               <TableHead>Funcionário</TableHead>
               <TableHead>Tipo</TableHead>
               <TableHead>Período</TableHead>

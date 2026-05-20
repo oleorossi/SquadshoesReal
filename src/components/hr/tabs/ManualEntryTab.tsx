@@ -360,7 +360,7 @@ export default function ManualEntryTab() {
                             <div className={`font-semibold ${isToday ? 'text-primary' : dow === 0 || dow === 6 ? 'text-muted-foreground' : ''}`}>
                               {DAYS_PT[dow]}
                             </div>
-                            <div className="font-mono text-[10px] text-muted-foreground">{formatDateBR(dateStr)}</div>
+                            <div className="font-mono text-xs text-muted-foreground">{formatDateBR(dateStr)}</div>
                           </th>
                         );
                       })}
@@ -393,13 +393,13 @@ export default function ManualEntryTab() {
                               onClick={() => openCell(empName, dateStr)}
                             >
                               {cleanPunches.length === 0 ? (
-                                <div className="text-muted-foreground/40 text-[10px] py-1">—</div>
+                                <div className="text-muted-foreground/40 text-xs py-1">—</div>
                               ) : (
                                 <div className="space-y-0.5">
                                   {cleanPunches.map((p, i) => (
                                     <div
                                       key={i}
-                                      className={`font-mono text-[10px] rounded px-1 inline-block mx-0.5 ${
+                                      className={`font-mono text-xs rounded px-1 inline-block mx-0.5 ${
                                         isManualPunch(punches[i] || '') || hasManual
                                           ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
                                           : 'bg-muted/60 text-foreground'
@@ -425,7 +425,7 @@ export default function ManualEntryTab() {
                 <table className="w-full text-xs border-collapse">
                   <thead>
                     <tr className="bg-muted/30 border-b">
-                      <th className="text-left py-2 px-2 font-medium text-[10px] text-muted-foreground w-32 sticky left-0 bg-muted/30 z-10">
+                      <th className="text-left py-2 px-2 font-medium text-xs text-muted-foreground w-32 sticky left-0 bg-muted/30 z-10">
                         Funcionário
                       </th>
                       {monthDates.map(dateStr => {
@@ -437,7 +437,7 @@ export default function ManualEntryTab() {
                           <th
                             key={dateStr}
                             title={`${DAYS_FULL[dow]} ${formatDateBR(dateStr)}`}
-                            className={`py-1 px-0 text-center font-medium text-[10px] w-7 ${
+                            className={`py-1 px-0 text-center font-medium text-xs w-7 ${
                               isToday ? 'bg-primary/15 text-primary' : dow === 0 || dow === 6 ? 'bg-muted/40 text-muted-foreground' : ''
                             }`}
                           >
@@ -451,7 +451,7 @@ export default function ManualEntryTab() {
                   <tbody>
                     {displayedEmployees.map((empName, rowIdx) => (
                       <tr key={empName} className={`border-b hover:bg-muted/20 ${rowIdx % 2 === 0 ? '' : 'bg-muted/10'}`}>
-                        <td className={`py-1.5 px-2 font-medium text-[11px] sticky left-0 z-10 ${rowIdx % 2 === 0 ? 'bg-card' : 'bg-muted/10'}`}>
+                        <td className={`py-1.5 px-2 font-medium text-xs sticky left-0 z-10 ${rowIdx % 2 === 0 ? 'bg-card' : 'bg-muted/10'}`}>
                           <span className="truncate block max-w-[120px]">{empName}</span>
                         </td>
                         {monthDates.map(dateStr => {
@@ -483,7 +483,7 @@ export default function ManualEntryTab() {
                                 {dotColor ? (
                                   <span className={`w-2 h-2 rounded-full ${dotColor}`} />
                                 ) : (
-                                  <span className="text-muted-foreground/30 text-[9px]">·</span>
+                                  <span className="text-muted-foreground/30 text-xs">·</span>
                                 )}
                               </div>
                             </td>
@@ -496,7 +496,7 @@ export default function ManualEntryTab() {
               )}
             </div>
             {viewMode === 'month' && (
-              <div className="flex items-center gap-3 px-3 py-2 border-t bg-muted/20 text-[10px] text-muted-foreground flex-wrap">
+              <div className="flex items-center gap-3 px-3 py-2 border-t bg-muted/20 text-xs text-muted-foreground flex-wrap">
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500" /> automático</span>
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /> manual</span>
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500" /> ímpar (incompleto)</span>
@@ -551,7 +551,7 @@ export default function ManualEntryTab() {
                       const label = idx % 2 === 0 ? 'Entrada' : 'Saída';
                       return (
                         <div key={idx} className="flex items-center gap-2">
-                          <span className="text-[10px] text-muted-foreground w-12 text-right">{label}</span>
+                          <span className="text-xs text-muted-foreground w-12 text-right">{label}</span>
                           <Badge
                             variant="outline"
                             className={`font-mono text-xs flex-1 justify-center ${manual
@@ -559,7 +559,7 @@ export default function ManualEntryTab() {
                               : ''}`}
                           >
                             <Clock className="h-3 w-3 mr-1" />{clean}
-                            {manual && <span className="ml-1 text-[9px] opacity-70">manual</span>}
+                            {manual && <span className="ml-1 text-xs opacity-70">manual</span>}
                           </Badge>
                           <Button
                             variant="ghost"
@@ -573,7 +573,7 @@ export default function ManualEntryTab() {
                       );
                     })}
                     {cellDialog.punches.length % 2 !== 0 && (
-                      <p className="text-[10px] text-amber-600 flex items-center gap-1 mt-1">
+                      <p className="text-xs text-amber-600 flex items-center gap-1 mt-1">
                         ⚠ Número ímpar de batidas — adicione a batida faltante
                       </p>
                     )}
@@ -597,7 +597,7 @@ export default function ManualEntryTab() {
                     <Plus className="h-3.5 w-3.5" /> Adicionar
                   </Button>
                 </div>
-                <p className="text-[10px] text-muted-foreground">Batidas manuais são marcadas em verde</p>
+                <p className="text-xs text-muted-foreground">Batidas manuais são marcadas em verde</p>
               </div>
 
               <div className="flex gap-2 justify-between">

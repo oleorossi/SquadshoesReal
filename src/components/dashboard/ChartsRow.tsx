@@ -141,14 +141,14 @@ export function ChartsRow({ period = 'current_month' }: { period?: DashboardPeri
             <h3 className="text-[13px] font-semibold text-foreground tracking-tight">
               Vendas vs Produção
             </h3>
-            <p className="text-[11px] text-muted-foreground mt-0.5">últimos 6 meses</p>
+            <p className="text-xs text-muted-foreground mt-0.5">últimos 6 meses</p>
           </div>
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <span className="w-2 h-2 rounded-full" style={{ background: PRIMARY }} />
               Vendas
             </div>
-            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <span className="w-2 h-2 rounded-full bg-blue-500" />
               Produção
             </div>
@@ -195,7 +195,7 @@ export function ChartsRow({ period = 'current_month' }: { period?: DashboardPeri
           <h3 className="text-[13px] font-semibold text-foreground tracking-tight">
             Distribuição de Estoque
           </h3>
-          <p className="text-[11px] text-muted-foreground mt-0.5">por categoria</p>
+          <p className="text-xs text-muted-foreground mt-0.5">por categoria</p>
         </div>
         <div className="px-2 pt-2 pb-4">
           {donutData.length === 0 ? (

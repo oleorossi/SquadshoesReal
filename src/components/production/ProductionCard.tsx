@@ -32,11 +32,11 @@ export function ProductionCard({ order, onStartProduction }: ProductionCardProps
       <div className="flex justify-between items-start">
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap gap-1 mb-1">
-            <p className="text-[10px] font-bold text-primary bg-primary/5 px-1.5 py-0.5 rounded flex items-center gap-1">
+            <p className="text-xs font-bold text-primary bg-primary/5 px-1.5 py-0.5 rounded flex items-center gap-1">
               <Hash className="h-2 w-2" /> {order.order_number || 'N/A'}
             </p>
             {order.client_order_number && (
-              <p className="text-[10px] font-bold text-muted-foreground bg-muted px-1.5 py-0.5 rounded flex items-center gap-1">
+              <p className="text-xs font-bold text-muted-foreground bg-muted px-1.5 py-0.5 rounded flex items-center gap-1">
                 Ref: {order.client_order_number}
               </p>
             )}
@@ -69,11 +69,11 @@ export function ProductionCard({ order, onStartProduction }: ProductionCardProps
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div className="p-2 border rounded">
-                    <p className="text-[10px] text-muted-foreground">Nº Pedido Interno</p>
+                    <p className="text-xs text-muted-foreground">Nº Pedido Interno</p>
                     <p className="font-mono font-bold">#{order.order_number}</p>
                   </div>
                   <div className="p-2 border rounded">
-                    <p className="text-[10px] text-muted-foreground">Nº Pedido Cliente</p>
+                    <p className="text-xs text-muted-foreground">Nº Pedido Cliente</p>
                     <p className="font-mono font-bold">{order.client_order_number || 'N/A'}</p>
                   </div>
                 </div>
@@ -81,16 +81,16 @@ export function ProductionCard({ order, onStartProduction }: ProductionCardProps
             </DialogContent>
           </Dialog>
           
-          <p className="text-[11px] text-muted-foreground font-medium truncate">{order.reference}</p>
+          <p className="text-xs text-muted-foreground font-medium truncate">{order.reference}</p>
         </div>
         
         <div className="flex flex-col items-end gap-1">
           {isInsufficient ? (
-            <Badge variant="outline" className="text-amber-600 border-amber-500/30 bg-amber-500/10 flex gap-1 h-5 px-1.5 text-[9px]">
+            <Badge variant="outline" className="text-amber-600 border-amber-500/30 bg-amber-500/10 flex gap-1 h-5 px-1.5 text-xs">
               <AlertCircle className="h-2.5 w-2.5" /> Insuficiente
             </Badge>
           ) : (
-            <Badge variant="outline" className="text-green-600 border-green-500/30 bg-green-500/10 flex gap-1 h-5 px-1.5 text-[9px]">
+            <Badge variant="outline" className="text-green-600 border-green-500/30 bg-green-500/10 flex gap-1 h-5 px-1.5 text-xs">
               <CheckCircle2 className="h-2.5 w-2.5" /> Pronto
             </Badge>
           )}

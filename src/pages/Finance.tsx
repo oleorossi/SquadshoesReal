@@ -1102,8 +1102,8 @@ export default function Finance() {
         />
         {/* Atalhos pra rotas financeiras não-sidebar (Markup/CT-e/MDF-e/CNAB) */}
         {getSecondaryRoutesForGroup('Financeiro').length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5 -mt-2 mb-1 text-[11px] text-muted-foreground">
-            <span className="font-medium uppercase tracking-wider text-[10px] text-muted-foreground/70">Atalhos</span>
+          <div className="flex flex-wrap items-center gap-1.5 -mt-2 mb-1 text-xs text-muted-foreground">
+            <span className="font-medium uppercase tracking-wider text-xs text-muted-foreground/70">Atalhos</span>
             {getSecondaryRoutesForGroup('Financeiro').map((r) => (
               <Link
                 key={r.path}
@@ -1272,7 +1272,7 @@ export default function Finance() {
                       <Table>
                         {/* F10: sticky header — usuário não perde contexto da
                             coluna ao rolar tabelas longas */}
-                        <TableHeader className="sticky top-0 z-10 bg-background"><TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                        <TableHeader className="sticky top-0 z-10 bg-background"><TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                           <SortableTableHead sortKey="description" currentSortKey={payableSort.sortKey} currentDirection={payableSort.sortDirection} onSort={payableSort.handleSort}>Descrição</SortableTableHead>
                           <TableHead className="hidden md:table-cell">Fornecedor</TableHead>
                           <TableHead className="hidden lg:table-cell">Categ.</TableHead>
@@ -1311,11 +1311,11 @@ export default function Finance() {
                                 }>
                                   {format(parseISO(p.due_date), 'dd/MM/yy')}
                                   {accruals.daysOverdue > 0 ? (
-                                    <div className="text-[10px] text-destructive/80 font-normal">
+                                    <div className="text-xs text-destructive/80 font-normal">
                                       {accruals.daysOverdue}d atraso
                                     </div>
                                   ) : isDueSoon(p.due_date, p.status) && (
-                                    <div className="text-[10px] text-amber-600 dark:text-amber-400 font-normal">
+                                    <div className="text-xs text-amber-600 dark:text-amber-400 font-normal">
                                       vence em {daysUntilDue(p.due_date)}d
                                     </div>
                                   )}
@@ -1323,7 +1323,7 @@ export default function Finance() {
                                 <TableCell className="text-right font-mono text-sm">
                                   {fmt(p.amount)}
                                   {accruals.total > 0 && (
-                                    <div className="text-[10px] text-amber-600 dark:text-amber-400 font-normal" title={`Multa 2%: ${fmt(accruals.fine)} · Juros 1%/mês pro-rata: ${fmt(accruals.interest)}`}>
+                                    <div className="text-xs text-amber-600 dark:text-amber-400 font-normal" title={`Multa 2%: ${fmt(accruals.fine)} · Juros 1%/mês pro-rata: ${fmt(accruals.interest)}`}>
                                       + {fmt(accruals.total)} juros/multa
                                     </div>
                                   )}
@@ -1410,7 +1410,7 @@ export default function Finance() {
                         {receivableSearch && <Button variant="ghost" size="sm" className="absolute right-0.5 top-1/2 -translate-y-1/2 h-7 w-7 p-0" onClick={() => setReceivableSearch('')}><X className="h-3.5 w-3.5" /></Button>}
                       </div>
                       <Table>
-                        <TableHeader><TableRow className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                        <TableHeader><TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                           <TableHead className="w-10">
                             <Checkbox
                               checked={filteredR.length > 0 && filteredR.every(r => selectedReceivables.has(r.id))}
@@ -1449,7 +1449,7 @@ export default function Finance() {
                                 }>
                                   {format(parseISO(r.due_date), 'dd/MM/yyyy')}
                                   {isDueSoon(r.due_date, r.status) && (
-                                    <div className="text-[10px] text-amber-600 dark:text-amber-400 font-normal">
+                                    <div className="text-xs text-amber-600 dark:text-amber-400 font-normal">
                                       vence em {daysUntilDue(r.due_date)}d
                                     </div>
                                   )}

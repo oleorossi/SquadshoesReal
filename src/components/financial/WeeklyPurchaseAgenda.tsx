@@ -320,7 +320,7 @@ export default function WeeklyPurchaseAgenda() {
                     <div>
                       <CardTitle className="text-base capitalize">
                         {dateLabel}
-                        {week.isThisWeek && <Badge className="ml-2 text-[10px]" variant="default">PRÓXIMA TERÇA</Badge>}
+                        {week.isThisWeek && <Badge className="ml-2 text-xs" variant="default">PRÓXIMA TERÇA</Badge>}
                       </CardTitle>
                       <CardDescription className="text-xs mt-0.5">
                         {week.materials.length} {week.materials.length === 1 ? 'material' : 'materiais'} • {supplierCount} {supplierCount === 1 ? 'fornecedor' : 'fornecedores'}
@@ -379,7 +379,7 @@ export default function WeeklyPurchaseAgenda() {
                                 {m.to_buy.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} {m.unidade}
                               </TableCell>
                               <TableCell className="text-right text-xs">
-                                <Badge variant="secondary" className="text-[10px]">{m.supplier_lead_time_days}d</Badge>
+                                <Badge variant="secondary" className="text-xs">{m.supplier_lead_time_days}d</Badge>
                               </TableCell>
                               <TableCell className="text-right font-mono">
                                 {price > 0 ? fmt(cost) : <span className="text-muted-foreground">—</span>}

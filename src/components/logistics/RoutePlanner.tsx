@@ -91,7 +91,7 @@ export function RoutePlanner() {
                 value={origin}
                 onChange={e => setOrigin(e.target.value)}
               />
-              <p className="text-[10px] text-muted-foreground">Usado como ponto de partida e retorno da rota</p>
+              <p className="text-xs text-muted-foreground">Usado como ponto de partida e retorno da rota</p>
             </div>
             <Button variant="outline" onClick={handleSaveOrigin} className="shrink-0">
               Salvar Origem
@@ -170,7 +170,7 @@ export function RoutePlanner() {
                     </span>
                   </div>
                   <h3 className="font-semibold text-sm leading-tight truncate">{delivery.client_name}</h3>
-                  <Badge variant="outline" className="text-[10px] mt-1 px-1.5 py-0">
+                  <Badge variant="outline" className="text-xs mt-1 px-1.5 py-0">
                     {delivery.status}
                   </Badge>
                   {delivery.clients?.cidade && (

@@ -127,7 +127,7 @@ export function PrintDashboardTab() {
                     <div className="flex items-center gap-2">
                       <span className={sc.color}>{sc.icon}</span>
                       <span className="font-mono text-sm font-bold">{job.order_number}</span>
-                      <Badge variant="outline" className="text-[10px]">{job.template_name}</Badge>
+                      <Badge variant="outline" className="text-xs">{job.template_name}</Badge>
                     </div>
                     <div className="flex items-center gap-1">
                       {job.status === 'failed' && (

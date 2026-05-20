@@ -487,17 +487,17 @@ function ScheduleCell({
     <div className="p-1.5 space-y-1 min-h-[60px]">
       {/* Setup / continuity indicator */}
       {isMajorSetup && (
-        <div className="flex items-center gap-1 text-[9px] font-bold text-red-600 dark:text-red-400 bg-red-500/10 rounded px-1 py-0.5 border border-red-500/20">
+        <div className="flex items-center gap-1 text-xs font-bold text-red-600 dark:text-red-400 bg-red-500/10 rounded px-1 py-0.5 border border-red-500/20">
           <span>⬛</span> Troca de Solado
         </div>
       )}
       {isMinorSetup && (
-        <div className="flex items-center gap-1 text-[9px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded px-1 py-0.5">
+        <div className="flex items-center gap-1 text-xs font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded px-1 py-0.5">
           <span>─</span> Troca de Material
         </div>
       )}
       {isContinued && (
-        <div className="text-[9px] text-muted-foreground/60 px-0.5">↓ continua</div>
+        <div className="text-xs text-muted-foreground/60 px-0.5">↓ continua</div>
       )}
 
       {/* Blocks sorted by campaign + color lightness */}
@@ -517,19 +517,19 @@ function ScheduleCell({
                 <div>
                   {isNewCampaignWithin && <div className="border-t-2 border-dashed border-red-400/50 mt-1 mb-1" />}
                   {isNewColorWithin && <div className="border-t border-dotted border-border/80 mt-0.5 mb-0.5" />}
-                  <div className={`rounded border px-1.5 py-1 text-[10px] leading-tight cursor-default ${palette.chip}`}>
+                  <div className={`rounded border px-1.5 py-1 text-xs leading-tight cursor-default ${palette.chip}`}>
                     <div className="flex items-center gap-1">
                       <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${palette.dot}`} />
                       <span className="font-semibold truncate">{b.referenceCode}</span>
                     </div>
-                    <div className="flex items-center gap-1 text-[9px] opacity-70">
+                    <div className="flex items-center gap-1 text-xs opacity-70">
                       {b.itemColor && <span className="truncate">{b.itemColor}</span>}
                       <span className="opacity-50">·</span>
                       <span className="truncate">{b.waveCode}</span>
                     </div>
                     {cap > 0 && (
                       <div className="mt-0.5">
-                        <div className="flex justify-between text-[9px] mb-0.5">
+                        <div className="flex justify-between text-xs mb-0.5">
                           <span>{Math.round(qty)}<span className="opacity-50">/{cap}</span></span>
                           <span>{pct}%</span>
                         </div>
@@ -550,7 +550,7 @@ function ScheduleCell({
                 <p><span className="opacity-70">Onda:</span> {b.waveCode}</p>
                 <p>{b.totalQty} pares · {b.leadTimeDays} dia{b.leadTimeDays !== 1 ? 's' : ''} · {Math.round(qty)}/dia</p>
                 {cap > 0 && <p><span className="opacity-70">Capacidade:</span> {cap} pares/dia ({pct}%)</p>}
-                <p className="text-[10px] opacity-60">
+                <p className="text-xs opacity-60">
                   {format(b.startDate, 'dd/MM')} → {format(addDays(b.endDate, -1), 'dd/MM')}
                 </p>
               </TooltipContent>
@@ -560,7 +560,7 @@ function ScheduleCell({
       })}
 
       {totalCap > 0 && (
-        <div className="text-[9px] text-muted-foreground/70 text-right pt-0.5">
+        <div className="text-xs text-muted-foreground/70 text-right pt-0.5">
           {Math.round(totalQtyPerDay)}/{totalCap} par/dia — {utilPct}%
         </div>
       )}
@@ -589,7 +589,7 @@ function SetupSummaryCards({ stats }: { stats: Record<SectorKey, SetupStats> }) 
               <div className="h-1.5 bg-muted rounded-full overflow-hidden mt-1">
                 <div className={`h-full rounded-full ${score >= 80 ? 'bg-emerald-500' : score >= 60 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${score}%` }} />
               </div>
-              <div className="flex gap-2 mt-1.5 text-[10px] text-muted-foreground">
+              <div className="flex gap-2 mt-1.5 text-xs text-muted-foreground">
                 {majorSetups > 0 && (
                   <span className="text-red-500 font-medium">⬛ {majorSetups} solado</span>
                 )}
@@ -600,7 +600,7 @@ function SetupSummaryCards({ stats }: { stats: Record<SectorKey, SetupStats> }) 
                   <span className="text-emerald-600">✓ sem trocas</span>
                 )}
               </div>
-              <p className="text-[10px] text-muted-foreground">{totalDays} dias analisados</p>
+              <p className="text-xs text-muted-foreground">{totalDays} dias analisados</p>
             </CardContent>
           </Card>
         );
@@ -630,7 +630,7 @@ function CampaignLegend({ blocks }: { blocks: ScheduleBlock[] }) {
         const palette = CAMPAIGN_PALETTES[c.idx] ?? FALLBACK_PALETTE;
         const label = `${c.soleName ?? 'Sem solado'} × ${c.materialGroup}`;
         return (
-          <div key={c.key} className={`flex items-center gap-1 text-[11px] px-2 py-0.5 rounded border ${palette.chip}`}>
+          <div key={c.key} className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded border ${palette.chip}`}>
             <div className={`w-2 h-2 rounded-full ${palette.dot}`} />
             {label}
           </div>
@@ -730,7 +730,7 @@ export default function ProductionDailySchedule() {
           </div>
           {blocks.length > 0 && <CampaignLegend blocks={blocks} />}
           {blocks.length > 0 && (
-            <div className="flex flex-wrap gap-3 text-[10px] text-muted-foreground">
+            <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
               <span className="flex items-center gap-1"><span className="text-red-500 font-bold">⬛</span> Troca de Solado (setup maior)</span>
               <span className="flex items-center gap-1"><span className="text-amber-500">─</span> Troca de Material (setup menor)</span>
               <span className="flex items-center gap-1 text-dotted">· · Continuação de campanha</span>
@@ -753,13 +753,13 @@ export default function ProductionDailySchedule() {
             <table className="w-full border-collapse min-w-[560px]">
               <thead>
                 <tr>
-                  <th className="sticky left-0 z-10 bg-muted/40 border-b border-r border-border px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground w-36 min-w-[140px]">
+                  <th className="sticky left-0 z-10 bg-muted/40 border-b border-r border-border px-3 py-2 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground w-36 min-w-[140px]">
                     Setor
                   </th>
                   {columns.map((col, ci) => (
-                    <th key={ci} className={`border-b border-r border-border px-2 py-2 text-center text-[10px] font-bold uppercase tracking-wider min-w-[120px] ${col.isToday ? 'bg-primary/10 text-primary' : 'bg-muted/40 text-muted-foreground'}`}>
+                    <th key={ci} className={`border-b border-r border-border px-2 py-2 text-center text-xs font-bold uppercase tracking-wider min-w-[120px] ${col.isToday ? 'bg-primary/10 text-primary' : 'bg-muted/40 text-muted-foreground'}`}>
                       <div>{col.label}</div>
-                      <div className="font-normal normal-case tracking-normal text-[11px]">{col.sub}</div>
+                      <div className="font-normal normal-case tracking-normal text-xs">{col.sub}</div>
                     </th>
                   ))}
                 </tr>
@@ -772,7 +772,7 @@ export default function ProductionDailySchedule() {
                       <td className="sticky left-0 z-10 bg-inherit border-b border-r border-border px-3 py-2">
                         <span className={`text-xs font-medium ${rowActive ? 'text-foreground' : 'text-muted-foreground'}`}>{label}</span>
                         {setupStats[key]?.majorSetups > 0 && (
-                          <Badge variant="destructive" className="ml-1 text-[9px] px-1 py-0">
+                          <Badge variant="destructive" className="ml-1 text-xs px-1 py-0">
                             {setupStats[key].majorSetups}×
                           </Badge>
                         )}

@@ -22,11 +22,11 @@
            <div className="space-y-4">
              <div className="grid grid-cols-3 gap-4">
                <div className="p-3 bg-muted/30 rounded-lg text-center">
-                 <p className="text-[10px] text-muted-foreground uppercase font-bold">Lealdade</p>
+                 <p className="text-xs text-muted-foreground uppercase font-bold">Lealdade</p>
                  <p className="text-lg font-bold">85%</p>
                </div>
                <div className="p-3 bg-muted/30 rounded-lg text-center">
-                 <p className="text-[10px] text-muted-foreground uppercase font-bold">Satisfação</p>
+                 <p className="text-xs text-muted-foreground uppercase font-bold">Satisfação</p>
                  <div className="flex justify-center mt-1">
                    <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
                    <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
@@ -36,7 +36,7 @@
                  </div>
                </div>
                <div className="p-3 bg-muted/30 rounded-lg text-center">
-                 <p className="text-[10px] text-muted-foreground uppercase font-bold">Retenção</p>
+                 <p className="text-xs text-muted-foreground uppercase font-bold">Retenção</p>
                  <p className="text-lg font-bold text-success">+12%</p>
                </div>
              </div>
@@ -45,7 +45,7 @@
                {recentActivity.filter(a => a.type === 'sale').slice(0, 3).map((act, i) => (
                  <div key={i} className="text-xs p-2 rounded bg-muted/20 flex justify-between items-center">
                    <span>{act.label} - {act.detail.split('·')[0]}</span>
-                   <span className="text-[10px] text-muted-foreground">{fmtDate(act.time)}</span>
+                   <span className="text-xs text-muted-foreground">{fmtDate(act.time)}</span>
                  </div>
                ))}
              </div>

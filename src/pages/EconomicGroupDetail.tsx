@@ -168,7 +168,7 @@ function ResumoTab({ groupId, group }: { groupId: string; group: any }) {
             <Row label="AR em aberto" value={fmtCurrency(credit?.ar_open_total || 0)} />
             <Row label="Crédito disponível" value={fmtCurrency(credit?.credit_available || 0)} highlight={Number(credit?.credit_available || 0) > 0 ? 'green' : 'red'} />
             <Separator className="my-1" />
-            <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-bold">Aging</p>
+            <p className="text-xs uppercase tracking-wide text-muted-foreground font-bold">Aging</p>
             <Row label="A vencer" value={fmtCurrency(credit?.ar_a_vencer || 0)} />
             <Row label="Em atraso 0-30 dias" value={fmtCurrency(credit?.ar_atraso_0_30 || 0)} highlight={Number(credit?.ar_atraso_0_30 || 0) > 0 ? 'amber' : undefined} />
             <Row label="Em atraso 30-60 dias" value={fmtCurrency(credit?.ar_atraso_30_60 || 0)} highlight={Number(credit?.ar_atraso_30_60 || 0) > 0 ? 'amber' : undefined} />
@@ -183,7 +183,7 @@ function ResumoTab({ groupId, group }: { groupId: string; group: any }) {
             <Row label="Share of wallet" value={`${Number(kpis?.share_of_wallet_pct || 0).toFixed(1)}%`} />
             <Row label="Último pedido" value={fmtDate(kpis?.last_order_at)} />
             <Separator className="my-1" />
-            <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-bold">Configuração comercial</p>
+            <p className="text-xs uppercase tracking-wide text-muted-foreground font-bold">Configuração comercial</p>
             <Row label="Tabela de preço default" value={group.default_price_list_id ? 'Configurada' : 'Sem default'} />
             <Row label="Condição pgto default" value={group.default_payment_condition || '—'} />
             <Row label="Desconto default" value={`${Number(group.default_discount_pct || 0).toFixed(1)}%`} />
@@ -374,7 +374,7 @@ function ComercialTab({ group }: { group: any }) {
           <div className="space-y-1">
             <Label>Limite de crédito do grupo (R$)</Label>
             <Input type="number" min={0} step={100} value={form.credit_limit} onChange={e => setForm({ ...form, credit_limit: Number(e.target.value) })} />
-            <p className="text-[10px] text-muted-foreground">Consolidado: soma de AR aberta de TODAS as filiais</p>
+            <p className="text-xs text-muted-foreground">Consolidado: soma de AR aberta de TODAS as filiais</p>
           </div>
           <div className="space-y-1">
             <Label>Alertar atraso a partir de (dias)</Label>
@@ -383,7 +383,7 @@ function ComercialTab({ group }: { group: any }) {
           <div className="space-y-1 md:col-span-2 flex items-center justify-between border border-border rounded-lg px-3 py-2">
             <div>
               <Label className="cursor-pointer">Bloquear novos pedidos do grupo</Label>
-              <p className="text-[10px] text-muted-foreground">Aplica em TODOS os clientes do grupo. Sobrescreve o bloqueio individual.</p>
+              <p className="text-xs text-muted-foreground">Aplica em TODOS os clientes do grupo. Sobrescreve o bloqueio individual.</p>
             </div>
             <Switch checked={form.block_new_orders} onCheckedChange={v => setForm({ ...form, block_new_orders: v })} />
           </div>
@@ -426,7 +426,7 @@ function ClientesTab({ groupId }: { groupId: string }) {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                <thead className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <tr>
                     <th className="text-left p-2">Cliente</th>
                     <th className="text-left p-2">CNPJ</th>
@@ -442,7 +442,7 @@ function ClientesTab({ groupId }: { groupId: string }) {
                       <td className="p-2">
                         <div className="flex items-center gap-2">
                           {c.is_matriz && (
-                            <Badge className="gap-1 bg-amber-500/15 text-amber-700 border-amber-500/30 text-[10px]">
+                            <Badge className="gap-1 bg-amber-500/15 text-amber-700 border-amber-500/30 text-xs">
                               <Crown className="h-3 w-3" /> Matriz
                             </Badge>
                           )}
@@ -458,9 +458,9 @@ function ClientesTab({ groupId }: { groupId: string }) {
                       <td className="p-2 text-xs">{c.cidade ? `${c.cidade}/${c.estado}` : '—'}</td>
                       <td className="p-2 text-right font-mono text-xs">{fmtCurrency(c.credit_limit || 0)}</td>
                       <td className="p-2 text-center">
-                        {!c.active ? <Badge variant="outline" className="text-[10px]">Inativo</Badge> :
-                          c.commercial_block ? <Badge className="bg-red-500/15 text-red-700 border-red-500/30 text-[10px]">Bloqueado</Badge> :
-                            <Badge className="bg-emerald-500/15 text-emerald-700 border-emerald-500/30 text-[10px]">Ativo</Badge>}
+                        {!c.active ? <Badge variant="outline" className="text-xs">Inativo</Badge> :
+                          c.commercial_block ? <Badge className="bg-red-500/15 text-red-700 border-red-500/30 text-xs">Bloqueado</Badge> :
+                            <Badge className="bg-emerald-500/15 text-emerald-700 border-emerald-500/30 text-xs">Ativo</Badge>}
                       </td>
                       <td className="p-2 text-right">
                         {!c.is_matriz && (
@@ -509,7 +509,7 @@ function PedidosTab({ groupId }: { groupId: string }) {
            orders.length === 0 ? <EmptyState icon={ShoppingCart} title="Sem pedidos para este grupo" size="sm" /> :
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                <thead className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <tr>
                     <th className="text-left p-2">PV</th>
                     <th className="text-left p-2">Cliente</th>
@@ -528,7 +528,7 @@ function PedidosTab({ groupId }: { groupId: string }) {
                         </Link>
                       </td>
                       <td className="p-2 text-xs">{o.client_name}</td>
-                      <td className="p-2"><Badge variant="outline" className="text-[10px]">{o.status}</Badge></td>
+                      <td className="p-2"><Badge variant="outline" className="text-xs">{o.status}</Badge></td>
                       <td className="p-2 text-xs">{fmtDate(o.delivery_deadline)}</td>
                       <td className="p-2 text-xs font-mono">{o.nfe || '—'}</td>
                       <td className="p-2 text-right font-mono text-xs">{fmtCurrency(o.total)}</td>
@@ -590,7 +590,7 @@ function FinanceiroTab({ groupId }: { groupId: string }) {
            filtered.length === 0 ? <EmptyState icon={DollarSign} title="Nada por aqui" size="sm" /> :
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                <thead className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <tr>
                     <th className="text-left p-2">Cliente</th>
                     <th className="text-left p-2">Descrição</th>
@@ -610,7 +610,7 @@ function FinanceiroTab({ groupId }: { groupId: string }) {
                         <td className={`p-2 text-xs ${overdue ? 'text-red-600 font-bold' : ''}`}>{fmtDate(a.due_date)}</td>
                         <td className="p-2 text-right font-mono text-xs">{fmtCurrency(a.amount)}</td>
                         <td className="p-2 text-right font-mono text-xs">{fmtCurrency(a.amount_received)}</td>
-                        <td className="p-2"><Badge variant="outline" className="text-[10px]">{a.status}</Badge></td>
+                        <td className="p-2"><Badge variant="outline" className="text-xs">{a.status}</Badge></td>
                       </tr>
                     );
                   })}
@@ -633,7 +633,7 @@ function AgingBox({ label, value, color }: { label: string; value: number; color
   };
   return (
     <div className={`rounded-lg border p-2 text-center ${map[color]}`}>
-      <p className="text-[10px] uppercase font-bold tracking-wide">{label}</p>
+      <p className="text-xs uppercase font-bold tracking-wide">{label}</p>
       <p className="text-sm font-mono font-black mt-0.5">{fmtCurrency(value)}</p>
     </div>
   );
@@ -683,8 +683,8 @@ function ContatosTab({ groupId }: { groupId: string }) {
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <div className="flex items-center gap-1.5">
-                        {c.is_primary && <Badge className="bg-primary/10 text-primary border-primary/30 text-[10px]">Principal</Badge>}
-                        <Badge variant="outline" className="text-[10px]">{c.role}</Badge>
+                        {c.is_primary && <Badge className="bg-primary/10 text-primary border-primary/30 text-xs">Principal</Badge>}
+                        <Badge variant="outline" className="text-xs">{c.role}</Badge>
                       </div>
                       <p className="font-bold text-sm mt-1">{c.name}</p>
                     </div>
@@ -824,8 +824,8 @@ function NotasAnexosTab({ groupId }: { groupId: string }) {
                   <div key={n.id} className="border-l-2 border-primary/40 pl-3 py-1 group">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-[10px]">{n.note_type}</Badge>
-                        <span className="text-[10px] text-muted-foreground">{fmtDateTime(n.created_at)}</span>
+                        <Badge variant="outline" className="text-xs">{n.note_type}</Badge>
+                        <span className="text-xs text-muted-foreground">{fmtDateTime(n.created_at)}</span>
                       </div>
                       <Button size="icon" variant="ghost" className="h-6 w-6 opacity-0 group-hover:opacity-100 text-red-600" onClick={() => delNote.mutate({ id: n.id, groupId })}>
                         <Trash2 className="h-3 w-3" />
@@ -906,7 +906,7 @@ function HistoricoTab({ groupId }: { groupId: string }) {
                     alterado de <code className="bg-muted px-1 rounded">{e.old_value ?? '∅'}</code>{' '}
                     para <code className="bg-muted px-1 rounded">{e.new_value ?? '∅'}</code>
                   </p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">{fmtDateTime(e.changed_at)}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{fmtDateTime(e.changed_at)}</p>
                 </div>
               </div>
             ))}

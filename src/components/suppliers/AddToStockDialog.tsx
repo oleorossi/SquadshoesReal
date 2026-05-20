@@ -533,7 +533,7 @@ export default function AddToStockDialog({ open, onOpenChange, items }: Props) {
                     </SelectContent>
                   </Select>
                   {!newGroupId && (
-                    <p className="text-[10px] text-amber-600 mt-1 flex items-center gap-1">
+                    <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
                       <AlertTriangle className="h-3 w-3" />
                       Selecione um grupo para vincular este material
                     </p>

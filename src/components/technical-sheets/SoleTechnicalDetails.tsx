@@ -681,14 +681,14 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
       <Card className="border-primary/30 bg-primary/[0.03]">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2 flex-wrap">
-            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground text-[11px] font-bold">1</span>
+            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">1</span>
             <Link2 className="h-4 w-4 text-primary" />
             Numerações conjugadas
-            <Badge variant="outline" className="text-[10px]">
+            <Badge variant="outline" className="text-xs">
               Tipo: {soleClassification === 'palmilha_pronta' ? 'Palmilha Pronta' : soleClassification === 'conjugado' ? 'Conjugado' : 'Tradicional'}
             </Badge>
             {conjugationCount > 0 && (
-              <Badge variant="secondary" className="text-[10px]">
+              <Badge variant="secondary" className="text-xs">
                 {conjugationCount} regra{conjugationCount === 1 ? '' : 's'} · {conjugatedSizesCount} tam.
               </Badge>
             )}
@@ -719,10 +719,10 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
-            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-muted text-foreground text-[11px] font-bold">2</span>
+            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-muted text-foreground text-xs font-bold">2</span>
             Grade de numerações
             {sizes.length > 0 && (
-              <Badge variant="outline" className="text-[10px] ml-1">
+              <Badge variant="outline" className="text-xs ml-1">
                 {sizes.length} tam. · {sizes[0]}–{sizes[sizes.length - 1]}
               </Badge>
             )}
@@ -787,9 +787,9 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
         >
           <CardHeader className="pb-2 hover:bg-muted/20 transition-colors">
             <CardTitle className="text-sm flex items-center gap-2">
-              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-muted text-muted-foreground text-[11px] font-bold">3</span>
+              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-muted text-muted-foreground text-xs font-bold">3</span>
               Material default (opcional)
-              <Badge variant="outline" className="text-[9px] h-4 ml-1 bg-muted/30 text-muted-foreground border-muted">
+              <Badge variant="outline" className="text-xs h-4 ml-1 bg-muted/30 text-muted-foreground border-muted">
                 Configuração avançada
               </Badge>
               <ChevronDown className={`h-4 w-4 ml-auto text-muted-foreground transition-transform ${showDefaultMaterials ? 'rotate-180' : ''}`} />
@@ -832,7 +832,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                         <SelectItem key={p.id} value={p.id}>
                           <div className="flex flex-col">
                             <span className="text-xs">{p.name}</span>
-                            <span className="text-[10px] text-muted-foreground">{p.category} {p.color ? `· ${p.color}` : ""}</span>
+                            <span className="text-xs text-muted-foreground">{p.category} {p.color ? `· ${p.color}` : ""}</span>
                           </div>
                         </SelectItem>
                       ))}
@@ -841,7 +841,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
 
                 {!liningMaterialId && (
                   <div className="space-y-1">
-                    <Label className="text-[10px] text-muted-foreground ml-1">Ou selecione um grupo genérico:</Label>
+                    <Label className="text-xs text-muted-foreground ml-1">Ou selecione um grupo genérico:</Label>
                     <Select value={liningGroupId || "none"} onValueChange={(v) => setLiningGroupId(v === "none" ? null : v)}>
                       <SelectTrigger className="h-8 text-xs">
                         <SelectValue placeholder="Selecionar grupo…" />
@@ -885,7 +885,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                         <SelectItem key={p.id} value={p.id}>
                           <div className="flex flex-col">
                             <span className="text-xs">{p.name}</span>
-                            <span className="text-[10px] text-muted-foreground">{p.category} {p.color ? `· ${p.color}` : ""}</span>
+                            <span className="text-xs text-muted-foreground">{p.category} {p.color ? `· ${p.color}` : ""}</span>
                           </div>
                         </SelectItem>
                       ))}
@@ -894,7 +894,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
 
                 {!insoleMaterialId && (
                   <div className="space-y-1">
-                    <Label className="text-[10px] text-muted-foreground ml-1">Ou selecione um grupo genérico:</Label>
+                    <Label className="text-xs text-muted-foreground ml-1">Ou selecione um grupo genérico:</Label>
                     <Select value={insoleGroupId || "none"} onValueChange={(v) => setInsoleGroupId(v === "none" ? null : v)}>
                       <SelectTrigger className="h-8 text-xs">
                         <SelectValue placeholder="Selecionar grupo…" />
@@ -927,7 +927,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
             <div className="flex-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-base font-bold text-foreground">Consumo por numeração</span>
-                <Badge className="bg-primary/15 text-primary border-primary/30 text-[10px] h-5">
+                <Badge className="bg-primary/15 text-primary border-primary/30 text-xs h-5">
                   ★ Fonte do cálculo
                 </Badge>
               </div>

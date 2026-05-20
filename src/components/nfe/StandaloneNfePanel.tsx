@@ -175,10 +175,10 @@ export default function StandaloneNfePanel() {
                 </SelectContent>
               </Select>
               {selectedClient && (
-                <div className="mt-1.5 text-[10px] text-muted-foreground">
+                <div className="mt-1.5 text-xs text-muted-foreground">
                   {selectedClient.cnpj || 'Sem CNPJ'} · {selectedClient.cidade || '—'}/{selectedClient.estado || '—'}
                   {!selectedClient.cnpj && (
-                    <Badge variant="outline" className="ml-2 text-amber-600 border-amber-300 text-[9px]">
+                    <Badge variant="outline" className="ml-2 text-amber-600 border-amber-300 text-xs">
                       Sem CNPJ
                     </Badge>
                   )}
@@ -204,14 +204,14 @@ export default function StandaloneNfePanel() {
                         .map((c: any) => (
                           <SelectItem key={c.id} value={c.id}>
                             {c.nome_fantasia || c.razao_social}
-                            {c.is_primary && <Badge variant="secondary" className="ml-2 text-[9px]">Principal</Badge>}
+                            {c.is_primary && <Badge variant="secondary" className="ml-2 text-xs">Principal</Badge>}
                           </SelectItem>
                         ))}
                     </SelectContent>
                   </Select>
                 );
               })()}
-              <p className="mt-1.5 text-[10px] text-muted-foreground">
+              <p className="mt-1.5 text-xs text-muted-foreground">
                 Se vazio, usa a empresa marcada como principal.
               </p>
             </div>
@@ -243,7 +243,7 @@ export default function StandaloneNfePanel() {
             return (
               <div key={item._key} className="rounded-md border p-3 space-y-2 bg-muted/20">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-semibold text-muted-foreground uppercase">Item {idx + 1}</span>
+                  <span className="text-xs font-semibold text-muted-foreground uppercase">Item {idx + 1}</span>
                   <Button
                     variant="ghost"
                     size="icon"
@@ -278,7 +278,7 @@ export default function StandaloneNfePanel() {
                           filteredProducts.map((p: any) => (
                             <SelectItem key={p.id} value={p.id}>
                               <span>{p.name}</span>
-                              <span className="ml-2 text-[10px] text-muted-foreground font-mono">
+                              <span className="ml-2 text-xs text-muted-foreground font-mono">
                                 {p.sku} · {Number(p.quantity).toLocaleString('pt-BR')} {p.unit}
                               </span>
                             </SelectItem>
@@ -287,9 +287,9 @@ export default function StandaloneNfePanel() {
                       </SelectContent>
                     </Select>
                     {product && (
-                      <p className="mt-1 text-[10px] text-muted-foreground">
+                      <p className="mt-1 text-xs text-muted-foreground">
                         Estoque: <span className={overStock ? 'text-destructive font-semibold' : 'text-foreground'}>{stockQty.toLocaleString('pt-BR')}</span> {product.unit}
-                        {!product.ncm && <Badge variant="outline" className="ml-2 text-amber-600 border-amber-300 text-[9px]">Sem NCM</Badge>}
+                        {!product.ncm && <Badge variant="outline" className="ml-2 text-amber-600 border-amber-300 text-xs">Sem NCM</Badge>}
                       </p>
                     )}
                   </div>
@@ -332,7 +332,7 @@ export default function StandaloneNfePanel() {
                     placeholder="Ex: 35:3, 36:5, 37:4, 38:3"
                     className="mt-1 h-8 text-xs font-mono"
                   />
-                  <p className="mt-1 text-[10px] text-muted-foreground">
+                  <p className="mt-1 text-xs text-muted-foreground">
                     Detalhamento informativo (vai pra "Informações Complementares" da NF). Se preenchido, soma deve bater com Qtd.
                   </p>
                 </div>
@@ -378,7 +378,7 @@ export default function StandaloneNfePanel() {
             </Button>
           </div>
           {!canEmit && (
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Você não tem permissão para emitir NF-e. Solicite ao administrador o papel
               <code className="mx-1">nfe_operator</code>.
             </p>

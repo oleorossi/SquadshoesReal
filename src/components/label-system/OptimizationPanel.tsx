@@ -95,7 +95,7 @@ export function OptimizationPanel({ template, onApply }: OptimizationPanelProps)
               return (
                 <Card key={item.key} className={item.key === 'overall' ? 'border-primary/30' : ''}>
                   <CardContent className="py-3 px-2 text-center">
-                    <div className="flex items-center justify-center gap-1 mb-1 text-muted-foreground">{item.icon}<span className="text-[10px]">{item.label}</span></div>
+                    <div className="flex items-center justify-center gap-1 mb-1 text-muted-foreground">{item.icon}<span className="text-xs">{item.label}</span></div>
                     <div className={`text-lg font-bold ${score >= 80 ? 'text-green-600' : score >= 50 ? 'text-amber-500' : 'text-destructive'}`}>
                       {score}%
                     </div>
@@ -144,8 +144,8 @@ export function OptimizationPanel({ template, onApply }: OptimizationPanelProps)
                       <div className="flex-1 min-w-0 space-y-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium text-sm text-foreground">{s.title}</span>
-                          <Badge variant="outline" className="text-[10px] gap-1">{TYPE_ICON[s.type]} {s.type}</Badge>
-                          <Badge variant={s.priority === 'high' ? 'destructive' : 'secondary'} className="text-[10px]">{pc.label}</Badge>
+                          <Badge variant="outline" className="text-xs gap-1">{TYPE_ICON[s.type]} {s.type}</Badge>
+                          <Badge variant={s.priority === 'high' ? 'destructive' : 'secondary'} className="text-xs">{pc.label}</Badge>
                         </div>
                         <p className="text-xs text-muted-foreground">{s.description}</p>
                         <p className="text-xs text-primary">{s.impact}</p>

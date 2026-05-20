@@ -284,7 +284,7 @@ export default function ManualEntryTab() {
                           <div className={`font-semibold ${isToday ? 'text-primary' : dow === 0 || dow === 6 ? 'text-muted-foreground' : ''}`}>
                             {DAYS_PT[dow]}
                           </div>
-                          <div className="font-mono text-[10px] text-muted-foreground">{formatDateBR(dateStr)}</div>
+                          <div className="font-mono text-xs text-muted-foreground">{formatDateBR(dateStr)}</div>
                         </th>
                       );
                     })}
@@ -317,13 +317,13 @@ export default function ManualEntryTab() {
                             onClick={() => openCell(empName, dateStr)}
                           >
                             {cleanPunches.length === 0 ? (
-                              <div className="text-muted-foreground/40 text-[10px] py-1">—</div>
+                              <div className="text-muted-foreground/40 text-xs py-1">—</div>
                             ) : (
                               <div className="space-y-0.5">
                                 {cleanPunches.map((p, i) => (
                                   <div
                                     key={i}
-                                    className={`font-mono text-[10px] rounded px-1 inline-block mx-0.5 ${
+                                    className={`font-mono text-xs rounded px-1 inline-block mx-0.5 ${
                                       isManualPunch(punches[i] || '') || hasManual
                                         ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
                                         : 'bg-muted/60 text-foreground'
@@ -389,7 +389,7 @@ export default function ManualEntryTab() {
                       const label = idx % 2 === 0 ? 'Entrada' : 'Saída';
                       return (
                         <div key={idx} className="flex items-center gap-2">
-                          <span className="text-[10px] text-muted-foreground w-12 text-right">{label}</span>
+                          <span className="text-xs text-muted-foreground w-12 text-right">{label}</span>
                           <Badge
                             variant="outline"
                             className={`font-mono text-xs flex-1 justify-center ${manual
@@ -397,7 +397,7 @@ export default function ManualEntryTab() {
                               : ''}`}
                           >
                             <Clock className="h-3 w-3 mr-1" />{clean}
-                            {manual && <span className="ml-1 text-[9px] opacity-70">manual</span>}
+                            {manual && <span className="ml-1 text-xs opacity-70">manual</span>}
                           </Badge>
                           <Button
                             variant="ghost"
@@ -411,7 +411,7 @@ export default function ManualEntryTab() {
                       );
                     })}
                     {cellDialog.punches.length % 2 !== 0 && (
-                      <p className="text-[10px] text-amber-600 flex items-center gap-1 mt-1">
+                      <p className="text-xs text-amber-600 flex items-center gap-1 mt-1">
                         ⚠ Número ímpar de batidas — adicione a batida faltante
                       </p>
                     )}
@@ -435,7 +435,7 @@ export default function ManualEntryTab() {
                     <Plus className="h-3.5 w-3.5" /> Adicionar
                   </Button>
                 </div>
-                <p className="text-[10px] text-muted-foreground">Batidas manuais são marcadas em verde</p>
+                <p className="text-xs text-muted-foreground">Batidas manuais são marcadas em verde</p>
               </div>
 
               <div className="flex gap-2 justify-between">

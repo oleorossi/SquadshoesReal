@@ -204,7 +204,7 @@ export default function SetorCostura() {
                           <span className="font-normal text-muted-foreground">{ref?.name}</span>
                         </CardTitle>
                         {so && (
-                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                          <p className="text-xs text-muted-foreground mt-0.5">
                             📦 <span className="font-semibold">{so.order_number}</span>
                             {so.client_order_number ? <> | Ped. Cliente: <span className="font-semibold">{so.client_order_number}</span></> : null}
                             {so.client_name ? <> | {so.client_name}</> : null}

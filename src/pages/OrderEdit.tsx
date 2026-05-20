@@ -351,7 +351,7 @@ export default function OrderEdit() {
                           <div className="overflow-x-auto">
                             <Table>
                               <TableHeader>
-                                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                                   {activeSizes.map(s => (
                                     <TableHead key={s} className="text-center px-2">{s}</TableHead>
                                   ))}

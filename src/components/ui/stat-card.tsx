@@ -78,7 +78,7 @@ export function StatCard({
           {unit && <span className="text-xs text-muted-foreground font-medium">{unit}</span>}
         </div>
         {(delta || hint) && (
-          <div className="flex items-center gap-2 text-[11px]">
+          <div className="flex items-center gap-2 text-xs">
             {delta && (
               <span
                 className={cn(

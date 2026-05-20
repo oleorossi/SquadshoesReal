@@ -186,7 +186,7 @@ export default function ArtisanalRecipes() {
       <Panel flush>
             <Table>
               <TableHeader>
-                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <TableHead className="w-8">
                     <Checkbox
                       checked={filtered.length > 0 && filtered.every(r => sel.isSelected(r.id))}
@@ -264,7 +264,7 @@ export default function ArtisanalRecipes() {
                           )}
                         </TableCell>
                         <TableCell>
-                          <Badge variant={r.active ? 'default' : 'secondary'} className="text-[11px]">
+                          <Badge variant={r.active ? 'default' : 'secondary'} className="text-xs">
                             {r.active ? 'Ativa' : 'Inativa'}
                           </Badge>
                         </TableCell>
@@ -406,7 +406,7 @@ export default function ArtisanalRecipes() {
                 }
                 className="h-9 font-mono"
               />
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Ex: 0,7 = 1m de base produz 0,7m de artesanal
               </p>
             </div>
@@ -453,7 +453,7 @@ export default function ArtisanalRecipes() {
                 }
                 className="h-9 font-mono"
               />
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Tempo estimado total das etapas manuais (separação, cola, enfeite, etc.) por metro de produto artesanal produzido.
               </p>
             </div>
@@ -500,7 +500,7 @@ export default function ArtisanalRecipes() {
             <div className="col-span-2 flex items-center justify-between rounded-lg border p-3 bg-muted/20">
               <div>
                 <Label className="text-xs font-medium">Receita ativa</Label>
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   Receitas inativas não aparecem na seleção em OS
                 </p>
               </div>

@@ -24,7 +24,7 @@ export function StatusCard({ title, value, icon: Icon, trend, type = 'info' }: S
     )}>
       <div className="flex justify-between items-start">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-widest opacity-70">{title}</p>
+          <p className="text-xs font-black uppercase tracking-widest opacity-70">{title}</p>
           <h3 className="text-2xl font-black mt-1 font-mono tracking-tighter">{value}</h3>
         </div>
         <div className="p-2 bg-background/50 rounded-lg backdrop-blur-sm">
@@ -32,7 +32,7 @@ export function StatusCard({ title, value, icon: Icon, trend, type = 'info' }: S
         </div>
       </div>
       {trend && (
-        <p className="mt-3 text-[10px] font-bold flex items-center gap-1">
+        <p className="mt-3 text-xs font-bold flex items-center gap-1">
           <span className="bg-background/40 px-1.5 py-0.5 rounded-full">{trend}</span>
         </p>
       )}

@@ -217,7 +217,7 @@ export default function Employees() {
             <Panel flush>
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <TableHead className="w-8">
                       <Checkbox
                         checked={filteredEmployees.length > 0 && filteredEmployees.every(e => sel.isSelected(e.id))}
@@ -297,7 +297,7 @@ export default function Employees() {
                       </TableCell>
                       <TableCell className="text-sm">
                         {schedule
-                          ? <Badge variant="secondary" className="text-[10px] gap-1">{schedule.name}</Badge>
+                          ? <Badge variant="secondary" className="text-xs gap-1">{schedule.name}</Badge>
                           : defaultSchedule
                           ? <span className="text-xs text-muted-foreground" title="Usando escala padrão">{defaultSchedule.name}</span>
                           : <span className="text-xs text-muted-foreground">—</span>}
@@ -340,7 +340,7 @@ export default function Employees() {
             <Panel flush>
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <TableHead>Data</TableHead>
                     <TableHead>Funcionário</TableHead>
                     <TableHead>Descrição</TableHead>
@@ -418,7 +418,7 @@ export default function Employees() {
                 className="font-mono"
                 maxLength={11}
               />
-              <p className="text-[10px] text-muted-foreground mt-0.5">Obrigatório no Espelho de Ponto (Portaria 671)</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Obrigatório no Espelho de Ponto (Portaria 671)</p>
             </div>
             <div>
               <Label>ID no Relógio (External ID)</Label>
@@ -440,7 +440,7 @@ export default function Employees() {
                 value={(form as any).termination_date ?? ''}
                 onChange={e => setForm(f => ({ ...f, termination_date: e.target.value || null } as any))}
               />
-              <p className="text-[11px] text-muted-foreground mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 Último dia trabalhado. Deixe vazio se ainda ativo. Sistema para
                 de calcular horas esperadas após essa data no registro de ponto.
               </p>
@@ -463,7 +463,7 @@ export default function Employees() {
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Adicionais sobre a hora (regime contrato)
               </Label>
-              <p className="text-[11px] text-muted-foreground mt-0.5 mb-2">
+              <p className="text-xs text-muted-foreground mt-0.5 mb-2">
                 Define o % adicional pago sobre a hora normal. <strong>0 = hora simples</strong>
                 {' '}(sem adicional). Quem segue CLT-like usa <code className="px-1 bg-muted rounded">50 / 100 / 20</code>.
               </p>

@@ -134,12 +134,12 @@ export default function PackagingLinksPanel() {
                       {g.name}
                     </p>
                     {modes.length === 0 ? (
-                      <Badge variant="outline" className="text-[10px] gap-1">
+                      <Badge variant="outline" className="text-xs gap-1">
                         <AlertCircle className="h-3 w-3" />
                         Configuração incompleta
                       </Badge>
                     ) : (
-                      <Badge variant="secondary" className="text-[10px]">
+                      <Badge variant="secondary" className="text-xs">
                         {modes.length} {modes.length === 1 ? 'modo' : 'modos'}
                       </Badge>
                     )}
@@ -161,11 +161,11 @@ export default function PackagingLinksPanel() {
                                 {m.modeLabel}
                               </p>
                               {m.ratio && (
-                                <span className="text-[10px] text-muted-foreground">{m.ratio}</span>
+                                <span className="text-xs text-muted-foreground">{m.ratio}</span>
                               )}
                             </div>
-                            <p className="text-[10px] text-muted-foreground mb-1">{m.modeDescription}</p>
-                            <ul className="text-[11px] space-y-0.5">
+                            <p className="text-xs text-muted-foreground mb-1">{m.modeDescription}</p>
+                            <ul className="text-xs space-y-0.5">
                               {m.parts.map((p, i) => (
                                 <li key={i} className="flex items-center gap-1">
                                   <span className="text-muted-foreground">{p.label}:</span>

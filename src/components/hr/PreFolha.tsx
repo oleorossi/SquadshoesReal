@@ -184,30 +184,30 @@ export default function PreFolha() {
             {/* Header totalizadores */}
             <div className="px-4 py-3 grid grid-cols-2 md:grid-cols-5 gap-4 border-b border-border/60 bg-muted/10">
               <div>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Funcionários</p>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Funcionários</p>
                 <p className="font-mono text-lg font-bold">{runs.length}</p>
                 {totals.pendentes > 0 && (
-                  <p className="text-[10px] text-amber-600 dark:text-amber-500 flex items-center gap-0.5">
+                  <p className="text-xs text-amber-600 dark:text-amber-500 flex items-center gap-0.5">
                     <AlertTriangle className="h-3 w-3" /> {totals.pendentes} rascunho{totals.pendentes !== 1 ? 's' : ''}
                   </p>
                 )}
               </div>
               <div>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">HE total</p>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">HE total</p>
                 <p className="font-mono text-lg font-bold">{fmt(totals.he50Value + totals.he100Value + totals.nightValue)}</p>
-                <p className="text-[10px] text-muted-foreground">{fmtMin(totals.he50Min + totals.he100Min + totals.nightMin)}</p>
+                <p className="text-xs text-muted-foreground">{fmtMin(totals.he50Min + totals.he100Min + totals.nightMin)}</p>
               </div>
               <div>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Faltas</p>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Faltas</p>
                 <p className="font-mono text-lg font-bold text-rose-600">{fmt(totals.absentValue)}</p>
-                <p className="text-[10px] text-muted-foreground">{totals.absentDays} dia{totals.absentDays !== 1 ? 's' : ''}</p>
+                <p className="text-xs text-muted-foreground">{totals.absentDays} dia{totals.absentDays !== 1 ? 's' : ''}</p>
               </div>
               <div>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Proventos</p>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Proventos</p>
                 <p className="font-mono text-lg font-bold text-emerald-600">{fmt(totals.proventos)}</p>
               </div>
               <div>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Líquido</p>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Líquido</p>
                 <p className="font-mono text-lg font-bold">{fmt(totals.liquido)}</p>
               </div>
             </div>
@@ -217,17 +217,17 @@ export default function PreFolha() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/40">
-                    <TableHead className="text-[10px] uppercase tracking-wider">Funcionário</TableHead>
-                    <TableHead className="text-[10px] uppercase tracking-wider">Setor</TableHead>
-                    <TableHead className="text-right text-[10px] uppercase tracking-wider">HE 50%</TableHead>
-                    <TableHead className="text-right text-[10px] uppercase tracking-wider">HE 100%</TableHead>
-                    <TableHead className="text-right text-[10px] uppercase tracking-wider">Noturno</TableHead>
-                    <TableHead className="text-right text-[10px] uppercase tracking-wider">DSR</TableHead>
-                    <TableHead className="text-right text-[10px] uppercase tracking-wider">Faltas</TableHead>
-                    <TableHead className="text-right text-[10px] uppercase tracking-wider">Proventos</TableHead>
-                    <TableHead className="text-right text-[10px] uppercase tracking-wider">Descontos</TableHead>
-                    <TableHead className="text-right text-[10px] uppercase tracking-wider">Líquido</TableHead>
-                    <TableHead className="text-center text-[10px] uppercase tracking-wider">Status</TableHead>
+                    <TableHead className="text-xs uppercase tracking-wider">Funcionário</TableHead>
+                    <TableHead className="text-xs uppercase tracking-wider">Setor</TableHead>
+                    <TableHead className="text-right text-xs uppercase tracking-wider">HE 50%</TableHead>
+                    <TableHead className="text-right text-xs uppercase tracking-wider">HE 100%</TableHead>
+                    <TableHead className="text-right text-xs uppercase tracking-wider">Noturno</TableHead>
+                    <TableHead className="text-right text-xs uppercase tracking-wider">DSR</TableHead>
+                    <TableHead className="text-right text-xs uppercase tracking-wider">Faltas</TableHead>
+                    <TableHead className="text-right text-xs uppercase tracking-wider">Proventos</TableHead>
+                    <TableHead className="text-right text-xs uppercase tracking-wider">Descontos</TableHead>
+                    <TableHead className="text-right text-xs uppercase tracking-wider">Líquido</TableHead>
+                    <TableHead className="text-center text-xs uppercase tracking-wider">Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -237,22 +237,22 @@ export default function PreFolha() {
                       <TableCell className="text-muted-foreground">{r.employees?.department || '—'}</TableCell>
                       <TableCell className="text-right font-mono">
                         <div>{fmtMin(r.overtime_50_minutes)}</div>
-                        <div className="text-[10px] text-muted-foreground">{fmt(r.overtime_50_value)}</div>
+                        <div className="text-xs text-muted-foreground">{fmt(r.overtime_50_value)}</div>
                       </TableCell>
                       <TableCell className="text-right font-mono">
                         <div>{fmtMin(r.overtime_100_minutes)}</div>
-                        <div className="text-[10px] text-muted-foreground">{fmt(r.overtime_100_value)}</div>
+                        <div className="text-xs text-muted-foreground">{fmt(r.overtime_100_value)}</div>
                       </TableCell>
                       <TableCell className="text-right font-mono">
                         <div>{fmtMin(r.night_minutes)}</div>
-                        <div className="text-[10px] text-muted-foreground">{fmt(r.night_bonus_value)}</div>
+                        <div className="text-xs text-muted-foreground">{fmt(r.night_bonus_value)}</div>
                       </TableCell>
                       <TableCell className="text-right font-mono">{fmt(r.dsr_value)}</TableCell>
                       <TableCell className={cn('text-right font-mono', r.absent_days > 0 && 'text-rose-600')}>
                         {r.absent_days > 0 ? (
                           <>
                             <div>{r.absent_days}d</div>
-                            <div className="text-[10px]">{fmt(r.absence_discount)}</div>
+                            <div className="text-xs">{fmt(r.absence_discount)}</div>
                           </>
                         ) : '—'}
                       </TableCell>
@@ -261,11 +261,11 @@ export default function PreFolha() {
                       <TableCell className="text-right font-mono font-bold">{fmt(r.total_liquido)}</TableCell>
                       <TableCell className="text-center">
                         {r.paid_at ? (
-                          <Badge variant="outline" className="text-[9px] border-emerald-500/40 text-emerald-600">Pago</Badge>
+                          <Badge variant="outline" className="text-xs border-emerald-500/40 text-emerald-600">Pago</Badge>
                         ) : r.approved_at ? (
-                          <Badge variant="outline" className="text-[9px] border-primary/40 text-primary">Aprovada</Badge>
+                          <Badge variant="outline" className="text-xs border-primary/40 text-primary">Aprovada</Badge>
                         ) : (
-                          <Badge variant="outline" className="text-[9px] border-amber-500/40 text-amber-600">Rascunho</Badge>
+                          <Badge variant="outline" className="text-xs border-amber-500/40 text-amber-600">Rascunho</Badge>
                         )}
                       </TableCell>
                     </TableRow>

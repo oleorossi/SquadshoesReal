@@ -34,10 +34,10 @@ function RepCard({ rep, onEdit, onDelete }: { rep: Representative; onEdit: () =>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-semibold text-sm">{rep.name}</span>
-              <Badge variant="outline" className={cn('text-[10px]', rep.active ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30' : 'bg-muted text-muted-foreground')}>
+              <Badge variant="outline" className={cn('text-xs', rep.active ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30' : 'bg-muted text-muted-foreground')}>
                 {rep.active ? 'Ativo' : 'Inativo'}
               </Badge>
-              <Badge variant="secondary" className="text-[10px] font-mono gap-0.5">
+              <Badge variant="secondary" className="text-xs font-mono gap-0.5">
                 <Percent className="h-2.5 w-2.5" />{rep.commission_pct}
               </Badge>
             </div>
@@ -170,15 +170,15 @@ export default function RepresentativesPanel() {
       <div className="grid grid-cols-3 gap-3">
         <div className="rounded-lg border bg-card p-3 text-center">
           <p className="text-lg font-bold">{reps.length}</p>
-          <p className="text-[10px] text-muted-foreground">Total</p>
+          <p className="text-xs text-muted-foreground">Total</p>
         </div>
         <div className="rounded-lg border bg-card p-3 text-center">
           <p className="text-lg font-bold text-emerald-600">{activeCount}</p>
-          <p className="text-[10px] text-muted-foreground">Ativos</p>
+          <p className="text-xs text-muted-foreground">Ativos</p>
         </div>
         <div className="rounded-lg border bg-card p-3 text-center">
           <p className="text-lg font-bold text-muted-foreground">{inactiveCount}</p>
-          <p className="text-[10px] text-muted-foreground">Inativos</p>
+          <p className="text-xs text-muted-foreground">Inativos</p>
         </div>
       </div>
 

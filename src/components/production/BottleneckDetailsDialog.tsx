@@ -87,7 +87,7 @@ export function BottleneckDetailsDialog({
               <Activity className="h-4 w-4" />
               <span className="text-xs uppercase tracking-wide font-bold">Setor atual</span>
             </div>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-background/60">
+            <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-background/60">
               {SEVERITY_LABEL[bottleneck.severity]}
             </span>
           </header>
@@ -129,7 +129,7 @@ export function BottleneckDetailsDialog({
                   Próximo: {next.sectorName}
                 </span>
               </div>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-background/60">
+              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-background/60">
                 {SEVERITY_LABEL[next.severity]}
               </span>
             </header>

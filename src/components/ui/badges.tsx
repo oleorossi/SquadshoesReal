@@ -55,7 +55,7 @@ export function StatusPill({ status, className, ...props }: StatusPillProps) {
   const p = STATUS_PALETTE[status];
   return (
     <span
-      className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-[3px] text-[11px] font-semibold tracking-[0.005em]', className)}
+      className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-[3px] text-xs font-semibold tracking-[0.005em]', className)}
       style={{ background: p.bg, color: p.text }}
       {...props}
     >
@@ -94,7 +94,7 @@ export function StageBadge({ stage, className, ...props }: StageBadgeProps) {
   const p = STAGE_PALETTE[stage];
   return (
     <span
-      className={cn('inline-flex items-center rounded-md px-2 py-[3px] text-[10px] font-bold font-mono tracking-[0.05em]', className)}
+      className={cn('inline-flex items-center rounded-md px-2 py-[3px] text-xs font-bold font-mono tracking-[0.05em]', className)}
       style={{ background: p.bg, color: p.text }}
       {...props}
     >
@@ -147,7 +147,7 @@ export function PriorityBadge({ priority, className, ...props }: PriorityBadgePr
 
   return (
     <span
-      className={cn('inline-flex items-center gap-1 rounded-[5px] px-2 py-[3px] text-[10px] font-bold font-mono uppercase tracking-[0.06em]', className)}
+      className={cn('inline-flex items-center gap-1 rounded-[5px] px-2 py-[3px] text-xs font-bold font-mono uppercase tracking-[0.06em]', className)}
       style={styles[priority]}
       {...props}
     >
@@ -183,7 +183,7 @@ export function StockBadge({ level, children, className, ...props }: StockBadgeP
   const p = palette[level];
   return (
     <span
-      className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-[3px] text-[11px] font-semibold', className)}
+      className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-[3px] text-xs font-semibold', className)}
       style={{ background: p.bg, color: p.text }}
       {...props}
     >
@@ -206,7 +206,7 @@ export function DefectTag({ onRemove, children, className, ...props }: DefectTag
   return (
     <span
       className={cn(
-        'inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-[10px] py-1 text-[11px] font-medium',
+        'inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-[10px] py-1 text-xs font-medium',
         className,
       )}
       style={{
@@ -247,7 +247,7 @@ export function FilterChip({ active, count, children, className, ...props }: Fil
     <button
       type="button"
       className={cn(
-        'inline-flex cursor-pointer items-center gap-1.5 rounded-[7px] border px-[11px] py-[5px] text-[11px] font-semibold transition-all duration-[140ms]',
+        'inline-flex cursor-pointer items-center gap-1.5 rounded-[7px] border px-[11px] py-[5px] text-xs font-semibold transition-all duration-[140ms]',
         active
           ? 'text-white shadow-[0_2px_4px_hsl(192_75%_21%/0.18)]'
           : 'border-[hsl(200_14%_88%)] bg-card text-[hsl(200_12%_45%)] hover:border-[hsl(192_75%_21%)] hover:text-[hsl(192_75%_21%)]',
@@ -259,7 +259,7 @@ export function FilterChip({ active, count, children, className, ...props }: Fil
       {children}
       {count !== undefined && (
         <span
-          className="rounded-[4px] px-[5px] py-px font-mono text-[9px]"
+          className="rounded-[4px] px-[5px] py-px font-mono text-xs"
           style={
             active
               ? { background: 'hsl(192 75% 14%)', color: 'hsl(192 50% 90%)' }
@@ -295,7 +295,7 @@ export function AssigneeChip({ initials, colorIndex = 0, children, className, ..
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full border py-[3px] pr-[9px] pl-[3px] text-[11px] font-semibold',
+        'inline-flex items-center gap-1.5 rounded-full border py-[3px] pr-[9px] pl-[3px] text-xs font-semibold',
         className,
       )}
       style={{
@@ -306,7 +306,7 @@ export function AssigneeChip({ initials, colorIndex = 0, children, className, ..
       {...props}
     >
       <span
-        className="inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[9px] font-bold uppercase tracking-[0.04em] text-white"
+        className="inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-xs font-bold uppercase tracking-[0.04em] text-white"
         style={{ background: avatarBg }}
       >
         {initials}
@@ -348,7 +348,7 @@ export function VersionTag({ variant = 'default', children, className, ...props 
 
   return (
     <span
-      className={cn('inline-flex items-center gap-1 rounded-[4px] border px-[7px] py-[2px] font-mono text-[10px] font-bold', className)}
+      className={cn('inline-flex items-center gap-1 rounded-[4px] border px-[7px] py-[2px] font-mono text-xs font-bold', className)}
       style={styles[variant]}
       {...props}
     >
@@ -377,7 +377,7 @@ export function DeltaBadge({ direction, children, className, ...props }: DeltaBa
   const p = palette[direction];
   return (
     <span
-      className={cn('inline-flex items-center gap-[3px] rounded-[5px] px-[7px] py-[2px] font-mono text-[11px] font-bold', className)}
+      className={cn('inline-flex items-center gap-[3px] rounded-[5px] px-[7px] py-[2px] font-mono text-xs font-bold', className)}
       style={{ background: p.bg, color: p.text }}
       {...props}
     >
@@ -401,7 +401,7 @@ export function ArrowDeltaBadge({ direction, children, className, ...props }: Ar
   const p = palette[direction];
   return (
     <span
-      className={cn('inline-flex items-center gap-[3px] rounded-[5px] px-[7px] py-[2px] font-mono text-[11px] font-bold', className)}
+      className={cn('inline-flex items-center gap-[3px] rounded-[5px] px-[7px] py-[2px] font-mono text-xs font-bold', className)}
       style={{ background: p.bg, color: p.text }}
       {...props}
     >
@@ -430,7 +430,7 @@ export function CountBadge({ variant = 'muted', children, className, ...props }:
   };
   return (
     <span
-      className={cn('inline-block min-w-[20px] rounded-[4px] px-1.5 py-px text-center font-mono text-[10px] font-bold', className)}
+      className={cn('inline-block min-w-[20px] rounded-[4px] px-1.5 py-px text-center font-mono text-xs font-bold', className)}
       style={styles[variant]}
       {...props}
     >
@@ -451,7 +451,7 @@ interface MaterialTagProps extends React.HTMLAttributes<HTMLSpanElement> {
 export function MaterialTag({ swatchColor, children, className, ...props }: MaterialTagProps) {
   return (
     <span
-      className={cn('inline-flex items-center gap-1.5 rounded-[6px] border bg-card px-[10px] py-1 text-[11px] font-semibold', className)}
+      className={cn('inline-flex items-center gap-1.5 rounded-[6px] border bg-card px-[10px] py-1 text-xs font-semibold', className)}
       style={{ borderColor: 'hsl(200 14% 88%)', color: 'hsl(200 30% 18%)' }}
       {...props}
     >

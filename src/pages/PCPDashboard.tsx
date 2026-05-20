@@ -229,7 +229,7 @@ export default function PCPDashboard() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-muted/40 border-b [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                  <tr className="bg-muted/40 border-b [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <th className="text-left p-2">Setor</th>
                     <th className="text-center p-2">Pendentes</th>
                     <th className="text-center p-2">Em Andamento</th>

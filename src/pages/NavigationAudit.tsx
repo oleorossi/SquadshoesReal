@@ -101,7 +101,7 @@ export default function NavigationAuditPage() {
           ) : (
               <table className="w-full text-sm">
                 <thead className="bg-muted/40 border-b border-border">
-                  <tr className="[&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                  <tr className="[&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <th className="px-4 py-3 text-left">Tipo</th>
                     <th className="px-4 py-3 text-left">Item / Rota</th>
                     <th className="px-4 py-3 text-left">Descrição</th>
@@ -112,7 +112,7 @@ export default function NavigationAuditPage() {
                   {issues.map((issue, idx) => (
                     <tr key={idx} className="hover:bg-muted/30 transition-colors">
                       <td className="px-4 py-3 align-top whitespace-nowrap">
-                        <Badge variant={getIssueColor(issue.kind) as any} className="text-[10px] uppercase">
+                        <Badge variant={getIssueColor(issue.kind) as any} className="text-xs uppercase">
                           {issue.kind.replace(/-/g, ' ')}
                         </Badge>
                       </td>

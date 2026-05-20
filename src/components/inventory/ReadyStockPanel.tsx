@@ -494,20 +494,20 @@ ${cardsHtml}
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/60 hover:bg-muted/60">
-                  <TableHead className="text-center text-[10px] font-bold w-10">Seq.</TableHead>
-                  <TableHead className="text-center text-[10px] font-bold w-14">Foto</TableHead>
-                  <TableHead className="text-[10px] font-bold">Refer.</TableHead>
-                  <TableHead className="text-[10px] font-bold">Descrição</TableHead>
-                  <TableHead className="text-[10px] font-bold">Categoria</TableHead>
-                  <TableHead className="text-center text-[10px] font-bold">Cor</TableHead>
+                  <TableHead className="text-center text-xs font-bold w-10">Seq.</TableHead>
+                  <TableHead className="text-center text-xs font-bold w-14">Foto</TableHead>
+                  <TableHead className="text-xs font-bold">Refer.</TableHead>
+                  <TableHead className="text-xs font-bold">Descrição</TableHead>
+                  <TableHead className="text-xs font-bold">Categoria</TableHead>
+                  <TableHead className="text-center text-xs font-bold">Cor</TableHead>
                   {allSizes.map(s => (
-                    <TableHead key={s} className="text-center text-[10px] font-bold w-10 px-1">{s}</TableHead>
+                    <TableHead key={s} className="text-center text-xs font-bold w-10 px-1">{s}</TableHead>
                   ))}
-                  <TableHead className="text-center text-[10px] font-bold bg-muted w-12">Quant.</TableHead>
-                  <TableHead className="text-right text-[10px] font-bold">Custo</TableHead>
-                  <TableHead className="text-right text-[10px] font-bold">Venda</TableHead>
-                  <TableHead className="text-right text-[10px] font-bold bg-muted w-20">Total</TableHead>
-                  <TableHead className="text-center text-[10px] w-10">Ações</TableHead>
+                  <TableHead className="text-center text-xs font-bold bg-muted w-12">Quant.</TableHead>
+                  <TableHead className="text-right text-xs font-bold">Custo</TableHead>
+                  <TableHead className="text-right text-xs font-bold">Venda</TableHead>
+                  <TableHead className="text-right text-xs font-bold bg-muted w-20">Total</TableHead>
+                  <TableHead className="text-center text-xs w-10">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -527,7 +527,7 @@ ${cardsHtml}
                     <TableCell className="text-xs">{g.refName}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{g.category || '—'}</TableCell>
                     <TableCell className="text-center">
-                      <Badge variant="outline" className="text-[10px]">{g.color}</Badge>
+                      <Badge variant="outline" className="text-xs">{g.color}</Badge>
                     </TableCell>
                     {allSizes.map(s => {
                       const item = g.items.find(i => i.size === s);
@@ -661,7 +661,7 @@ ${cardsHtml}
                     <div className="relative group">
                       <img src={url} alt={selColor} className="h-32 w-32 rounded-lg object-cover border-2 border-border shadow-md" />
                       <div className="absolute inset-0 rounded-lg bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Badge className="bg-primary/90 text-white border-none text-[10px]">{selColor}</Badge>
+                        <Badge className="bg-primary/90 text-white border-none text-xs">{selColor}</Badge>
                       </div>
                     </div>
                   );
@@ -676,7 +676,7 @@ ${cardsHtml}
                 <div className="grid grid-cols-5 gap-2">
                   {availableSizes.map(size => (
                     <div key={size} className="text-center">
-                      <p className="text-[10px] font-semibold text-muted-foreground mb-1">Nº {size}</p>
+                      <p className="text-xs font-semibold text-muted-foreground mb-1">Nº {size}</p>
                       <Input
                         type="number"
                         min={0}
