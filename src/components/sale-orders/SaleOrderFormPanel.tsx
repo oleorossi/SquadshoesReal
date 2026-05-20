@@ -1292,7 +1292,32 @@ export default function SaleOrderFormPanel({
             <ClipboardList className="h-5 w-5 text-primary" />
             <Label className="text-lg font-bold">Itens do Pedido</Label>
           </div>
-          <Badge variant="outline" className="font-mono">{items.length} Referência(s)</Badge>
+          <div className="flex items-center gap-2">
+            {/* Checkbox master pra selecionar/desmarcar todos os itens (20/05/2026).
+                Antes só aparecia DENTRO da barra de bulk-edit que só surgia com
+                1+ item selecionado — catch-22 ruim de UX. Agora sempre visível. */}
+            {items.length > 1 && (
+              <label className="flex items-center gap-1.5 cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
+                <input
+                  type="checkbox"
+                  checked={selectedItemIndices.size === items.length && items.length > 0}
+                  ref={(el) => {
+                    if (el) el.indeterminate = selectedItemIndices.size > 0 && selectedItemIndices.size < items.length;
+                  }}
+                  onChange={(e) => {
+                    if (e.target.checked) selectAllItems();
+                    else clearItemSelection();
+                  }}
+                  className="h-4 w-4 rounded border-input cursor-pointer"
+                  aria-label="Selecionar todos os itens"
+                />
+                {selectedItemIndices.size === items.length && items.length > 0
+                  ? 'Desmarcar todos'
+                  : `Selecionar todos${selectedItemIndices.size > 0 ? ` (${selectedItemIndices.size}/${items.length})` : ''}`}
+              </label>
+            )}
+            <Badge variant="outline" className="font-mono">{items.length} Referência(s)</Badge>
+          </div>
         </div>
         {sortedIndices.map((idx, sortPos) => {
           const item = items[idx];
