@@ -71,10 +71,35 @@ export function SoleSizeConjugationsEditor({ soleGroupId, sizeFrom, sizeTo }: Pr
     // Keying on length alone misses edits that keep the count constant.
   }, [existingKey, soleGroupId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const availableSizes = useMemo(() => {
+  // Tamanhos DENTRO do range atual do solado.
+  const inRangeSizes = useMemo(() => {
     if (sizeFrom == null || sizeTo == null || sizeTo < sizeFrom) return [] as number[];
     return Array.from({ length: sizeTo - sizeFrom + 1 }, (_, i) => sizeFrom + i);
   }, [sizeFrom, sizeTo]);
+
+  // Tamanhos vizinhos FORA do range (até 4 abaixo + 4 acima). Permite cadastrar
+  // conjugações que extrapolam o range — ao salvar, o range do solado é
+  // automaticamente expandido. Origem: 20/05/2026 — user queria cadastrar
+  // 33/34 (33 fora do range 34-40) e 39/40 (dentro) sem ter que editar o
+  // range manualmente em outra tela primeiro.
+  const availableSizes = useMemo(() => {
+    if (sizeFrom == null || sizeTo == null || sizeTo < sizeFrom) return [] as number[];
+    const before = Array.from({ length: 4 }, (_, i) => sizeFrom - 4 + i).filter(s => s >= 15);
+    const after = Array.from({ length: 4 }, (_, i) => sizeTo + 1 + i).filter(s => s <= 50);
+    return [...before, ...inRangeSizes, ...after];
+  }, [sizeFrom, sizeTo, inRangeSizes]);
+
+  // Tamanhos atualmente usados em DRAFTS que estão FORA do range — vão exigir
+  // expansão do solado no save. Mostrados em aviso âmbar.
+  const draftsOutOfRange = useMemo(() => {
+    const out: number[] = [];
+    for (const d of drafts) {
+      for (const s of d.sizes) {
+        if (sizeFrom == null || sizeTo == null || s < sizeFrom || s > sizeTo) out.push(s);
+      }
+    }
+    return Array.from(new Set(out)).sort((a, b) => a - b);
+  }, [drafts, sizeFrom, sizeTo]);
 
   const usedSizes = useMemo(() => {
     const s = new Set<number>();
@@ -165,6 +190,37 @@ export function SoleSizeConjugationsEditor({ soleGroupId, sizeFrom, sizeTo }: Pr
     }
 
     try {
+      // 1) Expande o range do solado se algum draft tem tamanho fora do range
+      //    atual. Atualiza products.stock_grade de TODAS as variantes (cores)
+      //    do grupo — assim débito/reserva por numeração continua íntegro.
+      if (draftsOutOfRange.length > 0 && sizeFrom != null && sizeTo != null) {
+        const newFrom = Math.min(sizeFrom, ...draftsOutOfRange);
+        const newTo = Math.max(sizeTo, ...draftsOutOfRange);
+        const { data: groupProducts, error: pErr } = await (supabase as any)
+          .from('products')
+          .select('id, stock_grade')
+          .eq('group_id', soleGroupId)
+          .eq('category', 'Solado')
+          .eq('active', true);
+        if (pErr) throw pErr;
+        for (const prod of (groupProducts || [])) {
+          const grade = { ...(prod.stock_grade || {}) };
+          grade._size_from = newFrom;
+          grade._size_to = newTo;
+          // Garante key 0 nos tamanhos novos pra grade ficar completa
+          for (let s = newFrom; s <= newTo; s++) {
+            if (grade[String(s)] == null) grade[String(s)] = 0;
+          }
+          const { error: uErr } = await (supabase as any)
+            .from('products')
+            .update({ stock_grade: grade })
+            .eq('id', prod.id);
+          if (uErr) throw uErr;
+        }
+        toast.info(`Range expandido: ${sizeFrom}-${sizeTo} → ${newFrom}-${newTo}`);
+      }
+
+      // 2) Persiste as conjugações
       for (let i = 0; i < drafts.length; i++) {
         const d = drafts[i];
         await upsert.mutateAsync({
@@ -212,6 +268,22 @@ export function SoleSizeConjugationsEditor({ soleGroupId, sizeFrom, sizeTo }: Pr
             </div>
           )}
 
+          {draftsOutOfRange.length > 0 && sizeFrom != null && sizeTo != null && (() => {
+            const newFrom = Math.min(sizeFrom, ...draftsOutOfRange);
+            const newTo = Math.max(sizeTo, ...draftsOutOfRange);
+            return (
+              <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 px-3 py-2 flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                <div className="text-[11px] text-amber-700 dark:text-amber-400">
+                  <strong>Range vai ser expandido ao salvar:</strong>{' '}
+                  <span className="font-mono">{sizeFrom}–{sizeTo}</span> →{' '}
+                  <span className="font-mono font-bold">{newFrom}–{newTo}</span>{' '}
+                  (tamanhos fora do range: {draftsOutOfRange.join(', ')})
+                </div>
+              </div>
+            );
+          })()}
+
           {drafts.map((d, idx) => (
             <div key={idx} className="rounded-md border p-3 space-y-2 bg-card">
               <div className="flex items-center justify-between gap-2">
@@ -240,6 +312,7 @@ export function SoleSizeConjugationsEditor({ soleGroupId, sizeFrom, sizeTo }: Pr
                   {availableSizes.map((s) => {
                     const selected = d.sizes.includes(s);
                     const usedElsewhere = !selected && drafts.some((other, i) => i !== idx && other.sizes.includes(s));
+                    const outOfRange = sizeFrom != null && sizeTo != null && (s < sizeFrom || s > sizeTo);
                     return (
                       <button
                         key={s}
@@ -248,12 +321,16 @@ export function SoleSizeConjugationsEditor({ soleGroupId, sizeFrom, sizeTo }: Pr
                         disabled={usedElsewhere}
                         className={`h-7 min-w-[34px] rounded border px-2 text-xs font-mono transition-colors ${
                           selected
-                            ? 'bg-primary text-primary-foreground border-primary'
+                            ? outOfRange
+                              ? 'bg-amber-500 text-white border-amber-600'
+                              : 'bg-primary text-primary-foreground border-primary'
                             : usedElsewhere
                             ? 'bg-muted/40 text-muted-foreground/50 border-border cursor-not-allowed'
+                            : outOfRange
+                            ? 'bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-400'
                             : 'bg-background hover:bg-muted/60 border-border'
                         }`}
-                        title={usedElsewhere ? 'Já usado em outra conjugação' : ''}
+                        title={usedElsewhere ? 'Já usado em outra conjugação' : outOfRange ? 'Fora do range atual — vai expandir ao salvar' : ''}
                       >
                         {s}
                       </button>
