@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Plus, Cube as Box } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/ui/empty-state';
 
 export default function MasterBoxTable() {
   const { data: boxes, isLoading } = useBoxTypes();
@@ -33,9 +34,7 @@ export default function MasterBoxTable() {
       </CardHeader>
       <CardContent>
         {masterBoxes.length === 0 ? (
-          <p className="text-muted-foreground text-sm text-center py-8">
-            Nenhuma caixa master cadastrada.
-          </p>
+          <EmptyState icon={Box} title="Nenhuma caixa master cadastrada" size="sm" />
         ) : (
           <Table>
             <TableHeader>

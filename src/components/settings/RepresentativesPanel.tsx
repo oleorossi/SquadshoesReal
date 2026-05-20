@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useRepresentatives, useCreateRepresentative, useUpdateRepresentative, useDeleteRepresentative, RepresentativeFormData, Representative } from '@/hooks/useRepresentatives';
@@ -207,10 +208,11 @@ export default function RepresentativesPanel() {
       {/* Cards */}
       <div className="space-y-2">
         {filtered.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <Users2 className="h-10 w-10 mx-auto mb-2 opacity-30" />
-            <p className="text-sm">Nenhum representante encontrado</p>
-          </div>
+          <EmptyState
+            icon={Users2}
+            title="Nenhum representante encontrado"
+            size="sm"
+          />
         ) : filtered.map(r => (
           <RepCard key={r.id} rep={r} onEdit={() => openEdit(r)} onDelete={() => deleteRep.mutate(r.id)} />
         ))}

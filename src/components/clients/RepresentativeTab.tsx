@@ -10,6 +10,7 @@ import {
   useEconomicGroupRepresentatives, useAddGroupRepresentative, useRemoveGroupRepresentative,
 } from '@/hooks/useClientRepresentatives';
 import { normalizeForSearch } from '@/lib/searchUtils';
+import { EmptyState } from '@/components/ui/empty-state';
 
 interface Props {
   entityId: string | null;
@@ -97,7 +98,7 @@ export default function RepresentativeTab({ entityId, type }: Props) {
           })}
         </div>
       ) : (
-        <p className="text-center text-sm text-muted-foreground py-6">Nenhum representante vinculado</p>
+        <EmptyState icon={UserCheck} title="Nenhum representante vinculado" size="sm" />
       )}
 
       <Dialog open={addDialog} onOpenChange={setAddDialog}>
@@ -111,7 +112,7 @@ export default function RepresentativeTab({ entityId, type }: Props) {
           </div>
           <div className="flex-1 overflow-y-auto rounded-md border divide-y min-h-0 max-h-[50vh]">
             {availableReps.length === 0 ? (
-              <p className="text-center text-sm text-muted-foreground py-8">Nenhum representante disponível</p>
+              <EmptyState icon={UserCheck} title="Nenhum representante disponível" size="sm" />
             ) : (
               availableReps.map(rep => (
                 <button key={rep.id} type="button" onClick={() => { handleAdd(rep); setAddDialog(false); }}
