@@ -19,6 +19,10 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Checkbox } from '@/components/ui/checkbox';
+import { BulkActionsBar } from '@/components/ui/bulk-actions-bar';
+import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
+import { confirmAndBulkDelete } from '@/lib/bulkConfirm';
 import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
@@ -280,6 +284,22 @@ export default function Contractors() {
     const q = normalizeForSearch(search);
     return contractors.filter(c => normalizeForSearch(c.name).includes(q) || normalizeForSearch(c.service_type).includes(q) || (c.cnpj_cpf || '').includes(q));
   }, [contractors, search]);
+
+  const sel = useMarqueeSelection(filteredContractors, (c) => c.id);
+  const handleBulkDeleteContractors = async () => {
+    const ids = Array.from(sel.selectedIds);
+    const sampleLines = filteredContractors
+      .filter(c => sel.selectedIds.has(c.id))
+      .slice(0, 5)
+      .map(c => `• ${c.name}${c.cnpj_cpf ? ` (${c.cnpj_cpf})` : ''}`);
+    await confirmAndBulkDelete({
+      ids,
+      entityLabel: 'prestador',
+      sampleLines,
+      deleteOne: (id) => deleteContractor.mutateAsync(id),
+      onAfter: () => sel.clear(),
+    });
+  };
 
   const filteredOrders = useMemo(() => {
     const q = normalizeForSearch(search);
@@ -1448,6 +1468,13 @@ export default function Contractors() {
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-muted/40 [&_th]:text-[11px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                        <TableHead className="w-8">
+                          <Checkbox
+                            checked={filteredContractors.length > 0 && filteredContractors.every(c => sel.isSelected(c.id))}
+                            onCheckedChange={(v) => filteredContractors.forEach(c => { if (!!v !== sel.isSelected(c.id)) sel.toggle(c.id); })}
+                            aria-label="Selecionar todos"
+                          />
+                        </TableHead>
                         <TableHead>Nome</TableHead>
                         <TableHead>CPF/CNPJ</TableHead>
                         <TableHead>Tipo de Serviço</TableHead>
@@ -1460,9 +1487,20 @@ export default function Contractors() {
                     </TableHeader>
                     <TableBody>
                       {filteredContractors.length === 0 ? (
-                        <TableRow><TableCell colSpan={8} className="text-center text-sm text-muted-foreground py-12">Nenhum prestador cadastrado</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={9} className="text-center text-sm text-muted-foreground py-12">Nenhum prestador cadastrado</TableCell></TableRow>
                       ) : filteredContractors.map(c => (
-                        <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={e => { if ((e.target as HTMLElement).closest('button')) return; openEditContractor(c); }}>
+                        <TableRow
+                          key={c.id}
+                          className={`cursor-pointer hover:bg-muted/50 transition-colors ${sel.isSelected(c.id) ? 'bg-primary/5 hover:bg-primary/10' : ''}`}
+                          onClick={e => { if ((e.target as HTMLElement).closest('button,[role="checkbox"]')) return; openEditContractor(c); }}
+                        >
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <Checkbox
+                              checked={sel.isSelected(c.id)}
+                              onCheckedChange={() => sel.toggle(c.id)}
+                              aria-label={`Selecionar ${c.name}`}
+                            />
+                          </TableCell>
                           <TableCell className="text-sm font-medium">{c.name}</TableCell>
                           <TableCell className="text-sm font-mono text-xs">{c.cnpj_cpf || '—'}</TableCell>
                           <TableCell className="text-sm">{c.service_type || '—'}</TableCell>
@@ -2307,6 +2345,20 @@ export default function Contractors() {
           notes: receiveTarget.notes,
           contractors: receiveTarget.contractors ? { name: receiveTarget.contractors.name } : null,
         } : null}
+      />
+
+      <BulkActionsBar
+        selectedIds={sel.selectedIds}
+        onClear={sel.clear}
+        itemLabel={sel.selectedIds.size === 1 ? 'prestador' : 'prestadores'}
+        actions={[
+          {
+            label: 'Excluir',
+            variant: 'destructive',
+            icon: <Trash2 className="h-3.5 w-3.5" />,
+            onClick: handleBulkDeleteContractors,
+          },
+        ]}
       />
     </AppLayout>
   );
