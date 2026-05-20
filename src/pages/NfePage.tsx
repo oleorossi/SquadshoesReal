@@ -20,6 +20,7 @@ import NfeDiagnosticPanel from '@/components/nfe/NfeDiagnosticPanel';
 import NfeCCePanel from '@/components/nfe/NfeCCePanel';
 import StandaloneNfePanel from '@/components/nfe/StandaloneNfePanel';
 import { NfeBillingHealthCard } from '@/components/nfe/NfeBillingHealthCard';
+import { LookupNfeByKey } from '@/components/nfe/LookupNfeByKey';
 import { NfeViewerDialog } from '@/components/nfe/NfeViewerDialog';
 import { NfePreviewPanel, fmtMoney, fmtCnpjCpf } from '@/components/nfe/NfePreviewPanel';
 import { AppErrorBoundary } from '@/components/ErrorBoundary';
@@ -500,6 +501,11 @@ export default function NfePage() {
         <StatCard label="Processando" value={stats.processando} tone="warning" />
         <StatCard label="Rejeitadas" value={stats.rejeitadas} tone="destructive" />
       </StatGrid>
+
+      {/* Lookup por chave de acesso (44 dígitos) — abre meudanfe.com.br pra
+          baixar XML e DANFE oficiais da SEFAZ. ClickNotas não expõe download
+          direto via API, daí o atalho. */}
+      <LookupNfeByKey />
 
       {/* M2: PVs com inconsistência fiscal (Faturado sem NF, NF sem Faturado, etc.) */}
       <NfeBillingHealthCard />
