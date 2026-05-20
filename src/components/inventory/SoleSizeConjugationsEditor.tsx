@@ -115,18 +115,16 @@ export function SoleSizeConjugationsEditor({ soleGroupId, sizeFrom, sizeTo }: Pr
       toast.error('Defina a faixa de numeração antes de criar conjugações');
       return;
     }
-    // Sugere o próximo par não usado
-    const remaining = availableSizes.filter((s) => !usedSizes.has(s));
-    const suggested = remaining.slice(0, 2);
-    if (suggested.length < 2) {
-      toast.info('Não há tamanhos suficientes livres na faixa para um novo par');
-      return;
-    }
+    // Cria draft VAZIO — user escolhe quais tamanhos compõem a conjugação
+    // clicando nos botões abaixo. Antes auto-sugeria os 2 primeiros disponíveis
+    // (ex: 31, 32 mesmo o user querendo 33/34) — atrapalhava mais do que
+    // ajudava porque o user sempre tinha que desmarcar antes de marcar
+    // os corretos. Reportado em 20/05/2026.
     setDrafts((prev) => [
       ...prev,
       {
-        size_key: buildKeyFromSizes(suggested),
-        sizes: suggested,
+        size_key: '',
+        sizes: [],
         display_order: prev.length,
       },
     ]);
