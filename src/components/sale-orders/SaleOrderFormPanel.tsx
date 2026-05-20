@@ -590,7 +590,14 @@ export default function SaleOrderFormPanel({
        // fallback: range adulto padrão
        return ['33','34','35','36','37','38','39','40','41'];
      }
-     return Array.from(set).sort((a, b) => Number(a) - Number(b));
+     // Sort 20/05/2026: extrai o PRIMEIRO número da key — necessário pra
+     // tamanhos conjugados tipo "33/34" e "39/40" (Number("33/34")=NaN sem
+     // o split, então caíam no fim da lista quebrando a ordem visual).
+     return Array.from(set).sort((a, b) => {
+       const na = parseInt(String(a).split('/')[0], 10);
+       const nb = parseInt(String(b).split('/')[0], 10);
+       return (isFinite(na) ? na : 0) - (isFinite(nb) ? nb : 0);
+     });
    }, [selectedItemIndices, items]);
 
    const applyGradeTableToSelected = useCallback(() => {
