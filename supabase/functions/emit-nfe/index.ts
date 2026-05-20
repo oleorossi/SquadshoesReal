@@ -970,14 +970,27 @@ Deno.serve(async (req) => {
     if (qtdVolumesStr) volumesObj.quantidade = qtdVolumesStr;
     if (pesoLiquidoStr) volumesObj.peso_liquido = pesoLiquidoStr;
     if (pesoBrutoStr) volumesObj.peso_bruto = pesoBrutoStr;
+    // Variantes de nomes de campo de modalidade de frete — diferentes ERPs
+    // brasileiros usam nomes diferentes. Como o GC ignorou todos os anteriores
+    // (NF 253 saiu com modFrete=0), bombardeamos com todas as variantes que
+    // existem em emissoras NF-e brasileiras: modFrete (SEFAZ literal),
+    // modalidade_frete, frete_por_conta, tipo_frete.
     const transporteBlock: Record<string, unknown> = {
       modalidade_frete: 3,
+      modFrete: 3,
       frete_por_conta: 3,
+      tipo_frete: 3,
+      frete: 3,
       volumes: volumesObj,
     };
     if (gcTransportadoraId) {
-      transporteBlock.transportadora = { id: Number(gcTransportadoraId) };
-    } else if (Object.keys(transportadorBlock).length > 0) {
+      const tid = Number(gcTransportadoraId);
+      transporteBlock.transportadora = { id: tid };
+      transporteBlock.transportadora_id = tid;
+      transporteBlock.transportador_id = tid;
+    }
+    if (Object.keys(transportadorBlock).length > 0) {
+      // Mantém o bloco com dados crus em paralelo — alguns endpoints aceitam.
       transporteBlock.transportador = transportadorBlock;
     }
 
@@ -1134,12 +1147,20 @@ Deno.serve(async (req) => {
     // timeout/network (NF pode ter sido criada no GC e sistema local não saber)
     // de rejeição estruturada (sem ambiguidade). Em caso de timeout, registra
     // status='reconciliation_needed' pra bloquear retry cego.
+
+    // Log estruturado do BODY enviado pra investigar campos que o GC ignora.
+    // 20/05/2026: NF 253 saiu com modFrete=0 / transportador vazio / espécie
+    // vazia / marca vazia mesmo passando tudo. Adicionado log integral pra
+    // ver no Supabase Functions Logs o que sai e o que volta.
+    console.log("[emit-nfe] POST /notas_fiscais_produtos body:", JSON.stringify(nfePayload).slice(0, 2000));
+
     let createResp;
     try {
       createResp = await gcFetch("/notas_fiscais_produtos", {
         method: "POST",
         body: JSON.stringify(nfePayload),
       });
+      console.log("[emit-nfe] response status:", createResp.status, "body:", JSON.stringify(createResp.json).slice(0, 1500));
     } catch (createErr: unknown) {
       const isTimeout = createErr instanceof DOMException && createErr.name === "AbortError";
       const errMsg = createErr instanceof Error ? createErr.message : String(createErr);
