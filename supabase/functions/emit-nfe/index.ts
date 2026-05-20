@@ -982,6 +982,13 @@ Deno.serve(async (req) => {
       ...(pesoLiquidoStr ? { peso_liquido: pesoLiquidoStr } : {}),
       ...(qtdVolumesStr ? { quantidade_volumes: qtdVolumesStr } : {}),
       especie_volumes: "VOLUME",
+      // valor_frete: bug fix 20/05/2026 (PV-00122). Antes a UI somava
+      // mercadoria+frete (R$ 0,50/par × N pares) mas a NF emitia só
+      // mercadoria — divergência entre tela e fiscal. Agora envia o
+      // valor_frete gravado no PV (atualizado pelo useUpdate/CreateSaleOrder).
+      ...(Number(order.valor_frete) > 0
+        ? { valor_frete: Number(Number(order.valor_frete).toFixed(2)) }
+        : {}),
       produtos: produtosGC,
       ...(pagamentoArr.length ? { pagamento: pagamentoArr } : {}),
       transporte: transporteBlock,
