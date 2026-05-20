@@ -64,18 +64,18 @@ export function StatCard({
       <div className="h-[2px] bg-foreground" aria-hidden="true" />
       <div className="p-4 flex flex-col gap-2">
         <div className="flex items-start justify-between gap-2">
-          <span className="eyebrow truncate">{label}</span>
+          <span className="eyebrow leading-snug break-words min-w-0" title={label}>{label}</span>
           {Icon && (
             <span className="shrink-0 h-7 w-7 -mt-0.5 flex items-center justify-center bg-muted text-muted-foreground rounded-md">
               <Icon className="h-4 w-4" />
             </span>
           )}
         </div>
-        <div className="flex items-baseline gap-1.5">
-          <span className={cn('mono text-3xl font-bold leading-none', TONE_VALUE[tone])}>
+        <div className="flex items-baseline gap-1.5 min-w-0">
+          <span className={cn('mono text-3xl font-bold leading-none truncate', TONE_VALUE[tone])} title={typeof value === 'string' ? value : undefined}>
             {value}
           </span>
-          {unit && <span className="text-xs text-muted-foreground font-medium">{unit}</span>}
+          {unit && <span className="text-xs text-muted-foreground font-medium shrink-0">{unit}</span>}
         </div>
         {(delta || hint) && (
           <div className="flex items-center gap-2 text-xs">

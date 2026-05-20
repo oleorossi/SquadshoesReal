@@ -1177,11 +1177,14 @@ a:focus-visible {
    xl 1280, 2xl 1536) mantidos. Aqui só utilitários fluidos extras.
    ════════════════════════════════════════════════════════════════════════════ */
 
-/* Grid responsivo de KPIs — auto-fit até minmax(140px) */
+/* Grid responsivo de KPIs — auto-fit minmax(155px) acomoda valores
+   monetários médios sem truncar e ainda permite 6 KPIs por linha em
+   viewport ~1024px (sidebar 240 + 6*155 + gaps ≈ 1230px).
+   gap-2.5 dá respiro visual entre os cards. */
 .grid-kpi-fluid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 0.625rem; /* gap-2.5 */
+  grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+  gap: 0.625rem;
 }
 
 /* Container constraint pra 4K / monitores muito largos.

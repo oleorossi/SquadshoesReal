@@ -63,8 +63,8 @@ const variantConfig: Record<string, {
         )} />
       )}
       {/* Label + Icon */}
-      <div className="flex items-center justify-between">
-         <span className="eyebrow truncate pr-2">{displayTitle}</span>
+      <div className="flex items-start justify-between gap-2">
+         <span className="eyebrow leading-snug pr-1 break-words" title={displayTitle}>{displayTitle}</span>
         <div className={cn(
           'w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-transform duration-300 group-hover:scale-110',
           cfg.iconBg, cfg.iconColor

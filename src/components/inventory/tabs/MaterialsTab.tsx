@@ -315,10 +315,12 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
     <div className="space-y-4 mt-4">
       {/* Unified toolbar: search + sort + actions */}
       <div className="rounded-xl border border-border/60 bg-card p-3 shadow-sm">
-        <div className="flex flex-col lg:flex-row lg:items-center gap-3">
-          {/* Search */}
+        <div className="flex flex-col xl:flex-row xl:items-center gap-3">
+          {/* Search — em <1280 ocupa linha inteira; em xl+ compartilha com ações.
+              Sem max-width: deixa o search respirar e os botões à direita
+              encolherem (via shrink) quando necessário. */}
           <SmartSearch
-            className="flex-1 lg:max-w-md"
+            className="flex-1 min-w-[200px]"
             value={search}
             onChange={(v) => { setSearch(v); setPage(1); }}
             placeholder={`Buscar ${title.toLowerCase()}, SKU ou categoria…`}
@@ -346,7 +348,7 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
           />
 
           {/* Sort + actions */}
-          <div className="flex items-center gap-2 flex-wrap lg:flex-nowrap lg:ml-auto">
+          <div className="flex items-center gap-2 flex-wrap xl:flex-nowrap xl:ml-auto">
             <div className="flex items-center gap-1.5 text-muted-foreground">
               <ArrowUpDown className="h-3.5 w-3.5" />
               <span className="hidden md:inline text-xs font-medium">Ordenar:</span>
@@ -379,7 +381,7 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
             )}
 
             {/* Separator */}
-            <div className="hidden lg:block h-6 w-px bg-border mx-1" />
+            <div className="hidden xl:block h-6 w-px bg-border mx-1" />
 
             {/* View controls: density + columns */}
             <ViewControls />
@@ -411,7 +413,7 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <Button className="h-9 gap-2 shadow-sm" onClick={openAdd}>
+            <Button className="h-9 gap-2 shadow-sm shrink-0 whitespace-nowrap" onClick={openAdd}>
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">Adicionar {title}</span>
               <span className="inline sm:hidden">Adicionar</span>
