@@ -2558,19 +2558,45 @@ export default function SaleOrders() {
                   onChange={e => setDupClientSearch(e.target.value)}
                   className="h-9"
                 />
-                <div className="border rounded-md divide-y max-h-60 overflow-y-auto">
-                  {filteredClients.map(c => (
-                    <label key={c.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-muted/50 cursor-pointer">
-                      <Checkbox checked={dupSelectedClients.includes(c.id)} onCheckedChange={() => toggleDupClient(c.id)} />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium truncate">{c.razao_social}</div>
-                        {c.cnpj && <div className="text-xs text-muted-foreground font-mono">{c.cnpj}</div>}
+                <div className="border rounded-md divide-y max-h-72 overflow-y-auto">
+                  {filteredClients.map(c => {
+                    const isSelected = dupSelectedClients.includes(c.id);
+                    return (
+                      // Bug fix 20/05/2026: era <label> com Checkbox dentro, mas
+                      // shadcn Checkbox é <button>, não <input> — clicar na label
+                      // não togglava o estado, parecia que multi-seleção não
+                      // funcionava. Trocado por div com onClick na linha toda.
+                      <div
+                        key={c.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => toggleDupClient(c.id)}
+                        onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggleDupClient(c.id); } }}
+                        className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors ${
+                          isSelected ? 'bg-primary/10 hover:bg-primary/15' : 'hover:bg-muted/50'
+                        }`}
+                      >
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => toggleDupClient(c.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          aria-label={`Selecionar ${c.razao_social}`}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className={`text-sm font-medium truncate ${isSelected ? 'text-primary' : ''}`}>
+                            {c.razao_social}
+                          </div>
+                          {c.cnpj && <div className="text-xs text-muted-foreground font-mono">{c.cnpj}</div>}
+                        </div>
                       </div>
-                    </label>
-                  ))}
+                    );
+                  })}
                   {filteredClients.length === 0 && <p className="text-xs text-muted-foreground p-3">Nenhuma loja encontrada.</p>}
                 </div>
-                <p className="text-xs text-muted-foreground">{dupSelectedClients.length} de {dupGroupClients.length} selecionadas</p>
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-bold text-primary">{dupSelectedClients.length}</span> de {dupGroupClients.length} {dupGroupClients.length === 1 ? 'loja selecionada' : 'lojas selecionadas'}
+                  {dupSelectedClients.length > 0 && ' — clique em "Duplicar" pra criar N PVs de uma vez'}
+                </p>
               </div>
               );
             })()}
