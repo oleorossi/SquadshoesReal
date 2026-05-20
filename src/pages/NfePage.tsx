@@ -449,8 +449,8 @@ export default function NfePage() {
     if (!searchText) return true;
     const q = normalizeForSearch(searchText);
     return (
-      n.sale_orders?normalizeForSearch(.order_number).includes(q) ||
-      n.sale_orders?normalizeForSearch(.client_name).includes(q) ||
+      normalizeForSearch(n.sale_orders?.order_number).includes(q) ||
+      normalizeForSearch(n.sale_orders?.client_name).includes(q) ||
       normalizeForSearch(n.nome_destinatario).includes(q) ||
       n.cnpj_destinatario?.includes(q) ||
       normalizeForSearch(n.numero).includes(q) ||

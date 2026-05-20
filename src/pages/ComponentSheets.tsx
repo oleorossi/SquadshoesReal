@@ -180,10 +180,10 @@ const formatCurrency = (v: number) =>
 
     if (search) {
       items = items.filter((s: any) =>
-        s.products?normalizeForSearch(.name).includes(q) ||
-        s.products?normalizeForSearch(.sku).includes(q) ||
-        s.products?normalizeForSearch(.category).includes(q) ||
-        s.product_groups?normalizeForSearch(.name).includes(q)
+        normalizeForSearch(s.products?.name).includes(q) ||
+        normalizeForSearch(s.products?.sku).includes(q) ||
+        normalizeForSearch(s.products?.category).includes(q) ||
+        normalizeForSearch(s.product_groups?.name).includes(q)
       );
     }
 
@@ -1148,7 +1148,7 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
             <Pencil className="h-4 w-4 mr-1.5" />
             Observações
           </TabsTrigger>
-          {(prod?normalizeForSearch(.category).includes('solado') || prod?normalizeForSearch(.category).includes('sola')) && (
+          {(normalizeForSearch(prod?.category).includes('solado') || normalizeForSearch(prod?.category).includes('sola')) && (
             <TabsTrigger value="sole_specs" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3 text-sm">
               <Footprints className="h-4 w-4 mr-1.5" />
               Specs Técnicas
@@ -1464,7 +1464,7 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
           />
         </TabsContent>
 
-        {(prod?normalizeForSearch(.category).includes('solado') || prod?normalizeForSearch(.category).includes('sola')) && (
+        {(normalizeForSearch(prod?.category).includes('solado') || normalizeForSearch(prod?.category).includes('sola')) && (
           <TabsContent value="sole_specs" className="p-6 mt-0">
             <SoleTechnicalDetails 
               soleId={currentSheet.product_id} 

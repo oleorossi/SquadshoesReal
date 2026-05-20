@@ -1926,7 +1926,7 @@ export default function SaleOrders() {
                           <DeleteConfirmButton
                             onConfirm={() => deleteOrder.mutate(order.id)}
                             title={`Excluir ${order.order_number}?`}
-                            description="O pedido fica oculto mas pode ser restaurado por admin/gerente. Pra apagar de vez (com estorno de estoque), use \"Cancelar\" ou contate o admin."
+                            description={`O pedido fica oculto mas pode ser restaurado por admin/gerente. Pra apagar de vez (com estorno de estoque), use "Cancelar" ou contate o admin.`}
                             confirmTypedText={order.order_number}
                             size="h-7 w-7"
                             iconSize="h-3.5 w-3.5"

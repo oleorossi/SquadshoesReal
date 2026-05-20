@@ -51,8 +51,8 @@ export default function StrapStockLogTab() {
     ? movements.filter((m) => {
         const q = normalizeForSearch(search);
         return (
-          m.products?normalizeForSearch(.name).includes(q) ||
-          m.products?normalizeForSearch(.sku).includes(q) ||
+          normalizeForSearch(m.products?.name).includes(q) ||
+          normalizeForSearch(m.products?.sku).includes(q) ||
           normalizeForSearch(m.description).includes(q)
         );
       })

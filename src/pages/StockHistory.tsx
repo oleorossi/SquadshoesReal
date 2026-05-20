@@ -37,8 +37,8 @@ import { normalizeForSearch } from '@/lib/searchUtils';
           const q = normalizeForSearch(searchQuery);
           const matchesSearch = 
             (normalizeForSearch(mov.description).includes(q)) ||
-            (mov.products?normalizeForSearch(.name).includes(q)) ||
-            (mov.products?normalizeForSearch(.sku).includes(q)) ||
+            (normalizeForSearch(mov.products?.name).includes(q)) ||
+            (normalizeForSearch(mov.products?.sku).includes(q)) ||
             (normalizeForSearch(mov.lot_number).includes(q));
           if (!matchesSearch) return false;
         }

@@ -5256,7 +5256,7 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
     if (!form.product_id || (form.quantity_per_unit <= 0 && !hasPerSize)) return;
 
     const prod = products.find(p => p.id === form.product_id);
-    const isSolado = prod?normalizeForSearch(.category).includes('solado') || prod?normalizeForSearch(.category).includes('sola');
+    const isSolado = normalizeForSearch(prod?.category).includes('solado') || normalizeForSearch(prod?.category).includes('sola');
 
     if (isSolado) {
       try {
