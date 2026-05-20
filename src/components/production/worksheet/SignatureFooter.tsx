@@ -21,7 +21,10 @@ export const SignatureFooter = ({
   showTime = true,
 }: Props) => {
   return (
-    <div className="mt-auto pt-2 text-black">
+    // Fix 20/05/2026: era `mt-auto` mas combinado com flex flex-col dos
+    // containers raiz dos workshseets gerava página em branco extra no
+    // print. Trocado por margin top fixa.
+    <div className="mt-4 pt-2 text-black">
       <div
         className="w-full mb-2"
         style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000', height: '3px' }}

@@ -1044,8 +1044,12 @@ const OperatorWorkSheet = ({
         </div>
       </div>
 
-      {/* ── Footer: obs + signatures — editorial close ── */}
-      <div className="mt-auto pt-2">
+      {/* ── Footer: obs + signatures — editorial close ──
+          Fix 20/05/2026: era `mt-auto` que combinado com `flex flex-col` do
+          container raiz gerava página em branco extra no print (flex sem
+          altura definida empurra footer pra espaço fantasma na próxima
+          página). Trocado por margin top fixa. */}
+      <div className="mt-4 pt-2">
         {(order.notes) && (
           <div className="mb-2 border-t border-black pt-1">
             <span className="section-label block mb-0.5" style={{ color: '#000' }}>Observações</span>

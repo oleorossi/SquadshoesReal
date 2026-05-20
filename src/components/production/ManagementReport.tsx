@@ -204,7 +204,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
 
   return (
     <div
-      className="w-[210mm] p-[6mm] print:w-full print:p-[5mm] bg-white text-black m-auto editorial-stagger flex flex-col"
+      className="w-[210mm] p-[6mm] print:w-full print:p-[5mm] bg-white text-black m-auto editorial-stagger"
       style={{
         boxSizing: 'border-box',
         fontFamily: "'Inter Tight', 'Inter', system-ui, sans-serif",
@@ -811,8 +811,13 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
         </section>
       )}
 
-      {/* ─────────────────────────────── FOOTER · ASSINATURAS ─────────────────────────────── */}
-      <footer className="mt-auto pt-8">
+      {/* ─────────────────────────────── FOOTER · ASSINATURAS ───────────────────────────────
+          Fix 20/05/2026: era `mt-auto pt-8` com container raiz `flex flex-col`.
+          Em print, o flex-col sem altura definida fazia o `mt-auto` empurrar
+          o footer pra um espaço estranho, gerando página em branco extra.
+          Trocado por margin top fixa (mt-8) — footer aparece direto após
+          conteúdo, sem quebra fantasma. */}
+      <footer className="mt-8 pt-8">
         <div className="rule-line mb-6" style={{ backgroundColor: '#000' }} />
         <div className="grid grid-cols-3 gap-8">
           {['PCP', 'Comercial', 'Financeiro'].map(label => (
