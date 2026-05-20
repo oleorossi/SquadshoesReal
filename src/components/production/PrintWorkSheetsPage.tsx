@@ -723,13 +723,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       if (groupRecord?.logo_url) return { silk_name: silk?.silk_name || 'Marca do grupo', silk_url: groupRecord.logo_url };
     }
 
-    // Nível 6: silk default do grupo do solado
+    // Nível 6: silk default do grupo do solado (pedido user 20/05/2026:
+    // "caso o lojista ou o grupo de calçados não tenha logomarca cadastrada
+    // irá utilizar no Solado"). Cascata explícita: cliente → grupo → solado.
     if (soleGroupId) {
       const soleGroup = (soleGroupPackaging as any[]).find((p: any) => p.id === soleGroupId);
-      if (soleGroup?.silk_url) return { silk_name: silk?.silk_name || baseSoleName || 'Silk padrão do solado', silk_url: soleGroup.silk_url };
+      if (soleGroup?.silk_url) return { silk_name: silk?.silk_name || baseSoleName || 'Silk do solado', silk_url: soleGroup.silk_url };
     }
 
-    // Nível 7: logo Squad — sempre exibe SOMETHING na ficha de Silk
+    // Nível 7: logo Squad — fallback absoluto pra ficha não sair em branco.
     return { silk_name: silk?.silk_name || 'Squad Shoes', silk_url: logoSquad };
   };
 
@@ -1221,9 +1223,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     return Array.from(map.values()).sort((a, b) => a.client_name.localeCompare(b.client_name, 'pt-BR'));
   }, [orders, saleOrders, clientsInfo, soleMappings, soleGroupPackaging, nfeForExpedicao, saleOrdersTransport, activeSectors, variantsByRef, tsImageByRef]);
 
-  // ── Colagem: agrupa por Ref + Cor (não tem solado-específico) ──────────────
+  // ── Ref+Cor groups: Colagem, Silk, Montagem (todos por Ref+Cor) ────────────
+  // Silk e Montagem mudaram de solado+cor pra ref+cor em 20/05/2026 (pedido user).
   const groupedWorksheets = useMemo(() => {
-    if (!includesSector('Colagem')) return null;
+    if (!includesSector('Colagem') && !includesSector('Silk') && !includesSector('Montagem')) return null;
     return groupOrdersByRefColor(orders);
   }, [orders, activeSectors]);
 
@@ -1526,7 +1529,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           // viram um relatório só na sequência — sub-etapas de Corte que rodam em
           // paralelo (regra confirmada pelo user em 15/05/2026: 'Corte Cabedal
           // deve estar no mesmo relatório que Corte Forração').
-          const flowOrder: GroupedSector[] = ['Corte Forração', 'Corte Cabedal', 'Silk', 'Costura', 'Aviamento', 'Montagem'];
+          // Silk e Montagem REMOVIDOS desse fluxo em 20/05/2026 — agora agrupam
+          // por REF+COR (igual Colagem/Acabamento), renderizados abaixo via
+          // groupedWorksheets em vez de silkMontageGroups.
+          const flowOrder: GroupedSector[] = ['Corte Forração', 'Corte Cabedal', 'Costura', 'Aviamento'];
           const sectorsToRender: GroupedSector[] = flowOrder.filter(s => activeSectors.has(s));
           return sectorsToRender.flatMap(sectorName =>
             silkMontageGroups
@@ -1556,8 +1562,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           </div>
         )}
 
-        {/* ── Colagem: agrupado por Ref + Cor ── */}
-        {includesSector('Colagem') && groupedWorksheets && groupedWorksheets.map((group) => {
+        {/* ── Setores agrupados por Ref + Cor: Colagem, Silk, Montagem ──
+            20/05/2026: Silk e Montagem migraram pra cá (antes em silkMontageGroups
+            por solado+cor). Pedido user: refs distintas nunca devem fundir,
+            mesmo com solado compartilhado. Cada (ref+cor) vira 1 ficha de
+            operador. Ordem de fluxo: Silk → Colagem → Montagem. */}
+        {groupedWorksheets && (['Silk', 'Colagem', 'Montagem'] as const).flatMap((sectorName) => {
+          if (!includesSector(sectorName)) return [];
+          return groupedWorksheets.map((group) => {
           const { representative } = group;
           // Resolve foto via cascata: variante exata > variante "Preto" > images[0] master.
           const repColorLower = (representative.color || '').toLowerCase();
@@ -1603,10 +1615,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
           });
           return (
-            <div key={`colagem-${representative.reference_id}::${representative.color}`} className="page-break">
+            <div key={`${sectorName.toLowerCase()}-${representative.reference_id}::${representative.color}`} className="page-break">
               <OperatorWorkSheet
                 order={syntheticOrder}
-                sector="Colagem"
+                sector={sectorName}
                 silk={silk}
                 soleColor={soleColor}
                 insoleColor={insoleColor}
@@ -1615,11 +1627,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                 hasStraps={hasStraps}
                 strapColors={strapColorsOrdered}
                 mesaCapacity={mesaCapacity}
-                sectorCapacityPerDay={getSheetSectorCapacity(representative.reference_id, 'Colagem')}
+                sectorCapacityPerDay={getSheetSectorCapacity(representative.reference_id, sectorName)}
                 opNumbers={group.opNumbers}
               />
             </div>
           );
+        });
         })}
 
         {/* ── Acabamento: individual cliente-a-cliente (1 OP por card) ── */}
