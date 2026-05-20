@@ -1,18 +1,20 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { FloppyDisk as Save, PencilSimple as Pencil, Gear as Settings2, Stack as Layers, Palette, Link as Link2, Plus, Info, Footprints as Shoe, Crown } from '@phosphor-icons/react';
+import { FloppyDisk as Save, Gear as Settings2, Stack as Layers, Palette, Link as Link2, Plus, Info, Footprints as Shoe, Crown, CheckCircle, WarningCircle } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { SoleSizeConjugationsEditor } from '@/components/inventory/SoleSizeConjugationsEditor';
 import { SoleColorConjugationsEditor } from './SoleColorConjugationsEditor';
+import { useDisplaySizeKeys } from '@/lib/soleGradeKeys';
 import type { SoleProduct } from './types';
 
 type SoleClassification = 'tradicional' | 'palmilha_pronta' | 'conjugado';
@@ -28,18 +30,49 @@ interface Props {
 
 export default function SolesCadastroTab({ sole }: Props) {
   const qc = useQueryClient();
-  const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState({
+  const initialForm = {
     name: sole.name,
     sku: sole.sku || '',
     color: sole.color || '',
     size_from: (sole.stock_grade as any)?._size_from ?? 33,
     size_to: (sole.stock_grade as any)?._size_to ?? 40,
     notes: '',
-  });
+  };
+  const [form, setForm] = useState(initialForm);
 
   // Conjugações deste solado (ou do grupo, se group_id)
   const groupId = sole.group_id;
+  const classification = (sole.sole_classification as SoleClassification | null) || 'tradicional';
+  const isFachetado = (sole as any).is_fachetado ?? false;
+  const rangeInvalid = Number(form.size_from) > Number(form.size_to);
+  const isDirty =
+    form.name !== initialForm.name ||
+    form.sku !== initialForm.sku ||
+    form.color !== initialForm.color ||
+    Number(form.size_from) !== initialForm.size_from ||
+    Number(form.size_to) !== initialForm.size_to;
+
+  // Pré-visualização dos tamanhos que vão sair na grade — aplica conjugações
+  // se houver (33/34 etc). Mostrado num bloco destacado pro user enxergar o
+  // resultado antes de salvar a ficha.
+  const baseSizes = useMemo<number[]>(() => {
+    const from = Number(form.size_from) || 33;
+    const to = Number(form.size_to) || 40;
+    if (from > to) return [];
+    return Array.from({ length: to - from + 1 }, (_, i) => from + i);
+  }, [form.size_from, form.size_to]);
+  const gridKeys = useDisplaySizeKeys({ sizes: baseSizes, soleGroupId: groupId });
+
+  // Progresso de preenchimento (4 campos chave): nome, cor, range válido, grupo vinculado.
+  const filledSlots = [
+    form.name.trim().length > 0,
+    form.color.trim().length > 0,
+    !rangeInvalid && form.size_from > 0 && form.size_to > 0,
+    !!groupId,
+  ];
+  const filledCount = filledSlots.filter(Boolean).length;
+  const totalSlots = filledSlots.length;
+  const progressPct = Math.round((filledCount / totalSlots) * 100);
 
   // Sugestões de cor: histórico de cores já cadastradas em produtos de solado.
   // Atalho via datalist nativo do browser — evita poluição de dados
@@ -99,7 +132,6 @@ export default function SolesCadastroTab({ sole }: Props) {
       } else {
         toast.success('Cadastro atualizado!');
       }
-      setEditing(false);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -202,8 +234,57 @@ export default function SolesCadastroTab({ sole }: Props) {
     });
   };
 
+  // Helper visual: badge "Preenchido" / "Pendente" pra cabeçalho de card.
+  const StatusBadge = ({ filled, label }: { filled: boolean; label?: string }) =>
+    filled ? (
+      <Badge variant="outline" className="ml-auto bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800 gap-1 text-[10px] font-bold uppercase tracking-wider">
+        <CheckCircle className="h-3 w-3" /> {label || 'Preenchido'}
+      </Badge>
+    ) : (
+      <Badge variant="outline" className="ml-auto bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-800 gap-1 text-[10px] font-bold uppercase tracking-wider">
+        <WarningCircle className="h-3 w-3" /> {label || 'Pendente'}
+      </Badge>
+    );
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-24">
+      {/* HERO: header com nome + progresso de preenchimento */}
+      <div className="rounded-xl border bg-gradient-to-br from-primary/5 via-card to-card p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-xl sm:text-2xl font-bold tracking-tight truncate">{form.name || sole.name}</h2>
+              <Badge variant="outline" className="text-[10px] uppercase tracking-wider font-bold">
+                {SOLE_CLASSIFICATION_LABEL[classification]}
+              </Badge>
+              {isFachetado && (
+                <Badge variant="outline" className="text-[10px] uppercase tracking-wider font-bold bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-400 border-violet-300 dark:border-violet-800 gap-1">
+                  <Crown className="h-3 w-3" /> Fachetado
+                </Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground flex-wrap">
+              {form.color && <span className="flex items-center gap-1"><Palette className="h-3 w-3" /> {form.color}</span>}
+              {form.sku && <span className="font-mono">SKU: {form.sku}</span>}
+              <span>{form.size_from}–{form.size_to}</span>
+              {groupId && <span className="text-primary font-medium">· Grupo vinculado</span>}
+            </div>
+          </div>
+          <div className="text-right shrink-0">
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">Preenchimento</div>
+            <div className="text-2xl font-bold tabular-nums">{progressPct}%</div>
+            <div className="text-[10px] text-muted-foreground">{filledCount} de {totalSlots} essenciais</div>
+          </div>
+        </div>
+        {/* Barra de progresso */}
+        <div className="mt-3 h-1.5 rounded-full bg-muted overflow-hidden">
+          <div
+            className={`h-full transition-all ${progressPct === 100 ? 'bg-emerald-500' : progressPct >= 50 ? 'bg-primary' : 'bg-amber-500'}`}
+            style={{ width: `${progressPct}%` }}
+          />
+        </div>
+      </div>
+
       {/* Aviso: o que é compartilhado vs. por cor */}
       {groupId && (
         <Card className="border-amber-300/60 bg-amber-50/30 dark:bg-amber-950/10">
@@ -211,47 +292,22 @@ export default function SolesCadastroTab({ sole }: Props) {
             <Info className="h-4 w-4 text-amber-700 dark:text-amber-400 mt-0.5 shrink-0" />
             <div className="text-xs text-amber-900 dark:text-amber-200 space-y-1">
               <p>
-                <strong>O que é compartilhado entre cores:</strong> nome, range de numeração,
-                conjugações (33/34, 39/40), consumo de Forração/Palmilha e Itens Padrão.
-                Editar aqui propaga automaticamente.
+                <strong>Compartilhado entre cores:</strong> nome, range de numeração, conjugações (33/34, 39/40), consumo de Forração/Palmilha e Itens Padrão.
               </p>
               <p>
-                <strong>O que fica por cor:</strong> SKU, estoque por numeração e a conjugação
-                cabedal × solado (silk também — artes mudam por cor).
+                <strong>Por cor:</strong> SKU, estoque por numeração, conjugação cabedal × solado, silk.
               </p>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Cadastro básico */}
+      {/* 1 — IDENTIFICAÇÃO */}
       <Card>
-        <CardHeader className="pb-3 flex flex-row items-center justify-between">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Settings2 className="h-4 w-4 text-primary" /> Dados básicos
-          </CardTitle>
-          {!editing ? (
-            <Button size="sm" variant="outline" onClick={() => setEditing(true)} className="gap-1.5">
-              <Pencil className="h-3 w-3" /> Editar
-            </Button>
-          ) : (
-            <div className="flex gap-2">
-              <Button size="sm" variant="ghost" onClick={() => { setEditing(false); setForm({
-                name: sole.name, sku: sole.sku || '', color: sole.color || '',
-                size_from: (sole.stock_grade as any)?._size_from ?? 33,
-                size_to: (sole.stock_grade as any)?._size_to ?? 40,
-                notes: '',
-              }); }}>Cancelar</Button>
-              <Button
-                size="sm"
-                onClick={handleSave}
-                disabled={update.isPending || Number(form.size_from) > Number(form.size_to)}
-                className="gap-1.5"
-              >
-                <Save className="h-3 w-3" /> Salvar
-              </Button>
-            </div>
-          )}
+        <CardHeader className="pb-3 flex flex-row items-center gap-2">
+          <Settings2 className="h-4 w-4 text-primary" />
+          <CardTitle className="text-sm">1. Identificação</CardTitle>
+          <StatusBadge filled={form.name.trim().length > 0 && form.color.trim().length > 0} />
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -263,7 +319,7 @@ export default function SolesCadastroTab({ sole }: Props) {
               <Input
                 value={form.name}
                 onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                disabled={!editing}
+                placeholder="Ex: Saltinho Bloco"
               />
             </div>
             <div className="space-y-1.5">
@@ -274,7 +330,6 @@ export default function SolesCadastroTab({ sole }: Props) {
               <Input
                 value={form.sku}
                 onChange={e => setForm(f => ({ ...f, sku: e.target.value }))}
-                disabled={!editing}
                 placeholder="—"
               />
             </div>
@@ -286,8 +341,7 @@ export default function SolesCadastroTab({ sole }: Props) {
               <Input
                 value={form.color}
                 onChange={e => setForm(f => ({ ...f, color: e.target.value }))}
-                disabled={!editing}
-                placeholder="—"
+                placeholder="Ex: Preto, Caramelo"
                 list="sole-colors-suggestions"
               />
               <datalist id="sole-colors-suggestions">
@@ -299,7 +353,7 @@ export default function SolesCadastroTab({ sole }: Props) {
                 <Shoe className="h-3 w-3" /> Tipo de solado
               </Label>
               <Select
-                value={(sole.sole_classification as SoleClassification | null) || 'tradicional'}
+                value={classification}
                 onValueChange={(v) => updateClassification.mutate(v as SoleClassification)}
                 disabled={updateClassification.isPending}
               >
@@ -313,122 +367,153 @@ export default function SolesCadastroTab({ sole }: Props) {
                 </SelectContent>
               </Select>
               <p className="text-[10px] text-muted-foreground leading-tight">
-                {sole.sole_classification === 'palmilha_pronta'
+                {classification === 'palmilha_pronta'
                   ? 'Palmilha já fixada no solado · cor depende do cabedal (ver Coligações)'
-                  : sole.sole_classification === 'conjugado'
+                  : classification === 'conjugado'
                   ? 'Algumas numerações compartilham estoque (33/34 etc.)'
                   : 'Cada numeração tem estoque individual'}
               </p>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs flex items-center gap-1.5">
-                <Layers className="h-3 w-3" /> Range de numeração
-                {groupId && <span className="text-[9px] text-primary uppercase tracking-wider font-bold">· compartilhado</span>}
-              </Label>
-              {(() => {
-                const rangeInvalid = Number(form.size_from) > Number(form.size_to);
-                return (
-                  <>
-                    <div className="flex gap-2 items-center">
-                      <Input
-                        type="number"
-                        min={20}
-                        max={50}
-                        value={form.size_from}
-                        onChange={e => setForm(f => ({ ...f, size_from: Number(e.target.value) }))}
-                        disabled={!editing}
-                        className={`w-20 ${rangeInvalid ? 'border-destructive focus-visible:ring-destructive' : ''}`}
-                      />
-                      <span className="text-muted-foreground">até</span>
-                      <Input
-                        type="number"
-                        min={20}
-                        max={50}
-                        value={form.size_to}
-                        onChange={e => setForm(f => ({ ...f, size_to: Number(e.target.value) }))}
-                        disabled={!editing}
-                        className={`w-20 ${rangeInvalid ? 'border-destructive focus-visible:ring-destructive' : ''}`}
-                      />
-                    </div>
-                    {rangeInvalid && (
-                      <p className="text-[10px] text-destructive">
-                        O número inicial não pode ser maior que o final ({form.size_from} &gt; {form.size_to}).
-                      </p>
-                    )}
-                  </>
-                );
-              })()}
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* GroupBindingFallback é declarado abaixo */}
-
-      {/* Salto Fachetado — toggle global do grupo */}
+      {/* 2 — NUMERAÇÃO (range + conjugações + prévia da grade) */}
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Crown className="h-4 w-4 text-primary" />
-            Salto Fachetado
-          </CardTitle>
+        <CardHeader className="pb-3 flex flex-row items-center gap-2">
+          <Layers className="h-4 w-4 text-primary" />
+          <CardTitle className="text-sm">2. Numeração</CardTitle>
+          <StatusBadge filled={!rangeInvalid && form.size_from > 0 && form.size_to > 0} />
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-1.5">
+            <Label className="text-xs flex items-center gap-1.5">
+              Range de numeração
+              {groupId && <span className="text-[9px] text-primary uppercase tracking-wider font-bold">· compartilhado</span>}
+            </Label>
+            <div className="flex gap-2 items-center">
+              <Input
+                type="number"
+                min={20}
+                max={50}
+                value={form.size_from}
+                onChange={e => setForm(f => ({ ...f, size_from: Number(e.target.value) }))}
+                className={`w-20 ${rangeInvalid ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+              />
+              <span className="text-muted-foreground text-xs">até</span>
+              <Input
+                type="number"
+                min={20}
+                max={50}
+                value={form.size_to}
+                onChange={e => setForm(f => ({ ...f, size_to: Number(e.target.value) }))}
+                className={`w-20 ${rangeInvalid ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+              />
+              {rangeInvalid && (
+                <span className="text-[10px] text-destructive ml-2">
+                  Inicial &gt; final ({form.size_from} &gt; {form.size_to})
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* PRÉVIA DA GRADE: bloco destacado mostrando os tamanhos finais */}
+          {!rangeInvalid && gridKeys.length > 0 && (
+            <div className="rounded-md border bg-muted/30 p-3">
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold mb-2">
+                Grade resultante ({gridKeys.length} numerações)
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {gridKeys.map((k) => (
+                  <span
+                    key={k}
+                    className={`h-7 min-w-[34px] px-2 rounded border text-xs font-mono font-bold flex items-center justify-center ${
+                      k.includes('/')
+                        ? 'bg-primary/10 border-primary/40 text-primary'
+                        : 'bg-card border-border text-foreground'
+                    }`}
+                    title={k.includes('/') ? 'Numeração conjugada' : ''}
+                  >
+                    {k}
+                  </span>
+                ))}
+              </div>
+              {gridKeys.some(k => k.includes('/')) && (
+                <p className="text-[10px] text-muted-foreground mt-2">
+                  Numerações em destaque são <strong>conjugadas</strong> (1 par único).
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Editor de conjugações inline — sempre visível quando há grupo, independente de classification */}
+          {groupId && (
+            <details className="rounded-md border bg-muted/20" open={classification === 'conjugado'}>
+              <summary className="px-3 py-2 cursor-pointer text-xs font-semibold flex items-center gap-2 select-none">
+                <Link2 className="h-3.5 w-3.5 text-primary" />
+                Conjugações de Numeração
+                <span className="text-[10px] text-muted-foreground font-normal ml-1">
+                  (ex.: 33/34, 39/40 — quando 2 tamanhos compartilham estoque)
+                </span>
+              </summary>
+              <div className="border-t px-3 py-3">
+                <SoleSizeConjugationsEditor
+                  soleGroupId={groupId}
+                  sizeFrom={Number(form.size_from) || 33}
+                  sizeTo={Number(form.size_to) || 40}
+                />
+              </div>
+            </details>
+          )}
+          {!groupId && classification === 'conjugado' && (
+            <div className="rounded-md border bg-muted/20 p-3">
+              <GroupBindingFallback soleId={sole.id} />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 3 — CARACTERÍSTICAS (fachetado) */}
+      <Card>
+        <CardHeader className="pb-3 flex flex-row items-center gap-2">
+          <Crown className="h-4 w-4 text-primary" />
+          <CardTitle className="text-sm">3. Características</CardTitle>
+          <StatusBadge filled label="Configurado" />
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex items-center gap-3">
             <Switch
               id="sole-fachetado"
-              checked={(sole as any).is_fachetado ?? false}
+              checked={isFachetado}
               onCheckedChange={(v) => updateFachetado.mutate(!!v)}
               disabled={updateFachetado.isPending}
             />
-            <Label htmlFor="sole-fachetado" className="text-sm cursor-pointer">
-              Solado tem salto fachetado (com forração no salto)
+            <Label htmlFor="sole-fachetado" className="text-sm cursor-pointer flex-1">
+              <span className="font-semibold">Salto fachetado</span>
+              <span className="block text-[11px] text-muted-foreground font-normal">
+                Com forração no salto — exige cadastro de consumo de fachete
+              </span>
             </Label>
           </div>
-          {(sole as any).is_fachetado && (
-            <p className="text-[11px] text-muted-foreground">
-              Configure o consumo de fachete por numeração na aba <strong>Consumos → Forração/Palmilha</strong>.
-              Na ficha técnica só será preenchido o <em>material</em> do fachete.
-            </p>
+          {isFachetado && (
+            <div className="rounded-md border border-violet-300/60 bg-violet-50/30 dark:bg-violet-950/10 px-3 py-2">
+              <p className="text-[11px] text-violet-900 dark:text-violet-200">
+                Configure o consumo de fachete por numeração em <strong>Consumos → Forração/Palmilha</strong>.
+                Na ficha técnica vai aparecer só o <em>material</em> do fachete.
+              </p>
+            </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Conjugações de numeração (só pra 'conjugado') */}
-      {sole.sole_classification === 'conjugado' && (
+      {/* 4 — COLIGAÇÕES DE COR (só pra 'palmilha_pronta') */}
+      {classification === 'palmilha_pronta' && (
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Layers className="h-4 w-4 text-primary" />
-              Conjugações de numeração
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">
-              Quando duas numerações compartilham estoque (ex.: 33/34, 39/40), defina aqui.
-              O estoque, a venda e o consumo respeitam a conjugação automaticamente.
-            </p>
-          </CardHeader>
-          <CardContent>
-            {groupId ? (
-              <SoleSizeConjugationsEditor
-                soleGroupId={groupId}
-                sizeFrom={Number(form.size_from) || 33}
-                sizeTo={Number(form.size_to) || 40}
-              />
-            ) : (
-              <GroupBindingFallback soleId={sole.id} />
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Coligações de cor (só pra 'palmilha_pronta') */}
-      {sole.sole_classification === 'palmilha_pronta' && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Palette className="h-4 w-4 text-primary" />
-              Coligações de cor (cabedal → palmilha)
-            </CardTitle>
+          <CardHeader className="pb-3 flex flex-row items-center gap-2">
+            <Palette className="h-4 w-4 text-primary" />
+            <CardTitle className="text-sm">4. Coligações de cor</CardTitle>
+            <span className="text-[10px] text-muted-foreground">cabedal → palmilha</span>
+            {!groupId && <StatusBadge filled={false} label="Falta grupo" />}
           </CardHeader>
           <CardContent>
             {groupId ? (
@@ -438,6 +523,33 @@ export default function SolesCadastroTab({ sole }: Props) {
             )}
           </CardContent>
         </Card>
+      )}
+
+      {/* STICKY SAVE BAR — só aparece quando há mudança não salva */}
+      {isDirty && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 rounded-full border bg-card shadow-2xl px-4 py-2.5 animate-in slide-in-from-bottom-4">
+          <div className="text-xs">
+            <span className="font-semibold">Alterações não salvas</span>
+            <span className="text-muted-foreground ml-2">no cadastro do solado</span>
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setForm(initialForm)}
+            disabled={update.isPending}
+          >
+            Descartar
+          </Button>
+          <Button
+            size="sm"
+            onClick={handleSave}
+            disabled={update.isPending || rangeInvalid}
+            className="gap-1.5"
+          >
+            <Save className="h-3.5 w-3.5" />
+            {update.isPending ? 'Salvando...' : 'Salvar'}
+          </Button>
+        </div>
       )}
     </div>
   );
