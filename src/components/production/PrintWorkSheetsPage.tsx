@@ -191,8 +191,25 @@ function groupOrdersByRefColor(orders: any[]): Array<{
 }> {
   const map = new Map<string, ReturnType<typeof groupOrdersByRefColor>[number]>();
 
+  // Bug fix 20/05/2026: user reportou que Colagem agrupava SP117 e SP119
+  // (refs diferentes) num só card de cor. Reforça a chave pra garantir que
+  // refs distintas NUNCA caiam no mesmo grupo, mesmo se reference_id vier
+  // vazio: usa reference_id quando existe, senão cai pra sheet_id ou id
+  // da própria OP como discriminador.
   for (const order of orders) {
-    const key = `${order.reference_id ?? ''}::${(order.color ?? '').toLowerCase()}`;
+    const refKey = String(
+      order.reference_id ??
+      (order as any).sheet_id ??
+      (order as any).reference_name ??
+      // Fallback final: usa o próprio id da OP — garante chave única
+      // pra que cada OP sem referência identificável vire um card próprio.
+      `op-${order.id ?? order.op_id ?? Math.random()}`,
+    ).trim();
+    const colorKey = String(order.color ?? '').trim().toLowerCase();
+    const key = `${refKey}::${colorKey}`;
+    if (!order.reference_id) {
+      console.warn('[groupOrdersByRefColor] OP sem reference_id — usando fallback:', { op: order.op_number, refKey, colorKey });
+    }
     if (!map.has(key)) {
       map.set(key, {
         representative: order,
