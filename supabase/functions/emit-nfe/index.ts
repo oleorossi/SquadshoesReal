@@ -259,7 +259,7 @@ Deno.serve(async (req) => {
 
     const { data: items, error: itemsErr } = await adminClient
       .from("sale_order_items")
-      .select("*, technical_sheets(id, name, code, ncm, gestaoclick_id), reference_material_variants(sku, ncm, description_override, active, unit_price_override), products(id, name, sku, ncm, gestaoclick_id, unit)")
+      .select("*, technical_sheets(id, name, code, ncm, gestaoclick_id, description, shoe_category, upper_material, lining_material, insole_material, sole_material, weight_per_pair_kg, cest), reference_material_variants(sku, barcode, ncm, description_override, active, unit_price_override), products(id, name, sku, ncm, gestaoclick_id, unit)")
       .eq("sale_order_id", sale_order_id)
       .order("created_at", { ascending: true })
       .order("id", { ascending: true });
@@ -626,16 +626,51 @@ Deno.serve(async (req) => {
           // Preview: não cria produto. gcProductId fica null (warning no preview).
           gcStatus = 'pending_create';
         } else {
+          // Cadastro enriquecido (20/05/2026 — pedido user): leva todos os
+          // dados úteis da ficha técnica + variante pro GestaoClick. Antes
+          // só ia nome+preco+unidade+ncm+marca → produto novo nascia
+          // "pelado" e a contabilidade tinha que editar depois.
+          //
+          // Campos adicionais:
+          //  - descricao: combina ficha.description + materiais técnicos
+          //  - codigo: SKU da variante (quando houver) — facilita auditoria
+          //  - gtin/cean: código de barras (XML SEFAZ <cEAN>)
+          //  - peso_bruto/peso_liquido: weight_per_pair_kg da ficha
+          //  - categoria: shoe_category ('Adulto', 'Infantil', etc)
+          //  - cest: campo fiscal (opcional, copia da ficha se houver)
+          const techDescParts = [
+            ts?.description?.trim(),
+            ts?.upper_material ? `Cabedal: ${ts.upper_material}` : null,
+            ts?.lining_material ? `Forro: ${ts.lining_material}` : null,
+            ts?.insole_material ? `Palmilha: ${ts.insole_material}` : null,
+            ts?.sole_material ? `Solado: ${ts.sole_material}` : null,
+            it.color ? `Cor: ${it.color}` : null,
+          ].filter(Boolean);
+          const fullDesc = techDescParts.join(' | ').slice(0, 500);
+          const skuVariante = (variant?.sku || '').trim();
+          const gtinVariante = (variant?.barcode || '').trim();
+          const pesoKg = Number(ts?.weight_per_pair_kg || 0);
+          const cest = (ts?.cest || '').trim();
+          const productPayload: Record<string, unknown> = {
+            nome: nomeProduto,
+            valor_venda: price.toFixed(2),
+            unidade: "PAR",
+            ncm,
+            tipo: "P",
+            marca: orderBrand, // marca aparece no XML SEFAZ <prod><xMarca>
+          };
+          if (fullDesc) productPayload.descricao = fullDesc;
+          if (skuVariante) productPayload.codigo = skuVariante;
+          if (gtinVariante) productPayload.gtin = gtinVariante;
+          if (pesoKg > 0) {
+            productPayload.peso_bruto = pesoKg.toFixed(3);
+            productPayload.peso_liquido = pesoKg.toFixed(3);
+          }
+          if (ts?.shoe_category) productPayload.categoria = ts.shoe_category;
+          if (cest) productPayload.cest = cest;
           const r = await gcFetch("/produtos", {
             method: "POST",
-            body: JSON.stringify({
-              nome: nomeProduto,
-              valor_venda: price.toFixed(2),
-              unidade: "PAR",
-              ncm,
-              tipo: "P",
-              marca: orderBrand, // marca aparece no XML SEFAZ <prod><xMarca>
-            }),
+            body: JSON.stringify(productPayload),
           });
           if (!r.ok || r.json?.status === "error") {
             return new Response(JSON.stringify({
