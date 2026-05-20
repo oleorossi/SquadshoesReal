@@ -673,82 +673,42 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
       </div>
 
       {/* ─── Passo 1: Conjugação de numerações ─────────────────────
-          Só aparece pra solados do tipo 'conjugado'. Pra Tradicional/Palmilha
-          Pronta, oferece botão "Marcar como conjugado" que altera o tipo do
-          grupo inteiro (todas as variantes de cor) e revela o painel. */}
-      {soleClassification === 'conjugado' ? (
-        <Card className="border-primary/30 bg-primary/[0.03]">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground text-[11px] font-bold">1</span>
-              <Link2 className="h-4 w-4 text-primary" />
-              Numerações conjugadas
-              {conjugationCount > 0 && (
-                <Badge variant="secondary" className="text-[10px] ml-1">
-                  {conjugationCount} regra{conjugationCount === 1 ? '' : 's'} · {conjugatedSizesCount} tam.
-                </Badge>
-              )}
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Marque tamanhos que <strong>compartilham o mesmo molde</strong> (ex: 33/34, 39/40).
-              O estoque, o débito do PV, e o planejamento de compra usam essas chaves automaticamente.
-              Tamanhos que não estão em nenhuma conjugação são tratados como individuais.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <SoleConjugationPanel soleGroupId={soleGroupId} soleName={soleName} />
-          </CardContent>
-        </Card>
-      ) : (
-        <Card className="border-dashed bg-muted/10">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2 text-muted-foreground">
-              <Link2 className="h-4 w-4" />
-              Numerações conjugadas
-              <Badge variant="outline" className="text-[10px] ml-1">
-                Tipo atual: {soleClassification === 'palmilha_pronta' ? 'Palmilha Pronta' : 'Tradicional'}
+          20/05/2026: removida a restrição de tipo. Qualquer solado (Tradicional,
+          Palmilha Pronta ou Conjugado) pode ter conjugações cadastradas — user
+          precisava de 33/34 e 39/40 em Palmilha Pronta e ficava preso. O tipo
+          continua existindo (afeta cor de palmilha automática) mas não
+          restringe mais. */}
+      <Card className="border-primary/30 bg-primary/[0.03]">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2 flex-wrap">
+            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground text-[11px] font-bold">1</span>
+            <Link2 className="h-4 w-4 text-primary" />
+            Numerações conjugadas
+            <Badge variant="outline" className="text-[10px]">
+              Tipo: {soleClassification === 'palmilha_pronta' ? 'Palmilha Pronta' : soleClassification === 'conjugado' ? 'Conjugado' : 'Tradicional'}
+            </Badge>
+            {conjugationCount > 0 && (
+              <Badge variant="secondary" className="text-[10px]">
+                {conjugationCount} regra{conjugationCount === 1 ? '' : 's'} · {conjugatedSizesCount} tam.
               </Badge>
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Conjugações só fazem sentido pra solados onde algumas numerações compartilham
-              o mesmo molde (ex.: 23/24, 33/34). Se for o caso deste solado, marque como
-              <strong> Conjugado</strong> abaixo pra configurar.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!soleGroupId || saving}
-              onClick={async () => {
-                if (!soleGroupId) {
-                  toast.error('Solado sem grupo — vincule a um grupo primeiro pela aba Cadastro');
-                  return;
-                }
-                setSaving(true);
-                const { error } = await supabase
-                  .from('products')
-                  .update({ sole_classification: 'conjugado' } as any)
-                  .eq('group_id', soleGroupId);
-                setSaving(false);
-                if (error) {
-                  toast.error(error.message);
-                  return;
-                }
-                setSoleClassification('conjugado');
-                qc.invalidateQueries({ queryKey: ['soles_hub_products'] });
-                qc.invalidateQueries({ queryKey: ['products'] });
-                toast.success('Solado marcado como conjugado — configure as numerações abaixo');
-              }}
-              className="gap-1.5"
-            >
-              <Link2 className="h-3.5 w-3.5" />
-              Marcar como conjugado
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
+            )}
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Marque tamanhos que <strong>compartilham o mesmo molde</strong> (ex: 33/34, 39/40).
+            O estoque, o débito do PV e o planejamento de compra usam essas chaves automaticamente.
+            Tamanhos sem conjugação são tratados como individuais.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {soleGroupId ? (
+            <SoleConjugationPanel soleGroupId={soleGroupId} soleName={soleName} />
+          ) : (
+            <div className="text-xs text-muted-foreground italic py-4 text-center">
+              Solado sem grupo associado — vincule a um grupo pela aba <strong>Cadastro</strong> pra configurar conjugações.
+            </div>
+          )}
+        </CardContent>
+      </Card>
       {/* ─── Passo 2: Grade de numerações ──────────────────────────
           User feedback: o range já é definido no Cadastro (size_from/size_to).
           Removidos os preset buttons (Adulto/Infantil/Baby) — eram duplicação.
