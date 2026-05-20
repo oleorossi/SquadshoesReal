@@ -61,6 +61,25 @@ function resolveSizeRange(grade: Record<string, any> | null): { from: number; to
  * Mesma lógica usada em SoladoGradeDialog — mantem consistência entre
  * editor inline e o modal completo.
  */
+/**
+ * Lê quantidade de um key efetivo do grade. Quando o key é conjugado
+ * (ex: "33/34") e ainda não foi consolidado no stock_grade — formato legado
+ * com tamanhos individuais — soma os componentes (qty_33 + qty_34) pra dar
+ * o valor real. Origem: 20/05/2026, user reportou estoque mostrando "0"
+ * em 33/34 mesmo tendo pares lançados nas linhas individuais 33 e 34.
+ */
+function getQtyForKey(existing: Record<string, any>, key: string): number {
+  if (existing == null) return 0;
+  if (existing[key] != null) return Number(existing[key]) || 0;
+  if (key.includes('/')) {
+    return key.split('/')
+      .map(p => Number(p))
+      .filter(n => !isNaN(n))
+      .reduce((s, n) => s + (Number(existing[String(n)]) || 0), 0);
+  }
+  return 0;
+}
+
 function getSoleEffectiveKeys(
   grade: Record<string, any> | null,
   conjugations: Array<{ size_key: string; sizes: number[] }>,
@@ -386,7 +405,7 @@ export default function StockAdjustmentPage() {
       keys.forEach((key) => {
         const raw = sd[key];
         const val = raw !== undefined ? parseFloat(raw.replace(",", ".")) : NaN;
-        newGrade[key] = isNaN(val) ? Number(existing[key] ?? 0) : val;
+        newGrade[key] = isNaN(val) ? getQtyForKey(existing, key) : val;
       });
       // Preserve metadata keys
       const range = resolveSizeRange(p.stock_grade);
@@ -854,7 +873,7 @@ export default function StockAdjustmentPage() {
                       keys.forEach((key) => {
                         const raw = sd[key];
                         const val = raw !== undefined ? parseFloat(raw.replace(",", ".")) : NaN;
-                        t += isNaN(val) ? Number(existing[key] ?? 0) : val;
+                        t += isNaN(val) ? getQtyForKey(existing, key) : val;
                       });
                       draftTotal = t;
                       hasSoleDraft = pendingSoles.some((c) => c.product.id === product.id);
@@ -991,7 +1010,7 @@ export default function StockAdjustmentPage() {
                             <div className="flex items-center gap-1 flex-wrap">
                               {keys.map((key, sizeIndex) => {
                                 const raw = sd[key];
-                                const origVal = Number(existing[key] ?? 0);
+                                const origVal = getQtyForKey(existing, key);
                                 const draftVal = raw !== undefined ? parseFloat(raw.replace(",", ".")) : NaN;
                                 const isDirtyCell = raw !== undefined && !isNaN(draftVal) && draftVal !== origVal;
                                 const isConjugated = key.includes('/');

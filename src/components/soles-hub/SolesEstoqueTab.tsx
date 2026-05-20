@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Stack as Boxes, PencilSimple as Edit3, Warning as AlertTriangle, WarningCircle as AlertCircle, Link as Link2 } from '@phosphor-icons/react';
 import { SoladoGradeDialog } from '@/components/inventory/SoladoGradeDialog';
+import { useSoleConjugations } from '@/hooks/useSoleConjugations';
 import type { Product } from '@/types/inventory';
 import type { SoleProduct } from './types';
 
@@ -35,26 +36,62 @@ export default function SolesEstoqueTab({ sole }: Props) {
   });
 
   const grade = (sole.stock_grade ?? {}) as Record<string, number>;
-  const realKeys = Object.keys(grade)
-    .filter(k => !k.startsWith('_'))
-    .sort((a, b) => {
-      // Conjugadas (ex.: "33/34") ordenadas pelo menor número
-      const ax = Number(a.split('/')[0]);
-      const bx = Number(b.split('/')[0]);
-      return ax - bx;
-    });
 
-  // Quando o range está cadastrado mas o estoque inicial nunca foi lançado,
-  // geramos as keys vazias do range (default 33-40) pra mostrar a tabela com
-  // zeros em vez de empty state. Sinaliza estoque "ainda não inicializado".
+  // Conjugações do grupo (33/34, 39/40 etc) — usadas pra agrupar visualmente
+  // tamanhos que compartilham molde. Ex: solado com conjugação 33/34
+  // mostra "33/34: 50 pares" em vez de "33: 25, 34: 25" separados.
+  // Adicionado 20/05/2026 — antes só funcionava se a key conjugada já existisse
+  // no stock_grade, ignorando o caso de grades antigas com chaves individuais.
+  const { data: conjugations = [] } = useSoleConjugations(sole.group_id ?? null);
+
   const sizeFrom = (grade as any)._size_from ?? 33;
   const sizeTo = (grade as any)._size_to ?? 40;
-  const isUninitialized = realKeys.length === 0;
-  const sizeKeys = isUninitialized
-    ? Array.from({ length: sizeTo - sizeFrom + 1 }, (_, i) => String(sizeFrom + i))
-    : realKeys;
 
-  const total = gradeTotal(sole.stock_grade);
+  // Calcula keys efetivas aplicando conjugações sobre o range. Pra cada
+  // tamanho dentro do range, substitui pelo key conjugado quando existe;
+  // senão usa o número individual.
+  const effectiveSizeKeys = useMemo<string[]>(() => {
+    const result: string[] = [];
+    const added = new Set<string>();
+    const sortedConj = [...conjugations].sort((a, b) => a.display_order - b.display_order);
+    for (let s = sizeFrom; s <= sizeTo; s++) {
+      const conj = sortedConj.find(c => c.sizes.includes(s));
+      if (conj) {
+        if (!added.has(conj.size_key)) { result.push(conj.size_key); added.add(conj.size_key); }
+      } else {
+        result.push(String(s));
+      }
+    }
+    return result;
+  }, [conjugations, sizeFrom, sizeTo]);
+
+  // Soma quantidade pra cada key: se for conjugado (ex: "33/34"), soma
+  // qty_33 + qty_34 do grade existente (caso o stock_grade ainda esteja em
+  // formato individual) OU usa a key conjugada se já estiver no grade.
+  const qtyByKey = useMemo<Record<string, number>>(() => {
+    const out: Record<string, number> = {};
+    for (const k of effectiveSizeKeys) {
+      if (grade[k] != null) {
+        out[k] = Number(grade[k]) || 0;
+        continue;
+      }
+      if (k.includes('/')) {
+        const parts = k.split('/').map(p => Number(p)).filter(n => !isNaN(n));
+        out[k] = parts.reduce((s, n) => s + (Number(grade[String(n)]) || 0), 0);
+      } else {
+        out[k] = Number(grade[k]) || 0;
+      }
+    }
+    return out;
+  }, [effectiveSizeKeys, grade]);
+
+  const isUninitialized = effectiveSizeKeys.every(k => (qtyByKey[k] || 0) === 0);
+  const sizeKeys = effectiveSizeKeys;
+
+  // Total a partir das keys efetivas — evita dupla contagem quando o
+  // stock_grade tem AMBOS individuais (33, 34) e conjugado (33/34) em
+  // estado transicional. qtyByKey já resolve a soma correta por key.
+  const total = useMemo(() => Object.values(qtyByKey).reduce((s, v) => s + v, 0), [qtyByKey]);
   const minTotal = sole.min_stock || 0;
   const isLow = total < minTotal;
   const isZero = total === 0;
@@ -133,7 +170,7 @@ export default function SolesEstoqueTab({ sole }: Props) {
           ) : (
             <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
               {sizeKeys.map(k => {
-                const qty = Number(grade[k]) || 0;
+                const qty = qtyByKey[k] || 0;
                 const isConjugated = k.includes('/');
                 const isZeroCell = qty === 0;
                 return (

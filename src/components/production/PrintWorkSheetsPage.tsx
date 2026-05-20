@@ -849,9 +849,16 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   // Acabamento REMOVIDO da agregação sole+color (user pediu em 2026-05):
   // Acabamento é individual cliente-a-cliente, não agrupa por solado. Vai
   // direto via OperatorWorkSheet em uma seção própria.
+  // Setores que agrupam por SOLADO+COR (operador foca no material do solado;
+  // refs distintas com mesmo solado e mesma cor compartilham 1 ficha — cortador
+  // corta o material 1 vez pra todos os modelos com aquele solado).
   const SOLE_COLOR_GROUPED_SECTORS: ReadonlyArray<GroupedSector> = [
-    'Silk', 'Montagem', 'Corte Forração', 'Corte Cabedal', 'Costura', 'Aviamento',
+    'Corte Forração', 'Corte Cabedal', 'Costura', 'Aviamento',
   ];
+  // Setores que agrupam por REF+COR (pedido user 20/05/2026): Silk e Montagem
+  // trabalham por modelo específico — fichas de refs DIFERENTES nunca devem
+  // se fundir, mesmo quando compartilham solado/cor.
+  const REF_COLOR_GROUPED_SECTORS: ReadonlyArray<GroupedSector> = ['Silk', 'Montagem'];
 
   // ── Silk / Montagem / Corte Forração / Costura / Aviamento / Acabamento ────
   // (variantsByRef + tsImageByRef movidos pra antes de palmilhaGroups —
