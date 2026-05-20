@@ -82,6 +82,9 @@ export default function LGPD() {
             emptyText="Nenhuma solicitação LGPD registrada"
             newButtonLabel="Nova Solicitação"
             newButtonOnClick={() => { setForm(emptyForm); setOpen(true); }}
+            enableBulkDelete
+            entityLabel="solicitação"
+            displayLabel={(r: any) => `• ${r.request_number || '—'} (${r.subject_name || 'sem nome'})`}
             columns={[
               { key: 'request_number', label: 'Nº', render: r => <span className="font-mono font-bold text-xs">{r.request_number}</span> },
               { key: 'request_type', label: 'Tipo', render: r => <Badge variant="outline" className="capitalize text-[10px]">{r.request_type}</Badge> },
