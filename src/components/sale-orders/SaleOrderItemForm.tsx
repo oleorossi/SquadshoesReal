@@ -772,25 +772,20 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               (grade copy button moves to the grade section header)
         */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-          {/* Referência — narrower when material groups exist */}
+          {/* Referência — narrower when material groups exist.
+              Popover auto-abre quando item NÃO tem reference_id ainda
+              (= item recém-criado via "+ Novo Item"). Economiza 1 clique:
+              user clica "+ Novo Item" → picker aparece direto pra digitar
+              a referência. Pedido user 20/05/2026. */}
           <div className={cn("md:col-span-4", activeMaterialVariants.length > 0 && "md:col-span-3")}>
             <Label className="text-[10px] font-bold text-muted-foreground uppercase mb-1 block">Modelo / Referência</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" role="combobox" className="w-full justify-between h-9 text-xs font-mono">
-                  {selectedRef ? `${selectedRef.code} - ${selectedRef.name}` : "Selecionar..."}
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[400px] p-0" align="start">
-                <ReferenceSearch
-                  references={references}
-                  onSelect={(ref) => onUpdate(index, 'reference_id', ref.id)}
-                  selectedId={item.reference_id}
-                  variantsByRef={allVariantsByRef}
-                />
-              </PopoverContent>
-            </Popover>
+            <ReferencePickerControlled
+              references={references}
+              variantsByRef={allVariantsByRef}
+              selectedRef={selectedRef}
+              currentId={item.reference_id || ''}
+              onSelect={(refId) => onUpdate(index, 'reference_id', refId)}
+            />
           </div>
 
           {/* Material — shown BEFORE color when groups exist (fiscal SKU varies by material) */}
@@ -1449,6 +1444,41 @@ function ColorPickerDropdown({ value, colors, onChange, disabled, onAddNew }: { 
             </button>
           )}
         </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
+ * Wrapper controlado do ReferenceSearch — abre automaticamente quando o item
+ * não tem reference_id e fecha quando uma referência é selecionada.
+ * Economiza 1 clique no fluxo "Novo Item → escolher referência".
+ */
+function ReferencePickerControlled({
+  references, variantsByRef, selectedRef, currentId, onSelect,
+}: {
+  references: ReferenceOption[];
+  variantsByRef: Map<string, VariantSummary[]>;
+  selectedRef: ReferenceOption | undefined;
+  currentId: string;
+  onSelect: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(!currentId);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" role="combobox" className="w-full justify-between h-9 text-xs font-mono">
+          {selectedRef ? `${selectedRef.code} - ${selectedRef.name}` : "Buscar referência..."}
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[400px] p-0" align="start">
+        <ReferenceSearch
+          references={references}
+          onSelect={(ref) => { onSelect(ref.id); setOpen(false); }}
+          selectedId={currentId}
+          variantsByRef={variantsByRef}
+        />
       </PopoverContent>
     </Popover>
   );

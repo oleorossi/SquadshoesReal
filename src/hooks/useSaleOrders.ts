@@ -747,7 +747,15 @@ export function useCreateSaleOrder() {
   return useMutation({
     mutationFn: async ({ order, items, client_id, representative_id, commission_value, packaging_product_id, packaging_quantity }: { order: SaleOrderFormData; items: SaleOrderItemFormData[]; client_id?: string | null; representative_id?: string | null; commission_value?: number; packaging_product_id?: string | null; packaging_quantity?: number }) => {
       const total = items.reduce((s, i) => s + (Number(i.unit_price) || 0) * (Number(i.quantity) || 0), 0);
-      const insertData: any = { ...order, total };
+      // Bug fix 20/05/2026 (PV-00122): valor_frete não era gravado quando o
+      // usuário definia shipping_rate_per_pair (R$ por par). UI somava
+      // visualmente "mercadoria + frete" mas DB salvava só mercadoria,
+      // gerando divergência entre tela e NF-e/AR. Agora calculamos
+      // valor_frete = totalPairs × shipping_rate ao salvar.
+      const totalPairsCalc = items.reduce((s, i) => s + (Number(i.quantity) || 0), 0);
+      const shippingRate = Number((order as any).shipping_rate_per_pair) || 0;
+      const computedFrete = shippingRate > 0 ? Number((totalPairsCalc * shippingRate).toFixed(2)) : 0;
+      const insertData: any = { ...order, total, valor_frete: computedFrete > 0 ? computedFrete : (order as any).valor_frete ?? null };
       // Sync billing_week from delivery_month + delivery_week
       if (order.delivery_month && order.delivery_week) {
         insertData.billing_week = `${order.delivery_month}-${order.delivery_week}`;
@@ -1839,7 +1847,14 @@ export function useUpdateSaleOrder() {
   return useMutation({
     mutationFn: async ({ id, order, items, client_id, representative_id, commission_value, packaging_product_id, packaging_quantity }: { id: string; order: SaleOrderFormData; items: SaleOrderItemFormData[]; client_id?: string | null; representative_id?: string | null; commission_value?: number; packaging_product_id?: string | null; packaging_quantity?: number }) => {
       const total = items.reduce((s, i) => s + (Number(i.unit_price) || 0) * (Number(i.quantity) || 0), 0);
-      const updateData: any = { ...order, total };
+      // Bug fix 20/05/2026 (PV-00122): mesma correção do useCreateSaleOrder —
+      // valor_frete = totalPairs × shipping_rate, pra evitar divergência
+      // entre o que a UI mostra ("mercadoria + frete") e o que o DB grava
+      // (só mercadoria). NF-e e financeiro usam valor_frete + total.
+      const totalPairsCalc = items.reduce((s, i) => s + (Number(i.quantity) || 0), 0);
+      const shippingRate = Number((order as any).shipping_rate_per_pair) || 0;
+      const computedFrete = shippingRate > 0 ? Number((totalPairsCalc * shippingRate).toFixed(2)) : 0;
+      const updateData: any = { ...order, total, valor_frete: computedFrete > 0 ? computedFrete : (order as any).valor_frete ?? null };
       if (client_id !== undefined) updateData.client_id = client_id || null;
       if (!updateData.delivery_deadline) updateData.delivery_deadline = null;
       if (representative_id) updateData.representative_id = representative_id; else updateData.representative_id = null;
