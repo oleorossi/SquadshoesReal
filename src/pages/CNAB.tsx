@@ -102,6 +102,9 @@ export default function CNAB() {
         emptyText="Nenhum arquivo CNAB gerado"
         newButtonLabel="Gerar Remessa"
         newButtonOnClick={() => { setForm({ ...emptyForm, selected_ar: new Set() }); setOpen(true); }}
+        enableBulkDelete
+        entityLabel="arquivo CNAB"
+        displayLabel={(r: any) => `• ${r.filename} (${r.cnab_layout})`}
         columns={[
           { key: 'filename', label: 'Arquivo', render: r => <span className="font-mono text-xs">{r.filename}</span> },
           { key: 'cnab_layout', label: 'Layout', render: r => <Badge variant="outline" className="text-[10px]">{r.cnab_layout}</Badge> },

@@ -1,14 +1,17 @@
-import { ReactNode } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { ReactNode, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { CircleNotch as Loader2, Plus, Tray as Inbox } from '@phosphor-icons/react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { CircleNotch as Loader2, Plus, Tray as Inbox, Trash as Trash2 } from '@phosphor-icons/react';
 import { Link } from 'react-router-dom';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
+import { BulkActionsBar } from '@/components/ui/bulk-actions-bar';
+import { confirmAndBulkDelete } from '@/lib/bulkConfirm';
 
 const STAT_TONE: Record<string, 'default' | 'primary' | 'success' | 'warning' | 'destructive'> = {
   default: 'default', primary: 'primary', amber: 'warning', emerald: 'success', destructive: 'destructive',
@@ -53,6 +56,15 @@ interface Props {
   newButtonHref?: string;
   headerExtra?: ReactNode;
   badge?: ReactNode;
+  /**
+   * Quando true, mostra checkbox no início de cada linha + BulkActionsBar
+   * com botão "Excluir". Requer `entityLabel` (singular) e `displayLabel`
+   * (função que monta linha do preview no prompt — ex: o => `• ${o.code} — ${o.name}`).
+   * Excluir = DELETE direto na `table` configurada (mesma da query principal).
+   */
+  enableBulkDelete?: boolean;
+  entityLabel?: string;
+  displayLabel?: (row: any) => string;
 }
 
 export function DataListPage({
@@ -61,7 +73,18 @@ export function DataListPage({
   filters = {},
   columns, stats = [], emptyText = 'Nenhum registro',
   newButtonLabel, newButtonOnClick, newButtonHref, headerExtra, badge,
+  enableBulkDelete, entityLabel = 'registro', displayLabel,
 }: Props) {
+  const qc = useQueryClient();
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const toggleSelected = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const clearSelection = () => setSelectedIds(new Set());
   const { data: rows = [], isLoading } = useQuery({
     queryKey: [table, selectCols, orderBy, JSON.stringify(filters), limit],
     queryFn: async () => {
@@ -157,6 +180,18 @@ export function DataListPage({
             <table className="w-full text-sm">
               <thead className="bg-muted/40">
                 <tr>
+                  {enableBulkDelete && (
+                    <th className="w-8 px-3 py-2.5">
+                      <Checkbox
+                        checked={rows.length > 0 && rows.every((r: any) => selectedIds.has(r.id))}
+                        onCheckedChange={(v) => {
+                          if (v) setSelectedIds(new Set(rows.map((r: any) => r.id)));
+                          else clearSelection();
+                        }}
+                        aria-label="Selecionar todos"
+                      />
+                    </th>
+                  )}
                   {columns.map(c => (
                     <th key={c.key} style={{ width: c.width }}
                       className={`px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground ${
@@ -169,7 +204,19 @@ export function DataListPage({
               </thead>
               <tbody className="divide-y divide-border">
                 {rows.map((row: any, idx: number) => (
-                  <tr key={row.id || idx} className="hover:bg-muted/30 transition-colors">
+                  <tr
+                    key={row.id || idx}
+                    className={`transition-colors ${selectedIds.has(row.id) ? 'bg-primary/5 hover:bg-primary/10' : 'hover:bg-muted/30'}`}
+                  >
+                    {enableBulkDelete && (
+                      <td className="px-3 py-2.5">
+                        <Checkbox
+                          checked={selectedIds.has(row.id)}
+                          onCheckedChange={() => toggleSelected(row.id)}
+                          aria-label="Selecionar linha"
+                        />
+                      </td>
+                    )}
                     {columns.map(c => (
                       <td key={c.key} className={`px-3 py-2.5 ${
                         c.align === 'right' ? 'text-right' : c.align === 'center' ? 'text-center' : ''
@@ -184,6 +231,41 @@ export function DataListPage({
           </div>
         )}
       </Panel>
+
+      {enableBulkDelete && (
+        <BulkActionsBar
+          selectedIds={selectedIds}
+          onClear={clearSelection}
+          itemLabel={selectedIds.size === 1 ? entityLabel : `${entityLabel}s`}
+          actions={[
+            {
+              label: 'Excluir',
+              variant: 'destructive',
+              icon: <Trash2 className="h-3.5 w-3.5" />,
+              onClick: async () => {
+                const ids = Array.from(selectedIds);
+                const sampleLines = rows
+                  .filter((r: any) => selectedIds.has(r.id))
+                  .slice(0, 5)
+                  .map((r: any) => displayLabel ? displayLabel(r) : `• ${r.id}`);
+                await confirmAndBulkDelete({
+                  ids,
+                  entityLabel,
+                  sampleLines,
+                  deleteOne: async (id) => {
+                    const { error } = await (supabase as any).from(table).delete().eq('id', id);
+                    if (error) throw error;
+                  },
+                  onAfter: () => {
+                    clearSelection();
+                    qc.invalidateQueries({ queryKey: [table] });
+                  },
+                });
+              },
+            },
+          ]}
+        />
+      )}
     </div>
   );
 }

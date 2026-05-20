@@ -93,6 +93,9 @@ export default function BankReconciliation() {
         emptyText="Nenhuma conciliação registrada"
         newButtonLabel="Nova Conciliação"
         newButtonOnClick={() => { setForm(emptyForm); setOpen(true); }}
+        enableBulkDelete
+        entityLabel="conciliação"
+        displayLabel={(r: any) => `• ${format(new Date(r.reconciliation_date), 'dd/MM/yy')} — ${r.bank_account || 'sem conta'}`}
         columns={[
           { key: 'reconciliation_date', label: 'Data', render: r => format(new Date(r.reconciliation_date), 'dd/MM/yy') },
           { key: 'bank_account', label: 'Conta', render: r => <span className="text-xs font-mono">{r.bank_account || '—'}</span> },

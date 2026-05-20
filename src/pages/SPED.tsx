@@ -70,6 +70,9 @@ export default function SPED() {
         emptyText="Nenhum SPED exportado"
         newButtonLabel="Gerar SPED"
         newButtonOnClick={() => { setForm(emptyForm); setOpen(true); }}
+        enableBulkDelete
+        entityLabel="SPED"
+        displayLabel={(r: any) => `• ${r.sped_type} (${r.filename || 'sem arquivo'})`}
         columns={[
           { key: 'sped_type', label: 'Tipo', render: r => <Badge variant="outline" className="text-[10px]">{r.sped_type}</Badge> },
           { key: 'period', label: 'Período', render: r => <span className="text-xs">{format(new Date(r.period_start), 'MM/yy')} – {format(new Date(r.period_end), 'MM/yy')}</span> },

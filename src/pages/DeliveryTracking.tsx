@@ -24,6 +24,9 @@ export default function DeliveryTracking() {
       table="delivery_tracking"
       orderBy="last_update_at"
       emptyText="Nenhuma entrega em rastreamento"
+      enableBulkDelete
+      entityLabel="entrega"
+      displayLabel={(r: any) => `• ${r.tracking_code || '—'} (${r.recipient_name || 'sem destinatário'})`}
       columns={[
         { key: 'tracking_code', label: 'Código', render: r => <span className="font-mono text-xs">{r.tracking_code || '—'}</span> },
         { key: 'recipient_name', label: 'Destinatário' },
