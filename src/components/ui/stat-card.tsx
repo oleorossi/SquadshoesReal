@@ -72,7 +72,7 @@ export function StatCard({
           )}
         </div>
         <div className="flex items-baseline gap-1.5 min-w-0">
-          <span className={cn('mono text-3xl font-bold leading-none truncate', TONE_VALUE[tone])} title={typeof value === 'string' ? value : undefined}>
+          <span className={cn('mono text-2xl md:text-[26px] font-bold leading-none truncate', TONE_VALUE[tone])} title={typeof value === 'string' ? value : undefined}>
             {value}
           </span>
           {unit && <span className="text-xs text-muted-foreground font-medium shrink-0">{unit}</span>}
