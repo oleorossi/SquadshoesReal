@@ -259,7 +259,7 @@ Deno.serve(async (req) => {
 
     const { data: items, error: itemsErr } = await adminClient
       .from("sale_order_items")
-      .select("*, technical_sheets(id, name, code, ncm, gestaoclick_id, description, shoe_category, upper_material, lining_material, insole_material, sole_material, weight_per_pair_kg, cest), reference_material_variants(sku, barcode, ncm, description_override, active, unit_price_override), products(id, name, sku, ncm, gestaoclick_id, unit)")
+      .select("*, technical_sheets(id, name, code, ncm, gestaoclick_id, description, shoe_category, upper_material, lining_material, insole_material, sole_material, weight_per_pair_kg), reference_material_variants(sku, barcode, ncm, description_override, active, unit_price_override), products(id, name, sku, ncm, gestaoclick_id, unit)")
       .eq("sale_order_id", sale_order_id)
       .order("created_at", { ascending: true })
       .order("id", { ascending: true });
@@ -650,7 +650,6 @@ Deno.serve(async (req) => {
           const skuVariante = (variant?.sku || '').trim();
           const gtinVariante = (variant?.barcode || '').trim();
           const pesoKg = Number(ts?.weight_per_pair_kg || 0);
-          const cest = (ts?.cest || '').trim();
           const productPayload: Record<string, unknown> = {
             nome: nomeProduto,
             valor_venda: price.toFixed(2),
@@ -667,7 +666,6 @@ Deno.serve(async (req) => {
             productPayload.peso_liquido = pesoKg.toFixed(3);
           }
           if (ts?.shoe_category) productPayload.categoria = ts.shoe_category;
-          if (cest) productPayload.cest = cest;
           const r = await gcFetch("/produtos", {
             method: "POST",
             body: JSON.stringify(productPayload),
