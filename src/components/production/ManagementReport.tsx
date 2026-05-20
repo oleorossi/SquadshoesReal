@@ -240,7 +240,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
                 textTransform: 'uppercase',
               }}
             >
-              PV {saleOrder.order_number || '—'}
+              {saleOrder.order_number || 'PV —'}
             </h1>
             {saleOrder.client_order_number && (
               <p className="mt-3 text-[9pt] text-black">
@@ -830,7 +830,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
         </div>
         <div className="mt-6 flex items-baseline justify-between text-[7pt] text-neutral-500">
           <span className="section-label" style={{ color: '#999' }}>Squad Shoes · Sistema de Gestão</span>
-          <span className="font-mono">PV {saleOrder.order_number || '—'} · {date || new Date().toLocaleDateString('pt-BR')}</span>
+          <span className="font-mono">{saleOrder.order_number || 'PV —'} · {date || new Date().toLocaleDateString('pt-BR')}</span>
         </div>
       </footer>
     </div>

@@ -57,7 +57,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
             <div className="flex items-start gap-4 min-w-0">
               {pvDisplay && (
                 <div className="shrink-0">
-                  <span className="section-label block" style={{ color: '#000' }}>PV</span>
+                  <span className="section-label block" style={{ color: '#000' }}>Pedido</span>
                   <p
                     className="text-black leading-none mt-0.5"
                     style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em' }}

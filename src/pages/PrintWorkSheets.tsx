@@ -173,7 +173,6 @@ export default function PrintWorkSheets() {
               Respeita filtros ativos (status + busca), só seleciona o que
               está visível na lista filtrada. */}
           <Button
-            size="lg"
             variant="outline"
             disabled={filtered.length === 0}
             onClick={() => {
@@ -187,7 +186,6 @@ export default function PrintWorkSheets() {
             Selecionar tudo e imprimir ({filtered.length})
           </Button>
           <Button
-            size="lg"
             disabled={selectedOrders.length === 0}
             onClick={() => setShowPrintView(true)}
             className="gap-2"

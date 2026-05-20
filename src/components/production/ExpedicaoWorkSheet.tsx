@@ -105,7 +105,7 @@ export const ExpedicaoWorkSheet = ({ group, date }: Props) => {
             {/* PV destacado — pedido user 19/05/2026 */}
             {group.sale_order_number && (
               <div className="shrink-0">
-                <span className="section-label block" style={{ color: '#000' }}>PV</span>
+                <span className="section-label block" style={{ color: '#000' }}>Pedido</span>
                 <p
                   className="text-black leading-none mt-0.5"
                   style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em' }}

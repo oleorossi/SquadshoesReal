@@ -161,7 +161,7 @@ const OperatorWorkSheet = ({
           {/* PV (pedido de venda) — rastreabilidade pedida pelo user em 2026-05. */}
           {(order.sale_order_number || order.pv_number) && (
             <div className="border-l border-black pl-4 flex flex-col justify-center">
-              <span className="section-label" style={{ color: '#000' }}>PV</span>
+              <span className="section-label" style={{ color: '#000' }}>Pedido</span>
               <span
                 className="text-black font-mono leading-none mt-1"
                 style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '20px', fontWeight: 700, letterSpacing: '-0.02em' }}
@@ -366,7 +366,7 @@ const OperatorWorkSheet = ({
               </div>
             ) : (
               <div>
-                <span className="section-label block" style={{ color: '#000' }}>OP</span>
+                <span className="section-label block" style={{ color: '#000' }}>Ordem</span>
                 <p className="text-sm font-mono font-bold text-black leading-tight mt-0.5">{order.op_number || '—'}</p>
               </div>
             )}

@@ -206,7 +206,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
               {/* PV destacado — pedido user 19/05/2026 */}
               {pvDisplay && (
                 <div className="shrink-0">
-                  <span className="section-label block" style={{ color: '#000' }}>PV</span>
+                  <span className="section-label block" style={{ color: '#000' }}>Pedido</span>
                   <p
                     className="text-black leading-none mt-0.5"
                     style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em' }}
@@ -360,7 +360,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                   )}
                   {cg.pvNumbers && cg.pvNumbers.length > 0 && (
                     <div className="text-right">
-                      <span className="section-label block" style={{ color: '#000' }}>PV</span>
+                      <span className="section-label block" style={{ color: '#000' }}>Pedido</span>
                       <span className="font-mono text-[12px] font-bold text-black tracking-wider">
                         {cg.pvNumbers.length === 1 ? cg.pvNumbers[0] : `${cg.pvNumbers[0]} +${cg.pvNumbers.length - 1}`}
                       </span>
@@ -368,7 +368,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                   )}
                   {cg.opNumbers.length > 0 && (
                     <div className="text-right">
-                      <span className="section-label block" style={{ color: '#000' }}>OP</span>
+                      <span className="section-label block" style={{ color: '#000' }}>Ordem</span>
                       <span className="font-mono text-[12px] font-bold text-black tracking-wider">
                         {cg.opNumbers.length === 1 ? cg.opNumbers[0] : `${cg.opNumbers[0]} +${cg.opNumbers.length - 1}`}
                       </span>
