@@ -790,6 +790,26 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             </div>
           )}
 
+          {/* Fallback: ficha tem upper_material textual mas zero variantes
+              cadastradas em reference_material_variants. Mostra read-only pro
+              user saber qual cabedal vai ser usado. Débito continua via BOM
+              da ficha (sheet_materials). Reportado em 20/05/2026 — user
+              cadastrou Napa Santorine no campo Cabedal e estranhou não
+              aparecer nada no PV. */}
+          {activeMaterialVariants.length === 0 && sheetSpecs?.upper_material && (
+            <div className="md:col-span-3">
+              <Label className="text-[10px] font-bold text-muted-foreground uppercase mb-1 block">
+                Cabedal
+              </Label>
+              <div className="h-9 px-3 rounded-md border bg-muted/30 flex items-center text-xs text-muted-foreground">
+                {sheetSpecs.upper_material}
+                <span className="ml-auto text-[9px] text-muted-foreground/70 uppercase tracking-wider">
+                  da ficha
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Cor — disabled until material is selected (when groups exist) */}
           {(() => {
             const isLocked = activeMaterialVariants.length > 0 && !item.material_variant_id;
