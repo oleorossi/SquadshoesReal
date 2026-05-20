@@ -10,6 +10,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Checkbox } from '@/components/ui/checkbox';
+import { BulkActionsBar } from '@/components/ui/bulk-actions-bar';
+import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
+import { confirmAndBulkDelete } from '@/lib/bulkConfirm';
 import { useGroups, useAddGroup, useUpdateGroup, useDeleteGroup, ProductGroup } from '@/hooks/useGroups';
 import { useProducts } from '@/hooks/useProducts';
 import { Switch } from '@/components/ui/switch';
@@ -25,6 +29,22 @@ export default function Groups() {
   const addGroup = useAddGroup();
   const updateGroup = useUpdateGroup();
   const deleteGroup = useDeleteGroup();
+
+  const sel = useMarqueeSelection(groups, (g) => g.id);
+  const handleBulkDeleteGroups = async () => {
+    const ids = Array.from(sel.selectedIds);
+    const sampleLines = groups
+      .filter(g => sel.selectedIds.has(g.id))
+      .slice(0, 5)
+      .map(g => `• ${g.name}`);
+    await confirmAndBulkDelete({
+      ids,
+      entityLabel: 'grupo',
+      sampleLines,
+      deleteOne: (id) => deleteGroup.mutateAsync(id),
+      onAfter: () => sel.clear(),
+    });
+  };
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<ProductGroup | null>(null);
@@ -106,6 +126,13 @@ export default function Groups() {
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                <TableHead className="w-8">
+                  <Checkbox
+                    checked={groups.length > 0 && groups.every(g => sel.isSelected(g.id))}
+                    onCheckedChange={(v) => groups.forEach(g => { if (!!v !== sel.isSelected(g.id)) sel.toggle(g.id); })}
+                    aria-label="Selecionar todos"
+                  />
+                </TableHead>
                 <TableHead>Nome</TableHead>
                 <TableHead>Descrição</TableHead>
                 <TableHead className="text-center">Produtos</TableHead>
@@ -118,7 +145,14 @@ export default function Groups() {
                   return (
                     <Collapsible key={g.id} asChild open={isExpanded} onOpenChange={() => setExpandedGroup(isExpanded ? null : g.id)}>
                       <>
-                        <TableRow className="group">
+                        <TableRow className={sel.isSelected(g.id) ? "bg-primary/5 group" : "group"}>
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <Checkbox
+                              checked={sel.isSelected(g.id)}
+                              onCheckedChange={() => sel.toggle(g.id)}
+                              aria-label={`Selecionar ${g.name}`}
+                            />
+                          </TableCell>
                           <TableCell className="font-medium">{g.name}</TableCell>
                           <TableCell className="text-muted-foreground">{g.description || '—'}</TableCell>
                           <TableCell className="text-center">
@@ -238,6 +272,20 @@ export default function Groups() {
           group={editGroup}
         />
       )}
+
+      <BulkActionsBar
+        selectedIds={sel.selectedIds}
+        onClear={sel.clear}
+        itemLabel={sel.selectedIds.size === 1 ? 'grupo' : 'grupos'}
+        actions={[
+          {
+            label: 'Excluir',
+            variant: 'destructive',
+            icon: <Trash2 className="h-3.5 w-3.5" />,
+            onClick: handleBulkDeleteGroups,
+          },
+        ]}
+      />
     </AppLayout>
   );
 }

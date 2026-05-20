@@ -119,6 +119,23 @@ export default function Clients() {
     );
   }, [clients, search]);
 
+  // Seleção múltipla pra bulk delete. Marquee + checkbox + ctrl/cmd+click.
+  const sel = useMarqueeSelection(filteredClients, (c) => c.id);
+  const handleBulkDeleteClients = async () => {
+    const ids = Array.from(sel.selectedIds);
+    const sampleLines = filteredClients
+      .filter(c => sel.selectedIds.has(c.id))
+      .slice(0, 5)
+      .map(c => `• ${c.razao_social}${c.cnpj ? ` (${c.cnpj})` : ''}`);
+    await confirmAndBulkDelete({
+      ids,
+      entityLabel: 'cliente',
+      sampleLines,
+      deleteOne: (id) => deleteClient.mutateAsync(id),
+      onAfter: () => sel.clear(),
+    });
+  };
+
   const groupedClients = useMemo(() => {
     const groups: { group: EconomicGroup | null; clients: Client[] }[] = [];
     economicGroups.forEach(g => {
@@ -393,6 +410,13 @@ export default function Clients() {
                         <Table>
                           <TableHeader>
                             <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground [&_th]:h-9">
+                              <TableHead className="w-8">
+                                <Checkbox
+                                  checked={gc.length > 0 && gc.every(c => sel.isSelected(c.id))}
+                                  onCheckedChange={(v) => gc.forEach(c => { if (!!v !== sel.isSelected(c.id)) sel.toggle(c.id); })}
+                                  aria-label="Selecionar todos do grupo"
+                                />
+                              </TableHead>
                               <TableHead className="w-24">Nº</TableHead>
                               <TableHead>Razão Social</TableHead>
                               <TableHead>CNPJ</TableHead>
@@ -405,7 +429,20 @@ export default function Clients() {
                           </TableHeader>
                           <TableBody>
                             {gc.map(c => (
-                              <TableRow key={c.id} className={cn("group cursor-pointer hover:bg-muted/50 transition-colors", !c.active && "opacity-50")} onClick={(e) => { if ((e.target as HTMLElement).closest('button')) return; openEditClient(c); }}>
+                              <TableRow
+                                key={c.id}
+                                data-marquee-item
+                                data-marquee-id={c.id}
+                                className={cn("group cursor-pointer hover:bg-muted/50 transition-colors", !c.active && "opacity-50", sel.isSelected(c.id) && "bg-primary/5 hover:bg-primary/10")}
+                                onClick={(e) => { if ((e.target as HTMLElement).closest('button,[role="checkbox"]')) return; openEditClient(c); }}
+                              >
+                                <TableCell onClick={(e) => e.stopPropagation()}>
+                                  <Checkbox
+                                    checked={sel.isSelected(c.id)}
+                                    onCheckedChange={() => sel.toggle(c.id)}
+                                    aria-label={`Selecionar ${c.razao_social}`}
+                                  />
+                                </TableCell>
                                 <TableCell className="font-mono text-xs text-muted-foreground">{(c as any).client_number || '—'}</TableCell>
                                 <TableCell className="font-medium">
                                   <div className="flex items-center gap-1.5">
@@ -716,6 +753,20 @@ export default function Clients() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <BulkActionsBar
+        selectedIds={sel.selectedIds}
+        onClear={sel.clear}
+        itemLabel={sel.selectedIds.size === 1 ? 'cliente' : 'clientes'}
+        actions={[
+          {
+            label: 'Excluir',
+            variant: 'destructive',
+            icon: <Trash2 className="h-3.5 w-3.5" />,
+            onClick: handleBulkDeleteClients,
+          },
+        ]}
+      />
     </AppLayout>
   );
 }

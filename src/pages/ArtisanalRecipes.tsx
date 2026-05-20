@@ -11,6 +11,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
+import { BulkActionsBar } from '@/components/ui/bulk-actions-bar';
+import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
+import { confirmAndBulkDelete } from '@/lib/bulkConfirm';
 import {
   useArtisanalRecipes, useCreateArtisanalRecipe, useUpdateArtisanalRecipe, useDeleteArtisanalRecipe,
   ArtisanalRecipe,
@@ -71,6 +75,22 @@ export default function ArtisanalRecipes() {
         normalizeForSearch(r.artisanal_product_name).includes(q),
     );
   }, [recipes, search]);
+
+  const sel = useMarqueeSelection(filtered, (r) => r.id);
+  const handleBulkDeleteRecipes = async () => {
+    const ids = Array.from(sel.selectedIds);
+    const sampleLines = filtered
+      .filter(r => sel.selectedIds.has(r.id))
+      .slice(0, 5)
+      .map(r => `• ${r.name}`);
+    await confirmAndBulkDelete({
+      ids,
+      entityLabel: 'receita',
+      sampleLines,
+      deleteOne: (id) => remove.mutateAsync(id),
+      onAfter: () => sel.clear(),
+    });
+  };
 
   const openNew = () => {
     setEditing({ ...emptyRecipe });
@@ -167,6 +187,13 @@ export default function ArtisanalRecipes() {
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-[10px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                  <TableHead className="w-8">
+                    <Checkbox
+                      checked={filtered.length > 0 && filtered.every(r => sel.isSelected(r.id))}
+                      onCheckedChange={(v) => filtered.forEach(r => { if (!!v !== sel.isSelected(r.id)) sel.toggle(r.id); })}
+                      aria-label="Selecionar todas"
+                    />
+                  </TableHead>
                   <TableHead>Receita</TableHead>
                   <TableHead>Transformação</TableHead>
                   <TableHead className="w-[120px] text-right">Rendimento</TableHead>
@@ -180,7 +207,7 @@ export default function ArtisanalRecipes() {
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="p-0">
+                    <TableCell colSpan={9} className="p-0">
                       <EmptyState
                         icon={Sparkles}
                         title={search ? 'Nenhuma receita encontrada' : 'Nenhuma receita cadastrada'}
@@ -196,12 +223,19 @@ export default function ArtisanalRecipes() {
                     return (
                       <TableRow
                         key={r.id}
-                        className="cursor-pointer hover:bg-muted/50 transition-colors"
+                        className={`cursor-pointer hover:bg-muted/50 transition-colors ${sel.isSelected(r.id) ? 'bg-primary/5 hover:bg-primary/10' : ''}`}
                         onClick={(e) => {
-                          if ((e.target as HTMLElement).closest('button')) return;
+                          if ((e.target as HTMLElement).closest('button,[role="checkbox"]')) return;
                           openEdit(r);
                         }}
                       >
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            checked={sel.isSelected(r.id)}
+                            onCheckedChange={() => sel.toggle(r.id)}
+                            aria-label={`Selecionar ${r.name}`}
+                          />
+                        </TableCell>
                         <TableCell className="text-sm font-medium">{r.name}</TableCell>
                         <TableCell className="text-sm">
                           <div className="flex items-center gap-1.5 text-xs">
@@ -491,6 +525,20 @@ export default function ArtisanalRecipes() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <BulkActionsBar
+        selectedIds={sel.selectedIds}
+        onClear={sel.clear}
+        itemLabel={sel.selectedIds.size === 1 ? 'receita' : 'receitas'}
+        actions={[
+          {
+            label: 'Excluir',
+            variant: 'destructive',
+            icon: <Trash2 className="h-3.5 w-3.5" />,
+            onClick: handleBulkDeleteRecipes,
+          },
+        ]}
+      />
     </div>
   );
 }
