@@ -15,6 +15,7 @@ import {
   useUpdateComponentSheet,
 } from '@/hooks/useComponentSheets';
 import { normalizeProductName } from '@/lib/productNameNormalization';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 /**
  * Aba dedicada de Solados na Ficha de Componentes.
@@ -99,14 +100,14 @@ export function SolesComponentSheetTab() {
   }, [allSolesVariants, sheetByProductId]);
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = normalizeForSearch(search.trim());
     if (!q) return soleGroups;
     return soleGroups.filter((g) =>
-      g.name.toLowerCase().includes(q) ||
+      normalizeForSearch(g.name).includes(q) ||
       g.variants.some((v) =>
-        (v.sku || '').toLowerCase().includes(q) ||
-        (v.color || '').toLowerCase().includes(q) ||
-        (v.name || '').toLowerCase().includes(q)
+        normalizeForSearch(v.sku).includes(q) ||
+        normalizeForSearch(v.color).includes(q) ||
+        normalizeForSearch(v.name).includes(q)
       )
     );
   }, [soleGroups, search]);

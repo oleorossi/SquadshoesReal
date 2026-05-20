@@ -14,6 +14,7 @@ import { useClients, useEconomicGroups } from '@/hooks/useClients';
 import { useProducts } from '@/hooks/useProducts';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { SignedImage } from '@/components/ui/signed-image';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 type SilkScope = 'all' | 'default' | 'client' | 'economic_group';
 
@@ -178,10 +179,10 @@ export function SilkGlobalPanel({ scope = 'all' }: SilkGlobalPanelProps = {}) {
       return true;
     })
     .filter((r: any) =>
-      (r.sole_type || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (r.silk_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (r.clients?.nome_fantasia || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (r.economic_groups?.name || '').toLowerCase().includes(searchTerm.toLowerCase()),
+      normalizeForSearch(r.sole_type).includes(searchTerm.toLowerCase()) ||
+      normalizeForSearch(r.silk_name).includes(searchTerm.toLowerCase()) ||
+      normalizeForSearch(r.clients?.nome_fantasia).includes(searchTerm.toLowerCase()) ||
+      normalizeForSearch(r.economic_groups?.name).includes(searchTerm.toLowerCase()),
     );
 
   return (

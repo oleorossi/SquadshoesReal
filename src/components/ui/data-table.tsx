@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { normalizeForSearch } from '@/lib/searchUtils';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -96,12 +97,12 @@ export function DataTable<T>({
   // ─ Search filtering ─
   const filteredData = useMemo(() => {
     if (!search.trim()) return data;
-    const q = search.toLowerCase();
+    const q = normalizeForSearch(search);
     const fields = searchFields || columns.map(c => c.key);
     return data.filter(row =>
       fields.some(f => {
         const val = (row as any)[f];
-        return val != null && String(val).toLowerCase().includes(q);
+        return val != null && normalizeForSearch(String(val)).includes(q);
       })
     );
   }, [data, search, searchFields, columns]);

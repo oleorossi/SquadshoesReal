@@ -57,8 +57,8 @@ export default function PurchaseOrders() {
     if (statusFilter !== 'all' && o.status !== statusFilter) return false;
     if (supplierFilter !== 'all' && o.supplier_name !== supplierFilter) return false;
     if (search) {
-      const q = search.toLowerCase();
-      return o.order_number.toLowerCase().includes(q) || o.supplier_name.toLowerCase().includes(q);
+      const q = normalizeForSearch(search);
+      return normalizeForSearch(o.order_number).includes(q) || normalizeForSearch(o.supplier_name).includes(q);
     }
     return true;
   }), [orders, statusFilter, supplierFilter, search]);
@@ -935,6 +935,7 @@ type SummaryItem = {
 
 import { PurchaseOrder } from '@/hooks/usePurchaseOrders';
 import { useQuery } from '@tanstack/react-query';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 function PendingSummaryDialog({ orderIds, orders, onClose }: { orderIds: string[]; orders: PurchaseOrder[]; onClose: () => void }) {
   const { data: allItems = [], isLoading } = useQuery({

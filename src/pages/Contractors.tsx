@@ -44,6 +44,7 @@ import { format, addDays } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
 import { toast } from 'sonner';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 const emptyContractor: Partial<Contractor> = { name: '', trade_name: '', cnpj_cpf: '', phone: '', email: '', address: '', city: '', state: '', service_type: '', notes: '', active: true, payment_days: 15 };
 const emptyMaterial: MaterialSent = { material: '', color: '', meters: 0 };
@@ -276,13 +277,13 @@ export default function Contractors() {
 
   // ── Filtered data ──
   const filteredContractors = useMemo(() => {
-    const q = search.toLowerCase();
-    return contractors.filter(c => c.name.toLowerCase().includes(q) || (c.service_type || '').toLowerCase().includes(q) || (c.cnpj_cpf || '').includes(q));
+    const q = normalizeForSearch(search);
+    return contractors.filter(c => normalizeForSearch(c.name).includes(q) || normalizeForSearch(c.service_type).includes(q) || (c.cnpj_cpf || '').includes(q));
   }, [contractors, search]);
 
   const filteredOrders = useMemo(() => {
-    const q = search.toLowerCase();
-    let result = orders.filter(o => o.description.toLowerCase().includes(q) || o.order_number.toLowerCase().includes(q) || (o.contractors?.name || '').toLowerCase().includes(q));
+    const q = normalizeForSearch(search);
+    let result = orders.filter(o => normalizeForSearch(o.description).includes(q) || normalizeForSearch(o.order_number).includes(q) || normalizeForSearch(o.contractors?.name).includes(q));
     if (statusFilter !== 'all') result = result.filter(o => o.status === statusFilter);
     return result;
   }, [orders, search, statusFilter]);

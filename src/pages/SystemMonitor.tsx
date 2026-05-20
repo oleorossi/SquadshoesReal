@@ -20,6 +20,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 const CHART_COLORS = ['#0EA5E9', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
 
@@ -107,9 +108,9 @@ export default function SystemMonitor() {
     if (auditSearch.trim()) {
       const q = auditSearch.toLowerCase();
       logs = logs.filter((l: any) =>
-        (l.resource || '').toLowerCase().includes(q) ||
-        (l.action || '').toLowerCase().includes(q) ||
-        (l.user_id || '').toLowerCase().includes(q)
+        normalizeForSearch(l.resource).includes(q) ||
+        normalizeForSearch(l.action).includes(q) ||
+        normalizeForSearch(l.user_id).includes(q)
       );
     }
     return logs;

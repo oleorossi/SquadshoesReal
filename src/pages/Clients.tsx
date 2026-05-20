@@ -31,6 +31,7 @@ import RepresentativeTab from '@/components/clients/RepresentativeTab';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { validateCnpj } from '@/lib/validateCnpj';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 const emptyClient: ClientFormData = {
   razao_social: '', nome_fantasia: '', cnpj: '', inscricao_estadual: '',
@@ -103,15 +104,15 @@ export default function Clients() {
   };
 
   const filteredClients = useMemo(() => {
-    const q = search.toLowerCase();
+    const q = normalizeForSearch(search);
     const qDigits = q.replace(/\D/g, '');
     return clients.filter(c =>
-      c.razao_social.toLowerCase().includes(q) ||
-      c.nome_fantasia?.toLowerCase().includes(q) ||
+      normalizeForSearch(c.razao_social).includes(q) ||
+      normalizeForSearch(c.nome_fantasia).includes(q) ||
       (qDigits.length > 0
         ? (c.cnpj?.replace(/\D/g, '') ?? '').includes(qDigits)
-        : c.cnpj?.toLowerCase().includes(q)) ||
-      c.cidade?.toLowerCase().includes(q)
+        : normalizeForSearch(c.cnpj).includes(q)) ||
+      normalizeForSearch(c.cidade).includes(q)
     );
   }, [clients, search]);
 
@@ -216,15 +217,15 @@ export default function Clients() {
   const groupClients = editingGroup ? clients.filter(c => c.economic_group_id === editingGroup.id) : [];
   const availableClients = useMemo(() => {
     if (!editingGroup) return [];
-    const q = storeSearch.toLowerCase();
+    const q = normalizeForSearch(storeSearch);
     return clients
       .filter(c => c.economic_group_id !== editingGroup.id)
       .filter(c => {
         if (!q) return true;
         const qd = q.replace(/\D/g, '');
-        return c.razao_social.toLowerCase().includes(q) ||
-          c.nome_fantasia?.toLowerCase().includes(q) ||
-          (qd.length > 0 ? (c.cnpj?.replace(/\D/g, '') ?? '').includes(qd) : c.cnpj?.toLowerCase().includes(q));
+        return normalizeForSearch(c.razao_social).includes(q) ||
+          normalizeForSearch(c.nome_fantasia).includes(q) ||
+          (qd.length > 0 ? (c.cnpj?.replace(/\D/g, '') ?? '').includes(qd) : normalizeForSearch(c.cnpj).includes(q));
       });
   }, [clients, editingGroup, storeSearch]);
 

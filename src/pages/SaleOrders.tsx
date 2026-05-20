@@ -190,7 +190,7 @@ export default function SaleOrders() {
 
       // Representantes (category — usado como agrupamento)
       const repMatches = (representatives as any[])
-        .filter((r: any) => (r.name || '').toLowerCase().includes(q))
+        .filter((r: any) => normalizeForSearch(r.name).includes(q))
         .slice(0, 5);
       for (const r of repMatches) {
         out.push({ field: 'category', value: r.name, meta: 'Representante' });
@@ -198,7 +198,7 @@ export default function SaleOrders() {
 
       // Referências (sku)
       const refMatches = (references as any[])
-        .filter((r: any) => (r.code || '').toLowerCase().includes(q) || (r.name || '').toLowerCase().includes(q))
+        .filter((r: any) => normalizeForSearch(r.code).includes(q) || normalizeForSearch(r.name).includes(q))
         .slice(0, 5);
       for (const r of refMatches) {
         out.push({ field: 'sku', value: r.code || r.name, meta: r.name });
@@ -423,7 +423,7 @@ export default function SaleOrders() {
           const groupId = cli?.economic_group_id;
           if (!groupId) return false;
           const group = (economicGroups as any[]).find((g: any) => g.id === groupId);
-          return !!(group && (group.name || '').toLowerCase().includes(groupQuery));
+          return !!(group && normalizeForSearch(group.name).includes(groupQuery));
         }
 
         const client = clientByName[(order.client_name || '').toLowerCase()];

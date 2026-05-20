@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 type AuditRow = {
   id: string;
@@ -162,8 +163,8 @@ export function SheetsAuditPanel({
       getGapsForRow(row).some(g => g.severity === 'critical')
     );
     if (search.trim()) {
-      const q = search.toLowerCase().trim();
-      r = r.filter(row => row.code?.toLowerCase().includes(q) || row.name?.toLowerCase().includes(q));
+      const q = normalizeForSearch(search);
+      r = r.filter(row => normalizeForSearch(row.code).includes(q) || normalizeForSearch(row.name).includes(q));
     }
     return r;
   }, [rows, filter, search]);
@@ -307,8 +308,8 @@ function SheetsAuditTab({
       getGapsForRow(row).some(g => g.severity === 'critical')
     );
     if (search.trim()) {
-      const q = search.toLowerCase().trim();
-      r = r.filter(row => row.code?.toLowerCase().includes(q) || row.name?.toLowerCase().includes(q));
+      const q = normalizeForSearch(search);
+      r = r.filter(row => normalizeForSearch(row.code).includes(q) || normalizeForSearch(row.name).includes(q));
     }
     return r;
   }, [rows, filter, search]);

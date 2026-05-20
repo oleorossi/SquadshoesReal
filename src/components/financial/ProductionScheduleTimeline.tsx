@@ -14,6 +14,7 @@ import { CircleNotch as Loader2, Scissors, Hammer, Sparkle as Sparkles, Shopping
 import { format, parseISO, isBefore, isToday, differenceInCalendarDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import * as XLSX from 'xlsx';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 interface ScheduleRow {
   order_id: string;
@@ -451,12 +452,12 @@ export function ProductionScheduleTimeline() {
   });
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = normalizeForSearch(search.trim());
     if (!q) return rows;
     return rows.filter(
       r =>
-        r.pedido_ref?.toLowerCase().includes(q) ||
-        r.referencia_nome?.toLowerCase().includes(q),
+        normalizeForSearch(r.pedido_ref).includes(q) ||
+        normalizeForSearch(r.referencia_nome).includes(q),
     );
   }, [rows, search]);
 

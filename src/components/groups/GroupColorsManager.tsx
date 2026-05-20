@@ -30,6 +30,7 @@ import { useProducts } from '@/hooks/useProducts';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 interface GroupColorsManagerProps {
   groupId: string;
@@ -125,9 +126,9 @@ export default function GroupColorsManager({ groupId, groupName }: GroupColorsMa
   // Catálogo filtrado pra popover (exclui o que já está vinculado)
   const linkedColorIds = useMemo(() => new Set(groupColors.map(gc => gc.color_id)), [groupColors]);
   const filteredCatalog = useMemo(() => {
-    const q = search.toLowerCase().trim();
+    const q = normalizeForSearch(search);
     return allColors
-      .filter(c => !q || c.nome.toLowerCase().includes(q))
+      .filter(c => !q || normalizeForSearch(c.nome).includes(q))
       .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   }, [allColors, search]);
 

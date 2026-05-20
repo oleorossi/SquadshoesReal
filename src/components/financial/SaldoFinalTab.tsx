@@ -11,6 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { startOfWeek, endOfWeek, addWeeks } from 'date-fns';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 const fmtQty = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
 
@@ -219,8 +220,8 @@ export default function SaldoFinalTab() {
   const filtered = useMemo(() => {
     let list = balances;
     if (search) {
-      const q = search.toLowerCase();
-      list = list.filter(b => b.name.toLowerCase().includes(q) || b.type.toLowerCase().includes(q));
+      const q = normalizeForSearch(search);
+      list = list.filter(b => normalizeForSearch(b.name).includes(q) || normalizeForSearch(b.type).includes(q));
     }
     // Recalculate final_balance based on visible weeks only
     return list.map(b => {

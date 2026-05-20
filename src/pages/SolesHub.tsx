@@ -22,6 +22,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 // ── Tipos ───────────────────────────────────────────────────────────────────
 import type { SoleProduct } from '@/components/soles-hub/types';
+import { normalizeForSearch } from '@/lib/searchUtils';
 export type { SoleProduct };
 
 function isSoleProduct(category: string | null): boolean {
@@ -63,12 +64,12 @@ export default function SolesHub() {
   const [search, setSearch] = useState('');
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase().trim();
+    const q = normalizeForSearch(search);
     if (!q) return soles;
     return soles.filter(p =>
-      p.name.toLowerCase().includes(q) ||
-      (p.sku || '').toLowerCase().includes(q) ||
-      (p.color || '').toLowerCase().includes(q)
+      normalizeForSearch(p.name).includes(q) ||
+      normalizeForSearch(p.sku).includes(q) ||
+      normalizeForSearch(p.color).includes(q)
     );
   }, [soles, search]);
 

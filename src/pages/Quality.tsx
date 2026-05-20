@@ -15,6 +15,7 @@ import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 const SEVERITY_CONFIG: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; className: string }> = {
   minor:    { label: 'Menor',    variant: 'outline',      className: 'border-amber-400/60 text-amber-600' },
@@ -34,11 +35,11 @@ export default function Quality() {
     if (statusFilter === 'unresolved' && r.resolved) return false;
     if (statusFilter === 'resolved' && !r.resolved) return false;
     if (search) {
-      const q = search.toLowerCase();
+      const q = normalizeForSearch(search);
       return (
-        r.stage_name?.toLowerCase().includes(q) ||
-        r.description?.toLowerCase().includes(q) ||
-        r.cause?.toLowerCase().includes(q)
+        normalizeForSearch(r.stage_name).includes(q) ||
+        normalizeForSearch(r.description).includes(q) ||
+        normalizeForSearch(r.cause).includes(q)
       );
     }
     return true;

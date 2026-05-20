@@ -16,6 +16,7 @@ import { useSoleConjugations } from '@/hooks/useSoleConjugations';
 import { getSoleModelName } from '@/lib/utils';
 import { toast } from 'sonner';
 import { MagnifyingGlass as Search, Plus, Package, Palette, Info, Link as Link2, Check } from '@phosphor-icons/react';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 interface SoladoGradeDialogProps {
   open: boolean;
@@ -206,9 +207,9 @@ function AddToGroupDialog({ open, onOpenChange, groupId, groupName }: {
   }, [open, queryClient]);
 
   const { available, alreadyInGroup } = useMemo(() => {
-    const q = search.toLowerCase();
+    const q = normalizeForSearch(search);
     const matchesSearch = (p: any) =>
-      !q || p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || p.category.toLowerCase().includes(q);
+      !q || normalizeForSearch(p.name).includes(q) || normalizeForSearch(p.sku).includes(q) || normalizeForSearch(p.category).includes(q);
     const active = allProducts.filter(p => p.active && matchesSearch(p));
     return {
       available: active.filter(p => p.group_id !== groupId),

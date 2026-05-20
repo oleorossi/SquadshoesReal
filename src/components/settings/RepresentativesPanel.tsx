@@ -13,6 +13,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useRepresentatives, useCreateRepresentative, useUpdateRepresentative, useDeleteRepresentative, RepresentativeFormData, Representative } from '@/hooks/useRepresentatives';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 const emptyForm: RepresentativeFormData = {
   name: '', email: '', phone: '', commission_pct: 0, active: true, notes: '',
@@ -99,8 +100,8 @@ export default function RepresentativesPanel() {
   const filtered = useMemo(() => {
     return reps.filter(r => {
       const matchSearch = !search || r.name.toLowerCase().includes(search.toLowerCase()) ||
-        r.email?.toLowerCase().includes(search.toLowerCase()) ||
-        r.cidade?.toLowerCase().includes(search.toLowerCase());
+        normalizeForSearch(r.email).includes(search.toLowerCase()) ||
+        normalizeForSearch(r.cidade).includes(search.toLowerCase());
       const matchStatus = statusFilter === 'all' || (statusFilter === 'active' ? r.active : !r.active);
       return matchSearch && matchStatus;
     });

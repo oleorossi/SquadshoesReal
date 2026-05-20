@@ -18,6 +18,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 interface StockRow {
   id: string;
@@ -166,7 +167,7 @@ export default function StockReservations() {
 
   const filtered = useMemo(() => {
     const list = data || [];
-    const term = search.trim().toLowerCase();
+    const term = normalizeForSearch(search.trim());
     const result = list.filter((r) => {
       if (term) {
         const hay = `${r.name} ${r.sku ?? ''} ${r.category ?? ''} ${r.color ?? ''}`.toLowerCase();

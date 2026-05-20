@@ -9,6 +9,7 @@ import {
   useClientRepresentatives, useAddClientRepresentative, useRemoveClientRepresentative,
   useEconomicGroupRepresentatives, useAddGroupRepresentative, useRemoveGroupRepresentative,
 } from '@/hooks/useClientRepresentatives';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 interface Props {
   entityId: string | null;
@@ -31,10 +32,10 @@ export default function RepresentativeTab({ entityId, type }: Props) {
   const linkedRepIds = new Set(linkedReps.map((r: any) => r.representative_id));
 
   const availableReps = useMemo(() => {
-    const q = search.toLowerCase();
+    const q = normalizeForSearch(search);
     return allReps
       .filter(r => r.active && !linkedRepIds.has(r.id))
-      .filter(r => !q || r.name.toLowerCase().includes(q) || r.email?.toLowerCase().includes(q));
+      .filter(r => !q || normalizeForSearch(r.name).includes(q) || normalizeForSearch(r.email).includes(q));
   }, [allReps, linkedRepIds, search]);
 
   const handleAdd = (rep: Representative) => {

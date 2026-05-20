@@ -27,6 +27,7 @@ import {
   useValidateTechnicalReference,
   TechnicalReferenceRow,
 } from '@/hooks/useTechnicalReferences';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 const CATEGORIES = [
   { value: 'furniture', label: 'Mobiliário' },
@@ -420,12 +421,12 @@ function MaterialsSection({ refId, products }: { refId: string; products: any[] 
     if (categoryFilter !== 'all') filtered = filtered.filter((p: any) => p.category === categoryFilter);
     if (showOnlyAvailable) filtered = filtered.filter((p: any) => p.quantity > 0);
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
+      const q = normalizeForSearch(searchQuery);
       filtered = filtered.filter((p: any) =>
-        (p.name || '').toLowerCase().includes(q) ||
-        (p.sku || '').toLowerCase().includes(q) ||
-        (p.category || '').toLowerCase().includes(q) ||
-        ((p.product_groups as any)?.name || '').toLowerCase().includes(q)
+        normalizeForSearch(p.name).includes(q) ||
+        normalizeForSearch(p.sku).includes(q) ||
+        normalizeForSearch(p.category).includes(q) ||
+        normalizeForSearch((p.product_groups as any)?.name).includes(q)
       );
     }
     return filtered.sort((a: any, b: any) => (b.quantity || 0) - (a.quantity || 0));

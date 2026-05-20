@@ -30,6 +30,7 @@ import { SolesComponentSheetTab } from "@/components/technical-sheets/SolesCompo
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { EmptyState } from '@/components/ui/empty-state';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 const SIZES_INFANTIL = [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36];
 const SIZES_ADULTO = [34, 35, 36, 37, 38, 39, 40];
@@ -170,7 +171,7 @@ const formatCurrency = (v: number) =>
   }, [sheets]);
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase();
+    const q = normalizeForSearch(search);
     let items = sheets as any[];
     
     if (filterProductIds && filterProductIds.length > 0) {
@@ -179,10 +180,10 @@ const formatCurrency = (v: number) =>
 
     if (search) {
       items = items.filter((s: any) =>
-        s.products?.name?.toLowerCase().includes(q) ||
-        s.products?.sku?.toLowerCase().includes(q) ||
-        s.products?.category?.toLowerCase().includes(q) ||
-        s.product_groups?.name?.toLowerCase().includes(q)
+        s.products?normalizeForSearch(.name).includes(q) ||
+        s.products?normalizeForSearch(.sku).includes(q) ||
+        s.products?normalizeForSearch(.category).includes(q) ||
+        s.product_groups?normalizeForSearch(.name).includes(q)
       );
     }
 
@@ -1147,7 +1148,7 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
             <Pencil className="h-4 w-4 mr-1.5" />
             Observações
           </TabsTrigger>
-          {(prod?.category?.toLowerCase().includes('solado') || prod?.category?.toLowerCase().includes('sola')) && (
+          {(prod?normalizeForSearch(.category).includes('solado') || prod?normalizeForSearch(.category).includes('sola')) && (
             <TabsTrigger value="sole_specs" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3 text-sm">
               <Footprints className="h-4 w-4 mr-1.5" />
               Specs Técnicas
@@ -1463,7 +1464,7 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
           />
         </TabsContent>
 
-        {(prod?.category?.toLowerCase().includes('solado') || prod?.category?.toLowerCase().includes('sola')) && (
+        {(prod?normalizeForSearch(.category).includes('solado') || prod?normalizeForSearch(.category).includes('sola')) && (
           <TabsContent value="sole_specs" className="p-6 mt-0">
             <SoleTechnicalDetails 
               soleId={currentSheet.product_id} 
@@ -2061,7 +2062,7 @@ function SoleConsumptionMatrixReadOnly({ groupId, category }: { groupId: string;
 
   useEffect(() => { fetchSoles(); }, [groupId]);
 
-  const isLining = category?.toLowerCase().includes('forro') || category?.toLowerCase().includes('forração');
+  const isLining = normalizeForSearch(category).includes('forro') || normalizeForSearch(category).includes('forração');
   const field = isLining ? 'lining_consumption_dm2' : 'insole_consumption_dm2';
 
   if (loading) return <div className="flex justify-center p-4"><Loader2 className="h-5 w-5 animate-spin" /></div>;
@@ -2088,7 +2089,7 @@ function SoleConsumptionMatrixReadOnly({ groupId, category }: { groupId: string;
       </h4>
       {solesWithData.map(sole => {
         const soleSpecs = specs[sole.id] || {};
-        const isInfantil = sole.name?.toLowerCase().includes('infantil') || sole.name?.toLowerCase().includes('bebe') || sole.name?.toLowerCase().includes('bebê');
+        const isInfantil = normalizeForSearch(sole.name).includes('infantil') || normalizeForSearch(sole.name).includes('bebe') || normalizeForSearch(sole.name).includes('bebê');
         const sizes = isInfantil ? SIZES_INFANTIL : SIZES_ADULTO;
         const filledSizes = sizes.filter(s => soleSpecs[s]?.[field] > 0);
         if (filledSizes.length === 0) return null;

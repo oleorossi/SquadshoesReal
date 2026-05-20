@@ -22,6 +22,7 @@ import {
 } from '@/hooks/useReadyStock';
 import { cn } from '@/lib/utils';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 function gcd(a: number, b: number): number {
   return b === 0 ? a : gcd(b, a % b);
@@ -90,14 +91,14 @@ export default function ReadyStockPanel() {
   }, [selectedRef, products]);
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase();
+    const q = normalizeForSearch(search);
     return stock.filter(s => {
       const ref = s.technical_sheets;
       return (
-        (ref?.name || '').toLowerCase().includes(q) ||
-        (ref?.code || '').toLowerCase().includes(q) ||
-        s.color.toLowerCase().includes(q) ||
-        s.size.toLowerCase().includes(q)
+        normalizeForSearch(ref?.name).includes(q) ||
+        normalizeForSearch(ref?.code).includes(q) ||
+        normalizeForSearch(s.color).includes(q) ||
+        normalizeForSearch(s.size).includes(q)
       );
     });
   }, [stock, search]);

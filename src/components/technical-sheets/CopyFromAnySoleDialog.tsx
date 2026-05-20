@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 type SoleWithSpecs = {
   id: string;
@@ -59,11 +60,11 @@ export function CopyFromAnySoleDialog({
   const filtered = useMemo(() => {
     const list = soles.filter(s => s.id !== targetSoleId);
     if (!search.trim()) return list;
-    const q = search.toLowerCase().trim();
+    const q = normalizeForSearch(search);
     return list.filter(s =>
-      s.name?.toLowerCase().includes(q) ||
-      s.color?.toLowerCase().includes(q) ||
-      s.sku?.toLowerCase().includes(q),
+      normalizeForSearch(s.name).includes(q) ||
+      normalizeForSearch(s.color).includes(q) ||
+      normalizeForSearch(s.sku).includes(q),
     );
   }, [soles, search, targetSoleId]);
 

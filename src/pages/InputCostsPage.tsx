@@ -24,6 +24,7 @@ import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 const fmt = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 4, maximumFractionDigits: 4 }).format(v);
@@ -201,11 +202,11 @@ export default function InputCostsPage() {
   }, [products]);
 
   const rows = useMemo(() => {
-    const q = search.toLowerCase();
+    const q = normalizeForSearch(search);
     return products.filter((p: any) => {
       if (!showInactive && !p.active) return false;
       if (categoryFilter !== 'all' && p.category !== categoryFilter) return false;
-      if (q && !p.name?.toLowerCase().includes(q) && !p.sku?.toLowerCase().includes(q)) return false;
+      if (q && !normalizeForSearch(p.name).includes(q) && !normalizeForSearch(p.sku).includes(q)) return false;
       return true;
     });
   }, [products, search, categoryFilter, showInactive]);

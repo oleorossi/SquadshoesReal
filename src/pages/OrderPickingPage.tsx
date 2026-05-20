@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 import { READY_TO_SHIP_STATUSES } from '@/lib/logistics/routeManagement';
 import { getISOWeekFromString, fmtDayMonthBR } from '@/lib/isoWeek';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -185,10 +186,10 @@ export default function OrderPickingPage() {
   // ── Filtered list ───────────────────────────────────────────────────────────
   const searchFiltered = useMemo(() => {
     if (!search.trim()) return orders;
-    const q = search.toLowerCase();
+    const q = normalizeForSearch(search);
     return orders.filter(o =>
-      (o.order_number ?? '').toLowerCase().includes(q) ||
-      (o.client_name ?? '').toLowerCase().includes(q),
+      normalizeForSearch(o.order_number).includes(q) ||
+      normalizeForSearch(o.client_name).includes(q),
     );
   }, [orders, search]);
 

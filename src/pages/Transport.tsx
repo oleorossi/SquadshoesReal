@@ -26,6 +26,7 @@ import { calculatePacking } from '@/lib/packingCalculator';
  import type { BoxType, TransportCompany, PackingItem, PackingSummary } from '@/types/transport';
 import { BRAZILIAN_STATES } from '@/types/transport';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 export default function Transport() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -590,12 +591,12 @@ function CarriersTab() {
   });
 
   const filteredCompanies = useMemo(() => {
-    const q = search.toLowerCase();
+    const q = normalizeForSearch(search);
     if (!q) return companies;
     return companies.filter(c =>
-      c.nome.toLowerCase().includes(q) ||
-      c.documento?.toLowerCase().includes(q) ||
-      c.email?.toLowerCase().includes(q)
+      normalizeForSearch(c.nome).includes(q) ||
+      normalizeForSearch(c.documento).includes(q) ||
+      normalizeForSearch(c.email).includes(q)
     );
   }, [companies, search]);
 

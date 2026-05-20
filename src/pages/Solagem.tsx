@@ -26,6 +26,7 @@ import { useOrderStraps } from '@/hooks/useOrderStraps';
 import { useProductionTransitions } from '@/hooks/useProductionTransitions';
 import { supabase } from '@/integrations/supabase/client';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 
 
@@ -237,7 +238,7 @@ export default function Solagem() {
 
   // Orders at Solagem stage after UI filters
   const solagemOrders = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim();
+    const q = normalizeForSearch(searchQuery);
     const now = new Date();
 
     return baseSolagemOrders.filter(order => {

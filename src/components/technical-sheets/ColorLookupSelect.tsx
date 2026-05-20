@@ -10,6 +10,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Check, CaretUpDown as ChevronsUpDown, Plus, Circle, Warning as AlertTriangle, Package } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 interface ColorLookupSelectProps {
   label: string;
@@ -69,12 +70,12 @@ export function ColorLookupSelect({ label, value, onChange, required }: ColorLoo
 
   const filtered = useMemo(() => {
     if (!search.trim()) return colors;
-    const q = search.toLowerCase();
+    const q = normalizeForSearch(search);
     return colors.filter(c =>
-      c.nome.toLowerCase().includes(q) ||
-      c.cor_id.toLowerCase().includes(q) ||
-      c.referencia_hex?.toLowerCase().includes(q) ||
-      c.referencia_pantone?.toLowerCase().includes(q)
+      normalizeForSearch(c.nome).includes(q) ||
+      normalizeForSearch(c.cor_id).includes(q) ||
+      normalizeForSearch(c.referencia_hex).includes(q) ||
+      normalizeForSearch(c.referencia_pantone).includes(q)
     );
   }, [colors, search]);
 

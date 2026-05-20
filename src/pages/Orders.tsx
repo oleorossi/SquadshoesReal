@@ -43,6 +43,7 @@ import SectorStageDialog from '@/components/orders/SectorStageDialog';
 import OrderConsumptionDialog from '@/components/orders/OrderConsumptionDialog';
 import { startOfWeek, endOfWeek, format, parseISO, isWithinInterval, addWeeks } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { normalizeForSearch } from '@/lib/searchUtils';
 // ExcelJS is imported dynamically in handleExportExcel to avoid large bundle on page load
 
 type StockCheck = { product_id: string; product_name: string; required: number; available: number; sufficient: boolean };
@@ -385,7 +386,7 @@ function getWeekOptions() {
 
   // Filter and group orders
   const filteredOrders = useMemo(() => {
-    const searchLower = searchTerm.toLowerCase().trim();
+    const searchLower = normalizeForSearch(searchTerm);
     const searchDigits = searchLower.replace(/\D/g, '');
 
     return orders.filter(order => {

@@ -21,6 +21,7 @@ import { useContractors } from '@/hooks/useContractors';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 const emptyRecipe: Partial<ArtisanalRecipe> = {
   name: '',
@@ -61,13 +62,13 @@ export default function ArtisanalRecipes() {
   }, [products]);
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase().trim();
+    const q = normalizeForSearch(search);
     if (!q) return recipes;
     return recipes.filter(
       (r) =>
-        r.name.toLowerCase().includes(q) ||
-        r.base_product_name.toLowerCase().includes(q) ||
-        r.artisanal_product_name.toLowerCase().includes(q),
+        normalizeForSearch(r.name).includes(q) ||
+        normalizeForSearch(r.base_product_name).includes(q) ||
+        normalizeForSearch(r.artisanal_product_name).includes(q),
     );
   }, [recipes, search]);
 

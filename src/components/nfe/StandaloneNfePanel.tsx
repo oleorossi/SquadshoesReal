@@ -14,6 +14,7 @@ import { useAccessControl } from '@/hooks/useAccessControl';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { NumberInput } from '@/components/ui/number-input';
 import { toast } from 'sonner';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 interface DraftItem extends StandaloneNfeItem {
   _key: string;
@@ -52,7 +53,7 @@ export default function StandaloneNfePanel() {
     const q = clientSearch.toLowerCase().trim();
     return (clients || [])
       .filter((c: any) => c.active !== false)
-      .filter((c: any) => !q || (c.razao_social || '').toLowerCase().includes(q) || (c.cnpj || '').includes(q))
+      .filter((c: any) => !q || normalizeForSearch(c.razao_social).includes(q) || (c.cnpj || '').includes(q))
       .slice(0, 50);
   }, [clients, clientSearch]);
 
@@ -60,7 +61,7 @@ export default function StandaloneNfePanel() {
     const q = productSearch.toLowerCase().trim();
     return (products || [])
       .filter((p: any) => p.active !== false && Number(p.quantity || 0) > 0)
-      .filter((p: any) => !q || (p.name || '').toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q))
+      .filter((p: any) => !q || normalizeForSearch(p.name).includes(q) || normalizeForSearch(p.sku).includes(q))
       .slice(0, 100);
   }, [products, productSearch]);
 

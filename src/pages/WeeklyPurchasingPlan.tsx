@@ -15,6 +15,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 function useAllSheetMaterials() {
   return useQuery({
@@ -76,9 +77,9 @@ export default function WeeklyPurchasingPlan() {
   const filteredPlan = useMemo(() => {
     if (!result) return [];
     if (!search.trim()) return result.plan;
-    const q = search.toLowerCase();
+    const q = normalizeForSearch(search);
     return result.plan.filter(
-      (r) => r.name.toLowerCase().includes(q) || r.sku.toLowerCase().includes(q)
+      (r) => normalizeForSearch(r.name).includes(q) || normalizeForSearch(r.sku).includes(q)
     );
   }, [result, search]);
 

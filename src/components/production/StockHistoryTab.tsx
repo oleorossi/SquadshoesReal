@@ -8,6 +8,7 @@ import { useState, useMemo } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useStockMovements, StockMovementWithProduct } from '@/hooks/useOrders';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 type MovementType = 'in' | 'out';
 
@@ -25,16 +26,16 @@ export function StockHistoryTab({ type }: StockHistoryTabProps) {
 
   const filtered = useMemo(() => {
     if (!search) return movements;
-    const q = search.toLowerCase();
+    const q = normalizeForSearch(search);
     return movements.filter(m => {
       const prod = m.products;
       return (
-        (prod?.name || '').toLowerCase().includes(q) ||
-        (prod?.sku || '').toLowerCase().includes(q) ||
-        (m.description || '').toLowerCase().includes(q) ||
-        (m.user_email || '').toLowerCase().includes(q) ||
-        (m.responsible || '').toLowerCase().includes(q) ||
-        (m.lot_number || '').toLowerCase().includes(q)
+        normalizeForSearch(prod?.name).includes(q) ||
+        normalizeForSearch(prod?.sku).includes(q) ||
+        normalizeForSearch(m.description).includes(q) ||
+        normalizeForSearch(m.user_email).includes(q) ||
+        normalizeForSearch(m.responsible).includes(q) ||
+        normalizeForSearch(m.lot_number).includes(q)
       );
     });
   }, [movements, search]);

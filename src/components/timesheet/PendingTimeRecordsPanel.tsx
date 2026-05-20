@@ -13,6 +13,7 @@ import {
   ISSUE_LABEL, ISSUE_HINT, DOW_LABEL,
   type EmployeePendingSummary, type PendingTimeRecord,
 } from '@/services/pendingTimeRecordsService';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 function fmtDateBR(iso: string): string {
   const [y, m, d] = iso.split('-');
@@ -35,7 +36,7 @@ export default function PendingTimeRecordsPanel() {
   });
 
   const filteredSummary = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const term = normalizeForSearch(search.trim());
     return summary.filter((s) => {
       if (s.pending_count === 0) return false;
       if (!term) return true;

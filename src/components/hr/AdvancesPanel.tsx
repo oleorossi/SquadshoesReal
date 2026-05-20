@@ -14,6 +14,7 @@ import {
 } from '@/hooks/useEmployees';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { todayISO } from '@/lib/date';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -51,8 +52,8 @@ export default function AdvancesPanel() {
       if (filterStatus !== 'all' && a.status !== filterStatus) return false;
       if (search) {
         const emp = empMap.get(a.employee_id);
-        const q = search.toLowerCase();
-        if (!emp?.name.toLowerCase().includes(q) && !a.description?.toLowerCase().includes(q)) return false;
+        const q = normalizeForSearch(search);
+        if (!emp?.normalizeForSearch(name).includes(q) && !normalizeForSearch(a.description).includes(q)) return false;
       }
       return true;
     });

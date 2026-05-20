@@ -36,6 +36,7 @@ import {
   useImportColorsFromSources,
 } from '@/hooks/useGroupColorSources';
 import { cn } from '@/lib/utils';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 interface Props {
   groupId: string;
@@ -74,11 +75,11 @@ export default function GroupColorSourcesPanel({ groupId, groupName }: Props) {
   );
 
   const filteredAvailable = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = normalizeForSearch(search.trim());
     if (!q) return available;
     return available.filter(c =>
-      c.color_name.toLowerCase().includes(q) ||
-      c.source_group_name.toLowerCase().includes(q),
+      normalizeForSearch(c.color_name).includes(q) ||
+      normalizeForSearch(c.source_group_name).includes(q),
     );
   }, [available, search]);
 

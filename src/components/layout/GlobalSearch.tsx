@@ -12,6 +12,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 type QueryType = 'cnpj' | 'barcode' | 'invoice' | 'order_number' | 'group' | 'general';
 type Scope = 'all' | 'orders' | 'sales' | 'clients' | 'products' | 'references' | 'suppliers';
@@ -142,7 +143,9 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
 
   const detectedType = useMemo(() => detectQueryType(query), [query]);
   const isGroupSearch = detectedType === 'group';
-  const q = query.toLowerCase().trim();
+  // q normalizado (sem espaços/acentos) pra match com nav items locais.
+  // "novo ped"/"NovoPed" devem casar com "Novo Pedido" — pedido user.
+  const q = normalizeForSearch(query);
 
   // Busca por grupo: tira a "/" do começo. Busca normal: sanitiza pro PostgREST.
   const groupTerm = isGroupSearch ? sanitizeForPostgrestOr(debouncedQuery.replace(/^\//, '')) : '';
@@ -335,11 +338,11 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
     if (!q || q.length < 1 || isGroupSearch) return [];
     const fromSidebar = menuGroups.flatMap(group =>
       group.items
-        .filter(item => item.name.toLowerCase().includes(q) || group.label.toLowerCase().includes(q))
+        .filter(item => normalizeForSearch(item.name).includes(q) || normalizeForSearch(group.label).includes(q))
         .map(item => ({ name: item.name, icon: item.icon, path: item.path, groupLabel: group.label }))
     );
     const fromSecondary = secondaryRoutes
-      .filter(r => r.name.toLowerCase().includes(q) || r.group.toLowerCase().includes(q))
+      .filter(r => normalizeForSearch(r.name).includes(q) || normalizeForSearch(r.group).includes(q))
       .map(r => ({ name: r.name, icon: r.icon, path: r.path, groupLabel: r.group }));
     return [...fromSidebar, ...fromSecondary];
   }, [q, isGroupSearch]);

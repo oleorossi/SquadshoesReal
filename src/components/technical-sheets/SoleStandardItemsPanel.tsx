@@ -14,6 +14,7 @@ import {
   useRemoveSoleStandardItem,
 } from '@/hooks/useSoleStandardItems';
 import { productGroupingKey } from '@/lib/productNameNormalization';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 /**
  * Categorias de itens "padrão" que podem ser definidos por solado.
@@ -205,7 +206,7 @@ export function SoleStandardItemsPanel({ soleProductId }: Props) {
   const draftEntries = Object.entries(drafts);
    // Use standardCatalog as base, but allow searching all products if not found in catalog
    const availableToAdd = useMemo(() => {
-     const query = searchTerm.toLowerCase().trim();
+     const query = normalizeForSearch(searchTerm);
      if (!query) return standardCatalog.filter((p) => !drafts[p.id]);
  
      // Search in full products list when searching, but still group by model

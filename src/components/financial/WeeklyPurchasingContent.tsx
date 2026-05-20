@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 function useAllSheetMaterials() {
   return useQuery({
@@ -71,9 +72,9 @@ export default function WeeklyPurchasingContent() {
   const filteredPlan = useMemo(() => {
     if (!result) return [];
     if (!search.trim()) return result.plan;
-    const q = search.toLowerCase();
+    const q = normalizeForSearch(search);
     return result.plan.filter(
-      (r) => r.name.toLowerCase().includes(q) || r.sku.toLowerCase().includes(q)
+      (r) => normalizeForSearch(r.name).includes(q) || normalizeForSearch(r.sku).includes(q)
     );
   }, [result, search]);
 

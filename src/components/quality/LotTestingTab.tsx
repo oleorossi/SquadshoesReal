@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useQualityInspections, useQualityChecklists } from '@/hooks/useQualityInspections';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 export default function LotTestingTab() {
   const [search, setSearch] = useState('');
@@ -16,11 +17,11 @@ export default function LotTestingTab() {
 
   const filteredInspections = inspections.filter((i: any) => {
     if (!search) return true;
-    const q = search.toLowerCase();
+    const q = normalizeForSearch(search);
     return (
-      (i.notes || '').toLowerCase().includes(q) ||
-      (i.quality_checklists?.name || '').toLowerCase().includes(q) ||
-      (i.orders?.order_number || '').toLowerCase().includes(q)
+      normalizeForSearch(i.notes).includes(q) ||
+      normalizeForSearch(i.quality_checklists?.name).includes(q) ||
+      normalizeForSearch(i.orders?.order_number).includes(q)
     );
   });
 

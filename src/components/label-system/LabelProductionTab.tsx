@@ -38,6 +38,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useOrders } from '@/hooks/useOrders';
 import { useLabelTemplates, SQUAD_THERMAL_DEFAULT_ID, SQUAD_BOX_DEFAULT_ID } from '@/hooks/useLabelTemplates';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 
 const LABEL_SIZES = [
@@ -632,8 +633,8 @@ export function LabelProductionTab() {
 
   const groupedRefs = groupOrdersByReference(periodFilteredOrders, saleOrdersMap, strapLookup);
   const filtered = groupedRefs.filter((g) => {
-    const q = search.toLowerCase();
-    return !search || g.refName?.toLowerCase().includes(q) || g.refCode?.toLowerCase().includes(q) || g.clientName?.toLowerCase().includes(q) || g.economicGroupName?.toLowerCase().includes(q) || g.saleOrderNumber?.toLowerCase().includes(q);
+    const q = normalizeForSearch(search);
+    return !search || normalizeForSearch(g.refName).includes(q) || normalizeForSearch(g.refCode).includes(q) || normalizeForSearch(g.clientName).includes(q) || normalizeForSearch(g.economicGroupName).includes(q) || normalizeForSearch(g.saleOrderNumber).includes(q);
   });
 
   const groupedByEconomicGroup = useMemo(() => {

@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import GroupEditDialog from '@/components/groups/GroupEditDialog';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 interface GroupListDialogProps {
   open: boolean;
@@ -180,7 +181,7 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
   };
 
   const groupsWithProducts = useMemo(() => {
-    const q = search.toLowerCase();
+    const q = normalizeForSearch(search);
     // flattenGroupTree devolve em pré-ordem (raízes → filhos), com `depth`
     // que usamos pra indentar visualmente. Mantém a hierarquia parent→child
     // no rendering em vez de ordem alfabética plana.
@@ -188,9 +189,9 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
     return flat
       .map(g => {
         const items = products.filter(p => p.group_id === g.id);
-        const matchGroup = g.name.toLowerCase().includes(q);
+        const matchGroup = normalizeForSearch(g.name).includes(q);
         const matchItems = items.filter(p =>
-          p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
+          normalizeForSearch(p.name).includes(q) || normalizeForSearch(p.sku).includes(q)
         );
         if (!matchGroup && matchItems.length === 0 && q) return null;
         return { ...g, items: q && !matchGroup ? matchItems : items };
@@ -199,10 +200,10 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
   }, [groups, products, search]);
 
   const ungrouped = useMemo(() => {
-    const q = search.toLowerCase();
+    const q = normalizeForSearch(search);
     const items = products.filter(p => !p.group_id);
     if (!q) return items;
-    return items.filter(p => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q));
+    return items.filter(p => normalizeForSearch(p.name).includes(q) || normalizeForSearch(p.sku).includes(q));
   }, [products, search]);
 
   const handleSaveEdit = () => {

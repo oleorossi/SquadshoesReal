@@ -25,6 +25,7 @@ import { toast } from 'sonner';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 const emptyEmployee = {
   name: '', cpf: '', external_id: '', role: '', department: '', salary: 0, overtime_hourly_rate: null as number | null,
@@ -74,12 +75,12 @@ export default function Employees() {
   const departments = Array.from(new Set(employees.map(e => e.department).filter(Boolean))).sort() as string[];
 
   const filteredEmployees = employees.filter(e => {
-    const q = search.toLowerCase();
+    const q = normalizeForSearch(search);
     const matchSearch = !q ||
-      e.name.toLowerCase().includes(q) ||
-      (e.role || '').toLowerCase().includes(q) ||
-      (e.department || '').toLowerCase().includes(q) ||
-      (e.external_id || '').toLowerCase().includes(q);
+      normalizeForSearch(e.name).includes(q) ||
+      normalizeForSearch(e.role).includes(q) ||
+      normalizeForSearch(e.department).includes(q) ||
+      normalizeForSearch(e.external_id).includes(q);
     const matchStatus = statusFilter === 'all' || (statusFilter === 'active' ? e.active : !e.active);
     const matchDept = deptFilter === 'all' || e.department === deptFilter;
     return matchSearch && matchStatus && matchDept;

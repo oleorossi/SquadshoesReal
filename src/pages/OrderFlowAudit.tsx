@@ -14,6 +14,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 type StepStatus = 'ok' | 'warning' | 'error' | 'pending';
 
@@ -433,10 +434,10 @@ export default function OrderFlowAudit() {
   const filtered = useMemo(() => {
     let list = audits;
     if (search) {
-      const q = search.toLowerCase();
+      const q = normalizeForSearch(search);
       list = list.filter(a =>
-        a.orderNumber.toLowerCase().includes(q) ||
-        a.clientName.toLowerCase().includes(q)
+        normalizeForSearch(a.orderNumber).includes(q) ||
+        normalizeForSearch(a.clientName).includes(q)
       );
     }
     if (statusFilter === 'errors') list = list.filter(a => a.overallStatus === 'error');

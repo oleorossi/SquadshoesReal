@@ -190,6 +190,7 @@ import { SHOE_CATEGORIES } from '@/lib/shoeCategories';
 import { AppErrorBoundary } from '@/components/ErrorBoundary';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { EmptyState } from '@/components/ui/empty-state';
+import { normalizeForSearch } from '@/lib/searchUtils';
 const STATUSES = ['Ativo', 'Em desenvolvimento', 'Descontinuado'] as const;
 const STATUS_FICHA = ['rascunho', 'em_revisao', 'validada', 'publicada'] as const;
 const STATUS_FICHA_LABELS: Record<string, string> = { rascunho: 'Rascunho', em_revisao: 'Em Revisão', validada: 'Validada', publicada: 'Publicada' };
@@ -333,13 +334,13 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
     if (searchTerm.trim()) {
       const q = searchTerm.toLowerCase().trim();
       result = result.filter((s: any) =>
-        (s.name || '').toLowerCase().includes(q) ||
-        (s.code || '').toLowerCase().includes(q) ||
-        (s.collection || '').toLowerCase().includes(q) ||
-        (s.shoe_category || '').toLowerCase().includes(q) ||
-        (s.colors || '').toLowerCase().includes(q) ||
-        (s.description || '').toLowerCase().includes(q) ||
-        (s.status || '').toLowerCase().includes(q)
+        normalizeForSearch(s.name).includes(q) ||
+        normalizeForSearch(s.code).includes(q) ||
+        normalizeForSearch(s.collection).includes(q) ||
+        normalizeForSearch(s.shoe_category).includes(q) ||
+        normalizeForSearch(s.colors).includes(q) ||
+        normalizeForSearch(s.description).includes(q) ||
+        normalizeForSearch(s.status).includes(q)
       );
     }
     return result;
@@ -840,7 +841,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                 {(sheets as any[])
                   .filter((s: any) => {
                     const q = cloneSearchTerm.toLowerCase();
-                    return !q || s.name?.toLowerCase().includes(q) || s.code?.toLowerCase().includes(q);
+                    return !q || normalizeForSearch(s.name).includes(q) || normalizeForSearch(s.code).includes(q);
                   })
                   .slice(0, 30)
                   .map((s: any) => (
@@ -4150,7 +4151,7 @@ function GroupMaterialSelect({ label, value, onChange }: { label: string; value:
   const filtered = useMemo(() => {
     if (!search.trim()) return groups;
     const q = search.toLowerCase();
-    return groups.filter((g: any) => g.name?.toLowerCase().includes(q) || g.description?.toLowerCase().includes(q));
+    return groups.filter((g: any) => normalizeForSearch(g.name).includes(q) || normalizeForSearch(g.description).includes(q));
   }, [groups, search]);
 
   return (
@@ -4211,7 +4212,7 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
   const filtered = useMemo(() => {
     if (!search.trim()) return products;
     const q = search.toLowerCase();
-    return products.filter((p: any) => p.name?.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q) || p.color?.toLowerCase().includes(q) || p.groupName?.toLowerCase().includes(q));
+    return products.filter((p: any) => normalizeForSearch(p.name).includes(q) || normalizeForSearch(p.sku).includes(q) || normalizeForSearch(p.color).includes(q) || normalizeForSearch(p.groupName).includes(q));
   }, [products, search]);
 
   return (
@@ -4741,7 +4742,7 @@ function StrapGroupCombobox({ value, groups, onChange }: {
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
     if (!q) return groups;
-    return groups.filter((g: any) => (g.name || '').toLowerCase().includes(q));
+    return groups.filter((g: any) => normalizeForSearch(g.name).includes(q));
   }, [groups, search]);
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -4823,7 +4824,7 @@ function SoleProductSelect({ label, value, onChange }: { label: string; value: s
   const filtered = useMemo(() => {
     if (!search.trim()) return soleModels;
     const q = search.toLowerCase();
-    return soleModels.filter((m) => m.name?.toLowerCase().includes(q) || m.sku?.toLowerCase().includes(q) || m.groupName?.toLowerCase().includes(q));
+    return soleModels.filter((m) => normalizeForSearch(m.name).includes(q) || normalizeForSearch(m.sku).includes(q) || normalizeForSearch(m.groupName).includes(q));
   }, [soleModels, search]);
 
   return (
@@ -4885,7 +4886,7 @@ function DirectComponentSelect({ label, value, onChange }: { label: string; valu
   const filtered = useMemo(() => {
     if (!search.trim()) return products;
     const q = search.toLowerCase();
-    return products.filter((p: any) => p.name?.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q) || p.color?.toLowerCase().includes(q));
+    return products.filter((p: any) => normalizeForSearch(p.name).includes(q) || normalizeForSearch(p.sku).includes(q) || normalizeForSearch(p.color).includes(q));
   }, [products, search]);
 
   const selected = products.find((p: any) => p.id === value);
@@ -5255,7 +5256,7 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
     if (!form.product_id || (form.quantity_per_unit <= 0 && !hasPerSize)) return;
 
     const prod = products.find(p => p.id === form.product_id);
-    const isSolado = prod?.category?.toLowerCase().includes('solado') || prod?.category?.toLowerCase().includes('sola');
+    const isSolado = prod?normalizeForSearch(.category).includes('solado') || prod?normalizeForSearch(.category).includes('sola');
 
     if (isSolado) {
       try {

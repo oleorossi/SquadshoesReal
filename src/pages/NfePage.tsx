@@ -27,6 +27,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
@@ -446,14 +447,14 @@ export default function NfePage() {
   const filtered = allNfe.filter((n: any) => {
     if (obsoleteRejectionIds.has(n.id)) return false;
     if (!searchText) return true;
-    const q = searchText.toLowerCase();
+    const q = normalizeForSearch(searchText);
     return (
-      n.sale_orders?.order_number?.toLowerCase().includes(q) ||
-      n.sale_orders?.client_name?.toLowerCase().includes(q) ||
-      n.nome_destinatario?.toLowerCase().includes(q) ||
+      n.sale_orders?normalizeForSearch(.order_number).includes(q) ||
+      n.sale_orders?normalizeForSearch(.client_name).includes(q) ||
+      normalizeForSearch(n.nome_destinatario).includes(q) ||
       n.cnpj_destinatario?.includes(q) ||
-      n.numero?.toLowerCase().includes(q) ||
-      n.chave_acesso?.toLowerCase().includes(q) ||
+      normalizeForSearch(n.numero).includes(q) ||
+      normalizeForSearch(n.chave_acesso).includes(q) ||
       n.cnpj_emitente?.includes(q)
     );
   });

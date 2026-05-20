@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { EmptyState } from "@/components/ui/empty-state";
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 interface Product {
   id: string;
@@ -325,14 +326,14 @@ export default function StockAdjustmentPage() {
   }, [products]);
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase().trim();
+    const q = normalizeForSearch(search);
     return products.filter((p) => {
       const matchSearch =
         !q ||
-        p.name.toLowerCase().includes(q) ||
-        (p.sku ?? "").toLowerCase().includes(q) ||
-        (p.category ?? "").toLowerCase().includes(q) ||
-        (p.color ?? "").toLowerCase().includes(q);
+        normalizeForSearch(p.name).includes(q) ||
+        normalizeForSearch(p.sku).includes(q) ||
+        normalizeForSearch(p.category).includes(q) ||
+        normalizeForSearch(p.color).includes(q);
       const matchCategory = categoryFilter === "all" || p.category === categoryFilter;
       const matchUnit = unitFilter === "all" || p.unit === unitFilter;
       const matchType =

@@ -8,6 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import StrapSummaryDialog from '../StrapSummaryDialog';
 import { useIsAdmin } from '@/hooks/useUserManagement';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 type StockMovement = {
   id: string;
@@ -48,11 +49,11 @@ export default function StrapStockLogTab() {
 
   const filtered = search.trim()
     ? movements.filter((m) => {
-        const q = search.toLowerCase();
+        const q = normalizeForSearch(search);
         return (
-          m.products?.name?.toLowerCase().includes(q) ||
-          m.products?.sku?.toLowerCase().includes(q) ||
-          m.description?.toLowerCase().includes(q)
+          m.products?normalizeForSearch(.name).includes(q) ||
+          m.products?normalizeForSearch(.sku).includes(q) ||
+          normalizeForSearch(m.description).includes(q)
         );
       })
     : movements;
@@ -110,9 +111,9 @@ export default function StrapStockLogTab() {
             <TableBody>
               {filtered.map((mov) => {
                 const isOut = mov.movement_type === 'out';
-                const isReturn = mov.description?.toLowerCase().includes('estorno') ||
-                  mov.description?.toLowerCase().includes('retorno') ||
-                  mov.description?.toLowerCase().includes('credit');
+                const isReturn = normalizeForSearch(mov.description).includes('estorno') ||
+                  normalizeForSearch(mov.description).includes('retorno') ||
+                  normalizeForSearch(mov.description).includes('credit');
                 return (
                   <TableRow key={mov.id}>
                     <TableCell className="text-sm text-muted-foreground whitespace-nowrap">

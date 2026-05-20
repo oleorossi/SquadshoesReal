@@ -15,6 +15,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
 import { CATEGORIES, UNITS, LOCATIONS } from '@/types/inventory';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 type Props = {
   open: boolean;
@@ -148,8 +149,8 @@ export default function AddToStockDialog({ open, onOpenChange, items }: Props) {
 
   const filteredProducts = products.filter(p => {
     if (!productSearch) return true;
-    const q = productSearch.toLowerCase();
-    return p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q);
+    const q = normalizeForSearch(productSearch);
+    return normalizeForSearch(p.name).includes(q) || normalizeForSearch(p.sku).includes(q);
   });
 
   const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });

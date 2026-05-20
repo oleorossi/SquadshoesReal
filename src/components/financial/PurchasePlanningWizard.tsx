@@ -14,6 +14,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format, addDays, startOfWeek, endOfWeek, isAfter, isBefore, addWeeks } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const fmtQty = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
@@ -527,8 +528,8 @@ export default function PurchasePlanningWizard() {
     }
     let arr = Array.from(merged.values());
     if (search) {
-      const q = search.toLowerCase();
-      arr = arr.filter(m => m.name.toLowerCase().includes(q) || m.type.toLowerCase().includes(q));
+      const q = normalizeForSearch(search);
+      arr = arr.filter(m => normalizeForSearch(m.name).includes(q) || normalizeForSearch(m.type).includes(q));
     }
     return arr.sort((a, b) => a.stock_after - b.stock_after);
   }, [filteredSummaries, search]);
@@ -772,8 +773,8 @@ export default function PurchasePlanningWizard() {
                           {(() => {
                             let mats = Array.from(week.materials.values());
                             if (search) {
-                              const q = search.toLowerCase();
-                              mats = mats.filter(m => m.name.toLowerCase().includes(q) || m.type.toLowerCase().includes(q));
+                              const q = normalizeForSearch(search);
+                              mats = mats.filter(m => normalizeForSearch(m.name).includes(q) || normalizeForSearch(m.type).includes(q));
                             }
                             return mats.sort((a, b) => a.stock_after - b.stock_after).map(mat => (
                               <TableRow key={mat.material_key} className={mat.stock_after < 0 ? 'bg-destructive/5' : ''}>

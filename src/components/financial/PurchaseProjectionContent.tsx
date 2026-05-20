@@ -17,6 +17,7 @@ import {
   RECOMMENDATION_LABEL, RECOMMENDATION_CLASS, ABC_CLASS_BG,
   type Recommendation, type AbcClass,
 } from '@/services/purchaseProjectionService';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 const PERIOD_OPTIONS = [
   { value: 30,  label: '30 dias' },
@@ -66,14 +67,14 @@ export default function PurchaseProjectionContent() {
   }, [rows]);
 
   const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const term = normalizeForSearch(search.trim());
     return rows.filter((r) => {
       if (recFilter !== 'all' && r.recommendation !== recFilter) return false;
       if (abcFilter !== 'all' && r.abc_class !== abcFilter) return false;
       if (categoryFilter !== 'all' && r.product_category !== categoryFilter) return false;
       if (!term) return true;
       return (
-        r.product_name.toLowerCase().includes(term) ||
+        normalizeForSearch(r.product_name).includes(term) ||
         (r.color ?? '').toLowerCase().includes(term) ||
         (r.supplier_name ?? '').toLowerCase().includes(term) ||
         (r.product_category ?? '').toLowerCase().includes(term)

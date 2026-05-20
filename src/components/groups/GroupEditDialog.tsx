@@ -27,6 +27,7 @@ import { getSoleModelName } from '@/lib/utils';
 import { CONSUMPTION_UNITS_BY_GROUP } from '@/lib/measurementUnits';
 import { deriveCategoryFromGroup } from '@/lib/categoryFromGroup';
 import { CurrencyInput } from '@/components/ui/currency-input';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 interface GroupEditDialogProps {
   open: boolean;
@@ -100,10 +101,10 @@ function AddItemsToGroupDialog({ open, onOpenChange, groupId, groupName }: {
   const searchRef = React.useRef<HTMLInputElement>(null);
 
   const available = useMemo(() => {
-    const q = search.toLowerCase();
+    const q = normalizeForSearch(search);
     return allProducts
       .filter(p => p.group_id !== groupId && p.active)
-      .filter(p => !q || p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || p.category.toLowerCase().includes(q));
+      .filter(p => !q || normalizeForSearch(p.name).includes(q) || normalizeForSearch(p.sku).includes(q) || normalizeForSearch(p.category).includes(q));
   }, [allProducts, groupId, search]);
 
   const toggle = (id: string) => {
@@ -589,8 +590,8 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
    * Solado/Sola, ou nome do grupo contém "solado".
    */
   const isSoleGroup = useMemo(() => {
-    const nameMatch = (group.name || '').toLowerCase().includes('solado') ||
-                      (group.name || '').toLowerCase().includes('sola');
+    const nameMatch = normalizeForSearch(group.name).includes('solado') ||
+                      normalizeForSearch(group.name).includes('sola');
     const productMatch = products.some(p => {
       const c = (p.category || '').toLowerCase();
       return c === 'solado' || c === 'sola' || c.startsWith('solado');

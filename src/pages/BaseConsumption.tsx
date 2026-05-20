@@ -21,6 +21,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils';
 import { productGroupingKey, normalizeProductName } from '@/lib/productNameNormalization';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 export default function BaseConsumption() {
   const { data: products = [], isLoading } = useProducts();
@@ -64,12 +65,12 @@ export default function BaseConsumption() {
       models.push({ key, displayName, representative: rep, variantCount: variants.length, variantColors: colors });
     });
 
-    const term = search.trim().toLowerCase();
+    const term = normalizeForSearch(search.trim());
     const filtered = term
       ? models.filter((m) =>
           [m.displayName, ...(m.variantColors || []), m.representative?.sku]
             .filter(Boolean)
-            .some((v: string) => v.toLowerCase().includes(term)),
+            .some((v: string) => normalizeForSearch(v).includes(term)),
         )
       : models;
 

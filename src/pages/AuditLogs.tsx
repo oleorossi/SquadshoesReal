@@ -13,6 +13,7 @@ import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 // Mapas para humanizar recursos e ações vindas direto do banco.
 // O log original guarda os nomes em snake_case (ex: manual_billing_override_create);
@@ -109,11 +110,11 @@ export default function AuditLogs() {
       if (resourceFilter !== 'all' && l.resource !== resourceFilter) return false;
       if (actionFilter !== 'all' && l.action !== actionFilter) return false;
       if (search) {
-        const q = search.toLowerCase();
+        const q = normalizeForSearch(search);
         return (
-          (l.resource || '').toLowerCase().includes(q) ||
-          (l.action || '').toLowerCase().includes(q) ||
-          (l.user_id || '').toLowerCase().includes(q) ||
+          normalizeForSearch(l.resource).includes(q) ||
+          normalizeForSearch(l.action).includes(q) ||
+          normalizeForSearch(l.user_id).includes(q) ||
           (JSON.stringify(l.new_data || {})).toLowerCase().includes(q)
         );
       }

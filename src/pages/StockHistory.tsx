@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
  import { useStockMovements, StockMovementWithProduct } from '@/hooks/useOrders';
 import { SelectableTable } from '@/components/ui/selectable-table';
 import { useTableSelection } from '@/hooks/useTableSelection';
+import { normalizeForSearch } from '@/lib/searchUtils';
  import { useMemo, useState } from 'react';
  import { Input } from '@/components/ui/input';
  import { Button } from '@/components/ui/button';
@@ -33,20 +34,20 @@ import { useTableSelection } from '@/hooks/useTableSelection';
         if (typeFilter !== 'all' && mov.movement_type !== typeFilter) return false;
   
         if (searchQuery) {
-          const q = searchQuery.toLowerCase();
+          const q = normalizeForSearch(searchQuery);
           const matchesSearch = 
-            (mov.description?.toLowerCase().includes(q)) ||
-            (mov.products?.name?.toLowerCase().includes(q)) ||
-            (mov.products?.sku?.toLowerCase().includes(q)) ||
-            (mov.lot_number?.toLowerCase().includes(q));
+            (normalizeForSearch(mov.description).includes(q)) ||
+            (mov.products?normalizeForSearch(.name).includes(q)) ||
+            (mov.products?normalizeForSearch(.sku).includes(q)) ||
+            (normalizeForSearch(mov.lot_number).includes(q));
           if (!matchesSearch) return false;
         }
   
         if (userFilter) {
           const u = userFilter.toLowerCase();
           const matchesUser = 
-            (mov.user_email?.toLowerCase().includes(u)) ||
-            (mov.responsible?.toLowerCase().includes(u));
+            (normalizeForSearch(mov.user_email).includes(u)) ||
+            (normalizeForSearch(mov.responsible).includes(u));
           if (!matchesUser) return false;
         }
   

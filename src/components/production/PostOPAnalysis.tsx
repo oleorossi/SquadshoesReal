@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { FileText as FileBarChart, MagnifyingGlass as Search, TrendUp as TrendingUp, TrendDown as TrendingDown, Minus, Clock, CurrencyDollar as DollarSign, Warning as AlertTriangle, CheckCircle as CheckCircle2, Factory, Stack as Layers } from '@phosphor-icons/react';
 import { Download, FileText } from '@phosphor-icons/react';
 import { exportCSV, exportPDF } from "@/lib/exportUtils";
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 interface FinishedOP {
   id: string;
@@ -168,8 +169,8 @@ export default function PostOPAnalysis() {
   const filtered = useMemo(() => {
     let result = dateFiltered;
     if (search) {
-      const q = search.toLowerCase();
-      result = result.filter(o => o.order_number.toLowerCase().includes(q) || o.color?.toLowerCase().includes(q));
+      const q = normalizeForSearch(search);
+      result = result.filter(o => normalizeForSearch(o.order_number).includes(q) || normalizeForSearch(o.color).includes(q));
     }
     // Sort
     if (sortBy === "variance") {

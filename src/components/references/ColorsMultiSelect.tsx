@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Check, CaretUpDown as ChevronsUpDown, Plus, X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 interface ColorsMultiSelectProps {
   value: string;
@@ -28,9 +29,9 @@ export function ColorsMultiSelect({ value, onChange }: ColorsMultiSelectProps) {
   }, [value]);
 
   const filteredColors = useMemo(() => {
-    const q = search.toLowerCase().trim();
+    const q = normalizeForSearch(search);
     if (!q) return systemColors;
-    return systemColors.filter(c => c.name.toLowerCase().includes(q));
+    return systemColors.filter(c => normalizeForSearch(c.name).includes(q));
   }, [systemColors, search]);
 
   const toggle = (color: string) => {

@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 import OrderSearchBar from '@/components/production/OrderSearchBar';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { RefChip } from '@/components/ui/ref-chip';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 const SECTOR_NAME = 'Costura';
 const SECTOR_EMOJI = '🪡';
@@ -46,7 +47,7 @@ export default function SetorCostura() {
   const { finalizeSectorTask } = useProductionTransitions();
 
   const costuraOrders = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim();
+    const q = normalizeForSearch(searchQuery);
     return orders.filter(order => {
       const status = (order.status || '').toLowerCase();
       if (filterStatus === 'active' && status !== 'em produção') return false;

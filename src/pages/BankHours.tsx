@@ -43,6 +43,7 @@ import {
 } from '@/hooks/useRH';
 import { PayHoursDialog } from '@/components/rh/PayHoursDialog';
 import { cn } from '@/lib/utils';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 type Summary = {
   total_employees: number;
@@ -221,11 +222,11 @@ export default function BankHours() {
       list = list.filter(e => e.department === sectorFilter || (sectorFilter === '__none__' && !e.department));
     }
     if (search.trim()) {
-      const q = search.toLowerCase().trim();
+      const q = normalizeForSearch(search);
       list = list.filter(e =>
-        e.employee_name.toLowerCase().includes(q) ||
-        (e.department || '').toLowerCase().includes(q) ||
-        (e.role || '').toLowerCase().includes(q),
+        normalizeForSearch(e.employee_name).includes(q) ||
+        normalizeForSearch(e.department).includes(q) ||
+        normalizeForSearch(e.role).includes(q),
       );
     }
     return list;

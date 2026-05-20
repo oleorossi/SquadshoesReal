@@ -75,6 +75,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 interface KanbanOrder {
   id: string;
@@ -309,14 +310,14 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
 
   // Predicado de busca textual aplicado a cada OP
   const matchesSearch = useCallback((o: KanbanOrder) => {
-    const q = search.toLowerCase().trim();
+    const q = normalizeForSearch(search);
     if (!q) return true;
     return (
-      String(o.order_number || '').toLowerCase().includes(q) ||
-      String(o.client_order_number || '').toLowerCase().includes(q) ||
-      String(o.client_name || '').toLowerCase().includes(q) ||
-      String(o.reference_name || '').toLowerCase().includes(q) ||
-      String(o.color || '').toLowerCase().includes(q)
+      normalizeForSearch(o.order_number).includes(q) ||
+      normalizeForSearch(o.client_order_number).includes(q) ||
+      normalizeForSearch(o.client_name).includes(q) ||
+      normalizeForSearch(o.reference_name).includes(q) ||
+      normalizeForSearch(o.color).includes(q)
     );
   }, [search]);
 
@@ -340,7 +341,7 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
   }, [orders]);
 
   const getSuggestions = useCallback((term: string): SmartSearchSuggestion[] => {
-    const q = term.toLowerCase().trim();
+    const q = normalizeForSearch(term);
     if (!q) return [];
     const out: SmartSearchSuggestion[] = [];
     const pushFrom = (
@@ -352,7 +353,7 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
       let added = 0;
       for (const [val, count] of map) {
         if (added >= 5) break;
-        if (val.toLowerCase().includes(q)) {
+        if (normalizeForSearch(val).includes(q)) {
           out.push({ field, value: val, meta: withCount ? `${label} · ${count} OP${count === 1 ? '' : 's'}` : label });
           added++;
         }

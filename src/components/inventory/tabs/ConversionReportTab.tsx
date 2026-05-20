@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowsLeftRight as ArrowRightLeft, Warning as AlertTriangle, CheckCircle as CheckCircle2, Info, BookOpen, MagnifyingGlass as Search } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 type ProductRow = {
   id: string;
@@ -131,7 +132,7 @@ export function ConversionReportTab() {
   );
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase().trim();
+    const q = normalizeForSearch(search);
     return enriched.filter(p => {
       if (categoryFilter !== 'all' && p.category !== categoryFilter) return false;
       if (statusFilter !== 'all' && p.issue.level !== statusFilter) return false;

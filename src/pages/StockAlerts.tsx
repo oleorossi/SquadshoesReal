@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 /**
  * Página de Alertas de Estoque
@@ -28,7 +29,7 @@ export default function StockAlerts() {
   const qc = useQueryClient();
 
   const filteredProducts = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const term = normalizeForSearch(search.trim());
     const list = data?.products ?? [];
     if (!term) return list;
     return list.filter((p) =>
@@ -39,7 +40,7 @@ export default function StockAlerts() {
   }, [data, search]);
 
   const filteredSoles = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const term = normalizeForSearch(search.trim());
     const list = data?.soleSizes ?? [];
     if (!term) return list;
     return list.filter((p) =>

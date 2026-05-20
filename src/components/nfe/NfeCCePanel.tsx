@@ -18,6 +18,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { EmptyState } from '@/components/ui/empty-state';
 import { FileText as FileEdit, Plus, Trash as Trash2, CheckCircle, WarningCircle as AlertCircle, PaperPlaneRight as Send, CircleNotch as Loader2, MagnifyingGlass as Search } from '@phosphor-icons/react';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 const STATUS_META: Record<NfeCCeStatus, { label: string; className: string; icon: React.ReactNode }> = {
   rascunho:  { label: 'Rascunho',  className: 'bg-muted text-muted-foreground border-border',           icon: <FileEdit className="h-3 w-3" /> },
@@ -316,12 +317,12 @@ export default function NfeCCePanel() {
 
   const filtered = useMemo(() => {
     if (!searchText) return cces;
-    const q = searchText.toLowerCase();
+    const q = normalizeForSearch(searchText);
     return cces.filter(c =>
-      c.nfe_number?.toLowerCase().includes(q) ||
-      c.nfe_chave?.toLowerCase().includes(q) ||
-      c.correction_text?.toLowerCase().includes(q) ||
-      c.protocol?.toLowerCase().includes(q),
+      normalizeForSearch(c.nfe_number).includes(q) ||
+      normalizeForSearch(c.nfe_chave).includes(q) ||
+      normalizeForSearch(c.correction_text).includes(q) ||
+      normalizeForSearch(c.protocol).includes(q),
     );
   }, [cces, searchText]);
 

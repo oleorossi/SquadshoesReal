@@ -31,6 +31,7 @@ import {
   type ProductionWave, type WaveStatus,
 } from '@/types/production-waves';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 type StatusFilter = 'all' | WaveStatus;
 
@@ -371,7 +372,7 @@ export default function ProductionWavesPage({ embedded = false }: { embedded?: b
   }, [waves]);
 
   const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const term = normalizeForSearch(search.trim());
     return waves.filter((w) => {
       if (statusFilter !== 'all') {
         if (statusFilter === 'planning' && !(w.status === 'planning' || w.status === 'draft')) {

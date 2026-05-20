@@ -31,6 +31,7 @@ import AddToStockDialog from '@/components/suppliers/AddToStockDialog';
 import AddBoletoFinanceDialog from '@/components/suppliers/AddBoletoFinanceDialog';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { convertNfToStockUnit } from '@/lib/nfUnitConversion';
+import { normalizeForSearch } from '@/lib/searchUtils';
 
 
 function InvoiceItemsRow({ invoice, supplierName }: { invoice: Invoice; supplierName: string }) {
@@ -435,9 +436,9 @@ export default function Suppliers() {
 
   const filtered = suppliers.filter(s => {
     if (!search) return true;
-    const q = search.toLowerCase();
-    return s.name.toLowerCase().includes(q) || s.trade_name?.toLowerCase().includes(q) ||
-      s.cnpj?.includes(q) || s.city?.toLowerCase().includes(q);
+    const q = normalizeForSearch(search);
+    return normalizeForSearch(s.name).includes(q) || normalizeForSearch(s.trade_name).includes(q) ||
+      s.cnpj?.includes(q) || normalizeForSearch(s.city).includes(q);
   });
 
   if (isLoading) {
