@@ -1575,7 +1575,11 @@ export default function SaleOrderFormPanel({
           validItems.forEach((item, i) => {
             if (!item.color?.trim()) issues.push({ type: 'error', msg: `Item ${i + 1}: cor faltando` });
             if (item.quantity <= 0) issues.push({ type: 'warning', msg: `Item ${i + 1}: qtd zerada` });
-            if (item.unit_price <= 0) issues.push({ type: 'warning', msg: `Item ${i + 1}: preço zerado` });
+            // Preço zero é ERROR (não warning) — bloqueia submit. Reportado
+            // em 20/05/2026: PV-00122 saiu com CF 07 PRETO em R$ 0,00 e
+            // 'sumiu' R$ 442,80 do total geral. Regra dura no front + trigger
+            // no DB (tg_block_zero_unit_price) cobrem o fluxo.
+            if (item.unit_price <= 0) issues.push({ type: 'error', msg: `Item ${i + 1}: preço unitário não pode ser zero` });
             const refVariants = item.reference_id ? allVariantsByRef.get(item.reference_id) : undefined;
             if (refVariants && refVariants.length > 0 && !item.material_variant_id) {
               issues.push({ type: 'error', msg: `Item ${i + 1}: selecione grupo de material` });

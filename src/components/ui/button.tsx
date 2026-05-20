@@ -23,6 +23,11 @@ const buttonVariants = cva(
         sm: "h-9 rounded-lg px-4",
         lg: "h-12 rounded-xl px-10 text-base",
         icon: "h-10 w-10 rounded-xl",
+        // Variantes icon por densidade — usar em vez de className="h-7 w-7" ad-hoc.
+        // Convenção (CLAUDE.md): xs=toolbar de tabela, sm=filter row, default/icon=header de página, lg=CTA modal.
+        "icon-xs": "h-7 w-7 rounded-md",
+        "icon-sm": "h-8 w-8 rounded-md",
+        "icon-lg": "h-12 w-12 rounded-xl",
       },
     },
     defaultVariants: {
