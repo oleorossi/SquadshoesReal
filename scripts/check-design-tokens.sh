@@ -11,7 +11,7 @@
 # Cores são hardcoded porque impressão A4 precisa de tons garantidos, não
 # tokens que mudam com tema/dark mode. components/production/worksheet/* são
 # blocos reusados entre os *WorkSheet.tsx — mesma regra de print aplica.
-EXEMPT_PATTERN="EtiquetaProduto|PrintWork|OperatorWorkSheet|PalmilhaWorkSheet|SilkMontageWorkSheet|SolagemWorkSheet|ExpedicaoWorkSheet|ManagementReport|EspelhoPontoPage|production/worksheet/|RelDiarioA4|RelOpA4|RelOeeA4|RelQualidadeA4|RelRefugoA4|RelSemanalA4|reports/A4Layout"
+EXEMPT_PATTERN="EtiquetaProduto|PrintWork|OperatorWorkSheet|PalmilhaWorkSheet|SilkMontageWorkSheet|SolagemWorkSheet|ExpedicaoWorkSheet|ManagementReport|EspelhoPontoPage|production/worksheet/|RelDiarioA4|RelOpA4|RelOeeA4|RelQualidadeA4|RelRefugoA4|RelSemanalA4|reports/A4Layout|LabelManualTab|LabelCalibrationTab|label-system/|ExternalBoxLabel|PickingListPage|CartaoOP"
 
 # Patterns that indicate old visual system usage
 # Using word-boundary anchors (\b) with -E to avoid matching substrings,

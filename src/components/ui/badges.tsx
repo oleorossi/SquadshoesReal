@@ -451,8 +451,7 @@ interface MaterialTagProps extends React.HTMLAttributes<HTMLSpanElement> {
 export function MaterialTag({ swatchColor, children, className, ...props }: MaterialTagProps) {
   return (
     <span
-      className={cn('inline-flex items-center gap-1.5 rounded-[6px] border bg-card px-[10px] py-1 text-xs font-semibold', className)}
-      style={{ borderColor: 'hsl(200 14% 88%)', color: 'hsl(200 30% 18%)' }}
+      className={cn('inline-flex items-center gap-1.5 rounded-[6px] border border-border bg-card px-[10px] py-1 text-xs font-semibold text-foreground', className)}
       {...props}
     >
       <span
