@@ -491,7 +491,7 @@ export default function SaleOrderFormPanel({
    const updateItem = useCallback((idx: number, field: string, value: any) => {
      setItems(prev => {
        const next = prev.map((item, i) => i === idx ? { ...item, [field]: value } : item);
-       
+
        // Real-time duplicate warning
        if (field === 'reference_id' || field === 'color') {
          const item = next[idx];
@@ -509,6 +509,73 @@ export default function SaleOrderFormPanel({
        return next;
      });
      }, [references, setItems]);
+
+   // ── Bulk-edit de itens (pedido user 20/05/2026) ─────────────────────────
+   // Seleção múltipla de itens do PV pra aplicar mudanças em lote: copiar
+   // grade do 1º item selecionado nos demais, aplicar preço unitário, ou
+   // aplicar número de fichas. Reduz cliques quando o PV tem 5+ refs com
+   // mesma grade/preço.
+   const [selectedItemIndices, setSelectedItemIndices] = useState<Set<number>>(new Set());
+   const [bulkPriceInput, setBulkPriceInput] = useState<string>('');
+   const [bulkFichasInput, setBulkFichasInput] = useState<string>('');
+   const toggleItemSelection = useCallback((idx: number) => {
+     setSelectedItemIndices(prev => {
+       const next = new Set(prev);
+       if (next.has(idx)) next.delete(idx); else next.add(idx);
+       return next;
+     });
+   }, []);
+   const clearItemSelection = useCallback(() => setSelectedItemIndices(new Set()), []);
+   const selectAllItems = useCallback(() => {
+     setSelectedItemIndices(new Set(items.map((_, i) => i)));
+   }, [items]);
+   const applyGradeFromFirstSelected = useCallback(() => {
+     const sorted = Array.from(selectedItemIndices).sort((a, b) => a - b);
+     if (sorted.length < 2) {
+       toast.error('Selecione pelo menos 2 itens — o 1º é a fonte da grade, os demais recebem.');
+       return;
+     }
+     const [firstIdx, ...others] = sorted;
+     const sourceGrade = items[firstIdx]?.grade;
+     const sourceFichas = items[firstIdx]?.fichas;
+     if (!sourceGrade) {
+       toast.error('Item de origem não tem grade definida.');
+       return;
+     }
+     setItems(prev => prev.map((item, i) => {
+       if (!others.includes(i)) return item;
+       return {
+         ...item,
+         grade: { ...sourceGrade },
+         fichas: sourceFichas || item.fichas || 1,
+       };
+     }));
+     toast.success(`Grade copiada do item #${firstIdx + 1} pra ${others.length} ${others.length === 1 ? 'item' : 'itens'}`);
+   }, [selectedItemIndices, items, setItems]);
+   const applyUnitPriceToSelected = useCallback(() => {
+     const price = Number(bulkPriceInput.replace(',', '.'));
+     if (!Number.isFinite(price) || price < 0) {
+       toast.error('Digite um preço válido (ex: 89,90).');
+       return;
+     }
+     const ids = Array.from(selectedItemIndices);
+     if (ids.length === 0) return;
+     setItems(prev => prev.map((item, i) => ids.includes(i) ? { ...item, unit_price: price } : item));
+     toast.success(`Preço R$ ${price.toFixed(2)} aplicado em ${ids.length} ${ids.length === 1 ? 'item' : 'itens'}`);
+     setBulkPriceInput('');
+   }, [bulkPriceInput, selectedItemIndices, setItems]);
+   const applyFichasToSelected = useCallback(() => {
+     const n = parseInt(bulkFichasInput, 10);
+     if (!Number.isFinite(n) || n < 1) {
+       toast.error('Digite um número de fichas válido (mínimo 1).');
+       return;
+     }
+     const ids = Array.from(selectedItemIndices);
+     if (ids.length === 0) return;
+     setItems(prev => prev.map((item, i) => ids.includes(i) ? { ...item, fichas: n } : item));
+     toast.success(`${n} ${n === 1 ? 'ficha' : 'fichas'} aplicado em ${ids.length} ${ids.length === 1 ? 'item' : 'itens'}`);
+     setBulkFichasInput('');
+   }, [bulkFichasInput, selectedItemIndices, setItems]);
 
   const totalPairs = items.reduce((s, i) => s + (i.quantity || 0), 0);
   const totalValue = items.reduce((s, i) => s + (i.quantity || 0) * (i.unit_price || 0), 0);
@@ -1262,6 +1329,8 @@ export default function SaleOrderFormPanel({
                   }
                 }}
                 onSaveStateAndNavigate={onSaveStateAndNavigate}
+                isSelected={selectedItemIndices.has(idx)}
+                onToggleSelect={toggleItemSelection}
               />
             </div>
           );
@@ -1270,6 +1339,100 @@ export default function SaleOrderFormPanel({
           <Plus className="h-3.5 w-3.5" /> Novo Item
         </Button>
       </div>
+
+      {/* ── Barra de edição em lote ──
+          Aparece quando há 1+ itens selecionados via checkbox no header de cada
+          item. 3 ações: copiar grade do 1º selecionado nos demais, aplicar
+          preço unitário, aplicar fichas. Não-flutuante (renderiza inline antes
+          dos totais) pra não cobrir o rodapé sticky de Cancelar/Salvar. */}
+      {selectedItemIndices.size > 0 && (
+        <div className="rounded-lg border-2 border-primary/40 bg-primary/5 px-4 py-3 mb-3 flex flex-wrap items-center gap-3">
+          <div className="flex items-baseline gap-2 pr-3 border-r border-primary/30">
+            <span className="font-display text-2xl leading-none tabular-nums text-primary">
+              {selectedItemIndices.size}
+            </span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-primary">
+              {selectedItemIndices.size === 1 ? 'item selecionado' : 'itens selecionados'}
+            </span>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={applyGradeFromFirstSelected}
+            disabled={selectedItemIndices.size < 2}
+            className="h-8 text-xs gap-1"
+            title={selectedItemIndices.size < 2 ? 'Selecione 2+ itens (1º = fonte, demais recebem)' : 'Copia grade do menor índice selecionado pros demais'}
+          >
+            Copiar grade do 1º
+          </Button>
+          <div className="flex items-center gap-1 border-l border-primary/30 pl-3">
+            <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Preço R$</Label>
+            <Input
+              type="text"
+              inputMode="decimal"
+              value={bulkPriceInput}
+              onChange={(e) => setBulkPriceInput(e.target.value)}
+              placeholder="89,90"
+              className="h-8 w-24 text-xs"
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyUnitPriceToSelected(); } }}
+            />
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              onClick={applyUnitPriceToSelected}
+              disabled={!bulkPriceInput.trim()}
+              className="h-8 text-xs"
+            >
+              Aplicar
+            </Button>
+          </div>
+          <div className="flex items-center gap-1 border-l border-primary/30 pl-3">
+            <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Fichas</Label>
+            <Input
+              type="number"
+              min="1"
+              value={bulkFichasInput}
+              onChange={(e) => setBulkFichasInput(e.target.value)}
+              placeholder="1"
+              className="h-8 w-20 text-xs"
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyFichasToSelected(); } }}
+            />
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              onClick={applyFichasToSelected}
+              disabled={!bulkFichasInput.trim()}
+              className="h-8 text-xs"
+            >
+              Aplicar
+            </Button>
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={selectAllItems}
+              className="h-8 text-xs"
+              disabled={selectedItemIndices.size === items.length}
+            >
+              Selecionar todos
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={clearItemSelection}
+              className="h-8 text-xs"
+            >
+              Limpar
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Action bar fixa no rodapé: totais + validações + Cancelar/Salvar.
           Substitui o trio "footer-de-totais + bloco-de-revisão + botões" antigo

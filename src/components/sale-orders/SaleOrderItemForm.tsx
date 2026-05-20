@@ -46,6 +46,9 @@ interface Props {
   onRemove: (idx: number) => void;
   onCopyGradeFromPrevious?: (idx: number) => void;
   onSaveStateAndNavigate?: () => void;
+  /** Bulk select (20/05/2026): checkbox no header pra marcar pra edição em lote. */
+  isSelected?: boolean;
+  onToggleSelect?: (idx: number) => void;
 }
 
 function parseSizeRange(sizes?: string | null, shoeCategory?: string | null): number[] {
@@ -64,7 +67,7 @@ function parseSizeRange(sizes?: string | null, shoeCategory?: string | null): nu
 const formatCurrency = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
-function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, onUpdate, onRemove, onCopyGradeFromPrevious, onSaveStateAndNavigate }: Props) {
+function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, onUpdate, onRemove, onCopyGradeFromPrevious, onSaveStateAndNavigate, isSelected, onToggleSelect }: Props) {
   const qc = useQueryClient();
   const { canSeeFinancialValues } = useAccessControl();
   const fichas = item.fichas || 1;
@@ -636,10 +639,21 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   const isInfantil = selectedRef?.shoe_category === 'Infantil';
 
   return (
-    <div className="rounded-lg border bg-card shadow-sm overflow-hidden mb-4 transition-all hover:border-primary/30">
+    <div className={`rounded-lg border shadow-sm overflow-hidden mb-4 transition-all hover:border-primary/30 ${isSelected ? 'bg-primary/5 border-primary/40' : 'bg-card'}`}>
       {/* Item header bar */}
       <div className="flex items-center justify-between bg-muted/20 px-4 py-2 border-b">
         <div className="flex items-center gap-3">
+          {/* Checkbox de seleção pra bulk-edit (grade/preço/fichas em lote) */}
+          {onToggleSelect && (
+            <input
+              type="checkbox"
+              checked={!!isSelected}
+              onChange={() => onToggleSelect(index)}
+              className="h-4 w-4 rounded border-input cursor-pointer"
+              aria-label={`Selecionar item #${index + 1}`}
+              title="Selecionar pra edição em lote"
+            />
+          )}
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded border bg-muted overflow-hidden flex-shrink-0">
               {(() => {
