@@ -146,7 +146,16 @@ ${styles}
 <style>
   @page { size: A4 portrait; margin: 5mm 6mm; }
   body { font-family: Arial, Helvetica, sans-serif; padding: 5mm 6mm; }
-  @media print { body { padding: 0; } }
+  @media print {
+    body { padding: 0; }
+    /* Padrão keep-together: blocos atômicos não quebram no meio.
+       Aplicado a cards (Radix), tabelas e classes utilitárias. */
+    .print-card, .keep-together, [class*="card"],
+    thead, tfoot { break-inside: avoid; page-break-inside: avoid; }
+    tr { break-inside: avoid; page-break-inside: avoid; }
+    h1, h2, h3 { break-after: avoid; page-break-after: avoid; }
+    thead { display: table-header-group; }
+  }
 </style>
 </head><body>${clone.outerHTML}</body></html>`;
 

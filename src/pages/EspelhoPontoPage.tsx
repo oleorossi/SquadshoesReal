@@ -276,13 +276,13 @@ export default function EspelhoPontoPage() {
         </Button>
       </div>
 
-      {/* Folha A4 */}
+      {/* Folha A4 — print-natural: pode ocupar múltiplas A4 se necessário */}
       <div
-        className="w-[210mm] mx-auto bg-white text-black p-[12mm] print:p-[8mm] print:shadow-none shadow-lg my-6 print:my-0"
+        className="w-[210mm] mx-auto bg-white text-black p-[12mm] print:p-[8mm] print:shadow-none shadow-lg my-6 print:my-0 print-natural"
         style={{ minHeight: '297mm', fontFamily: "'Inter Tight', sans-serif", fontSize: '10pt' }}
       >
-        {/* Cabeçalho */}
-        <div className="border-b-2 border-black pb-2 mb-3">
+        {/* Cabeçalho — atómico */}
+        <div className="border-b-2 border-black pb-2 mb-3 keep-together keep-with-next">
           <h1 className="text-lg font-bold uppercase tracking-tight">Espelho de Ponto Eletrônico</h1>
           <p className="text-[9pt] text-black/80">Portaria MTE 671/2021, art. 84 — emitido em {emissionDate}</p>
         </div>
@@ -446,8 +446,8 @@ export default function EspelhoPontoPage() {
           </tbody>
         </table>
 
-        {/* Assinaturas */}
-        <div className="grid grid-cols-2 gap-8 mt-10">
+        {/* Assinaturas — bloco atômico, nunca quebra no meio */}
+        <div className="grid grid-cols-2 gap-8 mt-10 keep-together">
           <div className="text-center">
             <div className="border-t border-black pt-1 mt-12">
               <p className="text-[8pt] uppercase">Assinatura do Empregado</p>

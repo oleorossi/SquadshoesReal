@@ -23,7 +23,11 @@ export type A4HeadProps = {
 export function A4Head({ title, num, sub, emittedAt, emittedBy }: A4HeadProps) {
   const meta = [emittedAt, emittedBy].filter(Boolean).join(' · ');
   return (
-    <div className="a4-head">
+    // keep-together: header não quebra no meio em print multi-página.
+    // keep-with-next: fica com primeiro bloco de conteúdo (evita título órfão).
+    // styles-paper.css já adiciona break-inside:avoid pra .a4-head, mas
+    // a classe keep-together é o padrão global mais portátil/explícito.
+    <div className="a4-head keep-together keep-with-next">
       <div className="brand">
         <div className="brand-mark">SS</div>
         <div>
@@ -50,7 +54,7 @@ export type A4FootProps = {
 
 export function A4Foot({ doc, page = '1 de 1', version = 'v2026.05', generatedAt, landscape }: A4FootProps) {
   return (
-    <div className={`a4-foot ${landscape ? 'l' : ''}`}>
+    <div className={`a4-foot keep-together ${landscape ? 'l' : ''}`}>
       <span>{doc}</span>
       <span>{[generatedAt, version].filter(Boolean).join(' · ')}</span>
       <span>Página {page}</span>
@@ -60,7 +64,7 @@ export function A4Foot({ doc, page = '1 de 1', version = 'v2026.05', generatedAt
 
 export function Sigs({ labels = ['Líder de produção', 'Supervisor', 'Gerência'] }: { labels?: string[] }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${labels.length}, 1fr)`, gap: 24, marginTop: 30 }}>
+    <div className="keep-together" style={{ display: 'grid', gridTemplateColumns: `repeat(${labels.length}, 1fr)`, gap: 24, marginTop: 30 }}>
       {labels.map((l, i) => (
         <div key={i} className="sig">
           <div className="sig-line" />
