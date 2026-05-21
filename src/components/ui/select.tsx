@@ -98,27 +98,54 @@ const SelectLabel = React.forwardRef<
 ));
 SelectLabel.displayName = SelectPrimitive.Label.displayName;
 
+/**
+ * Sentinela usado quando algum SelectItem é renderizado com value vazio,
+ * null ou undefined. Radix proíbe value="" (empty string é reservado pra
+ * "limpar seleção"), e qualquer linha com value inválido **crasha** o app
+ * inteiro com a exceção `A <Select.Item /> must have a value prop that is
+ * not an empty string`. Em vez de deixar o app cair quando dados sujos do
+ * banco chegam (department='', refs com id ausente, etc), substituímos
+ * por essa sentinela e logamos um warning em DEV.
+ */
+const __INVALID_VALUE_SENTINEL = '__invalid_select_value__';
+
 const SelectItem = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Item>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
->(({ className, children, ...props }, ref) => (
-  <SelectPrimitive.Item
-    ref={ref}
-    className={cn(
-      "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 focus:bg-accent focus:text-accent-foreground",
-      className,
-    )}
-    {...props}
-  >
-    <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
-      <SelectPrimitive.ItemIndicator>
-        <Check className="h-4 w-4" />
-      </SelectPrimitive.ItemIndicator>
-    </span>
+>(({ className, children, value, ...props }, ref) => {
+  // Guard universal: value '' / null / undefined / só-whitespace é inválido.
+  const isInvalid = value == null || (typeof value === 'string' && value.trim() === '');
+  if (isInvalid) {
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[SelectItem] value vazio detectado — substituído por sentinela. ' +
+          'Origem provável: dado sujo (ex: department="" no DB) sendo passado direto pro value. ' +
+          'Filtre antes de mapear ou use uma sentinela explícita (ex: "all", "none"). children:',
+        children,
+      );
+    }
+  }
+  return (
+    <SelectPrimitive.Item
+      ref={ref}
+      className={cn(
+        "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 focus:bg-accent focus:text-accent-foreground",
+        className,
+      )}
+      value={isInvalid ? __INVALID_VALUE_SENTINEL : (value as string)}
+      {...props}
+    >
+      <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+        <SelectPrimitive.ItemIndicator>
+          <Check className="h-4 w-4" />
+        </SelectPrimitive.ItemIndicator>
+      </span>
 
-    <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
-  </SelectPrimitive.Item>
-));
+      <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+    </SelectPrimitive.Item>
+  );
+});
 SelectItem.displayName = SelectPrimitive.Item.displayName;
 
 const SelectSeparator = React.forwardRef<
