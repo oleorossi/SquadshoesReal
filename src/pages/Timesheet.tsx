@@ -538,11 +538,20 @@ function TimesheetRecordsTab() {
     setPreview(null);
   };
 
-  // Group records by employee, resolving names via employee registry
+  // Group records by employee, resolving names via employee registry.
+  // Fix 22/05/2026: usa findEmployeeMatch com linkedOnly:true e DESCARTA
+  // records de funcionários sem coligação (ex: nomes que só existem no
+  // relógio de ponto como "alex", "anaCarolina"). Antes esses apareciam
+  // com 13 faltas no relatório porque o sistema gerava linhas vazias pra
+  // todo o período mesmo sem cadastro. User pediu que só apareçam quem
+  // tem cadastro no sistema E está vinculado ao relógio (active +
+  // external_id ou match fuzzy com active).
   const employeeGroups = useMemo(() => {
     const map = new Map<string, TimeRecord[]>();
     records.forEach(r => {
-      const resolvedName = resolveEmployeeName(employees, r.employee_name, r.employee_external_id);
+      const match = findEmployeeMatch(employees, r.employee_name, r.employee_external_id, { linkedOnly: true });
+      if (!match) return; // pula funcionários órfãos (só no relógio, sem cadastro)
+      const resolvedName = match.name;
       if (!map.has(resolvedName)) map.set(resolvedName, []);
       map.get(resolvedName)!.push(r);
     });

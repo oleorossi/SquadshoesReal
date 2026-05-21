@@ -64,8 +64,12 @@ export default function ReportsPanel() {
   const reportData = useMemo(() => {
     if (records.length === 0) return [];
     const map = new Map<string, typeof records>();
+    // linkedOnly:true descarta funcionários só do relógio sem cadastro
+    // (fix 22/05/2026 — user pediu que esses não apareçam em relatórios).
     records.forEach(r => {
-      const resolvedName = resolveEmployeeName(employees, r.employee_name, r.employee_external_id);
+      const match = findEmployeeMatch(employees, r.employee_name, r.employee_external_id, { linkedOnly: true });
+      if (!match) return;
+      const resolvedName = match.name;
       if (!map.has(resolvedName)) map.set(resolvedName, []);
       map.get(resolvedName)!.push(r);
     });
