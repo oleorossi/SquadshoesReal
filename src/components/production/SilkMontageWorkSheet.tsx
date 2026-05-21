@@ -23,6 +23,8 @@ export interface SilkColorGroup {
   baseGradeSum?: number;
   /** Quantas fichas no total (= totalPairs / baseGradeSum). */
   fichas?: number;
+  /** TRUE quando agrega OPs com grades base diferentes — omite "Por Ficha". */
+  mixedGrades?: boolean;
   totalPairs: number;
   opNumbers: string[];
   /** Números de PV (pedidos de venda) que originaram as OPs do grupo. */
@@ -569,10 +571,11 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                       </tr>
                     </thead>
                     <tbody>
-                      {/* Linha "Por Ficha" — grade base de 1 ficha fechada.
-                          SEMPRE aparece (user pediu em 2026-05) — operador
-                          quer ver a distribuição individual destacada. */}
-                      {cg.baseGrid && cg.baseGradeSum && (
+                      {/* Linha "Por Ficha" só aparece quando TODAS as OPs do
+                          grupo têm a mesma grade base. Quando há grades
+                          mistas, omitimos pra evitar perCard × N ≠ Total
+                          confundir o operador. */}
+                      {cg.baseGrid && cg.baseGradeSum && !cg.mixedGrades && (
                         <tr style={{ borderBottom: '1.5px solid #000' }}>
                           <td className="py-1 text-[9px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
                             Por Ficha<br />({cg.baseGradeSum}p)
@@ -589,7 +592,11 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                       )}
                       <tr style={{ borderBottom: theme.showFrenteTraseiro ? '1px solid #000' : 'none' }}>
                         <td className="py-1.5 text-[10px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
-                          {cg.fichas && cg.fichas > 1 ? <>Total<br />× {cg.fichas} fichas</> : <>Total<br />(1 ficha)</>}
+                          {cg.mixedGrades
+                            ? <>Total<br />({cg.fichas || 0} fichas*)</>
+                            : cg.fichas && cg.fichas > 1
+                              ? <>Total<br />× {cg.fichas} fichas</>
+                              : <>Total<br />(1 ficha)</>}
                         </td>
                         {activeSizes.map(s => (
                           <td

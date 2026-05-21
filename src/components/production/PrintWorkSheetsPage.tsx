@@ -277,6 +277,11 @@ function groupOrdersByRefColor(orders: any[]): Array<{
   baseGradeSum: number;
   /** Quantas fichas no total (soma de fichas de cada OP). */
   fichas: number;
+  /** TRUE quando as OPs do grupo têm grades base diferentes — não dá pra
+   *  mostrar "Por Ficha (Np) × N fichas" porque a multiplicação não bate
+   *  com o Total. Worksheets devem omitir a linha "Por Ficha" e mostrar
+   *  apenas Total + nota explicativa. */
+  mixedGrades: boolean;
   totalPairs: number;
   latestDueDate: string;
   opNumbers: string[];
@@ -311,6 +316,7 @@ function groupOrdersByRefColor(orders: any[]): Array<{
         baseGrid: { ...((order.grid as Record<string, number>) || {}) },
         baseGradeSum: 0,
         fichas: 0,
+        mixedGrades: false,
         totalPairs: 0,
         latestDueDate: order.due_date ?? '',
         opNumbers: [],
@@ -333,10 +339,27 @@ function groupOrdersByRefColor(orders: any[]): Array<{
     const baseSum = Object.values(baseGrid).reduce((s, v) => s + (Number(v) || 0), 0);
     const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
     g.fichas += baseSum > 0 ? Math.round(orderTotal / baseSum) : 0;
-    g.baseGradeSum = baseSum > 0 ? baseSum : g.baseGradeSum;
+    // Detect mixed grades #1: OPs do mesmo grupo têm baseSum diferentes.
+    if (baseSum > 0) {
+      if (g.baseGradeSum === 0) {
+        g.baseGradeSum = baseSum;
+      } else if (g.baseGradeSum !== baseSum) {
+        g.mixedGrades = true;
+      }
+    }
     for (const [size, qty] of Object.entries(baseGrid)) {
       const scaled = Math.round((Number(qty) || 0) * multiplier);
       if (scaled > 0) g.combinedGrid[size] = (g.combinedGrid[size] ?? 0) + scaled;
+    }
+  }
+
+  // Detect mixed grades #2 (posteriori): baseGradeSum × fichas deve igualar
+  // totalPairs. Se não, há fichas fracionárias (Math.round perdeu info) ou
+  // OPs com grades inconsistentes (ex: grade base parcial — só alguns
+  // tamanhos no grid). Worksheet vai mostrar como mixed pra não mentir.
+  for (const g of map.values()) {
+    if (g.baseGradeSum > 0 && g.fichas > 0 && g.baseGradeSum * g.fichas !== g.totalPairs) {
+      g.mixedGrades = true;
     }
   }
 
@@ -877,7 +900,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         groupMap.set(key, {
           soleName, insoleColor: '—', totalPairs: 0, grade: {},
           baseGrade: { ...((order.grid as Record<string, number>) || {}) },
-          baseGradeSum: 0, fichas: 0,
+          baseGradeSum: 0, fichas: 0, mixedGrades: false,
           readyMade: isReadyMade,
           refs: [],
           opNumbers: [],
@@ -919,12 +942,22 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       const orderTotal = Number(order.total_pairs ?? 0);
       const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
       group.fichas += baseSum > 0 ? Math.round(orderTotal / baseSum) : 0;
-      group.baseGradeSum = baseSum > 0 ? baseSum : group.baseGradeSum;
+      if (baseSum > 0) {
+        if (group.baseGradeSum === 0) group.baseGradeSum = baseSum;
+        else if (group.baseGradeSum !== baseSum) group.mixedGrades = true;
+      }
       for (const [size, qty] of Object.entries(baseGrid)) {
         const scaled = Math.round((Number(qty) || 0) * multiplier);
         if (scaled > 0) { group.grade[size] = (group.grade[size] || 0) + scaled; sizeSet.add(size); }
       }
       group.totalPairs = Object.values(group.grade).reduce((s, v) => s + v, 0);
+    }
+    // Posteriori check: baseGradeSum × fichas deve igualar totalPairs.
+    // Se não, há fichas fracionárias / grades inconsistentes → mixed.
+    for (const g of groupMap.values()) {
+      if (g.baseGradeSum > 0 && g.fichas > 0 && g.baseGradeSum * g.fichas !== g.totalPairs) {
+        g.mixedGrades = true;
+      }
     }
     const sortedSizes = Array.from(sizeSet).sort((a, b) => {
       const na = parseFloat(a), nb = parseFloat(b);
@@ -1081,6 +1114,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           baseGrid: { ...((order.grid as Record<string, number>) || {}) },
           baseGradeSum: 0,
           fichas: 0,
+          mixedGrades: false,
           totalPairs: 0,
           variantImageUrl: exactVariant?.image_url || null,
           alternateVariants: variants,
@@ -1114,12 +1148,26 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       const orderTotal = Number(order.total_pairs ?? 0);
       const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
       cg.fichas += baseSum > 0 ? Math.round(orderTotal / baseSum) : 0;
-      cg.baseGradeSum = baseSum > 0 ? baseSum : cg.baseGradeSum;
+      if (baseSum > 0) {
+        if (cg.baseGradeSum === 0) cg.baseGradeSum = baseSum;
+        else if (cg.baseGradeSum !== baseSum) cg.mixedGrades = true;
+      }
       for (const [size, qty] of Object.entries(baseGrid)) {
         const scaled = Math.round((Number(qty) || 0) * multiplier);
         if (scaled > 0) cg.combinedGrid[size] = (cg.combinedGrid[size] ?? 0) + scaled;
       }
       cg.totalPairs = Object.values(cg.combinedGrid).reduce((s, v) => s + v, 0);
+    }
+
+    // Posteriori check em TODOS os colorMaps: baseGradeSum × fichas deve
+    // igualar totalPairs. Se não, marca mixedGrades pra worksheet omitir
+    // a linha "Por Ficha (Np) × N fichas" que não bate matematicamente.
+    for (const { colorMap } of soleMap.values()) {
+      for (const cg of colorMap.values()) {
+        if (cg.baseGradeSum > 0 && cg.fichas > 0 && cg.baseGradeSum * cg.fichas !== cg.totalPairs) {
+          cg.mixedGrades = true;
+        }
+      }
     }
 
     return Array.from(soleMap.values())
@@ -1138,6 +1186,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     const soleColorMap = new Map<string, {
       grade: Record<string, number>; totalPairs: number;
       baseGrade: Record<string, number>; baseGradeSum: number; fichas: number;
+      mixedGrades: boolean;
       refs: Array<{ key: string; code: string; name: string; color: string; image_url: string | null }>;
       opNumbers: string[]; pvNumbers: string[];
     }>();
@@ -1152,7 +1201,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         soleColorMap.set(soleColor, {
           grade: {}, totalPairs: 0,
           baseGrade: { ...((order.grid as Record<string, number>) || {}) },
-          baseGradeSum: 0, fichas: 0,
+          baseGradeSum: 0, fichas: 0, mixedGrades: false,
           refs: [],
           opNumbers: [], pvNumbers: [],
         });
@@ -1189,7 +1238,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       const orderTotal = Number(order.total_pairs ?? 0);
       const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
       band.fichas += baseSum > 0 ? Math.round(orderTotal / baseSum) : 0;
-      band.baseGradeSum = baseSum > 0 ? baseSum : band.baseGradeSum;
+      if (baseSum > 0) {
+        if (band.baseGradeSum === 0) band.baseGradeSum = baseSum;
+        else if (band.baseGradeSum !== baseSum) band.mixedGrades = true;
+      }
       for (const [size, qty] of Object.entries(baseGrid)) {
         const scaled = Math.round((Number(qty) || 0) * multiplier);
         if (scaled > 0) {
@@ -1198,6 +1250,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         }
       }
       band.totalPairs = Object.values(band.grade).reduce((s, v) => s + v, 0);
+    }
+
+    // Posteriori check: baseGradeSum × fichas deve igualar totalPairs.
+    // Se não, há fichas fracionárias ou grades inconsistentes → mixed.
+    for (const band of soleColorMap.values()) {
+      if (band.baseGradeSum > 0 && band.fichas > 0 && band.baseGradeSum * band.fichas !== band.totalPairs) {
+        band.mixedGrades = true;
+      }
     }
 
     const allSizes = Array.from(sizeSet).sort((a, b) => {

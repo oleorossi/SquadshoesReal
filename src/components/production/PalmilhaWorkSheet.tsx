@@ -16,6 +16,9 @@ export interface PalmilhaGroup {
   baseGradeSum?: number;
   /** Quantas fichas no total. */
   fichas?: number;
+  /** TRUE quando o grupo agrega OPs com grades base diferentes — a linha
+   *  "Por Ficha (Np)" não tem sentido (perCard × N ≠ Total). */
+  mixedGrades?: boolean;
   readyMade?: boolean;
   /** Sandálias que usam essa palmilha (ref + cor + foto). */
   refs?: Array<{ key: string; code: string; name: string; color: string; image_url: string | null }>;
@@ -232,8 +235,11 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
                     </tr>
                   </thead>
                   <tbody>
-                    {/* Linha "Por Ficha" — SEMPRE aparece (user pediu em 2026-05). */}
-                    {group.baseGrade && group.baseGradeSum && (
+                    {/* Linha "Por Ficha" só aparece quando TODAS as OPs do
+                        grupo têm a mesma grade base. Quando há grades mistas
+                        (audit 2026-05 encontrou 74 tabelas com perCard×N ≠
+                        Total), omitimos pra não confundir o operador. */}
+                    {group.baseGrade && group.baseGradeSum && !group.mixedGrades && (
                       <tr style={{ borderBottom: '1.5px solid #000' }}>
                         <td className="py-1 text-[9px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
                           Por Ficha<br />({group.baseGradeSum}p)
@@ -250,7 +256,11 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
                     )}
                     <tr>
                       <td className="py-2 text-[10px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
-                        {group.fichas && group.fichas > 1 ? <>Total<br />× {group.fichas} fichas</> : <>Total<br />(1 ficha)</>}
+                        {group.mixedGrades
+                          ? <>Total<br />({group.fichas || 0} fichas*)</>
+                          : group.fichas && group.fichas > 1
+                            ? <>Total<br />× {group.fichas} fichas</>
+                            : <>Total<br />(1 ficha)</>}
                       </td>
                       {groupSizes.map(s => (
                         <td
@@ -281,6 +291,16 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
                     </tr>
                   </tbody>
                 </table>
+
+                {/* Nota quando agrupa OPs com grades base diferentes — pra
+                    o operador entender por que "Por Ficha × N" sumiu. */}
+                {group.mixedGrades && (
+                  <div className="px-3 py-1.5 border-t border-black bg-white">
+                    <span className="font-mono text-[9px] text-black tracking-wider uppercase">
+                      * Grades base diferentes entre OPs do grupo — total agregado
+                    </span>
+                  </div>
+                )}
 
                 {!group.readyMade && (
                   <div className="px-2 pb-2 pt-2 border-t border-black">
