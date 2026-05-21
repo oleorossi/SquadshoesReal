@@ -118,50 +118,58 @@ const printStyles = `
       word-break: break-word !important;
     }
 
-    /* Quebras de página entre setores/grupos.
-       Fix 21/05/2026 v3: cada ficha = 1 página A4 EXATA com altura adaptativa.
-       v1 só usava page-break-inside: avoid e deixava metade da página em branco.
-       v2 travou altura em 281mm + overflow:hidden — mas isso ESCONDIA conteúdo
-       em fichas grandes (muitas cores/numerações/tally boxes). User reportou
-       "corte na assinatura" em 21/05.
-       v3: remove overflow:hidden, mantém page-break controlado. Conteúdo
-       maior usa transform:scale via useAutoFitPrint hook nos componentes. */
+    /* Quebras de página entre fichas distintas.
+       v4 (24/05/2026): user prefere ficha grande ocupando múltiplas A4 a
+       texto escalonado pequeno. Sem max-height nem overflow — conteúdo
+       flui naturalmente. .page-break só marca fronteira ENTRE FICHAS
+       (page-break-after: always). Dentro da ficha, browser quebra
+       livremente, mas .keep-together evita partir blocos atômicos
+       (header, card de cor, tabela, footer) no meio. */
     .page-break {
-      max-height: 281mm;
       page-break-after: always;
       break-after: page;
-      page-break-inside: avoid;
-      break-inside: avoid;
-      /* overflow: visible (default) — deixa o auto-fit do componente lidar. */
+      /* SEM page-break-inside: avoid aqui — ficha pode ocupar várias A4.
+         Caso queira força total 1-pg-por-ficha, criar classe .single-page. */
     }
     /* Última página não precisa do break extra (evita página em branco final) */
     .page-break:last-child {
       page-break-after: auto;
       break-after: auto;
     }
-    /* Filho direto do .page-break = container raiz da ficha. Vira flex-col
-       de 100% pra ocupar a página inteira. */
+    /* Filho direto do .page-break = container raiz da ficha. SEM flex/height
+       forçados — conteúdo flui livremente em múltiplas A4 se necessário. */
     .page-break > div {
-      display: flex !important;
-      flex-direction: column !important;
-      height: 100% !important;
-      min-height: 100% !important;
-    }
-    /* Último filho (signature footer / assinatura) sobe pro pé da página.
-       Aplica em qualquer ficha — todas terminam com bloco de assinatura. */
-    .page-break > div > :last-child {
-      margin-top: auto !important;
+      width: 100% !important;
+      min-height: 0 !important;
+      height: auto !important;
     }
     .store-divider {
       page-break-before: always;
       break-before: page;
     }
 
-    /* Evita quebra horrível dentro de tabelas, cards e linhas de tabela */
+    /* Evita quebra horrível dentro de tabelas, cards e linhas de tabela.
+       .keep-together é a classe-chave: aplicada a TableBox, card de cor,
+       header de ficha, footer de assinatura e KPI grids — garante que
+       esses blocos atômicos ficam INTEIROS na mesma página A4. */
     table { break-inside: auto; }
-    tr, .keep-together { break-inside: avoid; page-break-inside: avoid; }
+    tr, .keep-together {
+      break-inside: avoid !important;
+      page-break-inside: avoid !important;
+    }
     thead { display: table-header-group; }
     tfoot { display: table-footer-group; }
+
+    /* Headers de ficha (WorksheetHeader + ProductImage + SectorAlerts) e
+       footer (SignatureFooter) NUNCA quebram no meio — selectors por
+       estrutura conhecida pra reduzir necessidade de .keep-together em
+       cada lugar. */
+    .print-area [class*="border-y-2 border-black"],
+    .print-area footer,
+    .print-area [class*="signature"] {
+      break-inside: avoid !important;
+      page-break-inside: avoid !important;
+    }
 
     /* Cores fiéis na impressão (sem desbotamento) */
     * {
@@ -1542,28 +1550,20 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       {/* ── Print area ── */}
       <div className="print-area space-y-0">
 
-        {/* ── Corte Palmilha — chunked em 2 solados por página A4 ──
-            Decisão 24/05/2026: cada solado ocupa ~450-570px. Com header (153px)
-            e footer (95px), 2 solados por página = ~1100px ≈ A4 útil (1062px).
-            3 solados estouraria mesmo com scale max do PrintPageScaler.
-            User reportou ficha cortada na assinatura em 21/05; chunking
-            resolve definitivamente. */}
-        {includesSector('Corte Palmilha') && palmilhaGroups.length > 0 && (() => {
-          const CHUNK = 2;
-          const chunks: PalmilhaGroup[][] = [];
-          for (let i = 0; i < palmilhaGroups.length; i += CHUNK) {
-            chunks.push(palmilhaGroups.slice(i, i + CHUNK));
-          }
-          return chunks.map((chunk, idx) => (
-            <div key={`palmilha-${idx}`} className="page-break">
-              <PalmilhaWorkSheet
-                groups={chunk}
-                allSizes={palmilhaAllSizes}
-                date={today}
-              />
-            </div>
-          ));
-        })()}
+        {/* ── Corte Palmilha ──
+            Decisão 24/05/2026 (v3): user prefere ficha em múltiplas A4 a
+            scale comprimido. Sem chunking — page-break-after entre fichas
+            distintas, conteúdo flui naturalmente. Blocos atômicos
+            (.keep-together) evitam quebra no meio de uma seção. */}
+        {includesSector('Corte Palmilha') && palmilhaGroups.length > 0 && (
+          <div className="page-break">
+            <PalmilhaWorkSheet
+              groups={palmilhaGroups}
+              allSizes={palmilhaAllSizes}
+              date={today}
+            />
+          </div>
+        )}
 
         {/* ── Sole+Color sectors (Silk, Corte Forração, Corte Cabedal, Costura, Aviamento, Montagem) ── */}
         {(() => {
@@ -1598,39 +1598,22 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           // groupedWorksheets em vez de silkMontageGroups.
           const flowOrder: GroupedSector[] = ['Corte Forração', 'Corte Cabedal', 'Costura', 'Aviamento'];
           const sectorsToRender: GroupedSector[] = flowOrder.filter(s => activeSectors.has(s));
-          // Decisão 24/05/2026: cada cor tem ~400-450px no SilkMontageWorkSheet
-          // (foto + grade + tally box + checklist). Com header (~250px) e
-          // footer (~95px), 2 cores por ficha = ~1100px ≈ A4 útil.
-          // 3+ cores estouravam mesmo com scale max (5 cores = 2250px →
-          // scale 0.55 → 1237px ≈ ainda estoura). Chunking resolve.
-          const COLOR_CHUNK = 2;
+          // v3 (24/05/2026): sem chunking. Conteúdo flui naturalmente; se
+          // a ficha tem 5 cores, ocupa 2-3 páginas A4. .keep-together nos
+          // cards de cor garante que cor individual não quebra no meio.
           return sectorsToRender.flatMap(sectorName =>
             silkMontageGroups
               .map(group => ({ group, filtered: filterGroupForSector(group, sectorName) }))
               .filter(x => x.filtered !== null)
-              .flatMap(({ filtered }) => {
-                const colors = filtered!.colorGroups || [];
-                if (colors.length <= COLOR_CHUNK) {
-                  return [(
-                    <div key={`${sectorName}-${filtered!.soleName}`} className="page-break">
-                      <SilkMontageWorkSheet group={filtered!} sector={sectorName} date={today} />
-                    </div>
-                  )];
-                }
-                const chunks: typeof colors[] = [];
-                for (let i = 0; i < colors.length; i += COLOR_CHUNK) {
-                  chunks.push(colors.slice(i, i + COLOR_CHUNK));
-                }
-                return chunks.map((chunk, idx) => (
-                  <div key={`${sectorName}-${filtered!.soleName}-${idx}`} className="page-break">
-                    <SilkMontageWorkSheet
-                      group={{ ...filtered!, colorGroups: chunk }}
-                      sector={sectorName}
-                      date={today}
-                    />
-                  </div>
-                ));
-              })
+              .map(({ filtered }) => (
+                <div key={`${sectorName}-${filtered!.soleName}`} className="page-break">
+                  <SilkMontageWorkSheet
+                    group={filtered!}
+                    sector={sectorName}
+                    date={today}
+                  />
+                </div>
+              ))
           );
         })()}
 
@@ -1782,34 +1765,16 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           </div>
         ))}
 
-        {/* ── Relatório Gerencial: 1 PV por relatório, chunked por OPs ──
-            Cada OP no relatório adiciona ~80-100px. PVs grandes (15+ OPs)
-            estouravam A4 mesmo com scale 0.55. Chunking em 8 OPs/página
-            garante caber. Header do PV (info do cliente, KPIs) é repetido
-            em cada chunk. */}
-        {includesSector('Relatório Gerencial') && reportGroups && reportGroups.flatMap((rg) => {
-          // OP_CHUNK = 5: cada OP gera linhas em 3 tabelas (estágios, custos,
-          // stages). 5 OPs × 3 tabelas × ~30px/linha = ~450px + header + KPIs
-          // (~600px) = ~1050px ≈ A4 útil (1062px).
-          const OP_CHUNK = 5;
-          const ops = rg.reportOrders || [];
-          if (ops.length <= OP_CHUNK) {
-            return [(
-              <div key={`report-${rg.saleOrder.id}`} className="page-break">
-                <ManagementReport saleOrder={rg.saleOrder} orders={ops} date={today} />
-              </div>
-            )];
-          }
-          const chunks: typeof ops[] = [];
-          for (let i = 0; i < ops.length; i += OP_CHUNK) {
-            chunks.push(ops.slice(i, i + OP_CHUNK));
-          }
-          return chunks.map((chunk, idx) => (
-            <div key={`report-${rg.saleOrder.id}-${idx}`} className="page-break">
-              <ManagementReport saleOrder={rg.saleOrder} orders={chunk} date={today} />
-            </div>
-          ));
-        })}
+        {/* ── Relatório Gerencial: 1 relatório por PV ──
+            v3 (24/05/2026): sem chunking. Relatórios grandes (15+ OPs)
+            ocupam 2-3 A4 naturalmente. .keep-together nos blocos de cada
+            seção (header, tabela de OPs, tabela de custos, footer) garante
+            que cada bloco fica inteiro na sua página. */}
+        {includesSector('Relatório Gerencial') && reportGroups && reportGroups.map((rg) => (
+          <div key={`report-${rg.saleOrder.id}`} className="page-break">
+            <ManagementReport saleOrder={rg.saleOrder} orders={rg.reportOrders} date={today} />
+          </div>
+        ))}
       </div>
     </div>
   );

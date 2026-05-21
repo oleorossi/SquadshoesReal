@@ -1345,6 +1345,59 @@ a:focus-visible {
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
+   PRINT — PADRÃO UNIVERSAL DE QUEBRA NATURAL (2026-05-24)
+   Aplicado a todo componente imprimível: relatórios A4, fichas de operador,
+   espelhos de ponto, folha de pagamento, listas de picking, etc.
+
+   Filosofia:
+   - Documento grande pode ocupar múltiplas A4 — não força encaixar em 1.
+   - Blocos atômicos (.keep-together) NUNCA quebram no meio.
+   - Headers de seção / footer de assinatura PERMANECEM com o conteúdo
+     subsequente (`break-after: avoid` / `break-before: avoid`).
+
+   Para opt-in, basta a página/componente ter classe .print-natural OU
+   estar dentro de .print-area. Para opt-out (ex: etiqueta que precisa
+   caber em 1 página fixa), usar classe .print-fixed-page.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@media print {
+  .print-natural,
+  .print-area {
+    /* Não impõe altura — flui em quantas A4 precisar */
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* Bloco atômico — não quebra no meio. Adicione .keep-together em
+     cards, tabelas (ou tbody), seções de assinatura, KPI grids etc. */
+  .print-natural .keep-together,
+  .print-area .keep-together,
+  .keep-together {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Headings (h1-h6) e elementos com .keep-with-next devem ficar
+     na mesma página do conteúdo seguinte (evita "título órfão"). */
+  .print-natural h1, .print-natural h2, .print-natural h3,
+  .print-area h1, .print-area h2, .print-area h3,
+  .keep-with-next {
+    break-after: avoid !important;
+    page-break-after: avoid !important;
+  }
+
+  /* Tabelas: header repete em cada página quando quebra. */
+  .print-natural thead, .print-area thead { display: table-header-group; }
+  .print-natural tfoot, .print-area tfoot { display: table-footer-group; }
+  .print-natural tr, .print-area tr {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
    MARQUEE SELECTION — prevenção de text-select durante drag
    Quando useMarqueeSelection está com drag ativo, body ganha .marquee-active
    pra desabilitar text selection (seleção de texto natural conflita com

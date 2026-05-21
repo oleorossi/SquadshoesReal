@@ -5,7 +5,6 @@ import { ProductionOrder } from '@/types/inventory';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 import { TallyBox } from './worksheet/TallyBox';
 import { SignedImage } from '@/components/ui/signed-image';
-import { PrintPageScaler } from './worksheet/PrintPageScaler';
 
 interface Props {
   order: ProductionOrder;
@@ -121,7 +120,7 @@ const OperatorWorkSheet = ({
   }
 
   return (
-    <PrintPageScaler
+    <div
       className="w-[210mm] p-[6mm] print:w-full print:p-0 bg-white shadow-none print:shadow-none m-auto flex flex-col gap-0"
       style={{ boxSizing: 'border-box', fontFamily: "'Inter Tight', sans-serif", color: '#000' }}
     >
@@ -1097,7 +1096,7 @@ const OperatorWorkSheet = ({
           ))}
         </div>
       </div>
-    </PrintPageScaler>
+    </div>
   );
 };
 

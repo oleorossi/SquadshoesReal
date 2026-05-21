@@ -4,7 +4,6 @@ import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
 import { SignatureFooter } from './worksheet/SignatureFooter';
-import { PrintPageScaler } from './worksheet/PrintPageScaler';
 
 export interface PalmilhaGroup {
   soleName: string;
@@ -42,7 +41,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
   const grandTotal = groups.reduce((s, g) => s + g.totalPairs, 0);
 
   return (
-    <PrintPageScaler
+    <div
       className="w-[210mm] p-[6mm] print:w-full print:p-0 bg-white shadow-none print:shadow-none m-auto flex flex-col gap-0"
       style={{ boxSizing: 'border-box', fontFamily: "'Inter Tight', sans-serif", color: '#000' }}
     >
@@ -280,6 +279,6 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
       )}
 
       <SignatureFooter labels={['Operador(a)', 'Conferente', 'Supervisor(a)']} />
-    </PrintPageScaler>
+    </div>
   );
 };

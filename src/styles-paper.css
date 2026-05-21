@@ -327,7 +327,36 @@
 /* Print rules globais — A4 */
 @media print {
   body { background: white !important; }
-  .sheet { box-shadow: none !important; margin: 0 !important; }
+  .sheet {
+    box-shadow: none !important;
+    margin: 0 !important;
+    /* v3 (24/05/2026): permite quebra natural multi-página.
+       Anterior tinha min-height: 1123px forçando 1 folha; agora deixa
+       o conteúdo determinar quantas A4 ocupar. Cada .sheet = 1 doc inteiro
+       (relatório pode ocupar 2-3 A4). */
+    min-height: 0 !important;
+    page-break-after: always !important;
+    break-after: page !important;
+  }
+  .sheet:last-child {
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+  /* Blocos atômicos do design Paper (.a4-head, .p-tbl, .sig) — não quebra
+     no meio. .keep-together permanece como utility opt-in. */
+  .a4-head, .a4-foot, .sig-row, .sig, .keep-together {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+  /* Headings ficam com conteúdo seguinte */
+  .sheet h1, .sheet h2, .sheet h3, .p-display, .p-eyebrow {
+    break-after: avoid !important;
+    page-break-after: avoid !important;
+  }
+  /* Tabelas: thead repete em multi-página */
+  .sheet thead { display: table-header-group; }
+  .sheet tfoot { display: table-footer-group; }
+  .sheet tr { break-inside: avoid !important; page-break-inside: avoid !important; }
   .no-print, .a4-shell-bar { display: none !important; }
   @page { size: A4; margin: 0; }
 }
