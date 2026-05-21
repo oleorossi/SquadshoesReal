@@ -41,7 +41,7 @@ export const menuGroups = [
       { name: "PCP",              icon: Kanban,            path: "/pcp" },
       { name: "Ordens (OPs)",     icon: ListChecks,        path: "/orders" },
       { name: "Capacidade",       icon: BarChart3,         path: "/capacity-planning" },
-      { name: "Qualidade",        icon: ShieldCheck,       path: "/quality" },
+      { name: "Imprimir Fichas",  icon: Printer,           path: "/imprimir-fichas" },
       { name: "Gargalos",         icon: AlertTriangle,     path: "/gargalos" },
     ],
   },
@@ -136,7 +136,7 @@ export const secondaryRoutes: ReadonlyArray<{ name: string; icon: typeof Box; pa
   { name: "Timeline",             icon: GanttChartSquare, path: "/producao/timeline",      group: "Produção" },
   { name: "Visão Agregada",       icon: Kanban,           path: "/producao/visao-agregada", group: "Produção" },
   { name: "Centro de Controle",   icon: AlertTriangle,    path: "/centro-controle",        group: "Produção" },
-  { name: "Imprimir Fichas",      icon: Printer,          path: "/imprimir-fichas",        group: "Produção" },
+  { name: "Qualidade",            icon: ShieldCheck,      path: "/quality",                group: "Produção" },
   { name: "Picking (Produção)",   icon: ClipboardCheck,   path: "/picking",                group: "Produção" },
   // Logística
   { name: "Embalagens",           icon: Box,              path: "/embalagens",             group: "Logística" },
