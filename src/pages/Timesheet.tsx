@@ -32,7 +32,7 @@ import {
   WorkSchedule, Holiday, TimeRecord, ParsedEmployee, DaySummary,
 } from '@/hooks/useTimesheet';
 import { useEmployees, useUpdateEmployee } from '@/hooks/useEmployees';
-import { printAllEmployeesTimesheet, printEmployeeTimesheet, printAllIndividualTimesheets, printCalendarReport, saveEmployeeTimesheetPdf, EmployeeTimesheetData } from '@/lib/printTimesheet';
+import { printAllEmployeesTimesheet, printConsolidatedHoursReport, printEmployeeTimesheet, printAllIndividualTimesheets, printCalendarReport, saveEmployeeTimesheetPdf, EmployeeTimesheetData } from '@/lib/printTimesheet';
 import { printTimeMirror } from '@/lib/printTimeMirror';
 import { useBankHoursBalances } from '@/hooks/useRH';
 import { getBatchDateRange, resolveTimeControlFilters } from '@/lib/timeControlFilters';
@@ -772,6 +772,14 @@ function TimesheetRecordsTab() {
     printAllEmployeesTimesheet(allData, periodLabel);
   };
 
+  // Fix 22/05/2026: relatório consolidado simples (sem custos).
+  // User pediu visão direta "Esperado × Trabalhado × HE por funcionário"
+  // que existia escondido — agora é botão de primeira camada.
+  const handlePrintConsolidated = () => {
+    const allData = employeeNames.map(n => buildPrintData(n));
+    printConsolidatedHoursReport(allData, periodLabel);
+  };
+
   const handlePrintAllIndividual = () => {
     const allData = employeeNames.map(n => buildPrintData(n));
     printAllIndividualTimesheets(allData, periodLabel);
@@ -816,6 +824,10 @@ function TimesheetRecordsTab() {
           </Button>
           {employeeNames.length > 0 && (
             <>
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={handlePrintConsolidated}>
+                <DollarSign className="h-4 w-4" />
+                Relatório Consolidado
+              </Button>
               <Button size="sm" variant="outline" className="gap-1.5" onClick={handlePrintAllIndividual}>
                 <Printer className="h-4 w-4" />
                 Imprimir todos os relatórios

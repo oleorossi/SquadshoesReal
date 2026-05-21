@@ -433,6 +433,136 @@ export function printAllIndividualTimesheets(employees: EmployeeTimesheetData[],
   `);
 }
 
+// ── Relatório Consolidado Simples ─────────────────────────────────────
+// Tabela enxuta focada nas 3 grandezas que o RH/gestor olha primeiro:
+//   ESPERADO · TRABALHADO · HE · FALTAS
+// Sem custos/valores — pra audit visual rápido sobre o período.
+// User pediu 22/05/2026: "quantidade esperada x quantidade trabalhada x
+// quantidade de hora extra por funcionário".
+export function printConsolidatedHoursReport(employees: EmployeeTimesheetData[], periodLabel: string) {
+  const allBalances = employees.map(emp => ({
+    name: emp.name,
+    ...calcEmployeeBalance(emp),
+  }));
+
+  const rows = allBalances.map(b => {
+    const balance = b.totalWorked - b.totalExpected; // saldo simples (positivo = trabalhou mais)
+    const adherencePct = b.totalExpected > 0
+      ? Math.round((b.totalWorked / b.totalExpected) * 100)
+      : 100;
+    const adherenceColor =
+      adherencePct >= 95 ? '#16a34a' :
+      adherencePct >= 80 ? '#b45309' :
+      '#dc2626';
+    return `
+      <tr>
+        <td class="emp-name">${escapeHtml(b.name)}</td>
+        <td class="text-right mono">${minutesToDisplay(b.totalExpected)}</td>
+        <td class="text-right mono"><b>${minutesToDisplay(b.totalWorked)}</b></td>
+        <td class="text-right mono">${b.totalRawOvertime > 0 ? `<b style="color:#16a34a">${minutesToDisplay(b.totalRawOvertime)}</b>` : '—'}</td>
+        <td class="text-right mono">${b.deficitMinutes > 0 ? `<span style="color:#dc2626">${minutesToDisplay(b.deficitMinutes)}</span>` : '—'}</td>
+        <td class="text-right mono" style="color:${balance >= 0 ? '#16a34a' : '#dc2626'};font-weight:700">${balance >= 0 ? '+' : ''}${minutesToDisplay(balance)}</td>
+        <td class="text-center">${b.absences > 0 ? `<b style="color:#dc2626">${b.absences}</b>` : '—'}</td>
+        <td class="text-center" style="color:${adherenceColor};font-weight:700">${adherencePct}%</td>
+      </tr>
+    `;
+  }).join('');
+
+  const totExpected = allBalances.reduce((s, b) => s + b.totalExpected, 0);
+  const totWorked = allBalances.reduce((s, b) => s + b.totalWorked, 0);
+  const totOT = allBalances.reduce((s, b) => s + b.totalRawOvertime, 0);
+  const totDeficit = allBalances.reduce((s, b) => s + b.deficitMinutes, 0);
+  const totAbsences = allBalances.reduce((s, b) => s + b.absences, 0);
+  const overallBalance = totWorked - totExpected;
+  const overallAdherence = totExpected > 0 ? Math.round((totWorked / totExpected) * 100) : 100;
+
+  const html = `
+    <h1>📊 Relatório Consolidado de Horas</h1>
+    <p class="subtitle">Período: ${escapeHtml(periodLabel)} · ${employees.length} funcionários · Impresso em ${new Date().toLocaleString('pt-BR')}</p>
+
+    <div style="display:flex;gap:6px;margin:6px 0;flex-wrap:wrap">
+      <div class="summary-card">
+        <div class="sc-label">Horas Esperadas</div>
+        <div class="sc-value">${minutesToDisplay(totExpected)}</div>
+      </div>
+      <div class="summary-card">
+        <div class="sc-label">Horas Trabalhadas</div>
+        <div class="sc-value" style="color:#000">${minutesToDisplay(totWorked)}</div>
+      </div>
+      <div class="summary-card">
+        <div class="sc-label">Hora Extra</div>
+        <div class="sc-value" style="color:#16a34a">${minutesToDisplay(totOT)}</div>
+      </div>
+      <div class="summary-card">
+        <div class="sc-label">Déficit</div>
+        <div class="sc-value" style="color:#dc2626">${minutesToDisplay(totDeficit)}</div>
+      </div>
+      <div class="summary-card">
+        <div class="sc-label">Saldo</div>
+        <div class="sc-value" style="color:${overallBalance >= 0 ? '#16a34a' : '#dc2626'}">${overallBalance >= 0 ? '+' : ''}${minutesToDisplay(overallBalance)}</div>
+      </div>
+      <div class="summary-card">
+        <div class="sc-label">Aderência Geral</div>
+        <div class="sc-value">${overallAdherence}%</div>
+      </div>
+      <div class="summary-card">
+        <div class="sc-label">Faltas</div>
+        <div class="sc-value" style="color:#dc2626">${totAbsences}</div>
+      </div>
+    </div>
+
+    <h2>Detalhamento por Funcionário</h2>
+    <table>
+      <thead><tr>
+        <th>Funcionário</th>
+        <th class="text-right">Esperado</th>
+        <th class="text-right">Trabalhado</th>
+        <th class="text-right">Hora Extra</th>
+        <th class="text-right">Déficit</th>
+        <th class="text-right">Saldo</th>
+        <th class="text-center">Faltas</th>
+        <th class="text-center">Aderência</th>
+      </tr></thead>
+      <tbody>${rows}
+        <tr class="total-row" style="font-size:12px">
+          <td><b>TOTAL</b></td>
+          <td class="text-right mono"><b>${minutesToDisplay(totExpected)}</b></td>
+          <td class="text-right mono"><b>${minutesToDisplay(totWorked)}</b></td>
+          <td class="text-right mono" style="color:#16a34a"><b>${minutesToDisplay(totOT)}</b></td>
+          <td class="text-right mono" style="color:#dc2626"><b>${minutesToDisplay(totDeficit)}</b></td>
+          <td class="text-right mono" style="color:${overallBalance >= 0 ? '#16a34a' : '#dc2626'};font-weight:700">${overallBalance >= 0 ? '+' : ''}${minutesToDisplay(overallBalance)}</td>
+          <td class="text-center" style="color:#dc2626"><b>${totAbsences}</b></td>
+          <td class="text-center"><b>${overallAdherence}%</b></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div style="margin-top:16px;font-size:10px;color:#222;line-height:1.5">
+      <b>Como ler:</b>
+      <b>Esperado</b> = horas contratuais do período (calculado a partir do horário individual de cada funcionário) ·
+      <b>Trabalhado</b> = soma das batidas confirmadas (dias incompletos não entram) ·
+      <b>Hora Extra</b> = excedente trabalhado acima do esperado (regra CLT semanal) ·
+      <b>Déficit</b> = atrasos + faltas ·
+      <b>Saldo</b> = Trabalhado − Esperado (positivo = a favor do funcionário) ·
+      <b>Aderência</b> = Trabalhado ÷ Esperado · ≥95% verde, 80-94% âmbar, &lt;80% vermelho.
+    </div>
+  `;
+
+  printHtml('Relatório Consolidado de Horas', `
+    <style>
+      .summary-card { border: 1.5px solid #000; border-radius: 4px; padding: 6px 10px; min-width: 110px; background: #f9fafb; }
+      .sc-label { font-size: 9px; text-transform: uppercase; color: #000; letter-spacing: 0.4px; font-weight: 800; }
+      .sc-value { font-size: 16px; font-weight: 800; font-family: 'SFMono-Regular', 'Courier New', monospace; color: #000; font-variant-numeric: tabular-nums; }
+      .emp-name { font-weight: 700; color: #000; }
+      tr { page-break-inside: avoid; }
+      tbody tr:nth-child(even) td { background: #f3f4f6 !important; }
+      .total-row td { background: #fde68a !important; border-top: 2px solid #000 !important; }
+      @page { size: A4 portrait; margin: 10mm 8mm; }
+    </style>
+    ${html}
+  `);
+}
+
 // ── General All-Employees Report ──────────────────────
 export function printAllEmployeesTimesheet(employees: EmployeeTimesheetData[], periodLabel: string) {
   const allBalances = employees.map(emp => ({
