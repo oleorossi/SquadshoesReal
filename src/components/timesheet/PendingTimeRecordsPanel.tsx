@@ -14,6 +14,7 @@ import {
   type EmployeePendingSummary, type PendingTimeRecord,
 } from '@/services/pendingTimeRecordsService';
 import { normalizeForSearch } from '@/lib/searchUtils';
+import { OverrideHistoryButton } from './OverrideHistoryButton';
 
 function fmtDateBR(iso: string): string {
   const [y, m, d] = iso.split('-');
@@ -216,16 +217,21 @@ function EmployeeCard({
 
 function PendingDayRow({ p, onSaved }: { p: PendingTimeRecord; onSaved: () => void }) {
   const [punchTime, setPunchTime] = useState('');
+  const [reason, setReason] = useState('');
   const apply = useMutation({
     mutationFn: () =>
       applyManualPunchCompletion({
         timeRecordId: p.time_record_id,
         punchTime,
-        reason: 'completed-by-rh',
+        // Reason livre = trilha de auditoria explícita. Se vazio, usa default
+        // legado pra não quebrar o pattern existente. Plano docx §4.4 exige
+        // "usuário, data e justificativa" no histórico de overrides.
+        reason: reason.trim() || 'completed-by-rh',
       }),
     onSuccess: () => {
       toast.success(`Batida ${punchTime} adicionada · ${fmtDateBR(p.record_date)}`);
       setPunchTime('');
+      setReason('');
       onSaved();
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
@@ -270,6 +276,14 @@ function PendingDayRow({ p, onSaved }: { p: PendingTimeRecord; onSaved: () => vo
           placeholder="HH:MM"
           title={ISSUE_HINT[p.issue_type]}
         />
+        <Input
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          className="h-8 w-48 text-xs"
+          placeholder="Motivo (ex: atestado #4521)"
+          title="Justificativa do ajuste — fica registrada no histórico de auditoria"
+          maxLength={120}
+        />
         <Button
           size="sm"
           variant="default"
@@ -280,6 +294,7 @@ function PendingDayRow({ p, onSaved }: { p: PendingTimeRecord; onSaved: () => vo
           {apply.isPending ? <Clock className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
           <span className="ml-1">Salvar</span>
         </Button>
+        <OverrideHistoryButton timeRecordId={p.time_record_id} />
       </div>
     </div>
   );
