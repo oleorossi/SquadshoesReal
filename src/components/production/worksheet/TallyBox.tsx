@@ -27,16 +27,20 @@ interface Props {
 export const TallyBox = ({ count, pairsPerCard = 12, title, size = 'md' }: Props) => {
   if (count <= 0) return null;
 
-  const boxSize = size === 'lg' ? 'w-9 h-9' : 'w-7 h-7';
+  // Fix 22/05/2026: w-7 (28px) → w-6 (24px) reduz altura total do tally
+  // em fichas grandes. 213 caixinhas em ~7 cols viram 30 linhas: 24px×30
+  // = 720px (190mm) vs antigo 840px (222mm) = economia de 32mm.
+  // Importante pra Solagem consolidada caber em 1 A4.
+  const boxSize = size === 'lg' ? 'w-9 h-9' : 'w-6 h-6';
   const titleText = title || `Controle de Fichas · ${pairsPerCard} pares / ficha`;
 
   // Fix 22/05/2026: font-size dinâmico pra número caber na caixinha
   // mesmo com 3+ dígitos (palmilhas consolidadas chegam a 213 fichas).
-  // box w-7 = 28×28px; com border 1.5px sobra ~24px de espaço útil.
-  //   1-2 dígitos (até 99): 11px (default)
-  //   3 dígitos (100-999): 9px
-  //   4+ dígitos (1000+): 7.5px
-  // box w-9 = 36×36px; mais espaço útil
+  // box w-6 = 24×24px; com border 1.5px sobra ~20px de espaço útil.
+  //   1-2 dígitos (até 99): 10px (default)
+  //   3 dígitos (100-999): 8px
+  //   4+ dígitos (1000+): 6.5px
+  // box w-9 = 36×36px (size lg, raro); mais espaço útil
   //   1-2 dígitos: 16px (text-base default)
   //   3 dígitos: 13px
   //   4+ dígitos: 10px
@@ -47,9 +51,9 @@ export const TallyBox = ({ count, pairsPerCard = 12, title, size = 'md' }: Props
       if (digits === 3) return '13px';
       return '10px';
     }
-    if (digits <= 2) return '11px';
-    if (digits === 3) return '9px';
-    return '7.5px';
+    if (digits <= 2) return '10px';
+    if (digits === 3) return '8px';
+    return '6.5px';
   };
 
   // Fix 22/05/2026: para tally grande (>60 caixinhas), DOM audit mostrou
