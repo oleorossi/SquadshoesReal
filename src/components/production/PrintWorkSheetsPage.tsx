@@ -137,11 +137,21 @@ const printStyles = `
       break-after: auto;
     }
     /* Filho direto do .page-break = container raiz da ficha. SEM flex/height
-       forçados — conteúdo flui livremente em múltiplas A4 se necessário. */
+       forçados — conteúdo flui livremente em múltiplas A4 se necessário.
+       Fix 21/05/2026 v5: força display: block no root em print. Worksheets
+       usam `flex flex-col gap-0` em tela, e flex containers no Chrome têm
+       bug clássico de paginação — quando o conteúdo extrapola 1 A4, o
+       browser CLIPA o conteúdo da 2ª página em diante (em vez de paginar
+       normalmente). Sintoma: imprimir só setores de corte (Palmilha /
+       Forração / Cabedal / Costura / Aviamento, fichas grandes com 5+
+       cores) volta tudo cortado. Imprimir tudo dá sorte porque cada ficha
+       cabe em ~1 A4. display: block não muda o visual (children já
+       empilham verticalmente em ambos) mas pagina corretamente. */
     .page-break > div {
       width: 100% !important;
       min-height: 0 !important;
       height: auto !important;
+      display: block !important;
     }
     .store-divider {
       page-break-before: always;
