@@ -3,6 +3,7 @@ import { Footprints } from '@phosphor-icons/react';
 import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { SignatureFooter } from './worksheet/SignatureFooter';
+import { PrintPageScaler } from './worksheet/PrintPageScaler';
 
 export interface SoleColorBand {
   soleColor: string;
@@ -215,7 +216,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
   };
 
   return (
-    <div
+    <PrintPageScaler
       className="w-[210mm] p-[6mm] print:w-full print:p-0 bg-white shadow-none print:shadow-none m-auto flex flex-col"
       style={{ boxSizing: 'border-box', fontFamily: "'Inter Tight', sans-serif", color: '#000' }}
     >
@@ -306,6 +307,6 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
       </div>
 
       <SignatureFooter />
-    </div>
+    </PrintPageScaler>
   );
 };

@@ -6,6 +6,7 @@ import { ProductImageBlock } from './worksheet/ProductImageBlock';
 import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
 import { SignatureFooter } from './worksheet/SignatureFooter';
 import { SignedImage } from '@/components/ui/signed-image';
+import { PrintPageScaler } from './worksheet/PrintPageScaler';
 
 export interface SilkColorGroup {
   /** Cor do CABEDAL (chave de agrupamento). Em todos os setores exceto
@@ -169,7 +170,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
     : [];
 
   return (
-    <div
+    <PrintPageScaler
       className="w-[210mm] p-[6mm] print:w-full print:p-0 bg-white shadow-none print:shadow-none m-auto flex flex-col gap-0"
       style={{ boxSizing: 'border-box', fontFamily: "'Inter Tight', sans-serif", color: '#000' }}
     >
@@ -663,6 +664,6 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
       </div>
 
       <SignatureFooter />
-    </div>
+    </PrintPageScaler>
   );
 };

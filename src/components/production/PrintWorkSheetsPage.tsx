@@ -119,19 +119,20 @@ const printStyles = `
     }
 
     /* Quebras de página entre setores/grupos.
-       Fix 21/05/2026 v2: cada ficha = 1 página A4 EXATA (281mm úteis após
-       margin de 8mm). v1 só usava page-break-inside: avoid e deixava metade
-       da página em branco quando o conteúdo era curto. v2 trava a altura
-       em 281mm e usa flex flex-col + margin-top: auto no último filho
-       (assinatura) pra empurrar o footer pro pé da página, eliminando o
-       vazio entre conteúdo e fim da folha. */
+       Fix 21/05/2026 v3: cada ficha = 1 página A4 EXATA com altura adaptativa.
+       v1 só usava page-break-inside: avoid e deixava metade da página em branco.
+       v2 travou altura em 281mm + overflow:hidden — mas isso ESCONDIA conteúdo
+       em fichas grandes (muitas cores/numerações/tally boxes). User reportou
+       "corte na assinatura" em 21/05.
+       v3: remove overflow:hidden, mantém page-break controlado. Conteúdo
+       maior usa transform:scale via useAutoFitPrint hook nos componentes. */
     .page-break {
-      height: 281mm;
+      max-height: 281mm;
       page-break-after: always;
       break-after: page;
       page-break-inside: avoid;
       break-inside: avoid;
-      overflow: hidden;
+      /* overflow: visible (default) — deixa o auto-fit do componente lidar. */
     }
     /* Última página não precisa do break extra (evita página em branco final) */
     .page-break:last-child {

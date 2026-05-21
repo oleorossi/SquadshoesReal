@@ -1,5 +1,6 @@
 import React from 'react';
 import { SignedImage } from '@/components/ui/signed-image';
+import { PrintPageScaler } from './worksheet/PrintPageScaler';
 
 export interface ReportStage {
   stage_name: string;
@@ -203,7 +204,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
     .slice(0, 6);
 
   return (
-    <div
+    <PrintPageScaler
       className="w-[210mm] p-[6mm] print:w-full print:p-[5mm] bg-white text-black m-auto editorial-stagger"
       style={{
         boxSizing: 'border-box',
@@ -833,7 +834,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
           <span className="font-mono">{saleOrder.order_number || 'PV —'} · {date || new Date().toLocaleDateString('pt-BR')}</span>
         </div>
       </footer>
-    </div>
+    </PrintPageScaler>
   );
 };
 
