@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Users as Users2, Clock, Warning as AlertTriangle, CheckCircle as CheckCircle2, XCircle, TrendUp as TrendingUp, CalendarBlank as CalendarDays, CircleNotch as Loader2, ChartBar as BarChart3, MagnifyingGlass as Search, Funnel as Filter } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -49,6 +49,17 @@ export default function OverviewTab() {
   const [selectedBatch, setSelectedBatch] = useState<string>('');
   const [filterStartDate, setFilterStartDate] = useState<string>('');
   const [filterEndDate, setFilterEndDate] = useState<string>('');
+
+  // Fix 22/05/2026: sem filtros default, useTimeRecords fica `enabled:false`
+  // e a tab fica VAZIA depois de importar. Quando há batches mas nenhum
+  // filtro escolhido, auto-seleciona o batch mais recente (primeiro do
+  // array — get_distinct_batches já vem desc) pra ter dados na tela.
+  useEffect(() => {
+    if (batches.length > 0 && !selectedBatch && !filterStartDate && !filterEndDate) {
+      setSelectedBatch(batches[0]);
+    }
+  }, [batches, selectedBatch, filterStartDate, filterEndDate]);
+
   const resolvedFilters = useMemo(() => resolveTimeControlFilters({
     selectedBatch,
     filterStartDate,

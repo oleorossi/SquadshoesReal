@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Warning as AlertTriangle, CheckCircle as CheckCircle2, MagnifyingGlass as Search, Eye, CircleNotch as Loader2, Lightning as Zap, Shield, XCircle, Clock, Funnel as Filter } from '@phosphor-icons/react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -47,6 +47,15 @@ export default function ExceptionsTab() {
   const [selectedBatch, setSelectedBatch] = useState('');
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
+
+  // Auto-seleciona batch mais recente quando há batches mas nenhum filtro
+  // está aplicado — sem isso a tab fica vazia depois do primeiro import.
+  useEffect(() => {
+    if (batches.length > 0 && !selectedBatch && !filterStartDate && !filterEndDate) {
+      setSelectedBatch(batches[0]);
+    }
+  }, [batches, selectedBatch, filterStartDate, filterEndDate]);
+
   const resolvedFilters = useMemo(() => resolveTimeControlFilters({
     selectedBatch,
     filterStartDate,

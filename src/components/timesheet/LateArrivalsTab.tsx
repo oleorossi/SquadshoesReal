@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { WarningCircle as AlertCircle, CaretDown as ChevronDown, CaretRight as ChevronRight, Clock, MagnifyingGlass as Search, Users as Users2 } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -65,6 +65,15 @@ export default function LateArrivalsTab() {
   const [searchEmployee, setSearchEmployee] = useState('');
   const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(new Set());
   const [minLateMinutes, setMinLateMinutes] = useState(5);
+
+  // Auto-seleciona batch mais recente quando há batches mas nenhum filtro
+  // está aplicado (fix 22/05/2026 — sem isso, tab fica vazia depois do
+  // import porque useTimeRecords precisa de filtro pra rodar).
+  useEffect(() => {
+    if (batches.length > 0 && !selectedBatch && !filterStartDate && !filterEndDate) {
+      setSelectedBatch(batches[0]);
+    }
+  }, [batches, selectedBatch, filterStartDate, filterEndDate]);
 
   const resolvedFilters = useMemo(() => resolveTimeControlFilters({
     selectedBatch,

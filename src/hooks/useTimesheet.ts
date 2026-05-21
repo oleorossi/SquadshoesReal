@@ -1103,9 +1103,25 @@ export function useImportTimeRecords() {
       return { batchId, inserted: insertedCount, skipped, archivedFilePath };
     },
     onSuccess: (result) => {
+      // Fix 22/05/2026: invalidação completa pra que TODAS as views que
+      // dependem dos dados de ponto refetchem após import:
+      // - time_records: query principal usada por Timesheet + subtabs
+      // - time_records_batches: lista de batches disponíveis nos filtros
+      // - time_records_full_range: range global (min/max date) usado por
+      //   alguns relatórios — sem isso, o range não inclui o batch novo
+      //   e o calendário fica "preso" no range antigo.
+      // - time_import_logs: histórico de importações
+      // - bank_hours_*: saldos de banco de horas mudam quando há novas
+      //   batidas (HE detectada automaticamente)
+      // - punch_clock_*: dados derivados do cálculo de dia/semana
       qc.invalidateQueries({ queryKey: ['time_records'] });
       qc.invalidateQueries({ queryKey: ['time_records_batches'] });
+      qc.invalidateQueries({ queryKey: ['time_records_full_range'] });
       qc.invalidateQueries({ queryKey: ['time_import_logs'] });
+      qc.invalidateQueries({ queryKey: ['bank_hours_balances'] });
+      qc.invalidateQueries({ queryKey: ['bank_hours_per_sector'] });
+      qc.invalidateQueries({ queryKey: ['punch_clock_day_calc'] });
+      qc.invalidateQueries({ queryKey: ['punch_clock_week_calc'] });
       if (result.skipped > 0) {
         toast.success(
           `${result.inserted} registros importados. ${result.skipped} já existiam e foram ignorados.${result.archivedFilePath ? ' Arquivo arquivado.' : ''}`
@@ -1128,6 +1144,10 @@ export function useDeleteBatch() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['time_records'] });
       qc.invalidateQueries({ queryKey: ['time_records_batches'] });
+      qc.invalidateQueries({ queryKey: ['time_records_full_range'] });
+      qc.invalidateQueries({ queryKey: ['bank_hours_balances'] });
+      qc.invalidateQueries({ queryKey: ['punch_clock_day_calc'] });
+      qc.invalidateQueries({ queryKey: ['punch_clock_week_calc'] });
       toast.success('Importação removida!');
     },
     onError: (e: Error) => toast.error(e.message),

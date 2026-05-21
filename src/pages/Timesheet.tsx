@@ -474,10 +474,13 @@ function TimesheetRecordsTab() {
           const dayNum = parseInt(day.date.split('-')[2], 10);
           e.records.push({ day: dayNum, dateStr: day.date, punches: day.punches });
         }
+        if (!parsed.dateRange?.from || !parsed.dateRange?.to) {
+          throw new Error('Arquivo válido mas sem batidas — não há datas pra importar. Confira o conteúdo do relógio.');
+        }
         result = {
           employees: Array.from(empMap.values()),
-          startDate: parsed.dateRange?.from || '',
-          endDate: parsed.dateRange?.to || '',
+          startDate: parsed.dateRange.from,
+          endDate: parsed.dateRange.to,
         };
         toast.info(`Detectado formato ${parsed.format} — ${parsed.totalRows} batidas em ${parsed.employees.length} funcionários`);
       } else if (isTxt) {
