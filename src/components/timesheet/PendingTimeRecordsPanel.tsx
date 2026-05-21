@@ -10,9 +10,15 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
   listEmployeePendingSummary, listPendingTimeRecords, applyManualPunchCompletion,
+  bulkApplyDefaultExit,
   ISSUE_LABEL, ISSUE_HINT, DOW_LABEL,
   type EmployeePendingSummary, type PendingTimeRecord,
 } from '@/services/pendingTimeRecordsService';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader,
+  AlertDialogTitle, AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { normalizeForSearch } from '@/lib/searchUtils';
 import { OverrideHistoryButton } from './OverrideHistoryButton';
 
@@ -29,12 +35,42 @@ export default function PendingTimeRecordsPanel() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [expandedEmp, setExpandedEmp] = useState<string | null>(null);
+  const [bulkApplying, setBulkApplying] = useState(false);
 
   const { data: summary = [], isLoading: loadingSummary } = useQuery({
     queryKey: ['employee-pending-summary'],
     queryFn: listEmployeePendingSummary,
     staleTime: 30_000,
   });
+
+  // Fix 22/05/2026: user pediu padrão "saiu 18:00" pra todas as pendências
+  // de uma vez. Adiciona o(s) punch(es) faltante(s) baseado no issue_type.
+  // Refresh todas as queries dependentes ao terminar.
+  const handleBulkApply18h = async () => {
+    setBulkApplying(true);
+    try {
+      const result = await bulkApplyDefaultExit({});
+      toast.success(
+        `${result.processed} dias completados com saída 18:00.` +
+        (result.skipped > 0 ? ` ${result.skipped} pulados (revisão manual).` : '') +
+        (result.failed > 0 ? ` ${result.failed} falharam — veja console.` : '')
+      );
+      if (result.failed > 0) {
+        // eslint-disable-next-line no-console
+        console.warn('[bulkApply18h] falhas:', result.results.filter(r => !r.ok));
+      }
+      qc.invalidateQueries({ queryKey: ['employee-pending-summary'] });
+      qc.invalidateQueries({ queryKey: ['pending-time-records'] });
+      qc.invalidateQueries({ queryKey: ['time_records'] });
+      qc.invalidateQueries({ queryKey: ['bank_hours_balances'] });
+      qc.invalidateQueries({ queryKey: ['punch_clock_day_calc'] });
+      qc.invalidateQueries({ queryKey: ['punch_clock_week_calc'] });
+    } catch (e: any) {
+      toast.error('Erro ao aplicar padrão 18:00: ' + (e?.message || 'desconhecido'));
+    } finally {
+      setBulkApplying(false);
+    }
+  };
 
   const filteredSummary = useMemo(() => {
     const term = normalizeForSearch(search.trim());
@@ -51,15 +87,56 @@ export default function PendingTimeRecordsPanel() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-base font-bold flex items-center gap-2">
-          <AlertTriangle className="h-5 w-5 text-amber-600" />
-          Pendências de Ponto
-        </h2>
-        <p className="text-xs text-muted-foreground">
-          Dias com batidas ímpares. Complete manualmente o horário de saída (ou outro punch faltante)
-          pra que o saldo seja calculado corretamente. As batidas adicionadas ficam marcadas com <code className="text-xs bg-muted px-1 rounded">*</code> no histórico.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-bold flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-amber-600" />
+            Pendências de Ponto
+          </h2>
+          <p className="text-xs text-muted-foreground max-w-xl">
+            Dias com batidas ímpares. Complete manualmente o horário de saída (ou outro punch faltante)
+            pra que o saldo seja calculado corretamente. As batidas adicionadas ficam marcadas com <code className="text-xs bg-muted px-1 rounded">*</code> no histórico.
+          </p>
+        </div>
+        {totalPending > 0 && (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                size="sm"
+                variant="default"
+                className="gap-1.5 shrink-0"
+                disabled={bulkApplying}
+              >
+                <Clock className="w-4 h-4" />
+                {bulkApplying ? 'Aplicando...' : 'Aplicar padrão 18:00 a todos'}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Aplicar saída 18:00 às {totalPending} pendências?</AlertDialogTitle>
+                <AlertDialogDescription className="space-y-2">
+                  <span className="block">
+                    Atalho pra processar tudo em massa. O sistema vai adicionar batidas marcadas com <code>*</code> em cada dia pendente:
+                  </span>
+                  <ul className="list-disc pl-5 text-xs space-y-1">
+                    <li><b>1 batida / 3 batidas / ímpar:</b> adiciona <b>18:00</b> (saída)</li>
+                    <li><b>Jornada curta (2 batidas):</b> adiciona <b>13:00 + 18:00</b> (volta almoço + saída)</li>
+                    <li><b>5 batidas (extra):</b> pulado — precisa revisão manual</li>
+                  </ul>
+                  <span className="block text-amber-700 text-xs">
+                    Recomendado: faça revisão depois semana a semana e ajuste casos atípicos (faltas reais, saída adiantada, etc.) usando o botão "Editar" de cada linha.
+                  </span>
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction onClick={handleBulkApply18h}>
+                  Aplicar 18:00 a todos
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
       </div>
 
       {/* KPIs */}

@@ -93,6 +93,84 @@ export async function applyManualPunchCompletion(args: {
   };
 }
 
+/**
+ * Bulk apply default exit (18:00) — fix 22/05/2026.
+ *
+ * Aplica o padrão "saiu 18:00" em todas as pendências de uma vez. Pra cada
+ * issue_type, escolhe o(s) punch(es) faltante(s):
+ *   - somente_uma_batida (1):           +18:00
+ *   - falta_saida_apos_almoco (3):       +18:00
+ *   - punches_impar (5, 7, 9...):        +18:00
+ *   - dia_incompleto_suspeito (2):       +13:00 (volta almoço) + 18:00 (saída)
+ *   - batida_extra (5):                  pulado — precisa decisão manual
+ *
+ * Retorna: { processed, skipped, failed, results }. Não throw em falhas
+ * individuais — agrega tudo no resultado pra usuário ver linha-a-linha.
+ *
+ * O motivo (`reason`) usa 'bulk-default-18h' pra ficar identificável no
+ * histórico de overrides (time_record_manual_overrides.reason).
+ */
+export async function bulkApplyDefaultExit(args: {
+  employeeId?: string;
+  defaultExitTime?: string;       // default "18:00"
+  defaultLunchEndTime?: string;   // default "13:00" — usado em dia_incompleto_suspeito
+  reason?: string;
+}): Promise<{
+  processed: number;
+  skipped: number;
+  failed: number;
+  results: Array<{ time_record_id: string; date: string; ok: boolean; error?: string }>;
+}> {
+  const exitTime = args.defaultExitTime || '18:00';
+  const lunchEnd = args.defaultLunchEndTime || '13:00';
+  const reason = args.reason || 'bulk-default-18h';
+
+  const pending = await listPendingTimeRecords(args.employeeId);
+  const results: Array<{ time_record_id: string; date: string; ok: boolean; error?: string }> = [];
+  let processed = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (const rec of pending) {
+    // Define quais punches adicionar conforme o tipo
+    const punchesToAdd: string[] = [];
+    switch (rec.issue_type) {
+      case 'somente_uma_batida':
+      case 'falta_saida_apos_almoco':
+      case 'punches_impar':
+        punchesToAdd.push(exitTime);
+        break;
+      case 'dia_incompleto_suspeito':
+        // 2 batidas em dia útil com jornada curta — assume que faltou volta
+        // do almoço e saída. Adiciona ambos.
+        punchesToAdd.push(lunchEnd, exitTime);
+        break;
+      case 'batida_extra':
+      default:
+        skipped++;
+        results.push({ time_record_id: rec.time_record_id, date: rec.record_date, ok: false, error: 'Tipo não suportado por bulk — revise manual.' });
+        continue;
+    }
+
+    try {
+      for (const t of punchesToAdd) {
+        await applyManualPunchCompletion({
+          timeRecordId: rec.time_record_id,
+          punchTime: t,
+          reason,
+        });
+      }
+      processed++;
+      results.push({ time_record_id: rec.time_record_id, date: rec.record_date, ok: true });
+    } catch (e: any) {
+      failed++;
+      results.push({ time_record_id: rec.time_record_id, date: rec.record_date, ok: false, error: e?.message || 'Falha desconhecida' });
+    }
+  }
+
+  return { processed, skipped, failed, results };
+}
+
 export const DOW_LABEL: Record<number, string> = {
   1: 'Seg', 2: 'Ter', 3: 'Qua', 4: 'Qui', 5: 'Sex', 6: 'Sáb', 7: 'Dom',
 };
