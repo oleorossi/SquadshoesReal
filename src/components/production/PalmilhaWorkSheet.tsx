@@ -106,6 +106,14 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
               alerts.push({ text: 'Palmilha PRONTA NA COR — não cortar, separar da ficha técnica.', variant: 'info' });
             }
             const isLast = idx === groups.length - 1;
+            // Fix 22/05/2026: tabela mostra só o range do solado (não
+            // todos os tamanhos de allSizes). Usa union de baseGrade +
+            // grade — qualquer tamanho com valor > 0 em pelo menos um
+            // deles entra. Reduz colunas vazias e economiza largura
+            // horizontal (especialmente importante em fichas com 3+ cores).
+            const groupSizes = allSizes.filter(s =>
+              (group.grade[s] ?? 0) > 0 || (group.baseGrade?.[s] ?? 0) > 0
+            );
             // Fix 22/05/2026: tirar keep-together do groupBlock root.
             // Grupos consolidados (insoleColor === '—') agregam 6+ sandálias
             // e 213 caixinhas de tally = 380mm de altura, IMPOSSÍVEL caber
@@ -207,7 +215,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
                   <thead>
                     <tr style={{ borderBottom: '1.5px solid #000' }}>
                       <th className="section-label py-1.5" style={{ color: '#000', width: 54, borderRight: '1px solid #000' }}>Nº</th>
-                      {allSizes.map((s, i) => (
+                      {groupSizes.map((s) => (
                         <th
                           key={s}
                           className="py-1.5 text-black font-bold"
@@ -230,7 +238,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
                         <td className="py-1 text-[9px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
                           Por Ficha<br />({group.baseGradeSum}p)
                         </td>
-                        {allSizes.map(s => (
+                        {groupSizes.map(s => (
                           <td key={s} className="py-1 font-mono font-bold text-black" style={{ fontSize: '14px', borderRight: '1px solid #000' }}>
                             {group.baseGrade?.[s] || '—'}
                           </td>
@@ -244,7 +252,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
                       <td className="py-2 text-[10px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
                         {group.fichas && group.fichas > 1 ? <>Total<br />× {group.fichas} fichas</> : <>Total<br />(1 ficha)</>}
                       </td>
-                      {allSizes.map(s => (
+                      {groupSizes.map(s => (
                         <td
                           key={s}
                           className="py-2 text-black"

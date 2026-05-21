@@ -27,8 +27,30 @@ interface Props {
 export const TallyBox = ({ count, pairsPerCard = 12, title, size = 'md' }: Props) => {
   if (count <= 0) return null;
 
-  const boxSize = size === 'lg' ? 'w-9 h-9 text-base' : 'w-7 h-7 text-[11px]';
+  const boxSize = size === 'lg' ? 'w-9 h-9' : 'w-7 h-7';
   const titleText = title || `Controle de Fichas · ${pairsPerCard} pares / ficha`;
+
+  // Fix 22/05/2026: font-size dinâmico pra número caber na caixinha
+  // mesmo com 3+ dígitos (palmilhas consolidadas chegam a 213 fichas).
+  // box w-7 = 28×28px; com border 1.5px sobra ~24px de espaço útil.
+  //   1-2 dígitos (até 99): 11px (default)
+  //   3 dígitos (100-999): 9px
+  //   4+ dígitos (1000+): 7.5px
+  // box w-9 = 36×36px; mais espaço útil
+  //   1-2 dígitos: 16px (text-base default)
+  //   3 dígitos: 13px
+  //   4+ dígitos: 10px
+  const getFontSize = (n: number): string => {
+    const digits = String(n).length;
+    if (size === 'lg') {
+      if (digits <= 2) return '16px';
+      if (digits === 3) return '13px';
+      return '10px';
+    }
+    if (digits <= 2) return '11px';
+    if (digits === 3) return '9px';
+    return '7.5px';
+  };
 
   // Fix 22/05/2026: para tally grande (>60 caixinhas), DOM audit mostrou
   // que ele estourava 100mm+ e ao usar keep-together forçava o block
@@ -50,18 +72,26 @@ export const TallyBox = ({ count, pairsPerCard = 12, title, size = 'md' }: Props
       </div>
       <div className="border-t border-black pt-2">
         <div className="flex flex-wrap gap-1.5">
-          {Array.from({ length: count }, (_, i) => (
-            <div
-              key={i}
-              className={cn(
-                'flex items-center justify-center bg-white text-black font-mono font-bold',
-                boxSize,
-              )}
-              style={{ border: '1.5px solid #000' }}
-            >
-              {i + 1}
-            </div>
-          ))}
+          {Array.from({ length: count }, (_, i) => {
+            const n = i + 1;
+            return (
+              <div
+                key={i}
+                className={cn(
+                  'flex items-center justify-center bg-white text-black font-mono font-bold leading-none',
+                  boxSize,
+                )}
+                style={{
+                  border: '1.5px solid #000',
+                  fontSize: getFontSize(n),
+                  // tabular-nums alinha melhor 3+ dígitos lado-a-lado
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {n}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

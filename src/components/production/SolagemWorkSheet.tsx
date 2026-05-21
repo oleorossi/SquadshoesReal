@@ -62,6 +62,12 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
 
   const renderBand = (band: SoleColorBand, idx: number) => {
     const cards = Math.max(1, Math.ceil(band.totalPairs / pairsPerCard));
+    // Fix 22/05/2026: tabela mostra só o range desta band (não todos os
+    // tamanhos universais). Union de grade + baseGrade — qualquer tamanho
+    // com valor > 0 em pelo menos um deles entra.
+    const bandSizes = allSizes.filter(s =>
+      (band.grade[s] ?? 0) > 0 || (band.baseGrade?.[s] ?? 0) > 0
+    );
     return (
       <div key={idx} className="keep-together bg-white" style={{ border: '1.5px solid #000' }}>
         <div className="px-3 py-2 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
@@ -144,7 +150,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
           <thead>
             <tr style={{ borderBottom: '1.5px solid #000' }}>
               <th className="section-label py-1.5" style={{ color: '#000', width: 54, borderRight: '1px solid #000' }}>Nº</th>
-              {allSizes.map((s) => (
+              {bandSizes.map((s) => (
                 <th
                   key={s}
                   className="py-1.5 text-black font-bold"
@@ -167,7 +173,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
                 <td className="py-1 text-[9px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
                   Por Ficha<br />({band.baseGradeSum}p)
                 </td>
-                {allSizes.map(s => (
+                {bandSizes.map(s => (
                   <td key={s} className="py-1 font-mono font-bold text-black" style={{ fontSize: '14px', borderRight: '1px solid #000' }}>
                     {band.baseGrade?.[s] || '—'}
                   </td>
@@ -181,7 +187,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
               <td className="py-2 text-[10px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
                 {band.fichas && band.fichas > 1 ? <>Total<br />× {band.fichas} fichas</> : <>Total<br />(1 ficha)</>}
               </td>
-              {allSizes.map(s => (
+              {bandSizes.map(s => (
                 <td
                   key={s}
                   className="py-2 text-black"
