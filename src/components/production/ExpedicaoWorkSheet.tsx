@@ -307,20 +307,23 @@ export const ExpedicaoWorkSheet = ({ group, date }: Props) => {
         </table>
       </div>
 
-      {/* Checklist final de expedição */}
-      <div className="mt-2">
-        <span className="section-label block mb-1" style={{ color: '#000' }}>04 / Checklist Final</span>
-        <div className="border-t border-black pt-2 grid grid-cols-4 gap-3">
-          {['NF-e impressa', 'Etiqueta do cliente', 'Romaneio assinado', 'Conferência por par'].map(item => (
-            <label key={item} className="flex items-center gap-2 text-[11px] text-black">
-              <span className="inline-block w-4 h-4 shrink-0" style={{ border: '1.5px solid #000' }} />
-              <span className="leading-tight">{item}</span>
-            </label>
-          ))}
+      {/* Checklist final + SignatureFooter num único wrapper .keep-together
+          pra forçar paginação atômica (fix 21/05/2026 — footer não fica
+          órfão em pg seguinte em fichas longas). */}
+      <div className="keep-together">
+        <div className="mt-2">
+          <span className="section-label block mb-1" style={{ color: '#000' }}>04 / Checklist Final</span>
+          <div className="border-t border-black pt-2 grid grid-cols-4 gap-3">
+            {['NF-e impressa', 'Etiqueta do cliente', 'Romaneio assinado', 'Conferência por par'].map(item => (
+              <label key={item} className="flex items-center gap-2 text-[11px] text-black">
+                <span className="inline-block w-4 h-4 shrink-0" style={{ border: '1.5px solid #000' }} />
+                <span className="leading-tight">{item}</span>
+              </label>
+            ))}
+          </div>
         </div>
+        <SignatureFooter labels={['Conferente', 'Embalagem', 'Transportadora']} showTime={false} />
       </div>
-
-      <SignatureFooter labels={['Conferente', 'Embalagem', 'Transportadora']} showTime={false} />
     </div>
   );
 };

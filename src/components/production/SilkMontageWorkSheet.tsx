@@ -284,7 +284,12 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
         </div>
       )}
 
-      {/* Per-color blocks */}
+      {/* Per-color blocks.
+          Fix 21/05/2026: o último colorBlock + SignatureFooter ficam num
+          wrapper externo .keep-together pra forçar o browser a paginá-los
+          JUNTOS (hard constraint, ao contrário do break-before: avoid que
+          é soft e Chrome ignora). Sem isso, em fichas de Silk/Aviamento/
+          Corte com 5+ cores o footer vazava sozinho pra pg seguinte. */}
       <div className="flex-1 space-y-2">
         {group.colorGroups.map((cg, idx) => {
           const activeSizes = Object.keys(cg.combinedGrid)
@@ -294,9 +299,10 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
               return isNaN(na) || isNaN(nb) ? a.localeCompare(b) : na - nb;
             });
           const cards = Math.max(1, Math.ceil(cg.totalPairs / pairsPerCard));
+          const isLast = idx === group.colorGroups.length - 1;
 
-          return (
-            <div key={idx} className="keep-together bg-white" style={{ border: '1.5px solid #000' }}>
+          const colorBlock = (
+            <div className="keep-together bg-white" style={{ border: '1.5px solid #000' }}>
               {/* Color header — editorial, no fill */}
               <div className="px-3 py-2 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
                 <div className="flex items-center gap-2 min-w-0">
@@ -659,10 +665,23 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
               </div>
             </div>
           );
-        })}
-      </div>
 
-      <SignatureFooter />
+          // Último colorBlock fica num wrapper compartilhado com o
+          // SignatureFooter pra forçar paginação atômica (vide comment
+          // do .flex-1 acima). Os demais renderizam direto.
+          if (isLast) {
+            return (
+              <div key={idx} className="keep-together">
+                {colorBlock}
+                <SignatureFooter />
+              </div>
+            );
+          }
+          return <React.Fragment key={idx}>{colorBlock}</React.Fragment>;
+        })}
+        {/* Ficha sem cores: ainda precisa de footer. */}
+        {group.colorGroups.length === 0 && <SignatureFooter />}
+      </div>
     </div>
   );
 };

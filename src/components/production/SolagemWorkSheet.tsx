@@ -269,43 +269,78 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
       {/* Fix 20/05/2026: era `flex-1` que combinado com flex-col do container
           raiz expandia o conteúdo verticalmente sem limite — em print isso
           empurrava o footer pra próxima página, gerando folha em branco
-          intermediária. Mesma classe de problema do mt-auto corrigido antes. */}
+          intermediária. Mesma classe de problema do mt-auto corrigido antes.
+          Fix 21/05/2026: o último band + Total Geral + SignatureFooter agora
+          ficam num wrapper .keep-together pra evitar footer órfão em fichas
+          com muitas cores de solado. */}
       <div className="space-y-3">
         {bands.length === 0 ? (
-          <div className="text-center py-10 text-black italic text-sm">
-            Nenhum dado de solagem para exibir.
-          </div>
-        ) : (
           <>
-            {pretoBands.length > 0 && (
-              <div className="space-y-2">
-                {hasBothGroups && <SectionDivider label="Solado Preto" total={pretoTotal} />}
-                {pretoBands.map((band, idx) => renderBand(band, idx))}
-              </div>
-            )}
-            {outrosBands.length > 0 && (
-              <div className={`space-y-2 ${pretoBands.length > 0 ? 'pt-3 mt-3' : ''}`}>
-                {hasBothGroups && <SectionDivider label="Outras Cores de Solado" total={outrosTotal} />}
-                {outrosBands.map((band, idx) => renderBand(band, idx + pretoBands.length))}
-              </div>
-            )}
+            <div className="text-center py-10 text-black italic text-sm">
+              Nenhum dado de solagem para exibir.
+            </div>
+            <SignatureFooter />
           </>
-        )}
-      </div>
+        ) : (() => {
+          // Achata pretoBands + outrosBands em uma lista ordenada pra
+          // separar os "todos menos último" do "último + trailing".
+          const orderedBands = [...pretoBands, ...outrosBands];
+          const lastBand = orderedBands[orderedBands.length - 1];
 
-      <div className="flex items-baseline justify-between mt-3 py-2" style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
-        <span className="section-label" style={{ color: '#000' }}>
-          Total Geral · soma de todos os solados
-        </span>
-        <span
-          className="text-black uppercase leading-none"
-          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '36px', letterSpacing: '-0.025em' }}
-        >
-          {grandTotal} <span className="text-sm font-mono tracking-widest">pares</span>
-        </span>
-      </div>
+          const renderHeader = (band: SoleColorBand, idx: number) => {
+            const isInPreto = pretoBands.includes(band);
+            const isFirstOfGroup = isInPreto ? pretoBands[0] === band : outrosBands[0] === band;
+            if (hasBothGroups && isFirstOfGroup) {
+              return (
+                <SectionDivider
+                  key={`hdr-${idx}`}
+                  label={isInPreto ? 'Solado Preto' : 'Outras Cores de Solado'}
+                  total={isInPreto ? pretoTotal : outrosTotal}
+                />
+              );
+            }
+            return null;
+          };
 
-      <SignatureFooter />
+          const trailingBlock = (
+            <>
+              <div className="flex items-baseline justify-between mt-3 py-2" style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
+                <span className="section-label" style={{ color: '#000' }}>
+                  Total Geral · soma de todos os solados
+                </span>
+                <span
+                  className="text-black uppercase leading-none"
+                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '36px', letterSpacing: '-0.025em' }}
+                >
+                  {grandTotal} <span className="text-sm font-mono tracking-widest">pares</span>
+                </span>
+              </div>
+              <SignatureFooter />
+            </>
+          );
+
+          return orderedBands.map((band, idx) => {
+            const isLast = band === lastBand;
+            const header = renderHeader(band, idx);
+            const body = renderBand(band, idx);
+            if (isLast) {
+              return (
+                <div key={`last-${idx}`} className="keep-together">
+                  {header}
+                  {body}
+                  {trailingBlock}
+                </div>
+              );
+            }
+            return (
+              <React.Fragment key={idx}>
+                {header}
+                {body}
+              </React.Fragment>
+            );
+          });
+        })()}
+      </div>
     </div>
   );
 };

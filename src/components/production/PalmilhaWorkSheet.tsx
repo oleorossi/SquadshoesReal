@@ -91,9 +91,12 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
       />
 
       {groups.length === 0 ? (
-        <div className="text-center py-10 text-black italic text-sm">
-          Nenhuma palmilha para cortar neste lote.
-        </div>
+        <>
+          <div className="text-center py-10 text-black italic text-sm">
+            Nenhuma palmilha para cortar neste lote.
+          </div>
+          <SignatureFooter labels={['Operador(a)', 'Conferente', 'Supervisor(a)']} />
+        </>
       ) : (
         <div className="space-y-2">
           {groups.map((group, idx) => {
@@ -102,8 +105,9 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
             if (group.readyMade) {
               alerts.push({ text: 'Palmilha PRONTA NA COR — não cortar, separar da ficha técnica.', variant: 'info' });
             }
-            return (
-              <div key={idx} className="keep-together bg-white" style={{ border: '1.5px solid #000' }}>
+            const isLast = idx === groups.length - 1;
+            const groupBlock = (
+              <div className="keep-together bg-white" style={{ border: '1.5px solid #000' }}>
                 <div className="px-3 py-2 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
                   <div className="min-w-0 flex-1">
                     <span className="section-label block" style={{ color: '#000' }}>Solado</span>
@@ -264,21 +268,38 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
                 )}
               </div>
             );
-          })}
 
-          <div className="flex justify-between items-baseline mt-1 pt-1" style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
-            <span className="section-label py-1" style={{ color: '#000' }}>Total Geral</span>
-            <span
-              className="text-black uppercase leading-none py-1"
-              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '36px', letterSpacing: '-0.025em' }}
-            >
-              {grandTotal} <span className="text-sm font-mono tracking-widest">pares</span>
-            </span>
-          </div>
+            // Fix 21/05/2026: último grupo + Total Geral + SignatureFooter
+            // ficam num único wrapper .keep-together pra forçar paginação
+            // atômica do "trailing" da ficha. Sem isso, fichas com 5+
+            // grupos faziam o footer vazar sozinho pra próxima A4.
+            const trailingBlock = (
+              <>
+                <div className="flex justify-between items-baseline mt-1 pt-1" style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
+                  <span className="section-label py-1" style={{ color: '#000' }}>Total Geral</span>
+                  <span
+                    className="text-black uppercase leading-none py-1"
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '36px', letterSpacing: '-0.025em' }}
+                  >
+                    {grandTotal} <span className="text-sm font-mono tracking-widest">pares</span>
+                  </span>
+                </div>
+                <SignatureFooter labels={['Operador(a)', 'Conferente', 'Supervisor(a)']} />
+              </>
+            );
+
+            if (isLast) {
+              return (
+                <div key={idx} className="keep-together">
+                  {groupBlock}
+                  {trailingBlock}
+                </div>
+              );
+            }
+            return <React.Fragment key={idx}>{groupBlock}</React.Fragment>;
+          })}
         </div>
       )}
-
-      <SignatureFooter labels={['Operador(a)', 'Conferente', 'Supervisor(a)']} />
     </div>
   );
 };

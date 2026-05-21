@@ -816,8 +816,11 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
           Em print, o flex-col sem altura definida fazia o `mt-auto` empurrar
           o footer pra um espaço estranho, gerando página em branco extra.
           Trocado por margin top fixa (mt-8) — footer aparece direto após
-          conteúdo, sem quebra fantasma. */}
-      <footer className="mt-8 pt-8">
+          conteúdo, sem quebra fantasma.
+          Fix 21/05/2026: keep-together + keep-with-previous evitam que o
+          bloco de assinaturas vaze sozinho pra próxima A4 em relatórios
+          longos. */}
+      <footer className="mt-8 pt-8 keep-together keep-with-previous">
         <div className="rule-line mb-6" style={{ backgroundColor: '#000' }} />
         <div className="grid grid-cols-3 gap-8">
           {['PCP', 'Comercial', 'Financeiro'].map(label => (
