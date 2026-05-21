@@ -77,7 +77,15 @@ export default function Employees() {
   const [statusFilter, setStatusFilter] = usePersistedState<'all' | 'active' | 'inactive'>('emp-status-filter', 'active');
   const [deptFilter, setDeptFilter] = usePersistedState('emp-dept-filter', 'all');
 
-  const departments = Array.from(new Set(employees.map(e => e.department).filter(Boolean))).sort() as string[];
+  // Filtra null/undefined/'' E strings só com whitespace — Radix Select
+  // crasha se algum SelectItem.value for string vazia ou só espaços.
+  const departments = Array.from(
+    new Set(
+      employees
+        .map(e => (e.department || '').trim())
+        .filter(d => d.length > 0)
+    )
+  ).sort() as string[];
 
   const filteredEmployees = employees.filter(e => {
     const q = normalizeForSearch(search);
@@ -501,7 +509,7 @@ export default function Employees() {
                 <SelectTrigger className="mt-1"><SelectValue placeholder="Padrão do sistema" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">— Usar escala padrão —</SelectItem>
-                  {schedules.map(s => (
+                  {schedules.filter(s => s.id && String(s.id).trim().length > 0).map(s => (
                     <SelectItem key={s.id} value={s.id}>{s.name}{s.is_default ? ' (padrão)' : ''}</SelectItem>
                   ))}
                 </SelectContent>
