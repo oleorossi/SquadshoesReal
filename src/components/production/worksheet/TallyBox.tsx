@@ -30,9 +30,17 @@ export const TallyBox = ({ count, pairsPerCard = 12, title, size = 'md' }: Props
   const boxSize = size === 'lg' ? 'w-9 h-9 text-base' : 'w-7 h-7 text-[11px]';
   const titleText = title || `Controle de Fichas · ${pairsPerCard} pares / ficha`;
 
+  // Fix 22/05/2026: para tally grande (>60 caixinhas), DOM audit mostrou
+  // que ele estourava 100mm+ e ao usar keep-together forçava o block
+  // pai a violar a regra. Solução: só aplica keep-together quando o
+  // tally COMPORTA caber em 1 A4 (até ~60 caixinhas em 7 colunas =
+  // ~9 linhas × 7mm = ~63mm). Acima disso, deixa quebrar entre linhas
+  // de caixinhas — operadora marca onde a tabela estiver.
+  const isLarge = count > 60;
+
   return (
-    <div className="keep-together my-2 text-black">
-      <div className="flex items-baseline justify-between mb-1.5">
+    <div className={isLarge ? 'my-2 text-black' : 'keep-together my-2 text-black'}>
+      <div className="keep-together keep-with-next flex items-baseline justify-between mb-1.5">
         <span className="section-label" style={{ color: '#000', fontFamily: "'Inter Tight', sans-serif" }}>
           {titleText}
         </span>
