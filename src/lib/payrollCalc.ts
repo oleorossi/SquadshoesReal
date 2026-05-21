@@ -362,11 +362,24 @@ export function calculatePayroll(
   const ot100Value = ot100Min * minuteRate * (1 + ot100Pct / 100);
   const nightBonusValue = nightMin * minuteRate * (nightBonus / 100);
 
-  // DSR / INSS / IRRF / VT desconto: NÃO se aplicam em regime de contrato
-  // (não-CLT). Contratado é PJ/prestador — cada um cuida dos próprios impostos.
-  // Mantemos os campos no result com zero pra preservar contrato de tipo e
-  // facilitar futura adição de um modo "CLT" se necessário.
-  const dsrValue = 0;
+  // DSR reflexo sobre HE (Súmula 172 TST + Lei 605/49) — passivo trabalhista
+  // mais comum em fábrica. Toda HE paga ao mensalista gera reflexo no DSR:
+  //   DSR_HE = total_HE × (dias_descanso ÷ dias_úteis_mês)
+  // Onde dias_descanso = domingos + feriados; dias_úteis = seg-sáb não-feriado.
+  // Fator típico ~0.1538 (4 dom / 26 úteis) — varia com feriados.
+  // Contabilizado dos `days` que recebeu (não do calendar lib pra evitar drift).
+  let restDays = 0;
+  let workWeekDays = 0;
+  for (const d of days) {
+    if (d.dayOfWeek === 0 || d.isHoliday) restDays++;
+    else workWeekDays++;
+  }
+  const dsrFactor = workWeekDays > 0 ? restDays / workWeekDays : 0;
+  const totalOvertimeValue = ot50Value + ot100Value;
+  const dsrValue = totalOvertimeValue * dsrFactor;
+
+  // INSS / IRRF / VT desconto: NÃO se aplicam em regime de contrato (não-CLT).
+  // Contratado é PJ/prestador — cada um cuida dos próprios impostos.
   const inssValue = 0;
   const irrfValue = 0;
   const vtTotal = 0;
@@ -380,7 +393,7 @@ export function calculatePayroll(
     ? employee.health_plan_value
     : config.health_plan_default;
 
-  const totalProventos = baseSalary + ot50Value + ot100Value + nightBonusValue + vrValue + vaValue;
+  const totalProventos = baseSalary + ot50Value + ot100Value + nightBonusValue + dsrValue + vrValue + vaValue;
   const totalDescontos = healthPlanDiscount + absenceDiscount + advancesTotal;
   const totalLiquido = totalProventos - totalDescontos;
 
