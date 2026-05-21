@@ -46,16 +46,6 @@ export const menuGroups = [
     ],
   },
   {
-    label: "Engenharia",
-    icon: Ruler,
-    items: [
-      { name: "Fichas Técnicas",  icon: Ruler,        path: "/fichas-tecnicas" },
-      { name: "Solados",          icon: Footprints,   path: "/solados" },
-      { name: "Silks",            icon: Sparkles,     path: "/silks" },
-      { name: "Receitas",         icon: Sparkles,     path: "/artisanal-recipes" },
-    ],
-  },
-  {
     label: "Estoque",
     icon: Package,
     items: [
@@ -63,6 +53,16 @@ export const menuGroups = [
       { name: "MRP",              icon: Boxes,        path: "/mrp" },
       { name: "Ajustes",          icon: Boxes,        path: "/ajuste-estoque" },
       { name: "Histórico",        icon: History,      path: "/estoque/historico" },
+    ],
+  },
+  {
+    label: "Engenharia",
+    icon: Ruler,
+    items: [
+      { name: "Fichas Técnicas",  icon: Ruler,        path: "/fichas-tecnicas" },
+      { name: "Solados",          icon: Footprints,   path: "/solados" },
+      { name: "Silks",            icon: Sparkles,     path: "/silks" },
+      { name: "Receitas",         icon: Sparkles,     path: "/artisanal-recipes" },
     ],
   },
   {
