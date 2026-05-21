@@ -666,12 +666,24 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
             </div>
           );
 
-          // Último colorBlock fica num wrapper compartilhado com o
-          // SignatureFooter pra forçar paginação atômica (vide comment
-          // do .flex-1 acima). Os demais renderizam direto.
+          // Último colorBlock + SignatureFooter ficam num wrapper que:
+          //   1. .keep-together (não quebram entre si — soft constraint)
+          //   2. .force-page-before (page-break-before: always — HARD)
+          //
+          // O page-break-before garante matematicamente que o footer não
+          // vire órfão: o wrapper SEMPRE começa em nova pg, então cor +
+          // footer aparecem juntos. Trade-off: sobra pequena na pg
+          // anterior. Aceitável vs footer numa pg dedicada com gap gigante.
+          //
+          // Só força break se houver mais de 1 cor (com 1 só, a ficha já
+          // cabe inteira em 1-2 pgs sem precisar de pg dedicada).
           if (isLast) {
+            const forceBreak = group.colorGroups.length > 1;
             return (
-              <div key={idx} className="keep-together">
+              <div
+                key={idx}
+                className={forceBreak ? 'keep-together force-page-before' : 'keep-together'}
+              >
                 {colorBlock}
                 <SignatureFooter />
               </div>

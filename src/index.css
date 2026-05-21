@@ -1402,6 +1402,18 @@ a:focus-visible {
     page-break-before: avoid !important;
   }
 
+  /* HARD constraint — força nova pg ANTES do elemento. Usado no
+     wrapper "último bloco + SignatureFooter" pra garantir que o
+     footer nunca vire órfão (já que sempre começa numa pg dedicada
+     junto com a última cor/seção). Trade-off: sobra pequena na pg
+     anterior. Aceitável vs footer em pg separada. */
+  .print-natural .force-page-before,
+  .print-area .force-page-before,
+  .force-page-before {
+    page-break-before: always !important;
+    break-before: page !important;
+  }
+
   /* Tabelas: header repete em cada página quando quebra. */
   .print-natural thead, .print-area thead { display: table-header-group; }
   .print-natural tfoot, .print-area tfoot { display: table-footer-group; }

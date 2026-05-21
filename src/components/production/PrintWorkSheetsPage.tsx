@@ -193,6 +193,18 @@ const printStyles = `
       page-break-before: avoid !important;
     }
 
+    /* force-page-before — HARD constraint pra wrapper do último bloco
+       + SignatureFooter. Diferente de keep-together (soft, Chrome
+       ignora em layouts complexos), page-break-before: always é HARD
+       e garante matematicamente que o footer não vire órfão: o wrapper
+       SEMPRE começa em pg nova, então última cor + footer aparecem
+       juntos sem chance de quebra entre eles. Trade-off: sobra pequena
+       na pg anterior. */
+    .print-area .force-page-before {
+      page-break-before: always !important;
+      break-before: page !important;
+    }
+
     /* Cores fiéis na impressão (sem desbotamento) */
     * {
       -webkit-print-color-adjust: exact !important;

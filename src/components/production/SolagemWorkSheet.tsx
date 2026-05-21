@@ -324,8 +324,14 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
             const header = renderHeader(band, idx);
             const body = renderBand(band, idx);
             if (isLast) {
+              // Força nova pg pro último band + total geral + footer.
+              // keep-together é soft; page-break-before é HARD.
+              const forceBreak = orderedBands.length > 1;
               return (
-                <div key={`last-${idx}`} className="keep-together">
+                <div
+                  key={`last-${idx}`}
+                  className={forceBreak ? 'keep-together force-page-before' : 'keep-together'}
+                >
                   {header}
                   {body}
                   {trailingBlock}
