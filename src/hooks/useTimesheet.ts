@@ -537,7 +537,7 @@ export interface DaySummary {
   overtimeFormatted: string;
   isHoliday: boolean;
   isAbsent: boolean;
-  status: 'normal' | 'overtime' | 'absent' | 'holiday' | 'weekend' | 'incomplete';
+  status: 'normal' | 'overtime' | 'absent' | 'holiday' | 'weekend' | 'incomplete' | 'irregular' | 'inconsistent';
 }
 
 export function calculateDaySummary(
@@ -611,13 +611,12 @@ export function calculateDaySummary(
     return Math.abs(timeToMinutes(p) - timeToMinutes(rawSorted[i - 1])) >= 5;
   });
 
-  // ── Pendências (espelha SQL canonical) ──────────────────────────────
-  // Dias com batidas ímpares (1, 3, 5, 7…) ou apenas 1 batida não geram
-  // saldo — vão pra aba "Pendências de Ponto" pra serem completados.
-  // Antes: o JS somava os pares disponíveis e descartava a última batida,
-  // gerando saldo negativo falso (vide auditoria — Elton com -128h falsos).
-  const isIncomplete = sorted.length === 1 || (sorted.length > 1 && sorted.length % 2 !== 0);
-  if (isIncomplete) {
+  // ── IRREGULAR (espelha SQL canonical): batidas ímpares ────────────────
+  // sorted.length === 1 ou ímpar (3, 5, …): falha do relógio. Vão pra
+  // "Pendências" pra completar — não geram saldo (sem somar pares parciais
+  // pra evitar saldos negativos falsos, vide auditoria).
+  const isIrregular = sorted.length === 1 || (sorted.length > 1 && sorted.length % 2 !== 0);
+  if (isIrregular) {
     return {
       dayOfWeek,
       workedMinutes: 0,
@@ -627,7 +626,7 @@ export function calculateDaySummary(
       overtimeFormatted: '00:00',
       isHoliday,
       isAbsent: false,
-      status: 'incomplete',
+      status: 'irregular',
     };
   }
 
@@ -690,8 +689,14 @@ export function calculateDaySummary(
   // calculateWeeklyPeriod handles the correct weekly calculation.
   const overtimeMinutes = 0;
 
+  // INCONSISTENTE: 2 batidas em dia útil — esqueceu de bater o almoço.
+  // Sábado/domingo/feriado com 2 batidas (jornada contínua sem intervalo)
+  // segue como 'normal'.
+  const skippedLunch = sorted.length === 2 && !isSaturday && !isSunday && !isHoliday && expectedMinutes > 0;
+
   let status: DaySummary['status'] = 'normal';
-  if (isHoliday && workedMinutes > 0) status = 'holiday';
+  if (skippedLunch) status = 'inconsistent';
+  else if (isHoliday && workedMinutes > 0) status = 'holiday';
   else if (workedMinutes > expectedMinutes + tolerance) status = 'overtime';
   else if (workedMinutes < expectedMinutes - tolerance && expectedMinutes > 0) status = 'absent';
 

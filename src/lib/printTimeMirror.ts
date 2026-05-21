@@ -112,6 +112,8 @@ export function printTimeMirror(params: {
         : day.status === 'overtime' ? '#fde68a'
         : day.status === 'holiday' ? '#bfdbfe'
         : day.status === 'incomplete' ? '#fed7aa'
+        : day.status === 'irregular' ? '#fbcfe8'
+        : day.status === 'inconsistent' ? '#fed7aa'
         : isWeekend ? '#e5e7eb' : '#ffffff';
 
       const punchesStr = day.punches.length > 0
