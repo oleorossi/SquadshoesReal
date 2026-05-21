@@ -5,10 +5,18 @@ import { GlobalErrorBoundary } from "./components/GlobalErrorBoundary";
  import "./index.css";
  import "./styles-paper.css";
 import { installWhiteLabelGuard } from "./lib/whiteLabelGuard";
+import { installChunkErrorHandler } from "./lib/chunkErrorHandler";
 
 // White-label runtime guard: remove badges/branding injetados via script
 // (cobre casos não pegos pelo CSS estático e shadow DOM dinâmico).
 installWhiteLabelGuard();
+
+// Chunk error recovery — reload automático se import() dinâmico falhar
+// (caso "Importing a module script failed"). Complementa o handler
+// `vite:preloadError` abaixo, cobrindo cenários que ele não pega
+// (Promise rejection direto, error events genéricos, dev mode com HMR
+// quebrado). Ver src/lib/chunkErrorHandler.ts pra detalhes.
+installChunkErrorHandler();
 
 // Service Worker desabilitado — estava causando trava de cache em deploys.
 // Para usuários que ainda têm o SW antigo instalado, /sw.js agora é uma
