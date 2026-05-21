@@ -1,0 +1,17 @@
+-- Backfill da migration aplicada via MCP em ssvxfoybzmjlypnipqzn.
+-- Já está no DB; este arquivo serve pra rastreabilidade no repo.
+-- =============================================================================
+-- Pivô do sistema de ponto: horário INDIVIDUAL + regras estritas (2026-05-21)
+-- =============================================================================
+-- Aplicada como: work_schedules_individual_and_strict_rules + bank_balance_use_individual_schedule
+--
+-- Mudanças:
+--   1. work_schedules ganha works_monday..works_sunday (boolean por dia).
+--   2. Backfill: cada employee ativo recebe seu próprio work_schedule (cópia do default).
+--   3. Função get_employee_expected_minutes(emp_id, date) — expected dinâmico.
+--   4. calculate_day_summary: 2 batidas em dia útil c/ almoço → worked_min=0.
+--   5. calculate_employee_bank_balance: usa get_employee_expected_minutes
+--      ao invés de weekly/5 fixo; apuracao label = 'semanal_individual_schedule_v3'.
+--
+-- Pra detalhe técnico, consultar pg_get_functiondef no banco vivo.
+SELECT 1;

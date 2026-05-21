@@ -229,12 +229,20 @@ function mondayOf(dateISO: string): string {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * @param paidOvertimeMinutes Quando fornecido, DESATIVA o cálculo automático
+ * de HE 50/100. Esses minutos vêm de `bank_hours_movements` onde RH marcou
+ * explicitamente "pagar". Decisão da gestão (2026-05-21): a fábrica não
+ * segue o padrão CLT teórico — HE só vai pra folha se for explicitamente
+ * autorizada pelo RH.
+ */
 export function calculatePayroll(
   employee: PayrollEmployeeInput,
   days: PayrollDayInput[],
   absences: PayrollAbsenceInput[],
   advancesTotal: number,
   config: BenefitsConfig,
+  paidOvertimeMinutes?: { ot50: number; ot100: number },
 ): PayrollResult {
   const baseSalary = Number(employee.base_salary) || 0;
   const monthlyHours = config.monthly_hours || 220;
@@ -304,21 +312,31 @@ export function calculatePayroll(
     nightMin += countNightMinutes(d.punches, config.night_shift_start_min, config.night_shift_end_min);
   }
 
-  // Aplica tolerância e mínimo de HE por SEMANA.
-  // - Se |worked - expected| <= tolerância → ignora (saldo = 0 na semana)
-  // - Se diff > 0 mas < mínimo de HE → ignora (não gera HE)
-  // - Domingo/feriado sempre vira HE 100, sem tolerância (CLT)
-  for (const [, w] of weeks) {
-    const diff = w.workedBusiness - w.expectedBusiness;
-    if (Math.abs(diff) > TOLERANCE_MIN) {
-      if (diff > 0 && diff >= MIN_OT_MIN) {
-        ot50Min += diff;
+  // HE manual (decisão 2026-05-21): se o caller passou paidOvertimeMinutes,
+  // usa esses valores e PULA o cálculo automático semanal. Isso garante que
+  // a folha só pague o que o RH explicitamente aprovou em bank_hours_movements
+  // (movement_type='pay' ou similar) — alinhado com a regra "fábrica não
+  // segue CLT teórico".
+  if (paidOvertimeMinutes) {
+    ot50Min = Math.max(0, paidOvertimeMinutes.ot50);
+    ot100Min = Math.max(0, paidOvertimeMinutes.ot100);
+  } else {
+    // Fallback legado: cálculo automático semanal (caller antigo não migrado).
+    // - Se |worked - expected| <= tolerância → ignora (saldo = 0 na semana)
+    // - Se diff > 0 mas < mínimo de HE → ignora (não gera HE)
+    // - Domingo/feriado sempre vira HE 100, sem tolerância (CLT)
+    for (const [, w] of weeks) {
+      const diff = w.workedBusiness - w.expectedBusiness;
+      if (Math.abs(diff) > TOLERANCE_MIN) {
+        if (diff > 0 && diff >= MIN_OT_MIN) {
+          ot50Min += diff;
+        }
+        // diff < 0 (devedor) NÃO entra como HE; cai no banco de horas (negativo)
       }
-      // diff < 0 (devedor) NÃO entra como HE; cai no banco de horas (negativo)
-    }
-    // Domingo/feriado: aplica só o mínimo de HE pra evitar "5 min de HE 100"
-    if (w.workedHolidaySunday >= MIN_OT_MIN) {
-      ot100Min += w.workedHolidaySunday;
+      // Domingo/feriado: aplica só o mínimo de HE pra evitar "5 min de HE 100"
+      if (w.workedHolidaySunday >= MIN_OT_MIN) {
+        ot100Min += w.workedHolidaySunday;
+      }
     }
   }
 

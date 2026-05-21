@@ -170,6 +170,26 @@ export default function Payroll() {
         }
       }
 
+      // HE manual (decisão 2026-05-21): minutos de HE 50/100 que o RH
+      // EXPLICITAMENTE marcou pra pagar via bank_hours_movements (positive
+      // minutes com overtime_pct 50 ou 100). Sem isso, calculatePayroll
+      // pula o cálculo automático. Tolera bank_hours_movements vazia
+      // (cai no fallback automático legado).
+      const { data: paidOtRows } = await (supabase as any)
+        .from('bank_hours_movements')
+        .select('employee_id, minutes, overtime_pct, movement_type')
+        .gte('movement_date', periodRange.from!)
+        .lte('movement_date', periodRange.to!)
+        .in('movement_type', ['pay', 'pay_overtime']);
+      const paidOtByEmp = new Map<string, { ot50: number; ot100: number }>();
+      for (const r of (paidOtRows || []) as any[]) {
+        const e = paidOtByEmp.get(r.employee_id) ?? { ot50: 0, ot100: 0 };
+        const m = Math.abs(Number(r.minutes || 0));
+        if (Number(r.overtime_pct) === 100) e.ot100 += m;
+        else e.ot50 += m;
+        paidOtByEmp.set(r.employee_id, e);
+      }
+
       let calculated = 0;
       for (const emp of employees.filter(e => e.active)) {
         // Match em ordem: external_id (matricula REP) → nome.
@@ -229,6 +249,9 @@ export default function Payroll() {
           })),
           advancesByEmp.get(emp.id) || 0,
           config as BenefitsConfig,
+          // HE manual: passa só se houver lançamento explícito do RH.
+          // Sem lançamento → fallback automático (legado).
+          paidOtByEmp.get(emp.id),
         );
 
         const overtimePaid = overtimePaidByEmp.get(emp.id) || 0;
