@@ -320,7 +320,7 @@ export default function LateArrivalsTab() {
                 <div className="space-y-2">
                   {topLate.map(([name, totalMins], i) => (
                     <div key={name} className="flex items-center gap-3 text-sm">
-                      <span className="text-muted-foreground font-mono w-5 text-right">{i + 1}.</span>
+                      <span className="text-muted-foreground font-mono tabular-nums w-5 text-right">{i + 1}.</span>
                       <span className="flex-1 font-medium">{name}</span>
                       <Badge variant="outline" className="font-mono text-xs text-amber-700 border-amber-500/40 bg-amber-500/10">
                         {minutesToHHMM(totalMins)}
@@ -379,14 +379,14 @@ export default function LateArrivalsTab() {
                           {wg.records.map((r, idx) => (
                             <TableRow key={idx} className="text-sm">
                               <TableCell className="font-medium py-2">{r.employeeName}</TableCell>
-                              <TableCell className="font-mono py-2">
+                              <TableCell className="font-mono tabular-nums py-2">
                                 {new Date(r.date + 'T12:00:00').toLocaleDateString('pt-BR')}
                               </TableCell>
                               <TableCell className="py-2 text-muted-foreground">{DAYS_PT[r.dayOfWeek]}</TableCell>
-                              <TableCell className="text-right font-mono py-2 text-muted-foreground">
+                              <TableCell className="text-right font-mono tabular-nums py-2 text-muted-foreground">
                                 {r.scheduledEntry}
                               </TableCell>
-                              <TableCell className="text-right font-mono py-2">
+                              <TableCell className="text-right font-mono tabular-nums py-2">
                                 {r.actualEntry}
                               </TableCell>
                               <TableCell className="text-right py-2">

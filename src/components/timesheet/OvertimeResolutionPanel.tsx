@@ -309,7 +309,7 @@ function EmployeeResolutionRow({
               readOnly
             />
             <span className="text-muted-foreground">= {row.overtime_minutes} min</span>
-            <span className="ml-auto text-primary font-mono font-bold">
+            <span className="ml-auto text-primary font-mono tabular-nums font-bold">
               {formatBRL(payAmountPreview)}
             </span>
           </div>

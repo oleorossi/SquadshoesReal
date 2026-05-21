@@ -165,10 +165,10 @@ function WorkScheduleTab() {
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                  <div className="flex items-center gap-1.5"><Sun className="h-3 w-3 text-amber-500" /> Entrada: <span className="font-mono font-medium">{s.entry_time}</span></div>
-                  <div className="flex items-center gap-1.5"><Coffee className="h-3 w-3 text-orange-500" /> Almoço: <span className="font-mono font-medium">{s.lunch_start}–{s.lunch_end}</span></div>
-                  <div className="flex items-center gap-1.5"><Moon className="h-3 w-3 text-indigo-500" /> Saída: <span className="font-mono font-medium">{s.exit_time}</span></div>
-                  <div>Sáb: <span className="font-mono font-medium">{s.saturday_entry || '—'}–{s.saturday_exit || '—'}</span></div>
+                  <div className="flex items-center gap-1.5"><Sun className="h-3 w-3 text-amber-500" /> Entrada: <span className="font-mono tabular-nums font-medium">{s.entry_time}</span></div>
+                  <div className="flex items-center gap-1.5"><Coffee className="h-3 w-3 text-orange-500" /> Almoço: <span className="font-mono tabular-nums font-medium">{s.lunch_start}–{s.lunch_end}</span></div>
+                  <div className="flex items-center gap-1.5"><Moon className="h-3 w-3 text-indigo-500" /> Saída: <span className="font-mono tabular-nums font-medium">{s.exit_time}</span></div>
+                  <div>Sáb: <span className="font-mono tabular-nums font-medium">{s.saturday_entry || '—'}–{s.saturday_exit || '—'}</span></div>
                 </div>
                 <Separator />
                 <div className="grid grid-cols-4 gap-2 text-xs text-muted-foreground">
@@ -1186,22 +1186,22 @@ function TimesheetRecordsTab() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
                   <div>
                     <span className="text-muted-foreground text-xs">Valor/hora base</span>
-                    <p className="font-mono font-medium">{formatCurrency(getHourlySalary(selectedEmployee))}</p>
+                    <p className="font-mono tabular-nums font-medium">{formatCurrency(getHourlySalary(selectedEmployee))}</p>
                   </div>
                   <div>
                     <span className="text-muted-foreground text-xs">HE ({minutesToDisplay(compensatedOvertime)})</span>
-                    <p className="font-mono font-medium">{formatCurrency(getOvertimeRate(selectedEmployee))}/hr</p>
+                    <p className="font-mono tabular-nums font-medium">{formatCurrency(getOvertimeRate(selectedEmployee))}/hr</p>
                   </div>
                   <div>
                     <span className="text-muted-foreground text-xs">Valor HE</span>
-                    <p className="font-mono font-bold text-green-600">
+                    <p className="font-mono tabular-nums font-bold text-green-600">
                       {formatCurrency((compensatedOvertime / 60) * getOvertimeRate(selectedEmployee))}
                     </p>
                   </div>
                   {remainingDeficit > 0 && (
                     <div>
                       <span className="text-muted-foreground text-xs">Desconto Déficit</span>
-                      <p className="font-mono font-bold text-destructive">
+                      <p className="font-mono tabular-nums font-bold text-destructive">
                         -{formatCurrency((remainingDeficit / 60) * getHourlySalary(selectedEmployee))}
                       </p>
                     </div>
@@ -1367,21 +1367,21 @@ function TimesheetRecordsTab() {
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
                         <div>
                           <span className="text-muted-foreground text-xs">Valor/hora base</span>
-                          <p className="font-mono font-medium">{formatCurrency(hourlySalary)}</p>
+                          <p className="font-mono tabular-nums font-medium">{formatCurrency(hourlySalary)}</p>
                         </div>
                         <div>
                           <span className="text-muted-foreground text-xs">HE a receber ({formatCurrency(overtimeHourlyRate)}/hr)</span>
-                          <p className="font-mono font-bold text-green-600">{formatCurrency(overtimeValue)}</p>
+                          <p className="font-mono tabular-nums font-bold text-green-600">{formatCurrency(overtimeValue)}</p>
                         </div>
                         {remainingDeficit > 0 && (
                           <div>
                             <span className="text-muted-foreground text-xs">Desconto por déficit</span>
-                            <p className="font-mono font-bold text-destructive">-{formatCurrency(deficitValue)}</p>
+                            <p className="font-mono tabular-nums font-bold text-destructive">-{formatCurrency(deficitValue)}</p>
                           </div>
                         )}
                         <div className="sm:col-span-3 border-t pt-2 mt-1">
                           <span className="text-muted-foreground text-xs">Saldo Líquido</span>
-                          <p className={`display text-xl tabular-nums font-mono ${netValue >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                          <p className={`display text-xl tabular-nums font-mono tabular-nums ${netValue >= 0 ? 'text-green-600' : 'text-destructive'}`}>
                             {netValue >= 0 ? '+' : ''}{formatCurrency(netValue)}
                           </p>
                         </div>

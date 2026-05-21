@@ -427,7 +427,7 @@ export default function ManualEntryTab() {
                     type="time"
                     value={newPunch}
                     onChange={e => setNewPunch(e.target.value)}
-                    className="font-mono h-9"
+                    className="font-mono tabular-nums h-9"
                     placeholder="HH:MM"
                     onKeyDown={e => e.key === 'Enter' && addPunchToDialog()}
                   />

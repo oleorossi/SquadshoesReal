@@ -235,7 +235,7 @@ function PendingDayRow({ p, onSaved }: { p: PendingTimeRecord; onSaved: () => vo
 
   return (
     <div className="flex items-center gap-2 py-2 px-3 rounded-lg border border-border/60 bg-muted/30 flex-wrap">
-      <div className="text-xs font-mono font-medium min-w-[80px]">
+      <div className="text-xs font-mono tabular-nums font-medium min-w-[80px]">
         <Calendar className="w-3 h-3 inline mr-1 opacity-60" />
         {fmtDateBR(p.record_date)}
         <span className="text-muted-foreground ml-1">({DOW_LABEL[p.dow]})</span>

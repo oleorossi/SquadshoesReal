@@ -349,14 +349,14 @@ export default function Payroll() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-right font-mono">{fmt(r.base_salary)}</TableCell>
+                    <TableCell className="text-right font-mono tabular-nums">{fmt(r.base_salary)}</TableCell>
                     <TableCell className="text-right font-mono text-muted-foreground">{fmt(heValue)}</TableCell>
                     <TableCell className="text-right font-mono text-muted-foreground">{fmt(r.night_bonus_value)}</TableCell>
-                    <TableCell className={`text-right font-mono ${hasAdvance ? 'text-amber-700 font-semibold' : 'text-muted-foreground'}`}>
+                    <TableCell className={`text-right font-mono tabular-nums ${hasAdvance ? 'text-amber-700 font-semibold' : 'text-muted-foreground'}`}>
                       {hasAdvance ? `− ${fmt(r.advances_total)}` : fmt(0)}
                     </TableCell>
                     <TableCell className="text-right font-mono text-destructive">{fmt(r.total_descontos)}</TableCell>
-                    <TableCell className="text-right font-mono font-bold">{fmt(r.total_liquido)}</TableCell>
+                    <TableCell className="text-right font-mono tabular-nums font-bold">{fmt(r.total_liquido)}</TableCell>
                     <TableCell><Badge variant={sb.variant}>{sb.label}</Badge></TableCell>
                     <TableCell>
                       <div className="flex gap-1">
@@ -419,15 +419,15 @@ export default function Payroll() {
                       <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 space-y-1">
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Bruto (base + HE + Adic.):</span>
-                          <span className="font-mono">{fmt(gross)}</span>
+                          <span className="font-mono tabular-nums">{fmt(gross)}</span>
                         </div>
                         <div className="flex justify-between text-amber-700">
                           <span>Adiantamento já recebido:</span>
-                          <span className="font-mono font-semibold">− {fmt(adv)}</span>
+                          <span className="font-mono tabular-nums font-semibold">− {fmt(adv)}</span>
                         </div>
                         <div className="flex justify-between border-t pt-1 mt-1">
                           <span className="font-semibold">Líquido a pagar:</span>
-                          <span className="font-mono font-bold text-primary">{fmt(r.total_liquido)}</span>
+                          <span className="font-mono tabular-nums font-bold text-primary">{fmt(r.total_liquido)}</span>
                         </div>
                       </div>
                       <p className="text-xs text-muted-foreground">
@@ -492,8 +492,8 @@ export default function Payroll() {
                           {(l as any).highlight && <Wallet className="inline h-3.5 w-3.5 mr-1 -mt-0.5" />}
                           {l.label}
                         </TableCell>
-                        <TableCell className="text-right font-mono">{l.type === 'p' ? fmt(l.value) : ''}</TableCell>
-                        <TableCell className={`text-right font-mono ${(l as any).highlight ? 'text-amber-700 font-semibold' : 'text-destructive'}`}>
+                        <TableCell className="text-right font-mono tabular-nums">{l.type === 'p' ? fmt(l.value) : ''}</TableCell>
+                        <TableCell className={`text-right font-mono tabular-nums ${(l as any).highlight ? 'text-amber-700 font-semibold' : 'text-destructive'}`}>
                           {l.type === 'd' ? fmt(l.value) : ''}
                         </TableCell>
                       </TableRow>

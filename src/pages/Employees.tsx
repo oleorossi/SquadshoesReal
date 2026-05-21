@@ -363,7 +363,7 @@ export default function Employees() {
                         <TableCell className="text-sm">{new Date(a.advance_date).toLocaleDateString('pt-BR')}</TableCell>
                         <TableCell className="font-medium">{emp?.name || '—'}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">{a.description || '—'}</TableCell>
-                        <TableCell className="text-right font-mono font-semibold">{fmt(a.amount)}</TableCell>
+                        <TableCell className="text-right font-mono tabular-nums font-semibold">{fmt(a.amount)}</TableCell>
                         <TableCell className="text-right">
                           <DeleteConfirmButton onConfirm={() => deleteAdvance.mutate(a.id)} size="icon" />
                         </TableCell>
