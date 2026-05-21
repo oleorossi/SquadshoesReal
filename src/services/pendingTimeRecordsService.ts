@@ -4,13 +4,15 @@ export type IssueType =
   | 'somente_uma_batida'
   | 'falta_saida_apos_almoco'
   | 'batida_extra'
-  | 'punches_impar';
+  | 'punches_impar'
+  | 'dia_incompleto_suspeito';
 
 export const ISSUE_LABEL: Record<IssueType, string> = {
   somente_uma_batida:        'Só 1 batida (entrada ou saída)',
   falta_saida_apos_almoco:   'Falta saída final',
   batida_extra:              'Batida extra (5 marcações)',
   punches_impar:             'Quantidade ímpar de batidas',
+  dia_incompleto_suspeito:   'Jornada curta — provável falta de batida',
 };
 
 export const ISSUE_HINT: Record<IssueType, string> = {
@@ -18,6 +20,7 @@ export const ISSUE_HINT: Record<IssueType, string> = {
   falta_saida_apos_almoco:   'Tem entrada, saída de almoço e volta. Falta a saída final.',
   batida_extra:              'Há uma batida a mais — provável erro de marcação. Reveja com cuidado.',
   punches_impar:             'Quantidade ímpar de batidas — falta uma marcação.',
+  dia_incompleto_suspeito:   '2 batidas em dia útil mas jornada < 75% do esperado. Provável que faltam 2 batidas (saída do almoço + saída final). Complete manualmente.',
 };
 
 export interface PendingTimeRecord {
@@ -44,6 +47,8 @@ export interface EmployeePendingSummary {
   only_one_punch: number;
   missing_exit: number;
   extra_punch: number;
+  /** 2 batidas com jornada anormalmente curta — adicionado 22/05/2026. */
+  suspicious_short_day?: number;
 }
 
 export async function listEmployeePendingSummary(): Promise<EmployeePendingSummary[]> {

@@ -631,6 +631,37 @@ export function calculateDaySummary(
     };
   }
 
+  // Fix 22/05/2026: 2 batidas em dia útil são AMBÍGUAS quando a 2ª batida
+  // cai dentro/depois do horário de almoço — não dá pra saber se foi
+  //   (a) entrou de manhã, esqueceu de bater volta do almoço e saída
+  //   (b) entrou cedo, saiu no almoço, esqueceu o resto da jornada
+  // O sistema antigo ASSUMIA o cenário (b) e deduzia 60min de almoço,
+  // gerando "03:57 trabalhado" silencioso. Agora flag como incomplete
+  // pra ir pra Pendências e o gestor completar manualmente. Heurística:
+  // 2 batidas em útil com gap líquido (após almoço) < 75% do esperado.
+  if (sorted.length === 2 && !isSaturday && !isSunday && !isHoliday && expectedMinutes > 0) {
+    const entryMin = timeToMinutes(sorted[0]);
+    const exitMin = timeToMinutes(sorted[1]);
+    const lunchStartMin = timeToMinutes(schedule.lunch_start);
+    const lunchEndMin = timeToMinutes(schedule.lunch_end);
+    const spansLunch = entryMin <= lunchStartMin && exitMin >= lunchEndMin;
+    const grossMin = exitMin - entryMin;
+    const netMin = spansLunch ? grossMin - (lunchEndMin - lunchStartMin) : grossMin;
+    if (netMin < expectedMinutes * 0.75) {
+      return {
+        dayOfWeek,
+        workedMinutes: 0,
+        workedFormatted: '00:00',
+        expectedMinutes,
+        overtimeMinutes: 0,
+        overtimeFormatted: '00:00',
+        isHoliday,
+        isAbsent: false,
+        status: 'incomplete',
+      };
+    }
+  }
+
   // Pares completos: soma cada par com correção de turno noturno (saída < entrada → +24h)
   for (let i = 0; i < sorted.length - 1; i += 2) {
     let pairMin = timeToMinutes(sorted[i + 1]) - timeToMinutes(sorted[i]);
