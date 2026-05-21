@@ -118,15 +118,29 @@ const printStyles = `
       word-break: break-word !important;
     }
 
-    /* Quebras de página entre setores/grupos */
+    /* Quebras de página entre setores/grupos.
+       Fix 21/05/2026: adicionado page-break-inside: avoid pra evitar que
+       uma ficha seja quebrada em duas páginas (causa raiz das folhas em
+       branco — ficha ~282-290mm gerava overflow de poucos mm + meia
+       página em branco). Combinado com tipografia/spacing comprimidos
+       abaixo, cada ficha cabe em 1 A4. */
     .page-break {
       page-break-after: always;
       break-after: page;
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
     /* Última página não precisa do break extra (evita página em branco final) */
     .page-break:last-child {
       page-break-after: auto;
       break-after: auto;
+    }
+    /* Filho direto do .page-break = container raiz da ficha (usa
+       flex flex-col). Força block em print pra eliminar tensões de altura
+       que flex-col cria com filhos sem altura definida (origem dos bugs
+       anteriores de mt-auto e flex-1). */
+    .page-break > div {
+      display: block !important;
     }
     .store-divider {
       page-break-before: always;
@@ -146,11 +160,39 @@ const printStyles = `
       print-color-adjust: exact !important;
     }
 
-    /* Tipografia otimizada pra A4 — mais densa que antes */
+    /* Tipografia comprimida pra caber 1 ficha por A4 (281mm úteis após
+       margin de 8mm). Reduzido de 9pt/1.25 → 8.5pt/1.18. */
     body {
-      font-size: 9pt;
-      line-height: 1.25;
+      font-size: 8.5pt;
+      line-height: 1.18;
     }
+
+    /* Comprime spacing utilities do Tailwind dentro da print-area pra
+       eliminar folga vertical desnecessária. Mantém hierarquia visual
+       (gap-4 ainda > gap-3 > gap-2). */
+    .print-area .gap-2  { gap: 0.375rem !important; }
+    .print-area .gap-3  { gap: 0.5rem   !important; }
+    .print-area .gap-4  { gap: 0.625rem !important; }
+    .print-area .p-2    { padding: 0.375rem !important; }
+    .print-area .p-3    { padding: 0.5rem   !important; }
+    .print-area .p-4    { padding: 0.625rem !important; }
+    .print-area .py-2   { padding-top: 0.25rem !important; padding-bottom: 0.25rem !important; }
+    .print-area .py-3   { padding-top: 0.375rem !important; padding-bottom: 0.375rem !important; }
+    .print-area .py-4   { padding-top: 0.5rem !important;  padding-bottom: 0.5rem !important; }
+    .print-area .px-3   { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
+    .print-area .px-4   { padding-left: 0.625rem !important; padding-right: 0.625rem !important; }
+    .print-area .mb-2   { margin-bottom: 0.375rem !important; }
+    .print-area .mb-3   { margin-bottom: 0.5rem   !important; }
+    .print-area .mb-4   { margin-bottom: 0.625rem !important; }
+    .print-area .mt-2   { margin-top: 0.375rem !important; }
+    .print-area .mt-3   { margin-top: 0.5rem   !important; }
+    .print-area .mt-4   { margin-top: 0.625rem !important; }
+    .print-area .my-3   { margin-top: 0.5rem !important; margin-bottom: 0.5rem !important; }
+    .print-area .my-4   { margin-top: 0.625rem !important; margin-bottom: 0.625rem !important; }
+    .print-area .space-y-1 > * + * { margin-top: 0.2rem  !important; }
+    .print-area .space-y-2 > * + * { margin-top: 0.375rem !important; }
+    .print-area .space-y-3 > * + * { margin-top: 0.5rem   !important; }
+    .print-area .space-y-4 > * + * { margin-top: 0.625rem !important; }
 
     /* Containers internos da print-area podem quebrar livremente */
     .print-area > div {
