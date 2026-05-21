@@ -24,7 +24,13 @@ export const SignatureFooter = ({
     // Fix 20/05/2026: era `mt-auto` mas combinado com flex flex-col dos
     // containers raiz dos workshseets gerava página em branco extra no
     // print. Trocado por margin top fixa.
-    <div className="mt-4 pt-2 text-black keep-together">
+    //
+    // Fix 21/05/2026: keep-with-previous ancora o footer ao último bloco
+    // de conteúdo da ficha (última cor/seção). Sem isso, em fichas longas
+    // (Silk/Aviamento com 5+ cores) o footer vazava sozinho pra próxima
+    // página A4 — órfão. Agora, quando footer não cabe na pg atual, o
+    // browser leva o bloco anterior junto pra próxima página.
+    <div className="mt-4 pt-2 text-black keep-together keep-with-previous">
       <div
         className="w-full mb-2"
         style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000', height: '3px' }}

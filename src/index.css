@@ -1388,6 +1388,20 @@ a:focus-visible {
     page-break-after: avoid !important;
   }
 
+  /* Espelho do keep-with-next — usado em elementos que devem
+     ANCORAR à seção anterior (ex: SignatureFooter precisa ficar
+     com a última cor da ficha). Quando o elemento marcado não
+     cabe na mesma página do anterior, o browser empurra AMBOS
+     pra próxima página (em vez de deixar este sozinho/órfão).
+     Indispensável pra fichas longas (Silk/Aviamento com 5+ cores)
+     onde o footer ficaria órfão na A4 seguinte. */
+  .print-natural .keep-with-previous,
+  .print-area .keep-with-previous,
+  .keep-with-previous {
+    break-before: avoid !important;
+    page-break-before: avoid !important;
+  }
+
   /* Tabelas: header repete em cada página quando quebra. */
   .print-natural thead, .print-area thead { display: table-header-group; }
   .print-natural tfoot, .print-area tfoot { display: table-footer-group; }

@@ -181,6 +181,18 @@ const printStyles = `
       page-break-inside: avoid !important;
     }
 
+    /* keep-with-previous — espelho de keep-with-next. Ancora elemento ao
+       bloco anterior pra não virar órfão. CRÍTICO no SignatureFooter
+       das fichas longas: quando o footer não cabe na mesma pg que a
+       última cor, leva a cor junto pra próxima pg (em vez do footer
+       sozinho com a página anterior cheia). Bug observado em fichas
+       de Silk/Aviamento com 5+ cores — footer aparecia em pg separada
+       com gap visual gigante. */
+    .print-area .keep-with-previous {
+      break-before: avoid !important;
+      page-break-before: avoid !important;
+    }
+
     /* Cores fiéis na impressão (sem desbotamento) */
     * {
       -webkit-print-color-adjust: exact !important;

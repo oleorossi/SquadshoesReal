@@ -54,7 +54,9 @@ export type A4FootProps = {
 
 export function A4Foot({ doc, page = '1 de 1', version = 'v2026.05', generatedAt, landscape }: A4FootProps) {
   return (
-    <div className={`a4-foot keep-together ${landscape ? 'l' : ''}`}>
+    // keep-with-previous: footer ancora ao último bloco — evita ficar
+    // órfão na próxima página quando o conteúdo cresce.
+    <div className={`a4-foot keep-together keep-with-previous ${landscape ? 'l' : ''}`}>
       <span>{doc}</span>
       <span>{[generatedAt, version].filter(Boolean).join(' · ')}</span>
       <span>Página {page}</span>
@@ -64,7 +66,9 @@ export function A4Foot({ doc, page = '1 de 1', version = 'v2026.05', generatedAt
 
 export function Sigs({ labels = ['Líder de produção', 'Supervisor', 'Gerência'] }: { labels?: string[] }) {
   return (
-    <div className="keep-together" style={{ display: 'grid', gridTemplateColumns: `repeat(${labels.length}, 1fr)`, gap: 24, marginTop: 30 }}>
+    // keep-with-previous garante que o bloco de assinaturas não vaze
+    // sozinho pra próxima página A4 quando o relatório é longo.
+    <div className="keep-together keep-with-previous" style={{ display: 'grid', gridTemplateColumns: `repeat(${labels.length}, 1fr)`, gap: 24, marginTop: 30 }}>
       {labels.map((l, i) => (
         <div key={i} className="sig">
           <div className="sig-line" />

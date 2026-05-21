@@ -1048,8 +1048,11 @@ const OperatorWorkSheet = ({
           Fix 20/05/2026: era `mt-auto` que combinado com `flex flex-col` do
           container raiz gerava página em branco extra no print (flex sem
           altura definida empurra footer pra espaço fantasma na próxima
-          página). Trocado por margin top fixa. */}
-      <div className="mt-4 pt-2">
+          página). Trocado por margin top fixa.
+          Fix 21/05/2026: keep-together + keep-with-previous garantem que
+          o footer (a) não quebre no meio e (b) se ancore à seção anterior —
+          evita footer órfão em fichas longas. */}
+      <div className="mt-4 pt-2 keep-together keep-with-previous">
         {(order.notes) && (
           <div className="mb-2 border-t border-black pt-1">
             <span className="section-label block mb-0.5" style={{ color: '#000' }}>Observações</span>

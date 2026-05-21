@@ -94,6 +94,16 @@ User decidiu (2026-05-24): **abandonar a ideia de "1 doc = 1 A4"**. Prefere rela
     page-break-after: avoid !important;
   }
 
+  /* 4b. Elemento se ancora ao bloco anterior (evita órfão na pg seguinte).
+        Usado pelo SignatureFooter / A4Foot / Sigs — quando o footer não
+        cabe na mesma pg que o último bloco, leva esse bloco junto pra
+        próxima pg em vez de aparecer sozinho. */
+  .keep-with-previous,
+  .a4-foot, .sig-row {
+    break-before: avoid !important;
+    page-break-before: avoid !important;
+  }
+
   /* 5. Tabelas: thead repete em cada página, tr não quebra */
   thead { display: table-header-group; }
   tfoot { display: table-footer-group; }
@@ -125,6 +135,7 @@ User decidiu (2026-05-24): **abandonar a ideia de "1 doc = 1 A4"**. Prefere rela
 | `.print-area` | Wrapper de fichas de operador (em PrintWorkSheetsPage) | Mesmo que `print-natural` + isola do app chrome |
 | `.keep-together` | Qualquer bloco que NÃO PODE quebrar (header, footer, card, KPI grid, tabela completa) | `break-inside: avoid` |
 | `.keep-with-next` | Heading ou elemento que deve ficar com o próximo bloco (evita título órfão) | `break-after: avoid` |
+| `.keep-with-previous` | Footer ou bloco terminal que deve se ancorar ao anterior (evita footer órfão) | `break-before: avoid` |
 | `.page-break` | Container de uma ficha individual (entre fichas distintas) | `page-break-after: always` |
 
 ### Primitives compartilhados (já trazem as classes)
@@ -132,10 +143,10 @@ User decidiu (2026-05-24): **abandonar a ideia de "1 doc = 1 A4"**. Prefere rela
 | Componente | Localização | Classes embutidas |
 |---|---|---|
 | `<WorksheetHeader>` | `src/components/production/worksheet/` | `keep-together keep-with-next` |
-| `<SignatureFooter>` | `src/components/production/worksheet/` | `keep-together` |
+| `<SignatureFooter>` | `src/components/production/worksheet/` | `keep-together keep-with-previous` |
 | `<A4Head>` | `src/components/reports/A4Layout.tsx` | `keep-together keep-with-next` |
-| `<A4Foot>` | `src/components/reports/A4Layout.tsx` | `keep-together` |
-| `<Sigs>` | `src/components/reports/A4Layout.tsx` | `keep-together` |
+| `<A4Foot>` | `src/components/reports/A4Layout.tsx` | `keep-together keep-with-previous` |
+| `<Sigs>` | `src/components/reports/A4Layout.tsx` | `keep-together keep-with-previous` |
 | `<PaperShell>` | `src/components/reports/A4Layout.tsx` | Wrapper `.paper > .sheet` (herda regras `@media print`) |
 
 ---
@@ -193,8 +204,9 @@ export function MeuRelatorio() {
     ))}
   </div>
 
-  {/* Footer/Assinatura — não quebra */}
-  <div className="keep-together mt-8">
+  {/* Footer/Assinatura — não quebra E se ancora ao bloco anterior
+      (evita virar órfão em pg separada quando o conteúdo é longo). */}
+  <div className="keep-together keep-with-previous mt-8">
     Assinaturas...
   </div>
 </div>

@@ -348,6 +348,12 @@
     break-inside: avoid !important;
     page-break-inside: avoid !important;
   }
+  /* Footer A4 (.a4-foot, .sig-row) e qualquer .keep-with-previous se ancoram
+     ao bloco anterior — não viram órfãos na próxima página. */
+  .a4-foot, .sig-row, .keep-with-previous {
+    break-before: avoid !important;
+    page-break-before: avoid !important;
+  }
   /* Headings ficam com conteúdo seguinte */
   .sheet h1, .sheet h2, .sheet h3, .p-display, .p-eyebrow {
     break-after: avoid !important;
