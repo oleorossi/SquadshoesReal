@@ -891,18 +891,20 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       const soleName = rawSoleName
         ? getBaseName(rawSoleName)
         : (fallbackSole ? getBaseName(fallbackSole) : 'Sem Solado');
-      // Agrupa apenas por solado + readyMade. Cor da forração é IRRELEVANTE
-      // pro corte da palmilha (mesma palmilha física, várias cores de forração).
-      // Antes a key incluía insoleColor → fragmentava o relatório em vários
-      // cards com a mesma palmilha por modelo. User pediu consolidação.
-      const key = `${soleName}::${isReadyMade ? 'pronta' : 'cortar'}`;
+      // Agrupa por SOLADO + COR DA PALMILHA + readyMade.
+      // Pedido do user 22/05/2026: fábrica corta palmilha diferenciando por
+      // cor da forração (mesmo material físico, cortes separados por cor
+      // pra etiquetar/encaminhar). Antes agrupava só por solado.
+      const key = `${soleName}::${insoleColor || '—'}::${isReadyMade ? 'pronta' : 'cortar'}`;
       if (!groupMap.has(key)) {
         groupMap.set(key, {
-          soleName, insoleColor: '—', totalPairs: 0, grade: {},
+          soleName, insoleColor: insoleColor || '—', totalPairs: 0, grade: {},
           baseGrade: { ...((order.grid as Record<string, number>) || {}) },
           baseGradeSum: 0, fichas: 0, mixedGrades: false,
           readyMade: isReadyMade,
-          refs: [],
+          refs: [],  // Refs não exibidas mais — pedido 22/05/2026: cortador
+                    // foca só em (solado, cor da palmilha, quantidades), sem
+                    // ver ref-a-ref. Mantido o campo no tipo pra compat.
           opNumbers: [],
           pvNumbers: [],
         });
@@ -913,27 +915,6 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       }
       if (order.sale_order_number && !group.pvNumbers.includes(order.sale_order_number)) {
         group.pvNumbers.push(order.sale_order_number);
-      }
-      // Acumula referências (sandálias) do grupo pra exibir RefChips + fotos no
-      // header da ficha. Dedupe por code+color (mesma sandália em várias OPs
-      // aparece uma vez só).
-      const refCode = order.reference_code || '';
-      const refColor = order.color || '';
-      const refKey = `${refCode}::${refColor}`;
-      if (refCode && !group.refs.some((r: any) => r.key === refKey)) {
-        const variants = variantsByRef.get(sheetId) || [];
-        const exactImg = variants.find(v => (v.color || '').toLowerCase() === cabedelColorLower)?.image_url;
-        const pretoImg = !exactImg
-          ? variants.find(v => v.image_url && /^preto$/i.test((v.color || '').trim()))?.image_url
-          : null;
-        const tsImg = tsImageByRef.get(sheetId) || null;
-        group.refs.push({
-          key: refKey,
-          code: refCode,
-          name: order.reference_name || '',
-          color: refColor,
-          image_url: exactImg || pretoImg || tsImg || null,
-        });
       }
       // Scaling: grade base × multiplier = pares reais. Acumula também baseGrade
       // + fichas pra worksheet exibir "Por Ficha (Np)".
@@ -1565,11 +1546,13 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     let total = 0;
     if (activeSectors.has('Corte Palmilha') && palmilhaGroups.length > 0) total += 1;
     if (activeSectors.has('Solagem') && solagemData && solagemData.bands.length > 0) total += 1;
-    // Sole+color sectors: cada setor ativo gera 1 ficha por cor x solado
-    for (const sec of SOLE_COLOR_GROUPED_SECTORS) {
+    // Corte Cabedal/Forração: 1 ficha agregada por setor (todas cores em 1 só).
+    if (activeSectors.has('Corte Cabedal') && silkMontageGroups) total += 1;
+    if (activeSectors.has('Corte Forração') && silkMontageGroups) total += 1;
+    // Costura/Aviamento: 1 ficha por solado (continuam por sole+cor).
+    for (const sec of ['Costura', 'Aviamento'] as const) {
       if (activeSectors.has(sec) && silkMontageGroups) {
-        // Aproxima — pra Corte Forração/Cabedal o filtro reduz, mas conta máximo
-        total += silkMontageGroups.reduce((s, g) => s + g.colorGroups.length, 0);
+        total += silkMontageGroups.length;
       }
     }
     if (activeSectors.has('Colagem') && groupedWorksheets) total += groupedWorksheets.length;
@@ -1692,11 +1675,67 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           // groupedWorksheets em vez de silkMontageGroups.
           const flowOrder: GroupedSector[] = ['Corte Forração', 'Corte Cabedal', 'Costura', 'Aviamento'];
           const sectorsToRender: GroupedSector[] = flowOrder.filter(s => activeSectors.has(s));
-          // v3 (24/05/2026): sem chunking. Conteúdo flui naturalmente; se
-          // a ficha tem 5 cores, ocupa 2-3 páginas A4. .keep-together nos
-          // cards de cor garante que cor individual não quebra no meio.
-          return sectorsToRender.flatMap(sectorName =>
-            silkMontageGroups
+
+          // 22/05/2026: pra Corte Cabedal e Corte Forração, o cortador foca
+          // SÓ na cor que está cortando (material é o mesmo independente do
+          // solado de destino). User pediu: 1 ficha por setor agregando todas
+          // as cores de TODOS os solados — sem ref-a-ref, sem solado-por-solado.
+          // Costura e Aviamento mantêm comportamento original (1 ficha por solado).
+          const CUTTING_AGGREGATE_BY_COLOR: ReadonlyArray<GroupedSector> = ['Corte Cabedal', 'Corte Forração'];
+          const mergeColorsAcrossSoles = (sector: GroupedSector): SoleSilkGroup | null => {
+            const colorMap = new Map<string, SilkColorGroup>();
+            for (const soleGroup of silkMontageGroups) {
+              const filtered = filterGroupForSector(soleGroup, sector);
+              if (!filtered) continue;
+              for (const cg of filtered.colorGroups) {
+                const existing = colorMap.get(cg.color);
+                if (!existing) {
+                  colorMap.set(cg.color, {
+                    ...cg,
+                    refs: [],  // remove refs (pedido user 22/05/2026)
+                    combinedGrid: { ...cg.combinedGrid },
+                    opNumbers: [...cg.opNumbers],
+                    pvNumbers: cg.pvNumbers ? [...cg.pvNumbers] : [],
+                  });
+                } else {
+                  existing.totalPairs += cg.totalPairs;
+                  for (const [size, qty] of Object.entries(cg.combinedGrid)) {
+                    existing.combinedGrid[size] = (existing.combinedGrid[size] || 0) + qty;
+                  }
+                  existing.fichas = (existing.fichas || 0) + (cg.fichas || 0);
+                  for (const op of cg.opNumbers) {
+                    if (!existing.opNumbers.includes(op)) existing.opNumbers.push(op);
+                  }
+                  if (cg.pvNumbers && existing.pvNumbers) {
+                    for (const pv of cg.pvNumbers) {
+                      if (!existing.pvNumbers.includes(pv)) existing.pvNumbers.push(pv);
+                    }
+                  }
+                  if (existing.baseGradeSum !== cg.baseGradeSum) existing.mixedGrades = true;
+                }
+              }
+            }
+            const colorGroups = Array.from(colorMap.values()).sort((a, b) => a.color.localeCompare(b.color));
+            if (colorGroups.length === 0) return null;
+            return {
+              soleName: 'Todos os solados',
+              colorGroups,
+              totalPairs: colorGroups.reduce((s, g) => s + g.totalPairs, 0),
+            };
+          };
+
+          return sectorsToRender.flatMap(sectorName => {
+            if (CUTTING_AGGREGATE_BY_COLOR.includes(sectorName)) {
+              const merged = mergeColorsAcrossSoles(sectorName);
+              if (!merged) return [];
+              return [
+                <div key={`${sectorName}-todos-solados`} className="page-break">
+                  <SilkMontageWorkSheet group={merged} sector={sectorName} date={today} />
+                </div>,
+              ];
+            }
+            // Costura/Aviamento: 1 ficha por solado (comportamento atual).
+            return silkMontageGroups
               .map(group => ({ group, filtered: filterGroupForSector(group, sectorName) }))
               .filter(x => x.filtered !== null)
               .map(({ filtered }) => (
@@ -1707,8 +1746,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                     date={today}
                   />
                 </div>
-              ))
-          );
+              ));
+          });
         })()}
 
         {/* ── Solagem ── */}
