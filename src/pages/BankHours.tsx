@@ -210,7 +210,8 @@ export default function BankHours() {
   const [form, setForm] = useState({
     employee_id: '',
     movement_date: todayISO(),
-    movement_type: 'credit' as 'credit' | 'debit' | 'adjustment' | 'compensation',
+    movement_type: 'credit' as 'credit' | 'debit' | 'adjustment' | 'compensation' | 'pay',
+    overtime_pct: 50 as 50 | 100,
     hoursStr: '',
     minutesSign: 1 as 1 | -1,
     reason: '',
@@ -242,7 +243,9 @@ export default function BankHours() {
       mins = Math.round(Number(form.hoursStr) * 60);
     }
     if (!mins) return;
-    const autoSign = form.movement_type === 'debit' ? -1 : 1;
+    // Para 'pay': minutos saem do banco (sinal negativo) e marcam overtime_pct
+    // pro Payroll detectar (folha de Maio vai pagar essas horas).
+    const autoSign = (form.movement_type === 'debit' || form.movement_type === 'pay') ? -1 : 1;
     const finalMins = mins * (form.movement_type === 'adjustment' ? form.minutesSign : autoSign);
     await addMovement.mutateAsync({
       employee_id: form.employee_id,
@@ -250,7 +253,9 @@ export default function BankHours() {
       movement_type: form.movement_type,
       minutes: finalMins,
       reason: form.reason,
-    });
+      // overtime_pct só relevante pra 'pay' — payrollCalc usa pra separar 50/100.
+      overtime_pct: form.movement_type === 'pay' ? form.overtime_pct : null,
+    } as any);
     setMovementDialogOpen(false);
     setForm(f => ({ ...f, hoursStr: '', reason: '' }));
   };
@@ -290,6 +295,7 @@ export default function BankHours() {
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="credit">Crédito (HE não paga)</SelectItem>
+                        <SelectItem value="pay">Pagar na folha (HE)</SelectItem>
                         <SelectItem value="debit">Débito (folga)</SelectItem>
                         <SelectItem value="compensation">Compensação</SelectItem>
                         <SelectItem value="adjustment">Ajuste manual</SelectItem>
@@ -318,6 +324,21 @@ export default function BankHours() {
                           <SelectItem value="-1">Negativo (−)</SelectItem>
                         </SelectContent>
                       </Select>
+                    </div>
+                  )}
+                  {form.movement_type === 'pay' && (
+                    <div>
+                      <Label>Adicional HE</Label>
+                      <Select value={String(form.overtime_pct)} onValueChange={v => setForm(f => ({ ...f, overtime_pct: Number(v) as 50 | 100 }))}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="50">HE 50% (dia útil)</SelectItem>
+                          <SelectItem value="100">HE 100% (domingo/feriado)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        Esses minutos saem do banco e entram na folha do mês.
+                      </p>
                     </div>
                   )}
                 </div>

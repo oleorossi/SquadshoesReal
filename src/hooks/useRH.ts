@@ -46,10 +46,18 @@ export interface BankHoursMovement {
   id: string;
   employee_id: string;
   movement_date: string;
-  movement_type: 'credit' | 'debit' | 'adjustment' | 'compensation' | 'payout';
+  /**
+   * Tipo do lançamento:
+   * - credit/debit/adjustment/compensation/payout — legados
+   * - 'pay' — RH marca HE pra pagamento na folha do mês (decisão 2026-05-21).
+   *   Quando 'pay', payrollCalc lê esses minutos via overtime_pct (50/100).
+   */
+  movement_type: 'credit' | 'debit' | 'adjustment' | 'compensation' | 'payout' | 'pay';
   minutes: number;
   reason: string;
   reference_id: string | null;
+  /** Adicional HE (50 ou 100) — apenas quando movement_type='pay'. */
+  overtime_pct: number | null;
   created_at: string;
 }
 

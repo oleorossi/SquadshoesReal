@@ -28,6 +28,7 @@ import { useBenefitsConfig } from '@/hooks/useRH';
 import { toast } from 'sonner';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
+import { EmployeeScheduleEditor } from '@/components/rh/EmployeeScheduleEditor';
 import { EmptyState } from '@/components/ui/empty-state';
 import { normalizeForSearch } from '@/lib/searchUtils';
 
@@ -507,6 +508,15 @@ export default function Employees() {
               </Select>
               <p className="text-xs text-muted-foreground mt-1">Define horários e multiplicadores individuais.</p>
             </div>
+
+            {/* Editor de horário individual do funcionário (cada funcionário tem seu
+                próprio work_schedule após migration 2026-05-21). Só aparece em modo
+                edit (funcionário já tem id) — em criar/novo o backfill é via trigger. */}
+            {editing?.id && (
+              <div className="col-span-2 mt-2">
+                <EmployeeScheduleEditor employeeId={editing.id} />
+              </div>
+            )}
             <div><Label>Telefone</Label><Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></div>
             <div><Label>WhatsApp</Label><Input value={form.whatsapp} onChange={e => setForm(f => ({ ...f, whatsapp: e.target.value }))} /></div>
             <div className="col-span-2"><Label>Chave PIX</Label><Input value={form.pix_key} onChange={e => setForm(f => ({ ...f, pix_key: e.target.value }))} /></div>
