@@ -119,28 +119,37 @@ const printStyles = `
     }
 
     /* Quebras de página entre setores/grupos.
-       Fix 21/05/2026: adicionado page-break-inside: avoid pra evitar que
-       uma ficha seja quebrada em duas páginas (causa raiz das folhas em
-       branco — ficha ~282-290mm gerava overflow de poucos mm + meia
-       página em branco). Combinado com tipografia/spacing comprimidos
-       abaixo, cada ficha cabe em 1 A4. */
+       Fix 21/05/2026 v2: cada ficha = 1 página A4 EXATA (281mm úteis após
+       margin de 8mm). v1 só usava page-break-inside: avoid e deixava metade
+       da página em branco quando o conteúdo era curto. v2 trava a altura
+       em 281mm e usa flex flex-col + margin-top: auto no último filho
+       (assinatura) pra empurrar o footer pro pé da página, eliminando o
+       vazio entre conteúdo e fim da folha. */
     .page-break {
+      height: 281mm;
       page-break-after: always;
       break-after: page;
       page-break-inside: avoid;
       break-inside: avoid;
+      overflow: hidden;
     }
     /* Última página não precisa do break extra (evita página em branco final) */
     .page-break:last-child {
       page-break-after: auto;
       break-after: auto;
     }
-    /* Filho direto do .page-break = container raiz da ficha (usa
-       flex flex-col). Força block em print pra eliminar tensões de altura
-       que flex-col cria com filhos sem altura definida (origem dos bugs
-       anteriores de mt-auto e flex-1). */
+    /* Filho direto do .page-break = container raiz da ficha. Vira flex-col
+       de 100% pra ocupar a página inteira. */
     .page-break > div {
-      display: block !important;
+      display: flex !important;
+      flex-direction: column !important;
+      height: 100% !important;
+      min-height: 100% !important;
+    }
+    /* Último filho (signature footer / assinatura) sobe pro pé da página.
+       Aplica em qualquer ficha — todas terminam com bloco de assinatura. */
+    .page-break > div > :last-child {
+      margin-top: auto !important;
     }
     .store-divider {
       page-break-before: always;
