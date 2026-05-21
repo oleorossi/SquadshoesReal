@@ -139,7 +139,7 @@ const printStyles = `
     /* Filho direto do .page-break = container raiz da ficha. SEM flex/height
        forçados — conteúdo flui livremente em múltiplas A4 se necessário.
        Fix 21/05/2026 v5: força display: block no root em print. Worksheets
-       usam `flex flex-col gap-0` em tela, e flex containers no Chrome têm
+       usam "flex flex-col gap-0" em tela, e flex containers no Chrome têm
        bug clássico de paginação — quando o conteúdo extrapola 1 A4, o
        browser CLIPA o conteúdo da 2ª página em diante (em vez de paginar
        normalmente). Sintoma: imprimir só setores de corte (Palmilha /
