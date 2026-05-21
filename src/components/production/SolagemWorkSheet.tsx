@@ -103,13 +103,17 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
           </div>
         </div>
 
-        {/* Sandálias que usam essa cor de solado — strip de fotos + ref. */}
+        {/* Sandálias que usam essa cor de solado — strip de fotos + ref.
+            Fix 22/05/2026: imagens reduzidas de 110×110 pra 55×55 e cada
+            item vira keep-together individual. DOM audit mostrou que esse
+            strip estourava 200mm em bandas com 6+ refs (sozinho era 73%
+            da A4 útil) — strip COMO UM TODO pode quebrar entre sandálias. */}
         {band.refs && band.refs.length > 0 && (
-          <div className="px-3 py-2 flex items-start gap-3 flex-wrap" style={{ borderBottom: '1px solid #000' }}>
+          <div className="px-3 py-2 flex items-start gap-2 flex-wrap" style={{ borderBottom: '1px solid #000' }}>
             <span className="section-label shrink-0 self-center" style={{ color: '#000' }}>Sandálias</span>
             {band.refs.map((r) => (
-              <div key={r.key} className="flex flex-col items-center gap-1">
-                <div className="bg-white overflow-hidden" style={{ width: 110, height: 110, border: '1.5px solid #000' }}>
+              <div key={r.key} className="keep-together flex flex-col items-center gap-0.5">
+                <div className="bg-white overflow-hidden" style={{ width: 55, height: 55, border: '1.5px solid #000' }}>
                   <img
                     src={r.image_url || '/placeholder.svg'}
                     alt={r.code}
@@ -121,12 +125,12 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
                 <div className="text-center leading-tight">
                   <span
                     className="inline-block bg-black text-white font-bold px-1 py-0.5 rounded-[2px] uppercase"
-                    style={{ fontSize: '8px', letterSpacing: '0.04em' }}
+                    style={{ fontSize: '7px', letterSpacing: '0.04em' }}
                   >
                     {r.name || r.code || '—'}
                   </span>
                   {r.color && (
-                    <div className="font-mono font-semibold text-black mt-0.5" style={{ fontSize: '8px' }}>
+                    <div className="font-mono font-semibold text-black" style={{ fontSize: '7px' }}>
                       {r.color}
                     </div>
                   )}
