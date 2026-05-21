@@ -45,6 +45,13 @@ export function DREAuto() {
   const totalReceita = data.reduce((s, d) => s + d.receita, 0);
   const totalCMV = data.reduce((s, d) => s + d.cmv, 0);
   const totalEbitda = data.reduce((s, d) => s + d.ebitda, 0);
+  const totalResultadoLiquido = data.reduce((s, d) => s + d.resultadoLiquido, 0);
+  // % do faturamento que vira lucro líquido — calculado sobre o agregado
+  // (ponderado pela receita), não a média simples dos meses. Métrica
+  // principal: "se faturei R$ X, R$ Y vai pro meu bolso, ou Z%".
+  const lucroLiquidoPctAgregado = totalReceita > 0
+    ? (totalResultadoLiquido / totalReceita) * 100
+    : 0;
   const avgMargem = data.length > 0 ? data.reduce((s, d) => s + d.margemBrutaPct, 0) / data.length : 0;
 
   return (
@@ -85,7 +92,44 @@ export function DREAuto() {
         </div>
       </div>
 
-      {/* Totalizadores */}
+      {/* Totalizadores — "% vai pro bolso" em destaque na primeira linha,
+          tamanho maior que os secundários porque é a métrica principal.
+          Benchmark de mercado indústria calçadista: ≥15% saudável, 8-15%
+          aceitável, <8% pede atenção (margens apertadas). */}
+      <Card className="border-primary/40 bg-primary/5">
+        <CardContent className="pt-4 pb-4">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                Quanto do faturamento foi pro bolso
+              </p>
+              <p className={cn(
+                'display text-4xl tabular-nums leading-none',
+                lucroLiquidoPctAgregado >= 15 ? 'text-success'
+                  : lucroLiquidoPctAgregado >= 8 ? 'text-warning'
+                  : 'text-destructive'
+              )}>
+                {fmtPct(lucroLiquidoPctAgregado)}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1.5">
+                <span className="font-mono">{fmt(totalResultadoLiquido)}</span> de lucro líquido
+                <span className="mx-1">·</span>
+                sobre <span className="font-mono">{fmt(totalReceita)}</span> de faturamento ({months} meses)
+              </p>
+            </div>
+            <div className="text-xs text-muted-foreground max-w-sm leading-relaxed">
+              <p className="font-mono text-[10px] mb-1">FÓRMULA</p>
+              <p>
+                Receita − CMV (material/MOD/frete) − Despesas Operacionais − Impostos
+              </p>
+              <p className="mt-1 text-[10px]">
+                Benchmark indústria: ≥15% saudável · 8–15% ok · &lt;8% atenção
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card>
           <CardContent className="pt-4 pb-3">
@@ -210,16 +254,18 @@ export function DREAuto() {
         </CardContent>
       </Card>
 
-      {/* Margem bruta */}
+      {/* Margem bruta + Lucro líquido — comparativo em um gráfico só.
+          Margem bruta = receita − CMV (antes de despesas/impostos).
+          Lucro líquido = % final que sobra (o "vai pro bolso"). */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-primary" />
-            Margem Bruta (%)
+            Evolução de Margens (%)
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <ResponsiveContainer width="100%" height={180}>
+          <ResponsiveContainer width="100%" height={220}>
             <LineChart data={data}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
               <XAxis dataKey="period" fontSize={10} tickFormatter={fmtMonth} />
@@ -233,13 +279,30 @@ export function DREAuto() {
                   borderRadius: '8px',
                 }}
               />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
               <Line
                 type="monotone"
                 dataKey="margemBrutaPct"
                 stroke="hsl(var(--primary))"
-                strokeWidth={2.5}
-                dot={{ r: 4 }}
+                strokeWidth={2}
+                dot={{ r: 3 }}
                 name="Margem Bruta"
+              />
+              <Line
+                type="monotone"
+                dataKey="ebitdaPct"
+                stroke="hsl(var(--warning))"
+                strokeWidth={2}
+                dot={{ r: 3 }}
+                name="EBITDA"
+              />
+              <Line
+                type="monotone"
+                dataKey="resultadoLiquidoPct"
+                stroke="hsl(var(--success))"
+                strokeWidth={3}
+                dot={{ r: 4 }}
+                name="% bolso (Lucro Líquido)"
               />
             </LineChart>
           </ResponsiveContainer>
@@ -265,6 +328,7 @@ export function DREAuto() {
                 <TableHead className="text-center">%</TableHead>
                 <TableHead className="text-right">(-) Impostos</TableHead>
                 <TableHead className="text-right">Resultado</TableHead>
+                <TableHead className="text-center">% bolso</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -297,6 +361,11 @@ export function DREAuto() {
                     m.resultadoLiquido >= 0 ? 'text-success' : 'text-destructive'
                   )}>
                     {fmt(m.resultadoLiquido)}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Badge variant={m.resultadoLiquidoPct >= 15 ? 'default' : m.resultadoLiquidoPct >= 8 ? 'secondary' : 'destructive'}>
+                      {fmtPct(m.resultadoLiquidoPct)}
+                    </Badge>
                   </TableCell>
                 </TableRow>
               ))}

@@ -39,6 +39,10 @@ export type DREMonth = {
   ebitdaPct: number;
   impostos: number;
   resultadoLiquido: number;
+  /** % do lucro líquido sobre a receita — resposta direta à pergunta
+   *  "se faturei 100k, quanto vai pro meu bolso". Fórmula:
+   *  (receita − cmv − despOp − impostos) / receita × 100. */
+  resultadoLiquidoPct: number;
 };
 
 /**
@@ -193,6 +197,7 @@ export function useDREAuto(monthsBack: number = 6) {
           ebitdaPct: 0,
           impostos: 0,
           resultadoLiquido: 0,
+          resultadoLiquidoPct: 0,
         };
       }
 
@@ -227,13 +232,17 @@ export function useDREAuto(monthsBack: number = 6) {
         }
       });
 
-      // Calcular derivados
+      // Calcular derivados.
+      // resultadoLiquidoPct = "% do faturamento que vira lucro líquido" —
+      // métrica principal de saúde financeira. Equivalente direto à pergunta
+      // "se faturei 100k, quanto vai pro meu bolso?".
       Object.values(months).forEach((m) => {
         m.margemBruta = m.receita - m.cmv;
         m.margemBrutaPct = m.receita > 0 ? (m.margemBruta / m.receita) * 100 : 0;
         m.ebitda = m.margemBruta - m.despOperacionais;
         m.ebitdaPct = m.receita > 0 ? (m.ebitda / m.receita) * 100 : 0;
         m.resultadoLiquido = m.ebitda - m.impostos;
+        m.resultadoLiquidoPct = m.receita > 0 ? (m.resultadoLiquido / m.receita) * 100 : 0;
       });
 
       return Object.values(months).sort((a, b) => a.period.localeCompare(b.period));
