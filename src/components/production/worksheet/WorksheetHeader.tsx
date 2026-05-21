@@ -43,7 +43,7 @@ export const WorksheetHeader = ({
 }: Props) => {
   const editorialIndex = index || `01 / ${sector.toUpperCase()}`;
   return (
-    <div className="mb-1 text-black">
+    <div className="mb-1 text-black keep-together keep-with-next">
       {/* Sector title bar — top of the page (per user feedback May/2026) */}
       <div className="flex items-center gap-3 border-y-2 border-black px-2 py-1.5 mb-1">
         <Icon className="h-7 w-7 text-black shrink-0" weight="bold" />
