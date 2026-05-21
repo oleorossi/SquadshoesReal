@@ -20,7 +20,9 @@ interface Props {
   children: ReactNode;
   /** Altura útil A4 em mm. Default 281 (297 - 2×8 margin @page). */
   maxHeightMm?: number;
-  /** Limite mínimo de escala. Default 0.72 (≈ -28%). */
+  /** Limite mínimo de escala. Default 0.55 (≈ -45%, ainda legível em 4.7pt).
+   *  Em fichas muito densas o caller deveria dividir o conteúdo em sub-páginas
+   *  pra evitar texto ilegível. */
   minScale?: number;
   className?: string;
   style?: React.CSSProperties;
@@ -29,7 +31,7 @@ interface Props {
 export function PrintPageScaler({
   children,
   maxHeightMm = 281,
-  minScale = 0.72,
+  minScale = 0.55,
   className,
   style,
 }: Props) {
@@ -56,15 +58,25 @@ export function PrintPageScaler({
       }
     };
 
-    const timer = setTimeout(measure, 120);
+    // Múltiplas medições: 1ª rápida (120ms), 2ª depois de fonts/imgs (500ms),
+    // 3ª de fallback (1500ms) — pra pegar conteúdo que carrega tardiamente
+    // (silks com signed-url, fonts custom, etc.). Sem isso, fichas com imagem
+    // grande aparecem com scale 1.00 mesmo estourando A4 (medição rolou antes
+    // do load).
+    const t1 = setTimeout(measure, 120);
+    const t2 = setTimeout(measure, 500);
+    const t3 = setTimeout(measure, 1500);
     const observer = new ResizeObserver(measure);
     observer.observe(ref.current);
-    // Re-mede quando imagens carregam
     const imgs = ref.current.querySelectorAll('img');
     const onLoad = () => measure();
     imgs.forEach(img => img.addEventListener('load', onLoad, { once: true }));
+    // Web Fonts API: re-mede quando fontes ficam ready
+    if ((document as any).fonts?.ready) {
+      (document as any).fonts.ready.then(measure).catch(() => {});
+    }
     return () => {
-      clearTimeout(timer);
+      clearTimeout(t1); clearTimeout(t2); clearTimeout(t3);
       observer.disconnect();
       imgs.forEach(img => img.removeEventListener('load', onLoad));
     };

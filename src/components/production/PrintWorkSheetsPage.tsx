@@ -1542,16 +1542,28 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       {/* ── Print area ── */}
       <div className="print-area space-y-0">
 
-        {/* ── Corte Palmilha ── */}
-        {includesSector('Corte Palmilha') && palmilhaGroups.length > 0 && (
-          <div className="page-break">
-            <PalmilhaWorkSheet
-              groups={palmilhaGroups}
-              allSizes={palmilhaAllSizes}
-              date={today}
-            />
-          </div>
-        )}
+        {/* ── Corte Palmilha — chunked em 2 solados por página A4 ──
+            Decisão 24/05/2026: cada solado ocupa ~450-570px. Com header (153px)
+            e footer (95px), 2 solados por página = ~1100px ≈ A4 útil (1062px).
+            3 solados estouraria mesmo com scale max do PrintPageScaler.
+            User reportou ficha cortada na assinatura em 21/05; chunking
+            resolve definitivamente. */}
+        {includesSector('Corte Palmilha') && palmilhaGroups.length > 0 && (() => {
+          const CHUNK = 2;
+          const chunks: PalmilhaGroup[][] = [];
+          for (let i = 0; i < palmilhaGroups.length; i += CHUNK) {
+            chunks.push(palmilhaGroups.slice(i, i + CHUNK));
+          }
+          return chunks.map((chunk, idx) => (
+            <div key={`palmilha-${idx}`} className="page-break">
+              <PalmilhaWorkSheet
+                groups={chunk}
+                allSizes={palmilhaAllSizes}
+                date={today}
+              />
+            </div>
+          ));
+        })()}
 
         {/* ── Sole+Color sectors (Silk, Corte Forração, Corte Cabedal, Costura, Aviamento, Montagem) ── */}
         {(() => {
@@ -1586,19 +1598,39 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           // groupedWorksheets em vez de silkMontageGroups.
           const flowOrder: GroupedSector[] = ['Corte Forração', 'Corte Cabedal', 'Costura', 'Aviamento'];
           const sectorsToRender: GroupedSector[] = flowOrder.filter(s => activeSectors.has(s));
+          // Decisão 24/05/2026: cada cor tem ~400-450px no SilkMontageWorkSheet
+          // (foto + grade + tally box + checklist). Com header (~250px) e
+          // footer (~95px), 2 cores por ficha = ~1100px ≈ A4 útil.
+          // 3+ cores estouravam mesmo com scale max (5 cores = 2250px →
+          // scale 0.55 → 1237px ≈ ainda estoura). Chunking resolve.
+          const COLOR_CHUNK = 2;
           return sectorsToRender.flatMap(sectorName =>
             silkMontageGroups
               .map(group => ({ group, filtered: filterGroupForSector(group, sectorName) }))
               .filter(x => x.filtered !== null)
-              .map(({ filtered }) => (
-                <div key={`${sectorName}-${filtered!.soleName}`} className="page-break">
-                  <SilkMontageWorkSheet
-                    group={filtered!}
-                    sector={sectorName}
-                    date={today}
-                  />
-                </div>
-              ))
+              .flatMap(({ filtered }) => {
+                const colors = filtered!.colorGroups || [];
+                if (colors.length <= COLOR_CHUNK) {
+                  return [(
+                    <div key={`${sectorName}-${filtered!.soleName}`} className="page-break">
+                      <SilkMontageWorkSheet group={filtered!} sector={sectorName} date={today} />
+                    </div>
+                  )];
+                }
+                const chunks: typeof colors[] = [];
+                for (let i = 0; i < colors.length; i += COLOR_CHUNK) {
+                  chunks.push(colors.slice(i, i + COLOR_CHUNK));
+                }
+                return chunks.map((chunk, idx) => (
+                  <div key={`${sectorName}-${filtered!.soleName}-${idx}`} className="page-break">
+                    <SilkMontageWorkSheet
+                      group={{ ...filtered!, colorGroups: chunk }}
+                      sector={sectorName}
+                      date={today}
+                    />
+                  </div>
+                ));
+              })
           );
         })()}
 
@@ -1750,12 +1782,34 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           </div>
         ))}
 
-        {/* ── Relatório Gerencial: 1 relatório por PV ── */}
-        {includesSector('Relatório Gerencial') && reportGroups && reportGroups.map((rg) => (
-          <div key={`report-${rg.saleOrder.id}`} className="page-break">
-            <ManagementReport saleOrder={rg.saleOrder} orders={rg.reportOrders} date={today} />
-          </div>
-        ))}
+        {/* ── Relatório Gerencial: 1 PV por relatório, chunked por OPs ──
+            Cada OP no relatório adiciona ~80-100px. PVs grandes (15+ OPs)
+            estouravam A4 mesmo com scale 0.55. Chunking em 8 OPs/página
+            garante caber. Header do PV (info do cliente, KPIs) é repetido
+            em cada chunk. */}
+        {includesSector('Relatório Gerencial') && reportGroups && reportGroups.flatMap((rg) => {
+          // OP_CHUNK = 5: cada OP gera linhas em 3 tabelas (estágios, custos,
+          // stages). 5 OPs × 3 tabelas × ~30px/linha = ~450px + header + KPIs
+          // (~600px) = ~1050px ≈ A4 útil (1062px).
+          const OP_CHUNK = 5;
+          const ops = rg.reportOrders || [];
+          if (ops.length <= OP_CHUNK) {
+            return [(
+              <div key={`report-${rg.saleOrder.id}`} className="page-break">
+                <ManagementReport saleOrder={rg.saleOrder} orders={ops} date={today} />
+              </div>
+            )];
+          }
+          const chunks: typeof ops[] = [];
+          for (let i = 0; i < ops.length; i += OP_CHUNK) {
+            chunks.push(ops.slice(i, i + OP_CHUNK));
+          }
+          return chunks.map((chunk, idx) => (
+            <div key={`report-${rg.saleOrder.id}-${idx}`} className="page-break">
+              <ManagementReport saleOrder={rg.saleOrder} orders={chunk} date={today} />
+            </div>
+          ));
+        })}
       </div>
     </div>
   );
