@@ -170,18 +170,17 @@ export async function calculateConsumption(params: {
   size?: number | null;
   materialVariantId?: string | null;
 }): Promise<ConsumptionSummary> {
-  const { referenceId, quantity, color, size } = params;
-  // p_material_variant_id existe na interface TS pra compatibilidade upstream,
-  // mas a RPC SQL `calculate_order_consumption` tem assinatura fixa de 4
-  // parâmetros: (p_reference_id, p_order_quantity, p_color, p_size). Enviar
-  // um 5º param fazia o PostgREST resolver "function does not exist" — quebrava
-  // toda chamada de consumo. Ignoramos `materialVariantId` aqui silenciosamente.
-
+  const { referenceId, quantity, color, size, materialVariantId } = params;
+  // p_material_variant_id agora ATIVO: a RPC SQL (mig 20260629210000) aplica
+  // overrides de produto e consumo dm²/par dos 4 componentes principais
+  // (cabedal/forro/palmilha/solado) quando variant_id é passado. Sem variant
+  // (NULL) o comportamento é idêntico à versão anterior.
   const { data, error } = await supabase.rpc('calculate_order_consumption', {
     p_reference_id: referenceId,
     p_order_quantity: quantity,
     p_color: color ?? '',
     p_size: size ?? null,
+    p_material_variant_id: materialVariantId ?? null,
   });
 
   if (error) {

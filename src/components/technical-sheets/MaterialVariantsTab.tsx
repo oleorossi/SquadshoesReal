@@ -57,7 +57,14 @@ import { supabase } from '@/integrations/supabase/client';
       description_override: '',
       unit_price_override: null,
       active: true,
-      upper_material_product_id: null
+      upper_material_product_id: null,
+      upper_consumption_override: null,
+      lining_material_product_id: null,
+      lining_consumption_override: null,
+      insole_material_product_id: null,
+      insole_consumption_override: null,
+      sole_material_product_id: null,
+      sole_consumption_override: null,
     });
 
     const [materialSearchOpen, setMaterialSearchOpen] = useState(false);
@@ -216,7 +223,10 @@ import { supabase } from '@/integrations/supabase/client';
          });
        } else if (duplicatingFromId) {
          const { material_name, sku, barcode, ncm, description_override,
-                 unit_price_override, active, upper_material_product_id } = formData;
+                 unit_price_override, active, upper_material_product_id,
+                 upper_consumption_override, lining_material_product_id, lining_consumption_override,
+                 insole_material_product_id, insole_consumption_override,
+                 sole_material_product_id, sole_consumption_override } = formData;
          await duplicateVariant.mutateAsync({
            source_variant_id: duplicatingFromId,
            sheet_id: sheetId,
@@ -229,6 +239,13 @@ import { supabase } from '@/integrations/supabase/client';
              unit_price_override,
              active,
              upper_material_product_id,
+             upper_consumption_override,
+             lining_material_product_id,
+             lining_consumption_override,
+             insole_material_product_id,
+             insole_consumption_override,
+             sole_material_product_id,
+             sole_consumption_override,
              display_order: variants.length,
            },
          });
@@ -563,8 +580,107 @@ import { supabase } from '@/integrations/supabase/client';
                  <span className="text-xs text-muted-foreground">{formData.active ? 'Variante disponível para pedidos' : 'Variante oculta'}</span>
                </div>
              </div>
+
+             {/* Overrides de consumo por componente — opcional.
+                 Vazio (NULL) = herda da ficha técnica. Preenchido = sobrescreve
+                 no cálculo de consumo de OPs desta variante. Ex.: cabedal em
+                 Sintético consome 5% menos que Couro. */}
+             <details className="mt-2 rounded-md border border-border/60 bg-muted/20">
+               <summary className="cursor-pointer px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:bg-muted/30">
+                 Overrides de consumo por componente (avançado)
+               </summary>
+               <div className="p-3 space-y-3 text-xs">
+                 <p className="text-muted-foreground leading-relaxed">
+                   Use estes campos pra sobrescrever consumo (dm²/par) ou produto de um componente específico
+                   <strong> apenas</strong> nesta variante. Deixe vazio pra usar o que está na ficha técnica.
+                 </p>
+
+                 {/* Cabedal — consumo (produto já tem na seção acima) */}
+                 <div className="grid grid-cols-4 items-center gap-2">
+                   <Label className="text-right text-xs">Cabedal dm²/par</Label>
+                   <Input
+                     type="number"
+                     step="0.01"
+                     min="0"
+                     placeholder="usa ficha"
+                     value={formData.upper_consumption_override ?? ''}
+                     onChange={e => setFormData(prev => ({ ...prev, upper_consumption_override: e.target.value === '' ? null : Number(e.target.value) }))}
+                     className="col-span-3 h-8 text-xs"
+                   />
+                 </div>
+
+                 {/* Forro — produto + consumo */}
+                 <div className="grid grid-cols-4 items-center gap-2">
+                   <Label className="text-right text-xs">Forro · produto</Label>
+                   <select
+                     className="col-span-3 h-8 text-xs rounded-md border border-input bg-background px-2"
+                     value={formData.lining_material_product_id ?? ''}
+                     onChange={e => setFormData(prev => ({ ...prev, lining_material_product_id: e.target.value || null }))}
+                   >
+                     <option value="">— Usar ficha técnica —</option>
+                     {products.filter(p => p.active && /forr|forra/i.test(p.category || '')).map(p => (
+                       <option key={p.id} value={p.id}>{p.name} {p.sku ? `· ${p.sku}` : ''}</option>
+                     ))}
+                   </select>
+                 </div>
+                 <div className="grid grid-cols-4 items-center gap-2">
+                   <Label className="text-right text-xs">Forro dm²/par</Label>
+                   <Input
+                     type="number"
+                     step="0.01"
+                     min="0"
+                     placeholder="usa ficha"
+                     value={formData.lining_consumption_override ?? ''}
+                     onChange={e => setFormData(prev => ({ ...prev, lining_consumption_override: e.target.value === '' ? null : Number(e.target.value) }))}
+                     className="col-span-3 h-8 text-xs"
+                   />
+                 </div>
+
+                 {/* Palmilha — produto + consumo */}
+                 <div className="grid grid-cols-4 items-center gap-2">
+                   <Label className="text-right text-xs">Palmilha · produto</Label>
+                   <select
+                     className="col-span-3 h-8 text-xs rounded-md border border-input bg-background px-2"
+                     value={formData.insole_material_product_id ?? ''}
+                     onChange={e => setFormData(prev => ({ ...prev, insole_material_product_id: e.target.value || null }))}
+                   >
+                     <option value="">— Usar ficha técnica —</option>
+                     {products.filter(p => p.active && /palmilha/i.test(p.category || '')).map(p => (
+                       <option key={p.id} value={p.id}>{p.name} {p.sku ? `· ${p.sku}` : ''}</option>
+                     ))}
+                   </select>
+                 </div>
+                 <div className="grid grid-cols-4 items-center gap-2">
+                   <Label className="text-right text-xs">Palmilha dm²/par</Label>
+                   <Input
+                     type="number"
+                     step="0.01"
+                     min="0"
+                     placeholder="usa ficha"
+                     value={formData.insole_consumption_override ?? ''}
+                     onChange={e => setFormData(prev => ({ ...prev, insole_consumption_override: e.target.value === '' ? null : Number(e.target.value) }))}
+                     className="col-span-3 h-8 text-xs"
+                   />
+                 </div>
+
+                 {/* Solado — produto override */}
+                 <div className="grid grid-cols-4 items-center gap-2">
+                   <Label className="text-right text-xs">Solado · produto</Label>
+                   <select
+                     className="col-span-3 h-8 text-xs rounded-md border border-input bg-background px-2"
+                     value={formData.sole_material_product_id ?? ''}
+                     onChange={e => setFormData(prev => ({ ...prev, sole_material_product_id: e.target.value || null }))}
+                   >
+                     <option value="">— Usar primary_sole da ficha —</option>
+                     {products.filter(p => p.active && /solado|sola/i.test(p.category || '')).map(p => (
+                       <option key={p.id} value={p.id}>{p.name} {p.sku ? `· ${p.sku}` : ''}</option>
+                     ))}
+                   </select>
+                 </div>
+               </div>
+             </details>
            </div>
-           
+
            <DialogFooter>
              <Button variant="outline" onClick={() => { setIsDialogOpen(false); setDuplicatingFromId(null); }}>Cancelar</Button>
              <Button onClick={handleSave} disabled={addVariant.isPending || updateVariant.isPending || duplicateVariant.isPending}>

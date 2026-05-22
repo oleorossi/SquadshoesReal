@@ -15,7 +15,22 @@ const ALL_ACTIVE_KEY = ['reference_material_variants', 'all_active'] as const;
    ncm: string;
    description_override: string;
    upper_material_product_id: string | null;
+   /** Override de consumo (dm²/par) do cabedal. NULL = usa ficha. */
+   upper_consumption_override: number | null;
+   /** Produto de forro override pra esta variação. NULL = resolve pelo grupo da ficha. */
+   lining_material_product_id: string | null;
+   /** Override de consumo (dm²/par) do forro. NULL = usa ficha. */
+   lining_consumption_override: number | null;
+   /** Produto de palmilha override. NULL = resolve pelo grupo da ficha. */
+   insole_material_product_id: string | null;
+   /** Override de consumo (dm²/par) da palmilha. NULL = usa ficha. */
+   insole_consumption_override: number | null;
+   /** Solado SKU override. NULL = usa primary_sole_id da ficha. */
+   sole_material_product_id: string | null;
+   /** Unidades de solado/par (raro != 1). NULL = usa 1. */
+   sole_consumption_override: number | null;
    unit_price_override: number | null;
+   available_colors: string[] | null;
    active: boolean;
    display_order: number;
    created_at: string;
