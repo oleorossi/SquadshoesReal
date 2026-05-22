@@ -36,7 +36,12 @@ export const SignatureFooter = ({
         style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000', height: '3px' }}
       />
       {showTime && (
-        <div className="grid grid-cols-4 gap-3 mb-3">
+        // Fix mai/2026 (auditoria visual): grid-cols-2 sm:grid-cols-4
+        // garante que em telas/papéis estreitos (3+ fichas consolidadas
+        // lado a lado, A5 retrato, impressão 2-up) os 4 campos não
+        // colapsam em uma só linha bagunçada — quebram pra 2 linhas de
+        // 2 colunas (Início+Fim, Data+Turno).
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
           {[
             { label: 'Início', value: '__ : __' },
             { label: 'Fim',    value: '__ : __' },
@@ -55,9 +60,9 @@ export const SignatureFooter = ({
           ))}
         </div>
       )}
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         {labels.map(label => (
-          <div key={label} className="flex-1">
+          <div key={label} className="flex-1 min-w-[120px]">
             <div className="border-t border-black pt-1 mt-4">
               <p
                 className="section-label"
