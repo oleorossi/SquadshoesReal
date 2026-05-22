@@ -150,18 +150,21 @@ export default function AppLayout({ children, printMode = false }: { children: R
   };
 
   // ── Nav item active class ────────────────────────────────
+  // Industrial Editorial Pro: active state ganha borda esquerda 2px vermelho
+  // squad + texto foreground. Rounded-sm em vez de lg. Sem bg colorido — borda
+  // diz tudo. Hover sutil em foreground/5.
   const navItemClass = (isActive: boolean) => cn(
-    "group flex items-center justify-between px-3 py-2 rounded-lg text-base font-medium transition-all duration-150 relative",
+    "group flex items-center justify-between px-3 py-2 rounded-sm text-base font-medium transition-all duration-150 relative border-l-2",
     isActive
-      ? "bg-sidebar-primary/15 text-sidebar-primary font-semibold border-l-2 border-sidebar-primary"
-      : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
+      ? "border-primary text-sidebar-foreground font-semibold bg-sidebar-foreground/[0.04]"
+      : "border-transparent text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-foreground/[0.04]"
   );
 
   const collapsedItemClass = (isActive: boolean) => cn(
-    "flex items-center justify-center h-9 w-9 rounded-lg mx-auto mb-0.5 transition-all duration-100",
+    "flex items-center justify-center h-9 w-9 rounded-sm mx-auto mb-0.5 transition-all duration-100 border-l-2",
     isActive
-      ? "bg-sidebar-accent text-sidebar-primary shadow-sm ring-1 ring-sidebar-primary/20"
-      : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
+      ? "border-primary text-sidebar-foreground bg-sidebar-foreground/[0.04]"
+      : "border-transparent text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-foreground/[0.04]"
   );
 
   // ── Sidebar content ──────────────────────────────────────
@@ -188,12 +191,16 @@ export default function AppLayout({ children, printMode = false }: { children: R
           ) : (
             <>
               <div className="flex items-center gap-2.5">
-                <div className="h-8 w-8 rounded-lg overflow-hidden ring-1 ring-sidebar-border shadow-sm shrink-0 bg-card">
+                <div className="h-8 w-8 rounded-sm overflow-hidden ring-1 ring-sidebar-border shrink-0 bg-card">
                   <img src={logoImg} alt="Squad Shoes" className="h-full w-full object-contain" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-base font-extrabold text-sidebar-foreground leading-tight tracking-tight">Squad Shoes</p>
-                  <p className="text-xs text-sidebar-muted leading-tight mt-0.5 font-semibold tracking-[0.15em] uppercase">Gestão Industrial</p>
+                  {/* Industrial Editorial Pro: nome em Anton uppercase com
+                      ponto separador vermelho squad (espelha o /design-preview). */}
+                  <p className="ed-display text-xl text-sidebar-foreground leading-none">
+                    Squad<span className="text-primary">·</span>Shoes
+                  </p>
+                  <p className="ed-eyebrow text-sidebar-muted mt-1">Gestão Industrial</p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <ModeToggle className="h-7 w-7 text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-accent" />
@@ -249,7 +256,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
           {/* Favoritos */}
           {!isCollapsed && filteredFavorites.length > 0 && (
             <div className="px-2 pb-2">
-              <div className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-sidebar-muted">
+              <div className="flex items-center gap-2 px-3 py-1.5 ed-eyebrow text-sidebar-muted">
                 <Star className="h-3 w-3 fill-primary text-primary" />
                 <span>Favoritos</span>
               </div>
@@ -346,8 +353,10 @@ export default function AppLayout({ children, printMode = false }: { children: R
                     <button
                       onClick={() => toggleGroup(group.label)}
                       className={cn(
-                        "w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-colors mt-2",
-                        active ? "text-sidebar-primary" : "text-sidebar-muted hover:text-sidebar-foreground"
+                        // Industrial Editorial Pro: group label vira eyebrow
+                        // (JetBrains Mono 10px tracking widest uppercase).
+                        "w-full flex items-center justify-between px-3 py-1.5 ed-eyebrow transition-colors mt-2",
+                        active ? "text-primary" : "text-sidebar-muted hover:text-sidebar-foreground"
                       )}
                     >
                       <div className="flex items-center gap-1.5">
@@ -396,7 +405,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
               {/* Seção Sistema — visível para admins no final da sidebar */}
               {filteredSystemItems.length > 0 && (
                 <div className="mt-3 pt-3 border-t border-sidebar-border/40">
-                  <p className="px-3 py-1 text-xs font-bold uppercase tracking-wider text-sidebar-muted">Sistema</p>
+                  <p className="px-3 py-1 ed-eyebrow text-sidebar-muted">Sistema</p>
                   {filteredSystemItems.map((item) => (
                     <NavLink
                       key={item.to}
