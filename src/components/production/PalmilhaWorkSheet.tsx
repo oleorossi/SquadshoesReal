@@ -4,6 +4,7 @@ import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
 import { SignatureFooter } from './worksheet/SignatureFooter';
+import { generateBatchId } from './worksheet/batchId';
 
 export interface PalmilhaGroup {
   soleName: string;
@@ -42,6 +43,9 @@ interface Props {
  */
 export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }: Props) => {
   const grandTotal = groups.reduce((s, g) => s + g.totalPairs, 0);
+  // Batch ID determinístico (genealogia da consolidação).
+  const allOpNumbers = groups.flatMap(g => g.opNumbers || []);
+  const batchId = generateBatchId('Corte Palmilha', allOpNumbers, date);
 
   return (
     <div
@@ -91,6 +95,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
         })()}
         qrLabel="PALMILHA"
         date={date}
+        batchId={batchId}
       />
 
       {groups.length === 0 ? (
@@ -324,6 +329,33 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
                   >
                     {grandTotal} <span className="text-sm font-mono tracking-widest">pares</span>
                   </span>
+                </div>
+                {/* Kit handoff checklist: princípio de kitting de fábricas
+                    enxutas (Toyota/Lectra). Cortador formaliza a entrega pra
+                    Corte Forração em sacolas etiquetadas, eliminando erro de
+                    separação no setor seguinte. */}
+                <div className="mt-3 mb-2 px-2 py-2 keep-together" style={{ border: '1.5px solid #000' }}>
+                  <div className="flex items-baseline justify-between mb-1">
+                    <span className="section-label" style={{ color: '#000' }}>
+                      Entrega · Próximo Setor (Corte Forração)
+                    </span>
+                    <span className="font-mono text-[9px] text-black/60 tracking-widest uppercase">
+                      Kit handoff
+                    </span>
+                  </div>
+                  <div className="border-t border-black pt-1.5 grid grid-cols-2 gap-x-4 gap-y-1">
+                    {[
+                      'Palmilhas separadas por solado + cor',
+                      'Sacolas etiquetadas (solado, cor, qtd)',
+                      'Tally completo · sem caixa em branco',
+                      'Sacolas encaminhadas ao setor seguinte',
+                    ].map(item => (
+                      <div key={item} className="flex items-start gap-2 text-[11px] text-black">
+                        <span className="w-3.5 h-3.5 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
+                        <span className="leading-tight">{item}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
                 <SignatureFooter labels={['Operador(a)', 'Conferente', 'Supervisor(a)']} />
               </>

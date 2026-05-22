@@ -6,6 +6,7 @@ import { ProductImageBlock } from './worksheet/ProductImageBlock';
 import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
 import { SignatureFooter } from './worksheet/SignatureFooter';
 import { SignedImage } from '@/components/ui/signed-image';
+import { generateBatchId } from './worksheet/batchId';
 
 export interface SilkColorGroup {
   /** Cor do CABEDAL (chave de agrupamento). Em todos os setores exceto
@@ -141,6 +142,78 @@ const SECTOR_THEME: Record<GroupedSector, {
 };
 
 /**
+ * Checklist de kit handoff/receipt — adotado como prática enxuta (Toyota/
+ * Lectra). Cada setor formaliza recebimento do upstream + entrega pro
+ * downstream em sacolas etiquetadas, eliminando erro de separação.
+ *
+ * Convenção: a ficha mostra o que o operador deve confirmar AO RECEBER e
+ * AO ENTREGAR. Sem isso, kits viravam responsabilidade tácita e variavam
+ * por operador.
+ */
+const KIT_FLOWS: Record<GroupedSector, { receive: string[]; deliver: string[]; nextSector: string } | null> = {
+  'Corte Forração': {
+    receive: ['Palmilhas recebidas do Corte Palmilha', 'Cor de forração conferida com ficha técnica'],
+    deliver: ['Forros agrupados por cor', 'Sacolas etiquetadas (cor + qtd)', 'Encaminhado ao próximo setor'],
+    nextSector: 'Aviamento / Costura',
+  },
+  'Corte Cabedal': {
+    receive: ['Couro/material separado por cor'],
+    deliver: ['Cabedais cortados por cor + numeração', 'Sacolas etiquetadas (cor + qtd)', 'Encaminhado à Costura'],
+    nextSector: 'Costura',
+  },
+  'Costura': {
+    receive: ['Cabedal recebido do Corte', 'Forros recebidos do Corte Forração', 'Linha na cor conferida'],
+    deliver: ['Peças costuradas conferidas', 'Encaminhado ao Aviamento'],
+    nextSector: 'Aviamento',
+  },
+  'Aviamento': {
+    receive: ['Palmilha + forro + cabedal recebidos', 'Aviamentos (fivelas/ilhoses) separados por cor', 'Componentes batem com a ficha técnica'],
+    deliver: ['Conjuntos completos por par', 'Sacolas etiquetadas (cor + numeração)', 'Encaminhado à Montagem'],
+    nextSector: 'Montagem',
+  },
+  'Silk':       null,
+  'Montagem':   null,
+  'Acabamento': null,
+};
+
+const KitHandoffChecklist = ({ sector }: { sector: GroupedSector }) => {
+  const flow = KIT_FLOWS[sector];
+  if (!flow) return null;
+  return (
+    <div className="mt-3 mb-2 px-2 py-2 keep-together" style={{ border: '1.5px solid #000' }}>
+      <div className="flex items-baseline justify-between mb-1">
+        <span className="section-label" style={{ color: '#000' }}>
+          Kit · Recebimento / Entrega ({flow.nextSector})
+        </span>
+        <span className="font-mono text-[9px] text-black/60 tracking-widest uppercase">
+          Kit handoff
+        </span>
+      </div>
+      <div className="border-t border-black pt-1.5 grid grid-cols-2 gap-x-4 gap-y-1.5">
+        <div>
+          <span className="section-label block mb-1" style={{ color: '#000' }}>Ao Receber</span>
+          {flow.receive.map(item => (
+            <div key={item} className="flex items-start gap-2 text-[11px] text-black mb-0.5">
+              <span className="w-3.5 h-3.5 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
+              <span className="leading-tight">{item}</span>
+            </div>
+          ))}
+        </div>
+        <div>
+          <span className="section-label block mb-1" style={{ color: '#000' }}>Ao Entregar</span>
+          {flow.deliver.map(item => (
+            <div key={item} className="flex items-start gap-2 text-[11px] text-black mb-0.5">
+              <span className="w-3.5 h-3.5 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
+              <span className="leading-tight">{item}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/**
  * Ficha de operador genérica pra setores que agrupam por SOLADO + COR.
  *
  * Cada cor ganha sua própria caixa com:
@@ -169,6 +242,11 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
         ).values(),
       )
     : [];
+
+  // Batch ID determinístico — mesma set de OPs no mesmo dia → mesmo ID.
+  // Operadora anota pra bater apontamentos depois (genealogia).
+  const allOpNumbers = group.colorGroups.flatMap(cg => cg.opNumbers || []);
+  const batchId = generateBatchId(sector, allOpNumbers, date);
 
   return (
     <div
@@ -239,6 +317,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
         })()}
         qrLabel={sector.toUpperCase().slice(0, 8)}
         date={date}
+        batchId={batchId}
       />
 
       {/* Silks em destaque — uma por solado, multiple se cliente/grupo tem silk própria */}
@@ -695,6 +774,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                 className={forceBreak ? 'keep-together force-page-before' : 'keep-together'}
               >
                 {colorBlock}
+                <KitHandoffChecklist sector={sector} />
                 <SignatureFooter />
               </div>
             );
@@ -702,7 +782,12 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
           return <React.Fragment key={idx}>{colorBlock}</React.Fragment>;
         })}
         {/* Ficha sem cores: ainda precisa de footer. */}
-        {group.colorGroups.length === 0 && <SignatureFooter />}
+        {group.colorGroups.length === 0 && (
+          <>
+            <KitHandoffChecklist sector={sector} />
+            <SignatureFooter />
+          </>
+        )}
       </div>
     </div>
   );

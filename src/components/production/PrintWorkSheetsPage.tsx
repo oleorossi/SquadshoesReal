@@ -10,6 +10,8 @@ import type { SectorAlert } from '@/components/production/worksheet/SectorAlerts
 import { SolagemWorkSheet, type SoleColorBand } from '@/components/production/SolagemWorkSheet';
 import { ExpedicaoWorkSheet, type ExpedicaoCustomerGroup, type ExpedicaoOrder } from '@/components/production/ExpedicaoWorkSheet';
 import { ManagementReport, type ReportSaleOrder, type ReportOrder, type ReportStage } from '@/components/production/ManagementReport';
+import { compareColors } from '@/components/production/worksheet/colorSequencing';
+import { useSectorGroupingConfig } from '@/hooks/useSectorGroupingConfig';
 import logoSquad from '@/assets/logo-squad-shoes.jpg';
 
 const printStyles = `
@@ -398,6 +400,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   const clearSectors = () => setActiveSectors(new Set());
 
   const referenceIds = useMemo(() => [...new Set(orders.map(o => o.reference_id).filter(Boolean))], [orders]);
+
+  // Política de agrupamento por setor — lida de sector_grouping_config
+  // (Supabase). Fallback aos defaults históricos enquanto carrega ou se
+  // o setor não estiver cadastrado.
+  const groupingConfig = useSectorGroupingConfig();
 
   const { data: silkRegistrations = [] } = useQuery({
     queryKey: ['sole_silk_registrations'],
@@ -955,29 +962,33 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     });
     const groups = Array.from(groupMap.values()).sort((a, b) => {
       const cmp = a.soleName.localeCompare(b.soleName);
-      return cmp !== 0 ? cmp : a.insoleColor.localeCompare(b.insoleColor);
+      // Dentro do mesmo solado, ordena por cor da palmilha (claras → escuras)
+      // pra cortador alternar cor da forração com mínima troca de pilha.
+      return cmp !== 0 ? cmp : compareColors(a.insoleColor, b.insoleColor);
     });
     return { palmilhaGroups: groups, allSizes: sortedSizes };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orders, readyMadeLookup, palmilhaLookup, soleMappings]);
 
-  // ── Setores que agrupam por SOLADO + COR ───────────────────────────────────
-  // Silk, Montagem, Corte Forração, Costura, Aviamento, Acabamento.
-  // (Corte Palmilha = só por solado; Solagem = por cor de solado;
-  //  Expedição = por cliente; Colagem ainda usa Ref+Cor.)
-  // Acabamento REMOVIDO da agregação sole+color (user pediu em 2026-05):
-  // Acabamento é individual cliente-a-cliente, não agrupa por solado. Vai
-  // direto via OperatorWorkSheet em uma seção própria.
-  // Setores que agrupam por SOLADO+COR (operador foca no material do solado;
-  // refs distintas com mesmo solado e mesma cor compartilham 1 ficha — cortador
-  // corta o material 1 vez pra todos os modelos com aquele solado).
-  const SOLE_COLOR_GROUPED_SECTORS: ReadonlyArray<GroupedSector> = [
-    'Corte Forração', 'Corte Cabedal', 'Costura', 'Aviamento',
-  ];
-  // Setores que agrupam por REF+COR (pedido user 20/05/2026): Silk e Montagem
-  // trabalham por modelo específico — fichas de refs DIFERENTES nunca devem
-  // se fundir, mesmo quando compartilham solado/cor.
-  const REF_COLOR_GROUPED_SECTORS: ReadonlyArray<GroupedSector> = ['Silk', 'Montagem'];
+  // ── Setores agrupados por estratégia (config dinâmica) ────────────────────
+  // Lê de sector_grouping_config (Supabase) com fallback aos defaults.
+  // Antes era hardcoded — agora admin altera via SQL sem redeploy.
+  // 'sole_color': refs distintas com mesmo solado+cor compartilham 1 ficha
+  //               (operador foca no material — cortador, costureira, aviamento).
+  // 'ref_color':  refs distintas NUNCA se fundem (Silk/Montagem — operação
+  //               por modelo específico, não por material compartilhado).
+  const SOLE_COLOR_GROUPED_SECTORS = useMemo(
+    () => groupingConfig.getSectorsByStrategy('sole_color') as GroupedSector[],
+    [groupingConfig.data],
+  );
+  const REF_COLOR_GROUPED_SECTORS = useMemo(
+    () => groupingConfig.getSectorsByStrategy('ref_color').filter(
+      // Silk e Montagem vão pelo SilkMontageWorkSheet; Colagem/Acabamento
+      // ainda usam OperatorWorkSheet legacy via fluxo Ref+Cor próprio.
+      s => s === 'Silk' || s === 'Montagem',
+    ) as GroupedSector[],
+    [groupingConfig.data],
+  );
 
   // ── Silk / Montagem / Corte Forração / Costura / Aviamento / Acabamento ────
   // (variantsByRef + tsImageByRef movidos pra antes de palmilhaGroups —
@@ -1162,7 +1173,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
 
     return Array.from(soleMap.values())
       .map(({ displayName, colorMap }) => {
-        const colorGroups = Array.from(colorMap.values()).sort((a, b) => a.color.localeCompare(b.color, 'pt-BR'));
+        // Sequenciamento por cor (claras → escuras) — minimiza changeover
+        // de máquina/linha em Silk/Costura/Aviamento. Bate com prática de
+        // mixed-model sequencing (Lectra + literatura de footwear lean).
+        const colorGroups = Array.from(colorMap.values()).sort((a, b) => compareColors(a.color, b.color));
         const totalPairs = colorGroups.reduce((s, g) => s + g.totalPairs, 0);
         return { soleName: displayName, colorGroups, totalPairs };
       })
@@ -1256,7 +1270,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     });
     const bands: SoleColorBand[] = Array.from(soleColorMap.entries())
       .map(([soleColor, v]) => ({ soleColor, ...v }))
-      .sort((a, b) => a.soleColor.localeCompare(b.soleColor, 'pt-BR'));
+      // Sequenciamento por luminosidade (claras → escuras) reduz limpeza
+      // de máquina de cola/prensa. Preto separado em bloco próprio depois
+      // (visual + bucket=5 já garante último).
+      .sort((a, b) => compareColors(a.soleColor, b.soleColor));
     const grandTotal = bands.reduce((s, b) => s + b.totalPairs, 0);
 
     return { bands, allSizes, grandTotal };

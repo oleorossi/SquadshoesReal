@@ -5,6 +5,7 @@ import { ProductionOrder } from '@/types/inventory';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 import { TallyBox } from './worksheet/TallyBox';
 import { SignedImage } from '@/components/ui/signed-image';
+import { generateBatchId } from './worksheet/batchId';
 
 interface Props {
   order: ProductionOrder;
@@ -94,6 +95,13 @@ const OperatorWorkSheet = ({
   // Palmilha pronta na cor: show notice instead of work instructions for cut/sew sectors
   const isInsoleSkippedSector = insoleReadyMade && (isCortePalmilha || isCorteForração || isCostura);
   const today = new Date().toLocaleDateString('pt-BR');
+  // Batch ID determinístico — quando a ficha consolida várias OPs (Colagem
+  // por ref+cor), o ID anchora a genealogia. OP única → ainda gera um ID
+  // estável pro setor/data/OP.
+  const batchOps = opNumbers && opNumbers.length > 0
+    ? opNumbers
+    : (order.op_number ? [order.op_number] : []);
+  const batchId = generateBatchId(sector, batchOps);
   // Effective daily capacity for this sector: prefer explicit sectorCapacityPerDay,
   // Aviamento (DB column ainda chama mesa_daily_capacity) usa mesaCapacity como fallback.
   const effectiveCapacity = sectorCapacityPerDay > 0
@@ -137,11 +145,16 @@ const OperatorWorkSheet = ({
         <span className="section-label" style={{ color: '#000' }}>Ficha de Operador</span>
       </div>
 
-      <div className="flex items-baseline justify-between mb-0.5">
+      <div className="flex items-baseline justify-between mb-0.5 gap-3">
         <span className="section-label" style={{ color: '#000' }}>
           01 / {sector.toUpperCase()}
         </span>
-        <span className="font-mono text-[10px] text-black tracking-widest uppercase">{today}</span>
+        <div className="flex items-baseline gap-3 shrink-0">
+          <span className="font-mono text-[10px] text-black tracking-widest uppercase">
+            <span className="text-black/60">Batch · </span>{batchId}
+          </span>
+          <span className="font-mono text-[10px] text-black tracking-widest uppercase">{today}</span>
+        </div>
       </div>
 
       <div className="border-t border-b border-black py-1.5 mb-1 flex items-stretch gap-3">

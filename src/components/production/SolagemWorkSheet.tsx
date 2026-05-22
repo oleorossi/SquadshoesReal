@@ -3,6 +3,7 @@ import { Footprints } from '@phosphor-icons/react';
 import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { SignatureFooter } from './worksheet/SignatureFooter';
+import { generateBatchId } from './worksheet/batchId';
 
 export interface SoleColorBand {
   soleColor: string;
@@ -53,6 +54,9 @@ const SectionDivider = ({ label, total }: { label: string; total: number }) => (
 );
 
 export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCard = 12 }: Props) => {
+  // Batch ID determinístico (genealogia da consolidação).
+  const allOpNumbers = bands.flatMap(b => b.opNumbers || []);
+  const batchId = generateBatchId('Solagem', allOpNumbers, date);
   // Solado preto deve ficar fisicamente separado das demais cores na ficha de
   // operador de Solagem — pedido em 2026-05 pra evitar mistura de banda preta
   // com bandas coloridas no fluxo da equipe.
@@ -282,6 +286,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
         })()}
         qrLabel="SOLAGEM"
         date={date}
+        batchId={batchId}
       />
 
       {/* Fix 20/05/2026: era `flex-1` que combinado com flex-col do container

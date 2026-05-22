@@ -3,6 +3,7 @@ import { Truck, Package, MapPin, Phone, Receipt } from '@phosphor-icons/react';
 import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { SignatureFooter } from './worksheet/SignatureFooter';
+import { generateBatchId } from './worksheet/batchId';
 
 export interface ExpedicaoOrder {
   id: string;
@@ -56,6 +57,10 @@ interface Props {
  */
 export const ExpedicaoWorkSheet = ({ group, date }: Props) => {
   const totalPairs = group.orders.reduce((s, o) => s + (o.total_pairs || 0), 0);
+  // Batch ID determinístico por cliente — cada ficha de cliente vira um batch
+  // independente. Genealogia: lista de op_numbers fica na seção "Itens · Conferência".
+  const allOpNumbers = group.orders.map(o => o.op_number).filter((v): v is string => !!v);
+  const batchId = generateBatchId('Expedição', allOpNumbers, date);
 
   const boxesBySole = new Map<string, { soleName: string; pairs: number; pairsPerBox: number; boxes: number }>();
   for (const order of group.orders) {
@@ -159,6 +164,7 @@ export const ExpedicaoWorkSheet = ({ group, date }: Props) => {
         }
         qrLabel="EXPED."
         date={date}
+        batchId={batchId}
       />
 
       {/* Resumo embalagem */}

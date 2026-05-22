@@ -23,6 +23,10 @@ interface Props {
   date?: string;
   /** Index editorial pré-formatado (ex: "01 / SILK"). Se omitido, é derivado de `sector`. */
   index?: string;
+  /** ID determinístico do batch consolidado (ex: "AVI-260522-A3F2"). Aparece
+   *  abaixo do QR pra rastreabilidade da ficha consolidada. Operadora anota
+   *  pra bater apontamentos depois. */
+  batchId?: string;
 }
 
 /**
@@ -39,7 +43,7 @@ interface Props {
  */
 export const WorksheetHeader = ({
   sector, icon: Icon,
-  imageSlot, identification, qrLabel, alerts, date, index,
+  imageSlot, identification, qrLabel, alerts, date, index, batchId,
 }: Props) => {
   const editorialIndex = index || `01 / ${sector.toUpperCase()}`;
   return (
@@ -57,13 +61,20 @@ export const WorksheetHeader = ({
       </div>
 
       {/* Editorial index strip */}
-      <div className="flex items-baseline justify-between mb-0.5">
+      <div className="flex items-baseline justify-between mb-0.5 gap-3">
         <span className="section-label" style={{ color: '#000', fontFamily: "'Inter Tight', sans-serif" }}>
           {editorialIndex}
         </span>
-        {date && (
-          <span className="font-mono text-[10px] text-black tracking-widest uppercase">{date}</span>
-        )}
+        <div className="flex items-baseline gap-3 shrink-0">
+          {batchId && (
+            <span className="font-mono text-[10px] text-black tracking-widest uppercase">
+              <span className="text-black/60">Batch · </span>{batchId}
+            </span>
+          )}
+          {date && (
+            <span className="font-mono text-[10px] text-black tracking-widest uppercase">{date}</span>
+          )}
+        </div>
       </div>
 
       {/* Hero row — top hairline rules, no fills */}
