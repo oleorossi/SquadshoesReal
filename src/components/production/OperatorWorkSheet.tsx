@@ -815,7 +815,7 @@ const OperatorWorkSheet = ({
                 </div>
               </div>
             </div>
-            <div className="col-span-2">
+            <div className="col-span-2 keep-with-next">
               <TallyBox count={Math.max(1, Math.ceil(totalPairs / 12))} pairsPerCard={12} />
             </div>
           </>
@@ -873,7 +873,7 @@ const OperatorWorkSheet = ({
                 </div>
               )}
             </div>
-            <div className="col-span-2">
+            <div className="col-span-2 keep-with-next">
               <TallyBox count={Math.max(1, Math.ceil(totalPairs / 12))} pairsPerCard={12} />
             </div>
           </>
@@ -925,7 +925,7 @@ const OperatorWorkSheet = ({
                 </div>
               </div>
             </div>
-            <div className="col-span-2">
+            <div className="col-span-2 keep-with-next">
               <TallyBox count={Math.max(1, Math.ceil(totalPairs / 12))} pairsPerCard={12} />
             </div>
           </>
@@ -982,7 +982,7 @@ const OperatorWorkSheet = ({
                 </p>
               )}
             </div>
-            <div className="col-span-2">
+            <div className="col-span-2 keep-with-next">
               <TallyBox count={boxes} pairsPerCard={12} title={`Caixas · ${boxes} × 12 pares`} />
             </div>
           </>
@@ -1042,7 +1042,6 @@ const OperatorWorkSheet = ({
           </>
         )}
         </div>
-      </div>
 
       {/* ── Footer: obs + signatures — editorial close ──
           Fix 20/05/2026: era `mt-auto` que combinado com `flex flex-col` do
@@ -1051,7 +1050,11 @@ const OperatorWorkSheet = ({
           página). Trocado por margin top fixa.
           Fix 21/05/2026: keep-together + keep-with-previous garantem que
           o footer (a) não quebre no meio e (b) se ancore à seção anterior —
-          evita footer órfão em fichas longas. */}
+          evita footer órfão em fichas longas.
+          Fix 22/05/2026: footer movido pra DENTRO do flex-1 pra virar irmão
+          direto do grid de checklist+caixas. Combinado com .keep-with-next
+          nos col-span-2 do TallyBox, forma sandwich forte que mantém caixas
+          + footer na mesma página A4 (era órfão em Acabamento com 30+ caixas). */}
       <div className="mt-4 pt-2 keep-together keep-with-previous">
         {(order.notes) && (
           <div className="mb-2 border-t border-black pt-1">
@@ -1098,6 +1101,7 @@ const OperatorWorkSheet = ({
             </div>
           ))}
         </div>
+      </div>
       </div>
     </div>
   );
