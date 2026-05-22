@@ -193,6 +193,15 @@ const printStyles = `
       page-break-before: avoid !important;
     }
 
+    /* keep-with-next — ancora elemento ao próximo bloco. Usado em
+       cabeçalhos de seção (ex: "03 / Itens · Conferência" na Expedição)
+       pra evitar que o label vire órfão quando a tabela seguinte quebra
+       em pgs múltiplas. */
+    .print-area .keep-with-next {
+      break-after: avoid !important;
+      page-break-after: avoid !important;
+    }
+
     /* force-page-before — HARD constraint pra wrapper do último bloco
        + SignatureFooter. Diferente de keep-together (soft, Chrome
        ignora em layouts complexos), page-break-before: always é HARD

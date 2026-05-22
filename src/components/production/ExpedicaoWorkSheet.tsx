@@ -214,9 +214,13 @@ export const ExpedicaoWorkSheet = ({ group, date }: Props) => {
       {/* Tally de caixas conferidas */}
       <TallyBox count={totalBoxes} pairsPerCard={1} title="Caixas conferidas · marcar cada caixa coletiva" />
 
-      {/* Itens conferência */}
+      {/* Itens conferência — header "03 / ..." ancorado à tabela via
+          `.keep-with-next` pra não virar órfão quando a tabela quebra de
+          página em pedidos grandes (>20 items). Tabela em si quebra
+          naturalmente entre rows; `<thead>` repete em cada página via
+          regra global `display: table-header-group`. */}
       <div className="flex-1 mt-2">
-        <div className="flex items-baseline justify-between mb-1">
+        <div className="flex items-baseline justify-between mb-1 keep-with-next">
           <span className="section-label" style={{ color: '#000' }}>03 / Itens · Conferência</span>
           <span className="font-mono text-[10px] text-black tracking-widest uppercase">
             {group.orders.length} item{group.orders.length !== 1 ? 'ns' : ''}
