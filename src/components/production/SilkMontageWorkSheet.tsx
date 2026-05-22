@@ -384,7 +384,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                         {cg.refs.map((r) => (
                           <span
                             key={r.code || r.name}
-                            className="inline-block bg-black text-white font-bold px-2 py-0.5 rounded-[2px] whitespace-nowrap uppercase"
+                            className="inline-block bg-black text-white font-bold px-2 py-0.5 rounded-sm whitespace-nowrap uppercase"
                             style={{ fontSize: '10px', letterSpacing: '0.04em' }}
                           >
                             {r.name || r.code || '—'}

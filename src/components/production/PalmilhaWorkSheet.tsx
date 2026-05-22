@@ -192,7 +192,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
                         </div>
                         <div className="text-center leading-tight">
                           <span
-                            className="inline-block bg-black text-white font-bold px-1 py-0.5 rounded-[2px] uppercase"
+                            className="inline-block bg-black text-white font-bold px-1 py-0.5 rounded-sm uppercase"
                             style={{ fontSize: '7px', letterSpacing: '0.04em' }}
                           >
                             {r.name || r.code || '—'}
