@@ -395,8 +395,11 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
               </div>
 
               <div className="p-2 bg-white">
-                {/* Linha superior: foto (quando aplicável ao setor) + info setor-específica */}
-                <div className="flex gap-2 mb-2">
+                {/* Linha superior: foto (quando aplicável ao setor) + info setor-específica.
+                    `keep-together`: foto e grid de materiais devem ficar JUNTOS na mesma
+                    página (auditoria mai/2026 — sem isso, em cusp de página a foto ficava
+                    isolada de Cabedal/Forro, operador lia info sem ver o produto). */}
+                <div className="flex gap-2 mb-2 keep-together">
                   {theme.showProductImage && (
                     <ProductImageBlock
                       variantImageUrl={cg.variantImageUrl}

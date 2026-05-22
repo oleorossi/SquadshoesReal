@@ -30,12 +30,17 @@ export const EtiquetaProduto = ({ produto, varianteSelecionada }: EtiquetaProdut
   const barcodeValue = varianteSelecionada?.barcode || '000000000000';
 
   return (
+    // Safe-area lateral 3mm (left padding 3mm, right 3mm). Impressoras térmicas
+    // 100mm normalmente cortam ~2-3mm das bordas — conteúdo útil = 94mm.
+    // Auditoria mai/2026: SKU/barcode estavam saindo cortados em equipamentos
+    // sem ajuste de offset. Padding faz o conteúdo "respirar" no centro
+    // sem perder informação.
     <div
       className="etiqueta-100x30mm relative flex flex-row items-stretch bg-white text-black border-l-4 border-black rounded-none print:shadow-none overflow-hidden"
-      style={{ width: '100mm', height: '30mm', boxSizing: 'border-box' }}
+      style={{ width: '100mm', height: '30mm', boxSizing: 'border-box', paddingLeft: '3mm', paddingRight: '3mm' }}
     >
       {/* Esquerda: Imagem em moldura aguda */}
-      <div className="w-[22mm] flex-shrink-0 flex items-center justify-center pl-2 pr-1 py-2">
+      <div className="w-[22mm] flex-shrink-0 flex items-center justify-center pr-1 py-2">
         <img
           src={imagemParaExibir}
           alt={produto.nome}
@@ -71,8 +76,8 @@ export const EtiquetaProduto = ({ produto, varianteSelecionada }: EtiquetaProdut
         </div>
       </div>
 
-      {/* Direita: EAN + Código de Barras */}
-      <div className="w-[32mm] flex-shrink-0 flex flex-col items-stretch justify-center pr-2 pl-1 py-2 border-l border-black/15">
+      {/* Direita: EAN + Código de Barras (sem pr-2: safe-area já dá margem) */}
+      <div className="w-[32mm] flex-shrink-0 flex flex-col items-stretch justify-center pl-1 py-2 border-l border-black/15">
         <div className="section-label text-black/60 mb-1">EAN</div>
         <div className="flex-1 flex items-center justify-center overflow-hidden">
           <BarcodeSVG value={barcodeValue} height={28} fontSize={8} />

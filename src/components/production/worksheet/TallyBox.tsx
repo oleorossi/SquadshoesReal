@@ -56,47 +56,63 @@ export const TallyBox = ({ count, pairsPerCard = 12, title, size = 'md' }: Props
     return '6.5px';
   };
 
-  // Fix 22/05/2026: para tally grande (>60 caixinhas), DOM audit mostrou
-  // que ele estourava 100mm+ e ao usar keep-together forçava o block
-  // pai a violar a regra. Solução: só aplica keep-together quando o
-  // tally COMPORTA caber em 1 A4 (até ~60 caixinhas em 7 colunas =
-  // ~9 linhas × 7mm = ~63mm). Acima disso, deixa quebrar entre linhas
-  // de caixinhas — operadora marca onde a tabela estiver.
-  const isLarge = count > 60;
+  // Fix 22/05/2026: tally >60 caixinhas estourava 1 A4 e aplicar keep-together
+  // no bloco inteiro forçava quebras horríveis. Solução antiga: removia
+  // keep-together → quadrados quebravam entre linhas (uma caixinha aparecia
+  // em 2 páginas, operadora pulava/contava 2×).
+  // Fix novo (auditoria mai/2026): divide em CHUNKS de 60. Cada chunk vira
+  // um `.keep-together` independente. Resultado: tally de 213 = 4 chunks
+  // (60+60+60+33) e cada chunk ocupa ~63mm; browser quebra ENTRE chunks
+  // (nunca no meio de um chunk), preservando contagem visual.
+  const CHUNK = 60;
+  const chunks: number[][] = [];
+  for (let i = 0; i < count; i += CHUNK) {
+    chunks.push(
+      Array.from({ length: Math.min(CHUNK, count - i) }, (_, j) => i + j + 1),
+    );
+  }
 
   return (
-    <div className={isLarge ? 'my-2 text-black' : 'keep-together my-2 text-black'}>
+    <div className="my-2 text-black">
       <div className="keep-together keep-with-next flex items-baseline justify-between mb-1.5">
         <span className="section-label" style={{ color: '#000', fontFamily: "'Inter Tight', sans-serif" }}>
           {titleText}
         </span>
         <span className="font-mono text-[10px] text-black tracking-widest uppercase">
           {count}× · {count * pairsPerCard} pares
+          {chunks.length > 1 && (
+            <span className="ml-2 text-black/60">· {chunks.length} grupos</span>
+          )}
         </span>
       </div>
-      <div className="border-t border-black pt-2">
-        <div className="flex flex-wrap gap-1.5">
-          {Array.from({ length: count }, (_, i) => {
-            const n = i + 1;
-            return (
-              <div
-                key={i}
-                className={cn(
-                  'flex items-center justify-center bg-white text-black font-mono font-bold leading-none',
-                  boxSize,
-                )}
-                style={{
-                  border: '1.5px solid #000',
-                  fontSize: getFontSize(n),
-                  // tabular-nums alinha melhor 3+ dígitos lado-a-lado
-                  fontVariantNumeric: 'tabular-nums',
-                }}
-              >
-                {n}
+      <div className="border-t border-black pt-2 space-y-1.5">
+        {chunks.map((chunk, ci) => (
+          <div key={ci} className="keep-together">
+            {chunks.length > 1 && (
+              <div className="text-[8px] font-mono text-black/60 mb-1 uppercase tracking-widest">
+                {chunk[0]} – {chunk[chunk.length - 1]}
               </div>
-            );
-          })}
-        </div>
+            )}
+            <div className="flex flex-wrap gap-1.5">
+              {chunk.map((n) => (
+                <div
+                  key={n}
+                  className={cn(
+                    'flex items-center justify-center bg-white text-black font-mono font-bold leading-none',
+                    boxSize,
+                  )}
+                  style={{
+                    border: '1.5px solid #000',
+                    fontSize: getFontSize(n),
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  {n}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
