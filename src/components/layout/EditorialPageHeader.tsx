@@ -72,15 +72,17 @@ export function EditorialPageHeader({
           <div className="flex items-baseline gap-3">
             {sectionNumber && (
               <span
-                className="font-display text-xl sm:text-2xl text-muted-foreground tabular-nums leading-none shrink-0"
+                className="ed-display text-xl sm:text-2xl text-muted-foreground leading-none shrink-0"
                 aria-hidden="true"
               >
                 {sectionNumber}
               </span>
             )}
-            <span className="section-label">{sectionLabel}</span>
+            {/* Industrial Editorial Pro: eyebrow unificado (.ed-eyebrow em vez
+                de .section-label legacy). Mesmo visual, fonte canônica. */}
+            <span className="ed-eyebrow">{sectionLabel}</span>
           </div>
-          <h1 className="text-display-lg !text-foreground !leading-[0.9]">
+          <h1 className="ed-display text-[clamp(36px,5.5vw,72px)] text-foreground leading-[0.9]">
             {title}
           </h1>
           {description && (
@@ -93,7 +95,7 @@ export function EditorialPageHeader({
           </div>
         )}
       </div>
-      {!noRule && <div className="rule-line !bg-foreground" aria-hidden="true" />}
+      {!noRule && <div className="h-[1.5px] bg-foreground/15" aria-hidden="true" />}
     </header>
   );
 }
