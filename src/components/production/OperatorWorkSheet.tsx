@@ -583,9 +583,15 @@ const OperatorWorkSheet = ({
         </div>
       )}
 
-      {/* ── Sector-specific content — editorial B/W blocks ── */}
+      {/* ── Sector-specific content — editorial B/W blocks ──
+          Fix 22/05/2026 (cenário raro): header "04 / Operação" ganhou
+          keep-with-next pra não virar órfão no rodapé da pg quando o
+          conteúdo da seção (checklist + materials + TallyBox) é longo
+          (>150mm). Sem isso, em Colagem/Acabamento com 25+ OPs (TallyBox
+          250mm+), o label do setor podia ficar sozinho no fim de uma pg
+          e o conteúdo aparecer na próxima — quebra visual feia. */}
       <div className="flex-1">
-        <div className="flex items-baseline justify-between mb-1">
+        <div className="flex items-baseline justify-between mb-1 keep-with-next">
           <span className="section-label" style={{ color: '#000' }}>
             04 / Operação · {sector}
           </span>
