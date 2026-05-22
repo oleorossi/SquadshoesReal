@@ -13,6 +13,25 @@ import { ManagementReport, type ReportSaleOrder, type ReportOrder, type ReportSt
 import logoSquad from '@/assets/logo-squad-shoes.jpg';
 
 const printStyles = `
+  /* ─────────────────────────────────────────────────────────────
+     Mobile preview (22/05/2026): em telas < 768px, escala o worksheet
+     A4 (210mm = ~794px @ 96dpi) pra caber na largura do viewport sem
+     scroll horizontal. Não afeta print real — @media screen apenas.
+     ───────────────────────────────────────────────────────────── */
+  @media screen and (max-width: 768px) {
+    .print-area .page-break {
+      overflow: hidden;
+      margin-bottom: 0.5rem;
+    }
+    .print-area .page-break > div {
+      zoom: calc((100vw - 32px) / 794);
+    }
+    /* Toolbar fica acima — não escalar */
+    .print-area {
+      padding: 0;
+    }
+  }
+
   @page {
     size: A4 portrait;
     /* BUG ANTIGO: margin: 0 fazia o conteúdo (w-[210mm]) colar nas bordas

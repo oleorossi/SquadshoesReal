@@ -153,8 +153,10 @@ export default function AppLayout({ children, printMode = false }: { children: R
   // Industrial Editorial Pro: active state ganha borda esquerda 2px vermelho
   // squad + texto foreground. Rounded-sm em vez de lg. Sem bg colorido — borda
   // diz tudo. Hover sutil em foreground/5.
+  // 22/05/2026: fonte reduzida text-base → text-[13px] + py mais apertado
+  // (1.5 em vez de 2) pra densidade maior no menu — pedido user.
   const navItemClass = (isActive: boolean) => cn(
-    "group flex items-center justify-between px-3 py-2 rounded-sm text-base font-medium transition-all duration-150 relative border-l-2",
+    "group flex items-center justify-between px-3 py-1.5 rounded-sm text-[13px] font-medium transition-all duration-150 relative border-l-2",
     isActive
       ? "border-primary text-sidebar-foreground font-semibold bg-sidebar-foreground/[0.04]"
       : "border-transparent text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-foreground/[0.04]"
@@ -265,7 +267,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
                   <NavLink
                     key={item.path}
                     to={item.path}
-                    className="group flex items-center justify-between px-3 py-1.5 rounded-lg text-base font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-all duration-100"
+                    className="group flex items-center justify-between px-3 py-1.5 rounded-sm text-[13px] font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-foreground/[0.04] transition-all duration-100"
                   >
                     <span className="truncate">{item.name}</span>
                     <button onClick={(e) => toggleFavorite(e, item.name, item.path)} className="opacity-0 group-hover:opacity-100 p-1 hover:text-primary transition-opacity">

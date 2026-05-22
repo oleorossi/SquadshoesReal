@@ -12,7 +12,8 @@ const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableE
 Table.displayName = "Table";
 
 const TableHeader = React.forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>(
-  ({ className, ...props }, ref) => <thead ref={ref} className={cn("[&_tr]:border-b", className)} {...props} />,
+  // Industrial Editorial Pro: header com regra preta 1.5px decisive.
+  ({ className, ...props }, ref) => <thead ref={ref} className={cn("[&_tr]:border-b-[1.5px] [&_tr]:border-foreground", className)} {...props} />,
 );
 TableHeader.displayName = "TableHeader";
 
@@ -42,11 +43,14 @@ const TableRow = React.forwardRef<HTMLTableRowElement, React.HTMLAttributes<HTML
 TableRow.displayName = "TableRow";
 
 const TableHead = React.forwardRef<HTMLTableCellElement, React.ThHTMLAttributes<HTMLTableCellElement>>(
+  // Industrial Editorial Pro: header cells em eyebrow style (10px uppercase
+  // tracking wider, JetBrains Mono via font-mono). Mais compactos (h-10) e
+  // foreground sólido em vez de muted.
   ({ className, ...props }, ref) => (
     <th
       ref={ref}
       className={cn(
-        "h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0",
+        "h-10 px-4 text-left align-middle text-[10px] font-bold uppercase tracking-wider text-foreground font-mono [&:has([role=checkbox])]:pr-0",
         className,
       )}
       {...props}
