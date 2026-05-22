@@ -3,6 +3,8 @@ import { scaleGradeWithLargestRemainder } from './scaleGrade';
 import { getOrderSilkInfo } from './getClientLogo';
 import { supabase } from '@/integrations/supabase/client';
 import { escapeHtml } from './htmlUtils';
+import { generateBatchId } from '@/components/production/worksheet/batchId';
+import { compareColors } from '@/components/production/worksheet/colorSequencing';
 import type { WorkSheetLayoutSettings } from '@/components/production/WorkSheetSettingsDialog';
 import { loadWorkSheetSettings } from '@/components/production/WorkSheetSettingsDialog';
 
@@ -615,6 +617,11 @@ type RenderCaches = {
 
   const titleText = `${sectorEmoji} ${isGrouped ? 'Ficha Agrupada de' : 'Ficha de'} ${escapeHtml(sectorName)}`;
   const opText = isGrouped ? `OPs: ${escapeHtml(groupData!.orderNumbers.join(', '))}` : `OP: ${escapeHtml(order.order_number)}`;
+  // Auditoria mai/2026: batch_id determinístico — formato `XXX-YYMMDD-HASH4`.
+  // Operadora anota pra bater apontamentos depois (genealogia da consolidação).
+  const batchOpNumbers = isGrouped ? groupData!.orderNumbers : [order.order_number];
+  const batchId = generateBatchId(sectorName, batchOpNumbers);
+  const batchHtml = `<span style="display:inline-block;border:1px solid #666;padding:1px 6px;font-size:${Math.round(8 * fontScale)}px;font-weight:600;font-family:monospace;border-radius:3px;margin-top:2px;color:#444;">Batch ${escapeHtml(batchId)}</span>`;
 
   return `
     <div style="border:2px solid #222;padding:6px;page-break-inside:avoid;margin:0 0 4mm 0;width:100%;max-width:100%;box-sizing:border-box;overflow:hidden;">
@@ -625,6 +632,7 @@ type RenderCaches = {
           <span style="display:inline-block;border:1px solid #222;padding:1px 6px;font-size:${Math.round(9 * fontScale)}px;font-weight:600;border-radius:3px;margin-top:1px;">
             Entrega: ${escapeHtml(deliveryDate)}
           </span>
+          ${batchHtml}
         </div>
         <div style="display:flex;gap:8px;align-items:flex-start;">
           ${silkHtml}
@@ -682,6 +690,8 @@ function buildSolagemGroupCard(
   const borderColor = isPreto ? '#222' : '#92400e';
   const bgColor = isPreto ? '#f5f5f5' : '#fffbeb';
   const titleColor = isPreto ? '#111' : '#92400e';
+  // Auditoria mai/2026: batch_id determinístico (rastreabilidade).
+  const batchId = generateBatchId('Solagem', orderNumbers);
 
   const gradeBlock = buildMiniGradeRow(
     'GRADE TOTAL DE SOLAGEM',
@@ -703,7 +713,7 @@ function buildSolagemGroupCard(
             ${sectorEmoji} FICHA DE SOLAGEM — ${escapeHtml(soleColor.toUpperCase())}
           </h1>
           <p style="font-size:10px;font-weight:700;color:${titleColor};margin:2px 0 0;">
-            OPs: ${escapeHtml(orderNumbers.join(', '))}
+            OPs: ${escapeHtml(orderNumbers.join(', '))} · <span style="font-family:monospace;">Batch ${escapeHtml(batchId)}</span>
           </p>
         </div>
         <span style="font-size:14px;font-weight:900;background:${borderColor};color:#fff;padding:2px 8px;border-radius:4px;">${totalPairs} PARES</span>
@@ -781,9 +791,16 @@ async function buildSectorWorkSheetsHtml(
       if (!itemsBySole.has(sole)) itemsBySole.set(sole, []);
       itemsBySole.get(sole)!.push(item);
     }
+    // Bug fix 22/05/2026: ordem dos solados era insertion-order. Aplica
+    // compareColors pra sequenciar claras→escuras (mesma lógica do
+    // PrintWorkSheetsPage moderno). Dentro de cada solado, items ficam
+    // na ordem original (insertion).
+    const sortedSoleEntries = [...itemsBySole.entries()].sort((a, b) =>
+      compareColors(a[0], b[0]),
+    );
 
     const allCards: string[] = [];
-    for (const [sole, items] of itemsBySole.entries()) {
+    for (const [sole, items] of sortedSoleEntries) {
       const orderCards = await Promise.all(
         items.map(item =>
           buildOrderCard(
@@ -816,7 +833,13 @@ async function buildSectorWorkSheetsHtml(
       }
       const activeSizesSole = SIZES.filter(s => (totalsBySize[s] || 0) > 0);
       if (activeSizesSole.length > 0) {
-        const summaryCard = await buildPalmilhaSummaryCard(sole, totalsBySize, totalPairsForSole, activeSizesSole, sectorEmoji, settings);
+        // Auditoria mai/2026: passa op_numbers do solado pra summary card
+        // gerar batch_id determinístico e kit handoff checklist.
+        const soleOpNumbers = items.map(i => i.order.order_number).filter(Boolean);
+        const summaryCard = await buildPalmilhaSummaryCard(
+          sole, totalsBySize, totalPairsForSole, activeSizesSole, sectorEmoji,
+          settings, soleOpNumbers,
+        );
         allCards.push(summaryCard);
       }
     }
@@ -841,7 +864,9 @@ async function buildSectorWorkSheetsHtml(
       }
     }
     const soleCards: string[] = [];
-    for (const [soleColor, data] of [...soleGroupMap.entries()].sort((a, b) => a[0].localeCompare(b[0], 'pt-BR'))) {
+    // Bug fix 22/05/2026: usava localeCompare puro. Trocado pra compareColors
+    // (claras→escuras) — bate com o fluxo PrintWorkSheetsPage moderno.
+    for (const [soleColor, data] of [...soleGroupMap.entries()].sort((a, b) => compareColors(a[0], b[0]))) {
       const activeSizes = SIZES.filter(s => (data.totalsBySize[s] || 0) > 0);
       if (activeSizes.length > 0) {
         soleCards.push(buildSolagemGroupCard(soleColor, data.totalsBySize, data.totalPairs, data.orderNumbers, activeSizes, sectorEmoji, settings));
@@ -876,10 +901,14 @@ async function buildSectorWorkSheetsHtml(
    activeSizes: string[],
    sectorEmoji: string,
    layoutSettings?: WorkSheetLayoutSettings,
+   opNumbers: string[] = [],
  ): Promise<string> {
    const settings = layoutSettings || loadWorkSheetSettings();
    const fontScale = settings.fontSize === 'small' ? 0.85 : settings.fontSize === 'large' ? 1.15 : 1;
    const headerFontSize = Math.round(20 * fontScale);
+   // Auditoria mai/2026: batch_id determinístico pra rastreabilidade da
+   // ficha consolidada. Bate com PrintWorkSheetsPage moderno.
+   const batchId = generateBatchId('Corte Palmilha', opNumbers);
 
    const palmilhaBlock = buildMiniGradeRow(
      'FICHA PALMILHA (UNIFICADA)',
@@ -893,6 +922,30 @@ async function buildSectorWorkSheetsHtml(
      true
    );
 
+   // Kit handoff checklist (Toyota/Lectra) — formaliza entrega pro próximo
+   // setor em sacolas etiquetadas, eliminando erro de separação.
+   const kitHandoffHtml = `
+     <div style="margin-top:6px;padding:5px 6px;border:1.5px solid #16a34a;background:#fff;">
+       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">
+         <span style="font-size:9px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:0.05em;">
+           Entrega · Próximo Setor (Corte Forração)
+         </span>
+         <span style="font-size:7px;font-family:monospace;color:#16a34a;opacity:0.7;letter-spacing:0.1em;text-transform:uppercase;">Kit handoff</span>
+       </div>
+       <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 12px;border-top:1px solid #16a34a;padding-top:3px;">
+         ${[
+           'Palmilhas separadas por solado + cor',
+           'Sacolas etiquetadas (solado, cor, qtd)',
+           'Tally completo · sem caixa em branco',
+           'Sacolas encaminhadas ao próximo setor',
+         ].map(item => `
+           <div style="display:flex;align-items:flex-start;gap:4px;font-size:10px;color:#111;">
+             <span style="width:10px;height:10px;border:1.5px solid #111;display:inline-block;margin-top:1px;flex-shrink:0;"></span>
+             <span style="line-height:1.2;">${escapeHtml(item)}</span>
+           </div>`).join('')}
+       </div>
+     </div>`;
+
    return `
      <div style="border:2px solid #16a34a;padding:6px;page-break-inside:avoid;margin:0 0 4mm 0;width:100%;max-width:100%;box-sizing:border-box;overflow:hidden;background:#f0fdf4;">
        <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #16a34a;padding-bottom:4px;margin-bottom:4px;">
@@ -900,7 +953,9 @@ async function buildSectorWorkSheetsHtml(
            <h1 style="font-size:${Math.round(headerFontSize * 0.85)}px;font-weight:900;text-transform:uppercase;letter-spacing:-0.5px;margin:0;color:#16a34a;">
              ${sectorEmoji} FICHA DE PALMILHA — ${escapeHtml(soleColor.toUpperCase())}
            </h1>
-           <p style="font-size:11px;font-weight:700;color:#16a34a;margin:1px 0;">Resumo unificado por solado</p>
+           <p style="font-size:11px;font-weight:700;color:#16a34a;margin:1px 0;">
+             Resumo unificado por solado · <span style="font-family:monospace;">Batch ${escapeHtml(batchId)}</span>
+           </p>
          </div>
          <div style="text-align:right;">
             <span style="font-size:14px;font-weight:900;background:#16a34a;color:#fff;padding:2px 8px;border-radius:4px;">${totalPairs} PARES</span>
@@ -909,6 +964,7 @@ async function buildSectorWorkSheetsHtml(
        <div style="margin-top:4px;">
          ${palmilhaBlock}
        </div>
+       ${kitHandoffHtml}
        <div style="margin-top:4px;padding-top:6px;border-top:1px solid #16a34a;display:flex;justify-content:space-between;font-size:9px;color:#16a34a;">
          <span>Operador: ________________________</span>
          <span>Data: ____/____/________</span>
