@@ -82,7 +82,12 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
              current_stock: g.available,
              min_stock: g.min_stock,
              max_stock: 0,
-             color: null,
+             // Solados saem com cor + grade preenchidos pra fornecedor entregar
+             // a matriz de tamanhos correta. Materiais sem variação por cor
+             // (forros/tiras/etc.) vêm com color=null/grade=null do
+             // enrichMaterialShortages que colapsa cores nesses casos.
+             color: g.color ?? null,
+             grade: g.grade ?? null,
            })),
          });
          ocCount++;
