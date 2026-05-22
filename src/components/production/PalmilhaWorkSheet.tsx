@@ -241,7 +241,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
                         Total), omitimos pra não confundir o operador. */}
                     {group.baseGrade && group.baseGradeSum && !group.mixedGrades && (
                       <tr style={{ borderBottom: '1.5px solid #000' }}>
-                        <td className="py-1 text-[9px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
+                        <td className="py-1 text-[9px] font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 76, whiteSpace: 'nowrap', padding: '4px 6px', letterSpacing: '0.04em' }}>
                           Por Ficha<br />({group.baseGradeSum}p)
                         </td>
                         {groupSizes.map(s => (
@@ -255,7 +255,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
                       </tr>
                     )}
                     <tr>
-                      <td className="py-2 text-[10px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
+                      <td className="py-2 text-[10px] font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 92, whiteSpace: 'nowrap', padding: '8px 6px', letterSpacing: '0.04em' }}>
                         {group.mixedGrades
                           ? <>Total<br />({group.fichas || 0} fichas*)</>
                           : group.fichas && group.fichas > 1

@@ -497,7 +497,7 @@ const OperatorWorkSheet = ({
                     a distribuição da grade individual destacada. */}
                 {gradeSum > 0 && (
                   <tr style={{ borderBottom: '1.5px solid #000' }}>
-                    <td className="py-1.5 text-[10px] font-mono font-bold text-black leading-tight uppercase tracking-wider" style={{ borderRight: '1px solid #000' }}>
+                    <td className="py-1.5 text-[10px] font-mono font-bold text-black leading-tight uppercase" style={{ borderRight: '1px solid #000', minWidth: 78, whiteSpace: 'nowrap', padding: '6px 6px', letterSpacing: '0.04em' }}>
                       Por Ficha<br />({gradeSum}p)
                     </td>
                     {chunk.map((s, i) => (
@@ -520,7 +520,7 @@ const OperatorWorkSheet = ({
                 {/* TOTAL row — GIANT Anton numbers. Quando fichas=1, esse total
                     JÁ É o conteúdo de uma ficha — label deixa claro. */}
                 <tr>
-                  <td className="py-2 text-[10px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
+                  <td className="py-2 text-[10px] font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 78, whiteSpace: 'nowrap', padding: '8px 6px', letterSpacing: '0.04em' }}>
                     {fichas > 1 ? <>Total<br />× {fichas}</> : <>Total<br />(1 ficha)</>}
                   </td>
                   {chunk.map((s, i) => (
