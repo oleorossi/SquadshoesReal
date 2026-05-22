@@ -95,20 +95,25 @@ describe('consumptionService — edge cases de size', () => {
 
 /**
  * Validação cruzada: garante que os parâmetros enviados batem com a
- * assinatura SQL `(p_reference_id uuid, p_order_quantity numeric, p_color text, p_size integer)`.
+ * assinatura SQL atual `(p_reference_id uuid, p_order_quantity numeric,
+ * p_color text, p_size integer, p_material_variant_id uuid)`.
+ *
+ * Histórico: mig 20260629210000 (variant-4components) adicionou
+ * `p_material_variant_id` pra suportar overrides de produto+consumo
+ * dos 4 componentes principais (cabedal/forro/palmilha/solado).
  */
 describe('consumptionService — contrato de parâmetros com a RPC', () => {
-  it('envia exatamente as 4 chaves esperadas pelo SQL', async () => {
+  it('envia exatamente as 5 chaves esperadas pelo SQL', async () => {
     await calculateConsumption({ referenceId: 'r', quantity: 1, color: 'Preto', size: 37 });
     const params = rpcMock.mock.calls[0][1];
     expect(Object.keys(params).sort()).toEqual(
-      ['p_color', 'p_order_quantity', 'p_reference_id', 'p_size'].sort(),
+      ['p_color', 'p_material_variant_id', 'p_order_quantity', 'p_reference_id', 'p_size'].sort(),
     );
   });
 
   it('nenhum parâmetro extra (evita warnings de unused parameter no Postgres)', async () => {
     await calculateConsumption({ referenceId: 'r', quantity: 1 });
     const params = rpcMock.mock.calls[0][1];
-    expect(Object.keys(params)).toHaveLength(4);
+    expect(Object.keys(params)).toHaveLength(5);
   });
 });
