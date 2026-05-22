@@ -46,8 +46,13 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
   // Batch ID determinístico (genealogia da consolidação).
   const allOpNumbers = groups.flatMap(g => g.opNumbers || []);
   const batchId = generateBatchId('Corte Palmilha', allOpNumbers, date);
-
-  return (
+  // Kit handoff: distingue 3 cenários — todos cortados / todos prontos /
+  // misto. Texto e checklist mudam conforme. Bug encontrado em auditoria
+  // 22/05/2026: antes mostrava sempre "Entrega para Corte Forração" mesmo
+  // pra palmilhas prontas na cor (que pulam Corte Forração e vão direto
+  // pra Aviamento). Operador confuso.
+  const hasCutGroups = groups.some(g => !g.readyMade);
+  const hasReadyGroups = groups.some(g => g.readyMade);
     <div
       className="w-[210mm] p-[6mm] print:w-full print:p-0 bg-white shadow-none print:shadow-none m-auto flex flex-col gap-0"
       style={{ boxSizing: 'border-box', fontFamily: "'Inter Tight', sans-serif", color: '#000' }}
@@ -330,14 +335,16 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
                     {grandTotal} <span className="text-sm font-mono tracking-widest">pares</span>
                   </span>
                 </div>
-                {/* Kit handoff checklist: princípio de kitting de fábricas
-                    enxutas (Toyota/Lectra). Cortador formaliza a entrega pra
-                    Corte Forração em sacolas etiquetadas, eliminando erro de
-                    separação no setor seguinte. */}
+                {/* Kit handoff checklist — Toyota/Lectra. Distingue 3
+                    cenários: todos cortados / todos prontos / misto. */}
                 <div className="mt-3 mb-2 px-2 py-2 keep-together" style={{ border: '1.5px solid #000' }}>
                   <div className="flex items-baseline justify-between mb-1">
                     <span className="section-label" style={{ color: '#000' }}>
-                      Entrega · Próximo Setor (Corte Forração)
+                      {hasCutGroups && hasReadyGroups
+                        ? 'Entrega · Cortadas → Corte Forração · Prontas → Aviamento'
+                        : hasReadyGroups
+                          ? 'Entrega · Palmilhas Prontas → Aviamento'
+                          : 'Entrega · Próximo Setor (Corte Forração)'}
                     </span>
                     <span className="font-mono text-[9px] text-black/60 tracking-widest uppercase">
                       Kit handoff
@@ -345,10 +352,16 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
                   </div>
                   <div className="border-t border-black pt-1.5 grid grid-cols-2 gap-x-4 gap-y-1">
                     {[
-                      'Palmilhas separadas por solado + cor',
-                      'Sacolas etiquetadas (solado, cor, qtd)',
+                      ...(hasCutGroups ? [
+                        'Cortadas: separadas por solado + cor',
+                        'Cortadas: sacolas → Corte Forração',
+                      ] : []),
+                      ...(hasReadyGroups ? [
+                        'Prontas: conferidas com ficha técnica',
+                        'Prontas: sacolas → Aviamento (pula Corte Forração)',
+                      ] : []),
                       'Tally completo · sem caixa em branco',
-                      'Sacolas encaminhadas ao setor seguinte',
+                      'Sacolas etiquetadas (solado, cor, qtd)',
                     ].map(item => (
                       <div key={item} className="flex items-start gap-2 text-[11px] text-black">
                         <span className="w-3.5 h-3.5 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />

@@ -28,6 +28,26 @@ describe('colorBucket', () => {
     expect(colorBucket('black')).toBe(5);
   });
 
+  it('classifies dark earthy colors to bucket 4 (auditoria mai/2026)', () => {
+    // Cores do catálogo Squad/Lojão Niteroi descobertas em auditoria
+    expect(colorBucket('COGUMELO')).toBe(4);
+    expect(colorBucket('CARVALHO')).toBe(4);
+    expect(colorBucket('NEW WHISKY')).toBe(4);
+    expect(colorBucket('TÂMARA')).toBe(4);
+    expect(colorBucket('COBRE')).toBe(4);
+  });
+
+  it('classifies TAN/MILK to correct buckets (auditoria mai/2026)', () => {
+    expect(colorBucket('NEW TAN')).toBe(1);
+    expect(colorBucket('NAPA SOFT MILK')).toBe(0);
+    expect(colorBucket('OURO LIGHT')).toBe(2);
+  });
+
+  it('classifies ROSE variations to pastel bucket 2', () => {
+    expect(colorBucket('ROSE')).toBe(2);
+    expect(colorBucket('ROSADO')).toBe(2);
+  });
+
   it('defaults unknown colors to bucket 3', () => {
     expect(colorBucket('Marsala')).toBe(3);
     expect(colorBucket('Adocicado')).toBe(3);
@@ -50,10 +70,28 @@ describe('compareColors', () => {
 
   it('matches real PV-2026-00052 case (7 colors covering most buckets)', () => {
     const sorted = ['ADOCICADO', 'CHAMPAGNE', 'COBRE', 'DÁLIA', 'NUDE', 'OFF WHITE', 'PICOLE'].sort(compareColors);
-    // OFF WHITE deve vir primeiro (bucket 0); CHAMPAGNE+NUDE depois (bucket 1);
-    // restantes (default bucket 3) por ordem alfabética.
+    // OFF WHITE (bucket 0), CHAMPAGNE/NUDE (1), ADOCICADO/DÁLIA/PICOLE (3 default), COBRE (4 — auditoria fix)
     expect(sorted[0]).toBe('OFF WHITE');
     expect(sorted.slice(1, 3).sort()).toEqual(['CHAMPAGNE', 'NUDE']);
+    expect(sorted[sorted.length - 1]).toBe('COBRE');
+  });
+
+  it('handles all 24 real colors from production DB without misclassification', () => {
+    // Snapshot do estado após fix de auditoria mai/2026. Se este teste
+    // quebrar, é sinal de regressão nos patterns dos buckets.
+    const all = [
+      'PRETO', 'OFF WHITE', 'CHAMPAGNE', 'CARAMELO', 'COGUMELO', 'BEGE',
+      'ADOCICADO', 'NUDE', 'DÁLIA', 'PICOLE', 'ROSE', 'COBRE', 'NEW TAN',
+      'CARVALHO', 'ROCHA', 'NEW WHISKY', 'NAPA SOFT DALIA', 'NATURAL',
+      'NAPA TITANIUM 2026 OFF WHITE', 'NAPA TITANIUM 2026 PRETO',
+      'NAPA SOFT MILK', 'ROSADO', 'TÂMARA', 'OURO LIGHT',
+    ];
+    const sorted = [...all].sort(compareColors);
+    // Primeira cor: bucket 0 (NATURAL/OFF WHITE/MILK)
+    expect(['NATURAL', 'OFF WHITE', 'NAPA SOFT MILK', 'NAPA TITANIUM 2026 OFF WHITE'])
+      .toContain(sorted[0]);
+    // Última cor: sempre algum PRETO
+    expect(sorted[sorted.length - 1]).toMatch(/PRETO/);
   });
 
   it('is stable alphabetically within the same bucket', () => {

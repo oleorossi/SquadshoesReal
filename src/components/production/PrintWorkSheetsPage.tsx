@@ -374,7 +374,19 @@ function groupOrdersByRefColor(orders: any[]): Array<{
     }
   }
 
-  return Array.from(map.values());
+  // Bug fix 22/05/2026: retornava sem sort, então Colagem/Silk/Montagem
+  // imprimiam na ordem de iteração das OPs (insertion order do Map JS).
+  // Agora aplica compareColors → ref alfabético pra sequenciamento por
+  // luminosidade de cor (claras → escuras) que minimiza changeover.
+  return Array.from(map.values()).sort((a, b) => {
+    const colorA = a.representative?.variant?.color_name || a.representative?.color || '';
+    const colorB = b.representative?.variant?.color_name || b.representative?.color || '';
+    const cmp = compareColors(colorA, colorB);
+    if (cmp !== 0) return cmp;
+    const refA = a.representative?.reference_name || a.representative?.reference_code || '';
+    const refB = b.representative?.reference_name || b.representative?.reference_code || '';
+    return refA.localeCompare(refB, 'pt-BR');
+  });
 }
 
 const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheetsPageProps) => {
@@ -973,20 +985,21 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   // ── Setores agrupados por estratégia (config dinâmica) ────────────────────
   // Lê de sector_grouping_config (Supabase) com fallback aos defaults.
   // Antes era hardcoded — agora admin altera via SQL sem redeploy.
+  //
   // 'sole_color': refs distintas com mesmo solado+cor compartilham 1 ficha
   //               (operador foca no material — cortador, costureira, aviamento).
-  // 'ref_color':  refs distintas NUNCA se fundem (Silk/Montagem — operação
-  //               por modelo específico, não por material compartilhado).
+  //               Renderizado via SilkMontageWorkSheet path (silkMontageGroups).
+  // 'ref_color':  refs distintas NUNCA se fundem. Silk/Montagem vão pelo
+  //               SilkMontageWorkSheet com chave ref+cor; Colagem/Acabamento
+  //               vão pelo OperatorWorkSheet legacy via groupedWorksheets
+  //               (= groupOrdersByRefColor).
+  //
+  // REF_COLOR_GROUPED_SECTORS foi removido (dead code) — o fluxo Ref+Cor é
+  // dirigido pelo memo `groupedWorksheets` que verifica `Colagem/Silk/Montagem`
+  // direto via includesSector.
   const SOLE_COLOR_GROUPED_SECTORS = useMemo(
     () => groupingConfig.getSectorsByStrategy('sole_color') as GroupedSector[],
-    [groupingConfig.data],
-  );
-  const REF_COLOR_GROUPED_SECTORS = useMemo(
-    () => groupingConfig.getSectorsByStrategy('ref_color').filter(
-      // Silk e Montagem vão pelo SilkMontageWorkSheet; Colagem/Acabamento
-      // ainda usam OperatorWorkSheet legacy via fluxo Ref+Cor próprio.
-      s => s === 'Silk' || s === 'Montagem',
-    ) as GroupedSector[],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [groupingConfig.data],
   );
 
@@ -1741,7 +1754,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                 }
               }
             }
-            const colorGroups = Array.from(colorMap.values()).sort((a, b) => a.color.localeCompare(b.color));
+            // Bug fix 22/05/2026: usava localeCompare puro, ignorando o
+            // sequenciamento por luminosidade. Resultado: Corte Cabedal/
+            // Forração mostravam cores em ordem alfabética em vez de
+            // claras→escuras. Corrigido pra compareColors (mesmo padrão
+            // dos sectorsHomogeneous).
+            const colorGroups = Array.from(colorMap.values()).sort((a, b) => compareColors(a.color, b.color));
             if (colorGroups.length === 0) return null;
             return {
               soleName: 'Todos os solados',
