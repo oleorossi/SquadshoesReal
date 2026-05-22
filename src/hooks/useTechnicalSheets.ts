@@ -140,6 +140,11 @@ export type SheetFormData = {
     *  hidratador do form não copiava sheet.ncm → form.ncm (campo aparecia
     *  vazio ao reabrir a ficha mesmo com NCM gravado no DB). */
    ncm?: string | null;
+   /** Mapeamento de facas de Corte Cabedal por ref (22/05/2026). Cada bucket
+    *  agrega numerações (ex: P=[34,35,36], M=[37,38], G=[39,40]). Usado APENAS
+    *  no setor Corte Cabedal pra somar quantidades por faca em vez de mostrar
+    *  número-a-número. NULL = sem cadastro, ficha mostra sizes individuais. */
+   knife_size_ranges?: Array<{ label: string; sizes: string[] }> | null;
 };
 
 export const emptySheetForm: SheetFormData = {
@@ -178,6 +183,7 @@ export const emptySheetForm: SheetFormData = {
    weight_per_pair_kg: null,
    box_weight_kg: null,
    ncm: null,
+   knife_size_ranges: null,
 };
 
 export type SheetMaterialFormData = {

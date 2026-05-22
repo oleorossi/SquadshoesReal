@@ -648,12 +648,26 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     queryFn: async () => {
       const { data, error } = await supabase
         .from('technical_sheets')
-        .select('id, insole_has_lining, insole_ready_made, has_straps, sole_material, sole_color, mesa_daily_capacity, cutting_capacity_per_day, sewing_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, aviamento_steps, upper_material, lining_material, insole_material')
+        .select('id, insole_has_lining, insole_ready_made, has_straps, sole_material, sole_color, mesa_daily_capacity, cutting_capacity_per_day, sewing_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, aviamento_steps, upper_material, lining_material, insole_material, knife_size_ranges')
         .in('id', referenceIds);
       if (error) throw error;
       return data || [];
     },
   });
+
+  // Map reference_id → facas de Corte Cabedal (P/M/G/...). Cada ref pode
+  // definir buckets que agregam numerações. Usado APENAS no setor Corte
+  // Cabedal — fichas sem cadastro caem no comportamento individual.
+  const knifeRangesByRef = useMemo(() => {
+    const m = new Map<string, Array<{ label: string; sizes: string[] }>>();
+    for (const s of sheetLiningFlags as any[]) {
+      const r = s.knife_size_ranges;
+      if (Array.isArray(r) && r.length > 0) {
+        m.set(s.id, r as Array<{ label: string; sizes: string[] }>);
+      }
+    }
+    return m;
+  }, [sheetLiningFlags]);
 
   // Map reference_id → aviamento_steps[]. Cada ficha define quais etapas
   // de Aviamento aplicam (Frente, Traseira, Costura de tiras). Worksheet
@@ -1166,9 +1180,23 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         if (cg.baseGradeSum === 0) cg.baseGradeSum = baseSum;
         else if (cg.baseGradeSum !== baseSum) cg.mixedGrades = true;
       }
+      // Knife mapping da ficha técnica desta OP (P/M/G/...). NULL se não
+      // cadastrado — neste caso o knifeGrid recebe a numeração literal como
+      // chave (fallback transparente, comportamento idêntico a combinedGrid).
+      const knifeRanges = knifeRangesByRef.get(sheetId) || null;
       for (const [size, qty] of Object.entries(baseGrid)) {
         const scaled = Math.round((Number(qty) || 0) * multiplier);
-        if (scaled > 0) cg.combinedGrid[size] = (cg.combinedGrid[size] ?? 0) + scaled;
+        if (scaled > 0) {
+          cg.combinedGrid[size] = (cg.combinedGrid[size] ?? 0) + scaled;
+          // knifeGrid: agrupa por faca quando há cadastro; senão usa size literal.
+          let bucketKey = size;
+          if (knifeRanges) {
+            const bucket = knifeRanges.find(b => Array.isArray(b.sizes) && b.sizes.includes(size));
+            if (bucket) bucketKey = bucket.label;
+          }
+          cg.knifeGrid = cg.knifeGrid || {};
+          cg.knifeGrid[bucketKey] = (cg.knifeGrid[bucketKey] ?? 0) + scaled;
+        }
       }
       cg.totalPairs = Object.values(cg.combinedGrid).reduce((s, v) => s + v, 0);
     }
@@ -1733,6 +1761,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                     ...cg,
                     refs: [],  // remove refs (pedido user 22/05/2026)
                     combinedGrid: { ...cg.combinedGrid },
+                    knifeGrid: cg.knifeGrid ? { ...cg.knifeGrid } : undefined,
                     opNumbers: [...cg.opNumbers],
                     pvNumbers: cg.pvNumbers ? [...cg.pvNumbers] : [],
                   });
@@ -1740,6 +1769,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   existing.totalPairs += cg.totalPairs;
                   for (const [size, qty] of Object.entries(cg.combinedGrid)) {
                     existing.combinedGrid[size] = (existing.combinedGrid[size] || 0) + qty;
+                  }
+                  if (cg.knifeGrid) {
+                    existing.knifeGrid = existing.knifeGrid || {};
+                    for (const [k, v] of Object.entries(cg.knifeGrid)) {
+                      existing.knifeGrid[k] = (existing.knifeGrid[k] || 0) + v;
+                    }
                   }
                   existing.fichas = (existing.fichas || 0) + (cg.fichas || 0);
                   for (const op of cg.opNumbers) {

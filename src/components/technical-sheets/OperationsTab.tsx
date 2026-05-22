@@ -15,6 +15,7 @@ import {
   useBomOperations, useAddBomOperation, useUpdateBomOperation, useDeleteBomOperation,
   BomOperationFormData, emptyOperationForm, PRODUCTION_STAGES,
 } from '@/hooks/useBomOperations';
+import { KnifeSizeRangesEditor, type KnifeBucket } from './KnifeSizeRangesEditor';
 import { useCostPolicies } from '@/hooks/useCostPolicies';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
@@ -70,6 +71,10 @@ interface OperationsTabProps {
      visualmente desaproximados (opacity + label "não usado neste modelo")
      pra orientar o operador sem esconder o config (caso ele queira voltar). */
   activeSectors?: string[];
+  /** Numerações da ficha (ex: "33-41") — usado no editor de facas. */
+  sheetSizes?: string;
+  /** Mapping atual de facas de Corte Cabedal (NULL = sem cadastro). */
+  knifeSizeRanges?: KnifeBucket[] | null;
 }
 
 export function OperationsTab({
@@ -95,6 +100,8 @@ export function OperationsTab({
   finishingCapacityPerDay = 0,
   onUpdateSheet,
   activeSectors,
+  sheetSizes = '',
+  knifeSizeRanges = null,
 }: OperationsTabProps) {
   const { data: operations = [], isLoading } = useBomOperations(sheetId);
   const { data: costPolicy } = useCostPolicies();
@@ -128,6 +135,10 @@ export function OperationsTab({
    const [capAcabamento, setCapAcabamento] = useState(finishingCapacityPerDay);
    const [capExpedicao, setCapExpedicao] = useState(expeditionCapacityPerDay);
   const [saving, setSaving] = useState(false);
+  // Facas de Corte Cabedal (P/M/G/etc) — cadastro por ref. Persiste em
+  // technical_sheets.knife_size_ranges (JSONB). NULL = sem cadastro, ficha
+  // de Cabedal mostra sizes individuais.
+  const [knifeRanges, setKnifeRanges] = useState<KnifeBucket[] | null>(knifeSizeRanges);
 
   const totalTimeMin = operations.reduce((s, op: any) => s + Number(op.standard_time_minutes || 0), 0);
   const totalMODCost = operations.reduce((s, op: any) => s + Number(op.cost_per_pair || 0), 0);
@@ -188,6 +199,7 @@ export function OperationsTab({
          assembly_capacity_per_day: capMontagem,
          finishing_capacity_per_day: capAcabamento,
          expedition_capacity_per_day: capExpedicao,
+         knife_size_ranges: knifeRanges,
       };
       const { error } = await supabase
         .from('technical_sheets')
@@ -378,6 +390,13 @@ export function OperationsTab({
         </div>
         <NumberInput value={ltBuffer} onChange={setLtBuffer} className="h-9 text-sm font-mono w-24" min={0} step="1" />
       </div>
+
+      {/* ── Facas de Corte Cabedal (P/M/G/...) ── */}
+      <KnifeSizeRangesEditor
+        sheetSizes={sheetSizes}
+        value={knifeRanges}
+        onChange={setKnifeRanges}
+      />
 
       {/* ── Capacity Cards: Pares/Dia em destaque (origem do cálculo)
             + Semana/Mês como derivados visualmente conectados.
