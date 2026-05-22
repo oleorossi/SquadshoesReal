@@ -22,6 +22,7 @@ import Auth from "./pages/Auth";
 
 // Lazy-loaded pages
 const Index = lazy(() => import("./pages/Index"));
+const DesignPreview = lazy(() => import("./pages/DesignPreview"));
 // References removido em 2026-05 — página estava zerada e o menu apontava
 // pra ela sem uso. /references agora redireciona pra /fichas-tecnicas.
 // ColorImagesPage removido — duplicava a aba "Fotos & Histórico" da ficha técnica.
@@ -433,6 +434,15 @@ const router = createBrowserRouter([
   {
     path: "/login",
     element: <Navigate to="/auth" replace />,
+  },
+  {
+    path: "/design-preview",
+    element: (
+      <Suspense fallback={<InlinePageLoader />}>
+        <DesignPreview />
+      </Suspense>
+    ),
+    errorElement: <RouteErrorFallback />,
   },
   {
     path: "/",
