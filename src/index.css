@@ -26,18 +26,21 @@
      ▼ COLORS — primitives (HSL · valores brutos)
      ═════════════════════════════════════════════════════════════ */
 
-  /* Primary — Vermelho Squad (#E11D2E · escala completa 50→950) */
-  --primary-50:  354 100% 95%;   /* #FFE5E8 */
-  --primary-100: 354 100% 85%;   /* #FFB3BD */
-  --primary-200: 354 95% 75%;
-  --primary-300: 354 100% 65%;   /* #FF4D5E */
-  --primary-400: 354 85% 56%;
-  --primary-500: 354 78% 50%;    /* ⭑ #E11D2E — base oficial */
-  --primary-600: 354 86% 42%;    /* #C8102E */
-  --primary-700: 354 82% 33%;    /* #9B0F22 */
-  --primary-800: 354 80% 22%;
-  --primary-900: 354 80% 17%;    /* #4A0810 */
-  --primary-950: 354 85% 10%;
+  /* Primary — Vermelho Squad (Industrial Editorial Pro: #D9264E)
+     Atualizado 22/05/2026: base mudou de #E11D2E pra #D9264E (mockup
+     /design-preview). Hue 347 (rosado-vermelho) tem melhor harmonia com a
+     PAPER cream. Escala 50→950 recalculada mantendo proporções. */
+  --primary-50:  347 100% 96%;
+  --primary-100: 347 100% 88%;
+  --primary-200: 347 78% 78%;
+  --primary-300: 347 73% 68%;
+  --primary-400: 347 73% 58%;
+  --primary-500: 347 71% 50%;    /* ⭑ #D9264E — base Industrial Editorial Pro */
+  --primary-600: 347 75% 42%;
+  --primary-700: 347 78% 33%;
+  --primary-800: 347 80% 22%;
+  --primary-900: 347 82% 16%;
+  --primary-950: 347 85% 10%;
 
   /* Accent — Preto absoluto / contraste editorial */
   --accent-50:  0 0% 96%;
@@ -52,18 +55,21 @@
   --accent-900: 0 0% 18%;
 
   /* Neutros — escala fria-neutra (210° matiz, refinada) */
-  --neutral-0:   0 0% 100%;
-  --neutral-50:  210 20% 98.5%;
-  --neutral-100: 210 16% 96%;
-  --neutral-200: 210 14% 93%;
-  --neutral-300: 214 14% 89%;
-  --neutral-400: 215 12% 78%;
-  --neutral-500: 215 12% 60%;
-  --neutral-600: 215 12% 46%;
-  --neutral-700: 217 18% 28%;
-  --neutral-800: 222 24% 16%;
-  --neutral-900: 224 50% 7%;
-  --neutral-950: 224 60% 4%;
+  /* Industrial Editorial Pro (22/05/2026): paleta neutra é PAPER (off-white
+     creme #FAFAF7) → INK (preto puro #0A0A0A). Cinzas intermediários ganham
+     viés warm pra harmonizar com o paper-cream em vez do antigo cinza-azulado. */
+  --neutral-0:   45 33% 99%;     /* paper puro */
+  --neutral-50:  45 33% 97%;     /* #FAFAF7 — PAPER */
+  --neutral-100: 40 20% 94%;
+  --neutral-200: 36 14% 88%;
+  --neutral-300: 30 10% 80%;     /* borders sutis */
+  --neutral-400: 24 8% 62%;
+  --neutral-500: 20 6% 48%;
+  --neutral-600: 18 6% 36%;
+  --neutral-700: 15 8% 22%;
+  --neutral-800: 0 0% 11%;
+  --neutral-900: 0 0% 4%;        /* #0A0A0A — INK */
+  --neutral-950: 0 0% 2%;
 
   /* ═══════════════════════════════════════════════════════════════
      ▼ COLORS — semantic (alias dos primitives)
@@ -1144,6 +1150,44 @@ a:focus-visible {
   text-transform: uppercase;
   color: hsl(var(--muted-foreground));
   line-height: 1;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Industrial Editorial Pro — utility classes globais (22/05/2026)
+   Espelham o stub `ed` do /design-preview mockup. Disponíveis em todo
+   o app pra dar consistência tipográfica.
+   ───────────────────────────────────────────────────────────── */
+
+/* Display: Anton uppercase letter-spacing tight. Pra hero, KPIs, títulos. */
+.ed-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+  line-height: 1;
+  padding-top: 0.06em; /* alinhamento óptico do Anton (clipping superior) */
+}
+
+/* Body: Inter Tight, base tipográfica geral pra texto rodando. */
+.ed-body {
+  font-family: var(--font-editorial);
+}
+
+/* Mono: JetBrains Mono tabular pra códigos, OPs, datas, valores numéricos. */
+.ed-mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Eyebrow: micro-label categoria 10px tracking-widest uppercase. Marcador
+   tipográfico que precede títulos / seções (ex: "PRODUÇÃO", "FICHA TÉCNICA"). */
+.ed-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  line-height: 1;
+  color: hsl(var(--muted-foreground));
 }
 
 /* Display number: gigante pra hero/KPIs, Anton em tamanho dramático. */
