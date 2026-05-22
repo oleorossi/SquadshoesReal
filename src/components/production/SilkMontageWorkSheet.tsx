@@ -17,6 +17,12 @@ export interface SilkColorGroup {
   liningColor?: string | null;
   colorHex?: string;
   combinedGrid: Record<string, number>;
+  /** Grade agregada por FACA de Corte Cabedal (P/M/G/...). Populada quando a
+   *  ref da ficha tem knife_size_ranges cadastrado. Em Corte Cabedal, a
+   *  worksheet usa este grid em vez de combinedGrid. Sizes não-mapeadas viram
+   *  chave literal (ex: '41'). Sem cadastro = NULL/vazio = fallback pro
+   *  combinedGrid (sizes individuais). */
+  knifeGrid?: Record<string, number>;
   /** Grade BASE de 1 ficha fechada (ex: {34:1,...,40:1} soma 12). */
   baseGrid?: Record<string, number>;
   /** Soma da grade base = pares por 1 ficha fechada. */
@@ -294,11 +300,32 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
           Corte com 5+ cores o footer vazava sozinho pra pg seguinte. */}
       <div className="flex-1 space-y-2">
         {group.colorGroups.map((cg, idx) => {
-          const activeSizes = Object.keys(cg.combinedGrid)
-            .filter(s => (cg.combinedGrid[s] ?? 0) > 0)
+          // Corte Cabedal: se a ref tem knife_size_ranges cadastrado (knifeGrid
+          // populado com labels P/M/G), exibe colunas por faca em vez de
+          // numeração individual. Outros setores sempre usam combinedGrid.
+          // Sizes não-mapeadas viram chave literal (ex: "41") no knifeGrid e
+          // aparecem como colunas individuais ao lado das facas.
+          const usingKnife = sector === 'Corte Cabedal'
+            && cg.knifeGrid
+            && Object.keys(cg.knifeGrid).length > 0;
+          const sourceGrid: Record<string, number> = usingKnife ? cg.knifeGrid! : cg.combinedGrid;
+          // Ordem visual canônica das facas: PP < P < M < G < GG < GGG, depois
+          // outros labels (alfabético) e por último numerações individuais.
+          const KNIFE_ORDER = ['PP', 'P', 'M', 'G', 'GG', 'GGG'];
+          const activeSizes = Object.keys(sourceGrid)
+            .filter(s => (sourceGrid[s] ?? 0) > 0)
             .sort((a, b) => {
+              const ia = KNIFE_ORDER.indexOf(a.toUpperCase());
+              const ib = KNIFE_ORDER.indexOf(b.toUpperCase());
+              if (ia >= 0 && ib >= 0) return ia - ib;
+              if (ia >= 0) return -1;
+              if (ib >= 0) return 1;
               const na = parseFloat(a), nb = parseFloat(b);
-              return isNaN(na) || isNaN(nb) ? a.localeCompare(b) : na - nb;
+              const aIsNum = !isNaN(na), bIsNum = !isNaN(nb);
+              if (aIsNum && bIsNum) return na - nb;
+              if (aIsNum) return 1;   // labels alpha antes de numéricas
+              if (bIsNum) return -1;
+              return a.localeCompare(b);
             });
           const cards = Math.max(1, Math.ceil(cg.totalPairs / pairsPerCard));
           const isLast = idx === group.colorGroups.length - 1;
@@ -578,7 +605,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                           grupo têm a mesma grade base. Quando há grades
                           mistas, omitimos pra evitar perCard × N ≠ Total
                           confundir o operador. */}
-                      {cg.baseGrid && cg.baseGradeSum && !cg.mixedGrades && (
+                      {cg.baseGrid && cg.baseGradeSum && !cg.mixedGrades && !usingKnife && (
                         <tr style={{ borderBottom: '1.5px solid #000' }}>
                           <td className="py-1 text-[9px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
                             Por Ficha<br />({cg.baseGradeSum}p)
@@ -613,7 +640,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                               borderRight: '1px solid #000',
                             }}
                           >
-                            {cg.combinedGrid[s] || 0}
+                            {sourceGrid[s] || 0}
                           </td>
                         ))}
                         <td

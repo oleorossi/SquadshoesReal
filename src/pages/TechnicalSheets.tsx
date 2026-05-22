@@ -3384,6 +3384,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             finishingCapacityPerDay={Number((sheet as any).finishing_capacity_per_day ?? 0)}
             onUpdateSheet={(data) => updateSheet.mutate({ id: sheet.id, data: data as any })}
             activeSectors={Array.isArray((sheet as any).production_sectors) ? ((sheet as any).production_sectors as string[]) : undefined}
+            sheetSizes={sheet.sizes || ''}
+            knifeSizeRanges={Array.isArray((sheet as any).knife_size_ranges) ? ((sheet as any).knife_size_ranges as any[]) : null}
           />
         </TabsContent>
 
