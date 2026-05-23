@@ -43,6 +43,7 @@ export const menuGroups = [
       { name: "Capacidade",       icon: BarChart3,         path: "/capacity-planning" },
       { name: "Imprimir Fichas",  icon: Printer,           path: "/imprimir-fichas" },
       { name: "Gargalos",         icon: AlertTriangle,     path: "/gargalos" },
+      { name: "Terceiros na Rua", icon: Truck,             path: "/terceiros-na-rua" },
     ],
   },
   {

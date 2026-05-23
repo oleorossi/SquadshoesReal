@@ -76,6 +76,7 @@ const OrdersSummary = lazy(() => import("./pages/OrdersSummary"));
 const GroupedReportSummary = lazy(() => import("./pages/GroupedReportSummary"));
 const CapacityPlanning = lazy(() => import("./pages/CapacityPlanning"));
 const BottlenecksPage = lazy(() => import("./pages/Bottlenecks"));
+const OutsourcedInFieldPage = lazy(() => import("./pages/OutsourcedInField"));
 const SectorAggregatedView = lazy(() => import("./pages/SectorAggregatedView"));
 const ProductionControlCenter = lazy(() => import("./pages/ProductionControlCenter"));
 const PrintWorkSheets = lazy(() => import("./pages/PrintWorkSheets"));
@@ -591,6 +592,13 @@ const router = createBrowserRouter([
         // externa. Bloqueia OP de avançar pra Montagem até OS confirmar prazo.
         path: "gargalos",
         element: <BottlenecksPage />,
+      },
+      {
+        // Tudo o que está fora da fábrica AGORA — OSs ativas de gargalo +
+        // OPs inteiras terceirizadas (orders.outsourced_to_contractor_id).
+        // Operacional: cards por contratada + tabela com prazo/atraso/ações.
+        path: "terceiros-na-rua",
+        element: <OutsourcedInFieldPage />,
       },
       {
         // Visão consolidada de carga por setor. Em vez de N OPs individuais
