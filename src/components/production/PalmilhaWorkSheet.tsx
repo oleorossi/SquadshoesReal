@@ -61,6 +61,8 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
   // pra Aviamento). Operador confuso.
   const hasCutGroups = groups.some(g => !g.readyMade);
   const hasReadyGroups = groups.some(g => g.readyMade);
+
+  return (
     <div
       className="w-[210mm] p-[6mm] print:w-full print:p-0 bg-white shadow-none print:shadow-none m-auto flex flex-col gap-0"
       style={{ boxSizing: 'border-box', fontFamily: "'Inter Tight', sans-serif", color: '#000' }}
