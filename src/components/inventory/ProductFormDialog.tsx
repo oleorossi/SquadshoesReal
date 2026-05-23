@@ -36,6 +36,11 @@ import React from 'react';
 import { SoleSizeConjugationsEditor } from './SoleSizeConjugationsEditor';
 import { useSoleConjugations } from '@/hooks/useSoleConjugations';
 
+// Constantes vazias estáveis pra evitar loop de re-render quando hooks
+// retornam data=undefined (loading) e o default `?? []` cria array novo.
+const EMPTY_GROUPS: any[] = [];
+const EMPTY_PRODUCTS: any[] = [];
+
 const SOLADO_COLORS = ['Preto', 'Caramelo'];
 const ADULT_SIZES = [34, 35, 36, 37, 38, 39, 40];
 const CHILD_SIZES = Array.from({ length: 16 }, (_, i) => 21 + i); // 21-36
@@ -196,7 +201,12 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
     siblings: Array<{ id: string; name: string; color: string | null }>;
     resolve: (apply: boolean) => void;
   } | null>(null);
-  const { data: allGroups = [] } = useGroups();
+  const { data: allGroupsData } = useGroups();
+  // Bug fix 23/05/2026: `data ?? []` cria novo [] toda render quando data
+  // é undefined (loading). Isso cascateia: groups (useMemo) muda → useEffect
+  // 313 dispara → setForm → re-render → loop infinito "Maximum update depth
+  // exceeded". Memoiza pra ref estável.
+  const allGroups = useMemo(() => allGroupsData ?? EMPTY_GROUPS, [allGroupsData]);
   // Filtra grupos de solado quando o usuário está cadastrando MATERIAL comum.
   // Solados têm sua aba/ferramenta própria (SoleTechnicalDetails); poluir o
   // select de família com SOLADO 01/204/etc. confunde quem só quer cadastrar
@@ -210,7 +220,10 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
   );
   const queryClient = useQueryClient();
   const { data: suppliers = [] } = useSuppliers();
-  const { data: allProducts = [] } = useProducts();
+  const { data: allProductsData } = useProducts();
+  // Bug fix 23/05/2026: data ?? [] cria array novo a cada render quando
+  // data=undefined (loading). Memoiza pra ref estável e evitar loop.
+  const allProducts = useMemo(() => allProductsData ?? EMPTY_PRODUCTS, [allProductsData]);
   const addComponentSheet = useAddComponentSheet();
   const updateComponentSheet = useUpdateComponentSheet();
   const { data: componentSheets = [] } = useComponentSheets();

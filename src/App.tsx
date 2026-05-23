@@ -899,6 +899,27 @@ const router = createBrowserRouter([
       { path: "diagnostico",       element: <Navigate to="/system-diagnostics" replace /> },
       { path: "monitoramento",     element: <Navigate to="/system-monitor" replace /> },
       { path: "technical-sheets",  element: <Navigate to="/fichas-tecnicas" replace /> },
+      // Auditoria visual 23/05/2026: URLs em pt-br intuitivas caíam no
+      // catch-all "*" gerando log "404 Debug" no console. Adicionado
+      // redirects explícitos pras URLs internas reais. Reduz ruído nos
+      // logs + UX previsível (usuário digita /pedidos-venda e funciona).
+      { path: "pedidos-venda",      element: <Navigate to="/sales" replace /> },
+      { path: "ordens-de-producao", element: <Navigate to="/orders" replace /> },
+      { path: "ordens",             element: <Navigate to="/orders" replace /> },
+      { path: "corte",              element: <Navigate to="/pcp?tab=setores&sub=corte" replace /> },
+      { path: "costura",            element: <Navigate to="/pcp?tab=setores&sub=costura" replace /> },
+      { path: "aviamento",          element: <Navigate to="/pcp?tab=setores&sub=aviamento" replace /> },
+      { path: "montagem",           element: <Navigate to="/pcp?tab=setores&sub=montagem" replace /> },
+      { path: "solagem",            element: <Navigate to="/pcp?tab=setores&sub=solagem" replace /> },
+      { path: "acabamento",         element: <Navigate to="/pcp?tab=setores&sub=acabamento" replace /> },
+      { path: "compras",            element: <Navigate to="/purchase-orders" replace /> },
+      { path: "fornecedores",       element: <Navigate to="/suppliers" replace /> },
+      { path: "clientes",           element: <Navigate to="/clients" replace /> },
+      { path: "ponto",              element: <Navigate to="/timesheet" replace /> },
+      // NOTA: /financeiro, /rh, /expedicao, /relatorios, /pronta-entrega
+      // já são rotas reais (Finance/RHHub/ExpedicaoHub/etc) acima — não
+      // precisam de redirect. /configuracoes não existe e é ambíguo
+      // (system-monitor? user-management?) — fica no NotFound até decidir.
       {
         path: "*",
         element: <NotFound />,

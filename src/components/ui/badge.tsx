@@ -36,8 +36,15 @@ const badgeVariants = cva(
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLDivElement>, VariantProps<typeof badgeVariants> {}
 
-function Badge({ className, variant, ...props }: BadgeProps) {
-  return <div className={cn(badgeVariants({ variant }), className)} {...props} />;
-}
+// Bug fix 23/05/2026: function component sem forwardRef quebra quando
+// usado dentro de `<TooltipTrigger asChild>` / `<SlotClone>` (Radix usa
+// Slot que tenta passar ref pro filho). Resultado: warning "Function
+// components cannot be given refs" + ref descartada silenciosamente.
+const Badge = React.forwardRef<HTMLDivElement, BadgeProps>(
+  ({ className, variant, ...props }, ref) => (
+    <div ref={ref} className={cn(badgeVariants({ variant }), className)} {...props} />
+  ),
+);
+Badge.displayName = 'Badge';
 
 export { Badge, badgeVariants };

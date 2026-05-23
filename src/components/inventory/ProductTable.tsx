@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useCallback } from 'react';
+import React, { useMemo, useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Product } from '@/types/inventory';
 import { supabase } from '@/integrations/supabase/client';
@@ -657,8 +657,12 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
       const subKey = `${parentKey}__${sub.baseName}`;
       const isSubCollapsed = collapsedSubs[subKey];
 
+      // Bug fix 23/05/2026: era `<tr className="contents">` envolvendo
+      // outro <tr>, o que viola HTML (tr dentro de tr). React reportava
+      // "validateDOMNesting: tr cannot appear as a child of tr". Trocado
+      // por React.Fragment — mesma semântica sem o wrapper inválido.
       return (
-        <tr key={sub.baseName} className="contents">
+        <React.Fragment key={sub.baseName}>
           <TableRow
             className="bg-muted/40 hover:bg-muted/60 cursor-pointer border-y border-border/40"
             onClick={() => toggleSub(subKey)}
@@ -722,7 +726,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
            {!isSubCollapsed && (
              <ProductRows products={sub.products} onEdit={handleEditIntercepted} onDelete={onDelete} onStockOut={setStockOutProduct} onGrade={setGradeProduct} onArtisanal={setArtisanalProducts} formatCurrency={formatCurrency} indent avgConsumptionMap={avgConsumptionMap} />
            )}
-        </tr>
+        </React.Fragment>
       );
     });
   };
