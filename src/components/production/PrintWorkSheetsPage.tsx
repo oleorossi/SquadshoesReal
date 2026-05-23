@@ -11,6 +11,8 @@ import { SolagemWorkSheet, type SoleColorBand } from '@/components/production/So
 import { ExpedicaoWorkSheet, type ExpedicaoCustomerGroup, type ExpedicaoOrder } from '@/components/production/ExpedicaoWorkSheet';
 import { ManagementReport, type ReportSaleOrder, type ReportOrder, type ReportStage } from '@/components/production/ManagementReport';
 import logoSquad from '@/assets/logo-squad-shoes.jpg';
+import { useOrderLotsBatch } from '@/hooks/useOrderLots';
+import { expandOrdersByLots, type LotMetadata } from '@/lib/lotExpansion';
 
 const printStyles = `
   /* ─────────────────────────────────────────────────────────────
@@ -443,6 +445,16 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
 
   // Costs e stages só carregados quando "Relatório Gerencial" está selecionado
   const orderIds = useMemo(() => orders.map((o: any) => o.id).filter(Boolean), [orders]);
+
+  // Lot sizing (PR 2026-05-23): carrega lots em batch; cada OP splitada vira
+  // N virtual orders. Groupings abaixo usam `expandedOrders` no lugar de `orders`
+  // e incluem `_lot_number` na key — assim cada lote vira ficha separada em
+  // cada setor (mantendo ergonomia de agregar OPs por solado dentro do lote).
+  const { data: lotsMap } = useOrderLotsBatch(orderIds);
+  const expandedOrders = useMemo(
+    () => expandOrdersByLots(orders as any[], lotsMap),
+    [orders, lotsMap],
+  ) as (typeof orders[number] & LotMetadata)[];
 
   const { data: orderCosts = [] } = useQuery({
     queryKey: ['order_costs_for_report', orderIds],
@@ -915,7 +927,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   const { palmilhaGroups, allSizes: palmilhaAllSizes } = useMemo(() => {
     const groupMap = new Map<string, PalmilhaGroup & { readyMade: boolean }>();
     const sizeSet = new Set<string>();
-    for (const order of orders) {
+    for (const order of expandedOrders) {
       const sheetId = order.reference_id;
       if (!sheetId) continue;
       const isReadyMade = readyMadeLookup.get(sheetId) === true;
@@ -933,11 +945,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       const soleName = rawSoleName
         ? getBaseName(rawSoleName)
         : (fallbackSole ? getBaseName(fallbackSole) : 'Sem Solado');
-      // Agrupa SOMENTE por SOLADO. Pedido do user 2026-05-23: cortador
-      // só precisa de qty por numeração, por solado — cabedal/tiras/cor/
-      // pronta-vs-cortar não segmentam. readyMade do grupo é decidido no
-      // pós-processamento (true só se 100% das OPs forem pronta).
-      const key = soleName;
+      // Agrupa por SOLADO + LOTE (PR lot-sizing 2026-05-23). Lote 0 =
+      // OP não-splitada (comportamento atual). Lote N = N-ésimo lote de
+      // OPs splitadas. Pedido do user 2026-05-23: cortador só precisa de
+      // qty por numeração, por solado — cabedal/tiras/cor/pronta-vs-cortar
+      // não segmentam. Lots de OPs do MESMO solado agregam (lote 1 de
+      // OP-A + lote 1 de OP-B viram a mesma ficha).
+      const lotNum = order._lot_number ?? 0;
+      const lotTotal = order._total_lots ?? 0;
+      const key = `${soleName}::lot${lotNum}`;
       if (!groupMap.has(key)) {
         groupMap.set(key, {
           soleName, insoleColor: '—', totalPairs: 0, grade: {},
@@ -949,6 +965,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                     // ver ref-a-ref. Mantido o campo no tipo pra compat.
           opNumbers: [],
           pvNumbers: [],
+          lotInfo: lotTotal > 1 ? { number: lotNum, total: lotTotal } : undefined,
         });
       }
       const group = groupMap.get(key)!;
@@ -990,12 +1007,17 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       const na = parseFloat(a), nb = parseFloat(b);
       return isNaN(na) || isNaN(nb) ? a.localeCompare(b) : na - nb;
     });
-    const groups = Array.from(groupMap.values()).sort(
-      (a, b) => a.soleName.localeCompare(b.soleName),
-    );
+    const groups = Array.from(groupMap.values()).sort((a, b) => {
+      const cmp = a.soleName.localeCompare(b.soleName);
+      if (cmp !== 0) return cmp;
+      // Tie-break: lote 1 vem antes de lote 2 vem antes de não-splitado (0).
+      const aLot = a.lotInfo?.number ?? 999;
+      const bLot = b.lotInfo?.number ?? 999;
+      return aLot - bLot;
+    });
     return { palmilhaGroups: groups, allSizes: sortedSizes };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orders, readyMadeLookup, palmilhaLookup, soleMappings]);
+  }, [expandedOrders, readyMadeLookup, palmilhaLookup, soleMappings]);
 
   // ── Setores que agrupam por SOLADO + COR ───────────────────────────────────
   // Silk, Montagem, Corte Forração, Costura, Aviamento, Acabamento.
