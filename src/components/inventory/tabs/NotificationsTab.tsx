@@ -14,7 +14,12 @@ export function NotificationsTab() {
     queryFn: () => apiService.getDashboardNotifications(),
   });
 
-  const productsArr = Array.isArray(products) ? products : [];
+  // Solado vive em /solados (SolesHub) — gestão dedicada. Alertas de estoque
+  // de solado não fazem sentido aqui porque eles são gerenciados por grade
+  // (stock_grade) e não por scalar quantity. Filtra na fonte (PR 2026-05-23).
+  const productsArr = (Array.isArray(products) ? products : []).filter(
+    (p: any) => (p.category || '').toLowerCase() !== 'solado'
+  );
   const zeroStockItems = useMemo(() =>
     productsArr.filter(p => p.quantity === 0 && p.active),
     [productsArr]
