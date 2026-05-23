@@ -78,6 +78,9 @@ export interface SilkColorGroup {
    *  ["Frente","Traseira","Costura de tiras"]). Renderizado como
    *  checklist por etapa × numeração no setor Aviamento. */
   aviamentoSteps?: string[];
+  /** Lot sizing (PR 2026-05-23): quando o grupo representa o N-ésimo lote
+   *  de OPs splitadas, mostra badge "LOTE X / N" no header. */
+  lotInfo?: { number: number; total: number };
 }
 
 export interface SoleSilkGroup {
@@ -407,6 +410,17 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                       <span className="section-label block" style={{ color: '#000' }}>Ordem</span>
                       <span className="font-mono text-[12px] font-bold text-black tracking-wider">
                         {cg.opNumbers.length === 1 ? cg.opNumbers[0] : `${cg.opNumbers[0]} +${cg.opNumbers.length - 1}`}
+                      </span>
+                    </div>
+                  )}
+                  {cg.lotInfo && cg.lotInfo.total > 1 && (
+                    <div className="text-right border-r border-black pr-3">
+                      <span className="section-label block" style={{ color: '#000' }}>Lote</span>
+                      <span
+                        className="text-black leading-none block"
+                        style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em' }}
+                      >
+                        {cg.lotInfo.number}<span className="text-sm font-mono tracking-widest">/{cg.lotInfo.total}</span>
                       </span>
                     </div>
                   )}

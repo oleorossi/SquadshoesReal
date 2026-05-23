@@ -1070,16 +1070,22 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         .join('|');
     };
 
-    for (const order of orders) {
+    for (const order of expandedOrders) {
       const sheetId = order.reference_id;
       const cabedelColorLower = (order.color || '').toLowerCase();
       const colorName = order.variant?.color_name || order.color || '';
       const colorHex = order.variant?.color_hex;
       const strapSig = computeStrapSignature(order);
-      // Chave do colorMap = cor cabedal + assinatura de tiras. Sem strap_colors,
-      // strapSig='' e a chave equivale ao comportamento antigo. Com tiras,
-      // cada combinação distinta vira uma ficha própria.
-      const colorKey = strapSig ? `${colorName}::${strapSig}` : colorName;
+      // Lot sizing (PR 2026-05-23): lot vira parte da chave de cor. Lotes
+      // diferentes de mesma cor viram fichas separadas. Lote 0 = OPs não
+      // splitadas (comportamento atual).
+      const lotNum = order._lot_number ?? 0;
+      const lotTotal = order._total_lots ?? 0;
+      const lotSuffix = lotTotal > 1 ? `::lot${lotNum}` : '';
+      // Chave do colorMap = cor cabedal + assinatura de tiras + lote.
+      const colorKey = strapSig
+        ? `${colorName}::${strapSig}${lotSuffix}`
+        : `${colorName}${lotSuffix}`;
 
       const soleMapping = (soleMappings as any[]).find(
         m => m.sheet_id === sheetId && (m.product_color || '').toLowerCase() === cabedelColorLower,
@@ -1176,6 +1182,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           requiresLiningCut,
           requiresUpperCut,
           aviamentoSteps: aviamentoStepsByRef.get(sheetId) || [],
+          lotInfo: lotTotal > 1 ? { number: lotNum, total: lotTotal } : undefined,
         });
       }
 
@@ -1240,7 +1247,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       })
       .sort((a, b) => a.soleName.localeCompare(b.soleName, 'pt-BR'));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, liningColorLookup, soleMaterialByRef, soleFachetadoLookup, clientsInfo, economicGroupsInfo, soleGroupPackaging]);
+  }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, liningColorLookup, soleMaterialByRef, soleFachetadoLookup, clientsInfo, economicGroupsInfo, soleGroupPackaging]);
 
   // ── Solagem: consolidated by sole color ──────────────────────────────────────
   const solagemData = useMemo<{ bands: SoleColorBand[]; allSizes: string[]; grandTotal: number } | null>(() => {
@@ -1251,24 +1258,33 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       mixedGrades: boolean;
       refs: Array<{ key: string; code: string; name: string; color: string; image_url: string | null }>;
       opNumbers: string[]; pvNumbers: string[];
+      soleColor: string;
+      lotInfo?: { number: number; total: number };
     }>();
     const sizeSet = new Set<string>();
 
-    for (const order of orders) {
+    for (const order of expandedOrders) {
       const sheetId = order.reference_id;
       const cabedelColorLower = (order.color || '').toLowerCase();
       const soleColor = soleColorLookup.get(`${sheetId}::${cabedelColorLower}`) || 'Sem Cor';
+      // Lot sizing (PR 2026-05-23): lote vira parte da chave da banda de
+      // cor. Lotes diferentes da mesma cor viram bandas separadas.
+      const lotNum = order._lot_number ?? 0;
+      const lotTotal = order._total_lots ?? 0;
+      const bandKey = lotTotal > 1 ? `${soleColor}::lot${lotNum}` : soleColor;
 
-      if (!soleColorMap.has(soleColor)) {
-        soleColorMap.set(soleColor, {
+      if (!soleColorMap.has(bandKey)) {
+        soleColorMap.set(bandKey, {
           grade: {}, totalPairs: 0,
           baseGrade: { ...((order.grid as Record<string, number>) || {}) },
           baseGradeSum: 0, fichas: 0, mixedGrades: false,
           refs: [],
           opNumbers: [], pvNumbers: [],
+          soleColor,
+          lotInfo: lotTotal > 1 ? { number: lotNum, total: lotTotal } : undefined,
         });
       }
-      const band = soleColorMap.get(soleColor)!;
+      const band = soleColorMap.get(bandKey)!;
       if (order.op_number && !band.opNumbers.includes(order.op_number)) {
         band.opNumbers.push(order.op_number);
       }
@@ -1326,13 +1342,22 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       const na = parseFloat(a), nb = parseFloat(b);
       return isNaN(na) || isNaN(nb) ? a.localeCompare(b) : na - nb;
     });
-    const bands: SoleColorBand[] = Array.from(soleColorMap.entries())
-      .map(([soleColor, v]) => ({ soleColor, ...v }))
-      .sort((a, b) => a.soleColor.localeCompare(b.soleColor, 'pt-BR'));
+    const bands: SoleColorBand[] = Array.from(soleColorMap.values())
+      // soleColor + lotInfo já presentes no objeto interno (chave do map
+      // agora é bandKey = cor::lotN ou cor). Spread leva tudo incluindo lotInfo.
+      .map((v) => ({ ...v }))
+      .sort((a, b) => {
+        const cmp = a.soleColor.localeCompare(b.soleColor, 'pt-BR');
+        if (cmp !== 0) return cmp;
+        // Tie-break: lote 1 antes de lote 2 antes de não-splitado.
+        const aLot = a.lotInfo?.number ?? 999;
+        const bLot = b.lotInfo?.number ?? 999;
+        return aLot - bLot;
+      });
     const grandTotal = bands.reduce((s, b) => s + b.totalPairs, 0);
 
     return { bands, allSizes, grandTotal };
-  }, [orders, activeSectors, soleColorLookup]);
+  }, [expandedOrders, activeSectors, soleColorLookup]);
 
   // ── Expedição: por cliente (LOJA-A-LOJA), com info de embalagem ──────────
   // Acabamento agora segue mesma lógica de Aviamento (sole+color), per user.
@@ -1927,8 +1952,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         {/* User pediu em 2026-05: 'Setor de acabamento não tem agrupamento
             nenhum, é o pedido individual cliente a cliente'. Antes era
             agregado em silkMontageGroups por solado+cor. Agora itera OP a OP
-            e renderiza OperatorWorkSheet (mesma estrutura da Colagem). */}
-        {includesSector('Acabamento') && orders.map((order) => {
+            e renderiza OperatorWorkSheet (mesma estrutura da Colagem).
+            Lot sizing (PR 2026-05-23): usa expandedOrders pra que OPs
+            splitadas virem N fichas (1 por lote) em Acabamento também. */}
+        {includesSector('Acabamento') && expandedOrders.map((order) => {
           const repColorLower = (order.color || '').toLowerCase();
           const variantsList = variantsByRef.get(order.reference_id) || [];
           const exactVariant = variantsList.find(v => (v.color || '').toLowerCase() === repColorLower);
@@ -1974,6 +2001,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                 mesaCapacity={mesaCapacity}
                 sectorCapacityPerDay={getSheetSectorCapacity(order.reference_id, 'Acabamento')}
                 opNumbers={[order.op_number].filter(Boolean)}
+                lotInfo={
+                  (order as any)._total_lots && (order as any)._total_lots > 1
+                    ? { number: (order as any)._lot_number, total: (order as any)._total_lots }
+                    : undefined
+                }
               />
             </div>
           );
