@@ -24,6 +24,10 @@ interface Props {
   date?: string;
   /** Index editorial pré-formatado (ex: "01 / SILK"). Se omitido, é derivado de `sector`. */
   index?: string;
+  /** Quando a OP está splitada em lotes (PR lot-sizing 2026-05): mostra
+   *  badge editorial proeminente "LOTE X / N" no topo da ficha pra avisar
+   *  o operador que está produzindo um pedaço, não a OP inteira. */
+  lotInfo?: { number: number; total: number };
 }
 
 /**
@@ -40,7 +44,7 @@ interface Props {
  */
 export const WorksheetHeader = ({
   sector, icon: Icon,
-  imageSlot, identification, qrLabel, alerts, date, index,
+  imageSlot, identification, qrLabel, alerts, date, index, lotInfo,
 }: Props) => {
   const editorialIndex = index || `01 / ${sector.toUpperCase()}`;
   return (
@@ -58,7 +62,22 @@ export const WorksheetHeader = ({
         >
           {sector}
         </span>
-        <span className="section-label hidden sm:inline" style={{ color: '#000' }}>Ficha de Operador</span>
+        {lotInfo && lotInfo.total > 1 ? (
+          <span
+            className="text-black uppercase leading-none shrink-0 pl-3"
+            style={{
+              fontFamily: "'Anton', Impact, sans-serif",
+              fontSize: '34px',
+              letterSpacing: '-0.02em',
+              borderLeft: '2px solid #000',
+            }}
+            aria-label={`Lote ${lotInfo.number} de ${lotInfo.total}`}
+          >
+            <span className="pl-3">LOTE {lotInfo.number}<span className="text-[18px] align-middle">/{lotInfo.total}</span></span>
+          </span>
+        ) : (
+          <span className="section-label hidden sm:inline" style={{ color: '#000' }}>Ficha de Operador</span>
+        )}
       </div>
 
       {/* Editorial index strip */}

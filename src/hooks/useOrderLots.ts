@@ -49,6 +49,33 @@ export function useSplitSuggestions() {
   });
 }
 
+/** Lotes de N OPs em batch — retorna Map<order_id, lots[]>. */
+export function useOrderLotsBatch(orderIds: string[]) {
+  const sortedKey = orderIds.slice().sort().join(',');
+  return useQuery({
+    queryKey: ['order_lots_batch', sortedKey],
+    enabled: orderIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('order_lots')
+        .select('*')
+        .in('order_id', orderIds);
+      if (error) throw error;
+      const map = new Map<string, OrderLot[]>();
+      for (const lot of (data || []) as OrderLot[]) {
+        const arr = map.get(lot.order_id) || [];
+        arr.push(lot);
+        map.set(lot.order_id, arr);
+      }
+      for (const arr of map.values()) {
+        arr.sort((a, b) => a.lot_number - b.lot_number);
+      }
+      return map;
+    },
+    staleTime: 60_000,
+  });
+}
+
 /** Lotes de uma OP. Vazio = OP não foi splitada (comportamento atual). */
 export function useOrderLots(orderId: string | null | undefined) {
   return useQuery({
