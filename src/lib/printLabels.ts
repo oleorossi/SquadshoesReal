@@ -414,7 +414,10 @@ ${LABEL_PRINT_HARDENING}
 @media print{
   body{padding:0;background:#fff;}
   .page{box-shadow:none;padding:0;width:210mm;min-height:297mm;gap:6mm;}
-  .label-cx-ext{width:198mm;height:132mm;}
+  /* Fix 2026-05-23: era 198mm — estourava 6mm em A4 com @page margin 9mm
+     (área útil = 192mm). Borda direita saía cortada. Manter 192mm em
+     print pra caber dentro da margem segura. */
+  .label-cx-ext{width:192mm;height:132mm;}
   .print-footer{display:none !important;}
 }
 
