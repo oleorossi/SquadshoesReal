@@ -58,6 +58,13 @@ const ChartContainer = React.forwardRef<
 });
 ChartContainer.displayName = "Chart";
 
+// Validação defense-in-depth: cor que vai pra CSS via dangerouslySetInnerHTML
+// precisa casar com formato seguro de cor. Bloqueia CSS injection caso um
+// dev futuro passe input do usuário pra config (hoje é só código, mas
+// é cheap hardening).
+const SAFE_COLOR_RE = /^(#[0-9A-Fa-f]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\)|[a-zA-Z]{3,30})$/;
+const isSafeColor = (c: string): boolean => SAFE_COLOR_RE.test(c.trim());
+
 const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
   const colorConfig = Object.entries(config).filter(([_, config]) => config.theme || config.color);
 
@@ -75,7 +82,8 @@ ${prefix} [data-chart=${id}] {
 ${colorConfig
   .map(([key, itemConfig]) => {
     const color = itemConfig.theme?.[theme as keyof typeof itemConfig.theme] || itemConfig.color;
-    return color ? `  --color-${key}: ${color};` : null;
+    if (!color || !isSafeColor(color)) return null;
+    return `  --color-${key}: ${color};`;
   })
   .join("\n")}
 }
