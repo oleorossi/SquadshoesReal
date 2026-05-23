@@ -933,11 +933,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       const soleName = rawSoleName
         ? getBaseName(rawSoleName)
         : (fallbackSole ? getBaseName(fallbackSole) : 'Sem Solado');
-      // Agrupa por SOLADO + readyMade. Pedido do user 2026-05-23:
-      // segmentação no corte de palmilha é apenas por solado — cor da
-      // palmilha é irrelevante pro cortador. readyMade fica separado
-      // porque palmilha pronta na cor não passa pelo corte.
-      const key = `${soleName}::${isReadyMade ? 'pronta' : 'cortar'}`;
+      // Agrupa SOMENTE por SOLADO. Pedido do user 2026-05-23: cortador
+      // só precisa de qty por numeração, por solado — cabedal/tiras/cor/
+      // pronta-vs-cortar não segmentam. readyMade do grupo é decidido no
+      // pós-processamento (true só se 100% das OPs forem pronta).
+      const key = soleName;
       if (!groupMap.has(key)) {
         groupMap.set(key, {
           soleName, insoleColor: '—', totalPairs: 0, grade: {},
@@ -952,6 +952,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         });
       }
       const group = groupMap.get(key)!;
+      // readyMade do grupo = true só se TODAS as OPs forem pronta. Basta
+      // uma "cortar" pra rebaixar (cortador precisa da tally e ausência
+      // do alerta "Pronta na cor").
+      if (!isReadyMade) group.readyMade = false;
       if (order.op_number && !group.opNumbers.includes(order.op_number)) {
         group.opNumbers.push(order.op_number);
       }
@@ -986,12 +990,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       const na = parseFloat(a), nb = parseFloat(b);
       return isNaN(na) || isNaN(nb) ? a.localeCompare(b) : na - nb;
     });
-    const groups = Array.from(groupMap.values()).sort((a, b) => {
-      const cmp = a.soleName.localeCompare(b.soleName);
-      if (cmp !== 0) return cmp;
-      // Tie-break: pronta vem antes de cortar (alerta first).
-      return Number(b.readyMade ?? false) - Number(a.readyMade ?? false);
-    });
+    const groups = Array.from(groupMap.values()).sort(
+      (a, b) => a.soleName.localeCompare(b.soleName),
+    );
     return { palmilhaGroups: groups, allSizes: sortedSizes };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orders, readyMadeLookup, palmilhaLookup, soleMappings]);

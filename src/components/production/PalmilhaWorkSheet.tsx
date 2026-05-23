@@ -37,10 +37,11 @@ interface Props {
 }
 
 /**
- * Ficha de Corte de Palmilha — agrupa apenas por solado (cor da palmilha
- * é irrelevante pro cortador; mesma palmilha física vai pra qualquer cor
- * de cabedal). `readyMade=true` separa em grupo próprio com alerta porque
- * palmilha pronta na cor não passa pelo corte. Cada grupo tem sua tally box.
+ * Ficha de Corte de Palmilha — agrupa SOMENTE por solado. Cabedal, tiras,
+ * cor da palmilha e pronta-vs-cortar são indiferentes pro cortador; ele
+ * só quer qty por numeração por solado. `readyMade` do grupo é true só
+ * quando 100% das OPs daquele solado vêm prontas (suprime tally e mostra
+ * alerta); qualquer OP "cortar" rebaixa o grupo pro fluxo normal de corte.
  */
 export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }: Props) => {
   const grandTotal = groups.reduce((s, g) => s + g.totalPairs, 0);
