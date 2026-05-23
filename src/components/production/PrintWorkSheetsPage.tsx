@@ -933,14 +933,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       const soleName = rawSoleName
         ? getBaseName(rawSoleName)
         : (fallbackSole ? getBaseName(fallbackSole) : 'Sem Solado');
-      // Agrupa por SOLADO + COR DA PALMILHA + readyMade.
-      // Pedido do user 22/05/2026: fábrica corta palmilha diferenciando por
-      // cor da forração (mesmo material físico, cortes separados por cor
-      // pra etiquetar/encaminhar). Antes agrupava só por solado.
-      const key = `${soleName}::${insoleColor || '—'}::${isReadyMade ? 'pronta' : 'cortar'}`;
+      // Agrupa por SOLADO + readyMade. Pedido do user 2026-05-23:
+      // segmentação no corte de palmilha é apenas por solado — cor da
+      // palmilha é irrelevante pro cortador. readyMade fica separado
+      // porque palmilha pronta na cor não passa pelo corte.
+      const key = `${soleName}::${isReadyMade ? 'pronta' : 'cortar'}`;
       if (!groupMap.has(key)) {
         groupMap.set(key, {
-          soleName, insoleColor: insoleColor || '—', totalPairs: 0, grade: {},
+          soleName, insoleColor: '—', totalPairs: 0, grade: {},
           baseGrade: { ...((order.grid as Record<string, number>) || {}) },
           baseGradeSum: 0, fichas: 0, mixedGrades: false,
           readyMade: isReadyMade,
@@ -988,7 +988,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     });
     const groups = Array.from(groupMap.values()).sort((a, b) => {
       const cmp = a.soleName.localeCompare(b.soleName);
-      return cmp !== 0 ? cmp : a.insoleColor.localeCompare(b.insoleColor);
+      if (cmp !== 0) return cmp;
+      // Tie-break: pronta vem antes de cortar (alerta first).
+      return Number(b.readyMade ?? false) - Number(a.readyMade ?? false);
     });
     return { palmilhaGroups: groups, allSizes: sortedSizes };
   // eslint-disable-next-line react-hooks/exhaustive-deps

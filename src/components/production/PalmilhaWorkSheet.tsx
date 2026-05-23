@@ -37,9 +37,10 @@ interface Props {
 }
 
 /**
- * Ficha de Corte de Palmilha — agrupa por solado + cor da palmilha (cor do
- * cabedal é irrelevante neste setor). Cada grupo ganha sua própria caixa
- * de controle (tally) pra operadora marcar conforme conclui cada ficha.
+ * Ficha de Corte de Palmilha — agrupa apenas por solado (cor da palmilha
+ * é irrelevante pro cortador; mesma palmilha física vai pra qualquer cor
+ * de cabedal). `readyMade=true` separa em grupo próprio com alerta porque
+ * palmilha pronta na cor não passa pelo corte. Cada grupo tem sua tally box.
  */
 export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }: Props) => {
   const grandTotal = groups.reduce((s, g) => s + g.totalPairs, 0);
@@ -83,7 +84,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
                     {groups.length} grupo{groups.length !== 1 ? 's' : ''}
                   </span>
                   <span className="font-mono text-[10px] text-black tracking-widest uppercase">
-                    Corte por solado + cor · cor do cabedal indiferente
+                    Corte por solado · cor da palmilha indiferente
                   </span>
                 </div>
               </div>
