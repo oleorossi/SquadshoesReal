@@ -3,6 +3,7 @@ import { QrCode, Scissors, Hammer, Footprints, Package, Stack as Layers, Wind, P
 import { getProductImage } from '@/utils/productUtils';
 import { ProductionOrder } from '@/types/inventory';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
+import { adaptiveFontSize, adaptiveLabelFontSize } from '@/lib/adaptiveFontSize';
 import { TallyBox } from './worksheet/TallyBox';
 import { SignedImage } from '@/components/ui/signed-image';
 
@@ -247,7 +248,10 @@ const OperatorWorkSheet = ({
               {gradeSum} <span className="text-[9px] font-mono tracking-widest uppercase">pares</span>
             </span>
             {fichas > 1 && (
-              <span className="text-[8px] font-mono tracking-widest uppercase text-black mt-0.5 block">
+              <span
+                className="font-mono tracking-widest uppercase text-black mt-0.5 block"
+                style={{ fontSize: adaptiveLabelFontSize(fichas) - 1 }}
+              >
                 × {fichas} fichas
               </span>
             )}
@@ -293,7 +297,11 @@ const OperatorWorkSheet = ({
               <span className="section-label block" style={{ color: '#000' }}>Marca / Silk</span>
               <p
                 className="text-black uppercase leading-none mt-1 truncate"
-                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.02em' }}
+                style={{
+                  fontFamily: "'Anton', Impact, sans-serif",
+                  fontSize: adaptiveFontSize(silk.silk_name || '', { maxWidthPx: 280, baseFontPx: 32, minFontPx: 14, charWidthRatio: 0.45 }),
+                  letterSpacing: '-0.02em',
+                }}
                 title={silk.silk_name}
               >
                 {silk.silk_name}
@@ -329,12 +337,22 @@ const OperatorWorkSheet = ({
           <div className="flex items-baseline justify-between gap-3 border-b border-black pb-1">
             <div className="min-w-0 flex-1">
               <span className="section-label block" style={{ color: '#000' }}>Referência</span>
-              <p
-                className="text-black uppercase leading-none mt-0.5 truncate"
-                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em' }}
-              >
-                {order.master.name || (order.master as any).reference_name || (order as any).reference_name || '—'}
-              </p>
+              {(() => {
+                const refName = order.master.name || (order.master as any).reference_name || (order as any).reference_name || '—';
+                return (
+                  <p
+                    className="text-black uppercase leading-none mt-0.5 truncate"
+                    style={{
+                      fontFamily: "'Anton', Impact, sans-serif",
+                      fontSize: adaptiveFontSize(refName, { maxWidthPx: 300, baseFontPx: 32, minFontPx: 14, charWidthRatio: 0.45 }),
+                      letterSpacing: '-0.025em',
+                    }}
+                    title={refName}
+                  >
+                    {refName}
+                  </p>
+                );
+              })()}
             </div>
           </div>
 

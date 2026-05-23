@@ -23,6 +23,7 @@
  * (ex.: ProductionFlow ou PrintWorkSheets).
  */
 import { BarcodeSVG } from '@/components/ui/barcode-svg';
+import { adaptiveFontSize, adaptiveNumberFontSize } from '@/lib/adaptiveFontSize';
 
 const STAGE_KEYS = ['CORTE', 'COSTURA', 'MONTAGEM', 'ACABAMENTO', 'EMBALAGEM', 'EXPEDICAO'] as const;
 export type CartaoOPStage = typeof STAGE_KEYS[number];
@@ -222,7 +223,8 @@ export function CartaoOP(props: CartaoOPProps) {
             <div className="p-eyebrow" style={{ fontSize: 8.5 }}>Ordem de Produção</div>
             <div
               style={{
-                fontFamily: 'Anton, sans-serif', fontSize: 56,
+                fontFamily: 'Anton, sans-serif',
+                fontSize: adaptiveNumberFontSize(opNumber || '', { maxWidthPx: 220, baseFontPx: 56, minFontPx: 28 }),
                 lineHeight: 0.9, color: 'var(--p-red)',
                 letterSpacing: '0.01em', marginTop: 2,
               }}
@@ -230,7 +232,12 @@ export function CartaoOP(props: CartaoOPProps) {
               {opNumber}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
-              <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 22, letterSpacing: '0.02em', lineHeight: 1 }}>
+              <div style={{
+                fontFamily: 'Anton, sans-serif',
+                fontSize: adaptiveFontSize(modelName || '', { maxWidthPx: 180, baseFontPx: 22, minFontPx: 11, charWidthRatio: 0.45 }),
+                letterSpacing: '0.02em',
+                lineHeight: 1,
+              }}>
                 {modelName}
               </div>
               <div

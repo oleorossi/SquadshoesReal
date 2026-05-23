@@ -1,4 +1,5 @@
 import { BarcodeSVG } from '@/components/ui/barcode-svg';
+import { adaptiveFontSize } from '@/lib/adaptiveFontSize';
 
 interface EtiquetaProdutoProps {
   produto: {
@@ -55,7 +56,11 @@ export const EtiquetaProduto = ({ produto, varianteSelecionada }: EtiquetaProdut
       <div className="flex-1 px-3 py-2 flex flex-col justify-between min-w-0">
         <div className="min-w-0">
           <div className="section-label text-black/60">SKU</div>
-          <div className="font-display text-2xl leading-none uppercase truncate -mt-0.5">
+          <div
+            className="font-display leading-none uppercase truncate -mt-0.5"
+            style={{ fontSize: adaptiveFontSize(produto.nome || '', { maxWidthPx: 130, baseFontPx: 24, minFontPx: 11, charWidthRatio: 0.5 }) }}
+            title={produto.nome}
+          >
             {produto.nome}
           </div>
         </div>
@@ -63,7 +68,11 @@ export const EtiquetaProduto = ({ produto, varianteSelecionada }: EtiquetaProdut
         <div className="flex items-end justify-between gap-3 min-w-0">
           <div className="min-w-0 flex-1">
             <div className="section-label text-black/60">Cor</div>
-            <div className="font-editorial text-[11px] font-semibold uppercase tracking-[0.2em] truncate leading-tight">
+            <div
+              className="font-editorial font-semibold uppercase tracking-[0.2em] truncate leading-tight"
+              style={{ fontSize: adaptiveFontSize(varianteSelecionada?.cor || 'Padrão', { maxWidthPx: 80, baseFontPx: 11, minFontPx: 7, charWidthRatio: 0.7 }) }}
+              title={varianteSelecionada?.cor}
+            >
               {varianteSelecionada?.cor || 'Padrão'}
             </div>
           </div>

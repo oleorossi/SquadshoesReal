@@ -1,5 +1,6 @@
 import React from 'react';
 import { Truck, Package, MapPin, Phone, Receipt } from '@phosphor-icons/react';
+import { adaptiveFontSize } from '@/lib/adaptiveFontSize';
 import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { SignatureFooter } from './worksheet/SignatureFooter';
@@ -118,7 +119,12 @@ export const ExpedicaoWorkSheet = ({ group, date }: Props) => {
               <span className="section-label block" style={{ color: '#000' }}>Cliente</span>
               <p
                 className="text-black uppercase leading-none mt-0.5 truncate"
-                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '30px', letterSpacing: '-0.025em' }}
+                style={{
+                  fontFamily: "'Anton', Impact, sans-serif",
+                  fontSize: adaptiveFontSize(group.client_name || '', { maxWidthPx: 340, baseFontPx: 30, minFontPx: 14, charWidthRatio: 0.45 }),
+                  letterSpacing: '-0.025em',
+                }}
+                title={group.client_name}
               >
                 {group.client_name}
               </p>
