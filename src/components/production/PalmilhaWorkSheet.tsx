@@ -1,5 +1,6 @@
 import React from 'react';
 import { Scissors } from '@phosphor-icons/react';
+import { adaptiveLabelFontSize } from '@/lib/adaptiveFontSize';
 import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
@@ -45,9 +46,11 @@ interface Props {
 }
 
 /**
- * Ficha de Corte de Palmilha — agrupa por solado + cor da palmilha (cor do
- * cabedal é irrelevante neste setor). Cada grupo ganha sua própria caixa
- * de controle (tally) pra operadora marcar conforme conclui cada ficha.
+ * Ficha de Corte de Palmilha — agrupa SOMENTE por solado. Cabedal, tiras,
+ * cor da palmilha e pronta-vs-cortar são indiferentes pro cortador; ele
+ * só quer qty por numeração por solado. `readyMade` do grupo é true só
+ * quando 100% das OPs daquele solado vêm prontas (suprime tally e mostra
+ * alerta); qualquer OP "cortar" rebaixa o grupo pro fluxo normal de corte.
  */
 export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }: Props) => {
   const grandTotal = groups.reduce((s, g) => s + g.totalPairs, 0);
@@ -101,7 +104,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
                     {groups.length} grupo{groups.length !== 1 ? 's' : ''}
                   </span>
                   <span className="font-mono text-[10px] text-black tracking-widest uppercase">
-                    Corte por solado + cor · cor do cabedal indiferente
+                    Corte por solado · cor da palmilha indiferente
                   </span>
                 </div>
               </div>
@@ -276,7 +279,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
                       </tr>
                     )}
                     <tr>
-                      <td className="py-2 text-[10px] font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 92, whiteSpace: 'nowrap', padding: '8px 6px', letterSpacing: '0.04em' }}>
+                      <td className="py-2 font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 96, whiteSpace: 'nowrap', padding: '8px 6px', letterSpacing: '0.04em', fontSize: adaptiveLabelFontSize(group.fichas, group.mixedGrades) }}>
                         {group.mixedGrades
                           ? <>Total<br />({group.fichas || 0} fichas*)</>
                           : group.fichas && group.fichas > 1

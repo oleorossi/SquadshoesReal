@@ -1,5 +1,6 @@
 import React from 'react';
 import { SignedImage } from '@/components/ui/signed-image';
+import { adaptiveFontSize, adaptiveNumberFontSize } from '@/lib/adaptiveFontSize';
 
 export interface ReportStage {
   stage_name: string;
@@ -229,19 +230,26 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
             <p className="section-label mb-2" style={{ color: '#000' }}>
               Pedido de Venda
             </p>
-            <h1
-              className="font-display leading-none tracking-tight"
-              style={{
-                fontFamily: "'Anton', Impact, sans-serif",
-                fontSize: '78pt',
-                lineHeight: 0.82,
-                letterSpacing: '-0.025em',
-                color: '#000',
-                textTransform: 'uppercase',
-              }}
-            >
-              {saleOrder.order_number || 'PV —'}
-            </h1>
+            {(() => {
+              const pvText = saleOrder.order_number || 'PV —';
+              // Base 104px ≈ 78pt original. Anton charWidthRatio ≈ 0.45.
+              const fontPx = adaptiveFontSize(pvText, { maxWidthPx: 480, baseFontPx: 104, minFontPx: 56, charWidthRatio: 0.45 });
+              return (
+                <h1
+                  className="font-display leading-none tracking-tight"
+                  style={{
+                    fontFamily: "'Anton', Impact, sans-serif",
+                    fontSize: `${fontPx}px`,
+                    lineHeight: 0.82,
+                    letterSpacing: '-0.025em',
+                    color: '#000',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  {pvText}
+                </h1>
+              );
+            })()}
             {saleOrder.client_order_number && (
               <p className="mt-3 text-[9pt] text-black">
                 <span className="section-label" style={{ color: '#666' }}>Pedido cliente</span>{' '}

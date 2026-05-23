@@ -1,6 +1,7 @@
 import React from 'react';
 import { QrCode } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { adaptiveFontSize } from '@/lib/adaptiveFontSize';
 
 interface Props {
   /** Nome do setor pra título principal. */
@@ -52,8 +53,12 @@ export const WorksheetHeader = ({
       <div className="flex items-center gap-3 border-y-2 border-black px-2 py-1.5 mb-1">
         <Icon className="h-7 w-7 text-black shrink-0" weight="bold" />
         <span
-          className="text-black uppercase leading-none flex-1"
-          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '36px', letterSpacing: '-0.02em' }}
+          className="text-black uppercase leading-none flex-1 min-w-0 truncate"
+          style={{
+            fontFamily: "'Anton', Impact, sans-serif",
+            fontSize: adaptiveFontSize(sector, { maxWidthPx: 360, baseFontPx: 36, minFontPx: 22, charWidthRatio: 0.45 }),
+            letterSpacing: '-0.02em',
+          }}
         >
           {sector}
         </span>

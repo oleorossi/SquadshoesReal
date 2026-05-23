@@ -1071,14 +1071,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       const soleName = rawSoleName
         ? getBaseName(rawSoleName)
         : (fallbackSole ? getBaseName(fallbackSole) : 'Sem Solado');
-      // Agrupa por SOLADO + COR DA PALMILHA + readyMade.
-      // Pedido do user 22/05/2026: fábrica corta palmilha diferenciando por
-      // cor da forração (mesmo material físico, cortes separados por cor
-      // pra etiquetar/encaminhar). Antes agrupava só por solado.
-      const key = `${soleName}::${insoleColor || '—'}::${isReadyMade ? 'pronta' : 'cortar'}`;
+      // Agrupa SOMENTE por SOLADO. Pedido do user 2026-05-23: cortador
+      // só precisa de qty por numeração, por solado — cabedal/tiras/cor/
+      // pronta-vs-cortar não segmentam. readyMade do grupo é decidido no
+      // pós-processamento (true só se 100% das OPs forem pronta).
+      const key = soleName;
       if (!groupMap.has(key)) {
         groupMap.set(key, {
-          soleName, insoleColor: insoleColor || '—', totalPairs: 0, grade: {},
+          soleName, insoleColor: '—', totalPairs: 0, grade: {},
           baseGrade: { ...((order.grid as Record<string, number>) || {}) },
           baseGradeSum: 0, fichas: 0, mixedGrades: false,
           readyMade: isReadyMade,
@@ -1090,6 +1090,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         });
       }
       const group = groupMap.get(key)!;
+      // readyMade do grupo = true só se TODAS as OPs forem pronta. Basta
+      // uma "cortar" pra rebaixar (cortador precisa da tally e ausência
+      // do alerta "Pronta na cor").
+      if (!isReadyMade) group.readyMade = false;
       if (order.op_number && !group.opNumbers.includes(order.op_number)) {
         group.opNumbers.push(order.op_number);
       }
