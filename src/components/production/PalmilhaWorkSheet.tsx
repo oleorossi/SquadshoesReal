@@ -5,6 +5,11 @@ import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
 import { SignatureFooter } from './worksheet/SignatureFooter';
 import { generateBatchId } from './worksheet/batchId';
+import { formatOpNumber } from './worksheet/stageOrder';
+import {
+  filterConsumptionForSector,
+  type ConsumptionRow,
+} from '@/hooks/useBulkOrderConsumption';
 
 export interface PalmilhaGroup {
   soleName: string;
@@ -26,6 +31,9 @@ export interface PalmilhaGroup {
   /** Números de OP / PV pra rastreabilidade no chão de fábrica. */
   opNumbers?: string[];
   pvNumbers?: string[];
+  /** Consumo previsto vindo do RPC calculate_order_consumption (filtrado
+   *  por setor Corte Palmilha — só palmilha/EVA). */
+  consumption?: ConsumptionRow[];
 }
 
 interface Props {
@@ -101,6 +109,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
         qrLabel="PALMILHA"
         date={date}
         batchId={batchId}
+        index={`OP ${formatOpNumber('Corte Palmilha')} / CORTE PALMILHA`}
       />
 
       {groups.length === 0 ? (
@@ -311,6 +320,40 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
                     </span>
                   </div>
                 )}
+
+                {/* Consumo Previsto — auditoria mai/2026: padrão de
+                    manufacturing traveler de mercado. Palmilha consome
+                    EVA/material de base por par. */}
+                {group.consumption && group.consumption.length > 0 && (() => {
+                  const filtered = filterConsumptionForSector(group.consumption, 'Corte Palmilha');
+                  if (filtered.length === 0) return null;
+                  return (
+                    <div className="mx-2 mt-2 px-2 py-1.5 keep-together" style={{ border: '1px solid #000' }}>
+                      <div className="flex items-baseline justify-between mb-1">
+                        <span className="section-label" style={{ color: '#000' }}>
+                          Consumo Previsto
+                        </span>
+                        <span className="font-mono text-[9px] text-black/60 tracking-widest uppercase">
+                          {filtered.length} item{filtered.length > 1 ? 's' : ''}
+                        </span>
+                      </div>
+                      <div className="border-t border-black pt-1 grid grid-cols-2 gap-x-3 gap-y-0.5">
+                        {filtered.map(row => (
+                          <div key={row.product_id} className="text-[10px] text-black leading-tight flex items-baseline justify-between gap-2">
+                            <span className="truncate font-medium">{row.product_name}</span>
+                            <span className="font-mono shrink-0 text-black/80">
+                              {row.required >= 10 ? row.required.toFixed(1) : row.required.toFixed(2)}
+                              {' '}
+                              <span className="text-[8px] text-black/60 uppercase tracking-widest">
+                                {row.unit || 'un'}
+                              </span>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {!group.readyMade && (
                   <div className="px-2 pb-2 pt-2 border-t border-black">

@@ -4,6 +4,11 @@ import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { SignatureFooter } from './worksheet/SignatureFooter';
 import { generateBatchId } from './worksheet/batchId';
+import { formatOpNumber } from './worksheet/stageOrder';
+import {
+  filterConsumptionForSector,
+  type ConsumptionRow,
+} from '@/hooks/useBulkOrderConsumption';
 
 export interface SoleColorBand {
   soleColor: string;
@@ -24,6 +29,8 @@ export interface SoleColorBand {
   /** Números de OP / PV pra rastreabilidade. */
   opNumbers?: string[];
   pvNumbers?: string[];
+  /** Consumo previsto (auditoria mai/2026): solado + cola/adesivos. */
+  consumption?: ConsumptionRow[];
 }
 
 interface Props {
@@ -229,6 +236,38 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
           </tbody>
         </table>
 
+        {/* Consumo Previsto — solado + cola/adesivos pra essa banda de cor */}
+        {band.consumption && band.consumption.length > 0 && (() => {
+          const filtered = filterConsumptionForSector(band.consumption, 'Solagem');
+          if (filtered.length === 0) return null;
+          return (
+            <div className="mx-2 mt-2 px-2 py-1.5 keep-together" style={{ border: '1px solid #000' }}>
+              <div className="flex items-baseline justify-between mb-1">
+                <span className="section-label" style={{ color: '#000' }}>
+                  Consumo Previsto
+                </span>
+                <span className="font-mono text-[9px] text-black/60 tracking-widest uppercase">
+                  {filtered.length} item{filtered.length > 1 ? 's' : ''}
+                </span>
+              </div>
+              <div className="border-t border-black pt-1 grid grid-cols-2 gap-x-3 gap-y-0.5">
+                {filtered.map(row => (
+                  <div key={row.product_id} className="text-[10px] text-black leading-tight flex items-baseline justify-between gap-2">
+                    <span className="truncate font-medium">{row.product_name}</span>
+                    <span className="font-mono shrink-0 text-black/80">
+                      {row.required >= 10 ? row.required.toFixed(1) : row.required.toFixed(2)}
+                      {' '}
+                      <span className="text-[8px] text-black/60 uppercase tracking-widest">
+                        {row.unit || (row.component === 'Solado' ? 'par' : 'un')}
+                      </span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
         <div className="px-2 py-2 border-t border-black">
           <TallyBox count={cards} pairsPerCard={pairsPerCard} />
         </div>
@@ -287,6 +326,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
         qrLabel="SOLAGEM"
         date={date}
         batchId={batchId}
+        index={`OP ${formatOpNumber('Solagem')} / SOLAGEM`}
       />
 
       {/* Fix 20/05/2026: era `flex-1` que combinado com flex-col do container

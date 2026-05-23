@@ -12,6 +12,11 @@ import { ExpedicaoWorkSheet, type ExpedicaoCustomerGroup, type ExpedicaoOrder } 
 import { ManagementReport, type ReportSaleOrder, type ReportOrder, type ReportStage } from '@/components/production/ManagementReport';
 import { compareColors } from '@/components/production/worksheet/colorSequencing';
 import { useSectorGroupingConfig } from '@/hooks/useSectorGroupingConfig';
+import {
+  useBulkOrderConsumption,
+  bulkConsumptionKey,
+  type ConsumptionRow,
+} from '@/hooks/useBulkOrderConsumption';
 import logoSquad from '@/assets/logo-squad-shoes.jpg';
 
 const printStyles = `
@@ -436,6 +441,62 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   // (Supabase). Fallback aos defaults históricos enquanto carrega ou se
   // o setor não estiver cadastrado.
   const groupingConfig = useSectorGroupingConfig();
+
+  // Consumo previsto de matéria-prima (auditoria mai/2026 — gap vs
+  // manufacturing traveler de mercado). Calculado uma vez pro set de
+  // OPs visíveis e indexado por (ref, cor, qtd) pra lookup nas worksheets.
+  const consumptionInputs = useMemo(
+    () => orders.map((o: any) => ({
+      reference_id: o.reference_id,
+      quantity: Number(o.total_pairs ?? o.quantity ?? 0),
+      color: o.color ?? null,
+      size: null as number | null,
+    })).filter(i => i.reference_id && i.quantity > 0),
+    [orders],
+  );
+  const { data: consumptionByKey } = useBulkOrderConsumption(consumptionInputs);
+
+  // Índice op_number → order pra lookup ao agregar consumo por grupo.
+  const ordersByOpNumber = useMemo(() => {
+    const m = new Map<string, any>();
+    for (const o of orders as any[]) {
+      if (o?.op_number) m.set(String(o.op_number), o);
+    }
+    return m;
+  }, [orders]);
+
+  /**
+   * Agrega consumo de um grupo (lista de op_numbers) num único array
+   * por produto. Soma `required`, mantém `consumption_per_unit`. Usado
+   * pra anexar `consumption` a cada SilkColorGroup / PalmilhaGroup /
+   * SoleColorBand antes do render.
+   */
+  const consumptionForOpNumbers = useMemo(
+    () => (opNumbers: string[] | undefined): ConsumptionRow[] => {
+      if (!consumptionByKey || !opNumbers || opNumbers.length === 0) return [];
+      const byProduct = new Map<string, ConsumptionRow>();
+      for (const op of opNumbers) {
+        const o = ordersByOpNumber.get(String(op));
+        if (!o?.reference_id) continue;
+        const qty = Number(o.total_pairs ?? o.quantity ?? 0);
+        if (qty <= 0) continue;
+        const key = bulkConsumptionKey(o.reference_id, o.color, qty);
+        const rows = consumptionByKey.get(key) ?? [];
+        for (const r of rows) {
+          const existing = byProduct.get(r.product_id);
+          if (!existing) {
+            byProduct.set(r.product_id, { ...r });
+          } else {
+            existing.required += r.required;
+            existing.available = Math.max(existing.available, r.available);
+            existing.stock_ok = existing.available >= existing.required;
+          }
+        }
+      }
+      return Array.from(byProduct.values());
+    },
+    [consumptionByKey, ordersByOpNumber],
+  );
 
   const { data: silkRegistrations = [] } = useQuery({
     queryKey: ['sole_silk_registrations'],
@@ -1721,7 +1782,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         {includesSector('Corte Palmilha') && palmilhaGroups.length > 0 && (
           <div className="page-break">
             <PalmilhaWorkSheet
-              groups={palmilhaGroups}
+              groups={palmilhaGroups.map(g => ({
+                ...g,
+                consumption: consumptionForOpNumbers(g.opNumbers),
+              }))}
               allSizes={palmilhaAllSizes}
               date={today}
             />
@@ -1822,13 +1886,25 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             };
           };
 
+          // Enriquece um SoleSilkGroup adicionando `consumption` em cada
+          // colorGroup. Padrão de manufacturing traveler — operadora vê
+          // "vai consumir X dm² de couro / Y un de fivela" por cor.
+          const withConsumption = (group: SoleSilkGroup): SoleSilkGroup => ({
+            ...group,
+            colorGroups: group.colorGroups.map(cg => ({
+              ...cg,
+              consumption: consumptionForOpNumbers(cg.opNumbers),
+            })),
+          });
+
           return sectorsToRender.flatMap(sectorName => {
             if (CUTTING_AGGREGATE_BY_COLOR.includes(sectorName)) {
               const merged = mergeColorsAcrossSoles(sectorName);
               if (!merged) return [];
+              const enriched = withConsumption(merged);
               return [
                 <div key={`${sectorName}-todos-solados`} className="page-break">
-                  <SilkMontageWorkSheet group={merged} sector={sectorName} date={today} />
+                  <SilkMontageWorkSheet group={enriched} sector={sectorName} date={today} />
                 </div>,
               ];
             }
@@ -1839,7 +1915,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
               .map(({ filtered }) => (
                 <div key={`${sectorName}-${filtered!.soleName}`} className="page-break">
                   <SilkMontageWorkSheet
-                    group={filtered!}
+                    group={withConsumption(filtered!)}
                     sector={sectorName}
                     date={today}
                   />
@@ -1852,7 +1928,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         {includesSector('Solagem') && solagemData && solagemData.bands.length > 0 && (
           <div className="page-break">
             <SolagemWorkSheet
-              bands={solagemData.bands}
+              bands={solagemData.bands.map(b => ({
+                ...b,
+                consumption: consumptionForOpNumbers(b.opNumbers),
+              }))}
               allSizes={solagemData.allSizes}
               date={today}
               grandTotal={solagemData.grandTotal}

@@ -6,6 +6,7 @@ import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 import { TallyBox } from './worksheet/TallyBox';
 import { SignedImage } from '@/components/ui/signed-image';
 import { generateBatchId } from './worksheet/batchId';
+import { formatOpNumber } from './worksheet/stageOrder';
 
 interface Props {
   order: ProductionOrder;
@@ -147,7 +148,7 @@ const OperatorWorkSheet = ({
 
       <div className="flex items-baseline justify-between mb-0.5 gap-3">
         <span className="section-label" style={{ color: '#000' }}>
-          01 / {sector.toUpperCase()}
+          OP {formatOpNumber(sector)} / {sector.toUpperCase()}
         </span>
         <div className="flex items-baseline gap-3 shrink-0">
           <span className="font-mono text-[10px] text-black tracking-widest uppercase">

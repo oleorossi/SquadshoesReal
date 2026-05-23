@@ -4,6 +4,7 @@ import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { SignatureFooter } from './worksheet/SignatureFooter';
 import { generateBatchId } from './worksheet/batchId';
+import { formatOpNumber } from './worksheet/stageOrder';
 
 export interface ExpedicaoOrder {
   id: string;
@@ -165,6 +166,7 @@ export const ExpedicaoWorkSheet = ({ group, date }: Props) => {
         qrLabel="EXPED."
         date={date}
         batchId={batchId}
+        index={`OP ${formatOpNumber('Expedição')} / EXPEDIÇÃO`}
       />
 
       {/* Resumo embalagem */}

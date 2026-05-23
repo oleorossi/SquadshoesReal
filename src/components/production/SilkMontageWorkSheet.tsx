@@ -7,6 +7,12 @@ import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
 import { SignatureFooter } from './worksheet/SignatureFooter';
 import { SignedImage } from '@/components/ui/signed-image';
 import { generateBatchId } from './worksheet/batchId';
+import { formatOpNumber } from './worksheet/stageOrder';
+import {
+  filterConsumptionForSector,
+  formatConsumptionLine,
+  type ConsumptionRow,
+} from '@/hooks/useBulkOrderConsumption';
 
 export interface SilkColorGroup {
   /** Cor do CABEDAL (chave de agrupamento). Em todos os setores exceto
@@ -78,6 +84,11 @@ export interface SilkColorGroup {
    *  ["Frente","Traseira","Costura de tiras"]). Renderizado como
    *  checklist por etapa × numeração no setor Aviamento. */
   aviamentoSteps?: string[];
+  /** Consumo previsto de matéria-prima pra esse grupo (cor+solado),
+   *  vindo do RPC calculate_order_consumption. Filtrado por setor antes
+   *  da exibição. Opcional — quando ausente, o bloco "Consumo Previsto"
+   *  não renderiza. */
+  consumption?: ConsumptionRow[];
 }
 
 export interface SoleSilkGroup {
@@ -324,6 +335,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
         qrLabel={sector.toUpperCase().slice(0, 8)}
         date={date}
         batchId={batchId}
+        index={`OP ${formatOpNumber(sector)} / ${sector.toUpperCase()}`}
       />
 
       {/* Silks em destaque — uma por solado, multiple se cliente/grupo tem silk própria */}
@@ -775,6 +787,40 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                     </div>
                   </div>
                 )}
+
+                {/* Consumo Previsto — padrão de manufacturing traveler
+                    (Craftybase/ERPNext/Tulip). Filtra por setor pra
+                    operadora ver só o que ela consome. */}
+                {cg.consumption && cg.consumption.length > 0 && (() => {
+                  const filtered = filterConsumptionForSector(cg.consumption, sector);
+                  if (filtered.length === 0) return null;
+                  return (
+                    <div className="mt-2 px-2 py-1.5 keep-together" style={{ border: '1px solid #000' }}>
+                      <div className="flex items-baseline justify-between mb-1">
+                        <span className="section-label" style={{ color: '#000' }}>
+                          Consumo Previsto
+                        </span>
+                        <span className="font-mono text-[9px] text-black/60 tracking-widest uppercase">
+                          {filtered.length} item{filtered.length > 1 ? 's' : ''}
+                        </span>
+                      </div>
+                      <div className="border-t border-black pt-1 grid grid-cols-2 gap-x-3 gap-y-0.5">
+                        {filtered.map(row => (
+                          <div key={row.product_id} className="text-[10px] text-black leading-tight flex items-baseline justify-between gap-2">
+                            <span className="truncate font-medium">{row.product_name}</span>
+                            <span className="font-mono shrink-0 text-black/80">
+                              {row.required >= 10 ? row.required.toFixed(1) : row.required.toFixed(2)}
+                              {' '}
+                              <span className="text-[8px] text-black/60 uppercase tracking-widest">
+                                {row.unit || (row.component === 'Solado' ? 'par' : 'un')}
+                              </span>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Tally Box */}
                 <TallyBox count={cards} pairsPerCard={pairsPerCard} />
