@@ -510,7 +510,7 @@ const OperatorWorkSheet = ({
                     a distribuição da grade individual destacada. */}
                 {gradeSum > 0 && (
                   <tr style={{ borderBottom: '1.5px solid #000' }}>
-                    <td className="py-1.5 text-[10px] font-mono font-bold text-black leading-tight uppercase tracking-wider" style={{ borderRight: '1px solid #000' }}>
+                    <td className="py-1.5 text-[10px] font-mono font-bold text-black leading-tight uppercase" style={{ borderRight: '1px solid #000', minWidth: 78, whiteSpace: 'nowrap', padding: '6px 6px', letterSpacing: '0.04em' }}>
                       Por Ficha<br />({gradeSum}p)
                     </td>
                     {chunk.map((s, i) => (
@@ -533,7 +533,7 @@ const OperatorWorkSheet = ({
                 {/* TOTAL row — GIANT Anton numbers. Quando fichas=1, esse total
                     JÁ É o conteúdo de uma ficha — label deixa claro. */}
                 <tr>
-                  <td className="py-2 text-[10px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
+                  <td className="py-2 text-[10px] font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 78, whiteSpace: 'nowrap', padding: '8px 6px', letterSpacing: '0.04em' }}>
                     {fichas > 1 ? <>Total<br />× {fichas}</> : <>Total<br />(1 ficha)</>}
                   </td>
                   {chunk.map((s, i) => (
@@ -834,7 +834,7 @@ const OperatorWorkSheet = ({
                 </div>
               </div>
             </div>
-            <div className="col-span-2">
+            <div className="col-span-2 keep-with-next">
               <TallyBox count={Math.max(1, Math.ceil(totalPairs / 12))} pairsPerCard={12} />
             </div>
           </>
@@ -892,7 +892,7 @@ const OperatorWorkSheet = ({
                 </div>
               )}
             </div>
-            <div className="col-span-2">
+            <div className="col-span-2 keep-with-next">
               <TallyBox count={Math.max(1, Math.ceil(totalPairs / 12))} pairsPerCard={12} />
             </div>
           </>
@@ -944,7 +944,7 @@ const OperatorWorkSheet = ({
                 </div>
               </div>
             </div>
-            <div className="col-span-2">
+            <div className="col-span-2 keep-with-next">
               <TallyBox count={Math.max(1, Math.ceil(totalPairs / 12))} pairsPerCard={12} />
             </div>
           </>
@@ -1001,7 +1001,7 @@ const OperatorWorkSheet = ({
                 </p>
               )}
             </div>
-            <div className="col-span-2">
+            <div className="col-span-2 keep-with-next">
               <TallyBox count={boxes} pairsPerCard={12} title={`Caixas · ${boxes} × 12 pares`} />
             </div>
           </>
@@ -1061,7 +1061,6 @@ const OperatorWorkSheet = ({
           </>
         )}
         </div>
-      </div>
 
       {/* ── Footer: obs + signatures — editorial close ──
           Fix 20/05/2026: era `mt-auto` que combinado com `flex flex-col` do
@@ -1070,7 +1069,11 @@ const OperatorWorkSheet = ({
           página). Trocado por margin top fixa.
           Fix 21/05/2026: keep-together + keep-with-previous garantem que
           o footer (a) não quebre no meio e (b) se ancore à seção anterior —
-          evita footer órfão em fichas longas. */}
+          evita footer órfão em fichas longas.
+          Fix 22/05/2026: footer movido pra DENTRO do flex-1 pra virar irmão
+          direto do grid de checklist+caixas. Combinado com .keep-with-next
+          nos col-span-2 do TallyBox, forma sandwich forte que mantém caixas
+          + footer na mesma página A4 (era órfão em Acabamento com 30+ caixas). */}
       <div className="mt-4 pt-2 keep-together keep-with-previous">
         {(order.notes) && (
           <div className="mb-2 border-t border-black pt-1">
@@ -1117,6 +1120,7 @@ const OperatorWorkSheet = ({
             </div>
           ))}
         </div>
+      </div>
       </div>
     </div>
   );

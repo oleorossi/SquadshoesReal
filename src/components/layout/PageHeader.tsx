@@ -203,7 +203,7 @@ export default function PageHeader({ title, subtitle, compact }: { title?: strin
   if (compact) {
     return (
       <nav aria-label="breadcrumb">
-        <ol className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <ol className="flex items-center gap-1.5 ed-eyebrow text-muted-foreground">
           {breadcrumbContent}
         </ol>
       </nav>

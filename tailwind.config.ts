@@ -14,8 +14,13 @@ export default {
     },
     extend: {
       fontFamily: {
-        display: ['"Plus Jakarta Sans"', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
-        mono: ['"JetBrains Mono"', 'monospace'],
+        // Industrial Editorial Pro (22/05/2026): font-display = Anton (era
+        // Plus Jakarta Sans, inconsistente com --font-display do CSS).
+        // font-sans = Inter Tight (body). font-mono = JetBrains Mono.
+        display: ['Anton', 'Impact', 'sans-serif'],
+        sans: ['"Inter Tight"', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        editorial: ['"Inter Tight"', 'Inter', 'system-ui', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
       },
       colors: {
         border: "hsl(var(--border))",

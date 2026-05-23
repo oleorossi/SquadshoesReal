@@ -136,7 +136,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
                 </div>
                 <div className="text-center leading-tight">
                   <span
-                    className="inline-block bg-black text-white font-bold px-1 py-0.5 rounded-[2px] uppercase"
+                    className="inline-block bg-black text-white font-bold px-1 py-0.5 rounded-sm uppercase"
                     style={{ fontSize: '7px', letterSpacing: '0.04em' }}
                   >
                     {r.name || r.code || '—'}
@@ -178,7 +178,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
                 evitar perCard × N ≠ Total confundir o operador. */}
             {band.baseGrade && band.baseGradeSum && !band.mixedGrades && (
               <tr style={{ borderBottom: '1.5px solid #000' }}>
-                <td className="py-1 text-[9px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
+                <td className="py-1 text-[9px] font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 76, whiteSpace: 'nowrap', padding: '4px 6px', letterSpacing: '0.04em' }}>
                   Por Ficha<br />({band.baseGradeSum}p)
                 </td>
                 {bandSizes.map(s => (
@@ -192,7 +192,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
               </tr>
             )}
             <tr>
-              <td className="py-2 text-[10px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
+              <td className="py-2 text-[10px] font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 92, whiteSpace: 'nowrap', padding: '8px 6px', letterSpacing: '0.04em' }}>
                 {band.mixedGrades
                   ? <>Total<br />({band.fichas || 0} fichas*)</>
                   : band.fichas && band.fichas > 1

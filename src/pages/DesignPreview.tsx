@@ -40,19 +40,13 @@ import {
   MagnifyingGlass,
   Printer,
   CheckCircle,
-  Warning,
   Eye,
   CaretRight,
-  Tag,
-  Package,
-  Ruler,
-  Calculator,
-  Hash,
   Download,
 } from '@phosphor-icons/react';
 
 const ed = {
-  display: { fontFamily: "'Anton', Impact, sans-serif", letterSpacing: '-0.02em', textTransform: 'uppercase' as const },
+  display: { fontFamily: "'Anton', Impact, sans-serif", letterSpacing: '-0.02em', textTransform: 'uppercase' as const, lineHeight: 1 },
   body: { fontFamily: "'Inter Tight', system-ui, sans-serif" },
   mono: { fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontVariantNumeric: 'tabular-nums' as const },
 };
@@ -99,36 +93,36 @@ function DesignNav({
 
   return (
     <header
-      className="sticky top-0 z-50 border-b-2 px-6 py-3 flex items-center gap-6 backdrop-blur"
+      className="sticky top-0 z-50 border-b-2 px-3 md:px-6 py-2 md:py-3 flex flex-col md:flex-row md:items-center gap-2 md:gap-6 backdrop-blur"
       style={{ background: 'rgba(250,250,247,0.92)', borderColor: RULE }}
     >
-      <div className="flex items-baseline gap-3">
-        <span style={ed.display} className="text-[26px] leading-none">
+      <div className="flex items-baseline gap-3 shrink-0">
+        <span style={ed.display} className="text-[22px] md:text-[26px] leading-none">
           Squad<span style={{ color: SQUAD_RED }}>·</span>Design
         </span>
-        <span style={ed.mono} className="text-[10px] tracking-widest uppercase opacity-60">
+        <span style={ed.mono} className="hidden md:inline text-[10px] tracking-widest uppercase opacity-60">
           v0 · industrial editorial pro
         </span>
       </div>
 
-      <div className="flex-1 flex items-stretch gap-0 border-l border-r" style={{ borderColor: RULE }}>
-        {tabs.map((t, i) => {
+      <div className="flex-1 flex items-stretch gap-0 border-y md:border-y-0 md:border-l md:border-r min-w-0" style={{ borderColor: RULE }}>
+        {tabs.map((t) => {
           const isActive = active === t.key;
           return (
             <button
               key={t.key}
               onClick={() => onChange(t.key)}
-              className="flex-1 px-4 py-1.5 text-left transition-colors border-r last:border-r-0 group"
+              className="flex-1 min-w-0 px-2 md:px-4 py-1.5 text-left transition-colors border-r last:border-r-0"
               style={{
                 borderColor: RULE,
                 background: isActive ? INK : 'transparent',
                 color: isActive ? PAPER : INK,
               }}
             >
-              <div style={ed.mono} className="text-[10px] tracking-widest uppercase opacity-70">
+              <div style={ed.mono} className="text-[9px] md:text-[10px] tracking-widest uppercase opacity-70">
                 {t.n}
               </div>
-              <div style={ed.display} className="text-[15px] leading-tight">
+              <div style={ed.display} className="text-[11px] md:text-[15px] leading-tight truncate">
                 {t.label}
               </div>
             </button>
@@ -136,7 +130,7 @@ function DesignNav({
         })}
       </div>
 
-      <div style={ed.mono} className="text-[10px] tracking-widest uppercase opacity-60">
+      <div style={ed.mono} className="hidden md:block text-[10px] tracking-widest uppercase opacity-60 shrink-0">
         2026 · SQS
       </div>
     </header>
@@ -146,12 +140,12 @@ function DesignNav({
 function FooterMarker() {
   return (
     <footer
-      className="border-t-2 px-6 py-4 flex items-center justify-between text-[10px] tracking-widest uppercase"
+      className="border-t-2 px-4 md:px-6 py-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-1 md:gap-4 text-[10px] tracking-widest uppercase"
       style={{ borderColor: RULE, ...ed.mono }}
     >
       <span>FICHA · OPERADOR · GESTÃO</span>
-      <span>SQUADSHOES · FÁBRICA DE CALÇADOS</span>
-      <span>VERSÃO PREVIEW · NÃO PRODUTIVA</span>
+      <span className="opacity-60">SQUADSHOES · FÁBRICA DE CALÇADOS</span>
+      <span style={{ color: SQUAD_RED }}>VERSÃO PREVIEW · NÃO PRODUTIVA</span>
     </footer>
   );
 }
@@ -169,7 +163,7 @@ function MockupListaFichas() {
 
   const fichas = [
     { ref: 'SP 10', name: 'Plataforma Casual', group: 'Plataforma', revisao: 'v4', updated: '21/05/26', cost: 'R$ 42,80', status: 'ok' },
-    { ref: 'CF 07', name: 'Sandália Boneca',   group: 'Boneca',     revisao: 'v2', updated: '18/05/26', cost: 'R$ 36,90', status: 'warn' },
+    { ref: 'CF 07', name: 'Sandália Boneca',   group: 'Boneca',     revisao: 'v2', updated: '18/05/26', cost: 'R$ 36,90', status: 'warn-revisao' },
     { ref: 'SS 22', name: 'Mocassim Couro',    group: 'Mocassim',   revisao: 'v1', updated: '14/05/26', cost: 'R$ 28,40', status: 'ok' },
     { ref: 'BT 03', name: 'Bota Coturno Cano Curto', group: 'Bota', revisao: 'v6', updated: '12/05/26', cost: 'R$ 64,20', status: 'ok' },
     { ref: 'CF 09', name: 'Anabela Cordão',    group: 'Anabela',    revisao: 'v1', updated: '09/05/26', cost: '—',        status: 'pending' },
@@ -184,7 +178,7 @@ function MockupListaFichas() {
           <div style={ed.mono} className="text-[10px] tracking-widest uppercase opacity-60 mb-2">
             CATÁLOGO · 03 / 24 · ENGENHARIA DE PRODUTO
           </div>
-          <h1 style={ed.display} className="text-[68px] leading-[0.88]">
+          <h1 style={ed.display} className="text-[44px] md:text-[68px] leading-[0.92] md:leading-[0.9]">
             FICHAS<br />
             <span style={{ color: SQUAD_RED }}>TÉCNICAS</span>
           </h1>
@@ -211,33 +205,36 @@ function MockupListaFichas() {
       </div>
 
       {/* Toolbar */}
-      <div className="flex items-stretch border-y-2" style={{ borderColor: RULE }}>
-        <div className="flex items-center gap-2 flex-1 px-3 py-2 border-r" style={{ borderColor: RULE }}>
-          <MagnifyingGlass className="h-4 w-4" weight="bold" />
+      <div className="flex flex-col md:flex-row items-stretch border-y-2" style={{ borderColor: RULE }}>
+        <div className="flex items-center gap-2 flex-1 px-3 py-2 border-b md:border-b-0 md:border-r min-w-0" style={{ borderColor: RULE }}>
+          <MagnifyingGlass className="h-4 w-4 shrink-0" weight="bold" />
           <input
-            placeholder="Buscar por referência, nome ou grupo…"
-            className="bg-transparent outline-none flex-1 text-[14px]"
+            placeholder="Buscar por ref, nome ou grupo…"
+            className="bg-transparent outline-none flex-1 min-w-0 text-[14px]"
           />
-          <span style={ed.mono} className="text-[10px] tracking-widest opacity-50 uppercase">
+          <span style={ed.mono} className="text-[10px] tracking-widest opacity-50 uppercase shrink-0">
             ⌘K
           </span>
         </div>
-        <button className="px-4 flex items-center gap-2 text-[12px] uppercase tracking-widest border-r"
-                style={{ borderColor: RULE, ...ed.mono }}>
-          <Funnel weight="bold" className="h-3.5 w-3.5" /> Filtros · 2
-        </button>
-        <button className="px-4 flex items-center gap-2 text-[12px] uppercase tracking-widest border-r"
-                style={{ borderColor: RULE, ...ed.mono }}>
-          <Download weight="bold" className="h-3.5 w-3.5" /> CSV
-        </button>
-        <button className="px-5 flex items-center gap-2 text-[13px] uppercase tracking-widest font-semibold"
-                style={{ background: SQUAD_RED, color: PAPER, ...ed.mono }}>
-          <Plus weight="bold" className="h-3.5 w-3.5" /> Nova Ficha
-        </button>
+        <div className="flex items-stretch">
+          <button className="flex-1 md:flex-none px-4 py-2 md:py-0 flex items-center justify-center gap-2 text-[12px] uppercase tracking-widest border-r"
+                  style={{ borderColor: RULE, ...ed.mono }}>
+            <Funnel weight="bold" className="h-3.5 w-3.5" /> Filtros · 2
+          </button>
+          <button className="flex-1 md:flex-none px-4 py-2 md:py-0 flex items-center justify-center gap-2 text-[12px] uppercase tracking-widest border-r"
+                  style={{ borderColor: RULE, ...ed.mono }}>
+            <Download weight="bold" className="h-3.5 w-3.5" /> CSV
+          </button>
+          <button className="flex-1 md:flex-none px-5 py-2 md:py-0 flex items-center justify-center gap-2 text-[13px] uppercase tracking-widest font-semibold"
+                  style={{ background: SQUAD_RED, color: PAPER, ...ed.mono }}>
+            <Plus weight="bold" className="h-3.5 w-3.5" /> Nova Ficha
+          </button>
+        </div>
       </div>
 
       {/* Table */}
-      <div className="border-2" style={{ borderColor: RULE }}>
+      <div className="border-2 overflow-x-auto" style={{ borderColor: RULE }}>
+        <div className="min-w-[760px]">
         <div className="grid grid-cols-[80px_1.4fr_1fr_80px_110px_120px_120px] items-center px-4 py-2 border-b-2"
              style={{ borderColor: RULE, background: INK, color: PAPER, ...ed.mono, fontSize: 10, letterSpacing: '0.14em' }}>
           <span>REF</span>
@@ -269,9 +266,9 @@ function MockupListaFichas() {
               <div style={ed.mono} className="text-[14px] font-semibold">
                 {f.cost}
               </div>
-              {f.status === 'warn' && (
+              {f.status === 'warn-revisao' && (
                 <span className="text-[9px] tracking-widest uppercase" style={{ color: SQUAD_RED }}>
-                  preço zerado
+                  rev. vencendo
                 </span>
               )}
               {f.status === 'pending' && (
@@ -290,6 +287,7 @@ function MockupListaFichas() {
             </div>
           </div>
         ))}
+        </div>
       </div>
 
       <div className="flex items-center justify-between pt-2 text-[11px] opacity-60" style={ed.mono}>
@@ -338,7 +336,7 @@ function MockupEditorFicha() {
           <div style={ed.mono} className="text-[10px] tracking-widest uppercase opacity-60 mb-2">
             REF · SP 10 · v4 · ATUALIZADA 21/05/26
           </div>
-          <h2 style={ed.display} className="text-[64px] leading-[0.88]">
+          <h2 style={ed.display} className="text-[40px] md:text-[64px] leading-[0.92] md:leading-[0.9]">
             PLATAFORMA<br />
             <span className="opacity-60">CASUAL</span>
           </h2>
@@ -553,7 +551,7 @@ function MockupOperatorPrint() {
           <div style={ed.mono} className="text-[10px] tracking-widest uppercase opacity-60 mb-2">
             IMPRESSÃO · 21/05/26 · CONFIGURAÇÃO
           </div>
-          <h1 style={ed.display} className="text-[68px] leading-[0.88]">
+          <h1 style={ed.display} className="text-[44px] md:text-[68px] leading-[0.92] md:leading-[0.9]">
             FICHA DE<br />
             <span style={{ color: SQUAD_RED }}>OPERADOR</span>
           </h1>
@@ -648,13 +646,13 @@ function MockupOperatorPrint() {
 
       {/* OP table for current sector */}
       <div className="border-2" style={{ borderColor: RULE }}>
-        <div className="px-4 py-3 border-b-2 flex items-center justify-between"
+        <div className="px-4 py-3 border-b-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"
              style={{ borderColor: RULE }}>
-          <div className="flex items-baseline gap-4">
+          <div className="flex items-baseline gap-4 flex-wrap">
             <span style={ed.mono} className="text-[10px] tracking-widest uppercase opacity-60">
               OPS · MONTAGEM · 07
             </span>
-            <h3 style={ed.display} className="text-[24px] leading-none">
+            <h3 style={ed.display} className="text-[20px] md:text-[24px] leading-none">
               SELECIONE PRA IMPRIMIR
             </h3>
           </div>
@@ -664,7 +662,8 @@ function MockupOperatorPrint() {
           </label>
         </div>
 
-        <div>
+        <div className="overflow-x-auto">
+        <div className="min-w-[780px]">
           {[
             { op: '12345', ref: 'SP 10', cor: 'Caramelo', pares: 240, entrega: '24/05/26', store: 'AGITO DOS PÉS', sel: true },
             { op: '12346', ref: 'CF 07', cor: 'Preto',    pares: 120, entrega: '26/05/26', store: 'ITA SHOES',      sel: true },
@@ -691,6 +690,7 @@ function MockupOperatorPrint() {
               </div>
             </div>
           ))}
+        </div>
         </div>
       </div>
 
@@ -725,7 +725,7 @@ function MockupOperatorPrint() {
 function FichaA4Mini() {
   // Versão miniatura/mockup do print A4 — só pra confirmar consistência visual
   return (
-    <div className="border-2 p-4 bg-white text-black" style={{ borderColor: RULE }}>
+    <div className="border-2 p-4" style={{ borderColor: RULE, background: '#FFFFFF', color: '#000' }}>
       <div className="flex items-center gap-3 border-y-2 border-black px-2 py-1.5 mb-2">
         <Hammer className="h-5 w-5" weight="bold" />
         <span style={ed.display} className="text-[28px] leading-none flex-1">MONTAGEM</span>

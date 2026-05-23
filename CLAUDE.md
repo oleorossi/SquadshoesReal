@@ -81,6 +81,40 @@ unified visual system and makes dark mode impossible.
 - `EtiquetaProduto.tsx`
 - `PrintWorkSheetsPage.tsx`
 - `OperatorWorkSheet.tsx`
+- `PalmilhaWorkSheet.tsx`
+- `SilkMontageWorkSheet.tsx`
+- `SolagemWorkSheet.tsx`
+- `ExpedicaoWorkSheet.tsx`
+- `ManagementReport.tsx`
+- `worksheet/*.tsx` (SignatureFooter, WorksheetHeader, TallyBox, ProductImageBlock, SectorAlerts)
+- Qualquer componente em `src/components/label-system/`
+
+### ⚠ Regras críticas pra componentes de print
+
+**NÃO usar primitives shadcn** (Card, Badge, Button, Table, Tabs) em
+worksheets/etiquetas. As primitives evoluem com o design system (F1-F6 do
+Industrial Editorial Pro mudaram bordas, rounded, paddings, fontes) e fichas
+de impressão precisam de **garantia visual previsível em papel A4 / etiqueta
+térmica**, independente do que acontece nas telas do app.
+
+**Usar inline styles com cores hardcoded:**
+```tsx
+<div style={{ border: '1.5px solid #000', fontFamily: "'Anton', Impact, sans-serif" }}>
+```
+
+**NUNCA usar tokens com alpha em print:**
+- ❌ `className="border-foreground/15"` — 15% alpha contra background branco
+  de papel = bordas quase invisíveis quando impresso
+- ✅ `style={{ border: '1.5px solid #000' }}` — preto puro garantido
+
+**Fontes em print** (já carregadas via @import no index.css):
+- Display: `'Anton', Impact, sans-serif` (uppercase decisive)
+- Body: `'Inter Tight', sans-serif`
+- Mono: `'JetBrains Mono', ui-monospace, monospace`
+
+Auditoria de 22/05/2026 confirmou que TODOS os worksheets seguem esse padrão
+(inline styles + cores hardcoded), por isso sobreviveram intactos às 6 fases
+de redesign do Industrial Editorial Pro nos primitives shadcn.
 
 ### Check for violations
 ```bash

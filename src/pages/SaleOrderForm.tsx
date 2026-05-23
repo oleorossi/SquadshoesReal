@@ -621,9 +621,19 @@ export default function SaleOrderForm() {
       );
 
       // Collect all insufficient materials
-      const rawShortages: Array<{ product_id: string; product_name: string; required: number; available: number; referenceLabel: string }> = [];
+      // Passa color + grade do item do PV pra cada shortage. A função
+      // enrichMaterialShortages decide se mantém esses campos (solados →
+      // agrupa por cor/grade) ou descarta (forros/tiras → agrega por
+      // product_id apenas).
+      const rawShortages: Array<{ product_id: string; product_name: string; required: number; available: number; referenceLabel: string; color?: string | null; grade?: Record<string, number> | null }> = [];
+      const validItemsList = validItems;
+      let resultIdx = 0;
       for (const result of stockResults) {
+        const sourceItem = validItemsList[resultIdx];
+        resultIdx += 1;
         if (result.status !== 'fulfilled' || !result.value.availability) continue;
+        const itemGrade = (sourceItem as any)?.grade ?? null;
+        const itemColor = result.value.color || null;
         for (const mat of result.value.availability) {
           if (!mat.sufficient) {
             rawShortages.push({
@@ -631,7 +641,9 @@ export default function SaleOrderForm() {
               product_name: mat.product_name,
               required: mat.required,
               available: mat.available,
-              referenceLabel: `${result.value.refLabel} (${result.value.color || 'sem cor'})`,
+              referenceLabel: `${result.value.refLabel} (${itemColor || 'sem cor'})`,
+              color: itemColor,
+              grade: itemGrade,
             });
           }
         }

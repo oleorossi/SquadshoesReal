@@ -463,7 +463,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                         {cg.refs.map((r) => (
                           <span
                             key={r.code || r.name}
-                            className="inline-block bg-black text-white font-bold px-2 py-0.5 rounded-[2px] whitespace-nowrap uppercase"
+                            className="inline-block bg-black text-white font-bold px-2 py-0.5 rounded-sm whitespace-nowrap uppercase"
                             style={{ fontSize: '10px', letterSpacing: '0.04em' }}
                           >
                             {r.name || r.code || '—'}
@@ -686,7 +686,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                           confundir o operador. */}
                       {cg.baseGrid && cg.baseGradeSum && !cg.mixedGrades && !usingKnife && (
                         <tr style={{ borderBottom: '1.5px solid #000' }}>
-                          <td className="py-1 text-[9px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
+                          <td className="py-1 text-[9px] font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 76, whiteSpace: 'nowrap', padding: '4px 6px', letterSpacing: '0.04em' }}>
                             Por Ficha<br />({cg.baseGradeSum}p)
                           </td>
                           {activeSizes.map(s => (
@@ -700,7 +700,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                         </tr>
                       )}
                       <tr style={{ borderBottom: theme.showFrenteTraseiro ? '1px solid #000' : 'none' }}>
-                        <td className="py-1.5 text-[10px] font-mono font-bold text-black uppercase tracking-wider leading-tight" style={{ borderRight: '1px solid #000' }}>
+                        <td className="py-1.5 text-[10px] font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 92, whiteSpace: 'nowrap', padding: '6px 6px', letterSpacing: '0.04em' }}>
                           {cg.mixedGrades
                             ? <>Total<br />({cg.fichas || 0} fichas*)</>
                             : cg.fichas && cg.fichas > 1
