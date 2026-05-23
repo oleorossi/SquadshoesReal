@@ -2,7 +2,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSearchParams, Link } from "react-router-dom";
 import { lazy, Suspense } from "react";
 import { CircleNotch as Loader2, SquaresFour as LayoutDashboard, ClipboardText as ClipboardList, Factory, ChartBar as BarChart3, Stack as Boxes, ClockCounterClockwise as History, Waves, FlowArrow as Workflow, Clock } from '@phosphor-icons/react';
-import { Gauge, FileText as FileBarChart } from '@phosphor-icons/react';
+import { Gauge, FileText as FileBarChart, Scissors } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { getSecondaryRoutesForGroup } from '@/data/navigation';
 
@@ -17,6 +17,7 @@ const ProductionWavesPage = lazy(() => import("./ProductionWavesPage"));
 const LeadTime = lazy(() => import("./LeadTime"));
 const RCCPPlanning = lazy(() => import("@/components/production/RCCPPlanning"));
 const PostOPAnalysis = lazy(() => import("@/components/production/PostOPAnalysis"));
+const LotSplitPage = lazy(() => import("./LotSplitPage"));
 
 
 const TabLoader = () => (
@@ -39,6 +40,7 @@ const TabLoader = () => (
   { value: "auditoria", label: "Auditoria", icon: History },
   { value: "rccp", label: "RCCP", icon: Gauge },
   { value: "pos-op", label: "Análise Pós-OP", icon: FileBarChart },
+  { value: "lot-split", label: "Split de Lotes", icon: Scissors },
 ];
  const ProductionPlanning = lazy(() => import("./ProductionPlanning"));
 
@@ -102,6 +104,7 @@ export default function PCPHub() {
           <TabsContent value="auditoria"><OrderFlowAudit /></TabsContent>
           <TabsContent value="rccp"><RCCPPlanning /></TabsContent>
           <TabsContent value="pos-op"><PostOPAnalysis /></TabsContent>
+          <TabsContent value="lot-split"><Suspense fallback={<TabLoader />}><LotSplitPage /></Suspense></TabsContent>
         </Suspense>
       </Tabs>
     </div>
