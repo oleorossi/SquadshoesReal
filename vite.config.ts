@@ -66,6 +66,9 @@ const versionJsonPlugin = (): Plugin => ({
             '@radix-ui/react-tooltip',
           ],
           'supabase-vendor': ['@supabase/supabase-js'],
+          // Recharts (~60KB gzip) usado em 14 pages — chunk próprio evita
+          // duplicação entre os bundles de cada page lazy.
+          'recharts-vendor': ['recharts'],
         },
       },
     },

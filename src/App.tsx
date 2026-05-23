@@ -196,7 +196,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!loading && user && profileLoading && !profile) {
-      console.log("[ProtectedRoute] Profile still loading for authenticated user...");
+      if (import.meta.env.DEV) console.log("[ProtectedRoute] Profile still loading for authenticated user...");
     }
   }, [loading, user, profileLoading, profile]);
 
@@ -334,7 +334,7 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
   }
 
    if (!canAccess) {
-     console.log("[RouteGuard] Access denied for:", path);
+     if (import.meta.env.DEV) console.log("[RouteGuard] Access denied for:", path);
 
     // Se o erro for na dashboard, mostramos uma mensagem específica e evitamos o loop de redirecionamento
     const isAtRoot = path === '/' || path === '/dashboard';
