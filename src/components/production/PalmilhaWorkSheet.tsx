@@ -1,5 +1,6 @@
 import React from 'react';
 import { Scissors } from '@phosphor-icons/react';
+import { adaptiveLabelFontSize } from '@/lib/adaptiveFontSize';
 import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
@@ -255,7 +256,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
                       </tr>
                     )}
                     <tr>
-                      <td className="py-2 text-[10px] font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 92, whiteSpace: 'nowrap', padding: '8px 6px', letterSpacing: '0.04em' }}>
+                      <td className="py-2 font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 96, whiteSpace: 'nowrap', padding: '8px 6px', letterSpacing: '0.04em', fontSize: adaptiveLabelFontSize(group.fichas, group.mixedGrades) }}>
                         {group.mixedGrades
                           ? <>Total<br />({group.fichas || 0} fichas*)</>
                           : group.fichas && group.fichas > 1

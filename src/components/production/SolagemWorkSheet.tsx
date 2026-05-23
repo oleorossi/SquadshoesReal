@@ -1,5 +1,6 @@
 import React from 'react';
 import { Footprints } from '@phosphor-icons/react';
+import { adaptiveLabelFontSize } from '@/lib/adaptiveFontSize';
 import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { SignatureFooter } from './worksheet/SignatureFooter';
@@ -188,7 +189,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
               </tr>
             )}
             <tr>
-              <td className="py-2 text-[10px] font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 92, whiteSpace: 'nowrap', padding: '8px 6px', letterSpacing: '0.04em' }}>
+              <td className="py-2 font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 96, whiteSpace: 'nowrap', padding: '8px 6px', letterSpacing: '0.04em', fontSize: adaptiveLabelFontSize(band.fichas, band.mixedGrades) }}>
                 {band.mixedGrades
                   ? <>Total<br />({band.fichas || 0} fichas*)</>
                   : band.fichas && band.fichas > 1
