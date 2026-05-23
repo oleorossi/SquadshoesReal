@@ -262,8 +262,21 @@ export function useCreatePurchaseOrder() {
         notes: data.notes || '',
         total_value: total,
         auto_generated: false,
-      }).select().single();
-      if (error) throw error;
+        // Server-side idempotência (migration 20260523130000): trigger
+        // tg_purchase_order_idempotency rejeita INSERT com mesmo key nos
+        // últimos 30s — protege contra retries que escapem do Map client-side.
+        idempotency_key: idemKey,
+      } as any).select().single();
+      if (error) {
+        // Erro 23505 do trigger = duplicate within 30s window.
+        if (error.code === '23505' && /idempotency/.test(error.message || '')) {
+          throw new Error(
+            'Esta OC foi submetida há menos de 30s — provavelmente já existe. ' +
+            'Verifique a aba de OCs antes de criar de novo.'
+          );
+        }
+        throw error;
+      }
 
       const items = data.items.map(i => ({
         purchase_order_id: po.id,
