@@ -68,12 +68,12 @@ export const SectorRegion = ({ sectorLabel, children }: Props) => {
   return (
     <div ref={ref} className="sector-region" style={{ position: 'relative' }}>
       {children}
-      {/* Markers: 1 por página A4. Posicionados em `top: i*281mm + 273mm`
-          (= rodapé da página i, 8mm acima da borda inferior). Visíveis
-          só em print. */}
+      {/* RODAPÉ — 1 marker por página A4 no canto inferior direito.
+          Posicionado em `top: i*281mm + 273mm` (8mm acima da borda
+          inferior). Identifica setor + numeração "Pg N/Total". */}
       {Array.from({ length: pageCount }).map((_, i) => (
         <div
-          key={`page-marker-${i}`}
+          key={`page-marker-bottom-${i}`}
           className="sector-page-marker"
           style={{
             position: 'absolute',
@@ -88,6 +88,31 @@ export const SectorRegion = ({ sectorLabel, children }: Props) => {
           </span>
         </div>
       ))}
+      {/* TOPO — só páginas 2+ (página 1 já tem o WorksheetHeader gigante
+          no topo). Garante que o operador identifique de imediato a
+          qual setor pertence a folha sem precisar revirar pra ver o
+          header da página anterior. Padrão de manufacturing traveler. */}
+      {Array.from({ length: Math.max(0, pageCount - 1) }).map((_, idx) => {
+        const i = idx + 1; // pageIndex (0-based, mas começa em 1 aqui)
+        return (
+          <div
+            key={`page-marker-top-${i}`}
+            className="sector-page-marker sector-page-marker-top"
+            style={{
+              position: 'absolute',
+              left: '6mm',
+              right: '6mm',
+              top: `${i * 281 + 3}mm`,
+            }}
+          >
+            <span className="sector-page-marker-label">{sectorLabel}</span>
+            <span className="sector-page-marker-sep"> · cont. </span>
+            <span className="sector-page-marker-page">
+              Pg {i + 1} / {pageCount}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 };

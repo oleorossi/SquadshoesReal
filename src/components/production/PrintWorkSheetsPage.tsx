@@ -284,6 +284,25 @@ const printStyles = `
       .sector-page-marker-page {
         font-weight: 600;
       }
+      /* Variante topo (full-width, double hairline preto). Aparece SOMENTE
+         nas páginas 2+ pra reidentificar setor sem conflitar com o
+         WorksheetHeader gigante da página 1. Padrão de continuation
+         header de manufacturing traveler. */
+      .sector-page-marker-top {
+        font-size: 9px !important;
+        padding: 3px 8px !important;
+        border-width: 1px 0 1px 0 !important;
+        border-color: #000 !important;
+        border-style: solid !important;
+        text-align: left;
+        background: #fff !important;
+        display: flex !important;
+        align-items: baseline;
+        gap: 4px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
     }
 
     /* Tipografia comprimida pra caber 1 ficha por A4 (281mm úteis após
