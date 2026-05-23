@@ -17,6 +17,7 @@ import {
   bulkConsumptionKey,
   type ConsumptionRow,
 } from '@/hooks/useBulkOrderConsumption';
+import { SectorRegion } from '@/components/production/worksheet/SectorRegion';
 import logoSquad from '@/assets/logo-squad-shoes.jpg';
 
 const printStyles = `
@@ -245,6 +246,44 @@ const printStyles = `
       -webkit-print-color-adjust: exact !important;
       color-adjust: exact !important;
       print-color-adjust: exact !important;
+    }
+
+    /* Sector page markers — auditoria mai/2026. Cada setor mostra
+       "Setor · Pg N / Total" no rodapé de cada A4 que ocupa. Visível
+       só em print (em screen fica oculto). Posicionados absolutamente
+       relativos ao wrapper .sector-region.
+
+       Posição: top calculado por JS em SectorRegion.tsx baseado em
+       281mm × pageIndex + 273mm (= 8mm acima da borda inferior).
+
+       z-index alto pra não ser coberto por TallyBox / footer. */
+    .sector-page-marker {
+      display: none;
+    }
+    @media print {
+      .sector-page-marker {
+        display: block !important;
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-size: 8px;
+        line-height: 1;
+        color: #000;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        background: #fff;
+        padding: 2px 6px;
+        border: 1px solid #000;
+        z-index: 100;
+        white-space: nowrap;
+      }
+      .sector-page-marker-label {
+        font-weight: 700;
+      }
+      .sector-page-marker-sep {
+        color: rgba(0, 0, 0, 0.4);
+      }
+      .sector-page-marker-page {
+        font-weight: 600;
+      }
     }
 
     /* Tipografia comprimida pra caber 1 ficha por A4 (281mm úteis após
@@ -1781,14 +1820,16 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             (.keep-together) evitam quebra no meio de uma seção. */}
         {includesSector('Corte Palmilha') && palmilhaGroups.length > 0 && (
           <div className="page-break">
-            <PalmilhaWorkSheet
-              groups={palmilhaGroups.map(g => ({
-                ...g,
-                consumption: consumptionForOpNumbers(g.opNumbers),
-              }))}
-              allSizes={palmilhaAllSizes}
-              date={today}
-            />
+            <SectorRegion sectorLabel="Corte Palmilha">
+              <PalmilhaWorkSheet
+                groups={palmilhaGroups.map(g => ({
+                  ...g,
+                  consumption: consumptionForOpNumbers(g.opNumbers),
+                }))}
+                allSizes={palmilhaAllSizes}
+                date={today}
+              />
+            </SectorRegion>
           </div>
         )}
 
@@ -1904,7 +1945,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
               const enriched = withConsumption(merged);
               return [
                 <div key={`${sectorName}-todos-solados`} className="page-break">
-                  <SilkMontageWorkSheet group={enriched} sector={sectorName} date={today} />
+                  <SectorRegion sectorLabel={sectorName}>
+                    <SilkMontageWorkSheet group={enriched} sector={sectorName} date={today} />
+                  </SectorRegion>
                 </div>,
               ];
             }
@@ -1914,11 +1957,13 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
               .filter(x => x.filtered !== null)
               .map(({ filtered }) => (
                 <div key={`${sectorName}-${filtered!.soleName}`} className="page-break">
-                  <SilkMontageWorkSheet
-                    group={withConsumption(filtered!)}
-                    sector={sectorName}
-                    date={today}
-                  />
+                  <SectorRegion sectorLabel={`${sectorName} · ${filtered!.soleName}`}>
+                    <SilkMontageWorkSheet
+                      group={withConsumption(filtered!)}
+                      sector={sectorName}
+                      date={today}
+                    />
+                  </SectorRegion>
                 </div>
               ));
           });
@@ -1927,15 +1972,17 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         {/* ── Solagem ── */}
         {includesSector('Solagem') && solagemData && solagemData.bands.length > 0 && (
           <div className="page-break">
-            <SolagemWorkSheet
-              bands={solagemData.bands.map(b => ({
-                ...b,
-                consumption: consumptionForOpNumbers(b.opNumbers),
-              }))}
-              allSizes={solagemData.allSizes}
-              date={today}
-              grandTotal={solagemData.grandTotal}
-            />
+            <SectorRegion sectorLabel="Solagem">
+              <SolagemWorkSheet
+                bands={solagemData.bands.map(b => ({
+                  ...b,
+                  consumption: consumptionForOpNumbers(b.opNumbers),
+                }))}
+                allSizes={solagemData.allSizes}
+                date={today}
+                grandTotal={solagemData.grandTotal}
+              />
+            </SectorRegion>
           </div>
         )}
 
@@ -1993,20 +2040,22 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           });
           return (
             <div key={`${sectorName.toLowerCase()}-${representative.reference_id}::${representative.color}`} className="page-break">
-              <OperatorWorkSheet
-                order={syntheticOrder}
-                sector={sectorName}
-                silk={silk}
-                soleColor={soleColor}
-                insoleColor={insoleColor}
-                insoleHasLining={insoleHasLining}
-                insoleReadyMade={insoleReadyMade}
-                hasStraps={hasStraps}
-                strapColors={strapColorsOrdered}
-                mesaCapacity={mesaCapacity}
-                sectorCapacityPerDay={getSheetSectorCapacity(representative.reference_id, sectorName)}
-                opNumbers={group.opNumbers}
-              />
+              <SectorRegion sectorLabel={`${sectorName} · ${representative.reference_name || representative.reference_code || '—'} ${representative.color || ''}`}>
+                <OperatorWorkSheet
+                  order={syntheticOrder}
+                  sector={sectorName}
+                  silk={silk}
+                  soleColor={soleColor}
+                  insoleColor={insoleColor}
+                  insoleHasLining={insoleHasLining}
+                  insoleReadyMade={insoleReadyMade}
+                  hasStraps={hasStraps}
+                  strapColors={strapColorsOrdered}
+                  mesaCapacity={mesaCapacity}
+                  sectorCapacityPerDay={getSheetSectorCapacity(representative.reference_id, sectorName)}
+                  opNumbers={group.opNumbers}
+                />
+              </SectorRegion>
             </div>
           );
         });
@@ -2050,20 +2099,22 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           });
           return (
             <div key={`acab-${order.id}`} className="page-break">
-              <OperatorWorkSheet
-                order={syntheticOrder}
-                sector="Acabamento"
-                silk={silk}
-                soleColor={soleColor}
-                insoleColor={insoleColor}
-                insoleHasLining={insoleHasLining}
-                insoleReadyMade={insoleReadyMade}
-                hasStraps={hasStraps}
-                strapColors={strapColorsOrdered}
-                mesaCapacity={mesaCapacity}
-                sectorCapacityPerDay={getSheetSectorCapacity(order.reference_id, 'Acabamento')}
-                opNumbers={[order.op_number].filter(Boolean)}
-              />
+              <SectorRegion sectorLabel={`Acabamento · OP ${order.op_number || '—'}`}>
+                <OperatorWorkSheet
+                  order={syntheticOrder}
+                  sector="Acabamento"
+                  silk={silk}
+                  soleColor={soleColor}
+                  insoleColor={insoleColor}
+                  insoleHasLining={insoleHasLining}
+                  insoleReadyMade={insoleReadyMade}
+                  hasStraps={hasStraps}
+                  strapColors={strapColorsOrdered}
+                  mesaCapacity={mesaCapacity}
+                  sectorCapacityPerDay={getSheetSectorCapacity(order.reference_id, 'Acabamento')}
+                  opNumbers={[order.op_number].filter(Boolean)}
+                />
+              </SectorRegion>
             </div>
           );
         })}
@@ -2071,7 +2122,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         {/* ── Expedição: 1 ficha por cliente/CNPJ ── */}
         {includesSector('Expedição') && expedicaoGroups && expedicaoGroups.map((group) => (
           <div key={`exped-${group.client_id}`} className="page-break">
-            <ExpedicaoWorkSheet group={group} date={today} />
+            <SectorRegion sectorLabel={`Expedição · ${group.client_name}`}>
+              <ExpedicaoWorkSheet group={group} date={today} />
+            </SectorRegion>
           </div>
         ))}
 
