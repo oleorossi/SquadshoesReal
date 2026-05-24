@@ -62,9 +62,18 @@ export interface PendingCount {
 
 const PROBLEM_STATUSES: DayStatus[] = ['inconsistent', 'irregular', 'partial'];
 
+const isPendingRow = (r: TimePending): boolean => {
+  if (PROBLEM_STATUSES.includes(r.day_summary?.status)) return true;
+  // 2 batidas em dia útil viraram 'normal'/'overtime'/'absent' com almoço
+  // inferido (mig 20260524200000). RH ainda precisa revisar pra validar se
+  // o intervalo presumido (1h) bate com o que aconteceu — listar como pendência.
+  return (r.day_summary as { partial_reason?: string })?.partial_reason === 'almoco_inferido';
+};
+
 /**
- * Lista de registros de ponto problemáticos (status inconsistent/irregular/partial)
- * nos últimos 90 dias úteis. View v_time_pendings já filtra fim de semana + feriados.
+ * Lista de registros de ponto problemáticos (status inconsistent/irregular/partial,
+ * ou 2 batidas com almoço inferido) nos últimos 90 dias úteis.
+ * View v_time_pendings já filtra fim de semana + feriados.
  */
 export function useTimePendings(opts?: { onlyProblems?: boolean }) {
   return useQuery({
@@ -76,9 +85,7 @@ export function useTimePendings(opts?: { onlyProblems?: boolean }) {
         .order('days_since', { ascending: false });
       if (error) throw error;
       const rows = (data || []) as TimePending[];
-      return opts?.onlyProblems
-        ? rows.filter((r) => PROBLEM_STATUSES.includes(r.day_summary?.status))
-        : rows;
+      return opts?.onlyProblems ? rows.filter(isPendingRow) : rows;
     },
     staleTime: 60_000,
   });
