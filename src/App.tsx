@@ -80,6 +80,7 @@ const OutsourcedInFieldPage = lazy(() => import("./pages/OutsourcedInField"));
 const ContractorReportsPage = lazy(() => import("./pages/ContractorReports"));
 const TimePendingsPage = lazy(() => import("./pages/TimePendings"));
 const WeeklyClosePage = lazy(() => import("./pages/WeeklyClose"));
+const EmployeeAbsencesPage = lazy(() => import("./pages/EmployeeAbsences"));
 const SectorAggregatedView = lazy(() => import("./pages/SectorAggregatedView"));
 const ProductionControlCenter = lazy(() => import("./pages/ProductionControlCenter"));
 const PrintWorkSheets = lazy(() => import("./pages/PrintWorkSheets"));
@@ -620,6 +621,12 @@ const router = createBrowserRouter([
         // pra impedir edição retroativa silenciosa. Cron auto toda segunda.
         path: "rh/fechamento-semanal",
         element: <WeeklyClosePage />,
+      },
+      {
+        // Ausências justificadas (férias/atestado/licença/folga). Dias
+        // cadastrados aqui ficam isentos do cálculo do banco de horas.
+        path: "rh/ausencias",
+        element: <EmployeeAbsencesPage />,
       },
       {
         // Visão consolidada de carga por setor. Em vez de N OPs individuais

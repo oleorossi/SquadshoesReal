@@ -75,6 +75,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/terceiros/relatorios': 'producao',
   '/rh/pendencias-ponto': 'rh',
   '/rh/fechamento-semanal': 'rh',
+  '/rh/ausencias': 'rh',
   '/producao/visao-agregada': 'producao',
   '/inventory': 'estoque',
   '/production': 'producao',
