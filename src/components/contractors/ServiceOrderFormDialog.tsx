@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Buildings, Plus, Trash, FlaskConical, Calendar, CurrencyDollar, Package,
+  Buildings, Plus, Trash, Flask as FlaskConical, Calendar, CurrencyDollar, Package,
   CheckCircle, Warning,
 } from '@phosphor-icons/react';
 import {
