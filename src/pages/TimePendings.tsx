@@ -20,6 +20,7 @@ import {
   useTimePendings, type TimePending, type Urgency,
 } from '@/hooks/useTimePendings';
 import { CompletePunchesDialog } from '@/components/rh/CompletePunchesDialog';
+import { useBankHoursCutoff, formatCutoffBR } from '@/hooks/useBankHoursCutoff';
 
 const URGENCY_STYLE: Record<Urgency, { label: string; cls: string }> = {
   overdue: { label: '+7 dias',  cls: 'bg-red-500/10 text-red-700 border-red-500/30 dark:text-red-400' },
@@ -49,6 +50,7 @@ function dowName(dow: number): string {
 
 export default function TimePendingsPage() {
   const { data: pendings = [], isLoading } = useTimePendings({ onlyProblems: true });
+  const { data: cutoff } = useBankHoursCutoff();
 
   // Filtros
   const [employeeFilter, setEmployeeFilter] = useState<string>('all');
@@ -104,7 +106,11 @@ export default function TimePendingsPage() {
       <EditorialPageHeader
         sectionLabel="RH · PONTO · PENDÊNCIAS"
         title="Pendências de Ponto"
-        description="Dias com batidas faltando, inconsistentes ou irregulares. Completar aqui recalcula automaticamente o banco de horas do funcionário."
+        description={
+          cutoff
+            ? `Dias com batidas faltando, inconsistentes ou irregulares — a partir de ${formatCutoffBR(cutoff)} (registros anteriores ignorados). Completar aqui recalcula automaticamente o banco de horas.`
+            : 'Dias com batidas faltando, inconsistentes ou irregulares. Completar aqui recalcula automaticamente o banco de horas do funcionário.'
+        }
       />
 
       <StatGrid>

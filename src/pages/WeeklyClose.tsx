@@ -26,6 +26,7 @@ import {
   useWeeklySnapshots, useSnapshotAllEmployeesWeek, useUnlockWeek, useWeeklyAuditLog,
   type WeeklySnapshot, type AuditLogEntry,
 } from '@/hooks/useWeeklySnapshot';
+import { useBankHoursCutoff, formatCutoffBR } from '@/hooks/useBankHoursCutoff';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -99,6 +100,7 @@ export default function WeeklyClosePage() {
 
   const { data: snapshots = [], isLoading: loadingSnaps } = useWeeklySnapshots();
   const { data: auditLog = [] } = useWeeklyAuditLog();
+  const { data: cutoff } = useBankHoursCutoff();
   const snapshotAll = useSnapshotAllEmployeesWeek();
   const unlock = useUnlockWeek();
 
@@ -155,7 +157,14 @@ export default function WeeklyClosePage() {
     setUnlockReason('');
   };
 
-  const weekOptions = useMemo(() => lastNMondays(8), []);
+  const weekOptions = useMemo(() => {
+    const opts = lastNMondays(8);
+    if (!cutoff) return opts;
+    // ISO Monday da semana do cutoff
+    const cutoffDate = new Date(cutoff + 'T00:00:00');
+    const cutoffMonday = isoMondayOf(cutoffDate);
+    return opts.filter((m) => m >= cutoffMonday);
+  }, [cutoff]);
 
   if (loadingSnaps) {
     return <div className="py-12 text-center text-muted-foreground text-sm">Carregando snapshots...</div>;
@@ -166,7 +175,11 @@ export default function WeeklyClosePage() {
       <EditorialPageHeader
         sectionLabel="RH · BANCO DE HORAS · FECHAMENTO"
         title="Fechamento Semanal"
-        description="Trava o cálculo do banco de horas por semana. Edições retroativas em batidas só passam se destravar com justificativa (rastreada). Cron automático toda segunda 00:15 BRT fecha a semana anterior."
+        description={
+          cutoff
+            ? `Trava o cálculo do banco de horas por semana. Apuração a partir de ${formatCutoffBR(cutoff)} (anterior ignorado). Edições retroativas em batidas só passam se destravar com justificativa rastreada. Cron automático toda segunda 00:15 BRT fecha a semana anterior.`
+            : 'Trava o cálculo do banco de horas por semana. Edições retroativas em batidas só passam se destravar com justificativa (rastreada). Cron automático toda segunda 00:15 BRT fecha a semana anterior.'
+        }
         actions={
           <>
             <Select value={selectedWeek} onValueChange={setSelectedWeek}>
