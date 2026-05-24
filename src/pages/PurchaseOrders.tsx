@@ -24,6 +24,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
+import { SoleGradeEditorDialog } from '@/components/purchases/SoleGradeEditorDialog';
 
 const STATUS_MAP: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
   pending: { label: 'Pendente', variant: 'outline' },
@@ -387,6 +388,7 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
   const order = orders.find(o => o.id === orderId);
   const [editingItems, setEditingItems] = useState<Record<string, { quantity: number; unit_price: number }>>({});
   const [receiving, setReceiving] = useState(false);
+  const [gradeEditorItemId, setGradeEditorItemId] = useState<string | null>(null);
 
   if (!order) return null;
 
@@ -737,6 +739,28 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
                         <p className="font-medium text-sm">{item.product?.name}</p>
                         <p className="text-xs text-muted-foreground">SKU: {item.product?.sku} • {item.unit}</p>
                         {item.color && <p className="text-xs text-muted-foreground">Cor: {item.color}</p>}
+                        {item.product?.category === 'Solado' && isEditable && (
+                          (!item.grade || Object.keys(item.grade as any).length === 0) ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-6 mt-1 text-xs"
+                              onClick={() => setGradeEditorItemId(item.id)}
+                            >
+                              <Footprints className="h-3 w-3 mr-1" />
+                              Distribuir por numeração
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 mt-1 text-xs text-muted-foreground hover:text-foreground"
+                              onClick={() => setGradeEditorItemId(item.id)}
+                            >
+                              Editar grade
+                            </Button>
+                          )
+                        )}
                       </TableCell>
                       <TableCell className="text-center">
                         <span className={item.current_stock <= item.min_stock ? 'text-destructive font-semibold' : ''}>{item.current_stock}</span>
@@ -905,6 +929,31 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
             </>
           )}
         </DialogFooter>
+
+        {gradeEditorItemId && (() => {
+          const target = items.find(i => i.id === gradeEditorItemId);
+          if (!target) return null;
+          const sg = (target.product?.stock_grade || {}) as Record<string, unknown>;
+          const sizes = Object.keys(sg)
+            .filter(k => !k.startsWith('_'))
+            .sort((a, b) => {
+              const na = parseFloat(a.split('/')[0]);
+              const nb = parseFloat(b.split('/')[0]);
+              return isNaN(na) || isNaN(nb) ? a.localeCompare(b) : na - nb;
+            });
+          return (
+            <SoleGradeEditorDialog
+              open
+              onOpenChange={(open) => !open && setGradeEditorItemId(null)}
+              itemId={target.id}
+              productName={target.product?.name || '—'}
+              productColor={target.color || target.product?.color}
+              totalQuantity={target.quantity}
+              availableSizes={sizes}
+              currentGrade={(target.grade as Record<string, number>) || null}
+            />
+          );
+        })()}
       </DialogContent>
     </Dialog>
   );

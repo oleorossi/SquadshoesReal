@@ -33,7 +33,7 @@ export type PurchaseOrderItem = {
   created_at: string;
   grade?: Record<string, number> | null;
   color?: string | null;
-  product?: { name: string; sku: string; category: string; color?: string | null };
+  product?: { name: string; sku: string; category: string; color?: string | null; stock_grade?: Record<string, any> | null };
 };
 
 export function usePurchaseOrders() {
@@ -57,7 +57,7 @@ export function usePurchaseOrderItems(orderId: string | null) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('purchase_order_items')
-        .select('*, products(id, name, sku, category, color)')
+        .select('*, products(id, name, sku, category, color, stock_grade)')
         .eq('purchase_order_id', orderId!);
       if (error) throw error;
       return (data || []).map((item: any) => ({
@@ -98,9 +98,13 @@ export function useUpdatePurchaseOrder() {
 export function useUpdatePurchaseOrderItem() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: { quantity: number; unit_price: number } }) => {
-      if (!Number.isFinite(data.quantity) || data.quantity <= 0) throw new Error('Quantidade inválida em item da OC.');
-      if (!Number.isFinite(data.unit_price) || data.unit_price < 0) throw new Error('Preço unitário inválido em item da OC.');
+    mutationFn: async ({ id, data }: { id: string; data: { quantity?: number; unit_price?: number; grade?: Record<string, number> | null } }) => {
+      if (data.quantity !== undefined && (!Number.isFinite(data.quantity) || data.quantity <= 0)) {
+        throw new Error('Quantidade inválida em item da OC.');
+      }
+      if (data.unit_price !== undefined && (!Number.isFinite(data.unit_price) || data.unit_price < 0)) {
+        throw new Error('Preço unitário inválido em item da OC.');
+      }
       const { data: item, error: itemFetchErr } = await supabase
         .from('purchase_order_items')
         .select('purchase_order_id')
