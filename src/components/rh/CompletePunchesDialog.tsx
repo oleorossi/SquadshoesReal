@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Clock, Plus, Trash, Warning as AlertTriangle, CheckCircle } from '@phosphor-icons/react';
+import { Link } from 'react-router-dom';
+import { Clock, Plus, Trash, Warning as AlertTriangle, CheckCircle, Lightning, ArrowSquareOut } from '@phosphor-icons/react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
@@ -10,6 +11,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useCompletePunches, type TimePending } from '@/hooks/useTimePendings';
+
+const CONFIDENCE_STYLE: Record<string, { label: string; cls: string }> = {
+  high:   { label: 'alta',  cls: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30 dark:text-emerald-400' },
+  medium: { label: 'média', cls: 'bg-amber-500/10 text-amber-700 border-amber-500/30 dark:text-amber-400' },
+  low:    { label: 'baixa', cls: 'bg-muted text-muted-foreground border-border' },
+  none:   { label: '—',     cls: 'bg-muted text-muted-foreground border-border' },
+};
 
 /**
  * Dialog pra completar as batidas faltantes de um time_record.
@@ -74,20 +82,20 @@ export function CompletePunchesDialog({ open, onOpenChange, pending }: CompleteP
   const remove = (i: number) => setPunches((prev) => prev.filter((_, idx) => idx !== i));
   const add = () => setPunches((prev) => [...prev, '']);
 
-  // Helpers comuns: presets de almoço CLT
-  const applyLunchPreset = () => {
-    // Se tem só 2 batidas (entrada/saída), insere 12:00 + 13:00 no meio
-    if (punches.length === 2) {
-      const [a, b] = punches;
-      const am = toMinutes(a), bm = toMinutes(b);
-      if (am === null || bm === null) return;
-      const lunchA = '12:00';
-      const lunchB = '13:00';
-      const lunchAm = toMinutes(lunchA)!;
-      const lunchBm = toMinutes(lunchB)!;
-      if (lunchAm > am && lunchBm < bm) {
-        setPunches([a, lunchA, lunchB, b]);
-      }
+  // Aplica a sugestão do servidor (padrão observado ou schedule)
+  const suggestion = pending?.suggestion ?? null;
+  const canApplySuggestion = !!suggestion
+    && suggestion.source !== 'none'
+    && suggestion.suggested.length === 4
+    && suggestion.suggested.every((p) => HH_MM_RE.test(p));
+  const applySuggestion = () => {
+    if (!suggestion || !canApplySuggestion) return;
+    setPunches([...suggestion.suggested]);
+    if (reason.trim().length === 0) {
+      const src = suggestion.source === 'observed'
+        ? `padrão observado (${suggestion.observed_days} dias)`
+        : 'horário oficial do funcionário';
+      setReason(`Completado via ${src} — batidas reais preservadas.`);
     }
   };
 
@@ -148,15 +156,118 @@ export function CompletePunchesDialog({ open, onOpenChange, pending }: CompleteP
             </div>
           )}
 
+          {/* ─── Card de padrão do funcionário ─── */}
+          {suggestion && suggestion.source !== 'none' && (
+            <div className={cn(
+              'rounded-md border p-3 text-xs space-y-2',
+              suggestion.confidence === 'high'   && 'border-emerald-500/30 bg-emerald-500/5',
+              suggestion.confidence === 'medium' && 'border-amber-500/30 bg-amber-500/5',
+              suggestion.confidence === 'low'    && 'border-border bg-muted/30',
+            )}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                  <Lightning className="h-3.5 w-3.5" />
+                  Padrão do funcionário
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Badge variant="outline" className={cn('text-[10px] uppercase', CONFIDENCE_STYLE[suggestion.confidence].cls)}>
+                    {suggestion.source === 'observed' ? 'Observado' : 'Horário oficial'}
+                    {' · '}
+                    {CONFIDENCE_STYLE[suggestion.confidence].label}
+                  </Badge>
+                </div>
+              </div>
+
+              {/* Padrão observado (se houver) */}
+              {suggestion.pattern.observed && (
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-muted-foreground text-[10px] uppercase tracking-wider shrink-0">
+                    Hist ({suggestion.observed_days}d):
+                  </span>
+                  <span className="font-mono text-foreground tabular-nums">
+                    {suggestion.pattern.observed.join(' · ')}
+                  </span>
+                </div>
+              )}
+
+              {/* Schedule oficial */}
+              {suggestion.pattern.schedule && (
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-muted-foreground text-[10px] uppercase tracking-wider shrink-0">Oficial:</span>
+                  <span className="font-mono text-muted-foreground tabular-nums">
+                    {suggestion.pattern.schedule.join(' · ')}
+                  </span>
+                </div>
+              )}
+
+              {/* Sugestão final (preserva batidas reais) */}
+              <div className="flex items-baseline justify-between gap-2 pt-1 border-t border-current/20">
+                <span className="text-foreground text-[10px] uppercase tracking-wider font-bold shrink-0">
+                  Sugestão:
+                </span>
+                <span className="font-mono text-foreground font-semibold tabular-nums">
+                  {suggestion.suggested.join(' · ')}
+                </span>
+              </div>
+
+              <p className="text-[10px] text-muted-foreground italic">{suggestion.reason}</p>
+
+              <Button
+                type="button"
+                size="sm"
+                className="w-full h-8 text-xs gap-1.5"
+                disabled={!canApplySuggestion}
+                onClick={applySuggestion}
+              >
+                <Lightning className="h-3.5 w-3.5" />
+                Aplicar padrão · preencher form
+              </Button>
+            </div>
+          )}
+
+          {/* ─── Alerta: dia vazio sem cobertura ─── */}
+          {pending && pending.punches.length === 0 && suggestion && !suggestion.is_absent_covered && (
+            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs space-y-1.5">
+              <div className="flex items-center gap-1.5 font-semibold text-amber-700 dark:text-amber-400">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Dia completamente vazio
+              </div>
+              <p className="text-amber-800 dark:text-amber-300 text-[11px] leading-snug">
+                Verifique se esse dia foi <strong>ausência justificada</strong> (férias/atestado/folga)
+                antes de aplicar batidas. Cadastrar ausência isenta o dia do cálculo automaticamente.
+              </p>
+              <Button
+                asChild
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs gap-1 border-amber-500/40 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10"
+              >
+                <Link to="/rh/ausencias" onClick={() => onOpenChange(false)}>
+                  <ArrowSquareOut className="h-3 w-3" />
+                  Cadastrar ausência
+                </Link>
+              </Button>
+            </div>
+          )}
+
+          {/* ─── Alerta: dia vazio já COBERTO por ausência ─── */}
+          {pending && pending.punches.length === 0 && suggestion?.is_absent_covered && (
+            <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 p-3 text-xs">
+              <div className="flex items-center gap-1.5 font-semibold text-emerald-700 dark:text-emerald-400">
+                <CheckCircle className="h-3.5 w-3.5" />
+                Dia já coberto por ausência justificada
+              </div>
+              <p className="text-emerald-800 dark:text-emerald-300 text-[11px] leading-snug mt-1">
+                A isenção já está aplicada no cálculo. Você não precisa completar batidas aqui —
+                a menos que o funcionário tenha trabalhado mesmo assim.
+              </p>
+            </div>
+          )}
+
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-xs">Batidas (entrada/saída pareadas)</Label>
               <div className="flex items-center gap-2">
-                {punches.length === 2 && (
-                  <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={applyLunchPreset}>
-                    Inserir almoço 12:00–13:00
-                  </Button>
-                )}
                 <Button type="button" variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={add}>
                   <Plus className="h-3 w-3" /> Batida
                 </Button>
