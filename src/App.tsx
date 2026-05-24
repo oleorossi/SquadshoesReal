@@ -77,6 +77,7 @@ const GroupedReportSummary = lazy(() => import("./pages/GroupedReportSummary"));
 const CapacityPlanning = lazy(() => import("./pages/CapacityPlanning"));
 const BottlenecksPage = lazy(() => import("./pages/Bottlenecks"));
 const OutsourcedInFieldPage = lazy(() => import("./pages/OutsourcedInField"));
+const ContractorReportsPage = lazy(() => import("./pages/ContractorReports"));
 const SectorAggregatedView = lazy(() => import("./pages/SectorAggregatedView"));
 const ProductionControlCenter = lazy(() => import("./pages/ProductionControlCenter"));
 const PrintWorkSheets = lazy(() => import("./pages/PrintWorkSheets"));
@@ -599,6 +600,12 @@ const router = createBrowserRouter([
         // Operacional: cards por contratada + tabela com prazo/atraso/ações.
         path: "terceiros-na-rua",
         element: <OutsourcedInFieldPage />,
+      },
+      {
+        // Relatório agregado por contractor — taxa de pontualidade, R$ pago,
+        // atraso médio + histórico de OSs finalizadas no período.
+        path: "terceiros/relatorios",
+        element: <ContractorReportsPage />,
       },
       {
         // Visão consolidada de carga por setor. Em vez de N OPs individuais

@@ -3,7 +3,7 @@ import {
   Truck, ArrowSquareOut, Buildings, Funnel, Warning as AlertTriangle,
   CurrencyDollar as DollarSign, Package as Boxes, X, CheckCircle, Clock,
   Calendar, DotsThreeVertical, Printer, CaretRight, Palette, FlaskConical,
-  Ruler,
+  Ruler, Plus, Camera, ChartBar as BarChart3,
 } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -26,7 +26,12 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { Link } from 'react-router-dom';
 import { cn, formatCurrency } from '@/lib/utils';
+import { ServiceOrderFormDialog } from '@/components/contractors/ServiceOrderFormDialog';
+import { SignedReceiptUploadDialog } from '@/components/contractors/SignedReceiptUploadDialog';
+import { printServiceOrderReceipt } from '@/lib/printServiceOrderReceipt';
+import { useContractors } from '@/hooks/useContractors';
 import {
   useOutsourcedInField, useReceiveOutsourcedItem, useExtendOutsourcedDeadline,
   type OutsourcedItem, type MaterialSent,
@@ -336,8 +341,14 @@ function GradeBreakdown({
 
 export default function OutsourcedInFieldPage() {
   const { data: items = [], isLoading } = useOutsourcedInField();
+  const { data: contractors = [] } = useContractors();
   const receiveItem = useReceiveOutsourcedItem();
   const extendDeadline = useExtendOutsourcedDeadline();
+
+  // Dialogs novos
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createContractorId, setCreateContractorId] = useState<string | undefined>(undefined);
+  const [photoItem, setPhotoItem] = useState<OutsourcedItem | null>(null);
 
   // Filtros locais
   const [contractorFilter, setContractorFilter] = useState<string | null>(null);
@@ -465,6 +476,44 @@ export default function OutsourcedInFieldPage() {
     setNewDeadline('');
   };
 
+  const handlePrintReceipt = (it: OutsourcedItem) => {
+    const c = contractors.find((x: any) => x.id === it.contractor_id) as any;
+    printServiceOrderReceipt(
+      {
+        id: it.id,
+        order_number: it.op_number,
+        description: it.description ?? null,
+        service_date: it.sent_at,
+        quoted_deadline: it.expected_back,
+        quantity: it.pairs,
+        unit_price: it.unit_price,
+        total_value: it.total_value,
+        notes: it.notes ?? null,
+        materials_sent: Array.isArray(it.materials_sent) ? it.materials_sent : [],
+        status: it.status,
+        target_sector: it.sector,
+        op_number: it.op_number,
+        sale_order_number: it.sale_order_number,
+        client_name: it.client_name,
+      },
+      {
+        name: c?.name || it.contractor_name,
+        trade_name: c?.trade_name,
+        cnpj_cpf: c?.cnpj_cpf,
+        phone: c?.phone,
+        email: c?.email,
+        address: c?.address,
+        city: c?.city,
+        state: c?.state,
+      },
+    );
+  };
+
+  const openCreate = (contractorId?: string) => {
+    setCreateContractorId(contractorId);
+    setCreateOpen(true);
+  };
+
   if (isLoading) {
     return (
       <div className="py-12 text-center text-muted-foreground text-sm">
@@ -479,6 +528,20 @@ export default function OutsourcedInFieldPage() {
         sectionLabel="PRODUÇÃO · TERCEIROS"
         title="Terceiros na Rua"
         description="Tudo o que está fora da fábrica agora — OSs de gargalo + OPs inteiras terceirizadas. Acompanhe prazo, atraso e recebimento num único lugar."
+        actions={
+          <>
+            <Button asChild variant="outline" size="sm" className="h-9 gap-1.5">
+              <Link to="/terceiros/relatorios">
+                <BarChart3 className="h-3.5 w-3.5" />
+                Relatórios
+              </Link>
+            </Button>
+            <Button onClick={() => openCreate()} size="sm" className="h-9 gap-1.5">
+              <Plus className="h-3.5 w-3.5" />
+              Nova OS
+            </Button>
+          </>
+        }
       />
 
       {/* KPIs */}
@@ -795,6 +858,14 @@ export default function OutsourcedInFieldPage() {
                                 Marcar recebido
                               </DropdownMenuItem>
                               <DropdownMenuItem
+                                onClick={() => setPhotoItem(it)}
+                                className="text-xs gap-2"
+                                disabled={it.source !== 'service_order'}
+                              >
+                                <Camera className="h-3.5 w-3.5" />
+                                Anexar foto assinada
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
                                 onClick={() => openExtendDialog(it)}
                                 className="text-xs gap-2"
                                 disabled={it.source !== 'service_order'}
@@ -804,11 +875,18 @@ export default function OutsourcedInFieldPage() {
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
-                                onClick={() => window.print()}
+                                onClick={() => handlePrintReceipt(it)}
                                 className="text-xs gap-2"
                               >
                                 <Printer className="h-3.5 w-3.5" />
-                                Imprimir guia
+                                Imprimir recibo (PDF)
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => openCreate(it.contractor_id)}
+                                className="text-xs gap-2"
+                              >
+                                <Plus className="h-3.5 w-3.5" />
+                                Nova OS pra contratada
                               </DropdownMenuItem>
                               {it.sale_order_id && (
                                 <DropdownMenuItem asChild>
@@ -840,6 +918,24 @@ export default function OutsourcedInFieldPage() {
           </div>
         )}
       </Panel>
+
+      {/* Dialog: criar nova OS */}
+      <ServiceOrderFormDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        initialContractorId={createContractorId}
+      />
+
+      {/* Dialog: anexar foto do recibo assinado */}
+      <SignedReceiptUploadDialog
+        open={!!photoItem}
+        onOpenChange={(open) => !open && setPhotoItem(null)}
+        serviceOrderId={photoItem?.source === 'service_order' ? photoItem.id : null}
+        orderLabel={photoItem?.op_number ? `OS ${photoItem.op_number}` : undefined}
+        contractorName={photoItem?.contractor_name}
+        markAsReceived={true}
+        onSuccess={() => setPhotoItem(null)}
+      />
 
       {/* Dialog: prorrogar prazo */}
       <Dialog open={!!extendItem} onOpenChange={(open) => !open && setExtendItem(null)}>
