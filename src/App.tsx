@@ -75,6 +75,7 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 const OrdersSummary = lazy(() => import("./pages/OrdersSummary"));
 const GroupedReportSummary = lazy(() => import("./pages/GroupedReportSummary"));
 const CapacityPlanning = lazy(() => import("./pages/CapacityPlanning"));
+const CapacityDistribution = lazy(() => import("./pages/CapacityDistribution"));
 const BottlenecksPage = lazy(() => import("./pages/Bottlenecks"));
 const OutsourcedInFieldPage = lazy(() => import("./pages/OutsourcedInField"));
 const ContractorReportsPage = lazy(() => import("./pages/ContractorReports"));
@@ -815,6 +816,10 @@ const router = createBrowserRouter([
       {
         path: "capacity-planning",
         element: <CapacityPlanning />,
+      },
+      {
+        path: "capacity-planning/distribuir",
+        element: <CapacityDistribution />,
       },
       {
         path: "centro-controle",
