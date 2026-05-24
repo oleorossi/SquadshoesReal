@@ -78,6 +78,8 @@ const CapacityPlanning = lazy(() => import("./pages/CapacityPlanning"));
 const BottlenecksPage = lazy(() => import("./pages/Bottlenecks"));
 const OutsourcedInFieldPage = lazy(() => import("./pages/OutsourcedInField"));
 const ContractorReportsPage = lazy(() => import("./pages/ContractorReports"));
+const TimePendingsPage = lazy(() => import("./pages/TimePendings"));
+const WeeklyClosePage = lazy(() => import("./pages/WeeklyClose"));
 const SectorAggregatedView = lazy(() => import("./pages/SectorAggregatedView"));
 const ProductionControlCenter = lazy(() => import("./pages/ProductionControlCenter"));
 const PrintWorkSheets = lazy(() => import("./pages/PrintWorkSheets"));
@@ -606,6 +608,18 @@ const router = createBrowserRouter([
         // atraso médio + histórico de OSs finalizadas no período.
         path: "terceiros/relatorios",
         element: <ContractorReportsPage />,
+      },
+      {
+        // Pendências de ponto — dias com batidas inconsistentes/irregulares
+        // que precisam ser completadas pelo RH antes de fechar a semana.
+        path: "rh/pendencias-ponto",
+        element: <TimePendingsPage />,
+      },
+      {
+        // Fechamento semanal — trava o cálculo do banco de horas por semana
+        // pra impedir edição retroativa silenciosa. Cron auto toda segunda.
+        path: "rh/fechamento-semanal",
+        element: <WeeklyClosePage />,
       },
       {
         // Visão consolidada de carga por setor. Em vez de N OPs individuais
