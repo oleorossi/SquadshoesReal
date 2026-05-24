@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Truck, ArrowSquareOut, Buildings, Funnel, Warning as AlertTriangle,
   CurrencyDollar as DollarSign, Package as Boxes, X, CheckCircle, Clock,
-  Calendar, DotsThreeVertical, Printer,
+  Calendar, DotsThreeVertical, Printer, CaretRight, Palette, FlaskConical,
+  Ruler,
 } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -28,7 +29,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { cn, formatCurrency } from '@/lib/utils';
 import {
   useOutsourcedInField, useReceiveOutsourcedItem, useExtendOutsourcedDeadline,
-  type OutsourcedItem,
+  type OutsourcedItem, type MaterialSent,
 } from '@/hooks/useOutsourcedInField';
 import { SECTOR_LABEL, type SectorKey } from '@/hooks/useSectorBottlenecks';
 
@@ -78,6 +79,260 @@ const STATE_STYLE: Record<DeadlineState['kind'], string> = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Breakdown ao expandir uma linha — 3 casos suportados pela view v2
+// ─────────────────────────────────────────────────────────────────────────────
+// (A) materials_sent[] populado → cada material/cor/metros enviado
+// (B) is_artisanal=true sem materials_sent → mostra a receita (output + base)
+// (C) order_grade preenchido → mostra grade da OP (numerações × pares)
+// (D) tudo vazio → não dá pra expandir (canExpand=false)
+// ─────────────────────────────────────────────────────────────────────────────
+type BreakdownData =
+  | { kind: 'empty' }
+  | { kind: 'materials';  rows: MaterialSent[] }
+  | { kind: 'artisanal';  output: { name: string; color: string; meters: number }; base: { color: string; forOrder: number; forStock: number } }
+  | { kind: 'grade';      rows: Array<{ size: string; pairs: number }>; color: string };
+
+function breakdownRows(it: OutsourcedItem): BreakdownData {
+  // (A) materials_sent populado tem prioridade — é o dado mais explícito
+  if (Array.isArray(it.materials_sent) && it.materials_sent.length > 0) {
+    return { kind: 'materials', rows: it.materials_sent };
+  }
+  // (B) artesanal: receita
+  if (it.is_artisanal && (it.artisanal_output_name || it.artisanal_output_color)) {
+    return {
+      kind: 'artisanal',
+      output: {
+        name:   it.artisanal_output_name   || it.material_name || '—',
+        color:  it.artisanal_output_color  || it.material_color || '—',
+        meters: Number(it.artisanal_output_meters || 0),
+      },
+      base: {
+        color:    it.artisanal_base_color || '—',
+        forOrder: Number(it.artisanal_for_order_meters || 0),
+        forStock: Number(it.artisanal_for_stock_meters || 0),
+      },
+    };
+  }
+  // (C) grade da OP
+  if (it.order_grade && typeof it.order_grade === 'object') {
+    const entries = Object.entries(it.order_grade)
+      .map(([size, qty]) => ({ size, pairs: Number(qty || 0) }))
+      .filter((r) => r.pairs > 0)
+      // ordem natural por número quando possível
+      .sort((a, b) => {
+        const na = Number(a.size); const nb = Number(b.size);
+        if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+        return a.size.localeCompare(b.size);
+      });
+    if (entries.length > 0) {
+      return { kind: 'grade', rows: entries, color: it.color || '—' };
+    }
+  }
+  return { kind: 'empty' };
+}
+
+function BreakdownPanel({ item, breakdown }: { item: OutsourcedItem; breakdown: BreakdownData }) {
+  return (
+    <div className="px-6 py-4 space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="space-y-0.5">
+          <div className="text-[10px] tracking-[0.18em] uppercase font-bold text-muted-foreground">
+            Composição enviada
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Detalhe do que está com <strong className="text-foreground">{item.contractor_name}</strong>.
+          </div>
+        </div>
+        {item.description && (
+          <div className="text-[11px] text-muted-foreground italic max-w-md truncate" title={item.description}>
+            {item.description}
+          </div>
+        )}
+      </div>
+
+      {breakdown.kind === 'materials' && <MaterialsBreakdown rows={breakdown.rows} />}
+      {breakdown.kind === 'artisanal' && <ArtisanalBreakdown {...breakdown} />}
+      {breakdown.kind === 'grade'     && <GradeBreakdown rows={breakdown.rows} color={breakdown.color} totalPairs={item.pairs} />}
+
+      {item.notes && (
+        <div className="rounded-md border border-border bg-card px-3 py-2 text-[11px] text-muted-foreground whitespace-pre-wrap">
+          <span className="font-semibold text-foreground">Observações: </span>
+          {item.notes}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MaterialsBreakdown({ rows }: { rows: MaterialSent[] }) {
+  // Agrupa por (material × cor) somando metros — guarda contra duplicatas
+  const grouped = useMemo(() => {
+    const map = new Map<string, MaterialSent & { _key: string }>();
+    for (const r of rows) {
+      const k = `${(r.material || '—').trim()}|${(r.color || '—').trim()}`;
+      const cur = map.get(k);
+      if (cur) cur.meters += Number(r.meters || 0);
+      else map.set(k, { _key: k, material: r.material || '—', color: r.color || '—', meters: Number(r.meters || 0) });
+    }
+    return [...map.values()].sort((a, b) => a.material.localeCompare(b.material) || a.color.localeCompare(b.color));
+  }, [rows]);
+  const totalMeters = grouped.reduce((s, r) => s + r.meters, 0);
+
+  return (
+    <div className="rounded-md border border-border bg-card overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/40">
+        <span className="text-[10px] tracking-[0.18em] uppercase font-bold text-muted-foreground flex items-center gap-1.5">
+          <Palette className="h-3 w-3" />
+          Materiais enviados ({grouped.length})
+        </span>
+        <span className="text-xs mono tabular-nums text-muted-foreground">
+          Total: <strong className="text-foreground">{totalMeters.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m</strong>
+        </span>
+      </div>
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="bg-muted/20 text-muted-foreground">
+            <th className="text-left px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">Material</th>
+            <th className="text-left px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">Cor</th>
+            <th className="text-right px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">Metros</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border/60">
+          {grouped.map((r) => (
+            <tr key={r._key} className="hover:bg-muted/30">
+              <td className="px-3 py-1.5">{r.material}</td>
+              <td className="px-3 py-1.5">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="inline-block h-2.5 w-2.5 rounded-sm border border-border bg-muted" aria-hidden />
+                  {r.color}
+                </span>
+              </td>
+              <td className="px-3 py-1.5 text-right mono tabular-nums">
+                {r.meters.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ArtisanalBreakdown({
+  output, base,
+}: { output: { name: string; color: string; meters: number }; base: { color: string; forOrder: number; forStock: number } }) {
+  const totalBase = base.forOrder + base.forStock;
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {/* Output (cor produzida) */}
+      <div className="rounded-md border border-border bg-card overflow-hidden">
+        <div className="px-3 py-2 border-b border-border bg-emerald-500/5 flex items-center gap-2">
+          <FlaskConical className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-400" />
+          <span className="text-[10px] tracking-[0.18em] uppercase font-bold text-emerald-700 dark:text-emerald-400">
+            Cor a produzir
+          </span>
+        </div>
+        <div className="p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">Material</span>
+            <span className="text-sm font-semibold">{output.name}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">Cor final</span>
+            <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
+              <span className="inline-block h-2.5 w-2.5 rounded-sm border border-border bg-muted" aria-hidden />
+              {output.color}
+            </span>
+          </div>
+          <div className="flex items-center justify-between pt-2 border-t border-border/60">
+            <span className="text-xs text-muted-foreground">Metros a tingir</span>
+            <span className="mono font-bold text-base tabular-nums text-emerald-700 dark:text-emerald-400">
+              {output.meters.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Base (cor enviada) */}
+      <div className="rounded-md border border-border bg-card overflow-hidden">
+        <div className="px-3 py-2 border-b border-border bg-amber-500/5 flex items-center gap-2">
+          <Palette className="h-3.5 w-3.5 text-amber-700 dark:text-amber-400" />
+          <span className="text-[10px] tracking-[0.18em] uppercase font-bold text-amber-700 dark:text-amber-400">
+            Base enviada
+          </span>
+        </div>
+        <div className="p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">Cor base</span>
+            <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
+              <span className="inline-block h-2.5 w-2.5 rounded-sm border border-border bg-muted" aria-hidden />
+              {base.color}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">Pra esse pedido</span>
+            <span className="mono tabular-nums text-sm">
+              {base.forOrder.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">Pra estoque</span>
+            <span className="mono tabular-nums text-sm">
+              {base.forStock.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m
+            </span>
+          </div>
+          <div className="flex items-center justify-between pt-2 border-t border-border/60">
+            <span className="text-xs text-muted-foreground">Total enviado</span>
+            <span className="mono font-bold text-base tabular-nums text-amber-700 dark:text-amber-400">
+              {totalBase.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GradeBreakdown({
+  rows, color, totalPairs,
+}: { rows: Array<{ size: string; pairs: number }>; color: string; totalPairs: number }) {
+  const sumGrade = rows.reduce((s, r) => s + r.pairs, 0);
+  return (
+    <div className="rounded-md border border-border bg-card overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/40">
+        <span className="text-[10px] tracking-[0.18em] uppercase font-bold text-muted-foreground flex items-center gap-1.5">
+          <Ruler className="h-3 w-3" />
+          Grade da OP · cor {color}
+        </span>
+        <span className="text-xs mono tabular-nums text-muted-foreground">
+          Total: <strong className="text-foreground">{sumGrade.toLocaleString('pt-BR')} pares</strong>
+          {sumGrade !== totalPairs && totalPairs > 0 && (
+            <span className="text-amber-600 dark:text-amber-400 ml-1">
+              (OS: {totalPairs.toLocaleString('pt-BR')})
+            </span>
+          )}
+        </span>
+      </div>
+      <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2 p-3">
+        {rows.map((r) => (
+          <div
+            key={r.size}
+            className="flex flex-col items-center justify-center rounded-md border border-border bg-muted/20 px-2 py-2 text-center"
+          >
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              {r.size}
+            </span>
+            <span className="mono font-bold text-base tabular-nums text-foreground leading-tight">
+              {r.pairs}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function OutsourcedInFieldPage() {
   const { data: items = [], isLoading } = useOutsourcedInField();
@@ -93,6 +348,17 @@ export default function OutsourcedInFieldPage() {
   // Dialog de prorrogação
   const [extendItem, setExtendItem] = useState<OutsourcedItem | null>(null);
   const [newDeadline, setNewDeadline] = useState('');
+
+  // Expand de linha — chave = `${source}:${id}`
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
+  const toggleExpand = (key: string) => {
+    setExpandedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   // Agregação por contractor
   type ContractorBucket = {
@@ -403,6 +669,7 @@ export default function OutsourcedInFieldPage() {
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                  <TableHead className="w-8"></TableHead>
                   <TableHead>OP</TableHead>
                   <TableHead>PV / Cliente</TableHead>
                   <TableHead>Modelo / Cor</TableHead>
@@ -419,100 +686,153 @@ export default function OutsourcedInFieldPage() {
               <TableBody>
                 {filtered.map((it) => {
                   const state = deadlineState(it);
+                  const rowKey = `${it.source}:${it.id}`;
+                  const isExpanded = expandedKeys.has(rowKey);
+                  const breakdown = breakdownRows(it);
+                  const canExpand = breakdown.kind !== 'empty';
                   return (
-                    <TableRow key={`${it.source}:${it.id}`} className="hover:bg-muted/30">
-                      <TableCell className="font-mono text-xs whitespace-nowrap">
-                        {it.op_number}
-                        {it.source === 'outsourced_op' && (
-                          <Badge variant="outline" className="ml-1.5 h-4 text-[10px] uppercase tracking-wide">
-                            OP int.
-                          </Badge>
+                    <React.Fragment key={rowKey}>
+                      <TableRow
+                        className={cn(
+                          'hover:bg-muted/30',
+                          canExpand && 'cursor-pointer',
+                          isExpanded && 'bg-muted/40 border-b-0',
                         )}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        <div className="font-mono">{it.sale_order_number}</div>
-                        {it.client_name && (
-                          <div className="text-muted-foreground truncate max-w-[160px]" title={it.client_name}>
-                            {it.client_name}
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {it.sheet_name}
-                        {it.color && (
-                          <span className="text-muted-foreground"> · {it.color}</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums text-xs">
-                        {Number(it.pairs).toLocaleString('pt-BR')}
-                      </TableCell>
-                      <TableCell className="text-xs">{sectorLabel(it.sector)}</TableCell>
-                      <TableCell className="text-xs">{it.contractor_name}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                        <Calendar className="inline h-3 w-3 mr-1" />
-                        {formatDateBR(it.sent_at)}
-                      </TableCell>
-                      <TableCell className="text-xs whitespace-nowrap">
-                        {it.expected_back ? formatDateBR(it.expected_back) : (
-                          <span className="text-muted-foreground italic">sem prazo</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={cn(STATE_STYLE[state.kind], 'text-xs whitespace-nowrap')}>
-                          {state.kind === 'late' && <AlertTriangle className="inline h-3 w-3 mr-1" />}
-                          {state.kind === 'ok' && <CheckCircle className="inline h-3 w-3 mr-1" />}
-                          {(state.kind === 'today' || state.kind === 'soon') && <Clock className="inline h-3 w-3 mr-1" />}
-                          {state.label}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right text-xs tabular-nums whitespace-nowrap">
-                        {it.total_value && it.total_value > 0
-                          ? formatCurrency(it.total_value)
-                          : <span className="text-muted-foreground">—</span>}
-                      </TableCell>
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-7 w-7">
-                              <DotsThreeVertical className="h-4 w-4" />
+                        onClick={(e) => {
+                          // Não dispara expand ao clicar em botões/dropdown/links
+                          if ((e.target as HTMLElement).closest('button, a, [role="menuitem"]')) return;
+                          if (canExpand) toggleExpand(rowKey);
+                        }}
+                      >
+                        <TableCell className="w-8 pr-0">
+                          {canExpand ? (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 -ml-1"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleExpand(rowKey);
+                              }}
+                              aria-label={isExpanded ? 'Recolher detalhes' : 'Expandir detalhes'}
+                            >
+                              <CaretRight
+                                className={cn(
+                                  'h-3.5 w-3.5 transition-transform duration-200',
+                                  isExpanded && 'rotate-90',
+                                )}
+                              />
                             </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48">
-                            <DropdownMenuItem onClick={() => handleReceive(it)} className="text-xs gap-2">
-                              <CheckCircle className="h-3.5 w-3.5" />
-                              Marcar recebido
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => openExtendDialog(it)}
-                              className="text-xs gap-2"
-                              disabled={it.source !== 'service_order'}
-                            >
-                              <Clock className="h-3.5 w-3.5" />
-                              Prorrogar prazo
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={() => window.print()}
-                              className="text-xs gap-2"
-                            >
-                              <Printer className="h-3.5 w-3.5" />
-                              Imprimir guia
-                            </DropdownMenuItem>
-                            {it.sale_order_id && (
-                              <DropdownMenuItem asChild>
-                                <a
-                                  href={`/sales/${it.sale_order_id}`}
-                                  className="text-xs gap-2 flex items-center"
-                                >
-                                  <ArrowSquareOut className="h-3.5 w-3.5" />
-                                  Abrir PV
-                                </a>
+                          ) : (
+                            <span className="inline-block h-6 w-6" aria-hidden />
+                          )}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs whitespace-nowrap">
+                          {it.op_number}
+                          {it.source === 'outsourced_op' && (
+                            <Badge variant="outline" className="ml-1.5 h-4 text-[10px] uppercase tracking-wide">
+                              OP int.
+                            </Badge>
+                          )}
+                          {it.is_artisanal && (
+                            <Badge variant="outline" className="ml-1.5 h-4 text-[10px] uppercase tracking-wide bg-purple-500/10 border-purple-500/30 text-purple-700 dark:text-purple-300">
+                              <FlaskConical className="inline h-2.5 w-2.5 mr-0.5" />
+                              Artesanal
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          <div className="font-mono">{it.sale_order_number}</div>
+                          {it.client_name && (
+                            <div className="text-muted-foreground truncate max-w-[160px]" title={it.client_name}>
+                              {it.client_name}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {it.sheet_name}
+                          {it.color && (
+                            <span className="text-muted-foreground"> · {it.color}</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-xs">
+                          {Number(it.pairs).toLocaleString('pt-BR')}
+                        </TableCell>
+                        <TableCell className="text-xs">{sectorLabel(it.sector)}</TableCell>
+                        <TableCell className="text-xs">{it.contractor_name}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                          <Calendar className="inline h-3 w-3 mr-1" />
+                          {formatDateBR(it.sent_at)}
+                        </TableCell>
+                        <TableCell className="text-xs whitespace-nowrap">
+                          {it.expected_back ? formatDateBR(it.expected_back) : (
+                            <span className="text-muted-foreground italic">sem prazo</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={cn(STATE_STYLE[state.kind], 'text-xs whitespace-nowrap')}>
+                            {state.kind === 'late' && <AlertTriangle className="inline h-3 w-3 mr-1" />}
+                            {state.kind === 'ok' && <CheckCircle className="inline h-3 w-3 mr-1" />}
+                            {(state.kind === 'today' || state.kind === 'soon') && <Clock className="inline h-3 w-3 mr-1" />}
+                            {state.label}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right text-xs tabular-nums whitespace-nowrap">
+                          {it.total_value && it.total_value > 0
+                            ? formatCurrency(it.total_value)
+                            : <span className="text-muted-foreground">—</span>}
+                        </TableCell>
+                        <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-7 w-7">
+                                <DotsThreeVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48">
+                              <DropdownMenuItem onClick={() => handleReceive(it)} className="text-xs gap-2">
+                                <CheckCircle className="h-3.5 w-3.5" />
+                                Marcar recebido
                               </DropdownMenuItem>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
+                              <DropdownMenuItem
+                                onClick={() => openExtendDialog(it)}
+                                className="text-xs gap-2"
+                                disabled={it.source !== 'service_order'}
+                              >
+                                <Clock className="h-3.5 w-3.5" />
+                                Prorrogar prazo
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => window.print()}
+                                className="text-xs gap-2"
+                              >
+                                <Printer className="h-3.5 w-3.5" />
+                                Imprimir guia
+                              </DropdownMenuItem>
+                              {it.sale_order_id && (
+                                <DropdownMenuItem asChild>
+                                  <a
+                                    href={`/sales/${it.sale_order_id}`}
+                                    className="text-xs gap-2 flex items-center"
+                                  >
+                                    <ArrowSquareOut className="h-3.5 w-3.5" />
+                                    Abrir PV
+                                  </a>
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                      {isExpanded && canExpand && (
+                        <TableRow className="bg-muted/30 hover:bg-muted/30 border-l-2 border-foreground">
+                          <TableCell colSpan={12} className="p-0">
+                            <BreakdownPanel item={it} breakdown={breakdown} />
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </React.Fragment>
                   );
                 })}
               </TableBody>

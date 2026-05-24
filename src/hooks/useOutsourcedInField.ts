@@ -5,6 +5,13 @@ import type { SectorKey } from '@/hooks/useSectorBottlenecks';
 
 export type OutsourceSource = 'service_order' | 'outsourced_op';
 
+export interface MaterialSent {
+  material: string;
+  color: string;
+  meters: number;
+  completed?: boolean;
+}
+
 export interface OutsourcedItem {
   source: OutsourceSource;
   id: string;
@@ -26,6 +33,21 @@ export interface OutsourcedItem {
   unit_price: number | null;
   total_value: number | null;
   created_at: string;
+  // Breakdown (expand row) — todos opcionais (view v2)
+  is_artisanal?: boolean;
+  materials_sent?: MaterialSent[];
+  material_name?: string | null;
+  material_color?: string | null;
+  material_meters?: number | null;
+  artisanal_output_name?: string | null;
+  artisanal_output_color?: string | null;
+  artisanal_output_meters?: number | null;
+  artisanal_base_color?: string | null;
+  artisanal_for_order_meters?: number | null;
+  artisanal_for_stock_meters?: number | null;
+  order_grade?: Record<string, number> | null;
+  description?: string | null;
+  notes?: string | null;
 }
 
 export function useOutsourcedInField() {
