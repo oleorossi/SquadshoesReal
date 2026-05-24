@@ -689,14 +689,8 @@ export function calculateDaySummary(
   // calculateWeeklyPeriod handles the correct weekly calculation.
   const overtimeMinutes = 0;
 
-  // INCONSISTENTE: 2 batidas em dia útil — esqueceu de bater o almoço.
-  // Sábado/domingo/feriado com 2 batidas (jornada contínua sem intervalo)
-  // segue como 'normal'.
-  const skippedLunch = sorted.length === 2 && !isSaturday && !isSunday && !isHoliday && expectedMinutes > 0;
-
   let status: DaySummary['status'] = 'normal';
-  if (skippedLunch) status = 'inconsistent';
-  else if (isHoliday && workedMinutes > 0) status = 'holiday';
+  if (isHoliday && workedMinutes > 0) status = 'holiday';
   else if (workedMinutes > expectedMinutes + tolerance) status = 'overtime';
   else if (workedMinutes < expectedMinutes - tolerance && expectedMinutes > 0) status = 'absent';
 
