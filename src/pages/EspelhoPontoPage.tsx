@@ -68,7 +68,7 @@ interface BankMovement {
   movement_date: string;
   movement_type: string;
   minutes: number;
-  reason: string | null;
+  description: string | null;
   overtime_pct: number | null;
 }
 
@@ -130,7 +130,7 @@ export default function EspelhoPontoPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('bank_hours_movements')
-        .select('id, movement_date, movement_type, minutes, reason, overtime_pct')
+        .select('id, movement_date, movement_type, minutes, description, overtime_pct')
         .eq('employee_id', employeeId!)
         .gte('movement_date', periodStart)
         .lte('movement_date', periodEnd)
@@ -422,7 +422,7 @@ export default function EspelhoPontoPage() {
                     <td className={`border border-black px-1 py-0.5 text-right font-mono ${m.minutes > 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
                       {m.minutes > 0 ? '+' : ''}{fmtMin(m.minutes)}
                     </td>
-                    <td className="border border-black px-1 py-0.5 text-[8pt]">{m.reason || '—'}</td>
+                    <td className="border border-black px-1 py-0.5 text-[8pt]">{m.description || '—'}</td>
                   </tr>
                 ))}
               </tbody>
