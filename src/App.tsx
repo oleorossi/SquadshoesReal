@@ -414,6 +414,36 @@ function AuthRoute() {
   return <Auth />;
 }
 
+/**
+ * F3 (24/05/2026): root index (/). Lê profile.is_sales_rep e redireciona
+ * pra /m (mobile) ou /dashboard (desktop). Diferente do AuthRoute que
+ * só roda em /auth — este roda em / DEPOIS do login bem-sucedido.
+ */
+function RootRedirect() {
+  const { user, loading } = useAuth();
+  const [target, setTarget] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      try {
+        const mod = await import('@/integrations/supabase/client');
+        const { data } = await mod.supabase
+          .from('profiles')
+          .select('is_sales_rep')
+          .eq('id', user.id)
+          .maybeSingle();
+        setTarget((data as any)?.is_sales_rep ? '/m' : '/dashboard');
+      } catch {
+        setTarget('/dashboard');
+      }
+    })();
+  }, [user]);
+
+  if (loading || !target) return <PageLoader />;
+  return <Navigate to={target} replace />;
+}
+
 function LegacyInventoryRedirect() {
   const location = useLocation();
   return <Navigate to={`/estoque${location.search}`} replace />;
@@ -523,7 +553,9 @@ const router = createBrowserRouter([
     children: [
        {
          index: true,
-         element: <Navigate to="/dashboard" replace />,
+         // F3 (24/05/2026): vendedores (is_sales_rep=true) entram em /m
+         // direto, sem passar pelo dashboard desktop.
+         element: <RootRedirect />,
        },
       {
         path: "dashboard",

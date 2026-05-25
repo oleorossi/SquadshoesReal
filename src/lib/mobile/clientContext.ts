@@ -96,21 +96,24 @@ export const fetchClientHistory = async (clientId: string): Promise<ClientHistor
 
   if (ordersList.length > 0) {
     const orderIds = ordersList.map((o: any) => o.id);
+    // sale_order_items NÃO tem reference_name (auditoria 24/05/2026 expôs
+    // HTTP 400). Pega via JOIN com technical_sheets.
     const { data: items } = await supabase
       .from('sale_order_items')
-      .select('reference_id, reference_name, quantity')
+      .select('reference_id, quantity, technical_sheets:reference_id(name)')
       .in('sale_order_id', orderIds);
 
     for (const it of (items ?? [])) {
       const qty = Number((it as any).quantity) || 0;
       totalPairs += qty;
       const refId = (it as any).reference_id;
+      const refName = (it as any).technical_sheets?.name ?? '—';
       if (refId) {
         const existing = refCounts.get(refId);
         if (existing) {
           existing.pairs += qty;
         } else {
-          refCounts.set(refId, { name: (it as any).reference_name || '—', pairs: qty });
+          refCounts.set(refId, { name: refName, pairs: qty });
         }
       }
     }

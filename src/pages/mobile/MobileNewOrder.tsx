@@ -121,7 +121,7 @@ export default function MobileNewOrder() {
       let q = supabase
         .from('clients')
         .select('id, razao_social, nome_fantasia, cnpj, cidade, estado')
-        .eq('ativo', true)
+        .eq('active', true)
         .limit(40);
       if (clientSearch.length >= 2) {
         q = q.ilike('razao_social', `%${clientSearch}%`);
@@ -180,6 +180,9 @@ export default function MobileNewOrder() {
       return;
     }
 
+    // Strings vazias em colunas date/numeric quebram o PostgREST com
+    // "invalid input syntax" (auditoria 24/05/2026). Campos opcionais
+    // vão como null quando vazios.
     const orderPayload: any = {
       client_request_id: requestId,
       client_id: selectedClient.id,
@@ -189,7 +192,7 @@ export default function MobileNewOrder() {
       client_order_number: '',
       representative: '',
       payment_condition: '',
-      delivery_deadline: '',
+      delivery_deadline: null, // date — null OK
       delivery_week: '',
       delivery_month: '',
       notes: '',
@@ -203,21 +206,29 @@ export default function MobileNewOrder() {
       client_signature_at: signatureDataUrl ? new Date().toISOString() : null,
     };
 
-    const itemsPayload: SaleOrderItemFormData[] = items.map(it => {
+    // sale_order_items NÃO tem coluna reference_name (auditoria 24/05/2026
+    // mostrou HTTP 400 "column does not exist"). Nome vem via JOIN com
+    // technical_sheets quando exibido.
+    const itemsPayload: any[] = items.map(it => {
       const qty = Object.values(it.grade).reduce((a, b) => a + (b || 0), 0);
       return {
         reference_id: it.reference_id,
-        reference_name: it.reference_name,
         color: it.color,
         quantity: qty,
         grade: it.grade,
         unit_price: it.unit_price,
         observation: '',
-      } as SaleOrderItemFormData;
+      };
     });
 
     // Se online, tenta enviar direto. Senão (ou se falhar), enfileira.
+    // Bug fix 24/05/2026: incluir `total` calculado no payload — sem isso,
+    // sale_orders gravava total=0 (campo é populated client-side, não
+    // tem default no schema).
+    orderPayload.total = totalValue;
+
     let sent = false;
+    let pvNumberLocal: string | null = null;
     if (online) {
       try {
         const { data: created, error } = await supabase
@@ -229,7 +240,8 @@ export default function MobileNewOrder() {
           const itemsToInsert = itemsPayload.map(i => ({ ...i, sale_order_id: created.id }));
           await supabase.from('sale_order_items').insert(itemsToInsert);
           sent = true;
-          setCreatedPvNumber(created.order_number || null);
+          pvNumberLocal = created.order_number || null;
+          setCreatedPvNumber(pvNumberLocal);
           toast.success(`PV ${created.order_number || ''} enviado!`);
         }
       } catch (e) {
@@ -252,7 +264,9 @@ export default function MobileNewOrder() {
     localStorage.removeItem('mobile-current-draft-id');
     // F3: se PV foi criado direto (online), mostra tela de sucesso com
     // share antes de voltar pra home. Offline volta direto pra home.
-    if (sent && createdPvNumber !== null) {
+    // NOTA: usa `pvNumberLocal` (variável local) em vez de `createdPvNumber`
+    // state — setState é async e o closure leria valor antigo (null).
+    if (sent && pvNumberLocal !== null) {
       setStep('success' as any);
     } else {
       navigate('/m');

@@ -1053,7 +1053,8 @@ type SummaryItem = {
 };
 
 import { PurchaseOrder } from '@/hooks/usePurchaseOrders';
-import { useQuery } from '@tanstack/react-query';
+// useQuery já importado no topo; re-import causava SyntaxError "Identifier
+// 'useQuery' has already been declared" — auditoria visual 24/05/2026.
 import { normalizeForSearch } from '@/lib/searchUtils';
 
 function PendingSummaryDialog({ orderIds, orders, onClose }: { orderIds: string[]; orders: PurchaseOrder[]; onClose: () => void }) {
