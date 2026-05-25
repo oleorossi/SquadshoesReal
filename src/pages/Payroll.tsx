@@ -14,6 +14,7 @@ import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Calculator, Gear 
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useEmployees } from '@/hooks/useEmployees';
+import { useHolidays } from '@/hooks/useTimesheet';
 import {
   useBenefitsConfig, useSaveBenefitsConfig,
   usePayrollRuns, useUpsertPayrollRun, useUpdatePayrollStatus,
@@ -28,16 +29,22 @@ import { EmptyState } from '@/components/ui/empty-state';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-function getMonthDays(period: string): { date: string; dow: number; isHoliday: boolean }[] {
+function getMonthDays(
+  period: string,
+  holidaysSet: Set<string> = new Set(),
+): { date: string; dow: number; isHoliday: boolean }[] {
   const [y, m] = period.split('-').map(Number);
   const last = new Date(y, m, 0).getDate();
   const out: { date: string; dow: number; isHoliday: boolean }[] = [];
   for (let d = 1; d <= last; d++) {
     const dt = new Date(y, m - 1, d);
+    const date = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     out.push({
-      date: `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
+      date,
       dow: dt.getDay(),
-      isHoliday: false, // pode plugar holidays table depois
+      // 2026-05-24: pluga tabela holidays. Set contém só feriados obrigatórios
+      // (optional !== true). Trabalho em feriado vira HE 100% via calculatePayroll.
+      isHoliday: holidaysSet.has(date),
     });
   }
   return out;
@@ -62,14 +69,27 @@ export default function Payroll() {
   const { data: employees = [] } = useEmployees();
   const { data: config } = useBenefitsConfig();
   const { data: runs = [], isLoading } = usePayrollRuns(period);
+  const { data: holidaysList = [] } = useHolidays();
   const upsertRun = useUpsertPayrollRun();
   const updateStatus = useUpdatePayrollStatus();
 
+  // Set de feriados OBRIGATÓRIOS (optional !== true) — usado pra marcar
+  // dias com isHoliday=true, que dispara HE 100% no calculatePayroll.
+  // Feriados opcionais ficam de fora (tratados como dia normal).
+  const holidaysSet = useMemo(
+    () => new Set(
+      (holidaysList as any[])
+        .filter(h => h.optional !== true)
+        .map(h => h.holiday_date as string),
+    ),
+    [holidaysList],
+  );
+
   // Período "from" e "to" para queries dependentes
   const periodRange = useMemo(() => {
-    const days = getMonthDays(period);
+    const days = getMonthDays(period, holidaysSet);
     return { from: days[0]?.date, to: days[days.length - 1]?.date };
-  }, [period]);
+  }, [period, holidaysSet]);
 
   const { data: absences = [] } = useAbsences({ from: periodRange.from, to: periodRange.to });
 
@@ -91,7 +111,7 @@ export default function Payroll() {
     }
     setCalcRunning(true);
     try {
-      const monthDays = getMonthDays(period);
+      const monthDays = getMonthDays(period, holidaysSet);
 
       // Buscar time_records do período em batch único.
       // Tabela time_records não tem employee_id (FK pra employees) — só
