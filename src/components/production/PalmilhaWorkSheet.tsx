@@ -32,9 +32,10 @@ export interface PalmilhaGroup {
   /** Números de OP / PV pra rastreabilidade no chão de fábrica. */
   opNumbers?: string[];
   pvNumbers?: string[];
-  /** Consumo previsto vindo do RPC calculate_order_consumption (filtrado
-   *  por setor Corte Palmilha — só palmilha/EVA). */
-  consumption?: ConsumptionRow[];
+  /** Lot sizing (PR 2026-05-23): quando o grupo representa o N-ésimo lote
+   *  de OPs splitadas, mostra badge "LOTE X / N" no header. Undefined em
+   *  grupos consolidados de OPs não-splitadas. */
+  lotInfo?: { number: number; total: number };
 }
 
 interface Props {
@@ -161,6 +162,20 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
                     </span>
                   </div>
                   <div className="flex items-stretch gap-3 shrink-0">
+                    {/* Badge LOTE X/N quando OPs do grupo estão splitadas
+                        (PR lot-sizing 2026-05-23). Operador vê claramente
+                        que está produzindo um fragmento da quantidade total. */}
+                    {group.lotInfo && group.lotInfo.total > 1 && (
+                      <div className="border-l border-black pl-3">
+                        <span className="section-label block" style={{ color: '#000' }}>Lote</span>
+                        <span
+                          className="text-black leading-none block mt-0.5"
+                          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em' }}
+                        >
+                          {group.lotInfo.number}<span className="text-sm font-mono tracking-widest">/{group.lotInfo.total}</span>
+                        </span>
+                      </div>
+                    )}
                     {/* Cor da palmilha/forração é IRRELEVANTE pro corte —
                         mesma palmilha física serve várias cores. Esconde
                         quando vier '—' (consolidado só por solado). */}

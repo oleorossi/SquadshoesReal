@@ -909,7 +909,15 @@ export default function Contractors() {
     const descFinal = (artPayload.description as string) || editingOrder.description || '';
     if (!descFinal.trim()) return;
 
-    const total = (artPayload.total_value as number) ?? (editingOrder.total_value || editingOrder.unit_price || 0);
+    // Fix do bug: total = qty × unit_price (não copia unit_price pra total).
+    // Artesanal mantém override via laborCost da receita (artPayload.total_value).
+    const qty = Math.max(1, Number(editingOrder.quantity || 1));
+    const unitPriceFinal = isArtisanal
+      ? Number(artPayload.unit_price ?? editingOrder.unit_price ?? 0)
+      : Number(editingOrder.unit_price ?? 0);
+    const total = isArtisanal
+      ? Number(artPayload.total_value ?? editingOrder.total_value ?? unitPriceFinal)
+      : (qty * unitPriceFinal);
     const validMaterials = isArtisanal && artMaterials.length > 0
       ? artMaterials
       : (editingOrder.materials_sent || []).filter(m => (m.material?.trim()) && (m.color?.trim()) && m.meters > 0);
@@ -918,8 +926,9 @@ export default function Contractors() {
       ...editingOrder,
       ...artPayload,
       description: descFinal,
+      quantity: qty,
+      unit_price: unitPriceFinal,
       total_value: total,
-      unit_price: total,
       materials_sent: validMaterials,
       material_name: validMaterials[0]?.material || '',
       material_color: validMaterials[0]?.color || '',
@@ -2029,15 +2038,60 @@ export default function Contractors() {
                   <Label className="text-xs font-medium text-muted-foreground">Hora</Label>
                   <Input type="time" value={editingOrder.service_time || ''} onChange={e => setEditingOrder(p => ({ ...p, service_time: e.target.value }))} className="h-9" />
                 </div>
-                <div className="col-span-2 space-y-1.5">
+                {/* Quantidade × Valor por par = Total auto. Fix do bug em que o
+                    input setava total_value = unit_price sem multiplicar pela qty.
+                    Artesanal continua override via laborCost da receita. */}
+                <div className="space-y-1.5">
                   <Label className="text-xs font-medium text-muted-foreground">
-                    Valor Total (R$) {isArtisanal && artisanalCalc && <span className="text-primary font-normal">(calculado automaticamente pela receita)</span>}
+                    Quantidade (pares) {isArtisanal && <span className="text-muted-foreground/70 font-normal">(não aplicável)</span>}
                   </Label>
-                  <Input type="number" step="0.01" min={0} value={editingOrder.total_value ?? ''} onFocus={e => { if (Number(e.target.value) === 0) e.target.value = ''; }} onChange={e => { const v = e.target.value === '' ? 0 : Number(e.target.value); setEditingOrder(p => ({ ...p, total_value: v, unit_price: v })); }} className="h-9 font-mono" />
+                  <Input
+                    type="number"
+                    step="1"
+                    min={1}
+                    value={editingOrder.quantity ?? 1}
+                    disabled={isArtisanal}
+                    onFocus={e => { if (Number(e.target.value) === 0) e.target.value = ''; }}
+                    onChange={e => {
+                      const v = e.target.value === '' ? 1 : Math.max(1, Math.floor(Number(e.target.value)));
+                      setEditingOrder(p => ({ ...p, quantity: v }));
+                    }}
+                    className="h-9 font-mono"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-muted-foreground">
+                    {isArtisanal ? 'Valor Total (R$)' : 'Valor por par (R$)'}
+                    {isArtisanal && artisanalCalc && <span className="text-primary font-normal"> (calculado pela receita)</span>}
+                  </Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    value={editingOrder.unit_price ?? ''}
+                    onFocus={e => { if (Number(e.target.value) === 0) e.target.value = ''; }}
+                    onChange={e => {
+                      const v = e.target.value === '' ? 0 : Number(e.target.value);
+                      setEditingOrder(p => ({ ...p, unit_price: v }));
+                    }}
+                    className="h-9 font-mono"
+                  />
                 </div>
                 <div className="col-span-2 p-3 rounded-lg bg-primary/5 border border-primary/10">
-                  <Label className="text-xs font-medium text-muted-foreground">Total</Label>
-                  <p className="display text-xl tabular-nums font-mono text-primary mt-1">{formatCurrency(editingOrder.total_value || editingOrder.unit_price || 0)}</p>
+                  <Label className="text-xs font-medium text-muted-foreground">
+                    Total {!isArtisanal && (
+                      <span className="text-muted-foreground/80 font-normal">
+                        = {(editingOrder.quantity || 1).toLocaleString('pt-BR')} × {formatCurrency(editingOrder.unit_price || 0)}
+                      </span>
+                    )}
+                  </Label>
+                  <p className="display text-xl tabular-nums font-mono text-primary mt-1">
+                    {formatCurrency(
+                      isArtisanal
+                        ? (editingOrder.total_value || editingOrder.unit_price || 0)
+                        : ((editingOrder.quantity || 1) * (editingOrder.unit_price || 0))
+                    )}
+                  </p>
                 </div>
                 <div className="col-span-2 space-y-1.5">
                   <Label className="text-xs font-medium text-muted-foreground">Status</Label>

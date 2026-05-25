@@ -35,7 +35,10 @@ const SEVERITY_DOT: Record<string, string> = {
 };
 
  export default function NotificationBell({ className }: { className?: string }) {
-  const { data: notifications = [] } = useNotifications();
+  const { data } = useNotifications();
+  // Guard defensivo: se cache cruzado entregar um objeto (em vez de array),
+  // não quebra a render. Vide PR queryKey collision 2026-05-24.
+  const notifications = Array.isArray(data) ? data : [];
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
 

@@ -43,6 +43,7 @@ export const menuGroups = [
       { name: "Capacidade",       icon: BarChart3,         path: "/capacity-planning" },
       { name: "Imprimir Fichas",  icon: Printer,           path: "/imprimir-fichas" },
       { name: "Gargalos",         icon: AlertTriangle,     path: "/gargalos" },
+      { name: "Terceiros na Rua", icon: Truck,             path: "/terceiros-na-rua" },
     ],
   },
   {
@@ -102,9 +103,13 @@ export const menuGroups = [
     label: "RH",
     icon: Users,
     items: [
-      { name: "Painel RH",        icon: LayoutDashboard,path: "/rh" },
-      { name: "Banco de Horas",   icon: Clock,          path: "/rh/banco-de-horas" },
-      { name: "Terceirizados",    icon: UserCheck,      path: "/contractors" },
+      { name: "Painel RH",          icon: LayoutDashboard,path: "/rh" },
+      { name: "Banco de Horas",     icon: Clock,          path: "/rh/banco-de-horas" },
+      { name: "Pendências de Ponto",icon: AlertTriangle,  path: "/rh/pendencias-ponto" },
+      { name: "Ausências",          icon: Calendar,       path: "/rh/ausencias" },
+      { name: "Fechamento Semanal", icon: Lock,           path: "/rh/fechamento-semanal" },
+      { name: "Terceirizados",      icon: UserCheck,      path: "/contractors" },
+      { name: "Relatório Terceiros",icon: BarChart3,      path: "/terceiros/relatorios" },
     ],
   },
 ];

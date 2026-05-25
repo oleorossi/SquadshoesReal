@@ -3,7 +3,8 @@ import { Plus } from '@phosphor-icons/react';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
 import { effectiveConversionFactor } from '@/lib/purchaseConversion';
 import { useState, useMemo, useEffect } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { usePurchaseOrders, usePurchaseOrderItems, useUpdatePurchaseOrder, useUpdatePurchaseOrderItem, useDeletePurchaseOrder } from '@/hooks/usePurchaseOrders';
 import { Badge } from '@/components/ui/badge';
@@ -24,6 +25,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
+import { SoleGradeEditorDialog } from '@/components/purchases/SoleGradeEditorDialog';
 
 const STATUS_MAP: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
   pending: { label: 'Pendente', variant: 'outline' },
@@ -287,15 +289,43 @@ export default function PurchaseOrders() {
                         <TableCell className="font-mono font-semibold text-sm">
                           <div className="flex items-center gap-1.5">
                             <span>{o.order_number}</span>
-                            {(o.linked_sale_order_ids?.length ?? 0) > 1 && (
-                              <Badge
-                                variant="outline"
-                                className="text-xs h-4 px-1.5 font-normal"
-                                title={`PVs vinculados: ${o.linked_sale_order_ids?.length}`}
-                              >
-                                {o.linked_sale_order_ids?.length} PVs
-                              </Badge>
-                            )}
+                            {(() => {
+                              const n = o.linked_sale_order_ids?.length ?? 0;
+                              if (n === 0 && o.auto_generated) {
+                                return (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-xs h-4 px-1.5 font-normal border-amber-500/50 text-amber-600"
+                                    title="OC automática sem PV vinculado — vincular manualmente"
+                                  >
+                                    Sem PV
+                                  </Badge>
+                                );
+                              }
+                              if (n === 1) {
+                                return (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-xs h-4 px-1.5 font-normal"
+                                    title="1 PV vinculado — abra a OC pra ver"
+                                  >
+                                    1 PV
+                                  </Badge>
+                                );
+                              }
+                              if (n > 1) {
+                                return (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-xs h-4 px-1.5 font-normal"
+                                    title={`${n} PVs vinculados — abra a OC pra ver`}
+                                  >
+                                    {n} PVs
+                                  </Badge>
+                                );
+                              }
+                              return null;
+                            })()}
                           </div>
                         </TableCell>
                         <TableCell>{o.supplier_name}</TableCell>
@@ -387,6 +417,21 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
   const order = orders.find(o => o.id === orderId);
   const [editingItems, setEditingItems] = useState<Record<string, { quantity: number; unit_price: number }>>({});
   const [receiving, setReceiving] = useState(false);
+  const [gradeEditorItemId, setGradeEditorItemId] = useState<string | null>(null);
+
+  const linkedSoIds = orders.find(o => o.id === orderId)?.linked_sale_order_ids ?? [];
+  const { data: linkedSOs = [] } = useQuery({
+    queryKey: ['po_linked_sos', orderId, linkedSoIds],
+    enabled: linkedSoIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('sale_orders')
+        .select('id, order_number, client_order_number, status')
+        .in('id', linkedSoIds as string[]);
+      if (error) throw error;
+      return (data || []) as Array<{ id: string; order_number: string; client_order_number: string | null; status: string }>;
+    },
+  });
 
   if (!order) return null;
 
@@ -701,6 +746,33 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
               onChange={e => updateOrder.mutate({ id: order.id, data: { received_date: e.target.value || null } })}
             />
           </div>
+          <div className="col-span-2 sm:col-span-4">
+            <Label className="text-xs text-muted-foreground">Pedido(s) Vinculado(s)</Label>
+            {linkedSOs.length === 0 ? (
+              <p className="text-sm text-muted-foreground italic mt-1">
+                Nenhum PV vinculado.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {linkedSOs.map(so => (
+                  <Link
+                    key={so.id}
+                    to={`/pedidos/${so.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex"
+                  >
+                    <Badge variant="secondary" className="text-xs hover:bg-primary hover:text-primary-foreground cursor-pointer">
+                      {so.order_number}
+                      {so.client_order_number && (
+                        <span className="ml-1 opacity-70">· #{so.client_order_number}</span>
+                      )}
+                    </Badge>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
           {order.notes && (
             <div className="col-span-2 sm:col-span-4">
               <Label className="text-xs text-muted-foreground">Observações / Rastreabilidade</Label>
@@ -737,6 +809,28 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
                         <p className="font-medium text-sm">{item.product?.name}</p>
                         <p className="text-xs text-muted-foreground">SKU: {item.product?.sku} • {item.unit}</p>
                         {item.color && <p className="text-xs text-muted-foreground">Cor: {item.color}</p>}
+                        {item.product?.category === 'Solado' && isEditable && (
+                          (!item.grade || Object.keys(item.grade as any).length === 0) ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-6 mt-1 text-xs"
+                              onClick={() => setGradeEditorItemId(item.id)}
+                            >
+                              <Footprints className="h-3 w-3 mr-1" />
+                              Distribuir por numeração
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 mt-1 text-xs text-muted-foreground hover:text-foreground"
+                              onClick={() => setGradeEditorItemId(item.id)}
+                            >
+                              Editar grade
+                            </Button>
+                          )
+                        )}
                       </TableCell>
                       <TableCell className="text-center">
                         <span className={item.current_stock <= item.min_stock ? 'text-destructive font-semibold' : ''}>{item.current_stock}</span>
@@ -905,6 +999,31 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
             </>
           )}
         </DialogFooter>
+
+        {gradeEditorItemId && (() => {
+          const target = items.find(i => i.id === gradeEditorItemId);
+          if (!target) return null;
+          const sg = (target.product?.stock_grade || {}) as Record<string, unknown>;
+          const sizes = Object.keys(sg)
+            .filter(k => !k.startsWith('_'))
+            .sort((a, b) => {
+              const na = parseFloat(a.split('/')[0]);
+              const nb = parseFloat(b.split('/')[0]);
+              return isNaN(na) || isNaN(nb) ? a.localeCompare(b) : na - nb;
+            });
+          return (
+            <SoleGradeEditorDialog
+              open
+              onOpenChange={(open) => !open && setGradeEditorItemId(null)}
+              itemId={target.id}
+              productName={target.product?.name || '—'}
+              productColor={target.color || target.product?.color}
+              totalQuantity={target.quantity}
+              availableSizes={sizes}
+              currentGrade={(target.grade as Record<string, number>) || null}
+            />
+          );
+        })()}
       </DialogContent>
     </Dialog>
   );

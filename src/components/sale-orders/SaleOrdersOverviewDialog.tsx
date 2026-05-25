@@ -280,7 +280,7 @@ export default function SaleOrdersOverviewDialog({ open, onOpenChange, orders }:
                       {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                       Aplicar
                     </Button>
-                    <Button variant="ghost" size="icon" onClick={() => { setBulkMonth(''); setBulkWeek(''); setBulkDeadline(''); }} title="Limpar">
+                    <Button variant="ghost" size="icon" onClick={() => { setBulkMonth(''); setBulkWeek(''); setBulkDeadline(''); }} title="Limpar" aria-label="Limpar filtros de atribuição em lote">
                       <RefreshCw className="h-4 w-4" />
                     </Button>
                   </div>

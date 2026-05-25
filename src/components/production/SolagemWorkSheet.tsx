@@ -30,8 +30,8 @@ export interface SoleColorBand {
   /** Números de OP / PV pra rastreabilidade. */
   opNumbers?: string[];
   pvNumbers?: string[];
-  /** Consumo previsto (auditoria mai/2026): solado + cola/adesivos. */
-  consumption?: ConsumptionRow[];
+  /** Lot sizing (PR 2026-05-23): badge "LOTE X/N" quando OPs splitadas. */
+  lotInfo?: { number: number; total: number };
 }
 
 interface Props {
@@ -108,6 +108,17 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
                 <span className="section-label block" style={{ color: '#000' }}>Marcação</span>
                 <span className="font-mono text-[11px] font-bold text-black uppercase tracking-widest mt-1 block">
                   Estampar Nº
+                </span>
+              </div>
+            )}
+            {band.lotInfo && band.lotInfo.total > 1 && (
+              <div className="border-l border-black pl-3 text-right">
+                <span className="section-label block" style={{ color: '#000' }}>Lote</span>
+                <span
+                  className="text-black leading-none block mt-0.5"
+                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em' }}
+                >
+                  {band.lotInfo.number}<span className="text-sm font-mono tracking-widest">/{band.lotInfo.total}</span>
                 </span>
               </div>
             )}

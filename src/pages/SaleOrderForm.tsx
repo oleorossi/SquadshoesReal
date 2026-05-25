@@ -650,6 +650,25 @@ export default function SaleOrderForm() {
       }
 
       if (rawShortages.length > 0) {
+        // Enriquece solados: substitui cor do sapato pela cor real cadastrada
+        // do solado. check_stock_availability não retorna cor do solado, então
+        // o frontend vinha passando itemColor (cor do sapato) — bug histórico
+        // que deixava OCs de solado com color/grade desalinhados.
+        const productIds = [...new Set(rawShortages.map(s => s.product_id))];
+        const { data: prodMeta } = await supabase
+          .from('products')
+          .select('id, category, color')
+          .in('id', productIds);
+        const soleColor = new Map(
+          (prodMeta || [])
+            .filter((p: any) => p.category === 'Solado' && p.color)
+            .map((p: any) => [p.id, p.color as string])
+        );
+        for (const s of rawShortages) {
+          const realColor = soleColor.get(s.product_id);
+          if (realColor) s.color = realColor;
+        }
+
         const enriched = await enrichMaterialShortages(rawShortages);
         if (enriched.shortages.length > 0) {
           setMaterialResult(enriched);

@@ -757,7 +757,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             </div>
           )}
           {canRemove && (
-            <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => onRemove(index)}>
+            <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => onRemove(index)} aria-label="Remover item" title="Remover item">
               <Trash2 className="h-4 w-4" />
             </Button>
           )}
@@ -881,6 +881,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   size="icon"
                   className="h-9 w-9 flex-shrink-0"
                   title="Cadastrar material no estoque"
+                  aria-label="Cadastrar material no estoque"
                   onClick={onSaveStateAndNavigate}
                 >
                   <ExternalLink className="h-3.5 w-3.5" />

@@ -75,7 +75,13 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 const OrdersSummary = lazy(() => import("./pages/OrdersSummary"));
 const GroupedReportSummary = lazy(() => import("./pages/GroupedReportSummary"));
 const CapacityPlanning = lazy(() => import("./pages/CapacityPlanning"));
+const CapacityDistribution = lazy(() => import("./pages/CapacityDistribution"));
 const BottlenecksPage = lazy(() => import("./pages/Bottlenecks"));
+const OutsourcedInFieldPage = lazy(() => import("./pages/OutsourcedInField"));
+const ContractorReportsPage = lazy(() => import("./pages/ContractorReports"));
+const TimePendingsPage = lazy(() => import("./pages/TimePendings"));
+const WeeklyClosePage = lazy(() => import("./pages/WeeklyClose"));
+const EmployeeAbsencesPage = lazy(() => import("./pages/EmployeeAbsences"));
 const SectorAggregatedView = lazy(() => import("./pages/SectorAggregatedView"));
 const ProductionControlCenter = lazy(() => import("./pages/ProductionControlCenter"));
 const PrintWorkSheets = lazy(() => import("./pages/PrintWorkSheets"));
@@ -196,7 +202,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!loading && user && profileLoading && !profile) {
-      console.log("[ProtectedRoute] Profile still loading for authenticated user...");
+      if (import.meta.env.DEV) console.log("[ProtectedRoute] Profile still loading for authenticated user...");
     }
   }, [loading, user, profileLoading, profile]);
 
@@ -334,7 +340,7 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
   }
 
    if (!canAccess) {
-     console.log("[RouteGuard] Access denied for:", path);
+     if (import.meta.env.DEV) console.log("[RouteGuard] Access denied for:", path);
 
     // Se o erro for na dashboard, mostramos uma mensagem específica e evitamos o loop de redirecionamento
     const isAtRoot = path === '/' || path === '/dashboard';
@@ -593,6 +599,37 @@ const router = createBrowserRouter([
         element: <BottlenecksPage />,
       },
       {
+        // Tudo o que está fora da fábrica AGORA — OSs ativas de gargalo +
+        // OPs inteiras terceirizadas (orders.outsourced_to_contractor_id).
+        // Operacional: cards por contratada + tabela com prazo/atraso/ações.
+        path: "terceiros-na-rua",
+        element: <OutsourcedInFieldPage />,
+      },
+      {
+        // Relatório agregado por contractor — taxa de pontualidade, R$ pago,
+        // atraso médio + histórico de OSs finalizadas no período.
+        path: "terceiros/relatorios",
+        element: <ContractorReportsPage />,
+      },
+      {
+        // Pendências de ponto — dias com batidas inconsistentes/irregulares
+        // que precisam ser completadas pelo RH antes de fechar a semana.
+        path: "rh/pendencias-ponto",
+        element: <TimePendingsPage />,
+      },
+      {
+        // Fechamento semanal — trava o cálculo do banco de horas por semana
+        // pra impedir edição retroativa silenciosa. Cron auto toda segunda.
+        path: "rh/fechamento-semanal",
+        element: <WeeklyClosePage />,
+      },
+      {
+        // Ausências justificadas (férias/atestado/licença/folga). Dias
+        // cadastrados aqui ficam isentos do cálculo do banco de horas.
+        path: "rh/ausencias",
+        element: <EmployeeAbsencesPage />,
+      },
+      {
         // Visão consolidada de carga por setor. Em vez de N OPs individuais
         // de 12 pares, mostra o LOTE agregado por modelo (+cor onde faz
         // sentido) — costura/corte trabalham por bloco consolidado.
@@ -779,6 +816,10 @@ const router = createBrowserRouter([
       {
         path: "capacity-planning",
         element: <CapacityPlanning />,
+      },
+      {
+        path: "capacity-planning/distribuir",
+        element: <CapacityDistribution />,
       },
       {
         path: "centro-controle",

@@ -88,7 +88,11 @@ const SECTOR_CONFIG: Record<SectorKey, {
   hardFallbackDays: number;
 }> = {
   // New sector names (PR 2 — Costura adicionado entre Corte Forração e Mesa)
-  corte_palmilha: { capField: 'sewing_capacity_per_day',    ltField: 'lead_time_costura_dias',    hardFallbackDays: 1 },
+  // Fix 2026-05-23: corte_palmilha usava lead_time_costura_dias por engano —
+  // o resto da família corte (forração + mesa) usa lead_time_corte_dias.
+  // Mantinha o nome 'sewing_capacity_per_day' (legado: chamavam corte de
+  // palmilha de "costura de palmilha"), mas o lead_time correto é o de corte.
+  corte_palmilha: { capField: 'sewing_capacity_per_day',    ltField: 'lead_time_corte_dias',      hardFallbackDays: 1 },
   corte_forracao: { capField: 'cutting_capacity_per_day',   ltField: 'lead_time_corte_dias',      hardFallbackDays: 2 },
   costura:        { capField: 'costura_capacity_per_day',   ltField: 'lead_time_costura_dias',    hardFallbackDays: 1 },
   mesa:           { capField: 'mesa_daily_capacity',        ltField: 'lead_time_corte_dias',      hardFallbackDays: 1 },
@@ -99,7 +103,7 @@ const SECTOR_CONFIG: Record<SectorKey, {
   acabamento:     { capField: 'finishing_capacity_per_day', ltField: 'lead_time_acabamento_dias', hardFallbackDays: 1 },
   expedicao:      { capField: 'finishing_capacity_per_day', ltField: 'lead_time_acabamento_dias', hardFallbackDays: 0 },
   // Legacy alias — 'corte' was renamed to corte_palmilha
-  corte:          { capField: 'sewing_capacity_per_day',    ltField: 'lead_time_costura_dias',    hardFallbackDays: 1 },
+  corte:          { capField: 'sewing_capacity_per_day',    ltField: 'lead_time_corte_dias',      hardFallbackDays: 1 },
 };
 
 function num(v: unknown): number {

@@ -43,8 +43,10 @@ export function useStockAlertNotification() {
       },
     });
 
-    // Refresh notifications so the bell picks it up
+    // Refresh notifications so the bell picks it up. Duas keys: 'dashboard_notifications'
+    // (NotificationsTab — objeto cru) e 'notifications_aggregated' (sino — array agregado).
     qc.invalidateQueries({ queryKey: ['dashboard_notifications'] });
+    qc.invalidateQueries({ queryKey: ['notifications_aggregated'] });
     qc.invalidateQueries({ queryKey: ['purchase_orders'] });
   };
 

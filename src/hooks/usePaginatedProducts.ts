@@ -7,6 +7,9 @@ export interface PaginatedProductsParams {
   supplierId?: string;
   status?: string;
   category?: string;
+  /** Categoria a EXCLUIR. Usado em /estoque (Materiais) pra omitir Solado —
+   *  gestão de solado vive em /solados (SolesHub). Comparação case-insensitive. */
+  excludeCategory?: string;
   page?: number;
   limit?: number;
 }
@@ -19,10 +22,10 @@ export interface PaginatedResult<T> {
 }
 
 export function usePaginatedProducts(params: PaginatedProductsParams = {}) {
-  const { search = '', groupId = 'all', supplierId = 'all', status = 'all', category = 'all', page = 1, limit = 12 } = params;
+  const { search = '', groupId = 'all', supplierId = 'all', status = 'all', category = 'all', excludeCategory, page = 1, limit = 12 } = params;
 
   return useQuery({
-    queryKey: ['products', 'paginated', search, groupId, supplierId, status, category, page, limit],
+    queryKey: ['products', 'paginated', search, groupId, supplierId, status, category, excludeCategory || '', page, limit],
     queryFn: async () => {
       // Fetch products and in-production quantities in parallel
       const [productsResult, inProdResult] = await Promise.all([
@@ -80,6 +83,14 @@ export function usePaginatedProducts(params: PaginatedProductsParams = {}) {
       if (category && category !== 'all') {
         const cat = category.toLowerCase();
         filtered = filtered.filter((p: any) => (p.category || '').toLowerCase() === cat);
+      }
+
+      // 3c. ExcludeCategory (PR 2026-05-23): /estoque deve omitir Solado.
+      // Filter de MaterialsTab.tsx:158 era inútil (agia em `products`, não
+      // em `paginatedProducts` que vai pra UI). Agora filtra na fonte.
+      if (excludeCategory) {
+        const exc = excludeCategory.toLowerCase();
+        filtered = filtered.filter((p: any) => (p.category || '').toLowerCase() !== exc);
       }
 
       // 4. Supplier

@@ -15,7 +15,12 @@ export interface NotificationItem {
 
 export function useNotifications() {
   return useQuery({
-    queryKey: ['dashboard_notifications'],
+    // QueryKey próprio (PR 2026-05-24): antes compartilhava
+    // ['dashboard_notifications'] com NotificationsTab, mas retornam shapes
+    // diferentes (objeto vs array). React Query cacheia por key, então quem
+    // montasse primeiro escrevia shape errado pro outro consumidor —
+    // NotificationBell quebrava com 'notifications.filter is not a function'.
+    queryKey: ['notifications_aggregated'],
     queryFn: async () => {
       // Promise.allSettled — if one source fails (e.g. notifications table is
       // unreachable), still render whatever the other call returned.

@@ -90,12 +90,14 @@ function classifyProduct(p: ProductRow): IssueInfo {
   };
 }
 
+// Solado removido em 2026-05-23 — gestão de solados vive em /solados (SolesHub).
+// Aqui mostramos só matérias-primas que passam por conversão de unidade
+// (dm² ↔ m, kg ↔ g, etc.). Solados têm fluxo próprio em SolesHub.
 const CATEGORY_LABELS: Record<string, string> = {
   all: 'Todas categorias',
   Cabedal: 'Cabedal',
   Forro: 'Forro',
   Palmilha: 'Palmilha',
-  Solado: 'Solado',
   Componente: 'Componente',
   'Químico': 'Químico',
   Embalagem: 'Embalagem',
@@ -134,6 +136,8 @@ export function ConversionReportTab() {
   const filtered = useMemo(() => {
     const q = normalizeForSearch(search);
     return enriched.filter(p => {
+      // Solado vive em /solados (SolesHub) — sempre excluído deste relatório.
+      if ((p.category || '').toLowerCase() === 'solado') return false;
       if (categoryFilter !== 'all' && p.category !== categoryFilter) return false;
       if (statusFilter !== 'all' && p.issue.level !== statusFilter) return false;
       if (q) {

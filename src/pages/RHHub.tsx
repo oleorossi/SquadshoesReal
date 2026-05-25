@@ -2,8 +2,11 @@ import { lazy, Suspense, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SquaresFour as LayoutDashboard, Users, Alarm as AlarmClock, CurrencyDollar as DollarSign, FileText, CircleNotch as Loader2 } from '@phosphor-icons/react';
+import { Badge } from '@/components/ui/badge';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { usePendingTotal } from '@/hooks/useTimePendings';
+import { cn } from '@/lib/utils';
 
 const PainelRH         = lazy(() => import('@/components/hr/PainelRH'));
 const Employees        = lazy(() => import('./Employees'));
@@ -48,6 +51,8 @@ const LEGACY_TAB_MAP: Record<string, Tab> = {
 export default function RHHub() {
   const [activeTab, setActiveTab] = usePersistedState<Tab>('rh-active-tab', 'painel');
   const [searchParams, setSearchParams] = useSearchParams();
+  // Badge de pendências de ponto — aparece sempre, redireciona pra tab 'ponto' ao clicar
+  const { total: pendingTotal, overdueTotal } = usePendingTotal(30);
 
   // Sincroniza ?tab=xxx com o estado persistido
   useEffect(() => {
@@ -91,6 +96,20 @@ export default function RHHub() {
               >
                 <tab.icon className="h-3.5 w-3.5" />
                 {tab.label}
+                {tab.value === 'ponto' && pendingTotal > 0 && (
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      'h-4 px-1 text-[10px] tabular-nums',
+                      overdueTotal > 0
+                        ? 'bg-red-500/10 text-red-700 border-red-500/30 dark:text-red-400'
+                        : 'bg-amber-500/10 text-amber-700 border-amber-500/30 dark:text-amber-400',
+                    )}
+                    title={`${pendingTotal} pendências (${overdueTotal} atrasadas +7d)`}
+                  >
+                    {pendingTotal}
+                  </Badge>
+                )}
               </TabsTrigger>
             ))}
           </TabsList>
