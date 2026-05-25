@@ -118,6 +118,9 @@ export default function EspelhoPontoPage() {
         p_employee_id: employeeId,
         p_from: periodStart,
         p_to: periodEnd,
+        // Sem registro = não conta como falta. Dia útil que ainda não teve
+        // ponto importado é apenas pulado (days_missing fica como info na UI).
+        p_skip_missing: true,
       });
       if (error) throw error;
       return data as { balance_min?: number; timesheet_min?: number; movements_min?: number };

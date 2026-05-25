@@ -176,6 +176,8 @@ function useEmployeeDetail(
         p_employee_id: employeeId,
         p_from: range.from,
         p_to: range.to,
+        // Sem registro = pular dia (não desconta saldo).
+        p_skip_missing: true,
       });
       if (error) throw error;
       return data as EmployeeDetail;
