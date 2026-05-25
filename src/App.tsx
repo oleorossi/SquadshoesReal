@@ -22,6 +22,13 @@ import Auth from "./pages/Auth";
 
 // Lazy-loaded pages
 const Index = lazy(() => import("./pages/Index"));
+
+// Mobile (PWA) pages — fluxo standalone /m/* pra vendedor em campo
+const MobileLayout = lazy(() => import("./pages/mobile/MobileLayout"));
+const MobileHome = lazy(() => import("./pages/mobile/MobileHome"));
+const MobileNewOrder = lazy(() => import("./pages/mobile/MobileNewOrder"));
+const MobilePending = lazy(() => import("./pages/mobile/MobilePending"));
+const MobileProfile = lazy(() => import("./pages/mobile/MobileProfile"));
 const DesignPreview = lazy(() => import("./pages/DesignPreview"));
 // References removido em 2026-05 — página estava zerada e o menu apontava
 // pra ela sem uso. /references agora redireciona pra /fichas-tecnicas.
@@ -449,6 +456,27 @@ const router = createBrowserRouter([
       </Suspense>
     ),
     errorElement: <RouteErrorFallback />,
+  },
+  // ── Mobile app (/m/*) — fluxo PWA standalone ──
+  // Layout próprio (sem sidebar desktop), bottom tab nav, offline-first
+  // via service worker + IndexedDB queue. Vendedor instala como app no
+  // iPhone/iPad ("Add to Home Screen") e usa em campo.
+  {
+    path: "/m",
+    element: (
+      <ProtectedRoute>
+        <Suspense fallback={<div className="p-8 text-center text-sm text-muted-foreground">Carregando...</div>}>
+          <MobileLayout />
+        </Suspense>
+      </ProtectedRoute>
+    ),
+    errorElement: <RouteErrorFallback />,
+    children: [
+      { index: true, element: <MobileHome /> },
+      { path: "new", element: <MobileNewOrder /> },
+      { path: "pending", element: <MobilePending /> },
+      { path: "profile", element: <MobileProfile /> },
+    ],
   },
   {
     path: "/",

@@ -3,6 +3,7 @@ import type { Plugin, ViteDevServer } from "vite";
 import type { IncomingMessage, ServerResponse } from "http";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
+import { VitePWA } from "vite-plugin-pwa";
 
 // Single stable version for the entire server session.
 // Reused for both version.json and VITE_APP_VERSION — no drift possible.
@@ -41,6 +42,84 @@ const versionJsonPlugin = (): Plugin => ({
   plugins: [
     react(),
     versionJsonPlugin(),
+    // PWA — habilita instalação no iPhone/iPad ("Add to Home Screen"),
+    // service worker pra cache offline e mutation queue do fluxo mobile
+    // de vendas (/m). Desktop e demais rotas continuam normais — só /m
+    // é otimizado pra UX standalone-app.
+    VitePWA({
+      registerType: 'autoUpdate',
+      injectRegister: 'auto',
+      // Coexistência com public/sw.js legado: usa filename próprio pra não
+      // sobrescrever. O sw.js legado se auto-destrói em users antigos;
+      // novos users instalam squad-vendas-sw.js direto.
+      filename: 'squad-vendas-sw.js',
+      strategies: 'generateSW',
+      // start_url e scope abrem o app direto em /m quando instalado
+      manifest: {
+        name: 'Squad Vendas',
+        short_name: 'Squad Vendas',
+        description: 'Pedidos de venda Squad Shoes — funciona offline em campo',
+        start_url: '/m',
+        scope: '/',
+        display: 'standalone',
+        orientation: 'portrait',
+        theme_color: '#D9264E', // squad red
+        background_color: '#FAFAF7', // paper cream
+        lang: 'pt-BR',
+        icons: [
+          { src: '/icons/pwa-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/icons/pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: '/icons/pwa-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png', purpose: 'any' },
+        ],
+      },
+      workbox: {
+        // App é grande (1MB+ gzip) — só precache o shell mínimo
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        // Cache strategies por tipo de recurso
+        runtimeCaching: [
+          {
+            // Supabase REST: stale-while-revalidate (mostra cached, busca novo em bg)
+            urlPattern: /^https:\/\/ssvxfoybzmjlypnipqzn\.supabase\.co\/rest\/v1\/.*/,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'supabase-rest-cache',
+              expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 }, // 1h
+              networkTimeoutSeconds: 5,
+              cacheableResponse: { statuses: [200] },
+            },
+          },
+          {
+            // Imagens de produtos: cache longo
+            urlPattern: /\.(?:png|jpg|jpeg|svg|webp)$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'image-cache',
+              expiration: { maxEntries: 500, maxAgeSeconds: 30 * 24 * 60 * 60 }, // 30d
+              cacheableResponse: { statuses: [200] },
+            },
+          },
+          {
+            // Fonts: cache muito longo (raramente mudam)
+            urlPattern: /\.(?:woff|woff2|ttf)$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'font-cache',
+              expiration: { maxEntries: 30, maxAgeSeconds: 365 * 24 * 60 * 60 },
+            },
+          },
+        ],
+        // Navigation fallback pra SPA — qualquer URL não-cacheada serve index.html
+        navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/api/, /^\/rest/],
+      },
+      devOptions: {
+        // Habilita SW em dev pra testar (precisa ser HTTPS ou localhost)
+        enabled: false, // ativar só quando testando PWA local
+        type: 'module',
+      },
+    }),
   ].filter(Boolean),
    define: {
      'import.meta.env.VITE_APP_VERSION': JSON.stringify(BUILD_VERSION),

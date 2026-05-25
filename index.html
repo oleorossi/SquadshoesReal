@@ -26,6 +26,15 @@
     <!-- Modulepreload for main entry to parallelize JS discovery -->
     <link rel="modulepreload" href="/src/main.tsx" />
 
+    <!-- PWA — iOS-specific meta tags (Apple ignora manifest.webmanifest pra
+         alguns recursos como splash screens; precisa de tags próprias). -->
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Squad Vendas" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#D9264E" />
+
     <!-- Critical CSS: Minimal variables to prevent FOUC during non-blocking CSS load -->
     <style>
       :root {
