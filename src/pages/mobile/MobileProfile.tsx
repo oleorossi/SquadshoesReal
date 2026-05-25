@@ -1,12 +1,25 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { SignOut, DeviceMobile, Globe } from '@phosphor-icons/react';
+import { SignOut, DeviceMobile, Globe, Target } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
+
+interface ProfileData {
+  email?: string;
+  full_name?: string;
+  sales_target_monthly_brl?: number;
+  sales_target_monthly_pairs?: number;
+}
+
+interface MonthStats {
+  totalBrl: number;
+  totalPairs: number;
+}
 
 export default function MobileProfile() {
   const navigate = useNavigate();
-  const [user, setUser] = useState<{ email?: string; full_name?: string } | null>(null);
+  const [user, setUser] = useState<ProfileData | null>(null);
   const [isStandalone, setIsStandalone] = useState(false);
+  const [stats, setStats] = useState<MonthStats | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -14,10 +27,38 @@ export default function MobileProfile() {
       if (u) {
         const { data: profile } = await supabase
           .from('profiles')
-          .select('full_name, email')
+          .select('full_name, email, sales_target_monthly_brl, sales_target_monthly_pairs')
           .eq('id', u.id)
           .maybeSingle();
-        setUser({ email: u.email ?? undefined, full_name: profile?.full_name ?? undefined });
+        setUser({
+          email: u.email ?? undefined,
+          full_name: (profile as any)?.full_name ?? undefined,
+          sales_target_monthly_brl: (profile as any)?.sales_target_monthly_brl ?? undefined,
+          sales_target_monthly_pairs: (profile as any)?.sales_target_monthly_pairs ?? undefined,
+        });
+
+        // F3: stats do mês (PVs criados pelo user no mês corrente)
+        const firstOfMonth = new Date();
+        firstOfMonth.setDate(1);
+        firstOfMonth.setHours(0, 0, 0, 0);
+        const { data: orders } = await supabase
+          .from('sale_orders')
+          .select('total')
+          .gte('created_at', firstOfMonth.toISOString())
+          .neq('status', 'Cancelado');
+        const ordersList = orders ?? [];
+        const totalBrl = ordersList.reduce((s: number, o: any) => s + (Number(o.total) || 0), 0);
+        // Pairs via sale_order_items
+        let totalPairs = 0;
+        if (ordersList.length > 0) {
+          // Aproximação: somar quantity de items dos PVs do mês
+          const { data: itemsRow } = await supabase
+            .from('sale_order_items')
+            .select('quantity, sale_order_id, sale_orders!inner(created_at)')
+            .gte('sale_orders.created_at', firstOfMonth.toISOString());
+          totalPairs = (itemsRow ?? []).reduce((s: number, i: any) => s + (Number(i.quantity) || 0), 0);
+        }
+        setStats({ totalBrl, totalPairs });
       }
     })();
     // Detecta se app está rodando como PWA standalone (instalado)
@@ -40,6 +81,44 @@ export default function MobileProfile() {
         <p className="text-xs uppercase tracking-widest text-muted-foreground font-mono mt-2">Email</p>
         <p className="text-sm">{user?.email || '—'}</p>
       </div>
+
+      {/* F3: Meta de vendas do mês */}
+      {stats && user && (user.sales_target_monthly_brl || user.sales_target_monthly_pairs) ? (
+        <div className="bg-card border-[1.5px] border-foreground/15 rounded-lg p-4 space-y-3">
+          <div className="flex items-center gap-1.5">
+            <Target className="h-4 w-4 text-primary" weight="bold" />
+            <p className="text-xs uppercase tracking-widest text-muted-foreground font-mono">
+              Meta do mês
+            </p>
+          </div>
+          {user.sales_target_monthly_brl ? (
+            <ProgressRow
+              label="Faturamento"
+              current={stats.totalBrl}
+              target={user.sales_target_monthly_brl}
+              format={(v) => `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`}
+            />
+          ) : null}
+          {user.sales_target_monthly_pairs ? (
+            <ProgressRow
+              label="Pares"
+              current={stats.totalPairs}
+              target={user.sales_target_monthly_pairs}
+              format={(v) => `${v}`}
+            />
+          ) : null}
+        </div>
+      ) : stats ? (
+        <div className="bg-card border-[1.5px] border-foreground/15 rounded-lg p-4">
+          <p className="text-xs uppercase tracking-widest text-muted-foreground font-mono mb-1">
+            Mês corrente
+          </p>
+          <p className="text-2xl font-bold tabular-nums">
+            R$ {stats.totalBrl.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+          </p>
+          <p className="text-xs text-muted-foreground">{stats.totalPairs} pares · sem meta cadastrada</p>
+        </div>
+      ) : null}
 
       <div className="bg-card border-[1.5px] border-foreground/15 rounded-lg p-4">
         <p className="text-xs uppercase tracking-widest text-muted-foreground font-mono mb-2">App</p>
@@ -77,3 +156,34 @@ export default function MobileProfile() {
     </div>
   );
 }
+
+function ProgressRow({ label, current, target, format }: {
+  label: string;
+  current: number;
+  target: number;
+  format: (v: number) => string;
+}) {
+  const pct = target > 0 ? Math.min(100, (current / target) * 100) : 0;
+  const color = pct >= 100 ? 'bg-emerald-500' : pct >= 70 ? 'bg-primary' : 'bg-amber-500';
+  return (
+    <div>
+      <div className="flex items-baseline justify-between text-sm">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="font-mono">
+          <span className="font-bold">{format(current)}</span>
+          <span className="text-muted-foreground"> / {format(target)}</span>
+        </span>
+      </div>
+      <div className="h-2 bg-muted rounded-full overflow-hidden mt-1">
+        <div
+          className={`h-full ${color} transition-all`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <p className="text-[10px] text-muted-foreground font-mono mt-0.5 text-right">
+        {pct.toFixed(0)}% atingido
+      </p>
+    </div>
+  );
+}
+

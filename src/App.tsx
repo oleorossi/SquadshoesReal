@@ -382,10 +382,35 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
 
 function AuthRoute() {
   const { user, loading } = useAuth();
+  const [salesRepLoaded, setSalesRepLoaded] = useState<boolean | null>(null);
+
+  // F3 (24/05/2026): se profile.is_sales_rep=true, redireciona pra /m
+  // (app mobile) em vez do dashboard desktop. Vendedor logando no celular
+  // entra direto no fluxo de venda sem ver o ERP completo.
+  useEffect(() => {
+    if (!user) { setSalesRepLoaded(null); return; }
+    (async () => {
+      try {
+        const mod = await import('@/integrations/supabase/client');
+        const { data } = await mod.supabase
+          .from('profiles')
+          .select('is_sales_rep')
+          .eq('id', user.id)
+          .maybeSingle();
+        setSalesRepLoaded(Boolean(data?.is_sales_rep));
+      } catch {
+        setSalesRepLoaded(false);
+      }
+    })();
+  }, [user]);
+
   if (loading) {
     return <PageLoader />;
   }
-  if (user) return <Navigate to="/dashboard" replace />;
+  if (user) {
+    if (salesRepLoaded === null) return <PageLoader />;
+    return <Navigate to={salesRepLoaded ? '/m' : '/dashboard'} replace />;
+  }
   return <Auth />;
 }
 

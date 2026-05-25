@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Check, MagnifyingGlass, Trash } from '@phosphor-icons/react';
+import { ArrowLeft, Check, MagnifyingGlass, Trash, WhatsappLogo, Share, ChartBar, Clock } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { enqueueOrder, saveDraft, loadDraft, deleteDraft } from '@/lib/mobile/offlineQueue';
 import { useOnlineStatus } from '@/lib/mobile/networkStatus';
 import { triggerSync } from '@/lib/mobile/syncEngine';
+import { fetchClientPriceList, fetchClientHistory, resolvePrice, type PriceLookup, type ClientHistory } from '@/lib/mobile/clientContext';
+import { SignatureCanvas } from '@/components/mobile/SignatureCanvas';
 import type { SaleOrderItemFormData } from '@/hooks/useSaleOrders';
 
 interface ClientLite {
@@ -55,12 +57,21 @@ export default function MobileNewOrder() {
   const [clientSearch, setClientSearch] = useState('');
   const [clients, setClients] = useState<ClientLite[]>([]);
   const [selectedClient, setSelectedClient] = useState<ClientLite | null>(null);
+  // F3: contexto do cliente — tabela de preço + histórico
+  const [priceLookup, setPriceLookup] = useState<PriceLookup>({ byRefColor: new Map(), byRef: new Map() });
+  const [clientHistory, setClientHistory] = useState<ClientHistory | null>(null);
 
   // Items
   const [refs, setRefs] = useState<RefLite[]>([]);
   const [variants, setVariants] = useState<VariantLite[]>([]);
   const [items, setItems] = useState<DraftItem[]>([]);
   const [refSearch, setRefSearch] = useState('');
+
+  // F3: assinatura do cliente
+  const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
+  const [showSignature, setShowSignature] = useState(false);
+  // F3: PV criado pra share via WhatsApp pós-submit
+  const [createdPvNumber, setCreatedPvNumber] = useState<string | null>(null);
 
   // ── Restore draft on mount ──
   useEffect(() => {
@@ -82,6 +93,17 @@ export default function MobileNewOrder() {
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── F3: ao selecionar cliente, carrega price list + histórico ──
+  useEffect(() => {
+    if (!selectedClient?.id) {
+      setPriceLookup({ byRefColor: new Map(), byRef: new Map() });
+      setClientHistory(null);
+      return;
+    }
+    void fetchClientPriceList(selectedClient.id).then(setPriceLookup).catch(() => {});
+    void fetchClientHistory(selectedClient.id).then(setClientHistory).catch(() => {});
+  }, [selectedClient?.id]);
 
   // ── Autosave draft ──
   useEffect(() => {
@@ -176,6 +198,9 @@ export default function MobileNewOrder() {
       remessa: '',
       is_factoring: false,
       factoring_config_id: null,
+      // F3 (24/05/2026): assinatura digital opcional
+      client_signature_data_url: signatureDataUrl,
+      client_signature_at: signatureDataUrl ? new Date().toISOString() : null,
     };
 
     const itemsPayload: SaleOrderItemFormData[] = items.map(it => {
@@ -204,6 +229,7 @@ export default function MobileNewOrder() {
           const itemsToInsert = itemsPayload.map(i => ({ ...i, sale_order_id: created.id }));
           await supabase.from('sale_order_items').insert(itemsToInsert);
           sent = true;
+          setCreatedPvNumber(created.order_number || null);
           toast.success(`PV ${created.order_number || ''} enviado!`);
         }
       } catch (e) {
@@ -224,7 +250,27 @@ export default function MobileNewOrder() {
     // Limpa rascunho local
     await deleteDraft(requestId);
     localStorage.removeItem('mobile-current-draft-id');
-    navigate('/m');
+    // F3: se PV foi criado direto (online), mostra tela de sucesso com
+    // share antes de voltar pra home. Offline volta direto pra home.
+    if (sent && createdPvNumber !== null) {
+      setStep('success' as any);
+    } else {
+      navigate('/m');
+    }
+  };
+
+  // F3: gera link WhatsApp pré-preenchido com PV details
+  const shareWhatsApp = () => {
+    if (!selectedClient) return;
+    const pv = createdPvNumber || requestId.slice(0, 8);
+    const itemsLines = items.map(it => {
+      const qty = Object.values(it.grade).reduce((a, b) => a + (b || 0), 0);
+      return `· ${it.reference_name} ${it.color} · ${qty} pares · R$ ${(qty * it.unit_price).toFixed(2)}`;
+    }).join('\n');
+    const text = encodeURIComponent(
+      `Pedido ${pv} — ${selectedClient.razao_social}\n\n${itemsLines}\n\nTotal: R$ ${totalValue.toFixed(2)} (${totalPairs} pares)`,
+    );
+    window.open(`https://wa.me/?text=${text}`, '_blank');
   };
 
   // ── Renderização por step ──
@@ -305,7 +351,14 @@ export default function MobileNewOrder() {
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-sm truncate">{it.reference_name}</p>
                   <p className="text-xs text-muted-foreground uppercase">{it.color}</p>
-                  <p className="text-sm font-mono mt-1">{itemTotal} pares · R$ {(itemTotal * it.unit_price).toFixed(2)}</p>
+                  <p className="text-sm font-mono mt-1">
+                    {itemTotal} pares · R$ {(itemTotal * it.unit_price).toFixed(2)}
+                  </p>
+                  {it.unit_price > 0 && (
+                    <p className="text-[10px] text-emerald-700 font-mono mt-0.5">
+                      R$ {it.unit_price.toFixed(2)}/par (tabela)
+                    </p>
+                  )}
                 </div>
                 <button onClick={() => setItems(items.filter((_, i) => i !== idx))} className="text-destructive">
                   <Trash className="h-5 w-5" />
@@ -357,7 +410,7 @@ export default function MobileNewOrder() {
                             reference_name: r.name,
                             color: '',
                             grade: {},
-                            unit_price: 0,
+                            unit_price: resolvePrice(priceLookup, r.id, null),
                           }]);
                           setRefSearch('');
                         }}
@@ -373,7 +426,7 @@ export default function MobileNewOrder() {
                             color: v.color,
                             image_url: v.image_url || undefined,
                             grade: {},
-                            unit_price: 0,
+                            unit_price: resolvePrice(priceLookup, r.id, v.color),
                           }]);
                           setRefSearch('');
                         }}
@@ -386,6 +439,57 @@ export default function MobileNewOrder() {
             })}
           </div>
         </details>
+      </div>
+    );
+  }
+
+  // F3: Success screen pós-submit (com share WhatsApp)
+  if (step === ('success' as any)) {
+    return (
+      <div className="p-4 space-y-4 text-center">
+        <div className="py-8">
+          <div className="inline-flex h-16 w-16 rounded-full bg-emerald-500/20 items-center justify-center">
+            <Check className="h-8 w-8 text-emerald-600" weight="bold" />
+          </div>
+        </div>
+        <h2 className="text-2xl font-bold">Pedido enviado!</h2>
+        {createdPvNumber && (
+          <p className="text-sm font-mono uppercase tracking-widest text-muted-foreground">
+            {createdPvNumber}
+          </p>
+        )}
+        <p className="text-sm text-muted-foreground">
+          {totalPairs} pares · R$ {totalValue.toFixed(2)}
+        </p>
+        <div className="space-y-2 pt-4">
+          <button
+            onClick={shareWhatsApp}
+            className="w-full bg-[#25D366] text-white rounded-lg py-3 font-bold uppercase tracking-wide flex items-center justify-center gap-2"
+          >
+            <WhatsappLogo className="h-5 w-5" weight="bold" />
+            Enviar pelo WhatsApp
+          </button>
+          <button
+            onClick={() => {
+              if (navigator.share && selectedClient) {
+                navigator.share({
+                  title: `Pedido ${createdPvNumber || ''}`,
+                  text: `${selectedClient.razao_social} · ${totalPairs} pares · R$ ${totalValue.toFixed(2)}`,
+                }).catch(() => {});
+              }
+            }}
+            className="w-full border-[1.5px] border-foreground/20 rounded-lg py-3 font-bold uppercase tracking-wide flex items-center justify-center gap-2"
+          >
+            <Share className="h-4 w-4" />
+            Compartilhar
+          </button>
+          <button
+            onClick={() => navigate('/m')}
+            className="w-full text-muted-foreground rounded-lg py-3 text-sm uppercase tracking-wide"
+          >
+            Voltar ao início
+          </button>
+        </div>
       </div>
     );
   }
@@ -408,6 +512,42 @@ export default function MobileNewOrder() {
         <p className="font-bold">{selectedClient?.razao_social}</p>
         <p className="text-xs text-muted-foreground">{selectedClient?.cnpj}</p>
       </div>
+
+      {/* F3: Histórico do cliente (últimos 12 meses) */}
+      {clientHistory && clientHistory.totalOrders > 0 && (
+        <div className="border-[1.5px] border-foreground/15 rounded-lg p-3 bg-card">
+          <div className="flex items-center gap-1.5 mb-2">
+            <ChartBar className="h-4 w-4 text-muted-foreground" />
+            <span className="text-xs uppercase tracking-widest text-muted-foreground font-mono">
+              Histórico (12m)
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div>
+              <p className="text-xl font-bold tabular-nums">{clientHistory.totalOrders}</p>
+              <p className="text-[10px] text-muted-foreground uppercase">pedidos</p>
+            </div>
+            <div>
+              <p className="text-xl font-bold tabular-nums">{clientHistory.totalPairs}</p>
+              <p className="text-[10px] text-muted-foreground uppercase">pares</p>
+            </div>
+            <div>
+              <p className="text-xl font-bold tabular-nums">
+                {clientHistory.avgTicket > 1000
+                  ? `${(clientHistory.avgTicket / 1000).toFixed(1)}k`
+                  : clientHistory.avgTicket.toFixed(0)}
+              </p>
+              <p className="text-[10px] text-muted-foreground uppercase">ticket</p>
+            </div>
+          </div>
+          {clientHistory.lastOrderDate && (
+            <p className="text-[10px] text-muted-foreground text-center mt-2 flex items-center justify-center gap-1">
+              <Clock className="h-3 w-3" />
+              Último: {new Date(clientHistory.lastOrderDate).toLocaleDateString('pt-BR')}
+            </p>
+          )}
+        </div>
+      )}
 
       <div>
         <p className="text-xs uppercase tracking-widest text-muted-foreground font-mono mb-1">Itens ({items.length})</p>
@@ -434,6 +574,44 @@ export default function MobileNewOrder() {
           <p className="text-2xl font-bold tabular-nums">R$ {totalValue.toFixed(2)}</p>
           <p className="text-xs text-muted-foreground">{totalPairs} pares</p>
         </div>
+      </div>
+
+      {/* F3: Assinatura digital do cliente — opcional, fica gravada como
+          PNG base64 em sale_orders.client_signature_data_url. */}
+      <div className="border-[1.5px] border-foreground/15 rounded-lg p-3 bg-card">
+        {signatureDataUrl ? (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs uppercase tracking-widest text-muted-foreground font-mono">
+                Assinatura confirmada
+              </span>
+              <button
+                onClick={() => { setSignatureDataUrl(null); setShowSignature(false); }}
+                className="text-xs text-destructive"
+              >
+                Refazer
+              </button>
+            </div>
+            <img
+              src={signatureDataUrl}
+              alt="Assinatura"
+              style={{ background: '#fff' }}
+              className="w-full max-h-32 object-contain border border-border rounded"
+            />
+          </div>
+        ) : showSignature ? (
+          <SignatureCanvas
+            onConfirm={(url) => { setSignatureDataUrl(url); setShowSignature(false); }}
+            label="Cliente assina aqui"
+          />
+        ) : (
+          <button
+            onClick={() => setShowSignature(true)}
+            className="w-full py-3 text-sm text-foreground border-[1.5px] border-dashed border-foreground/30 rounded-lg uppercase tracking-wide"
+          >
+            + Capturar assinatura (opcional)
+          </button>
+        )}
       </div>
 
       {!online && (
