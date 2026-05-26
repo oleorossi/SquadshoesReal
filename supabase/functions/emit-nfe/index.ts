@@ -258,6 +258,23 @@ Deno.serve(async (req) => {
       }), { status: 409, headers: corsHeaders });
     }
 
+    // Limite de retentativas (qualquer status): PV-00104 acumulou 10 NFs em mai/2026
+    // (r1+r2 rejeitada pelo mesmo motivo, r3-r9 ficaram em processando, r10 cancelada).
+    // Cada tentativa ocupa numeração SEFAZ. >= 5 NFs do mesmo PV = sinal de cadastro
+    // quebrado — bloqueia até alguém investigar (cancelar antigas no painel GC).
+    const { count: totalNfes } = await adminClient
+      .from("nfe_emitidas")
+      .select("id", { count: "exact", head: true })
+      .eq("sale_order_id", sale_order_id);
+    if (totalNfes !== null && totalNfes >= 5) {
+      return new Response(JSON.stringify({
+        error: `Limite de retentativas atingido: ${totalNfes} NF-es já criadas pra este pedido. ` +
+               `Provável problema persistente no cadastro do cliente. ` +
+               `Verifique o histórico de NF-es, cancele as antigas no painel GestaoClick e corrija o erro antes de re-emitir.`,
+        nfe_count: totalNfes,
+      }), { status: 429, headers: corsHeaders });
+    }
+
     const { data: items, error: itemsErr } = await adminClient
       .from("sale_order_items")
       .select("*, technical_sheets(id, name, code, ncm, gestaoclick_id, description, shoe_category, upper_material, lining_material, insole_material, sole_material, weight_per_pair_kg), reference_material_variants(sku, barcode, ncm, description_override, active, unit_price_override), products(id, name, sku, ncm, gestaoclick_id, unit)")
