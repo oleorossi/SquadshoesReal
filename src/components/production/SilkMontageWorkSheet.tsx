@@ -360,22 +360,36 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                           (cabedal: {cg.color})
                         </span>
                       </>
+                    ) : sector === 'Corte Forração' ? (
+                      // 2026-05-26: SEM mapping de forração cadastrado.
+                      // Antes mostrava cor do cabedal como placeholder + aviso âmbar
+                      // — confundia o cortador (usuário cortou napa errada porque
+                      // viu "OFF WHITE" e assumiu que era a cor da forração).
+                      // Agora bloqueio visual vermelho explícito: NÃO exibe nenhuma
+                      // cor sugerida, força o supervisor a cadastrar antes de cortar.
+                      <>
+                        <span className="section-label block" style={{ color: '#000' }}>Cor da Forração</span>
+                        <div
+                          className="inline-flex items-center gap-2 mt-1 px-2 py-1"
+                          style={{ background: '#000', color: '#FFFFFF' }}
+                        >
+                          <span style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.02em' }}>
+                            NÃO CADASTRADA
+                          </span>
+                        </div>
+                        <span className="font-mono text-[10px] text-black tracking-widest uppercase mt-1 block">
+                          Cabedal: {cg.color} · não cortar antes do cadastro
+                        </span>
+                      </>
                     ) : (
                       <>
-                        <span className="section-label block" style={{ color: '#000' }}>
-                          {sector === 'Corte Forração' ? 'Cor (sem mapping)' : 'Cor'}
-                        </span>
+                        <span className="section-label block" style={{ color: '#000' }}>Cor</span>
                         <span
                           className="text-black uppercase leading-none block"
                           style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em' }}
                         >
                           {cg.color}
                         </span>
-                        {sector === 'Corte Forração' && (
-                          <span className="font-mono text-[10px] tracking-widest uppercase mt-0.5 block text-amber-700">
-                            ⚠ Mapping de forração não cadastrado
-                          </span>
-                        )}
                       </>
                     )}
                   </div>
