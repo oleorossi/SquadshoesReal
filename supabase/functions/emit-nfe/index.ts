@@ -920,23 +920,26 @@ Deno.serve(async (req) => {
     const pagamentoArr = buildPagamento();
 
     // ---------- Cria a NF-e no GestaoClick (rascunho) ----------
-    // Natureza de operação fixa — pedido user em 18/05/2026: usar
-    // "Operação não presencial, outros" pra alinhar com cadastro no
-    // painel GestaoClick. Antes era "Venda de Produção do Estabelecimento"
-    // mas não casava com a natureza que o user cadastrou lá.
+    // Natureza de operação: usa fiscal.natureza_operacao (cadastro de
+    // companies) — antes era hardcode "Operação não presencial, outros"
+    // mas a NF modelo #248 (revisada pela contabilidade em 19/05/2026)
+    // saiu com "Venda de Produção do Estabelecimento". Empresa atualizou
+    // o cadastro pra refletir isso (companies.natureza_operacao). Sem
+    // fallback, usa o nome do XML padrão SEFAZ.
     // O painel GestaoClick é a fonte da verdade pra consumidor_final /
     // indicador_destinatario / CFOP e para a tributação (IPI/PIS/COFINS/CSOSN)
     // — campos do payload da API são ignorados. Os CSTs (IPI 99/enq.999,
     // PIS 49, COFINS 49) e o CSOSN saem do cadastro da natureza no painel
     // GestaoClick (a API não tem endpoint de tributação).
-    const naturezaEsperada = "Operação não presencial, outros";
+    const naturezaEsperada = (fiscal.natureza_operacao || "").trim()
+      || "Venda de Produção do Estabelecimento";
 
     // ---------- Bloco `transporte` (peso bruto / líquido / volumes) ----------
     // GestaoClick ignora `peso_bruto` / `peso_liquido` / `quantidade_volumes`
     // se mandados no top-level — a doc deles exige dentro de
     // `transporte.volumes[]`. Mandávamos no topo até NF #244 e o XML saía com
     // <pesoB>/<pesoL> vazios. especie: "Volumes" — XML SEFAZ alvo confirmado
-    // pelo user em 19/05/2026 (era "VOLUME" caps, antes "CX"). Plural com
+    // pelo user em 19/05/2026 (era "Volumes" caps, antes "CX"). Plural com
     // capital só na 1ª letra é o que sai no DANFE/XML aprovado pela contabilidade.
     // modalidade_frete (SEFAZ modFrete):
     //   0 = Frete por conta do REMETENTE (CIF)
@@ -979,10 +982,10 @@ Deno.serve(async (req) => {
     //  1) GC espera modalidade_frete como INT (não string)
     //  2) GC espera `transportadora.id` aninhado (não `transportador` com nome/cnpj)
     //  3) GC espera `volumes` como OBJETO (não array)
-    //  4) Espécie correta é "VOLUME" caps (não "Volumes")
+    //  4) Espécie correta é "Volumes" caps (não "Volumes")
     //  5) `marca` precisa ser explícita (pedido user: "Squad Shoes")
     const volumesObj: Record<string, string | number> = {
-      especie: "VOLUME",
+      especie: "Volumes",
       marca: orderBrand,
     };
     if (qtdVolumesStr) volumesObj.quantidade = qtdVolumesStr;
@@ -1045,7 +1048,7 @@ Deno.serve(async (req) => {
       ...(pesoBrutoStr ? { peso_bruto: pesoBrutoStr } : {}),
       ...(pesoLiquidoStr ? { peso_liquido: pesoLiquidoStr } : {}),
       ...(qtdVolumesStr ? { quantidade_volumes: qtdVolumesStr } : {}),
-      especie_volumes: "VOLUME",
+      especie_volumes: "Volumes",
       // valor_frete: bug fix 20/05/2026 (PV-00122). Antes a UI somava
       // mercadoria+frete (R$ 0,50/par × N pares) mas a NF emitia só
       // mercadoria — divergência entre tela e fiscal. Agora envia o
