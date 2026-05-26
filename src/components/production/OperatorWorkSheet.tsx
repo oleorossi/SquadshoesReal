@@ -784,29 +784,37 @@ const OperatorWorkSheet = ({
 
         {/* SILK: silk type */}
         {isSilk && (
-          <div className="col-span-2 bg-white p-3" style={{ border: '1.5px solid #000' }}>
-            <span className="section-label block mb-2" style={{ color: '#000' }}>Arte do Silk</span>
-            {silk ? (
-              <div className="flex items-center gap-4 border-t border-black pt-2">
-                {silk.silk_url && (
-                  <div className="w-20 h-20 bg-white overflow-hidden shrink-0" style={{ border: '1.5px solid #000' }}>
-                    <img src={silk.silk_url} alt="Silk" className="w-full h-full object-contain" />
+          <>
+            <div className="col-span-2 bg-white p-3" style={{ border: '1.5px solid #000' }}>
+              <span className="section-label block mb-2" style={{ color: '#000' }}>Arte do Silk</span>
+              {silk ? (
+                <div className="flex items-center gap-4 border-t border-black pt-2">
+                  {silk.silk_url && (
+                    <div className="w-20 h-20 bg-white overflow-hidden shrink-0" style={{ border: '1.5px solid #000' }}>
+                      <img src={silk.silk_url} alt="Silk" className="w-full h-full object-contain" />
+                    </div>
+                  )}
+                  <div className="flex-1">
+                    <p
+                      className="text-black uppercase leading-none"
+                      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em' }}
+                    >
+                      {silk.silk_name}
+                    </p>
+                    <p className="text-[11px] text-black mt-1.5 leading-tight">Verificar posicionamento e pressão antes de iniciar.</p>
                   </div>
-                )}
-                <div className="flex-1">
-                  <p
-                    className="text-black uppercase leading-none"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em' }}
-                  >
-                    {silk.silk_name}
-                  </p>
-                  <p className="text-[11px] text-black mt-1.5 leading-tight">Verificar posicionamento e pressão antes de iniciar.</p>
                 </div>
-              </div>
-            ) : (
-              <p className="text-xs text-black italic">Sem silk registrado para esta referência/cor.</p>
-            )}
-          </div>
+              ) : (
+                <p className="text-xs text-black italic">Sem silk registrado para esta referência/cor.</p>
+              )}
+            </div>
+            {/* TallyBox — controle de fichas (PR 2026-05-26):
+                operador de Silk marca uma caixinha por ficha conforme conclui.
+                Mesmo padrão de Colagem/Montagem/Acabamento. */}
+            <div className="col-span-2 keep-with-next">
+              <TallyBox count={Math.max(1, Math.ceil(totalPairs / 12))} pairsPerCard={12} />
+            </div>
+          </>
         )}
 
         {/* COLAGEM: adhesive checklist */}
