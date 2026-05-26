@@ -73,35 +73,56 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
-    }
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claims, error: claimsError } = await supabase.auth.getClaims(token);
-    if (claimsError || !claims?.claims?.sub) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
-    }
-    const userId = claims.claims.sub as string;
-
     const adminClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
-    const { data: roles, error: rolesErr } = await adminClient
-      .from("user_roles").select("role").eq("user_id", userId);
-    if (rolesErr) {
-      return new Response(JSON.stringify({ error: "Role check failed" }), { status: 500, headers: corsHeaders });
+
+    // Cron bypass: requests vindas do pg_cron interno mandam X-Cron-Secret
+    // (lido do vault.decrypted_secrets). Permite sync automático periódico
+    // sem precisar de JWT de usuário. Não conta como ação de user — fica
+    // só logado no edge function logs.
+    const cronSecretHeader = req.headers.get("X-Cron-Secret");
+    let isCronCaller = false;
+    if (cronSecretHeader) {
+      const { data: storedSecret, error: secretErr } = await adminClient.rpc("get_nfe_sync_cron_secret");
+      if (secretErr) {
+        return new Response(JSON.stringify({ error: `Falha ao ler secret: ${secretErr.message}` }), { status: 500, headers: corsHeaders });
+      }
+      if (storedSecret && String(storedSecret) === cronSecretHeader) {
+        isCronCaller = true;
+      } else {
+        return new Response(JSON.stringify({ error: "Cron secret inválido" }), { status: 401, headers: corsHeaders });
+      }
     }
-    const allowed = roles?.some((r: { role: string }) => ["admin", "gerente", "nfe_operator"].includes(r.role));
-    if (!allowed) {
-      return new Response(JSON.stringify({ error: "Forbidden: apenas admin, gerente ou operador NF-e podem sincronizar" }), { status: 403, headers: corsHeaders });
+
+    if (!isCronCaller) {
+      const authHeader = req.headers.get("Authorization");
+      if (!authHeader?.startsWith("Bearer ")) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+      }
+
+      const supabase = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_ANON_KEY")!,
+        { global: { headers: { Authorization: authHeader } } }
+      );
+      const token = authHeader.replace("Bearer ", "");
+      const { data: claims, error: claimsError } = await supabase.auth.getClaims(token);
+      if (claimsError || !claims?.claims?.sub) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+      }
+      const userId = claims.claims.sub as string;
+
+      const { data: roles, error: rolesErr } = await adminClient
+        .from("user_roles").select("role").eq("user_id", userId);
+      if (rolesErr) {
+        return new Response(JSON.stringify({ error: "Role check failed" }), { status: 500, headers: corsHeaders });
+      }
+      const allowed = roles?.some((r: { role: string }) => ["admin", "gerente", "nfe_operator"].includes(r.role));
+      if (!allowed) {
+        return new Response(JSON.stringify({ error: "Forbidden: apenas admin, gerente ou operador NF-e podem sincronizar" }), { status: 403, headers: corsHeaders });
+      }
     }
 
     // ---------- Pré-carrega lookups (empresas e PVs por número) ----------
