@@ -32,6 +32,11 @@ type ConsumptionRow = {
   color: string;
   totalQuantity: number;
   widthMissing?: boolean;
+  /** Breakdown agregado por numeração (somado entre items do PV que casam
+   *  na chave grupo+cor+unidade). Usado pra Solado mostrar totais reais
+   *  por Nº (ex: "Nº 34: 30 · Nº 35: 60") em vez da grade base de 1 ficha.
+   *  Pedido user 2026-05-27. */
+  sizeBreakdown?: Record<string, number>;
 };
 
 const COMPONENT_ORDER = ['Cabedal', 'Forro', 'Palmilha', 'Solado', 'Tiras', 'Químicos', 'Embalagem', 'Outros'] as const;
@@ -73,6 +78,13 @@ const addConsumptionRow = (map: Map<string, ConsumptionRow>, row: ConsumptionRow
   if (existing) {
     existing.totalQuantity += totalQuantity;
     if (row.widthMissing) existing.widthMissing = true;
+    // Soma breakdown por numeração quando ambos têm (Solado).
+    if (row.sizeBreakdown) {
+      existing.sizeBreakdown = existing.sizeBreakdown || {};
+      for (const [size, qty] of Object.entries(row.sizeBreakdown)) {
+        existing.sizeBreakdown[size] = (existing.sizeBreakdown[size] || 0) + qty;
+      }
+    }
     return;
   }
 
@@ -84,6 +96,7 @@ const addConsumptionRow = (map: Map<string, ConsumptionRow>, row: ConsumptionRow
     color,
     totalQuantity,
     widthMissing: row.widthMissing,
+    sizeBreakdown: row.sizeBreakdown,
   });
 };
 
@@ -403,32 +416,32 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
           : null;
         const soleColor = soleProduct?.color || orderColor || sheet?.sole_color || '—';
 
-        // Resumo de numerações pra coluna Aplicação. Quando OP tem grade,
-        // mostra "34: 1 · 35: 2 · ..." ou "34-40 (12)" se uniforme. Sem grade,
-        // fica "Solado" cru. Pedido em 18/05/2026 pelo user — quer ver
-        // numeração + cor no resumo de consumo do PV.
+        // Breakdown de numerações escalado pro TOTAL real do item (PR 2026-05-27).
+        // Antes mostrava grade base de 1 ficha (Nº 34: 1, ...), agora multiplica
+        // pelo número de fichas pra exibir totais reais segmentados por cor de
+        // solado. Quando múltiplos items casam em (sole+cor), addConsumptionRow
+        // agrega o breakdown.
         const grade = (item as any).grade as Record<string, number> | null | undefined;
-        const sizesSummary = (() => {
-          if (!grade || typeof grade !== 'object') return 'Solado';
-          const entries = Object.entries(grade)
-            .filter(([k, v]) => /^\d+$/.test(k) && Number(v) > 0)
-            .sort(([a], [b]) => Number(a) - Number(b));
-          if (entries.length === 0) return 'Solado';
-          const values = entries.map(([, v]) => Number(v));
-          const allEqual = values.every(v => v === values[0]);
-          if (allEqual && entries.length > 1) {
-            return `Nº ${entries[0][0]}–${entries[entries.length-1][0]} (${values[0]} pares cada)`;
+        const scaledBreakdown: Record<string, number> = {};
+        if (grade && typeof grade === 'object') {
+          const baseSum = Object.values(grade).reduce((s, v) => s + (Number(v) || 0), 0);
+          const multiplier = baseSum > 0 ? itemQuantity / baseSum : 0;
+          for (const [size, qty] of Object.entries(grade)) {
+            if (!/^\d+$/.test(size)) continue;
+            const scaled = Math.round((Number(qty) || 0) * multiplier);
+            if (scaled > 0) scaledBreakdown[size] = scaled;
           }
-          return entries.map(([s, v]) => `Nº ${s}: ${v}`).join(' · ');
-        })();
+        }
 
         addConsumptionRow(consumptionMap, {
           componentType: 'Solado',
           groupName: soleProduct?.name || sheet?.sole_material || '',
-          materialName: sizesSummary,
+          // materialName usado só como fallback se sizeBreakdown vier vazio.
+          materialName: 'Solado',
           productUnit: 'par',
           color: soleColor,
           totalQuantity: (Number(sheet?.sole_consumption) || 0) * itemQuantity,
+          sizeBreakdown: Object.keys(scaledBreakdown).length > 0 ? scaledBreakdown : undefined,
         });
 
         const itemStraps = Array.isArray(item.strap_colors) ? (item.strap_colors as any[]) : [];
@@ -611,17 +624,25 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
         .map(([u, v]) => `${v.toFixed(1)} ${formatUnit(u)}`)
         .join(' · ');
 
-      const rowsHtml = componentRows.map(row => `
+      const rowsHtml = componentRows.map(row => {
+        const aplicacao = row.sizeBreakdown && Object.keys(row.sizeBreakdown).length > 0
+          ? Object.entries(row.sizeBreakdown)
+              .sort(([a], [b]) => Number(a) - Number(b))
+              .map(([s, qty]) => `Nº ${s}: ${qty}`)
+              .join(' · ')
+          : row.materialName;
+        return `
         <tr>
           <td style="padding:3px 6px;border-bottom:1px solid #e5e7eb">
-            <div style="font-weight:600;font-size:10pt">${row.materialName}</div>
+            <div style="font-weight:600;font-size:10pt">${aplicacao}</div>
             <div style="color:#6b7280;font-size:8.5pt">${row.groupName}${row.color && row.color !== '—' ? ` · ${row.color}` : ''}</div>
           </td>
           <td style="padding:3px 6px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace;font-weight:700;font-size:10pt">
             ${row.totalQuantity.toFixed(2)} <span style="color:#6b7280;font-weight:400;font-size:8.5pt">${formatUnit(row.productUnit)}</span>
           </td>
         </tr>
-      `).join('');
+      `;
+      }).join('');
 
       cards.push(`
         <div class="card" style="border:2px solid ${colors.border};border-radius:6px;overflow:hidden;break-inside:avoid;margin-bottom:6px">
@@ -767,7 +788,14 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                               {row.groupName}
                             </div>
                           </TableCell>
-                          <TableCell>{row.materialName}</TableCell>
+                          <TableCell>
+                            {row.sizeBreakdown && Object.keys(row.sizeBreakdown).length > 0
+                              ? Object.entries(row.sizeBreakdown)
+                                  .sort(([a], [b]) => Number(a) - Number(b))
+                                  .map(([s, qty]) => `Nº ${s}: ${qty}`)
+                                  .join(' · ')
+                              : row.materialName}
+                          </TableCell>
                           <TableCell>{row.color}</TableCell>
                           <TableCell className="text-right font-mono font-bold">{row.totalQuantity.toFixed(2)}</TableCell>
                           <TableCell className="text-center">
