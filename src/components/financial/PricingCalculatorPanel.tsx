@@ -67,6 +67,11 @@ export default function PricingCalculatorPanel() {
   const [factoringRatePct, setFactoringRatePct] = useState(saved.factoringRatePct ?? '');
   const [days, setDays] = useState(saved.days ?? '');
   const [profitMarginPct, setProfitMarginPct] = useState(saved.profitMarginPct ?? '');
+  // Modo inverso (auditoria 24/05/2026): em vez de digitar margem % e ver
+  // preço, user digita "quero receber R$ X líquido por par" e o sistema
+  // calcula a margem % equivalente + o preço de venda necessário. Útil
+  // pra vendedor que pensa em "lucro real por par" em vez de %.
+  const [targetProfitBrl, setTargetProfitBrl] = useState<string>(saved.targetProfitBrl ?? '');
   const [commissionPct, setCommissionPct] = useState(saved.commissionPct ?? '');
   const [freightValue, setFreightValue] = useState(saved.freightValue ?? '');
   const [overheadManual, setOverheadManual] = useState(saved.overheadManual ?? '');
@@ -86,10 +91,12 @@ export default function PricingCalculatorPanel() {
     const state: Record<string, string> = {
       cost, taxPct, factoringRatePct, days, profitMarginPct, commissionPct, freightValue, overheadManual,
       soldPrice, reverseCost, reverseTaxPct, reverseFactoringPct, reverseDays, reverseCommissionPct, reverseFreightValue, reverseOverheadManual,
+      targetProfitBrl,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [cost, taxPct, factoringRatePct, days, profitMarginPct, commissionPct, freightValue, overheadManual,
-      soldPrice, reverseCost, reverseTaxPct, reverseFactoringPct, reverseDays, reverseCommissionPct, reverseFreightValue, reverseOverheadManual]);
+      soldPrice, reverseCost, reverseTaxPct, reverseFactoringPct, reverseDays, reverseCommissionPct, reverseFreightValue, reverseOverheadManual,
+      targetProfitBrl]);
 
   // Effective overhead: manual override or policy-derived
   const getOverhead = (manual: string) => {
@@ -144,15 +151,45 @@ export default function PricingCalculatorPanel() {
     const numTax = parseFloat(taxPct) || 0;
     const numFactoring = parseFloat(factoringRatePct) || 0;
     const numDays = parseDays(days);
-    const numProfit = parseFloat(profitMarginPct) || 0;
     const numCommission = parseFloat(commissionPct) || 0;
     const numFreight = parseFloat(freightValue) || 0;
     const numOverhead = getOverhead(overheadManual);
+    const numTargetProfit = parseFloat(targetProfitBrl) || 0;
 
     // custo_base = custo_materia_prima + (despesas_fixas / capacidade) + frete
     const totalCost = numCost + numOverhead + numFreight;
-
     const factoringTotalPct = (numFactoring / 30) * numDays;
+
+    // ── Modo inverso (auditoria 24/05/2026) ──
+    // Quando user digita "quero receber R$ X líquido por par", calculamos
+    // a margem % equivalente em vez de usar profitMarginPct manual.
+    //
+    // Derivação algébrica:
+    //   sale_price = totalCost / (1 - (tax + profit + factoring + commission) / 100)
+    //   profit_brl_por_par = sale_price * (profit_pct / 100)
+    //
+    // Substituindo profit_pct = (profit_brl / sale_price) * 100:
+    //   sale_price * (1 - (tax + factoring + commission)/100 - profit_brl/sale_price) = totalCost
+    //   sale_price * (1 - K/100) - profit_brl = totalCost
+    //   sale_price = (totalCost + profit_brl) / (1 - K/100)
+    //
+    // Onde K = tax + factoring + commission (não inclui margin).
+    let numProfit: number;
+    let derivedFromTarget = false;
+    if (numTargetProfit > 0) {
+      const nonMarginPct = numTax + factoringTotalPct + numCommission;
+      const denom = 1 - (nonMarginPct / 100);
+      if (denom > 0) {
+        const derivedPrice = (totalCost + numTargetProfit) / denom;
+        numProfit = derivedPrice > 0 ? (numTargetProfit / derivedPrice) * 100 : 0;
+        derivedFromTarget = true;
+      } else {
+        numProfit = parseFloat(profitMarginPct) || 0;
+      }
+    } else {
+      numProfit = parseFloat(profitMarginPct) || 0;
+    }
+
     const totalMarkupPct = numTax + numProfit + factoringTotalPct + numCommission;
     const markupDivisor = 1 - (totalMarkupPct / 100);
     const isValid = markupDivisor > 0;
@@ -168,8 +205,12 @@ export default function PricingCalculatorPanel() {
     const markupVistaDivisor = 1 - (markupVistaPct / 100);
     const cashPrice = (isValid && markupVistaDivisor > 0) ? (totalCost / markupVistaDivisor) : 0;
 
-    return { factoringTotalPct, totalMarkupPct, suggestedPrice, realProfit, isValid, taxValue, factoringValue, commissionValue, numFreight, numOverhead, totalCost, cashPrice };
-  }, [cost, taxPct, factoringRatePct, days, profitMarginPct, commissionPct, freightValue, overheadManual, policyOverhead]);
+    return {
+      factoringTotalPct, totalMarkupPct, suggestedPrice, realProfit, isValid,
+      taxValue, factoringValue, commissionValue, numFreight, numOverhead, totalCost, cashPrice,
+      derivedMarginPct: derivedFromTarget ? numProfit : null,
+    };
+  }, [cost, taxPct, factoringRatePct, days, profitMarginPct, targetProfitBrl, commissionPct, freightValue, overheadManual, policyOverhead]);
 
   const reverseResults = useMemo(() => {
     const numSold = parseFloat(soldPrice) || 0;
@@ -311,12 +352,100 @@ export default function PricingCalculatorPanel() {
               {days.includes('/') && <p className="text-xs text-muted-foreground mt-1">Média: {fmt(parseDays(days))} dias</p>}
             </div>
             <div>
-              <Label htmlFor="profit" className="text-xs">Margem (%)</Label>
+              <Label htmlFor="profit" className="text-xs">
+                Margem (%)
+                {results.derivedMarginPct !== null && (
+                  <span className="ml-1 text-[10px] font-mono text-emerald-600">
+                    auto · {fmt(results.derivedMarginPct)}%
+                  </span>
+                )}
+              </Label>
               <div className="relative mt-1">
                 <TrendingUp className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input id="profit" type="number" step="0.01" min="0" value={profitMarginPct} onChange={(e) => setProfitMarginPct(e.target.value)} className="pl-8 h-9 text-sm font-semibold" placeholder="0" />
+                <Input
+                  id="profit"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={
+                    results.derivedMarginPct !== null
+                      ? fmt(results.derivedMarginPct)
+                      : profitMarginPct
+                  }
+                  onChange={(e) => {
+                    setProfitMarginPct(e.target.value);
+                    setTargetProfitBrl(''); // user editou margem → desativa modo inverso
+                  }}
+                  disabled={results.derivedMarginPct !== null}
+                  className="pl-8 h-9 text-sm font-semibold disabled:opacity-60 disabled:bg-muted/40"
+                  placeholder="0"
+                />
               </div>
+              {results.derivedMarginPct !== null && (
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Derivado do "quero receber" abaixo
+                </p>
+              )}
             </div>
+          </div>
+
+          {/* ── Modo inverso (auditoria 24/05/2026) ── */}
+          {/* Em vez de digitar margem %, user digita "quero receber R$ X
+              líquido por par". Sistema calcula:
+                margem % (em cima — preenche o campo de margem)
+                preço de venda necessário (em baixo — exibido no painel
+                de resultados que já existe). */}
+          <div className="rounded-lg border-[1.5px] border-dashed border-foreground/20 bg-muted/20 p-3">
+            <div className="flex items-baseline justify-between gap-2 mb-2">
+              <Label htmlFor="targetProfit" className="text-xs font-bold uppercase tracking-wide">
+                Quero receber líquido (R$/par)
+              </Label>
+              {targetProfitBrl && (
+                <button
+                  type="button"
+                  onClick={() => setTargetProfitBrl('')}
+                  className="text-[10px] text-muted-foreground hover:text-foreground underline"
+                >
+                  Limpar
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+              <div className="relative">
+                <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  id="targetProfit"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={targetProfitBrl}
+                  onChange={(e) => setTargetProfitBrl(e.target.value)}
+                  className="pl-8 h-10 text-base font-semibold"
+                  placeholder="ex: 10,00"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground leading-tight">
+                Digite o valor que quer embolsar por par (após impostos, factoring
+                e comissão). O sistema calcula a margem % equivalente e o preço
+                de venda necessário pra obter esse líquido.
+              </p>
+            </div>
+            {results.derivedMarginPct !== null && results.suggestedPrice > 0 && (
+              <div className="mt-3 pt-3 border-t border-foreground/10 grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-mono">↑ Margem calculada</p>
+                  <p className="text-lg font-bold text-emerald-600 tabular-nums">
+                    {fmt(results.derivedMarginPct)}%
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-mono">↓ Preço de venda</p>
+                  <p className="text-lg font-bold text-primary tabular-nums">
+                    R$ {fmt(results.suggestedPrice)}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Overhead, Commission & Freight */}
