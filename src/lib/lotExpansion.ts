@@ -18,8 +18,18 @@ export interface LotMetadata {
   _total_lots?: number;
 }
 
-/** Divide a grade proporcional ao ratio lot/total. Round pode causar pequena
- *  diferença vs lotQty na soma — aceito (display, não cálculo crítico). */
+/**
+ * Divide a grade proporcional ao ratio lot/total.
+ *
+ * ⚠️ DISPLAY-ONLY: usa Math.round() que pode causar pequena diferença (1-3
+ * pares) entre `sum(grade[size])` e `lotQty` quando há vários tamanhos com
+ * fração. Aceito porque o total exato continua em `order.total_pairs` /
+ * `order_lots.quantity` — esta função alimenta apenas a renderização visual
+ * das fichas de operador (TallyBox + tabela de numeração).
+ *
+ * NÃO usar pra: cálculo de custo, débito de materiais, projeção de estoque.
+ * Pra esses, agregar lots pelo `quantity` real do banco.
+ */
 function splitGrade(
   grade: Record<string, number> | null | undefined,
   lotQty: number,

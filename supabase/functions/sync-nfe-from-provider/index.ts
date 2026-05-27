@@ -89,7 +89,16 @@ Deno.serve(async (req) => {
       if (secretErr) {
         return new Response(JSON.stringify({ error: `Falha ao ler secret: ${secretErr.message}` }), { status: 500, headers: corsHeaders });
       }
-      if (storedSecret && String(storedSecret) === cronSecretHeader) {
+      // Comparação constant-time pra prevenir timing attack na descoberta do
+      // secret. Implementação simples sem dependência crypto.subtle.timingSafeEqual
+      // (não disponível em Deno edge runtime sem flag).
+      const a = storedSecret ? String(storedSecret) : "";
+      const b = cronSecretHeader;
+      let diff = a.length ^ b.length;
+      for (let i = 0; i < Math.max(a.length, b.length); i++) {
+        diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+      }
+      if (a.length > 0 && diff === 0) {
         isCronCaller = true;
       } else {
         return new Response(JSON.stringify({ error: "Cron secret inválido" }), { status: 401, headers: corsHeaders });

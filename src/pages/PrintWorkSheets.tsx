@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useOrderLotsBatch } from '@/hooks/useOrderLots';
 import PrintWorkSheetsPage from '@/components/production/PrintWorkSheetsPage';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -67,6 +68,11 @@ export default function PrintWorkSheets() {
       return (data || []) as unknown as OrderRow[];
     },
   });
+
+  // Lots por OP (PR 2026-05-27): se OP tem split, mostra badge "N lotes" na
+  // linha pra user saber que marcar essa OP imprime N fichas, não 1.
+  const orderIdsForLots = useMemo(() => rows.map(r => r.id), [rows]);
+  const { data: lotsMap } = useOrderLotsBatch(orderIdsForLots);
 
   // Lista de PVs distintos pra alimentar o dropdown "Filtrar por PV".
   // Adicionado 2026-05-26 pra prevenir contaminação acidental — quando user
@@ -233,7 +239,15 @@ export default function PrintWorkSheets() {
                 onChange={e => setSearch(e.target.value)}
               />
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <Select
+              value={statusFilter}
+              onValueChange={(v) => {
+                setStatusFilter(v);
+                // Auto-limpa selectedIds (mesmo motivo do pvFilter): evita
+                // OPs fantasmas de status anterior contaminarem o batch.
+                setSelectedIds(new Set());
+              }}
+            >
               <SelectTrigger className="w-52 h-9">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
@@ -312,7 +326,22 @@ export default function PrintWorkSheets() {
                             aria-label={`Selecionar OP ${r.order_number}`}
                           />
                         </td>
-                        <td className="p-2 font-mono font-bold">{r.order_number}</td>
+                        <td className="p-2 font-mono font-bold">
+                          {r.order_number}
+                          {(() => {
+                            const lots = lotsMap?.get(r.id);
+                            if (!lots || lots.length <= 1) return null;
+                            return (
+                              <Badge
+                                variant="outline"
+                                className="ml-1.5 h-5 text-[9px] font-mono border-amber-600/50 text-amber-700 bg-amber-500/5"
+                                title={`OP splitada em ${lots.length} lotes — marcar imprime todos`}
+                              >
+                                {lots.length} lotes
+                              </Badge>
+                            );
+                          })()}
+                        </td>
                         <td className="p-2">
                           <p className="font-medium">{r.sale_orders?.order_number || '—'}</p>
                           <p className="text-[10px] text-muted-foreground truncate max-w-[180px]">
