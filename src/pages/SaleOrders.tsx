@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import MaterialConsumptionDialog from '@/components/sale-orders/MaterialConsumptionDialog';
 import MarginDialog from '@/components/sale-orders/MarginDialog';
 import { PvOutdatedBadge } from '@/components/sale-orders/PvOutdatedBadge';
+import { RevertInvoiceButton } from '@/components/sale-orders/RevertInvoiceButton';
 import SummaryConsumptionPanel from '@/components/sale-orders/SummaryConsumptionPanel';
 import SaleOrdersOverviewDialog from '@/components/sale-orders/SaleOrdersOverviewDialog';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
@@ -1936,6 +1937,13 @@ export default function SaleOrders() {
                           <Button variant="ghost" size="icon" className="h-7 w-7" title="Consumo de materiais" onClick={() => { setQuickConsumptionId(order.id); setQuickConsumptionNumber(order.order_number); }}>
                             <Package className="h-3.5 w-3.5" />
                           </Button>
+                          {isAdmin && order.status === 'Faturado' && (
+                            <RevertInvoiceButton
+                              saleOrderId={order.id}
+                              orderNumber={order.order_number}
+                              size="icon"
+                            />
+                          )}
                           {isAdmin && !TERMINAL_BILLED_STATUSES.includes(order.status) && order.status !== 'Cancelado' && (
                             <Button
                               variant="ghost"

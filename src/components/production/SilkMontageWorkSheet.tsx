@@ -293,19 +293,30 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
           // Coleta PVs únicos de todas as cores deste solado pra destacar no header.
           const pvs = Array.from(new Set(
             group.colorGroups.flatMap(cg => cg.pvNumbers || []).filter(Boolean)
-          ));
+          )).sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+          // Fichas agregadas (Corte Forração / Corte Cabedal) cobrem múltiplos
+          // PVs por design. Mostrar lista COMPLETA (não "+N outros") pra que
+          // o cortador veja exatamente quais pedidos estão sendo cortados
+          // — evita bug onde "OFF WHITE de outro PV" entrou sem perceber.
+          const isAggregated = sector === 'Corte Forração' || sector === 'Corte Cabedal';
           const pvDisplay = pvs.length === 0 ? null
-            : pvs.length === 1 ? pvs[0]
+            : pvs.length === 1 || isAggregated ? pvs.join(' · ')
             : `${pvs[0]} +${pvs.length - 1}`;
           return (
             <div className="flex items-start gap-4 min-w-0">
               {/* PV destacado — pedido user 19/05/2026 */}
               {pvDisplay && (
-                <div className="shrink-0">
-                  <span className="section-label block" style={{ color: '#000' }}>Pedido</span>
+                <div className={isAggregated ? 'min-w-0 flex-1' : 'shrink-0'}>
+                  <span className="section-label block" style={{ color: '#000' }}>
+                    {pvs.length > 1 ? `Pedidos (${pvs.length})` : 'Pedido'}
+                  </span>
                   <p
-                    className="text-black leading-none mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em' }}
+                    className={`text-black leading-tight mt-0.5 ${isAggregated && pvs.length > 1 ? 'break-words' : ''}`}
+                    style={{
+                      fontFamily: "'Anton', Impact, sans-serif",
+                      fontSize: isAggregated && pvs.length > 1 ? '20px' : '32px',
+                      letterSpacing: '-0.025em',
+                    }}
                   >
                     {pvDisplay}
                   </p>
@@ -446,22 +457,36 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                           (cabedal: {cg.color})
                         </span>
                       </>
+                    ) : sector === 'Corte Forração' ? (
+                      // 2026-05-26: SEM mapping de forração cadastrado.
+                      // Antes mostrava cor do cabedal como placeholder + aviso âmbar
+                      // — confundia o cortador (usuário cortou napa errada porque
+                      // viu "OFF WHITE" e assumiu que era a cor da forração).
+                      // Agora bloqueio visual vermelho explícito: NÃO exibe nenhuma
+                      // cor sugerida, força o supervisor a cadastrar antes de cortar.
+                      <>
+                        <span className="section-label block" style={{ color: '#000' }}>Cor da Forração</span>
+                        <div
+                          className="inline-flex items-center gap-2 mt-1 px-2 py-1"
+                          style={{ background: '#000', color: '#FFFFFF' }}
+                        >
+                          <span style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.02em' }}>
+                            NÃO CADASTRADA
+                          </span>
+                        </div>
+                        <span className="font-mono text-[10px] text-black tracking-widest uppercase mt-1 block">
+                          Cabedal: {cg.color} · não cortar antes do cadastro
+                        </span>
+                      </>
                     ) : (
                       <>
-                        <span className="section-label block" style={{ color: '#000' }}>
-                          {sector === 'Corte Forração' ? 'Cor (sem mapping)' : 'Cor'}
-                        </span>
+                        <span className="section-label block" style={{ color: '#000' }}>Cor</span>
                         <span
                           className="text-black uppercase leading-none block"
                           style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em' }}
                         >
                           {cg.color}
                         </span>
-                        {sector === 'Corte Forração' && (
-                          <span className="font-mono text-[10px] tracking-widest uppercase mt-0.5 block text-amber-700">
-                            ⚠ Mapping de forração não cadastrado
-                          </span>
-                        )}
                       </>
                     )}
                   </div>

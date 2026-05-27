@@ -42,6 +42,7 @@ const EM_FLUXO = ['Reservado', 'Em Produção'];
 
 export default function PrintWorkSheets() {
   const [statusFilter, setStatusFilter] = useState<string>('em_fluxo');
+  const [pvFilter, setPvFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showPrintView, setShowPrintView] = useState(false);
@@ -67,22 +68,40 @@ export default function PrintWorkSheets() {
     },
   });
 
+  // Lista de PVs distintos pra alimentar o dropdown "Filtrar por PV".
+  // Adicionado 2026-05-26 pra prevenir contaminação acidental — quando user
+  // imprime PV-A mas marca OP de PV-B sem perceber, Corte Forração agrega
+  // todas as cores numa só ficha. Filtro por PV ataca o problema na origem.
+  const pvOptions = useMemo(() => {
+    const set = new Map<string, string>(); // pv_number -> sample sale_order_id
+    for (const r of rows) {
+      const num = r.sale_orders?.order_number;
+      if (num && !set.has(num)) set.set(num, r.sale_order_id || '');
+    }
+    return Array.from(set.keys()).sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+  }, [rows]);
+
   const filtered = useMemo(() => {
-    if (!search.trim()) return rows;
-    // Split por vírgula (multi-token); normaliza cada token (sp10/sp 10/SP-10 equivalentes).
-    const tokens = search.split(',').map(t => normalizeForSearch(t)).filter(Boolean);
-    return rows.filter(r => {
-      const hay = normalizeForSearch([
-        r.order_number,
-        r.color,
-        r.technical_sheets?.name,
-        r.technical_sheets?.code,
-        r.sale_orders?.order_number,
-        r.sale_orders?.client_name,
-      ].filter(Boolean).join(' '));
-      return tokens.every(t => hay.includes(t));
-    });
-  }, [rows, search]);
+    let result = rows;
+    if (pvFilter !== 'all') {
+      result = result.filter(r => r.sale_orders?.order_number === pvFilter);
+    }
+    if (search.trim()) {
+      const tokens = search.split(',').map(t => normalizeForSearch(t)).filter(Boolean);
+      result = result.filter(r => {
+        const hay = normalizeForSearch([
+          r.order_number,
+          r.color,
+          r.technical_sheets?.name,
+          r.technical_sheets?.code,
+          r.sale_orders?.order_number,
+          r.sale_orders?.client_name,
+        ].filter(Boolean).join(' '));
+        return tokens.every(t => hay.includes(t));
+      });
+    }
+    return result;
+  }, [rows, search, pvFilter]);
 
   const allFilteredIds = useMemo(() => new Set(filtered.map(r => r.id)), [filtered]);
   const allSelected = filtered.length > 0 && filtered.every(r => selectedIds.has(r.id));
@@ -222,6 +241,23 @@ export default function PrintWorkSheets() {
                 <SelectItem value="em_fluxo">Em fluxo (Reservado + Em Produção)</SelectItem>
                 <SelectItem value="todos">Todos os status</SelectItem>
                 {STATUS_OPTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select
+              value={pvFilter}
+              onValueChange={(v) => {
+                setPvFilter(v);
+                // Auto-limpa seleção pra evitar carregar OPs de PV anterior
+                // que ficariam "fantasmas" no batch ao trocar de filtro.
+                setSelectedIds(new Set());
+              }}
+            >
+              <SelectTrigger className="w-44 h-9" title="Filtra OPs por PV — evita contaminar batch com OPs de outros PVs">
+                <SelectValue placeholder="Por PV" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os PVs</SelectItem>
+                {pvOptions.map(pv => <SelectItem key={pv} value={pv}>{pv}</SelectItem>)}
               </SelectContent>
             </Select>
             <div className="text-xs text-muted-foreground ml-2">
