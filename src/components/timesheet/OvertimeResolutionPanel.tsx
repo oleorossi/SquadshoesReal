@@ -84,8 +84,10 @@ export function OvertimeResolutionPanel() {
         employeeIds.map(async (id: string) => {
           const { data, error } = await (supabase as any).rpc('calculate_employee_bank_balance', {
             p_employee_id: id,
-            p_period_start: month,
-            p_period_end: lastDayISO,
+            // Fix 2026-05-27: assinatura usa p_from/p_to (não period_start/end).
+            // Antes a função recebia NULL → retornava 0 HE pra todos.
+            p_from: month,
+            p_to: lastDayISO,
           });
           if (error) return { employee_id: id, overtime_minutes: 0 };
           // RPC retorna balance_min, days_worked, etc. Procuramos o overtime do período.

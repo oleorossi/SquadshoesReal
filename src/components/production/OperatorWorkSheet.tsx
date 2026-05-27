@@ -811,7 +811,7 @@ const OperatorWorkSheet = ({
             {/* TallyBox — controle de fichas (PR 2026-05-26):
                 operador de Silk marca uma caixinha por ficha conforme conclui.
                 Mesmo padrão de Colagem/Montagem/Acabamento. */}
-            <div className="col-span-2 keep-with-next">
+            <div className="col-span-2 keep-with-next keep-together">
               <TallyBox count={Math.max(1, Math.ceil(totalPairs / 12))} pairsPerCard={12} />
             </div>
           </>
@@ -860,7 +860,7 @@ const OperatorWorkSheet = ({
                 </div>
               </div>
             </div>
-            <div className="col-span-2 keep-with-next">
+            <div className="col-span-2 keep-with-next keep-together">
               <TallyBox count={Math.max(1, Math.ceil(totalPairs / 12))} pairsPerCard={12} />
             </div>
           </>
@@ -918,7 +918,7 @@ const OperatorWorkSheet = ({
                 </div>
               )}
             </div>
-            <div className="col-span-2 keep-with-next">
+            <div className="col-span-2 keep-with-next keep-together">
               <TallyBox count={Math.max(1, Math.ceil(totalPairs / 12))} pairsPerCard={12} />
             </div>
           </>
@@ -970,7 +970,7 @@ const OperatorWorkSheet = ({
                 </div>
               </div>
             </div>
-            <div className="col-span-2 keep-with-next">
+            <div className="col-span-2 keep-with-next keep-together">
               <TallyBox count={Math.max(1, Math.ceil(totalPairs / 12))} pairsPerCard={12} />
             </div>
           </>
@@ -1027,7 +1027,7 @@ const OperatorWorkSheet = ({
                 </p>
               )}
             </div>
-            <div className="col-span-2 keep-with-next">
+            <div className="col-span-2 keep-with-next keep-together">
               <TallyBox count={boxes} pairsPerCard={12} title={`Caixas · ${boxes} × 12 pares`} />
             </div>
           </>

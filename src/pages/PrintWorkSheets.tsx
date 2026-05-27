@@ -233,7 +233,15 @@ export default function PrintWorkSheets() {
                 onChange={e => setSearch(e.target.value)}
               />
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <Select
+              value={statusFilter}
+              onValueChange={(v) => {
+                setStatusFilter(v);
+                // Auto-limpa selectedIds (mesmo motivo do pvFilter): evita
+                // OPs fantasmas de status anterior contaminarem o batch.
+                setSelectedIds(new Set());
+              }}
+            >
               <SelectTrigger className="w-52 h-9">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
