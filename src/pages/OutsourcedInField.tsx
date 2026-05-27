@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import {
   Truck, ArrowSquareOut, Buildings, Funnel, Warning as AlertTriangle,
   CurrencyDollar as DollarSign, Package as Boxes, X, CheckCircle, Clock,
-  Calendar, DotsThreeVertical, Printer, CaretRight, Palette, FlaskConical,
+  Calendar, DotsThreeVertical, Printer, CaretRight, Palette, Flask as FlaskConical,
   Ruler, Plus, Camera, ChartBar as BarChart3,
 } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
