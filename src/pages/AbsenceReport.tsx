@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Badge } from '@/components/ui/badge';
 import { CircleNotch as Loader2, Warning as AlertTriangle, Plus, Trash as Trash2 } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { useHolidays } from '@/hooks/useTimesheet';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -23,13 +24,17 @@ function daysBetween(a: string, b: string): number {
   return Math.round((d2.getTime() - d1.getTime()) / 86400000) + 1;
 }
 
-function businessDaysInPeriod(from: string, to: string): number {
+function businessDaysInPeriod(from: string, to: string, holidaysSet: Set<string> = new Set()): number {
   let count = 0;
   const cur = new Date(from + 'T00:00:00');
   const end = new Date(to + 'T00:00:00');
   while (cur <= end) {
     const dow = cur.getDay();
-    if (dow !== 0 && dow !== 6) count++;
+    const iso = cur.toISOString().slice(0, 10);
+    // PR 2026-05-28: desconta feriados obrigatórios da contagem de dias úteis.
+    // Antes "Maio" mostrava 21 dias úteis ignorando Dia do Trabalho (1/5) +
+    // Corpus Christi — taxa de absenteísmo ficava inflada nesses meses.
+    if (dow !== 0 && dow !== 6 && !holidaysSet.has(iso)) count++;
     cur.setDate(cur.getDate() + 1);
   }
   return count;
@@ -46,6 +51,12 @@ export default function AbsenceReport() {
 
   const { data: employees = [] } = useEmployees();
   const { data: absences = [], isLoading } = useAbsences({ from, to });
+  const { data: holidaysList = [] } = useHolidays();
+  // Feriados OBRIGATÓRIOS (optional !== true) excluídos da contagem de dias úteis.
+  const holidaysSet = useMemo(
+    () => new Set((holidaysList as any[]).filter(h => h.optional !== true).map(h => h.holiday_date as string)),
+    [holidaysList],
+  );
   const upsert = useUpsertAbsence();
   const remove = useDeleteAbsence();
 
@@ -62,10 +73,10 @@ export default function AbsenceReport() {
     const totalAbsentDays = absences.reduce((s, a) => s + daysBetween(a.start_date, a.end_date), 0);
     const justificadas = absences.filter(a => a.absence_type !== 'falta_injustificada').length;
     const injustificadas = absences.filter(a => a.absence_type === 'falta_injustificada').length;
-    const totalBizDays = businessDaysInPeriod(from, to) * Math.max(1, activeEmpCount);
+    const totalBizDays = businessDaysInPeriod(from, to, holidaysSet) * Math.max(1, activeEmpCount);
     const taxa = totalBizDays > 0 ? (totalAbsentDays / totalBizDays) * 100 : 0;
     return { totalAbsentDays, justificadas, injustificadas, taxa };
-  }, [absences, from, to, activeEmpCount]);
+  }, [absences, from, to, activeEmpCount, holidaysSet]);
 
   // Por tipo
   const byType = useMemo(() => {

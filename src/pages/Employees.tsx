@@ -421,11 +421,20 @@ export default function Employees() {
             <div>
               <Label>CPF</Label>
               <Input
-                value={form.cpf || ''}
+                value={(() => {
+                  // Máscara visual XXX.XXX.XXX-XX (PR 2026-05-28 LGPD).
+                  // Storage continua só dígitos; display formatado pra evitar
+                  // PII em screenshots/print de tela.
+                  const d = (form.cpf || '').replace(/\D/g, '');
+                  if (d.length <= 3) return d;
+                  if (d.length <= 6) return `${d.slice(0,3)}.${d.slice(3)}`;
+                  if (d.length <= 9) return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6)}`;
+                  return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9,11)}`;
+                })()}
                 onChange={e => setForm(f => ({ ...f, cpf: e.target.value.replace(/\D/g, '').slice(0, 11) }))}
-                placeholder="11 dígitos"
+                placeholder="000.000.000-00"
                 className="font-mono"
-                maxLength={11}
+                maxLength={14}
               />
               <p className="text-xs text-muted-foreground mt-0.5">Obrigatório no Espelho de Ponto (Portaria 671)</p>
             </div>
