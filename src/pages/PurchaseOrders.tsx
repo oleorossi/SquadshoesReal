@@ -329,7 +329,7 @@ export default function PurchaseOrders() {
                             {o.is_late_origin && (
                               <Badge
                                 variant="destructive"
-                                className="text-xs h-4 px-1.5 font-normal animate-pulse"
+                                className="text-xs h-4 px-1.5 font-normal motion-safe:animate-pulse"
                                 title="OC nasceu já atrasada — deadline da wave era anterior à criação"
                               >
                                 Atrasada
@@ -747,7 +747,13 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
             />
             {!order.promised_date && order.eta_days && order.eta_days > 0 && (
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                Sugerido: {order.eta_days} dias úteis ({format(addBusinessDays(new Date(order.created_at), order.eta_days), 'dd/MM/yyyy')})
+                Sugerido: {order.eta_days} dias úteis ({format(
+                  // Usa só o "date" do timestamp + meio-dia local pra evitar drift
+                  // de timezone. SQL trigger faz `created_at::date + eta_days` na
+                  // TZ do servidor; aqui mantemos a mesma data civil.
+                  addBusinessDays(new Date(order.created_at.slice(0, 10) + 'T12:00:00'), order.eta_days),
+                  'dd/MM/yyyy',
+                )})
               </p>
             )}
           </div>

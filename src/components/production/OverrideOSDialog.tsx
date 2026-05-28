@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -78,12 +79,26 @@ export function OverrideOSDialog({
   );
 
   const handleConfirm = async () => {
-    for (const os of pendingOSs) {
-      await overrideMutation.mutateAsync({ serviceOrderId: os.id, reason: reasons[os.id] });
+    // Promise.allSettled: se uma OS falhar, as outras seguem. Sem isso, um
+    // erro no meio do loop deixava OSs anteriores overridden e dialog fechado
+    // sem callback de retry (= OP travada apesar de ter liberado N OSs).
+    const results = await Promise.allSettled(
+      pendingOSs.map((os) =>
+        overrideMutation.mutateAsync({ serviceOrderId: os.id, reason: reasons[os.id] }),
+      ),
+    );
+    const failed = results.filter((r) => r.status === 'rejected');
+    if (failed.length === 0) {
+      setReasons({});
+      onOpenChange(false);
+      onAllOverridden?.();
+    } else {
+      toast.error(
+        `${failed.length} de ${pendingOSs.length} OS(s) falharam ao ser liberadas. ` +
+        `Recarregue e tente novamente — as que passaram já estão marcadas.`,
+        { duration: 8000 },
+      );
     }
-    setReasons({});
-    onOpenChange(false);
-    onAllOverridden?.();
   };
 
   return (

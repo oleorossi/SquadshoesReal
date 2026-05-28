@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -31,7 +32,10 @@ interface LateOS {
  * /comprar e /terceirizados respectivamente. Cards inteiros viram link clicável.
  */
 export function LateItemsAlertCard() {
-  const today = new Date().toISOString().slice(0, 10);
+  // Memoizado: today calculado uma vez no mount evita que query keys mudem
+  // a cada render (queryKey ['late-pos-alert', today] precisa ser estável).
+  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const todayMs = useMemo(() => new Date(today + 'T12:00:00').getTime(), [today]);
 
   const { data: latePOs = [] } = useQuery({
     queryKey: ['late-pos-alert', today],
@@ -47,30 +51,36 @@ export function LateItemsAlertCard() {
       if (error) throw error;
       return ((data || []) as any[]).map((p) => ({
         ...p,
-        days_late: Math.floor((new Date(today).getTime() - new Date(p.promised_date).getTime()) / 86_400_000),
+        days_late: Math.max(0, Math.floor((todayMs - new Date(p.promised_date + 'T12:00:00').getTime()) / 86_400_000)),
       })) as LatePO[];
     },
   });
 
+  // OSs vencidas: por quoted_deadline (caminho normal) OU por created_at velho
+  // sem deadline (OS criada sem service_date — invisível ao filtro padrão).
   const { data: lateOSs = [] } = useQuery({
     queryKey: ['late-os-alert', today],
     staleTime: 5 * 60_000,
     queryFn: async () => {
+      const tenDaysAgo = new Date(todayMs - 10 * 86_400_000).toISOString().slice(0, 10);
       const { data, error } = await (supabase as any)
         .from('service_orders')
-        .select('id, order_number, quoted_deadline, contractors(name)')
-        .lt('quoted_deadline', today)
+        .select('id, order_number, quoted_deadline, created_at, contractors(name)')
+        .or(`quoted_deadline.lt.${today},and(quoted_deadline.is.null,created_at.lt.${tenDaysAgo})`)
         .not('status', 'in', '("received","Concluído","concluido","Cancelado","cancelled","cancelado")')
-        .order('quoted_deadline', { ascending: true })
+        .order('quoted_deadline', { ascending: true, nullsFirst: false })
         .limit(5);
       if (error) throw error;
-      return ((data || []) as any[]).map((o) => ({
-        id: o.id,
-        order_number: o.order_number,
-        contractor_name: o.contractors?.name || 'Sem contratada',
-        quoted_deadline: o.quoted_deadline,
-        days_late: Math.floor((new Date(today).getTime() - new Date(o.quoted_deadline).getTime()) / 86_400_000),
-      })) as LateOS[];
+      return ((data || []) as any[]).map((o) => {
+        const reference = o.quoted_deadline || o.created_at;
+        return {
+          id: o.id,
+          order_number: o.order_number,
+          contractor_name: o.contractors?.name || 'Sem contratada',
+          quoted_deadline: o.quoted_deadline || o.created_at,
+          days_late: Math.max(0, Math.floor((todayMs - new Date(reference.slice(0, 10) + 'T12:00:00').getTime()) / 86_400_000)),
+        };
+      }) as LateOS[];
     },
   });
 

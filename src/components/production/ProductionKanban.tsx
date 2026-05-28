@@ -507,13 +507,13 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
       invalidateProductionCaches();
       await onRefresh?.();
     } catch (error: any) {
-      // Trigger tg_block_montagem_with_pending_service_order rejeitou com check_violation
-      // quando há OS terceirizada em andamento dentro do prazo. Em vez de só mostrar
-      // erro, abre dialog pra justificar override por OS.
+      // Trigger tg_block_montagem_with_pending_service_order rejeita com
+      // check_violation (23514) + mensagem específica "OS terceirizada(s) em
+      // andamento". Match literal pra evitar falso-positivo com outros erros
+      // que mencionam "Montagem" + "OS" mas não são esse bloqueio.
       const msg = String(error?.message || '');
       const isMontagemBlock = error?.code === '23514'
-        || /OS terceirizada.*em andamento/i.test(msg)
-        || /montagem/i.test(msg) && /OS/i.test(msg);
+        && /OS terceirizada\(s\) em andamento dentro do prazo/i.test(msg);
       if (isMontagemBlock) {
         const op = orders.find(o => o.id === orderId);
         setOverrideOS({
