@@ -126,6 +126,25 @@ export default function Employees() {
   const totalAdvances = advances.reduce((s, a) => s + (a.amount ?? 0), 0);
 
   const handleSave = () => {
+    // A3 da auditoria 2026-05-28: warn em demissão retroativa.
+    // Marcar termination_date no passado pode quebrar cálculo de saldo de
+    // funcionários que já tiveram batidas importadas após essa data.
+    if (editing && form.termination_date && form.termination_date !== editing.termination_date) {
+      const termDate = new Date(form.termination_date + 'T00:00:00');
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (termDate < today) {
+        const days = Math.ceil((today.getTime() - termDate.getTime()) / 86400000);
+        const ok = confirm(
+          `⚠️ Demissão retroativa: ${days} dia(s) atrás.\n\n` +
+          `Atenção: batidas de ponto importadas DEPOIS de ${form.termination_date} ` +
+          `serão ignoradas no saldo (que agora usa termination_date como limite).\n\n` +
+          `Confirme se a data está correta. Recomendado: fechar período/folha ANTES ` +
+          `de marcar demissão retroativa.\n\nProsseguir?`
+        );
+        if (!ok) return;
+      }
+    }
     if (editing) updateEmployee.mutate({ id: editing.id, data: form });
     else addEmployee.mutate(form);
     setDialogOpen(false);
