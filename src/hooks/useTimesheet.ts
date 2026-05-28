@@ -781,10 +781,17 @@ export function useTimeRecords(batch?: string, startDate?: string, endDate?: str
     queryFn: async () => {
       const allRecords: any[] = [];
       const PAGE_SIZE = 1000;
+      // Safety cap (PR 2026-05-28): 100 páginas × 1k = 100k records máx.
+      // Em fábrica de calçado isso cobre ~5 anos de ponto pra 80 funcionários.
+      // Filtros (batch + período) DEVEM evitar atingir esse teto em uso normal.
+      // Acima disso = sintoma de filtro mal configurado; melhor abortar que
+      // travar o browser.
+      const MAX_PAGES = 100;
       let from = 0;
       let hasMore = true;
+      let pagesFetched = 0;
 
-      while (hasMore) {
+      while (hasMore && pagesFetched < MAX_PAGES) {
         let q = supabase.from('time_records').select('*').order('employee_name').order('record_date').range(from, from + PAGE_SIZE - 1);
         if (batch) q = q.eq('import_batch', batch);
         if (hasValidStart) q = q.gte('record_date', startDate!);
@@ -795,6 +802,11 @@ export function useTimeRecords(batch?: string, startDate?: string, endDate?: str
         allRecords.push(...rows);
         hasMore = rows.length === PAGE_SIZE;
         from += PAGE_SIZE;
+        pagesFetched++;
+      }
+
+      if (pagesFetched >= MAX_PAGES && hasMore) {
+        console.warn(`[useTimeRecords] atingiu MAX_PAGES (${MAX_PAGES}). Resultado truncado em ${allRecords.length} records. Refine os filtros.`);
       }
 
       return allRecords as TimeRecord[];
