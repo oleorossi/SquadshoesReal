@@ -16,6 +16,8 @@ export interface Contractor {
   notes: string;
   active: boolean;
   payment_days: number;
+  /** Lead time padrão (dias úteis) para popular quoted_deadline em OSs novas. NULL = 10 dias fallback. */
+  default_lead_days?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -64,6 +66,12 @@ export interface ServiceOrder {
   order_id?: string | null;
   quoted_at?: string | null;
   quoted_deadline?: string | null;
+  /** Override por OS: quantos dias úteis a contratada tem pra entregar (a partir de service_date). NULL = cascata default_lead_days → 10. */
+  quoted_lead_days?: number | null;
+  /** Auditoria 28/05/2026: timestamp do override manual que libera Montagem mesmo com OS pendente. */
+  montagem_override_at?: string | null;
+  montagem_override_by?: string | null;
+  montagem_override_reason?: string | null;
   created_at: string;
   updated_at: string;
   contractors?: Contractor;

@@ -90,6 +90,13 @@ export type Database = {
             foreignKeyName: "absences_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
+            referencedRelation: "v_employee_punch_pattern"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "absences_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "v_employee_vacation_balance"
             referencedColumns: ["employee_id"]
           },
@@ -98,6 +105,13 @@ export type Database = {
             columns: ["employee_id"]
             isOneToOne: false
             referencedRelation: "v_pending_time_records"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "absences_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_time_pendings"
             referencedColumns: ["employee_id"]
           },
         ]
@@ -426,6 +440,13 @@ export type Database = {
             referencedRelation: "contractors"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "artisanal_recipes_default_contractor_id_fkey"
+            columns: ["default_contractor_id"]
+            isOneToOne: false
+            referencedRelation: "v_contractor_metrics"
+            referencedColumns: ["contractor_id"]
+          },
         ]
       }
       audit_logs: {
@@ -474,7 +495,15 @@ export type Database = {
           user_agent?: string | null
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "audit_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       automation_executions: {
         Row: {
@@ -623,6 +652,7 @@ export type Database = {
           minutes: number
           movement_date: string
           movement_type: string
+          overtime_pct: number
           reference_id: string | null
           reference_type: string | null
         }
@@ -635,6 +665,7 @@ export type Database = {
           minutes: number
           movement_date: string
           movement_type?: string
+          overtime_pct?: number
           reference_id?: string | null
           reference_type?: string | null
         }
@@ -647,6 +678,7 @@ export type Database = {
           minutes?: number
           movement_date?: string
           movement_type?: string
+          overtime_pct?: number
           reference_id?: string | null
           reference_type?: string | null
         }
@@ -683,6 +715,13 @@ export type Database = {
             foreignKeyName: "bank_hours_movements_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
+            referencedRelation: "v_employee_punch_pattern"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "bank_hours_movements_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "v_employee_vacation_balance"
             referencedColumns: ["employee_id"]
           },
@@ -691,6 +730,13 @@ export type Database = {
             columns: ["employee_id"]
             isOneToOne: false
             referencedRelation: "v_pending_time_records"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "bank_hours_movements_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_time_pendings"
             referencedColumns: ["employee_id"]
           },
         ]
@@ -1056,6 +1102,20 @@ export type Database = {
             foreignKeyName: "bom_operations_sheet_id_fkey"
             columns: ["sheet_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "bom_operations_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bom_operations_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
             referencedRelation: "v_sku_forecast"
             referencedColumns: ["reference_id"]
           },
@@ -1137,6 +1197,20 @@ export type Database = {
             foreignKeyName: "bom_versions_sheet_id_fkey"
             columns: ["sheet_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "bom_versions_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bom_versions_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
             referencedRelation: "v_sku_forecast"
             referencedColumns: ["reference_id"]
           },
@@ -1166,11 +1240,14 @@ export type Database = {
           id: string
           interno: boolean | null
           largura_cm: number
+          metros_per_amarrado_default: number | null
           min_stock: number
           nome: string
+          pairs_per_box_default: number | null
           peso_kg: number | null
           quantity: number
           supplier_id: string | null
+          tipo: Database["public"]["Enums"]["box_type_kind"] | null
           unit_price: number
           updated_at: string | null
         }
@@ -1183,11 +1260,14 @@ export type Database = {
           id?: string
           interno?: boolean | null
           largura_cm: number
+          metros_per_amarrado_default?: number | null
           min_stock: number
           nome: string
+          pairs_per_box_default?: number | null
           peso_kg?: number | null
           quantity: number
           supplier_id?: string | null
+          tipo?: Database["public"]["Enums"]["box_type_kind"] | null
           unit_price: number
           updated_at?: string | null
         }
@@ -1200,15 +1280,33 @@ export type Database = {
           id?: string
           interno?: boolean | null
           largura_cm?: number
+          metros_per_amarrado_default?: number | null
           min_stock?: number
           nome?: string
+          pairs_per_box_default?: number | null
           peso_kg?: number | null
           quantity?: number
           supplier_id?: string | null
+          tipo?: Database["public"]["Enums"]["box_type_kind"] | null
           unit_price?: number
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "box_types_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "box_types_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "vw_supplier_quality_rating"
+            referencedColumns: ["supplier_id"]
+          },
+        ]
       }
       budgets: {
         Row: {
@@ -1418,6 +1516,7 @@ export type Database = {
           commercial_block: boolean
           commercial_block_date: string | null
           commercial_block_reason: string | null
+          complemento: string | null
           consumidor_final: number | null
           contato: string | null
           created_at: string
@@ -1429,6 +1528,7 @@ export type Database = {
           endereco_updated_at: string | null
           estado: string | null
           gestaoclick_id: string | null
+          icms_contribuinte: boolean | null
           id: string
           indicador_ie: number | null
           inscricao_estadual: string | null
@@ -1470,6 +1570,7 @@ export type Database = {
           commercial_block?: boolean
           commercial_block_date?: string | null
           commercial_block_reason?: string | null
+          complemento?: string | null
           consumidor_final?: number | null
           contato?: string | null
           created_at?: string
@@ -1481,6 +1582,7 @@ export type Database = {
           endereco_updated_at?: string | null
           estado?: string | null
           gestaoclick_id?: string | null
+          icms_contribuinte?: boolean | null
           id?: string
           indicador_ie?: number | null
           inscricao_estadual?: string | null
@@ -1522,6 +1624,7 @@ export type Database = {
           commercial_block?: boolean
           commercial_block_date?: string | null
           commercial_block_reason?: string | null
+          complemento?: string | null
           consumidor_final?: number | null
           contato?: string | null
           created_at?: string
@@ -1533,6 +1636,7 @@ export type Database = {
           endereco_updated_at?: string | null
           estado?: string | null
           gestaoclick_id?: string | null
+          icms_contribuinte?: boolean | null
           id?: string
           indicador_ie?: number | null
           inscricao_estadual?: string | null
@@ -1801,6 +1905,13 @@ export type Database = {
             foreignKeyName: "cogs_entries_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "cogs_entries_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "vw_costura_queue"
             referencedColumns: ["order_id"]
           },
@@ -2020,6 +2131,66 @@ export type Database = {
         }
         Relationships: []
       }
+      company_settings: {
+        Row: {
+          caepf: string | null
+          cei: string | null
+          cep: string | null
+          cidade: string | null
+          cno: string | null
+          cnpj: string | null
+          cpf: string | null
+          created_at: string
+          email: string | null
+          endereco: string | null
+          id: string
+          is_default: boolean
+          nome_fantasia: string | null
+          razao_social: string
+          telefone: string | null
+          uf: string | null
+          updated_at: string
+        }
+        Insert: {
+          caepf?: string | null
+          cei?: string | null
+          cep?: string | null
+          cidade?: string | null
+          cno?: string | null
+          cnpj?: string | null
+          cpf?: string | null
+          created_at?: string
+          email?: string | null
+          endereco?: string | null
+          id?: string
+          is_default?: boolean
+          nome_fantasia?: string | null
+          razao_social: string
+          telefone?: string | null
+          uf?: string | null
+          updated_at?: string
+        }
+        Update: {
+          caepf?: string | null
+          cei?: string | null
+          cep?: string | null
+          cidade?: string | null
+          cno?: string | null
+          cnpj?: string | null
+          cpf?: string | null
+          created_at?: string
+          email?: string | null
+          endereco?: string | null
+          id?: string
+          is_default?: boolean
+          nome_fantasia?: string | null
+          razao_social?: string
+          telefone?: string | null
+          uf?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       component_sheets: {
         Row: {
           created_at: string
@@ -2163,6 +2334,7 @@ export type Database = {
           city: string | null
           cnpj_cpf: string | null
           created_at: string
+          default_lead_days: number | null
           email: string | null
           id: string
           name: string
@@ -2180,6 +2352,7 @@ export type Database = {
           city?: string | null
           cnpj_cpf?: string | null
           created_at?: string
+          default_lead_days?: number | null
           email?: string | null
           id?: string
           name: string
@@ -2197,6 +2370,7 @@ export type Database = {
           city?: string | null
           cnpj_cpf?: string | null
           created_at?: string
+          default_lead_days?: number | null
           email?: string | null
           id?: string
           name?: string
@@ -2406,6 +2580,13 @@ export type Database = {
             columns: ["order_id"]
             isOneToOne: false
             referencedRelation: "v_order_pickup_window"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "cost_variance_reports_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
             referencedColumns: ["order_id"]
           },
           {
@@ -3097,6 +3278,7 @@ export type Database = {
           costura_capacity_per_day: number
           created_at: string
           cutting_capacity_per_day: number | null
+          expedition_capacity_per_day: number | null
           finishing_capacity_per_day: number | null
           gluing_capacity_per_day: number | null
           id: string
@@ -3121,6 +3303,7 @@ export type Database = {
           costura_capacity_per_day?: number
           created_at?: string
           cutting_capacity_per_day?: number | null
+          expedition_capacity_per_day?: number | null
           finishing_capacity_per_day?: number | null
           gluing_capacity_per_day?: number | null
           id?: string
@@ -3145,6 +3328,7 @@ export type Database = {
           costura_capacity_per_day?: number
           created_at?: string
           cutting_capacity_per_day?: number | null
+          expedition_capacity_per_day?: number | null
           finishing_capacity_per_day?: number | null
           gluing_capacity_per_day?: number | null
           id?: string
@@ -3873,7 +4057,64 @@ export type Database = {
           start_date?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "employee_absences_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "bank_hours_balance"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "employee_absences_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_absences_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_employee_13o_provision"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "employee_absences_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_employee_pending_summary"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "employee_absences_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_employee_punch_pattern"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "employee_absences_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_employee_vacation_balance"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "employee_absences_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_pending_time_records"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "employee_absences_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_time_pendings"
+            referencedColumns: ["employee_id"]
+          },
+        ]
       }
       employee_advances: {
         Row: {
@@ -3948,6 +4189,13 @@ export type Database = {
             foreignKeyName: "employee_advances_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
+            referencedRelation: "v_employee_punch_pattern"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "employee_advances_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "v_employee_vacation_balance"
             referencedColumns: ["employee_id"]
           },
@@ -3956,6 +4204,13 @@ export type Database = {
             columns: ["employee_id"]
             isOneToOne: false
             referencedRelation: "v_pending_time_records"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "employee_advances_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_time_pendings"
             referencedColumns: ["employee_id"]
           },
           {
@@ -4055,6 +4310,13 @@ export type Database = {
             foreignKeyName: "employee_skills_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
+            referencedRelation: "v_employee_punch_pattern"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "employee_skills_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "v_employee_vacation_balance"
             referencedColumns: ["employee_id"]
           },
@@ -4065,6 +4327,13 @@ export type Database = {
             referencedRelation: "v_pending_time_records"
             referencedColumns: ["employee_id"]
           },
+          {
+            foreignKeyName: "employee_skills_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_time_pendings"
+            referencedColumns: ["employee_id"]
+          },
         ]
       }
       employees: {
@@ -4073,6 +4342,7 @@ export type Database = {
           admission_date: string | null
           bank_hours_initial_min: number
           cost_center: string | null
+          cpf: string | null
           created_at: string
           department: string | null
           external_id: string | null
@@ -4080,7 +4350,10 @@ export type Database = {
           hourly_rate: number | null
           id: string
           name: string
+          night_bonus_pct: number
           notes: string | null
+          overtime_100_pct: number
+          overtime_50_pct: number
           overtime_hourly_rate: number | null
           overtime_multiplier: number
           phone: string | null
@@ -4091,6 +4364,7 @@ export type Database = {
           receives_vt: boolean
           role: string | null
           salary: number
+          termination_date: string | null
           updated_at: string
           whatsapp: string | null
           work_schedule_id: string | null
@@ -4100,6 +4374,7 @@ export type Database = {
           admission_date?: string | null
           bank_hours_initial_min?: number
           cost_center?: string | null
+          cpf?: string | null
           created_at?: string
           department?: string | null
           external_id?: string | null
@@ -4107,7 +4382,10 @@ export type Database = {
           hourly_rate?: number | null
           id?: string
           name: string
+          night_bonus_pct?: number
           notes?: string | null
+          overtime_100_pct?: number
+          overtime_50_pct?: number
           overtime_hourly_rate?: number | null
           overtime_multiplier?: number
           phone?: string | null
@@ -4118,6 +4396,7 @@ export type Database = {
           receives_vt?: boolean
           role?: string | null
           salary?: number
+          termination_date?: string | null
           updated_at?: string
           whatsapp?: string | null
           work_schedule_id?: string | null
@@ -4127,6 +4406,7 @@ export type Database = {
           admission_date?: string | null
           bank_hours_initial_min?: number
           cost_center?: string | null
+          cpf?: string | null
           created_at?: string
           department?: string | null
           external_id?: string | null
@@ -4134,7 +4414,10 @@ export type Database = {
           hourly_rate?: number | null
           id?: string
           name?: string
+          night_bonus_pct?: number
           notes?: string | null
+          overtime_100_pct?: number
+          overtime_50_pct?: number
           overtime_hourly_rate?: number | null
           overtime_multiplier?: number
           phone?: string | null
@@ -4145,6 +4428,7 @@ export type Database = {
           receives_vt?: boolean
           role?: string | null
           salary?: number
+          termination_date?: string | null
           updated_at?: string
           whatsapp?: string | null
           work_schedule_id?: string | null
@@ -4272,6 +4556,13 @@ export type Database = {
             foreignKeyName: "equipment_downtime_impacted_order_id_fkey"
             columns: ["impacted_order_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "equipment_downtime_impacted_order_id_fkey"
+            columns: ["impacted_order_id"]
+            isOneToOne: false
             referencedRelation: "vw_costura_queue"
             referencedColumns: ["order_id"]
           },
@@ -4357,6 +4648,7 @@ export type Database = {
           description: string
           entry_date: string
           id: string
+          nfe_id: string | null
           notes: string | null
           reconciled: boolean
           reconciled_at: string | null
@@ -4377,6 +4669,7 @@ export type Database = {
           description?: string
           entry_date?: string
           id?: string
+          nfe_id?: string | null
           notes?: string | null
           reconciled?: boolean
           reconciled_at?: string | null
@@ -4397,6 +4690,7 @@ export type Database = {
           description?: string
           entry_date?: string
           id?: string
+          nfe_id?: string | null
           notes?: string | null
           reconciled?: boolean
           reconciled_at?: string | null
@@ -4427,6 +4721,13 @@ export type Database = {
             columns: ["cost_center_id"]
             isOneToOne: false
             referencedRelation: "cost_centers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_entries_nfe_id_fkey"
+            columns: ["nfe_id"]
+            isOneToOne: false
+            referencedRelation: "nfe_emitidas"
             referencedColumns: ["id"]
           },
         ]
@@ -4522,6 +4823,13 @@ export type Database = {
             columns: ["order_id"]
             isOneToOne: false
             referencedRelation: "v_order_pickup_window"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "finished_goods_receipts_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
             referencedColumns: ["order_id"]
           },
           {
@@ -4935,6 +5243,13 @@ export type Database = {
             foreignKeyName: "goods_issues_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "goods_issues_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "vw_costura_queue"
             referencedColumns: ["order_id"]
           },
@@ -4972,6 +5287,42 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_sale_order_billing_health"
             referencedColumns: ["sale_order_id"]
+          },
+        ]
+      }
+      group_color_sources: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          group_id: string
+          source_group_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          group_id: string
+          source_group_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          group_id?: string
+          source_group_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_color_sources_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "product_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_color_sources_source_group_id_fkey"
+            columns: ["source_group_id"]
+            isOneToOne: false
+            referencedRelation: "product_groups"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -5851,6 +6202,13 @@ export type Database = {
             foreignKeyName: "lgpd_consents_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
+            referencedRelation: "v_employee_punch_pattern"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "lgpd_consents_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "v_employee_vacation_balance"
             referencedColumns: ["employee_id"]
           },
@@ -5859,6 +6217,13 @@ export type Database = {
             columns: ["employee_id"]
             isOneToOne: false
             referencedRelation: "v_pending_time_records"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "lgpd_consents_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_time_pendings"
             referencedColumns: ["employee_id"]
           },
         ]
@@ -6497,6 +6862,13 @@ export type Database = {
             foreignKeyName: "material_reservations_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "material_reservations_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "vw_costura_queue"
             referencedColumns: ["order_id"]
           },
@@ -6777,6 +7149,13 @@ export type Database = {
             foreignKeyName: "mrp_suggestions_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "mrp_suggestions_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "vw_costura_queue"
             referencedColumns: ["order_id"]
           },
@@ -7004,6 +7383,20 @@ export type Database = {
             foreignKeyName: "ncm_change_log_technical_sheet_id_fkey"
             columns: ["technical_sheet_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "ncm_change_log_technical_sheet_id_fkey"
+            columns: ["technical_sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ncm_change_log_technical_sheet_id_fkey"
+            columns: ["technical_sheet_id"]
+            isOneToOne: false
             referencedRelation: "v_sku_forecast"
             referencedColumns: ["reference_id"]
           },
@@ -7088,6 +7481,7 @@ export type Database = {
           created_by: string | null
           data_emissao: string | null
           id: string
+          idempotency_key: string | null
           itens: Json
           motivo: string
           motivo_rejeicao: string | null
@@ -7110,6 +7504,7 @@ export type Database = {
           created_by?: string | null
           data_emissao?: string | null
           id?: string
+          idempotency_key?: string | null
           itens: Json
           motivo: string
           motivo_rejeicao?: string | null
@@ -7132,6 +7527,7 @@ export type Database = {
           created_by?: string | null
           data_emissao?: string | null
           id?: string
+          idempotency_key?: string | null
           itens?: Json
           motivo?: string
           motivo_rejeicao?: string | null
@@ -7208,6 +7604,10 @@ export type Database = {
           danfe_url: string | null
           data_cancelamento: string | null
           data_emissao: string | null
+          gc_detail_response: Json | null
+          gc_emit_response: Json | null
+          gc_request_payload: Json | null
+          gc_response_payload: Json | null
           id: string
           justificativa_cancelamento: string | null
           motivo_rejeicao: string | null
@@ -7232,6 +7632,10 @@ export type Database = {
           danfe_url?: string | null
           data_cancelamento?: string | null
           data_emissao?: string | null
+          gc_detail_response?: Json | null
+          gc_emit_response?: Json | null
+          gc_request_payload?: Json | null
+          gc_response_payload?: Json | null
           id?: string
           justificativa_cancelamento?: string | null
           motivo_rejeicao?: string | null
@@ -7256,6 +7660,10 @@ export type Database = {
           danfe_url?: string | null
           data_cancelamento?: string | null
           data_emissao?: string | null
+          gc_detail_response?: Json | null
+          gc_emit_response?: Json | null
+          gc_request_payload?: Json | null
+          gc_response_payload?: Json | null
           id?: string
           justificativa_cancelamento?: string | null
           motivo_rejeicao?: string | null
@@ -7417,6 +7825,20 @@ export type Database = {
             foreignKeyName: "order_costs_reference_id_fkey"
             columns: ["reference_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "order_costs_reference_id_fkey"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_costs_reference_id_fkey"
+            columns: ["reference_id"]
+            isOneToOne: false
             referencedRelation: "v_sku_forecast"
             referencedColumns: ["reference_id"]
           },
@@ -7468,6 +7890,94 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_sale_order_billing_health"
             referencedColumns: ["sale_order_id"]
+          },
+        ]
+      }
+      order_lots: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          current_sector: string | null
+          expected_complete_date: string | null
+          id: string
+          lot_number: number
+          notes: string | null
+          order_id: string
+          quantity: number
+          started_at: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          current_sector?: string | null
+          expected_complete_date?: string | null
+          id?: string
+          lot_number: number
+          notes?: string | null
+          order_id: string
+          quantity: number
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          current_sector?: string | null
+          expected_complete_date?: string | null
+          id?: string
+          lot_number?: number
+          notes?: string | null
+          order_id?: string
+          quantity?: number
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_lots_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_lots_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_projection_timeline"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "order_lots_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_late_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_lots_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_pickup_window"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "order_lots_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "order_lots_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "vw_costura_queue"
+            referencedColumns: ["order_id"]
           },
         ]
       }
@@ -7574,6 +8084,13 @@ export type Database = {
             foreignKeyName: "order_stages_operator_employee_id_fkey"
             columns: ["operator_employee_id"]
             isOneToOne: false
+            referencedRelation: "v_employee_punch_pattern"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "order_stages_operator_employee_id_fkey"
+            columns: ["operator_employee_id"]
+            isOneToOne: false
             referencedRelation: "v_employee_vacation_balance"
             referencedColumns: ["employee_id"]
           },
@@ -7582,6 +8099,13 @@ export type Database = {
             columns: ["operator_employee_id"]
             isOneToOne: false
             referencedRelation: "v_pending_time_records"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "order_stages_operator_employee_id_fkey"
+            columns: ["operator_employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_time_pendings"
             referencedColumns: ["employee_id"]
           },
           {
@@ -7616,6 +8140,13 @@ export type Database = {
             foreignKeyName: "order_stages_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "order_stages_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "vw_costura_queue"
             referencedColumns: ["order_id"]
           },
@@ -7641,6 +8172,10 @@ export type Database = {
           mod_cost: number | null
           notes: string | null
           order_number: string
+          outsourced_at: string | null
+          outsourced_returned_at: string | null
+          outsourced_sector: string | null
+          outsourced_to_contractor_id: string | null
           overhead_cost: number | null
           packaging_product_id: string | null
           packaging_quantity: number
@@ -7678,6 +8213,10 @@ export type Database = {
           mod_cost?: number | null
           notes?: string | null
           order_number?: string
+          outsourced_at?: string | null
+          outsourced_returned_at?: string | null
+          outsourced_sector?: string | null
+          outsourced_to_contractor_id?: string | null
           overhead_cost?: number | null
           packaging_product_id?: string | null
           packaging_quantity?: number
@@ -7715,6 +8254,10 @@ export type Database = {
           mod_cost?: number | null
           notes?: string | null
           order_number?: string
+          outsourced_at?: string | null
+          outsourced_returned_at?: string | null
+          outsourced_sector?: string | null
+          outsourced_to_contractor_id?: string | null
           overhead_cost?: number | null
           packaging_product_id?: string | null
           packaging_quantity?: number
@@ -7768,6 +8311,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_sale_order_billing_health"
             referencedColumns: ["sale_order_id"]
+          },
+          {
+            foreignKeyName: "orders_outsourced_to_contractor_id_fkey"
+            columns: ["outsourced_to_contractor_id"]
+            isOneToOne: false
+            referencedRelation: "contractors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_outsourced_to_contractor_id_fkey"
+            columns: ["outsourced_to_contractor_id"]
+            isOneToOne: false
+            referencedRelation: "v_contractor_metrics"
+            referencedColumns: ["contractor_id"]
           },
           {
             foreignKeyName: "orders_packaging_product_id_fkey"
@@ -7894,6 +8451,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_ficha_sole_range_mismatch"
             referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "references"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "references"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "references"
@@ -8063,6 +8634,13 @@ export type Database = {
             foreignKeyName: "overtime_resolutions_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
+            referencedRelation: "v_employee_punch_pattern"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "overtime_resolutions_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "v_employee_vacation_balance"
             referencedColumns: ["employee_id"]
           },
@@ -8071,6 +8649,13 @@ export type Database = {
             columns: ["employee_id"]
             isOneToOne: false
             referencedRelation: "v_pending_time_records"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "overtime_resolutions_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_time_pendings"
             referencedColumns: ["employee_id"]
           },
           {
@@ -8336,6 +8921,20 @@ export type Database = {
             foreignKeyName: "packaging_configs_sheet_id_fkey"
             columns: ["sheet_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "packaging_configs_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "packaging_configs_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
             referencedRelation: "v_sku_forecast"
             referencedColumns: ["reference_id"]
           },
@@ -8572,6 +9171,13 @@ export type Database = {
             foreignKeyName: "payroll_runs_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
+            referencedRelation: "v_employee_punch_pattern"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "payroll_runs_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "v_employee_vacation_balance"
             referencedColumns: ["employee_id"]
           },
@@ -8580,6 +9186,13 @@ export type Database = {
             columns: ["employee_id"]
             isOneToOne: false
             referencedRelation: "v_pending_time_records"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "payroll_runs_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_time_pendings"
             referencedColumns: ["employee_id"]
           },
         ]
@@ -8737,6 +9350,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_ficha_sole_range_mismatch"
             referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "picking_items_reference_id_fkey"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "picking_items_reference_id_fkey"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "picking_items_reference_id_fkey"
@@ -8961,6 +9588,13 @@ export type Database = {
             foreignKeyName: "picking_lists_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "picking_lists_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "vw_costura_queue"
             referencedColumns: ["order_id"]
           },
@@ -9125,6 +9759,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_ficha_sole_range_mismatch"
             referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "price_list_items_reference_id_fkey"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "price_list_items_reference_id_fkey"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "price_list_items_reference_id_fkey"
@@ -9317,6 +9965,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_ficha_sole_range_mismatch"
             referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "pricing_simulations_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "pricing_simulations_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "pricing_simulations_sheet_id_fkey"
@@ -9765,6 +10427,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_ficha_sole_range_mismatch"
             referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "product_references_technical_sheet_id_fkey"
+            columns: ["technical_sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "product_references_technical_sheet_id_fkey"
+            columns: ["technical_sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "product_references_technical_sheet_id_fkey"
@@ -10225,6 +10901,13 @@ export type Database = {
             foreignKeyName: "production_consumptions_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "production_consumptions_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "vw_costura_queue"
             referencedColumns: ["order_id"]
           },
@@ -10398,6 +11081,20 @@ export type Database = {
             foreignKeyName: "production_finishing_packages_reference_id_fkey"
             columns: ["reference_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "production_finishing_packages_reference_id_fkey"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_finishing_packages_reference_id_fkey"
+            columns: ["reference_id"]
+            isOneToOne: false
             referencedRelation: "v_sku_forecast"
             referencedColumns: ["reference_id"]
           },
@@ -10554,6 +11251,13 @@ export type Database = {
             foreignKeyName: "production_lots_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "production_lots_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "vw_costura_queue"
             referencedColumns: ["order_id"]
           },
@@ -10570,6 +11274,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_ficha_sole_range_mismatch"
             referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "production_lots_reference_id_fkey"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "production_lots_reference_id_fkey"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "production_lots_reference_id_fkey"
@@ -10704,6 +11422,20 @@ export type Database = {
             foreignKeyName: "production_setup_times_from_reference_id_fkey"
             columns: ["from_reference_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "production_setup_times_from_reference_id_fkey"
+            columns: ["from_reference_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_setup_times_from_reference_id_fkey"
+            columns: ["from_reference_id"]
+            isOneToOne: false
             referencedRelation: "v_sku_forecast"
             referencedColumns: ["reference_id"]
           },
@@ -10734,6 +11466,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_ficha_sole_range_mismatch"
             referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "production_setup_times_to_reference_id_fkey"
+            columns: ["to_reference_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "production_setup_times_to_reference_id_fkey"
+            columns: ["to_reference_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "production_setup_times_to_reference_id_fkey"
@@ -10858,6 +11604,13 @@ export type Database = {
             columns: ["order_id"]
             isOneToOne: false
             referencedRelation: "v_order_pickup_window"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "production_stops_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
             referencedColumns: ["order_id"]
           },
           {
@@ -11067,6 +11820,20 @@ export type Database = {
             foreignKeyName: "production_wave_items_reference_id_fkey"
             columns: ["reference_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "production_wave_items_reference_id_fkey"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_wave_items_reference_id_fkey"
+            columns: ["reference_id"]
+            isOneToOne: false
             referencedRelation: "v_sku_forecast"
             referencedColumns: ["reference_id"]
           },
@@ -11236,6 +12003,20 @@ export type Database = {
             foreignKeyName: "production_wave_rework_product_ref_fkey"
             columns: ["product_ref"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "production_wave_rework_product_ref_fkey"
+            columns: ["product_ref"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_wave_rework_product_ref_fkey"
+            columns: ["product_ref"]
+            isOneToOne: false
             referencedRelation: "v_sku_forecast"
             referencedColumns: ["reference_id"]
           },
@@ -11349,6 +12130,7 @@ export type Database = {
           earliest_deadline: string | null
           finished_at: string | null
           id: string
+          late_creation: boolean
           material_ready_date: string | null
           mesa_start_date: string | null
           montagem_start_date: string | null
@@ -11383,6 +12165,7 @@ export type Database = {
           earliest_deadline?: string | null
           finished_at?: string | null
           id?: string
+          late_creation?: boolean
           material_ready_date?: string | null
           mesa_start_date?: string | null
           montagem_start_date?: string | null
@@ -11417,6 +12200,7 @@ export type Database = {
           earliest_deadline?: string | null
           finished_at?: string | null
           id?: string
+          late_creation?: boolean
           material_ready_date?: string | null
           mesa_start_date?: string | null
           montagem_start_date?: string | null
@@ -11768,6 +12552,9 @@ export type Database = {
           email: string
           full_name: string
           id: string
+          is_sales_rep: boolean
+          sales_target_monthly_brl: number | null
+          sales_target_monthly_pairs: number | null
           updated_at: string
         }
         Insert: {
@@ -11777,6 +12564,9 @@ export type Database = {
           email?: string
           full_name?: string
           id: string
+          is_sales_rep?: boolean
+          sales_target_monthly_brl?: number | null
+          sales_target_monthly_pairs?: number | null
           updated_at?: string
         }
         Update: {
@@ -11786,7 +12576,43 @@ export type Database = {
           email?: string
           full_name?: string
           id?: string
+          is_sales_rep?: boolean
+          sales_target_monthly_brl?: number | null
+          sales_target_monthly_pairs?: number | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      punch_clock_params: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          param_key: string
+          valid_from: string
+          valid_to: string | null
+          value: Json
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          param_key: string
+          valid_from: string
+          valid_to?: string | null
+          value: Json
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          param_key?: string
+          valid_from?: string
+          valid_to?: string | null
+          value?: Json
         }
         Relationships: []
       }
@@ -11996,6 +12822,8 @@ export type Database = {
           eta_days: number | null
           expedite: boolean
           id: string
+          idempotency_key: string | null
+          is_late_origin: boolean
           linked_sale_order_ids: string[] | null
           notes: string | null
           order_number: string
@@ -12020,6 +12848,8 @@ export type Database = {
           eta_days?: number | null
           expedite?: boolean
           id?: string
+          idempotency_key?: string | null
+          is_late_origin?: boolean
           linked_sale_order_ids?: string[] | null
           notes?: string | null
           order_number?: string
@@ -12044,6 +12874,8 @@ export type Database = {
           eta_days?: number | null
           expedite?: boolean
           id?: string
+          idempotency_key?: string | null
+          is_late_origin?: boolean
           linked_sale_order_ids?: string[] | null
           notes?: string | null
           order_number?: string
@@ -12622,6 +13454,13 @@ export type Database = {
             foreignKeyName: "quality_inspections_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "quality_inspections_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "vw_costura_queue"
             referencedColumns: ["order_id"]
           },
@@ -12738,6 +13577,13 @@ export type Database = {
             foreignKeyName: "quality_records_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "quality_records_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "vw_costura_queue"
             referencedColumns: ["order_id"]
           },
@@ -12830,6 +13676,13 @@ export type Database = {
             columns: ["order_id"]
             isOneToOne: false
             referencedRelation: "v_order_pickup_window"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "quarantine_stock_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
             referencedColumns: ["order_id"]
           },
           {
@@ -12971,6 +13824,20 @@ export type Database = {
             foreignKeyName: "ready_stock_reference_id_fkey"
             columns: ["reference_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "ready_stock_reference_id_fkey"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ready_stock_reference_id_fkey"
+            columns: ["reference_id"]
+            isOneToOne: false
             referencedRelation: "v_sku_forecast"
             referencedColumns: ["reference_id"]
           },
@@ -13049,6 +13916,20 @@ export type Database = {
             foreignKeyName: "reference_color_variants_reference_id_fkey"
             columns: ["reference_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "reference_color_variants_reference_id_fkey"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reference_color_variants_reference_id_fkey"
+            columns: ["reference_id"]
+            isOneToOne: false
             referencedRelation: "v_sku_forecast"
             referencedColumns: ["reference_id"]
           },
@@ -13077,12 +13958,19 @@ export type Database = {
           description_override: string | null
           display_order: number
           id: string
+          insole_consumption_override: number | null
+          insole_material_product_id: string | null
+          lining_consumption_override: number | null
+          lining_material_product_id: string | null
           material_name: string
           ncm: string | null
           reference_id: string
           sku: string | null
+          sole_consumption_override: number | null
+          sole_material_product_id: string | null
           unit_price_override: number | null
           updated_at: string
+          upper_consumption_override: number | null
           upper_material_product_id: string | null
         }
         Insert: {
@@ -13093,12 +13981,19 @@ export type Database = {
           description_override?: string | null
           display_order: number
           id?: string
+          insole_consumption_override?: number | null
+          insole_material_product_id?: string | null
+          lining_consumption_override?: number | null
+          lining_material_product_id?: string | null
           material_name: string
           ncm?: string | null
           reference_id: string
           sku?: string | null
+          sole_consumption_override?: number | null
+          sole_material_product_id?: string | null
           unit_price_override?: number | null
           updated_at?: string
+          upper_consumption_override?: number | null
           upper_material_product_id?: string | null
         }
         Update: {
@@ -13109,15 +14004,233 @@ export type Database = {
           description_override?: string | null
           display_order?: number
           id?: string
+          insole_consumption_override?: number | null
+          insole_material_product_id?: string | null
+          lining_consumption_override?: number | null
+          lining_material_product_id?: string | null
           material_name?: string
           ncm?: string | null
           reference_id?: string
           sku?: string | null
+          sole_consumption_override?: number | null
+          sole_material_product_id?: string | null
           unit_price_override?: number | null
           updated_at?: string
+          upper_consumption_override?: number | null
           upper_material_product_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "reference_material_variants_insole_material_product_id_fkey"
+            columns: ["insole_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "product_stock_with_reservations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_insole_material_product_id_fkey"
+            columns: ["insole_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_insole_material_product_id_fkey"
+            columns: ["insole_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_projection_timeline"
+            referencedColumns: ["material_id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_insole_material_product_id_fkey"
+            columns: ["insole_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "v_mrp_needs"
+            referencedColumns: ["product_id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_insole_material_product_id_fkey"
+            columns: ["insole_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "v_products_abc_class"
+            referencedColumns: ["product_id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_insole_material_product_id_fkey"
+            columns: ["insole_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "v_products_below_rop"
+            referencedColumns: ["product_id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_insole_material_product_id_fkey"
+            columns: ["insole_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "v_products_missing_supplier"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_insole_material_product_id_fkey"
+            columns: ["insole_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "v_products_missing_supplier_active_demand"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_insole_material_product_id_fkey"
+            columns: ["insole_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "v_soles_audit"
+            referencedColumns: ["sole_id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_insole_material_product_id_fkey"
+            columns: ["insole_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "v_soles_with_specs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_lining_material_product_id_fkey"
+            columns: ["lining_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "product_stock_with_reservations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_lining_material_product_id_fkey"
+            columns: ["lining_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_lining_material_product_id_fkey"
+            columns: ["lining_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_projection_timeline"
+            referencedColumns: ["material_id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_lining_material_product_id_fkey"
+            columns: ["lining_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "v_mrp_needs"
+            referencedColumns: ["product_id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_lining_material_product_id_fkey"
+            columns: ["lining_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "v_products_abc_class"
+            referencedColumns: ["product_id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_lining_material_product_id_fkey"
+            columns: ["lining_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "v_products_below_rop"
+            referencedColumns: ["product_id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_lining_material_product_id_fkey"
+            columns: ["lining_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "v_products_missing_supplier"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_lining_material_product_id_fkey"
+            columns: ["lining_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "v_products_missing_supplier_active_demand"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_lining_material_product_id_fkey"
+            columns: ["lining_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "v_soles_audit"
+            referencedColumns: ["sole_id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_lining_material_product_id_fkey"
+            columns: ["lining_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "v_soles_with_specs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_sole_material_product_id_fkey"
+            columns: ["sole_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "product_stock_with_reservations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_sole_material_product_id_fkey"
+            columns: ["sole_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_sole_material_product_id_fkey"
+            columns: ["sole_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_projection_timeline"
+            referencedColumns: ["material_id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_sole_material_product_id_fkey"
+            columns: ["sole_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "v_mrp_needs"
+            referencedColumns: ["product_id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_sole_material_product_id_fkey"
+            columns: ["sole_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "v_products_abc_class"
+            referencedColumns: ["product_id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_sole_material_product_id_fkey"
+            columns: ["sole_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "v_products_below_rop"
+            referencedColumns: ["product_id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_sole_material_product_id_fkey"
+            columns: ["sole_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "v_products_missing_supplier"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_sole_material_product_id_fkey"
+            columns: ["sole_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "v_products_missing_supplier_active_demand"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_sole_material_product_id_fkey"
+            columns: ["sole_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "v_soles_audit"
+            referencedColumns: ["sole_id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_sole_material_product_id_fkey"
+            columns: ["sole_material_product_id"]
+            isOneToOne: false
+            referencedRelation: "v_soles_with_specs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       reference_materials: {
         Row: {
@@ -13243,6 +14356,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_ficha_sole_range_mismatch"
             referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "reference_materials_reference_id_fkey"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "reference_materials_reference_id_fkey"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "reference_materials_reference_id_fkey"
@@ -13549,6 +14676,20 @@ export type Database = {
             foreignKeyName: "sac_tickets_reference_id_fkey"
             columns: ["reference_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "sac_tickets_reference_id_fkey"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sac_tickets_reference_id_fkey"
+            columns: ["reference_id"]
+            isOneToOne: false
             referencedRelation: "v_sku_forecast"
             referencedColumns: ["reference_id"]
           },
@@ -13751,6 +14892,20 @@ export type Database = {
             foreignKeyName: "sale_order_items_reference_id_fkey"
             columns: ["reference_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "sale_order_items_reference_id_fkey"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sale_order_items_reference_id_fkey"
+            columns: ["reference_id"]
+            isOneToOne: false
             referencedRelation: "v_sku_forecast"
             referencedColumns: ["reference_id"]
           },
@@ -13847,15 +15002,20 @@ export type Database = {
       sale_orders: {
         Row: {
           billing_week: string | null
+          brand: string
           checked_by: string | null
           client_cnpj: string | null
           client_contact: string | null
           client_id: string | null
           client_name: string
           client_order_number: string
+          client_request_id: string | null
+          client_signature_at: string | null
+          client_signature_data_url: string | null
           commission_value: number
           costs_dirty_at: string | null
           created_at: string
+          deleted_at: string | null
           delivery_deadline: string | null
           delivery_month: string | null
           delivery_week: string | null
@@ -13864,6 +15024,7 @@ export type Database = {
           export_incoterm: string | null
           factoring_config_id: string | null
           id: string
+          informacoes_complementares_nf: string | null
           is_factoring: boolean
           is_standalone_nfe: boolean
           manual_billing_override: boolean
@@ -13881,6 +15042,7 @@ export type Database = {
           packaging_quantity: number
           parent_order_id: string | null
           payment_condition: string | null
+          picking_individually_done_at: string | null
           remessa: string | null
           representative: string | null
           representative_id: string | null
@@ -13899,15 +15061,20 @@ export type Database = {
         }
         Insert: {
           billing_week?: string | null
+          brand?: string
           checked_by?: string | null
           client_cnpj?: string | null
           client_contact?: string | null
           client_id?: string | null
           client_name?: string
           client_order_number?: string
+          client_request_id?: string | null
+          client_signature_at?: string | null
+          client_signature_data_url?: string | null
           commission_value?: number
           costs_dirty_at?: string | null
           created_at?: string
+          deleted_at?: string | null
           delivery_deadline?: string | null
           delivery_month?: string | null
           delivery_week?: string | null
@@ -13916,6 +15083,7 @@ export type Database = {
           export_incoterm?: string | null
           factoring_config_id?: string | null
           id?: string
+          informacoes_complementares_nf?: string | null
           is_factoring?: boolean
           is_standalone_nfe?: boolean
           manual_billing_override?: boolean
@@ -13933,6 +15101,7 @@ export type Database = {
           packaging_quantity?: number
           parent_order_id?: string | null
           payment_condition?: string | null
+          picking_individually_done_at?: string | null
           remessa?: string | null
           representative?: string | null
           representative_id?: string | null
@@ -13951,15 +15120,20 @@ export type Database = {
         }
         Update: {
           billing_week?: string | null
+          brand?: string
           checked_by?: string | null
           client_cnpj?: string | null
           client_contact?: string | null
           client_id?: string | null
           client_name?: string
           client_order_number?: string
+          client_request_id?: string | null
+          client_signature_at?: string | null
+          client_signature_data_url?: string | null
           commission_value?: number
           costs_dirty_at?: string | null
           created_at?: string
+          deleted_at?: string | null
           delivery_deadline?: string | null
           delivery_month?: string | null
           delivery_week?: string | null
@@ -13968,6 +15142,7 @@ export type Database = {
           export_incoterm?: string | null
           factoring_config_id?: string | null
           id?: string
+          informacoes_complementares_nf?: string | null
           is_factoring?: boolean
           is_standalone_nfe?: boolean
           manual_billing_override?: boolean
@@ -13985,6 +15160,7 @@ export type Database = {
           packaging_quantity?: number
           parent_order_id?: string | null
           payment_condition?: string | null
+          picking_individually_done_at?: string | null
           remessa?: string | null
           representative?: string | null
           representative_id?: string | null
@@ -14210,6 +15386,122 @@ export type Database = {
           },
         ]
       }
+      sector_distribution_plan: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          day_of_week: number
+          id: string
+          is_locked: boolean
+          notes: string | null
+          pairs_planned: number
+          sector: string
+          source: string
+          tech_sheet_id: string
+          updated_at: string
+          week_start: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          day_of_week: number
+          id?: string
+          is_locked?: boolean
+          notes?: string | null
+          pairs_planned: number
+          sector: string
+          source?: string
+          tech_sheet_id: string
+          updated_at?: string
+          week_start: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          day_of_week?: number
+          id?: string
+          is_locked?: boolean
+          notes?: string | null
+          pairs_planned?: number
+          sector?: string
+          source?: string
+          tech_sheet_id?: string
+          updated_at?: string
+          week_start?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sector_distribution_plan_tech_sheet_id_fkey"
+            columns: ["tech_sheet_id"]
+            isOneToOne: false
+            referencedRelation: "technical_sheets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sector_distribution_plan_tech_sheet_id_fkey"
+            columns: ["tech_sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_ficha_sole_range_mismatch"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "sector_distribution_plan_tech_sheet_id_fkey"
+            columns: ["tech_sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "sector_distribution_plan_tech_sheet_id_fkey"
+            columns: ["tech_sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sector_distribution_plan_tech_sheet_id_fkey"
+            columns: ["tech_sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_sku_forecast"
+            referencedColumns: ["reference_id"]
+          },
+          {
+            foreignKeyName: "sector_distribution_plan_tech_sheet_id_fkey"
+            columns: ["tech_sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_sku_forecast_summary"
+            referencedColumns: ["reference_id"]
+          },
+          {
+            foreignKeyName: "sector_distribution_plan_tech_sheet_id_fkey"
+            columns: ["tech_sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_technical_sheets_audit"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sector_grouping_config: {
+        Row: {
+          notes: string | null
+          sector: string
+          strategy: string
+          updated_at: string
+        }
+        Insert: {
+          notes?: string | null
+          sector: string
+          strategy: string
+          updated_at?: string
+        }
+        Update: {
+          notes?: string | null
+          sector?: string
+          strategy?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       security_settings: {
         Row: {
           id: string
@@ -14317,12 +15609,16 @@ export type Database = {
           material_meters: number | null
           material_name: string | null
           materials_sent: Json | null
+          montagem_override_at: string | null
+          montagem_override_by: string | null
+          montagem_override_reason: string | null
           notes: string | null
           order_id: string | null
           order_number: string
           quantity: number
           quoted_at: string | null
           quoted_deadline: string | null
+          quoted_lead_days: number | null
           receipt_generated_at: string | null
           receipt_number: string | null
           related_order_id: string | null
@@ -14356,12 +15652,16 @@ export type Database = {
           material_meters?: number | null
           material_name?: string | null
           materials_sent?: Json | null
+          montagem_override_at?: string | null
+          montagem_override_by?: string | null
+          montagem_override_reason?: string | null
           notes?: string | null
           order_id?: string | null
           order_number?: string
           quantity?: number
           quoted_at?: string | null
           quoted_deadline?: string | null
+          quoted_lead_days?: number | null
           receipt_generated_at?: string | null
           receipt_number?: string | null
           related_order_id?: string | null
@@ -14395,12 +15695,16 @@ export type Database = {
           material_meters?: number | null
           material_name?: string | null
           materials_sent?: Json | null
+          montagem_override_at?: string | null
+          montagem_override_by?: string | null
+          montagem_override_reason?: string | null
           notes?: string | null
           order_id?: string | null
           order_number?: string
           quantity?: number
           quoted_at?: string | null
           quoted_deadline?: string | null
+          quoted_lead_days?: number | null
           receipt_generated_at?: string | null
           receipt_number?: string | null
           related_order_id?: string | null
@@ -14431,6 +15735,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "service_orders_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "v_contractor_metrics"
+            referencedColumns: ["contractor_id"]
+          },
+          {
+            foreignKeyName: "service_orders_montagem_override_by_fkey"
+            columns: ["montagem_override_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "service_orders_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
@@ -14456,6 +15774,13 @@ export type Database = {
             columns: ["order_id"]
             isOneToOne: false
             referencedRelation: "v_order_pickup_window"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "service_orders_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
             referencedColumns: ["order_id"]
           },
           {
@@ -14491,6 +15816,13 @@ export type Database = {
             columns: ["related_order_id"]
             isOneToOne: false
             referencedRelation: "v_order_pickup_window"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "service_orders_related_order_id_fkey"
+            columns: ["related_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
             referencedColumns: ["order_id"]
           },
           {
@@ -14582,6 +15914,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_ficha_sole_range_mismatch"
             referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "sheet_catalog_models_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "sheet_catalog_models_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "sheet_catalog_models_sheet_id_fkey"
@@ -14807,6 +16153,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_ficha_sole_range_mismatch"
             referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "sheet_materials_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "sheet_materials_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "sheet_materials_sheet_id_fkey"
@@ -16131,6 +17491,13 @@ export type Database = {
             foreignKeyName: "stock_movements_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "stock_movements_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "vw_costura_queue"
             referencedColumns: ["order_id"]
           },
@@ -16686,6 +18053,20 @@ export type Database = {
             foreignKeyName: "technical_references_sheet_id_fkey"
             columns: ["sheet_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "technical_references_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "technical_references_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
             referencedRelation: "v_sku_forecast"
             referencedColumns: ["reference_id"]
           },
@@ -16698,6 +18079,81 @@ export type Database = {
           },
           {
             foreignKeyName: "technical_references_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_technical_sheets_audit"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      technical_sheet_box_types: {
+        Row: {
+          box_type_id: string
+          created_at: string
+          sheet_id: string
+        }
+        Insert: {
+          box_type_id: string
+          created_at?: string
+          sheet_id: string
+        }
+        Update: {
+          box_type_id?: string
+          created_at?: string
+          sheet_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "technical_sheet_box_types_box_type_id_fkey"
+            columns: ["box_type_id"]
+            isOneToOne: false
+            referencedRelation: "box_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_box_types_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "technical_sheets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_box_types_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_ficha_sole_range_mismatch"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_box_types_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_box_types_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_box_types_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_sku_forecast"
+            referencedColumns: ["reference_id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_box_types_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_sku_forecast_summary"
+            referencedColumns: ["reference_id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_box_types_sheet_id_fkey"
             columns: ["sheet_id"]
             isOneToOne: false
             referencedRelation: "v_technical_sheets_audit"
@@ -16741,6 +18197,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_ficha_sole_range_mismatch"
             referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_insole_colors_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_insole_colors_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "technical_sheet_insole_colors_sheet_id_fkey"
@@ -16840,6 +18310,20 @@ export type Database = {
             foreignKeyName: "technical_sheet_operations_sheet_id_fkey"
             columns: ["sheet_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_operations_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_operations_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
             referencedRelation: "v_sku_forecast"
             referencedColumns: ["reference_id"]
           },
@@ -16903,6 +18387,20 @@ export type Database = {
             foreignKeyName: "technical_sheet_overhead_history_sheet_id_fkey"
             columns: ["sheet_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_overhead_history_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_overhead_history_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
             referencedRelation: "v_sku_forecast"
             referencedColumns: ["reference_id"]
           },
@@ -16958,6 +18456,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_ficha_sole_range_mismatch"
             referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_palmilha_colors_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_palmilha_colors_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "technical_sheet_palmilha_colors_sheet_id_fkey"
@@ -17091,6 +18603,20 @@ export type Database = {
             foreignKeyName: "technical_sheet_snapshots_sheet_id_fkey"
             columns: ["sheet_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_snapshots_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_snapshots_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
             referencedRelation: "v_sku_forecast"
             referencedColumns: ["reference_id"]
           },
@@ -17149,6 +18675,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_ficha_sole_range_mismatch"
             referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_sole_colors_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_sole_colors_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "technical_sheet_sole_colors_sheet_id_fkey"
@@ -17309,6 +18849,20 @@ export type Database = {
             foreignKeyName: "technical_sheet_versions_technical_sheet_id_fkey"
             columns: ["technical_sheet_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_versions_technical_sheet_id_fkey"
+            columns: ["technical_sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_versions_technical_sheet_id_fkey"
+            columns: ["technical_sheet_id"]
+            isOneToOne: false
             referencedRelation: "v_sku_forecast"
             referencedColumns: ["reference_id"]
           },
@@ -17332,6 +18886,7 @@ export type Database = {
         Row: {
           assembly_capacity_per_day: number | null
           assembly_time_minutes: number | null
+          aviamento_steps: Json
           box_type_id: string | null
           box_weight_kg: number | null
           brand: string | null
@@ -17387,6 +18942,7 @@ export type Database = {
           insole_material: string | null
           insole_plate_product: string | null
           insole_ready_made: boolean
+          knife_size_ranges: Json | null
           lead_time_acabamento_dias: number
           lead_time_buffer_material_dias: number
           lead_time_colagem_dias: number | null
@@ -17446,6 +19002,7 @@ export type Database = {
         Insert: {
           assembly_capacity_per_day?: number | null
           assembly_time_minutes?: number | null
+          aviamento_steps?: Json
           box_type_id?: string | null
           box_weight_kg?: number | null
           brand?: string | null
@@ -17501,6 +19058,7 @@ export type Database = {
           insole_material?: string | null
           insole_plate_product?: string | null
           insole_ready_made?: boolean
+          knife_size_ranges?: Json | null
           lead_time_acabamento_dias?: number
           lead_time_buffer_material_dias?: number
           lead_time_colagem_dias?: number | null
@@ -17560,6 +19118,7 @@ export type Database = {
         Update: {
           assembly_capacity_per_day?: number | null
           assembly_time_minutes?: number | null
+          aviamento_steps?: Json
           box_type_id?: string | null
           box_weight_kg?: number | null
           brand?: string | null
@@ -17615,6 +19174,7 @@ export type Database = {
           insole_material?: string | null
           insole_plate_product?: string | null
           insole_ready_made?: boolean
+          knife_size_ranges?: Json | null
           lead_time_acabamento_dias?: number
           lead_time_buffer_material_dias?: number
           lead_time_colagem_dias?: number | null
@@ -17879,6 +19439,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_pending_time_records"
             referencedColumns: ["time_record_id"]
+          },
+          {
+            foreignKeyName: "time_record_manual_overrides_time_record_id_fkey"
+            columns: ["time_record_id"]
+            isOneToOne: false
+            referencedRelation: "v_time_pendings"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -18316,6 +19883,229 @@ export type Database = {
           },
         ]
       }
+      weekly_balance_audit_log: {
+        Row: {
+          action: string
+          after_diff_min: number | null
+          before_diff_min: number | null
+          changed_at: string
+          changed_by: string | null
+          employee_id: string | null
+          id: string
+          metadata: Json | null
+          reason: string | null
+          snapshot_id: string | null
+          week_start: string
+        }
+        Insert: {
+          action: string
+          after_diff_min?: number | null
+          before_diff_min?: number | null
+          changed_at?: string
+          changed_by?: string | null
+          employee_id?: string | null
+          id?: string
+          metadata?: Json | null
+          reason?: string | null
+          snapshot_id?: string | null
+          week_start: string
+        }
+        Update: {
+          action?: string
+          after_diff_min?: number | null
+          before_diff_min?: number | null
+          changed_at?: string
+          changed_by?: string | null
+          employee_id?: string | null
+          id?: string
+          metadata?: Json | null
+          reason?: string | null
+          snapshot_id?: string | null
+          week_start?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weekly_balance_audit_log_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "bank_hours_balance"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "weekly_balance_audit_log_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weekly_balance_audit_log_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_employee_13o_provision"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "weekly_balance_audit_log_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_employee_pending_summary"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "weekly_balance_audit_log_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_employee_punch_pattern"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "weekly_balance_audit_log_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_employee_vacation_balance"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "weekly_balance_audit_log_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_pending_time_records"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "weekly_balance_audit_log_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_time_pendings"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "weekly_balance_audit_log_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "weekly_balance_snapshot"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      weekly_balance_snapshot: {
+        Row: {
+          apuracao_label: string | null
+          computed_at: string
+          days_absent: number
+          days_partial: number
+          days_worked: number
+          diff_min: number
+          employee_id: string
+          expected_min: number
+          he_100_min: number
+          he_50_min: number
+          id: string
+          locked_at: string | null
+          locked_by: string | null
+          locked_reason: string | null
+          week_end: string
+          week_start: string
+          worked_min: number
+        }
+        Insert: {
+          apuracao_label?: string | null
+          computed_at?: string
+          days_absent?: number
+          days_partial?: number
+          days_worked?: number
+          diff_min?: number
+          employee_id: string
+          expected_min?: number
+          he_100_min?: number
+          he_50_min?: number
+          id?: string
+          locked_at?: string | null
+          locked_by?: string | null
+          locked_reason?: string | null
+          week_end: string
+          week_start: string
+          worked_min?: number
+        }
+        Update: {
+          apuracao_label?: string | null
+          computed_at?: string
+          days_absent?: number
+          days_partial?: number
+          days_worked?: number
+          diff_min?: number
+          employee_id?: string
+          expected_min?: number
+          he_100_min?: number
+          he_50_min?: number
+          id?: string
+          locked_at?: string | null
+          locked_by?: string | null
+          locked_reason?: string | null
+          week_end?: string
+          week_start?: string
+          worked_min?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weekly_balance_snapshot_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "bank_hours_balance"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "weekly_balance_snapshot_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weekly_balance_snapshot_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_employee_13o_provision"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "weekly_balance_snapshot_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_employee_pending_summary"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "weekly_balance_snapshot_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_employee_punch_pattern"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "weekly_balance_snapshot_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_employee_vacation_balance"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "weekly_balance_snapshot_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_pending_time_records"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "weekly_balance_snapshot_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_time_pendings"
+            referencedColumns: ["employee_id"]
+          },
+        ]
+      }
       wip_ledger: {
         Row: {
           amount: number
@@ -18405,6 +20195,13 @@ export type Database = {
             foreignKeyName: "wip_ledger_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "wip_ledger_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "vw_costura_queue"
             referencedColumns: ["order_id"]
           },
@@ -18471,6 +20268,13 @@ export type Database = {
           tolerance_minutes: number
           updated_at: string
           weekly_hours: number
+          works_friday: boolean
+          works_monday: boolean
+          works_saturday: boolean
+          works_sunday: boolean
+          works_thursday: boolean
+          works_tuesday: boolean
+          works_wednesday: boolean
         }
         Insert: {
           created_at?: string
@@ -18490,6 +20294,13 @@ export type Database = {
           tolerance_minutes?: number
           updated_at?: string
           weekly_hours?: number
+          works_friday?: boolean
+          works_monday?: boolean
+          works_saturday?: boolean
+          works_sunday?: boolean
+          works_thursday?: boolean
+          works_tuesday?: boolean
+          works_wednesday?: boolean
         }
         Update: {
           created_at?: string
@@ -18509,6 +20320,13 @@ export type Database = {
           tolerance_minutes?: number
           updated_at?: string
           weekly_hours?: number
+          works_friday?: boolean
+          works_monday?: boolean
+          works_saturday?: boolean
+          works_sunday?: boolean
+          works_thursday?: boolean
+          works_tuesday?: boolean
+          works_wednesday?: boolean
         }
         Relationships: []
       }
@@ -18516,6 +20334,8 @@ export type Database = {
     Views: {
       bank_hours_balance: {
         Row: {
+          balance_100_min: number | null
+          balance_50_min: number | null
           balance_min: number | null
           department: string | null
           employee_id: string | null
@@ -18830,6 +20650,20 @@ export type Database = {
             foreignKeyName: "references"
             columns: ["reference_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "references"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "references"
+            columns: ["reference_id"]
+            isOneToOne: false
             referencedRelation: "v_sku_forecast"
             referencedColumns: ["reference_id"]
           },
@@ -18948,6 +20782,68 @@ export type Database = {
           provisao_13o_acumulada: number | null
           provisao_13o_mes_atual: number | null
           provisao_ferias_total: number | null
+        }
+        Relationships: []
+      }
+      v_contractor_history_orders: {
+        Row: {
+          contractor_id: string | null
+          contractor_name: string | null
+          created_at: string | null
+          days_late: number | null
+          description: string | null
+          finished_at: string | null
+          id: string | null
+          is_artisanal: boolean | null
+          materials_sent: Json | null
+          order_number: string | null
+          punctuality: string | null
+          quantity: number | null
+          quoted_deadline: string | null
+          receipt_number: string | null
+          sector: string | null
+          service_date: string | null
+          signed_photo_url: string | null
+          status: string | null
+          total_value: number | null
+          unit_price: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_orders_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "contractors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_orders_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "v_contractor_metrics"
+            referencedColumns: ["contractor_id"]
+          },
+        ]
+      }
+      v_contractor_metrics: {
+        Row: {
+          active: boolean | null
+          avg_late_days: number | null
+          cancelled_orders: number | null
+          completed_orders: number | null
+          contractor_id: string | null
+          contractor_name: string | null
+          last_order_at: string | null
+          late_count: number | null
+          on_time_count: number | null
+          open_orders: number | null
+          open_overdue_count: number | null
+          service_type: string | null
+          total_orders: number | null
+          total_quantity: number | null
+          total_value_all: number | null
+          total_value_open: number | null
+          total_value_paid: number | null
         }
         Relationships: []
       }
@@ -19087,6 +20983,13 @@ export type Database = {
             foreignKeyName: "payroll_runs_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
+            referencedRelation: "v_employee_punch_pattern"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "payroll_runs_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "v_employee_vacation_balance"
             referencedColumns: ["employee_id"]
           },
@@ -19095,6 +20998,13 @@ export type Database = {
             columns: ["employee_id"]
             isOneToOne: false
             referencedRelation: "v_pending_time_records"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "payroll_runs_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_time_pendings"
             referencedColumns: ["employee_id"]
           },
         ]
@@ -19110,6 +21020,26 @@ export type Database = {
           oldest_pending: string | null
           only_one_punch: number | null
           pending_count: number | null
+          suspicious_short_day: number | null
+        }
+        Relationships: []
+      }
+      v_employee_punch_pattern: {
+        Row: {
+          department: string | null
+          employee_id: string | null
+          employee_name: string | null
+          entry_observed: string | null
+          entry_schedule: string | null
+          exit_observed: string | null
+          exit_schedule: string | null
+          external_id: string | null
+          lunch_end_observed: string | null
+          lunch_end_schedule: string | null
+          lunch_start_observed: string | null
+          lunch_start_schedule: string | null
+          observed_days: number | null
+          tolerance_minutes: number | null
         }
         Relationships: []
       }
@@ -19220,6 +21150,20 @@ export type Database = {
             foreignKeyName: "references"
             columns: ["reference_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "references"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "references"
+            columns: ["reference_id"]
+            isOneToOne: false
             referencedRelation: "v_sku_forecast"
             referencedColumns: ["reference_id"]
           },
@@ -19278,6 +21222,23 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "vw_supplier_quality_rating"
             referencedColumns: ["supplier_id"]
+          },
+        ]
+      }
+      v_nfe_sequence_gaps: {
+        Row: {
+          cnpj_emitente: string | null
+          company_id: string | null
+          missing_numero: number | null
+          serie: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nfe_emitidas_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -19371,6 +21332,13 @@ export type Database = {
             referencedRelation: "contractors"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "service_orders_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "v_contractor_metrics"
+            referencedColumns: ["contractor_id"]
+          },
         ]
       }
       v_operator_productivity: {
@@ -19420,6 +21388,13 @@ export type Database = {
             foreignKeyName: "order_stages_operator_employee_id_fkey"
             columns: ["operator_employee_id"]
             isOneToOne: false
+            referencedRelation: "v_employee_punch_pattern"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "order_stages_operator_employee_id_fkey"
+            columns: ["operator_employee_id"]
+            isOneToOne: false
             referencedRelation: "v_employee_vacation_balance"
             referencedColumns: ["employee_id"]
           },
@@ -19428,6 +21403,13 @@ export type Database = {
             columns: ["operator_employee_id"]
             isOneToOne: false
             referencedRelation: "v_pending_time_records"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "order_stages_operator_employee_id_fkey"
+            columns: ["operator_employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_time_pendings"
             referencedColumns: ["employee_id"]
           },
         ]
@@ -19514,6 +21496,100 @@ export type Database = {
           total_packaging: number | null
           total_revenue: number | null
           total_units: number | null
+        }
+        Relationships: []
+      }
+      v_order_split_suggestions: {
+        Row: {
+          bottleneck_capacity: number | null
+          color: string | null
+          order_id: string | null
+          order_number: string | null
+          planned_delivery: string | null
+          production_step: string | null
+          quantity: number | null
+          sale_order_id: string | null
+          sale_order_number: string | null
+          sheet_code: string | null
+          sheet_id: string | null
+          sheet_name: string | null
+          status: string | null
+          suggested_lots: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orders_sale_order_id_fkey"
+            columns: ["sale_order_id"]
+            isOneToOne: false
+            referencedRelation: "sale_order_min_billing"
+            referencedColumns: ["sale_order_id"]
+          },
+          {
+            foreignKeyName: "orders_sale_order_id_fkey"
+            columns: ["sale_order_id"]
+            isOneToOne: false
+            referencedRelation: "sale_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_sale_order_id_fkey"
+            columns: ["sale_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_profitability"
+            referencedColumns: ["sale_order_id"]
+          },
+          {
+            foreignKeyName: "orders_sale_order_id_fkey"
+            columns: ["sale_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_pv_outdated_status"
+            referencedColumns: ["sale_order_id"]
+          },
+          {
+            foreignKeyName: "orders_sale_order_id_fkey"
+            columns: ["sale_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_sale_order_billing_health"
+            referencedColumns: ["sale_order_id"]
+          },
+        ]
+      }
+      v_outsourced_in_field: {
+        Row: {
+          artisanal_base_color: string | null
+          artisanal_for_order_meters: number | null
+          artisanal_for_stock_meters: number | null
+          artisanal_output_color: string | null
+          artisanal_output_meters: number | null
+          artisanal_output_name: string | null
+          client_name: string | null
+          color: string | null
+          contractor_id: string | null
+          contractor_name: string | null
+          created_at: string | null
+          days_late: number | null
+          description: string | null
+          expected_back: string | null
+          id: string | null
+          is_artisanal: boolean | null
+          material_color: string | null
+          material_meters: number | null
+          material_name: string | null
+          materials_sent: Json | null
+          notes: string | null
+          op_number: string | null
+          order_grade: Json | null
+          order_id: string | null
+          pairs: number | null
+          sale_order_id: string | null
+          sale_order_number: string | null
+          sector: string | null
+          sent_at: string | null
+          sheet_name: string | null
+          source: string | null
+          status: string | null
+          total_value: number | null
+          unit_price: number | null
         }
         Relationships: []
       }
@@ -19912,6 +21988,79 @@ export type Database = {
         }
         Relationships: []
       }
+      v_sector_load_by_reference: {
+        Row: {
+          cap_acabamento: number | null
+          cap_aviamento: number | null
+          cap_colagem: number | null
+          cap_corte_forracao: number | null
+          cap_corte_palmilha: number | null
+          cap_costura: number | null
+          cap_expedicao: number | null
+          cap_montagem: number | null
+          cap_silk: number | null
+          cap_solagem: number | null
+          capacity_source: string | null
+          op_count: number | null
+          reference_code: string | null
+          reference_name: string | null
+          shoe_category: string | null
+          tech_sheet_id: string | null
+          total_qty: number | null
+          week_start: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "references"
+            columns: ["tech_sheet_id"]
+            isOneToOne: false
+            referencedRelation: "technical_sheets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "references"
+            columns: ["tech_sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_ficha_sole_range_mismatch"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "references"
+            columns: ["tech_sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "references"
+            columns: ["tech_sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "references"
+            columns: ["tech_sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_sku_forecast"
+            referencedColumns: ["reference_id"]
+          },
+          {
+            foreignKeyName: "references"
+            columns: ["tech_sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_sku_forecast_summary"
+            referencedColumns: ["reference_id"]
+          },
+          {
+            foreignKeyName: "references"
+            columns: ["tech_sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_technical_sheets_audit"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       v_sector_oee: {
         Row: {
           availability_pct: number | null
@@ -19984,6 +22133,20 @@ export type Database = {
             foreignKeyName: "references"
             columns: ["reference_id"]
             isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "references"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "references"
+            columns: ["reference_id"]
+            isOneToOne: false
             referencedRelation: "v_sku_forecast"
             referencedColumns: ["reference_id"]
           },
@@ -20002,6 +22165,43 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      v_sheets_missing_lining_consumption: {
+        Row: {
+          code: string | null
+          id: string | null
+          lining_material: string | null
+          name: string | null
+          sizes_no_upper: number | null
+          upper_template: Json | null
+        }
+        Insert: {
+          code?: string | null
+          id?: string | null
+          lining_material?: string | null
+          name?: string | null
+          sizes_no_upper?: never
+          upper_template?: Json | null
+        }
+        Update: {
+          code?: string | null
+          id?: string | null
+          lining_material?: string | null
+          name?: string | null
+          sizes_no_upper?: never
+          upper_template?: Json | null
+        }
+        Relationships: []
+      }
+      v_shoe_category_unmapped: {
+        Row: {
+          categoria_atual: string | null
+          code: string | null
+          name: string | null
+          row_id: string | null
+          tabela: string | null
+        }
+        Relationships: []
       }
       v_sku_forecast: {
         Row: {
@@ -20331,6 +22531,24 @@ export type Database = {
         }
         Relationships: []
       }
+      v_time_pendings: {
+        Row: {
+          day_summary: Json | null
+          days_since: number | null
+          department: string | null
+          dow: number | null
+          employee_external_id: string | null
+          employee_id: string | null
+          employee_name: string | null
+          id: string | null
+          punches: Json | null
+          punches_count: number | null
+          record_date: string | null
+          suggestion: Json | null
+          urgency: string | null
+        }
+        Relationships: []
+      }
       v_wave_detail: {
         Row: {
           acabamento_start_date: string | null
@@ -20584,6 +22802,16 @@ export type Database = {
         }
         Relationships: []
       }
+      vw_punch_clock_params_current: {
+        Row: {
+          description: string | null
+          param_key: string | null
+          valid_from: string | null
+          valid_to: string | null
+          value: Json | null
+        }
+        Relationships: []
+      }
       vw_supplier_quality_rating: {
         Row: {
           quality_score: number | null
@@ -20629,38 +22857,22 @@ export type Database = {
       add_business_days:
         | { Args: { p_days: number; p_start: string }; Returns: string }
         | { Args: { p_days: number; p_start_date: string }; Returns: string }
-      adjust_stock:
-        | {
-            Args: {
-              p_delta: number
-              p_expected_previous_qty: number
-              p_new_grade?: Json
-              p_new_qty: number
-              p_product_id: string
-              p_reason: string
-            }
-            Returns: {
-              current_db_qty: number
-              error_message: string
-              success: boolean
-            }[]
-          }
-        | {
-            Args: {
-              p_delta: number
-              p_expected_previous_qty: number
-              p_new_grade?: Json
-              p_new_qty: number
-              p_order_id?: string
-              p_product_id: string
-              p_reason: string
-            }
-            Returns: {
-              current_db_qty: number
-              error_message: string
-              success: boolean
-            }[]
-          }
+      adjust_stock: {
+        Args: {
+          p_delta: number
+          p_expected_previous_qty: number
+          p_new_grade?: Json
+          p_new_qty: number
+          p_order_id?: string
+          p_product_id: string
+          p_reason: string
+        }
+        Returns: {
+          current_db_qty: number
+          error_message: string
+          success: boolean
+        }[]
+      }
       advance_wave_stage: {
         Args: {
           p_stage?: Database["public"]["Enums"]["production_stage_enum"]
@@ -20717,6 +22929,10 @@ export type Database = {
         Args: { p_sale_order_id: string }
         Returns: string
       }
+      auto_fill_sector_distribution: {
+        Args: { p_week_start: string }
+        Returns: Json
+      }
       auto_start_due_waves: { Args: never; Returns: number }
       biz_days_between: {
         Args: { p_end: string; p_start: string }
@@ -20734,6 +22950,7 @@ export type Database = {
       calculate_day_summary: {
         Args: {
           p_expected_min: number
+          p_has_lunch?: boolean
           p_is_holiday?: boolean
           p_minimum_overtime: number
           p_punches: Json
@@ -20741,33 +22958,49 @@ export type Database = {
         }
         Returns: Json
       }
-      calculate_employee_bank_balance: {
-        Args: { p_employee_id: string; p_from?: string; p_to?: string }
-        Returns: Json
-      }
-      calculate_order_consumption: {
-        Args: {
-          p_color: string
-          p_order_quantity: number
-          p_reference_id: string
-          p_size?: number
-        }
-        Returns: Json
-      }
-      calculate_order_consumption_by_grade:
+      calculate_employee_bank_balance:
         | {
-            Args: { p_color: string; p_grade: Json; p_reference_id: string }
+            Args: { p_employee_id: string; p_from?: string; p_to?: string }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_employee_id: string
+              p_from?: string
+              p_skip_missing?: boolean
+              p_to?: string
+            }
+            Returns: Json
+          }
+      calculate_order_consumption:
+        | {
+            Args: {
+              p_color: string
+              p_order_quantity: number
+              p_reference_id: string
+              p_size?: number
+            }
             Returns: Json
           }
         | {
             Args: {
               p_color: string
-              p_grade: Json
               p_material_variant_id?: string
+              p_order_quantity: number
               p_reference_id: string
+              p_size?: number
             }
             Returns: Json
           }
+      calculate_order_consumption_by_grade: {
+        Args: {
+          p_color: string
+          p_grade: Json
+          p_material_variant_id?: string
+          p_reference_id: string
+        }
+        Returns: Json
+      }
       calculate_order_cost: {
         Args: {
           p_persist?: boolean
@@ -20800,6 +23033,7 @@ export type Database = {
         Args: { p_reason?: string; p_wave_id: string }
         Returns: undefined
       }
+      canonical_stage_order: { Args: { p_stage_name: string }; Returns: number }
       check_schema_objects: { Args: never; Returns: Json }
       check_stock_availability: {
         Args: {
@@ -20807,6 +23041,7 @@ export type Database = {
           p_order_grade?: Json
           p_order_quantity: number
           p_reference_id: string
+          p_strap_colors?: Json
         }
         Returns: {
           available: number
@@ -20817,6 +23052,14 @@ export type Database = {
         }[]
       }
       cleanup_old_audit_logs: { Args: never; Returns: undefined }
+      commit_capacity_overflow_outsourcing: {
+        Args: { p_assignments: Json }
+        Returns: Json
+      }
+      commit_picking_for_sale_order: {
+        Args: { p_sale_order_id: string }
+        Returns: Json
+      }
       compact_orders_by_ref_color: {
         Args: { p_sale_order_id: string }
         Returns: {
@@ -20837,10 +23080,41 @@ export type Database = {
         Args: { p_order_id: string; p_stage_names: string[] }
         Returns: number
       }
+      complete_punches: {
+        Args: {
+          p_punches: string[]
+          p_reason?: string
+          p_time_record_id: string
+        }
+        Returns: {
+          created_at: string
+          department: string
+          employee_external_id: string
+          employee_name: string
+          id: string
+          import_batch: string
+          punches: Json
+          record_date: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "time_records"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       compute_material_ready_date: { Args: { p_items: Json }; Returns: Json }
       compute_min_billing_date: {
         Args: { p_sale_order_id: string }
         Returns: string
+      }
+      compute_sale_order_nfe_volumes: {
+        Args: { p_sale_order_id: string }
+        Returns: {
+          breakdown: Json
+          mode: string
+          volumes: number
+        }[]
       }
       compute_wave_timeline: {
         Args: { p_sale_order_ids: string[] }
@@ -20975,6 +23249,24 @@ export type Database = {
         Returns: string
       }
       detect_production_bottlenecks_and_alert: { Args: never; Returns: Json }
+      detect_wave_capacity_overflow: {
+        Args: { p_order_ids: string[] }
+        Returns: {
+          color: string
+          order_id: string
+          order_number: string
+          quantity: number
+          sale_order_id: string
+          sector: string
+          severity: string
+          sheet_id: string
+          sheet_name: string
+          total_capacity_week: number
+          total_pairs_planned: number
+          utilization_pct: number
+          week_start: string
+        }[]
+      }
       duplicate_material_variant_bom: {
         Args: {
           p_sheet_id: string
@@ -20982,6 +23274,10 @@ export type Database = {
           p_target_variant_id: string
         }
         Returns: number
+      }
+      estimate_weight_per_pair_kg: {
+        Args: { p_sheet_id: string }
+        Returns: Json
       }
       finalize_production_sector: {
         Args: { p_current_sector: string; p_order_id: string }
@@ -20998,6 +23294,7 @@ export type Database = {
           total_required: number
         }[]
       }
+      force_delete_product: { Args: { p_product_id: string }; Returns: Json }
       force_sale_order_production: {
         Args: { p_sale_order_id: string }
         Returns: Json
@@ -21039,6 +23336,7 @@ export type Database = {
           version: string
         }[]
       }
+      get_bank_hours_cutoff: { Args: never; Returns: string }
       get_client_commercial_defaults: {
         Args: { p_client_id: string }
         Returns: {
@@ -21076,6 +23374,10 @@ export type Database = {
           width: string
         }[]
       }
+      get_effective_os_lead_days: {
+        Args: { p_service_order_id: string }
+        Returns: number
+      }
       get_effective_price: {
         Args: {
           p_channel?: string
@@ -21089,6 +23391,10 @@ export type Database = {
       }
       get_effective_supplier_lead_days: {
         Args: { p_prod_deadline_days?: number; p_product_id: string }
+        Returns: number
+      }
+      get_employee_expected_minutes: {
+        Args: { p_employee_id: string; p_ref_date: string }
         Returns: number
       }
       get_in_production_stock: {
@@ -21121,6 +23427,7 @@ export type Database = {
         }
         Returns: string
       }
+      get_nfe_sync_cron_secret: { Args: never; Returns: string }
       get_order_material_status: {
         Args: { p_order_id: string }
         Returns: string
@@ -21128,6 +23435,24 @@ export type Database = {
       get_payroll_inputs_for_period: {
         Args: { p_employee_id: string; p_period: string }
         Returns: Json
+      }
+      get_pending_count_by_employee: {
+        Args: { p_max_age_days?: number }
+        Returns: {
+          department: string
+          employee_id: string
+          employee_name: string
+          overdue_count: number
+          pending_count: number
+        }[]
+      }
+      get_punch_clock_param: {
+        Args: { p_key: string; p_ref_date?: string }
+        Returns: Json
+      }
+      get_punch_clock_param_int: {
+        Args: { p_default?: number; p_key: string; p_ref_date?: string }
+        Returns: number
       }
       get_purchase_projection: {
         Args: { p_days?: number }
@@ -21176,6 +23501,10 @@ export type Database = {
           total_purchase_value: number
           total_reorder_value: number
         }[]
+      }
+      get_sheet_bottleneck_capacity: {
+        Args: { p_sheet_id: string }
+        Returns: number
       }
       get_sole_group_id_for_product: {
         Args: { p_product_id: string }
@@ -21247,6 +23576,10 @@ export type Database = {
       is_approved: { Args: { _user_id: string }; Returns: boolean }
       is_approved_user: { Args: never; Returns: boolean }
       is_business_day: { Args: { p_date: string }; Returns: boolean }
+      is_employee_absent_on: {
+        Args: { p_date: string; p_employee_id: string }
+        Returns: boolean
+      }
       kanban_stage_to_wave_stage: {
         Args: { p_stage_name: string }
         Returns: Database["public"]["Enums"]["production_stage_enum"]
@@ -21262,6 +23595,17 @@ export type Database = {
           reference_id: string
           sku: string
           specific_bom_count: number
+        }[]
+      }
+      list_available_source_colors: {
+        Args: { p_group_id: string }
+        Returns: {
+          color_hex: string
+          color_id: string
+          color_name: string
+          color_pantone: string
+          source_group_id: string
+          source_group_name: string
         }[]
       }
       list_materials_missing_width: {
@@ -21289,7 +23633,23 @@ export type Database = {
         Args: { base_date: string; target_dow: number }
         Returns: string
       }
+      normalize_shoe_category: { Args: { p_input: string }; Returns: string }
+      override_service_order_for_montagem: {
+        Args: { p_reason: string; p_so_id: string }
+        Returns: undefined
+      }
       parse_iso_billing_week: { Args: { p_text: string }; Returns: string }
+      pay_bank_hours: {
+        Args: {
+          p_bank_account_id?: string
+          p_employee_id: string
+          p_hourly_rate: number
+          p_hours: number
+          p_notes?: string
+          p_payment_date?: string
+        }
+        Returns: Json
+      }
       pay_bank_hours_balance: {
         Args: { p_employee_id: string; p_notes?: string; p_pay_minutes: number }
         Returns: Json
@@ -21370,9 +23730,38 @@ export type Database = {
         }
         Returns: undefined
       }
+      reset_order_lots: { Args: { p_order_id: string }; Returns: number }
       resolve_billing_week_for_order: {
         Args: { p_sale_order_id: string }
         Returns: string
+      }
+      resolve_insole_material_for_variant: {
+        Args: {
+          p_color: string
+          p_group_name: string
+          p_required: number
+          p_variant_id: string
+        }
+        Returns: {
+          available_qty: number
+          matched_by: string
+          product_id: string
+          product_name: string
+        }[]
+      }
+      resolve_lining_material_for_variant: {
+        Args: {
+          p_color: string
+          p_group_name: string
+          p_required: number
+          p_variant_id: string
+        }
+        Returns: {
+          available_qty: number
+          matched_by: string
+          product_id: string
+          product_name: string
+        }[]
       }
       resolve_material_product: {
         Args: {
@@ -21409,6 +23798,14 @@ export type Database = {
         Returns: {
           sole_color: string
           sole_product_id: string
+        }[]
+      }
+      resolve_sole_for_variant: {
+        Args: { p_variant_id: string }
+        Returns: {
+          available_qty: number
+          product_id: string
+          product_name: string
         }[]
       }
       resolve_upper_material_for_variant:
@@ -21456,11 +23853,16 @@ export type Database = {
         Args: { p_order_id: string }
         Returns: undefined
       }
+      restore_sale_order: { Args: { p_id: string }; Returns: Json }
       restore_sole_grade_for_order: {
         Args: { p_order_id: string }
         Returns: undefined
       }
       resync_op_atomic: { Args: { p_order_id: string }; Returns: Json }
+      revert_invoiced_sale_order: {
+        Args: { p_reason: string; p_sale_order_id: string }
+        Returns: Json
+      }
       run_consumption_integration_tests: {
         Args: never
         Returns: {
@@ -21473,6 +23875,49 @@ export type Database = {
         Args: { p_name: string }
         Returns: Database["public"]["Enums"]["production_stage_enum"]
       }
+      snapshot_all_employees_week: {
+        Args: { p_lock?: boolean; p_week_start: string }
+        Returns: {
+          diff_min: number
+          employee_id: string
+          status: string
+        }[]
+      }
+      snapshot_employee_week: {
+        Args: {
+          p_employee_id: string
+          p_lock?: boolean
+          p_reason?: string
+          p_week_start: string
+        }
+        Returns: {
+          apuracao_label: string | null
+          computed_at: string
+          days_absent: number
+          days_partial: number
+          days_worked: number
+          diff_min: number
+          employee_id: string
+          expected_min: number
+          he_100_min: number
+          he_50_min: number
+          id: string
+          locked_at: string | null
+          locked_by: string | null
+          locked_reason: string | null
+          week_end: string
+          week_start: string
+          worked_min: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "weekly_balance_snapshot"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      soft_delete_sale_order: { Args: { p_id: string }; Returns: Json }
+      split_order_into_lots: { Args: { p_order_id: string }; Returns: Json }
       split_wave_to_finishing: { Args: { p_wave_id: string }; Returns: number }
       stage_order:
         | { Args: { p_stage: string }; Returns: number }
@@ -21498,6 +23943,10 @@ export type Database = {
         }
         Returns: string
       }
+      suggest_punches_for_record: {
+        Args: { p_time_record_id: string }
+        Returns: Json
+      }
       sync_product_reserved_stock: {
         Args: { p_product_id: string }
         Returns: undefined
@@ -21514,6 +23963,7 @@ export type Database = {
         Args: { p_so: Database["public"]["Tables"]["service_orders"]["Row"] }
         Returns: undefined
       }
+      trigger_nfe_sync_cron: { Args: never; Returns: number }
       try_reserve_materials: {
         Args: {
           p_allow_expedite?: boolean
@@ -21528,6 +23978,10 @@ export type Database = {
           p_reference_id: string
         }
         Returns: Json
+      }
+      unlock_week: {
+        Args: { p_employee_id: string; p_reason: string; p_week_start: string }
+        Returns: boolean
       }
       update_sale_order_atomic: {
         Args: { p_header: Json; p_items: Json; p_order_id: string }
@@ -21579,6 +24033,7 @@ export type Database = {
         | "consulta"
         | "nfe_operator"
         | "rh"
+      box_type_kind: "individual" | "master" | "colmeia" | "fitilho"
       insole_mode_enum: "cortar" | "pronta_na_cor"
       pessoa_tipo: "FISICA" | "JURIDICA"
       pickup_window_enum: "tuesday" | "friday"
@@ -21743,6 +24198,7 @@ export const Constants = {
         "nfe_operator",
         "rh",
       ],
+      box_type_kind: ["individual", "master", "colmeia", "fitilho"],
       insole_mode_enum: ["cortar", "pronta_na_cor"],
       pessoa_tipo: ["FISICA", "JURIDICA"],
       pickup_window_enum: ["tuesday", "friday"],

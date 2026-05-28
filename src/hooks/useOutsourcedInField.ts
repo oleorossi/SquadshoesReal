@@ -131,3 +131,36 @@ export function useExtendOutsourcedDeadline() {
     },
   });
 }
+
+/**
+ * Libera uma OS terceirizada do bloqueio de Montagem mesmo sem o material
+ * ter voltado. Chama RPC override_service_order_for_montagem(uuid, text) —
+ * exige justificativa (mín 5 caracteres) e registra audit log.
+ * Use quando: a contratada perdeu/sumiu o material, mas a fábrica precisa
+ * subir a OP pra Montagem sem aguardar o retorno.
+ */
+export function useOverrideOSForMontagem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ serviceOrderId, reason }: { serviceOrderId: string; reason: string }) => {
+      if (!reason || reason.trim().length < 5) {
+        throw new Error('Justificativa obrigatória (mín 5 caracteres).');
+      }
+      const { error } = await (supabase as any).rpc('override_service_order_for_montagem', {
+        p_so_id: serviceOrderId,
+        p_reason: reason.trim(),
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['service_orders'] });
+      qc.invalidateQueries({ queryKey: ['v_outsourced_in_field'] });
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      qc.invalidateQueries({ queryKey: ['production_waves'] });
+      toast.success('OS liberada — Montagem desbloqueada.');
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || 'Falha ao liberar OS.');
+    },
+  });
+}

@@ -20,7 +20,7 @@ import { ShoppingCart, Eye, Trash as Trash2, CheckCircle as CheckCircle2, XCircl
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import SolePurchaseTab from '@/components/purchase/SolePurchaseTab';
 import { printPurchaseOrderGrouped, printSupplierPOs } from '@/lib/printPurchaseOrder';
-import { format } from 'date-fns';
+import { format, addBusinessDays } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
@@ -326,6 +326,15 @@ export default function PurchaseOrders() {
                               }
                               return null;
                             })()}
+                            {o.is_late_origin && (
+                              <Badge
+                                variant="destructive"
+                                className="text-xs h-4 px-1.5 font-normal animate-pulse"
+                                title="OC nasceu já atrasada — deadline da wave era anterior à criação"
+                              >
+                                Atrasada
+                              </Badge>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell>{o.supplier_name}</TableCell>
@@ -736,6 +745,11 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
               value={order.promised_date || ''}
               onChange={e => updateOrder.mutate({ id: order.id, data: { promised_date: e.target.value || null } })}
             />
+            {!order.promised_date && order.eta_days && order.eta_days > 0 && (
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                Sugerido: {order.eta_days} dias úteis ({format(addBusinessDays(new Date(order.created_at), order.eta_days), 'dd/MM/yyyy')})
+              </p>
+            )}
           </div>
           <div>
             <Label className="text-xs text-muted-foreground">Data de Recebimento</Label>

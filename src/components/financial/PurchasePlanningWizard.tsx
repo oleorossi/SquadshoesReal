@@ -992,10 +992,21 @@ export default function PurchasePlanningWizard() {
                 <Card>
                   <CardContent className="pt-4 text-center">
                     <Calendar className="h-8 w-8 mx-auto text-primary mb-2" />
-                    <p className="display text-2xl tabular-nums">{format(addDays(new Date(), 7), 'dd/MM')}</p>
-                    <p className="text-xs text-muted-foreground">Data Sugerida de Envio</p>
+                    <p className="display text-base tabular-nums">Auto por fornecedor</p>
+                    <p className="text-xs text-muted-foreground">Prazo calculado server-side</p>
                   </CardContent>
                 </Card>
+              </div>
+
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+                <Calendar className="h-4 w-4 mt-0.5 shrink-0" />
+                <div>
+                  Cada OC recebe <code className="font-mono">promised_date</code> automaticamente
+                  pelo trigger <code className="font-mono">tg_purchase_orders_set_promised_date</code>,
+                  baseado em <code className="font-mono">eta_days</code> resolvido pelo
+                  fornecedor preferencial do material (<code className="font-mono">get_effective_supplier_lead_days</code>).
+                  Cadastre lead time em <strong>/fornecedores</strong> caso não esteja vindo.
+                </div>
               </div>
 
               <div className="flex justify-between pt-2">

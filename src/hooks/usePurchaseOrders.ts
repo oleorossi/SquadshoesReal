@@ -17,6 +17,10 @@ export type PurchaseOrder = {
   updated_at: string;
   /** PVs que contribuíram com itens pra esta OC (agregada). */
   linked_sale_order_ids?: string[] | null;
+  /** Lead time do fornecedor em dias úteis. Trigger auto-popula a partir de get_effective_supplier_lead_days. */
+  eta_days?: number | null;
+  /** TRUE quando a OC nasceu já vencida (wave deadline < hoje). Auditoria 28/05/2026. */
+  is_late_origin?: boolean | null;
 };
 
 export type PurchaseOrderItem = {

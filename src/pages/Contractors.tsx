@@ -1693,6 +1693,21 @@ export default function Contractors() {
               <Input type="number" min={1} value={editingContractor.payment_days ?? 15} onFocus={e => { if (Number(e.target.value) === 0) e.target.value = ''; }} onChange={e => setEditingContractor(p => ({ ...p, payment_days: Number(e.target.value) || 15 }))} className="h-9 font-mono" />
             </div>
             <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-muted-foreground">Prazo Padrão de Entrega (dias úteis)</Label>
+              <Input
+                type="number"
+                min={1}
+                placeholder="10"
+                value={editingContractor.default_lead_days ?? ''}
+                onChange={e => {
+                  const v = e.target.value;
+                  setEditingContractor(p => ({ ...p, default_lead_days: v === '' ? null : Number(v) }));
+                }}
+                className="h-9 font-mono"
+              />
+              <p className="text-[10px] text-muted-foreground">Aplicado às OSs novas quando não houver prazo cotado específico. Default: 10 dias.</p>
+            </div>
+            <div className="space-y-1.5">
               <Label className="text-xs font-medium text-muted-foreground">Status</Label>
               <Select value={editingContractor.active ? 'true' : 'false'} onValueChange={v => setEditingContractor(p => ({ ...p, active: v === 'true' }))}>
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>

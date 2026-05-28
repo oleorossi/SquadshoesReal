@@ -11,6 +11,7 @@ import { useAllReservations } from '@/hooks/useReservations';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { differenceInHours, parseISO } from 'date-fns';
+import { LateItemsAlertCard } from '@/components/dashboard/LateItemsAlertCard';
 
 const CHART_COLORS = ['#0EA5E9', '#F59E0B', '#10B981', '#EF4444', '#8B5CF6'];
 
@@ -125,6 +126,9 @@ export default function PCPDashboard() {
             </Badge>
           }
         />
+
+        {/* Late items alert — only renders when há OCs/OSs vencidas */}
+        <LateItemsAlertCard />
 
         {/* Section header: KPIs */}
         <div className="flex items-baseline gap-3 pt-2">

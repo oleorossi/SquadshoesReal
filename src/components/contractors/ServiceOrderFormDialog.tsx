@@ -92,6 +92,7 @@ export function ServiceOrderFormDialog({
   const [description, setDescription] = useState<string>('');
   const [serviceDate, setServiceDate] = useState<string>(todayISO());
   const [quotedDeadline, setQuotedDeadline] = useState<string>('');
+  const [quotedLeadDays, setQuotedLeadDays] = useState<number | ''>('');
   const [quantity, setQuantity] = useState<number>(0);
   const [unitPrice, setUnitPrice] = useState<number>(0);
   const [notes, setNotes] = useState<string>('');
@@ -105,6 +106,7 @@ export function ServiceOrderFormDialog({
       setDescription('');
       setServiceDate(todayISO());
       setQuotedDeadline('');
+      setQuotedLeadDays('');
       setQuantity(0);
       setUnitPrice(0);
       setNotes('');
@@ -157,6 +159,7 @@ export function ServiceOrderFormDialog({
         description: description.trim(),
         service_date: serviceDate || todayISO(),
         quoted_deadline: quotedDeadline || null,
+        quoted_lead_days: typeof quotedLeadDays === 'number' && quotedLeadDays > 0 ? quotedLeadDays : null,
         target_sector: sector,
         quantity,
         unit_price: unitPrice,
@@ -314,6 +317,34 @@ export function ServiceOrderFormDialog({
                   onChange={(e) => setQuotedDeadline(e.target.value)}
                   className="mt-1 h-9 text-sm"
                 />
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  Se vazio, o servidor calcula a partir de "dias úteis" abaixo.
+                </p>
+              </div>
+              <div className="md:col-span-2">
+                <Label className="text-xs">Dias úteis até entrega (opcional)</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  placeholder={
+                    (selectedContractor as any)?.default_lead_days
+                      ? `Padrão da contratada: ${(selectedContractor as any).default_lead_days}`
+                      : 'Padrão: 10'
+                  }
+                  value={quotedLeadDays}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setQuotedLeadDays(v === '' ? '' : Number(v));
+                  }}
+                  className="mt-1 h-9 text-sm font-mono"
+                />
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  {selectedContractor
+                    ? (selectedContractor as any).default_lead_days
+                      ? `Sugerido pela contratada: ${(selectedContractor as any).default_lead_days} dias úteis. Deixe vazio pra usar esse padrão.`
+                      : 'Contratada sem prazo padrão configurado — fallback de 10 dias úteis.'
+                    : 'Selecione uma contratada pra ver o prazo padrão sugerido.'}
+                </p>
               </div>
             </div>
           </section>

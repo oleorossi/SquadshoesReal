@@ -8,6 +8,7 @@ import { CircleNotch as Loader2, Hash, ArrowRight, FastForward, Calendar, DotsSi
 import { useQuery } from '@tanstack/react-query';
 import type { BottleneckInfo } from "@/lib/sectorBottleneck";
 import { OrderDetailsModal } from "./OrderDetailsModal";
+import { OverrideOSDialog } from "./OverrideOSDialog";
 import { BottleneckDetailsDialog } from "./BottleneckDetailsDialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -169,6 +170,7 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
   const [draggedOrder, setDraggedOrder] = useState<KanbanOrder | null>(null);
   const [dragOverSector, setDragOverSector] = useState<string | null>(null);
   const [skipDecision, setSkipDecision] = useState<SkipDecision | null>(null);
+  const [overrideOS, setOverrideOS] = useState<{ orderId: string; orderNumber?: string; retry: () => Promise<void> } | null>(null);
 
   // ── Pickup window por OP (via v_order_pickup_window) ────────────────────────
   // Carrega a janela de pickup das OPs visíveis para mostrar badge Ter/Sex.
@@ -505,7 +507,23 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
       invalidateProductionCaches();
       await onRefresh?.();
     } catch (error: any) {
-      toast.error(`Erro ao mover pedido: ${error.message}`);
+      // Trigger tg_block_montagem_with_pending_service_order rejeitou com check_violation
+      // quando há OS terceirizada em andamento dentro do prazo. Em vez de só mostrar
+      // erro, abre dialog pra justificar override por OS.
+      const msg = String(error?.message || '');
+      const isMontagemBlock = error?.code === '23514'
+        || /OS terceirizada.*em andamento/i.test(msg)
+        || /montagem/i.test(msg) && /OS/i.test(msg);
+      if (isMontagemBlock) {
+        const op = orders.find(o => o.id === orderId);
+        setOverrideOS({
+          orderId,
+          orderNumber: op?.order_number,
+          retry: async () => { await moveOrder(orderId, nextStep); },
+        });
+      } else {
+        toast.error(`Erro ao mover pedido: ${error.message}`);
+      }
     } finally {
       setLoading(null);
     }
@@ -1259,6 +1277,18 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
         order={selectedOrder}
         isOpen={!!selectedOrder}
         onClose={() => setSelectedOrder(null)}
+      />
+
+      <OverrideOSDialog
+        open={!!overrideOS}
+        onOpenChange={(open) => { if (!open) setOverrideOS(null); }}
+        orderId={overrideOS?.orderId ?? null}
+        orderNumber={overrideOS?.orderNumber}
+        onAllOverridden={() => {
+          const retry = overrideOS?.retry;
+          setOverrideOS(null);
+          retry?.();
+        }}
       />
 
       {/* Diálogo de confirmação para pular etapas */}
