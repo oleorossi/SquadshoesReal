@@ -136,11 +136,15 @@ export function useExtendOutsourcedDeadline() {
  * Libera uma OS terceirizada do bloqueio de Montagem mesmo sem o material
  * ter voltado. Chama RPC override_service_order_for_montagem(uuid, text) —
  * exige justificativa (mín 5 caracteres) e registra audit log.
- * Use quando: a contratada perdeu/sumiu o material, mas a fábrica precisa
- * subir a OP pra Montagem sem aguardar o retorno.
+ *
+ * `silent` (default false): quando true, NÃO mostra toast individual nem
+ * invalida caches a cada call. Usado em batch (OverrideOSDialog) onde o
+ * caller agrega resultados via Promise.allSettled e mostra UM toast final
+ * — antes a UI era inundada com N toasts em paralelo.
  */
-export function useOverrideOSForMontagem() {
+export function useOverrideOSForMontagem(options?: { silent?: boolean }) {
   const qc = useQueryClient();
+  const silent = options?.silent ?? false;
   return useMutation({
     mutationFn: async ({ serviceOrderId, reason }: { serviceOrderId: string; reason: string }) => {
       if (!reason || reason.trim().length < 5) {
@@ -153,13 +157,18 @@ export function useOverrideOSForMontagem() {
       if (error) throw error;
     },
     onSuccess: () => {
+      if (silent) return;
       qc.invalidateQueries({ queryKey: ['service_orders'] });
       qc.invalidateQueries({ queryKey: ['v_outsourced_in_field'] });
       qc.invalidateQueries({ queryKey: ['orders'] });
       qc.invalidateQueries({ queryKey: ['production_waves'] });
+      qc.invalidateQueries({ queryKey: ['pending-os-for-order'] });
+      qc.invalidateQueries({ queryKey: ['order_stages'] });
+      qc.invalidateQueries({ queryKey: ['v_sector_bottlenecks'] });
       toast.success('OS liberada — Montagem desbloqueada.');
     },
     onError: (err: any) => {
+      if (silent) return;
       toast.error(err?.message || 'Falha ao liberar OS.');
     },
   });

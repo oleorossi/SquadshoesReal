@@ -314,7 +314,14 @@ export function ServiceOrderFormDialog({
                   type="date"
                   value={quotedDeadline}
                   min={serviceDate || todayISO()}
-                  onChange={(e) => setQuotedDeadline(e.target.value)}
+                  onChange={(e) => {
+                    setQuotedDeadline(e.target.value);
+                    // Mutex: ao escolher data manual, limpa lead_days pra evitar
+                    // ghost field. Trigger só recalcula deadline a partir de
+                    // lead_days se deadline IS NULL — manter ambos preenchidos
+                    // criava ambiguidade no que o sistema usaria.
+                    if (e.target.value) setQuotedLeadDays('');
+                  }}
                   className="mt-1 h-9 text-sm"
                 />
                 <p className="text-[10px] text-muted-foreground mt-0.5">
@@ -327,11 +334,14 @@ export function ServiceOrderFormDialog({
                   type="number"
                   min={1}
                   placeholder={
-                    (selectedContractor as any)?.default_lead_days
+                    quotedDeadline
+                      ? 'Desabilitado — prazo prometido já informado'
+                      : (selectedContractor as any)?.default_lead_days
                       ? `Padrão da contratada: ${(selectedContractor as any).default_lead_days}`
                       : 'Padrão: 10'
                   }
                   value={quotedLeadDays}
+                  disabled={!!quotedDeadline}
                   onChange={(e) => {
                     const v = e.target.value;
                     setQuotedLeadDays(v === '' ? '' : Number(v));
@@ -339,7 +349,9 @@ export function ServiceOrderFormDialog({
                   className="mt-1 h-9 text-sm font-mono"
                 />
                 <p className="text-[10px] text-muted-foreground mt-0.5">
-                  {selectedContractor
+                  {quotedDeadline
+                    ? 'Desabilitado: prazo prometido manual prevalece. Limpe o campo acima pra usar dias úteis.'
+                    : selectedContractor
                     ? (selectedContractor as any).default_lead_days
                       ? `Sugerido pela contratada: ${(selectedContractor as any).default_lead_days} dias úteis. Deixe vazio pra usar esse padrão.`
                       : 'Contratada sem prazo padrão configurado — fallback de 10 dias úteis.'

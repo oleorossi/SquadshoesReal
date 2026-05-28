@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
@@ -43,7 +43,10 @@ export function OverrideOSDialog({
   onAllOverridden,
 }: OverrideOSDialogProps) {
   const [reasons, setReasons] = useState<Record<string, string>>({});
-  const overrideMutation = useOverrideOSForMontagem();
+  const qc = useQueryClient();
+  // silent: evita inundação de toasts em batch (N OSs = N toasts antes).
+  // Caller agrega via Promise.allSettled e mostra UM resumo abaixo.
+  const overrideMutation = useOverrideOSForMontagem({ silent: true });
 
   const { data: pendingOSs = [], isLoading } = useQuery({
     queryKey: ['pending-os-for-order', orderId],
@@ -79,23 +82,39 @@ export function OverrideOSDialog({
   );
 
   const handleConfirm = async () => {
-    // Promise.allSettled: se uma OS falhar, as outras seguem. Sem isso, um
-    // erro no meio do loop deixava OSs anteriores overridden e dialog fechado
-    // sem callback de retry (= OP travada apesar de ter liberado N OSs).
+    // Promise.allSettled: se uma OS falhar, as outras seguem. Mutation está
+    // em silent mode — invalidação de cache acontece uma vez aqui no final.
     const results = await Promise.allSettled(
       pendingOSs.map((os) =>
         overrideMutation.mutateAsync({ serviceOrderId: os.id, reason: reasons[os.id] }),
       ),
     );
     const failed = results.filter((r) => r.status === 'rejected');
+    const succeeded = results.length - failed.length;
+
+    // Invalidação única (em vez de N por mutation) — antes a UI fazia N
+    // refetches em paralelo. Inclui 'pending-os-for-order' pra que reabrir
+    // o dialog mostre estado fresco (sem flicker de OSs já overridden).
+    if (succeeded > 0) {
+      qc.invalidateQueries({ queryKey: ['service_orders'] });
+      qc.invalidateQueries({ queryKey: ['v_outsourced_in_field'] });
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      qc.invalidateQueries({ queryKey: ['production_waves'] });
+      qc.invalidateQueries({ queryKey: ['pending-os-for-order'] });
+      qc.invalidateQueries({ queryKey: ['order_stages'] });
+      qc.invalidateQueries({ queryKey: ['v_sector_bottlenecks'] });
+    }
+
     if (failed.length === 0) {
+      toast.success(`${succeeded} OS(s) liberadas — Montagem desbloqueada.`);
       setReasons({});
       onOpenChange(false);
       onAllOverridden?.();
     } else {
       toast.error(
         `${failed.length} de ${pendingOSs.length} OS(s) falharam ao ser liberadas. ` +
-        `Recarregue e tente novamente — as que passaram já estão marcadas.`,
+        (succeeded > 0 ? `${succeeded} foram marcadas. ` : '') +
+        `Recarregue e tente novamente.`,
         { duration: 8000 },
       );
     }

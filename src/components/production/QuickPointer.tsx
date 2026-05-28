@@ -63,7 +63,18 @@ export function QuickPointer({ currentStage, employeeId }: QuickPointerProps) {
       toast.success(`OP ${orderNumber} apontada com sucesso!`);
       setOrderNumber('');
     } catch (err: any) {
-      toast.error(err.message);
+      // Trigger de Montagem rejeita com 23514 quando há OS terceirizada
+      // pendente. Operador de chão não tem UI pra override — orienta a
+      // procurar PCP em /producao em vez de só mostrar erro críptico.
+      const msg = String(err?.message || '');
+      if (err?.code === '23514' && /OS terceirizada\(s\) em andamento/i.test(msg)) {
+        toast.error(
+          'Material da OS terceirizada ainda não voltou. Peça ao PCP pra liberar em /producao (botão "Liberar OS").',
+          { duration: 8000 }
+        );
+      } else {
+        toast.error(err.message);
+      }
     } finally {
       setLoading(false);
     }

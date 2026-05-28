@@ -603,7 +603,22 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
       invalidateProductionCaches();
       await onRefresh?.();
     } catch (error: any) {
-      toast.error(`Erro ao saltar setor: ${error.message}`);
+      // Mesma detecção do moveOrder: trigger tg_block_montagem_with_pending_service_order
+      // rejeita com 23514 quando há OS pendente. Abre OverrideOSDialog em vez de
+      // só mostrar toast (antes operador via 'Erro ao saltar setor' sem solução).
+      const msg = String(error?.message || '');
+      const isMontagemBlock = error?.code === '23514'
+        && /OS terceirizada\(s\) em andamento dentro do prazo/i.test(msg);
+      if (isMontagemBlock) {
+        const op = orders.find(o => o.id === orderId);
+        setOverrideOS({
+          orderId,
+          orderNumber: op?.order_number,
+          retry: async () => { await jumpToSector(orderId, fromSector, toSector, skipped); },
+        });
+      } else {
+        toast.error(`Erro ao saltar setor: ${error.message}`);
+      }
     } finally {
       setLoading(null);
       setSkipDecision(null);

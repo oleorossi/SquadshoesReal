@@ -41,11 +41,14 @@ export function LateItemsAlertCard() {
     queryKey: ['late-pos-alert', today],
     staleTime: 5 * 60_000,
     queryFn: async () => {
+      // Exclui Rascunho/pending também: POs ainda em draft sem ter sido
+      // enviadas ao fornecedor não fazem sentido como "atrasadas". Foco:
+      // OCs já enviadas/aprovadas que passaram do prazo.
       const { data, error } = await (supabase as any)
         .from('purchase_orders')
         .select('id, order_number, supplier_name, promised_date')
         .lt('promised_date', today)
-        .not('status', 'in', '("received","cancelled","receiving")')
+        .not('status', 'in', '("received","cancelled","receiving","Rascunho","pending")')
         .order('promised_date', { ascending: true })
         .limit(5);
       if (error) throw error;
@@ -56,31 +59,51 @@ export function LateItemsAlertCard() {
     },
   });
 
-  // OSs vencidas: por quoted_deadline (caminho normal) OU por created_at velho
-  // sem deadline (OS criada sem service_date — invisível ao filtro padrão).
+  // OSs vencidas: 2 queries separadas porque `.order('quoted_deadline', nullsFirst: false)`
+  // + LIMIT 5 escondia as OSs sem deadline algum (ramo 2 do .or()) — exatamente
+  // o caso que precisávamos descobrir. Agora pegamos N + M e merguimos no client.
   const { data: lateOSs = [] } = useQuery({
     queryKey: ['late-os-alert', today],
     staleTime: 5 * 60_000,
     queryFn: async () => {
       const tenDaysAgo = new Date(todayMs - 10 * 86_400_000).toISOString().slice(0, 10);
-      const { data, error } = await (supabase as any)
-        .from('service_orders')
-        .select('id, order_number, quoted_deadline, created_at, contractors(name)')
-        .or(`quoted_deadline.lt.${today},and(quoted_deadline.is.null,created_at.lt.${tenDaysAgo})`)
-        .not('status', 'in', '("received","Concluído","concluido","Cancelado","cancelled","cancelado")')
-        .order('quoted_deadline', { ascending: true, nullsFirst: false })
-        .limit(5);
-      if (error) throw error;
-      return ((data || []) as any[]).map((o) => {
-        const reference = o.quoted_deadline || o.created_at;
-        return {
-          id: o.id,
-          order_number: o.order_number,
-          contractor_name: o.contractors?.name || 'Sem contratada',
-          quoted_deadline: o.quoted_deadline || o.created_at,
-          days_late: Math.max(0, Math.floor((todayMs - new Date(reference.slice(0, 10) + 'T12:00:00').getTime()) / 86_400_000)),
-        };
-      }) as LateOS[];
+      const notStatus = '("received","Concluído","concluido","Cancelado","cancelled","cancelado")';
+
+      const [withDeadline, withoutDeadline] = await Promise.all([
+        (supabase as any)
+          .from('service_orders')
+          .select('id, order_number, quoted_deadline, created_at, contractors(name)')
+          .lt('quoted_deadline', today)
+          .not('status', 'in', notStatus)
+          .order('quoted_deadline', { ascending: true })
+          .limit(5),
+        (supabase as any)
+          .from('service_orders')
+          .select('id, order_number, quoted_deadline, created_at, contractors(name)')
+          .is('quoted_deadline', null)
+          .lt('created_at', tenDaysAgo + 'T23:59:59')
+          .not('status', 'in', notStatus)
+          .order('created_at', { ascending: true })
+          .limit(5),
+      ]);
+
+      if (withDeadline.error) throw withDeadline.error;
+      if (withoutDeadline.error) throw withoutDeadline.error;
+
+      const merged = [...(withDeadline.data || []), ...(withoutDeadline.data || [])];
+      return merged
+        .map((o: any) => {
+          const reference = o.quoted_deadline || o.created_at;
+          return {
+            id: o.id,
+            order_number: o.order_number,
+            contractor_name: o.contractors?.name || 'Sem contratada',
+            quoted_deadline: o.quoted_deadline || o.created_at,
+            days_late: Math.max(0, Math.floor((todayMs - new Date(reference.slice(0, 10) + 'T12:00:00').getTime()) / 86_400_000)),
+          };
+        })
+        .sort((a, b) => b.days_late - a.days_late) // mais atrasadas primeiro
+        .slice(0, 5) as LateOS[];
     },
   });
 
