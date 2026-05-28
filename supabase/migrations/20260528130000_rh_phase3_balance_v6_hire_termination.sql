@@ -1,0 +1,28 @@
+-- =============================================================================
+-- RH Audit Fase 3 (2026-05-28): calculate_employee_bank_balance v6
+-- =============================================================================
+-- Aplicada via MCP em 2026-05-28. Arquivo no repo pra histórico.
+--
+-- Resolve:
+--   C2 da auditoria — RPC não respeitava admission_date/termination_date.
+--   Funcionário admitido 15/05 = expected dos dias 1-14 contabilizado como
+--   falta artificial. Mesma coisa pra demitido (dias após termination).
+--
+-- Nova lógica:
+--   v_effective_from = MAX(p_from, cutoff, admission_date)
+--   v_effective_to   = MIN(p_to OR today, termination_date)
+--   Janela vazia → retorna zerado com nota explicativa.
+--
+-- Backlog explícito (C3 NÃO incluído):
+--   versionar work_schedule history por employee — requer tabela nova
+--   (employee_schedule_history) + migration de dados + reescrita de
+--   get_employee_expected_minutes. Custo alto pra valor moderado.
+--   Quando trocar escala mid-month, ainda recalcula com a escala atual.
+--   Avise ao usuário antes de mudar work_schedule_id de funcionário ativo.
+--
+-- apuracao versão bumped: 'semanal_individual_schedule_v6_hire_termination'
+-- =============================================================================
+
+-- (Ver pg_proc.pg_get_functiondef('calculate_employee_bank_balance') pra
+--  definição completa. Manter alinhado com a migration original sempre que
+--  modificar via MCP.)
