@@ -29,6 +29,7 @@ import CreateUserDialog from '@/components/settings/CreateUserDialog';
 import FinanceConfigPanel from '@/components/settings/FinanceConfigPanel';
 import { CurrencyDollar as DollarSign, Buildings } from '@phosphor-icons/react';
 import CompanySettingsTab from '@/components/settings/CompanySettingsTab';
+import ProductionSettingsTab from '@/components/settings/ProductionSettingsTab';
 import { cn } from '@/lib/utils';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -464,6 +465,10 @@ export default function SettingsPage() {
               <Buildings className="h-3.5 w-3.5" />
               Empresa
             </TabsTrigger>
+            <TabsTrigger value="producao" className="gap-1.5">
+              <Factory className="h-3.5 w-3.5" />
+              Produção
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="users" className="space-y-4 mt-4">
@@ -521,6 +526,9 @@ export default function SettingsPage() {
           </TabsContent>
           <TabsContent value="empresa" className="mt-4">
             <CompanySettingsTab />
+          </TabsContent>
+          <TabsContent value="producao" className="mt-4">
+            <ProductionSettingsTab />
           </TabsContent>
         </Tabs>
 

@@ -1015,6 +1015,7 @@ export default function SaleOrderForm() {
         capacityReadyDateISO={minBillingSuggestion?.capacityReadyDateISO}
         materialReadyDateISO={minBillingSuggestion?.materialReadyDateISO}
         materialShortfalls={minBillingSuggestion?.materialShortfalls}
+        newOrderTotalPairs={items.reduce((s, it) => s + (Number(it.quantity) || 0), 0)}
         onConfirmMin={handleMinBillingConfirm}
         onPickManual={handleMinBillingManual}
       />

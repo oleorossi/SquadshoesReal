@@ -30,6 +30,7 @@ export function useNotifications() {
           .from('notifications')
           .select('*')
           .eq('read', false)
+          .is('resolved_at', null)
           .order('created_at', { ascending: false })
           .limit(20),
         (supabase as any)
@@ -194,14 +195,24 @@ export function useNotifications() {
 
       if (sectorNotifications && sectorNotifications.length > 0) {
         sectorNotifications.forEach(sn => {
+          // Notifications with category/severity (production engine) carry their
+          // own routing + severity. Legacy notifications (only message+sector)
+          // fall back to "novo trabalho" pattern.
+          const isStructured = !!sn.category && !!sn.severity;
           notifications.push({
             id: sn.id,
-            category: 'production',
-            severity: 'info',
-            title: `Novo trabalho em ${sn.sector}`,
-            description: sn.message,
-            link: `/${sn.sector?.toLowerCase()}`,
-            sector: sn.sector
+            category: (sn.category as any) || 'production',
+            severity: (sn.severity as any) || 'info',
+            title: isStructured
+              ? sn.message
+              : `Novo trabalho em ${sn.sector}`,
+            description: isStructured
+              ? (sn.payload?.overflow_pairs
+                  ? `${sn.payload.overflow_pairs} pares acima da capacidade`
+                  : sn.sector || '')
+              : sn.message,
+            link: sn.link || (sn.sector ? `/${sn.sector.toLowerCase()}` : undefined),
+            sector: sn.sector,
           });
         });
       }

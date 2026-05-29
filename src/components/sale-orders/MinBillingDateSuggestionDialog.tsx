@@ -16,6 +16,8 @@ import { Calendar, CheckCircle as CheckCircle2, PencilSimple as Pencil, Truck, P
 import { formatBR, type MaterialShortfall } from '@/lib/minBillingDate';
 import { monthWeekToISODate } from '@/lib/billingWeek';
 import { SubmitFlowStepper } from './SubmitFlowStepper';
+import { useCosturaCapacityPlan } from '@/hooks/useCosturaPlanner';
+import { useProductionSettings } from '@/hooks/useProductionSettings';
 
 interface Props {
   open: boolean;
@@ -32,10 +34,70 @@ interface Props {
   materialReadyDateISO?: string;
   /** Lista de materiais com shortage (pra exibir detalhes). */
   materialShortfalls?: MaterialShortfall[];
+  /** Total de pares deste PV — opcional, usado pra estimar impacto na Costura. */
+  newOrderTotalPairs?: number;
   /** Quando o usuário aceita a data mínima. */
   onConfirmMin: () => void;
   /** Quando o usuário escolhe uma data diferente — a validação de override é feita pelo caller. */
   onPickManual: (newISO: string) => void;
+}
+
+function CosturaImpactBlock({ newOrderTotalPairs }: { newOrderTotalPairs?: number }) {
+  const { data: capacityPlan = [] } = useCosturaCapacityPlan();
+  const { data: settings } = useProductionSettings();
+  const businessDays = useMemo(() => capacityPlan.filter(d => !d.is_weekend), [capacityPlan]);
+  if (businessDays.length === 0) return null;
+  const overflowDays = businessDays.filter(d => d.status === 'overflow').length;
+  const warningDays = businessDays.filter(d => d.status === 'warning').length;
+  const capacityPerDay = settings?.costura_pairs_per_day_total ?? 1500;
+  const totalLoad = businessDays.reduce((s, d) => s + d.sum_pairs_internal, 0);
+  const totalCap = businessDays.reduce((s, d) => s + d.capacity_total, 0);
+  const occupation = totalCap > 0 ? Math.round((totalLoad / totalCap) * 100) : 0;
+  const isCritical = overflowDays > 0;
+  const isWarning = !isCritical && warningDays > 0;
+  return (
+    <div className={`rounded-lg border p-3 my-2 ${
+      isCritical ? 'border-red-500/40 bg-red-500/5'
+      : isWarning ? 'border-amber-500/40 bg-amber-500/5'
+      : 'border-emerald-500/40 bg-emerald-500/5'
+    }`}>
+      <div className={`flex items-center gap-1.5 text-xs uppercase tracking-wide font-bold ${
+        isCritical ? 'text-red-700' : isWarning ? 'text-amber-700' : 'text-emerald-700'
+      }`}>
+        <Factory className="h-3.5 w-3.5" />
+        Impacto na Costura · próximos 30 dias
+      </div>
+      <div className="text-xs mt-1 space-y-0.5">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-muted-foreground">Capacidade da fábrica:</span>
+          <span className="font-mono tabular-nums">{capacityPerDay}/dia</span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-muted-foreground">Ocupação atual (30d):</span>
+          <span className="font-mono tabular-nums">{occupation}%</span>
+        </div>
+        {(typeof newOrderTotalPairs === 'number' && newOrderTotalPairs > 0) && (
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-muted-foreground">Este PV adiciona:</span>
+            <span className="font-mono tabular-nums">{newOrderTotalPairs} pares</span>
+          </div>
+        )}
+        {overflowDays > 0 ? (
+          <p className="text-red-700 font-medium pt-1">
+            ⚠ {overflowDays} dia(s) em overflow — considere terceirizar parte da Costura.
+          </p>
+        ) : warningDays > 0 ? (
+          <p className="text-amber-700 font-medium pt-1">
+            {warningDays} dia(s) próximo da capacidade — fique de olho.
+          </p>
+        ) : (
+          <p className="text-emerald-700 font-medium pt-1">
+            Capacidade da fábrica acomoda a demanda atual.
+          </p>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -51,6 +113,7 @@ export function MinBillingDateSuggestionDialog({
   capacityReadyDateISO,
   materialReadyDateISO,
   materialShortfalls = [],
+  newOrderTotalPairs,
   onConfirmMin,
   onPickManual,
 }: Props) {
@@ -232,6 +295,8 @@ export function MinBillingDateSuggestionDialog({
             )}
           </div>
         )}
+
+        <CosturaImpactBlock newOrderTotalPairs={newOrderTotalPairs} />
 
         {editing && (
           <div className="space-y-3">

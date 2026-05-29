@@ -18,6 +18,7 @@ const LeadTime = lazy(() => import("./LeadTime"));
 const RCCPPlanning = lazy(() => import("@/components/production/RCCPPlanning"));
 const PostOPAnalysis = lazy(() => import("@/components/production/PostOPAnalysis"));
 const LotSplitPage = lazy(() => import("./LotSplitPage"));
+const CosturaPlannerPanel = lazy(() => import("@/components/pcp/CosturaPlannerPanel"));
 
 
 const TabLoader = () => (
@@ -41,6 +42,7 @@ const TabLoader = () => (
   { value: "rccp", label: "RCCP", icon: Gauge },
   { value: "pos-op", label: "Análise Pós-OP", icon: FileBarChart },
   { value: "lot-split", label: "Split de Lotes", icon: Scissors },
+  { value: "costura-planner", label: "Costura · Planner", icon: Scissors },
 ];
  const ProductionPlanning = lazy(() => import("./ProductionPlanning"));
 
@@ -105,6 +107,7 @@ export default function PCPHub() {
           <TabsContent value="rccp"><RCCPPlanning /></TabsContent>
           <TabsContent value="pos-op"><PostOPAnalysis /></TabsContent>
           <TabsContent value="lot-split"><Suspense fallback={<TabLoader />}><LotSplitPage /></Suspense></TabsContent>
+          <TabsContent value="costura-planner"><CosturaPlannerPanel /></TabsContent>
         </Suspense>
       </Tabs>
     </div>
