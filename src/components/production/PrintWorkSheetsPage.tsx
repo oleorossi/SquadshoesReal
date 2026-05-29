@@ -24,21 +24,62 @@ import { expandOrdersByLots, type LotMetadata } from '@/lib/lotExpansion';
 
 const printStyles = `
   /* ─────────────────────────────────────────────────────────────
-     Mobile preview (22/05/2026): em telas < 768px, escala o worksheet
-     A4 (210mm = ~794px @ 96dpi) pra caber na largura do viewport sem
-     scroll horizontal. Não afeta print real — @media screen apenas.
+     Mobile preview (29/05/2026 — refatorado): em telas < 768px, NÃO
+     escala via zoom (texto ficava ~43% num iPhone, ilegível e quebrava
+     no Firefox). Estratégia nova: reflow fluido — worksheet vira 100%
+     width, padding compactado, tipografia preservada (legível), e
+     tabelas largas (grade de tamanhos) ganham scroll horizontal só
+     dentro delas (resto do conteúdo flui normal). @media screen apenas
+     — print mantém A4 exato.
+
+     Trade-off: preview mobile NÃO é mais WYSIWYG da impressão; é uma
+     "vista mobile" da mesma data. Pra ver como sai impresso, gerar PDF
+     ou abrir no desktop. UX mobile é ler/conferir, não imprimir.
      ───────────────────────────────────────────────────────────── */
   @media screen and (max-width: 768px) {
-    .print-area .page-break {
-      overflow: hidden;
-      margin-bottom: 0.5rem;
-    }
-    .print-area .page-break > div {
-      zoom: calc((100vw - 32px) / 794);
-    }
-    /* Toolbar fica acima — não escalar */
     .print-area {
       padding: 0;
+    }
+    .print-area .page-break {
+      margin-bottom: 1rem;
+      border-bottom: 2px dashed #ddd;
+      padding-bottom: 1rem;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    /* Ficha raiz: largura fluida em vez de 210mm fixo, padding compacto.
+       Quando alguma tabela interna (grade de tamanhos com 20+ colunas)
+       excede a largura do viewport, scroll horizontal aparece SÓ no
+       container da ficha (overflow-x: auto acima). Não bagunça outras
+       fichas nem o body. */
+    .print-area .page-break > div {
+      width: 100% !important;
+      max-width: 100% !important;
+      padding: 8px !important;
+      box-sizing: border-box;
+      box-shadow: none;
+    }
+    /* Garante que a tabela mantém seu layout natural (auto) — não
+       force fixed que tentaria espremer colunas. */
+    .print-area table {
+      table-layout: auto;
+    }
+    /* Grids de KPI / cards lado-a-lado: empilhar em mobile pra evitar
+       crush. Atinge .grid-cols-* via wildcard mas só dentro de print-area */
+    .print-area [class*="grid-cols-2"],
+    .print-area [class*="grid-cols-3"],
+    .print-area [class*="grid-cols-4"] {
+      grid-template-columns: 1fr !important;
+    }
+    /* Flex rows com gap grande: deixar wrap pra evitar overflow */
+    .print-area [class*="flex-row"]:not([class*="flex-wrap"]):not([class*="shrink-0"]) {
+      flex-wrap: wrap;
+    }
+    /* Imagens de produto: limitar altura pra não ocupar viewport inteiro */
+    .print-area img {
+      max-height: 200px !important;
+      height: auto !important;
+      object-fit: contain;
     }
   }
 
