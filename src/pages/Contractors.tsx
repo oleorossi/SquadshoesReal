@@ -1,6 +1,6 @@
 import AppLayout from "@/components/layout/AppLayout";
 import { escapeHtml } from '@/lib/htmlUtils';
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, Funnel as Filter, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, Sparkle as Sparkles, ArrowRight, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock } from '@phosphor-icons/react';
@@ -47,6 +47,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, addDays } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
+import { resolveSignedReceiptDisplayUrl } from '@/lib/serviceOrderStock';
 import { toast } from 'sonner';
 import { normalizeForSearch } from '@/lib/searchUtils';
 
@@ -169,6 +170,28 @@ function StatCard({ icon: Icon, label, value, sub, color }: { icon: any; label: 
       </div>
     </div>
   );
+}
+
+/**
+ * Renderiza imagem assinada do bucket `service-orders` (privado). Aceita
+ * tanto path puro quanto URL completa armazenada na coluna signed_photo_url.
+ * Auditoria 28/05/2026: antes o caller construía URL `/public/` direta, mas
+ * bucket é privado → toda foto retornava 400.
+ */
+function SignedReceiptImage({ stored }: { stored: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    resolveSignedReceiptDisplayUrl(stored)
+      .then((u) => { if (!cancelled) { setUrl(u); setLoading(false); } })
+      .catch(() => { if (!cancelled) { setUrl(null); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, [stored]);
+  if (loading) return <div className="w-full h-40 bg-muted/30 flex items-center justify-center text-xs text-muted-foreground">Carregando preview...</div>;
+  if (!url) return <div className="w-full h-40 bg-muted/30 flex items-center justify-center text-xs text-muted-foreground">Falha ao carregar foto</div>;
+  return <img src={url} alt="OS Assinada" className="w-full max-h-[400px] object-contain bg-muted/30" />;
 }
 
 export default function Contractors() {
@@ -1207,7 +1230,20 @@ export default function Contractors() {
                         const mats = getMaterials(o);
                         return (
                           <TableRow key={o.id} className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={e => { if ((e.target as HTMLElement).closest('button')) return; openEditOrder(o); }}>
-                            <TableCell className="text-sm font-mono font-medium">{o.order_number}</TableCell>
+                            <TableCell className="text-sm font-mono font-medium">
+                              <div className="flex items-center gap-1.5">
+                                <span>{o.order_number}</span>
+                                {(o as any).montagem_override_at && (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[10px] h-4 px-1 font-normal border-amber-500/50 text-amber-600"
+                                    title={`Montagem liberada manualmente em ${new Date((o as any).montagem_override_at).toLocaleDateString('pt-BR')}${(o as any).montagem_override_reason ? ' — ' + (o as any).montagem_override_reason : ''}`}
+                                  >
+                                    Override
+                                  </Badge>
+                                )}
+                              </div>
+                            </TableCell>
                             <TableCell className="text-sm font-medium">{o.contractors?.name || '—'}</TableCell>
                             <TableCell className="text-sm">
                               {(() => {
@@ -1490,13 +1526,14 @@ export default function Contractors() {
                         <TableHead>Telefone</TableHead>
                         <TableHead>Cidade/UF</TableHead>
                         <TableHead className="w-[80px]">Prazo Pgto</TableHead>
+                        <TableHead className="w-[80px]" title="Lead time padrão de entrega (dias úteis)">Lead Entrega</TableHead>
                         <TableHead className="w-[70px]">Status</TableHead>
                         <TableHead className="text-right w-[80px]">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredContractors.length === 0 ? (
-                        <TableRow><TableCell colSpan={9} className="text-center text-sm text-muted-foreground py-12">Nenhum prestador cadastrado</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={10} className="text-center text-sm text-muted-foreground py-12">Nenhum prestador cadastrado</TableCell></TableRow>
                       ) : filteredContractors.map(c => (
                         <TableRow
                           key={c.id}
@@ -1516,6 +1553,9 @@ export default function Contractors() {
                           <TableCell className="text-sm">{c.phone || '—'}</TableCell>
                           <TableCell className="text-sm">{c.city && c.state ? `${c.city}/${c.state}` : '—'}</TableCell>
                           <TableCell className="text-sm font-mono text-center">{c.payment_days}d</TableCell>
+                          <TableCell className="text-sm font-mono text-center text-muted-foreground">
+                            {c.default_lead_days != null ? `${c.default_lead_days}d` : '—'}
+                          </TableCell>
                           <TableCell><Badge variant={c.active ? 'default' : 'secondary'} className="text-xs">{c.active ? 'Ativo' : 'Inativo'}</Badge></TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-0.5">
@@ -2347,7 +2387,7 @@ export default function Contractors() {
                 {editingOrder.signed_photo_url ? (
                   <div className="space-y-3">
                     <div className="rounded-lg border overflow-hidden">
-                      <img src={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/service-orders/${editingOrder.signed_photo_url}`} alt="OS Assinada" className="w-full max-h-[400px] object-contain bg-muted/30" />
+                      <SignedReceiptImage stored={editingOrder.signed_photo_url} />
                     </div>
                     <Button variant="outline" size="sm" className="gap-1 text-xs" onClick={() => setEditingOrder(p => ({ ...p, signed_photo_url: null }))}><X className="h-3 w-3" /> Remover</Button>
                   </div>

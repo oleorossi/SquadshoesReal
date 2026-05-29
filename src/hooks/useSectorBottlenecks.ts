@@ -147,7 +147,9 @@ export function useBulkAssignServiceOrders() {
         quoted_deadline: input.quoted_deadline,
         description: `Cobertura de gargalo ${SECTOR_LABEL[input.target_sector]} (lote) — OP ${o.order_number}`,
         notes: notesPrefix,
-        order_number: `OS-GARG-${Date.now()}-${i}`,
+        // Auditoria 28/05/2026: removido order_number manual — trigger
+        // generate_so_number atribui OS-NNNNN sequencial. Antes os OS-GARG
+        // ficavam de fora da numeração canônica e quebravam reports/sorts.
       }));
 
       const { error } = await (supabase as any).from('service_orders').insert(rows);

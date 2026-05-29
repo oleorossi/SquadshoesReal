@@ -172,3 +172,33 @@ export async function uploadSignedReceiptPhoto(
 
   return { url: signed.signedUrl, path };
 }
+
+/**
+ * Resolve um URL de exibição pra signed_photo_url. Aceita 3 formatos
+ * (legacy + atual):
+ *   - URL completa de signed URL (gerado por uploadSignedReceiptPhoto) → reusa
+ *   - URL completa de /public/ → recria signed (bucket foi privatizado)
+ *   - path puro (legacy do dialog inline) → gera signed
+ *
+ * Auditoria 28/05/2026: antes Contractors.tsx construía manualmente
+ * `${VITE_SUPABASE_URL}/storage/v1/object/public/service-orders/${path}`
+ * mas o bucket é privado → toda foto retornava 400. Centraliza aqui.
+ */
+export async function resolveSignedReceiptDisplayUrl(stored: string | null | undefined): Promise<string | null> {
+  if (!stored) return null;
+
+  // Já é signed URL → reusa
+  if (stored.includes('/object/sign/')) return stored;
+
+  // Extrair path: se for URL /public/ ou /sign/, pegar o segmento depois
+  // de /service-orders/. Se for path puro, usar como está.
+  let path = stored;
+  const m = stored.match(/\/service-orders\/(.+?)(?:\?|$)/);
+  if (m) path = m[1];
+
+  const { data: signed, error } = await supabase.storage
+    .from('service-orders')
+    .createSignedUrl(path, 60 * 60 * 24 * 7); // 7 dias pra preview
+  if (error || !signed?.signedUrl) return null;
+  return signed.signedUrl;
+}

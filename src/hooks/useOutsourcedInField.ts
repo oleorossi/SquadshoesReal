@@ -76,9 +76,17 @@ export function useReceiveOutsourcedItem() {
   return useMutation({
     mutationFn: async (item: Pick<OutsourcedItem, 'id' | 'source' | 'order_id'>) => {
       if (item.source === 'service_order') {
+        // Auditoria 28/05/2026: limpa override flag ao receber legitimamente.
+        // Antes a flag ficava stale — se a OS fosse re-aberta no futuro,
+        // continuaria marcada como overridden mesmo tendo sido entregue.
         const { error } = await (supabase as any)
           .from('service_orders')
-          .update({ status: 'received' })
+          .update({
+            status: 'received',
+            montagem_override_at: null,
+            montagem_override_by: null,
+            montagem_override_reason: null,
+          })
           .eq('id', item.id);
         if (error) throw error;
       } else {
