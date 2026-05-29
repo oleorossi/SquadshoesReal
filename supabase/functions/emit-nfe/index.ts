@@ -1343,6 +1343,10 @@ Deno.serve(async (req) => {
       gc_response_payload: createResp.json as any,
       gc_emit_response: emitResp.json as any,
       gc_detail_response: detailResponseJson as any,
+      // Audit round 3 (2026-05-29): tipo_ambiente retornado pelo GC é a
+      // ÚNICA fonte da verdade sobre ambiente (1=Produção, 2=Homologação).
+      // `companies.ambiente` local é decorativo (nunca foi pro payload).
+      tp_amb_sefaz: ((detailResponseJson as any)?.data?.tipo_ambiente) ?? null,
     };
     if (resolvedCompanyId) nfeRecord.company_id = resolvedCompanyId;
 

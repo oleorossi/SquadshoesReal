@@ -1,0 +1,46 @@
+-- P-NFE-AUDIT-R3 (2026-05-29): identificação ambiente teste vs produção
+-- Auditoria Opus 4.8 achou 2 CRITICAL + 3 MAJOR no fluxo de ambiente:
+--
+-- CRITICAL #1: DB dizia 'homologacao' mas evidência forte (2/2 NFs com
+-- gc_detail_response.tipo_ambiente='1', protocolo SEFAZ válido, R$66k
+-- emitidos em 20 NFs autorizadas) confirma painel GestaoClick em
+-- PRODUÇÃO real. Operador iludido pelo Badge âmbar "Homologação".
+--
+-- CRITICAL #2: register_order_shipment fazia
+--   IF v_nfe_required = true AND v_ambiente = 'producao' THEN check NFe
+-- Como ambiente dizia 'homologacao', PULAVA validação — qualquer PV
+-- podia ser expedido sem NF autorizada. Compliance broken.
+--
+-- MAJOR: nfe_emitidas sem coluna pra registrar ambiente real; UI sem
+-- badges/warnings; fiscal_config duplica companies.ambiente.
+--
+-- Aplicado em 3 migrations via MCP:
+--   1. nfe_r3_pacoteB_tp_amb_sefaz — ADD COLUMN tp_amb_sefaz em
+--      nfe_emitidas + nfe_devolucoes + backfill via gc_detail_response.
+--   2. nfe_r3_pacoteA_D_ambiente_producao_v2 — UPDATE companies +
+--      fiscal_config ambiente='producao' + remove dependência de
+--      companies.ambiente do register_order_shipment (passa a usar só
+--      nfe_required).
+--
+-- Frontend (mesmo commit):
+--   - emit-nfe/index.ts: grava tp_amb_sefaz no INSERT da NF emitida
+--     usando gc_detail_response.data.tipo_ambiente como fonte da verdade.
+--   - sync-nfe-from-provider/index.ts: grava tp_amb_sefaz no UPDATE
+--     vindo do GC.
+--   - detect-gc-environment (NOVA edge fn): cron/sob demanda que
+--     compara DB vs último observado SEFAZ e corrige automaticamente.
+--   - NfeEnvironmentBanner (NOVO): banner reutilizável em vermelho
+--     (Produção/divergente) ou âmbar (Homologação) usado em:
+--       * NfePreviewDialog (antes de emitir)
+--       * BulkNfeDialog (lote)
+--       * NfeDevolucaoDialog (devolução)
+--       * InvoicesSaidaTab (lista, modo compact)
+--
+-- Validação:
+--   - companies.ambiente = 'producao' (1 row)
+--   - fiscal_config.ambiente = 'producao'
+--   - nfe_emitidas.tp_amb_sefaz coluna existe + 2 rows backfilladas
+--   - register_order_shipment não usa mais companies.ambiente
+--   - Build OK
+
+SELECT 1; -- no-op

@@ -7,6 +7,7 @@ import { CircleNotch as Loader2, Warning as AlertTriangle, CheckCircle, X, Recei
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { NfePreviewPanel } from './NfePreviewPanel';
+import { NfeEnvironmentBanner } from './NfeEnvironmentBanner';
 import type { NfePreviewResponse } from '@/hooks/useNfe';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -154,6 +155,8 @@ export function BulkNfeDialog({ open, onOpenChange, saleOrders, mode }: Props) {
               : `${saleOrders.length} pedido${saleOrders.length === 1 ? '' : 's'} selecionado${saleOrders.length === 1 ? '' : 's'}. Clique em cada um pra expandir o preview da NF.`}
           </DialogDescription>
         </DialogHeader>
+
+        <NfeEnvironmentBanner />
 
         {/* Barra de progresso */}
         <div className="space-y-1.5">

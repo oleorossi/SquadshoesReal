@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useNfeEmitidas, useCheckNfeStatus } from '@/hooks/useNfe';
+import { NfeEnvironmentBanner } from '@/components/nfe/NfeEnvironmentBanner';
 import { format, parseISO } from 'date-fns';
 
 const STATUS_CONFIG: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
@@ -30,6 +31,9 @@ export default function InvoicesSaidaTab() {
   return (
     <Card>
       <CardHeader>
+        <div className="flex justify-end mb-2">
+          <NfeEnvironmentBanner compact />
+        </div>
         <CardTitle className="text-base flex items-center gap-2">
           <FileText className="h-4 w-4" />
           Notas Fiscais de Saída (NF-e)

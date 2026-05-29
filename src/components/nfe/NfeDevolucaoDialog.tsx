@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { CircleNotch as Loader2, ArrowCounterClockwise as RotateCcw, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { useEmitNfeDevolucao, useNfeDevolucoes } from '@/hooks/useNfe';
+import { NfeEnvironmentBanner } from './NfeEnvironmentBanner';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 
@@ -106,6 +107,8 @@ export function NfeDevolucaoDialog({ open, onOpenChange, nfeId, nfeNumero, saleO
             NF original <strong>#{nfeNumero || '—'}</strong> · {clientName || 'Cliente'}
           </DialogDescription>
         </DialogHeader>
+
+        <NfeEnvironmentBanner />
 
         <div className="flex-1 overflow-y-auto space-y-4 px-1 py-2">
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs flex items-start gap-2">

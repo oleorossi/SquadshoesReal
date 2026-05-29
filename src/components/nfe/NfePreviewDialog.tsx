@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { NfeEnvironmentBanner } from './NfeEnvironmentBanner';
 import { Button } from '@/components/ui/button';
 import { CircleNotch as Loader2, Eye, CheckCircle, WarningCircle as AlertCircle } from '@phosphor-icons/react';
 import { usePreviewNfe, useEmitNfe, type NfePreviewResponse } from '@/hooks/useNfe';
@@ -69,6 +70,8 @@ export function NfePreviewDialog({
             <Eye className="h-4 w-4" /> Conferir NF-e{orderNumber ? ` — ${orderNumber}` : ''}
           </DialogTitle>
         </DialogHeader>
+
+        <NfeEnvironmentBanner />
 
         {preview.isPending && !previewData && (
           <div className="flex justify-center items-center py-12 text-muted-foreground gap-2 text-sm">

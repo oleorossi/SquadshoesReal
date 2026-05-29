@@ -279,6 +279,12 @@ Deno.serve(async (req) => {
       };
       if (emissaoTs) payload.data_emissao = emissaoTs;
       if (refNfe) payload.ref_nfe = refNfe;
+      // Audit round 3 (2026-05-29): persistir ambiente SEFAZ real
+      // (1=Produção, 2=Homologação). Fonte da verdade — `companies.ambiente`
+      // local nunca foi enviado pro GC.
+      if (d?.tipo_ambiente && ['1','2'].includes(String(d.tipo_ambiente))) {
+        payload.tp_amb_sefaz = String(d.tipo_ambiente);
+      }
       // Audit Round 2 (2026-05-29): sync da SEFAZ DEVE setar data_cancelamento
       // quando recebe status='cancelada'. Antes deixava NULL — gerou 5 NFs
       // canceladas sem data (209,237,245,246,247 em 26/05). Usa data_emissao
