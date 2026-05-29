@@ -120,7 +120,10 @@ export function OvertimeResolutionPanel() {
       const ot = (overtimeData as any[]).find(o => o.employee_id === e.id);
       const overtime_minutes = ot?.overtime_minutes ?? 0;
       const hourly_rate_resolved = Number(e.hourly_rate ?? (e.salary ? Number(e.salary) / 220 : 0));
-      const mult = Number(e.overtime_multiplier ?? 1.20);
+      // Regime PJ: HE paga direto minutos/60 × valor_hora, SEM multiplier CLT
+      // (art. 7 XVI não se aplica). O backend (resolve_monthly_overtime) grava
+      // multiplier_snapshot=1.0 — o preview tem que bater com isso.
+      const mult = 1;
       const estimated_pay = (overtime_minutes / 60) * hourly_rate_resolved * mult;
       const res = (resolutions as any[]).find(r => r.employee_id === e.id);
       return {
@@ -216,7 +219,8 @@ function EmployeeResolutionRow({
   const [notes, setNotes] = useState<string>('');
 
   const resolved = !!row.resolution;
-  const payAmountPreview = (payMin / 60) * row.hourly_rate_resolved * row.overtime_multiplier;
+  // Regime PJ: sem multiplier (ver comentário em rows useMemo).
+  const payAmountPreview = (payMin / 60) * row.hourly_rate_resolved;
 
   const resolveMutation = useMutation({
     mutationFn: async () => {
@@ -249,7 +253,6 @@ function EmployeeResolutionRow({
             <p className="text-xs text-muted-foreground">
               HE: <strong className="font-mono">{formatMinutes(row.overtime_minutes)}</strong>
               {' · '}Hora: R$ {row.hourly_rate_resolved.toFixed(2)}
-              {' · '}×{row.overtime_multiplier.toFixed(2)}
               {' · '}Estimado: <strong className="font-mono text-primary">{formatBRL(row.estimated_pay)}</strong>
             </p>
           </div>

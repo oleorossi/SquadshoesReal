@@ -55,6 +55,10 @@ CREATE INDEX IF NOT EXISTS notifications_category_idx
 -- PART 2: v_costura_backlog_30d
 -- ============================================================================
 
+-- COST-1: dedupe — uma onda ativa por OP via LATERAL (era join 1->N com v_wave_orders)
+-- COST-2: exclui ondas cancelled/finished
+-- COST-3: filtra etapas concluídas por status (completed_at quase nunca preenchido)
+-- COST-4: in_service_order usa COALESCE(NULLIF(target_sector,''),'costura')
 CREATE OR REPLACE VIEW public.v_costura_backlog_30d AS
 WITH costura_stages AS (
   SELECT
@@ -67,16 +71,22 @@ WITH costura_stages AS (
     o.status AS order_status,
     so.order_number AS sale_order_number,
     so.delivery_deadline AS sale_order_deadline,
-    pwo.wave_id,
-    pw.costura_start_date AS wave_costura_start,
-    pw.status AS wave_status
+    wave.wave_id,
+    wave.costura_start_date AS wave_costura_start
   FROM public.order_stages os
   JOIN public.orders o ON o.id = os.order_id
   LEFT JOIN public.sale_orders so ON so.id = o.sale_order_id
-  LEFT JOIN public.v_wave_orders pwo ON pwo.sale_order_id = o.sale_order_id
-  LEFT JOIN public.production_waves pw ON pw.id = pwo.wave_id
+  LEFT JOIN LATERAL (
+    SELECT pwo.wave_id, pw.costura_start_date
+    FROM public.v_wave_orders pwo
+    JOIN public.production_waves pw ON pw.id = pwo.wave_id
+    WHERE pwo.sale_order_id = o.sale_order_id
+      AND pw.status NOT IN ('cancelled', 'finished')
+    ORDER BY pw.costura_start_date NULLS LAST
+    LIMIT 1
+  ) wave ON true
   WHERE os.stage_name = 'Costura'
-    AND os.completed_at IS NULL
+    AND COALESCE(os.status, '') NOT IN ('concluido', 'concluído', 'completed')
     AND o.status IN ('Em Produção', 'Reservado')
 )
 SELECT
@@ -103,7 +113,7 @@ SELECT
   EXISTS (
     SELECT 1 FROM public.service_orders sso
     WHERE sso.order_id = cs.order_id
-      AND sso.target_sector = 'costura'
+      AND COALESCE(NULLIF(sso.target_sector, ''), 'costura') = 'costura'
       AND sso.status NOT IN ('received', 'Concluído', 'concluido', 'Cancelado', 'cancelled', 'cancelado')
   ) AS in_service_order
 FROM costura_stages cs
@@ -383,6 +393,7 @@ AS $$
 DECLARE
   v_created int := 0;
   v_resolved int := 0;
+  v_rc int := 0;
   v_day record;
   v_week_key text;
   v_severity text;
@@ -440,7 +451,8 @@ BEGIN
       severity = EXCLUDED.severity,
       payload = EXCLUDED.payload;
 
-    GET DIAGNOSTICS v_created = ROW_COUNT;
+    GET DIAGNOSTICS v_rc = ROW_COUNT;
+    v_created := v_created + v_rc;
   END LOOP;
 
   UPDATE public.notifications
@@ -497,7 +509,7 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  IF NEW.target_sector = 'costura' THEN
+  IF COALESCE(NULLIF(NEW.target_sector, ''), 'costura') = 'costura' THEN
     BEGIN
       PERFORM public.notify_costura_overflow();
     EXCEPTION WHEN OTHERS THEN

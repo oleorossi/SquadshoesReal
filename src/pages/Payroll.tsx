@@ -190,24 +190,12 @@ export default function Payroll() {
         }
       }
 
-      // HE manual (decisão 2026-05-21): minutos de HE 50/100 que o RH
-      // EXPLICITAMENTE marcou pra pagar via bank_hours_movements (positive
-      // minutes com overtime_pct 50 ou 100). Sem isso, calculatePayroll
-      // pula o cálculo automático. Tolera bank_hours_movements vazia
-      // (cai no fallback automático legado).
-      // Regime PJ — soma total de HE explicitamente autorizada pelo RH
-      // (movement_type='pay'). Sem distinção 50/100 (não há CLT art. 7 XVI).
-      const { data: paidOtRows } = await (supabase as any)
-        .from('bank_hours_movements')
-        .select('employee_id, minutes, movement_type')
-        .gte('movement_date', periodRange.from!)
-        .lte('movement_date', periodRange.to!)
-        .in('movement_type', ['pay', 'pay_overtime']);
-      const paidOtByEmp = new Map<string, number>();
-      for (const r of (paidOtRows || []) as any[]) {
-        const cur = paidOtByEmp.get(r.employee_id) ?? 0;
-        paidOtByEmp.set(r.employee_id, cur + Math.abs(Number(r.minutes || 0)));
-      }
+      // NB (auditoria 2026-05-29): aqui existia uma query a bank_hours_movements
+      // filtrando movement_type IN ('pay','pay_overtime') — valores que NÃO
+      // existem no CHECK da tabela (válido: 'payment'). Era código morto (sempre
+      // vazio). NÃO reativar com 'payment': a HE paga já entra pela via canônica
+      // overtime_resolutions (overtimePaidByEmp abaixo), então filtrar 'payment'
+      // aqui causaria double-count com as resoluções. Removido.
 
       let calculated = 0;
       for (const emp of employees.filter(e => e.active)) {
@@ -264,9 +252,8 @@ export default function Payroll() {
           })),
           advancesByEmp.get(emp.id) || 0,
           config as BenefitsConfig,
-          // HE manual: passa só se houver lançamento explícito do RH.
-          // Sem lançamento → fallback automático (legado).
-          paidOtByEmp.get(emp.id),
+          // HE manual desativada (ver NB acima) — sempre fallback automático.
+          undefined,
         );
 
         const overtimePaid = overtimePaidByEmp.get(emp.id) || 0;
