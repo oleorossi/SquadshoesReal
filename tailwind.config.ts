@@ -80,9 +80,18 @@ export default {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        // Industrial Editorial Pro 2.0 — radius sharp/flat opt-in
+        sharp: "var(--radius-sharp)",  // 2px — cards hero
+        flat: "var(--radius-flat)",    // 0 — panels stamping
+      },
+      boxShadow: {
+        sharp: "var(--shadow-sharp)",
+        stamp: "var(--shadow-stamp)",
+        "stamp-red": "var(--shadow-stamp-red)",
       },
       transitionDuration: {
         'DEFAULT': '300ms',
+        'instant': '80ms',
         'fast': '150ms',
         'slow': '500ms',
         '2000': '2000ms',
