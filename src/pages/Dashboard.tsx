@@ -11,6 +11,7 @@ import { useConsumptionSchemaError } from "@/hooks/useConsumptionSchemaError";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { getDashboardPeriodRange, PERIOD_OPTIONS, type DashboardPeriod } from "@/lib/dashboardPeriod";
+import { EditorialPageHeader } from "@/components/layout/EditorialPageHeader";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -120,22 +121,19 @@ export default function Dashboard() {
         />
       )}
 
-      {/* Editorial header — section label + display title + meta */}
-      <div className="flex items-end justify-between gap-4 pb-2 flex-wrap">
-        <div className="min-w-0 space-y-2">
-          <div className="section-label flex items-center gap-2">
-            <span className="live-dot" />
-            Painel · {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
-          </div>
-          <h1 className="text-display-lg !text-foreground">
-            Squad Shoes
-          </h1>
-          <p className="text-sm text-muted-foreground max-w-md">
-            Visão geral de produção, estoque e financeiro · {range.label}
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3 flex-wrap">
+      {/* Industrial Editorial Pro 2.0: header substitui hero inline custom.
+          Live dot pulse + title Anton clamp + meta MONO + actions inline. */}
+      <EditorialPageHeader
+        sectionLabel={`PAINEL · ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' }).toUpperCase()}`}
+        title="Squad Shoes"
+        description={`Visão geral de produção, estoque e financeiro · ${range.label}`}
+        live
+        meta={
+          <>
+            ATUALIZADO <strong>{new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</strong>
+          </>
+        }
+        actions={
           <div className="flex items-center gap-2">
             <CalendarRange className="h-4 w-4 text-muted-foreground" />
             <Select value={period} onValueChange={v => setPeriod(v as DashboardPeriod)}>
@@ -152,14 +150,8 @@ export default function Dashboard() {
               {range.label}
             </Badge>
           </div>
-          <div className="text-xs text-muted-foreground font-mono tabular-nums hidden sm:block">
-            {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-          </div>
-        </div>
-      </div>
-
-      {/* Rule line: divisor editorial sob o header */}
-      <div className="rule-line-thick !bg-foreground" aria-hidden="true" />
+        }
+      />
 
       {/* Section label antes do bloco produção */}
       <div className="flex items-baseline gap-3 pt-2">
