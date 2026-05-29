@@ -28,6 +28,12 @@ interface Props {
    *  badge editorial proeminente "LOTE X / N" no topo da ficha pra avisar
    *  o operador que está produzindo um pedaço, não a OP inteira. */
   lotInfo?: { number: number; total: number };
+  /** Batch ID determinístico (${SECTOR}-${YYMMDD}-${HASH4}) — anchora a
+   *  genealogia da ficha consolidada. Original PR eb67425 (mai/22); commit
+   *  834641d (mai/23) removeu sem querer do destructuring ao adicionar
+   *  lotInfo, deixando os 2 usos JSX órfãos → ReferenceError em prod
+   *  (tsconfig permissivo não captou). Restaurado 29/05/2026. */
+  batchId?: string;
 }
 
 /**
@@ -44,7 +50,7 @@ interface Props {
  */
 export const WorksheetHeader = ({
   sector, icon: Icon,
-  imageSlot, identification, qrLabel, alerts, date, index, lotInfo,
+  imageSlot, identification, qrLabel, alerts, date, index, lotInfo, batchId,
 }: Props) => {
   const editorialIndex = index || `01 / ${sector.toUpperCase()}`;
   return (
