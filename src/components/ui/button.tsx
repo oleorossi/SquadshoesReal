@@ -19,6 +19,13 @@ const buttonVariants = cva(
         secondary: "border-[1.5px] border-foreground/15 bg-card hover:bg-foreground/5",
         ghost: "hover:bg-foreground/5 hover:text-foreground",
         link: "text-primary underline-offset-4 hover:underline",
+        // Industrial Editorial Pro 2.0 — opt-in variants pra hero CTAs.
+        // editorial: bloco INK uppercase MONO statement.
+        // editorial-outline: outline 1.5px foreground uppercase MONO.
+        // editorial-red: bloco squad red uppercase MONO.
+        editorial: "bg-foreground text-background font-mono uppercase tracking-widest text-[11px] hover:bg-foreground/90 active:scale-[0.98] shadow-sharp",
+        "editorial-outline": "border-[1.5px] border-foreground bg-transparent font-mono uppercase tracking-widest text-[11px] text-foreground hover:bg-foreground hover:text-background",
+        "editorial-red": "bg-primary text-primary-foreground font-mono uppercase tracking-widest text-[11px] hover:bg-primary/90 active:scale-[0.98] shadow-stamp-red",
       },
       size: {
         default: "h-10 px-5 py-2.5",
