@@ -300,6 +300,33 @@
      Os demais tokens --p-* (paper/A4) e a Fraunces ficam em
      src/styles-paper.css (importado depois deste arquivo via main.tsx). */
   --label-yellow: #FFE94A;
+
+  /* ═══════════════════════════════════════════════════════════════
+     ▼ INDUSTRIAL EDITORIAL PRO · 2.0 — tokens semânticos (2026-05-29)
+     Camada de tokens "high-leverage" sobre os primitives anteriores.
+     Pensados pra opt-in via classes .hero-editorial / .surface-sharp
+     nas telas-hero (Dashboard, Hubs, Relatórios). Telas operacionais
+     densas (listas/tabelas) continuam usando os tokens originais.
+     ═════════════════════════════════════════════════════════════ */
+
+  /* Surfaces nomeadas — INK (preto editorial) / PAPER (off-white creme) */
+  --ink:                 var(--neutral-900);      /* #0A0A0A */
+  --paper:               var(--neutral-50);       /* #FAFAF7 */
+  --ink-soft:            var(--neutral-800);      /* hover de surface-ink */
+
+  /* Radius editorial — versões mais decisivas pra hero/cards-statement */
+  --radius-sharp:        2px;                     /* sharp editorial */
+  --radius-flat:         0;                       /* panels stamping */
+
+  /* Sombras editoriais — secas (drop hard sem bokeh) e stamp (deslocada) */
+  --shadow-sharp:        0 2px 0 0 hsl(var(--ink) / 0.05);
+  --shadow-stamp:        4px 4px 0 0 hsl(var(--ink) / 0.08);
+  --shadow-stamp-red:    4px 4px 0 0 hsl(var(--primary) / 0.18);
+
+  /* Rule lines — espessuras editoriais consistentes */
+  --rule-hair:           1px;
+  --rule-thick:          3px;
+  --rule-heavy:          6px;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -689,23 +716,20 @@ a:focus-visible {
 .delta-down { background: hsl(var(--destructive-soft)); color: hsl(var(--destructive-soft-foreground)); }
 .delta-flat { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
 
-/* Live indicator */
+/* Live indicator (badge inline editorial — fundo ink + dot red squad) */
 .live-indicator {
   display: inline-flex; align-items: center; gap: var(--space-2);
   background: hsl(var(--sidebar-background));
   color: hsl(var(--sidebar-foreground));
   padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
+  border-radius: var(--radius-sharp);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
-.live-dot {
-  width: 8px; height: 8px;
-  background: hsl(var(--accent-500));
-  border-radius: 50%;
-  box-shadow: 0 0 0 3px hsl(var(--accent-500) / 0.3);
-  animation: pulse-slow 1.5s ease-in-out infinite;
-}
+/* .live-dot já está definido acima (com ring animado) — não duplica aqui. */
 
 /* Glass effect (overlays) */
 .glass {
@@ -1017,6 +1041,142 @@ a:focus-visible {
   /* ── Divider ── */
   .divider-x { @apply border-t border-border/60 my-4; }
   .divider-y { @apply border-l border-border/60 mx-3 self-stretch; }
+
+  /* ────────────────────────────────────────────────────────
+     ▼ EDITORIAL PRO 2.0 — utilities opt-in (telas-hero)
+     Usar em Dashboard, Hubs, Relatórios. NÃO usar em listas
+     operacionais densas (estoque, OPs lista, PVs lista).
+     ──────────────────────────────────────────────────────── */
+
+  /* Surface sharp: card editorial com radius 2px + border foreground/10 +
+     sombra drop-hard sem bokeh. Substitui shadcn Card nos blocos hero. */
+  .surface-sharp {
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--foreground) / 0.08);
+    border-radius: var(--radius-sharp);
+    box-shadow: var(--shadow-sharp);
+  }
+  .surface-sharp-stamp {
+    background: hsl(var(--card));
+    border: 1.5px solid hsl(var(--foreground));
+    border-radius: var(--radius-sharp);
+    box-shadow: var(--shadow-stamp);
+  }
+  .surface-ink {
+    background: hsl(var(--ink));
+    color: hsl(var(--paper));
+    border-radius: var(--radius-sharp);
+  }
+  .surface-paper {
+    background: hsl(var(--paper));
+    color: hsl(var(--ink));
+    border: 1px solid hsl(var(--foreground) / 0.08);
+    border-radius: var(--radius-sharp);
+  }
+
+  /* Shadow utilities editoriais */
+  .shadow-sharp      { box-shadow: var(--shadow-sharp); }
+  .shadow-stamp      { box-shadow: var(--shadow-stamp); }
+  .shadow-stamp-red  { box-shadow: var(--shadow-stamp-red); }
+
+  /* Rule lines de espessura variável (uso em headers/footers editoriais) */
+  .rule-thick {
+    width: 100%;
+    height: var(--rule-thick);
+    background-color: hsl(var(--foreground));
+  }
+  .rule-heavy {
+    width: 100%;
+    height: var(--rule-heavy);
+    background-color: hsl(var(--foreground));
+  }
+  .rule-red-thick {
+    width: 100%;
+    height: var(--rule-thick);
+    background-color: hsl(var(--primary));
+  }
+
+  /* Hero editorial: wrapper opcional pra header de telas-hero. Aplica
+     padding + bottom rule + safe spacing pro conteúdo logo abaixo.
+     Composição esperada: eyebrow MONO + display ANTON + meta inline +
+     rule-thick + (children = KPI grid ou ação). */
+  .hero-editorial {
+    position: relative;
+    padding: 1.5rem 0 1.25rem 0;
+    border-bottom: var(--rule-thick) solid hsl(var(--foreground));
+    margin-bottom: 1.5rem;
+  }
+  .hero-editorial::before {
+    /* dot vermelho squad como marcador no canto sup esquerdo, sutil */
+    content: '';
+    position: absolute;
+    top: 1.5rem;
+    left: -0.625rem;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: hsl(var(--primary));
+  }
+  .hero-editorial-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+  }
+  .hero-editorial-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: hsl(var(--muted-foreground));
+    line-height: 1;
+    margin-bottom: 0.625rem;
+  }
+  .hero-editorial-title {
+    font-family: var(--font-display);
+    font-size: clamp(2.25rem, 5.5vw, 3.75rem);
+    font-weight: 400;
+    letter-spacing: -0.025em;
+    line-height: 0.92;
+    text-transform: uppercase;
+    color: hsl(var(--foreground));
+    padding-top: 0.06em;
+  }
+  .hero-editorial-meta {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    color: hsl(var(--muted-foreground));
+    letter-spacing: 0.04em;
+    font-variant-numeric: tabular-nums;
+  }
+  .hero-editorial-meta strong {
+    color: hsl(var(--foreground));
+    font-weight: 700;
+  }
+
+  /* KPI hero: número Anton ENORME pra dashboards/hubs */
+  .kpi-hero-num {
+    font-family: var(--font-display);
+    font-size: clamp(2.5rem, 6vw, 4.5rem);
+    font-weight: 400;
+    line-height: 0.9;
+    letter-spacing: -0.025em;
+    font-variant-numeric: tabular-nums;
+    color: hsl(var(--foreground));
+  }
+  .kpi-hero-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: hsl(var(--muted-foreground));
+    line-height: 1;
+    margin-bottom: 0.5rem;
+  }
 
   /* ── Interface Cleanup (White-label) ──
    * Oculta qualquer banner/badge externo. Os atributos abaixo usam

@@ -13,6 +13,7 @@ import { ConversionReportTab } from '@/components/inventory/tabs/ConversionRepor
 import AuditLogTab from '@/components/inventory/tabs/AuditLogTab';
  import StrapStockLogTab from '@/components/inventory/tabs/StrapStockLogTab';
  import StockHistory from './StockHistory';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 // Categorias de material para filtro inline (chips).
 // 'Solado' REMOVIDO em 18/05/2026 — gestão de solados vive em /solados (SolesHub).
@@ -89,18 +90,12 @@ export default function Index() {
 
   return (
     <div className="space-y-6 editorial-stagger">
-      {/* Editorial header */}
-      <div className="space-y-2 pb-2">
-        <div className="section-label flex items-baseline gap-3">
-          <span className="font-display text-xl text-muted-foreground tabular-nums leading-none">01</span>
-          <span>Inventário Squad</span>
-        </div>
-        <h1 className="text-display-lg !text-foreground">Estoque</h1>
-        <p className="text-sm text-muted-foreground max-w-md">
-          Materiais, consumos, alertas e visão geral do inventário
-        </p>
-        <div className="rule-line !bg-foreground" aria-hidden="true" />
-      </div>
+      <EditorialPageHeader
+        sectionNumber="01"
+        sectionLabel="INVENTÁRIO SQUAD"
+        title="Estoque"
+        description="Materiais, consumos, alertas e visão geral do inventário"
+      />
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as MainTab)}>
         {/* ── Tab bar principal ── */}
