@@ -1972,12 +1972,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           const flowOrder: GroupedSector[] = ['Corte Forração', 'Corte Cabedal', 'Costura', 'Aviamento'];
           const sectorsToRender: GroupedSector[] = flowOrder.filter(s => activeSectors.has(s));
 
-          // 22/05/2026: pra Corte Cabedal e Corte Forração, o cortador foca
-          // SÓ na cor que está cortando (material é o mesmo independente do
-          // solado de destino). User pediu: 1 ficha por setor agregando todas
-          // as cores de TODOS os solados — sem ref-a-ref, sem solado-por-solado.
-          // Costura e Aviamento mantêm comportamento original (1 ficha por solado).
-          const CUTTING_AGGREGATE_BY_COLOR: ReadonlyArray<GroupedSector> = ['Corte Cabedal', 'Corte Forração'];
+          // 22/05/2026: pra Corte Cabedal, o cortador foca SÓ na cor que
+          // está cortando (couro/material é o mesmo independente do solado
+          // de destino) — 1 ficha agregando todas as cores de todos os
+          // solados. Costura e Aviamento mantêm 1 ficha por solado.
+          // 29/05/2026: Corte Forração saiu do agregado a pedido do user —
+          // forração varia por solado (cor da forração ≠ cor do cabedal),
+          // então a ficha precisa quebrar por solado mostrando cores +
+          // pares por numeração de cada um.
+          const CUTTING_AGGREGATE_BY_COLOR: ReadonlyArray<GroupedSector> = ['Corte Cabedal'];
           const mergeColorsAcrossSoles = (sector: GroupedSector): SoleSilkGroup | null => {
             const colorMap = new Map<string, SilkColorGroup>();
             for (const soleGroup of silkMontageGroups) {
