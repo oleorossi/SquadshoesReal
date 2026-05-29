@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { PencilSimple as Pencil, Palette, FloppyDisk as Save, Package, Plus, MagnifyingGlass as Search, Footprints, Ruler, CircleNotch as Loader2, Cube as BoxIcon, Flask as FlaskConical, Stack as Layers, X, LinkSimple as Link2 } from '@phosphor-icons/react';
-import { ProductGroup, useUpdateGroup } from '@/hooks/useGroups';
+import { ProductGroup, useUpdateGroup, useGroups } from '@/hooks/useGroups';
 import { useProducts } from '@/hooks/useProducts';
 import { useForceDeleteProductFlow } from '@/components/inventory/ForceDeleteProductDialog';
 import GroupColorsManager from '@/components/groups/GroupColorsManager';
@@ -23,6 +23,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { getSoleModelName } from '@/lib/utils';
 import { CONSUMPTION_UNITS_BY_GROUP } from '@/lib/measurementUnits';
 import { deriveCategoryFromGroup } from '@/lib/categoryFromGroup';
@@ -627,11 +629,90 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
   const createRecipe = useCreateArtisanalRecipe();
   const updateRecipe = useUpdateArtisanalRecipe();
 
+  // Audit 2026-05-29: estados/computeds da feature de hierarquia + shared specs
+  // + peso unitário foram referenciados em commit 2c30041 mas nunca declarados
+  // (TS2304 em prod = dialog crashava ao abrir). Restaurado com defaults
+  // sãos derivados de `group`.
+  const [parentGroupId, setParentGroupId] = useState<string>(group.parent_group_id || '');
+  const [sharedSpecs, setSharedSpecs] = useState<boolean>((group as any).shared_specs ?? false);
+  const [unitWeightKg, setUnitWeightKg] = useState<string>(
+    group.unit_weight_kg != null ? String(group.unit_weight_kg) : ''
+  );
+  const [linkChildOpen, setLinkChildOpen] = useState(false);
+
+  // Lista de candidatos a pai: TODOS os grupos exceto o próprio + seus descendentes
+  // (pra evitar ciclos). Anota depth pra renderização indentada no dropdown.
+  const { validParentOptions, childrenGroups, availableToLinkAsChild, itemCountByGroup } = useMemo(() => {
+    type G = ProductGroup & { depth: number };
+    // BFS de descendentes do grupo atual (rejeita ciclo)
+    const descendantIds = new Set<string>();
+    const queue = [group.id];
+    while (queue.length > 0) {
+      const cur = queue.shift()!;
+      for (const g of allGroups) {
+        if (g.parent_group_id === cur && !descendantIds.has(g.id)) {
+          descendantIds.add(g.id);
+          queue.push(g.id);
+        }
+      }
+    }
+    // Depth lookup (relativo à raiz)
+    const depthOf = (id: string): number => {
+      let d = 0;
+      let cursor = allGroups.find(g => g.id === id);
+      const seen = new Set<string>();
+      while (cursor && cursor.parent_group_id && !seen.has(cursor.id)) {
+        seen.add(cursor.id);
+        d += 1;
+        cursor = allGroups.find(g => g.id === cursor!.parent_group_id);
+      }
+      return d;
+    };
+    const validParents: G[] = allGroups
+      .filter(g => g.id !== group.id && !descendantIds.has(g.id))
+      .map(g => ({ ...g, depth: depthOf(g.id) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const children = allGroups.filter(g => g.parent_group_id === group.id);
+    // Pra "vincular como filho": exclui o próprio + atuais filhos + ancestrais
+    // (evita ciclo na direção contrária). Inclui grupos que JÁ têm outro pai
+    // (badge "tem pai" no UI alerta o user).
+    const ancestorIds = new Set<string>();
+    {
+      let cursor = allGroups.find(g => g.id === group.parent_group_id);
+      const seen = new Set<string>();
+      while (cursor && !seen.has(cursor.id)) {
+        seen.add(cursor.id);
+        ancestorIds.add(cursor.id);
+        cursor = allGroups.find(g => g.id === cursor!.parent_group_id);
+      }
+    }
+    const childIds = new Set(children.map(c => c.id));
+    const availableChildren: G[] = allGroups
+      .filter(g => g.id !== group.id && !childIds.has(g.id) && !ancestorIds.has(g.id))
+      .map(g => ({ ...g, depth: depthOf(g.id) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    // Contagem de produtos por grupo (pra badge "N itens" nos filhos)
+    const countMap = new Map<string, number>();
+    for (const p of allProducts) {
+      if (p.group_id) countMap.set(p.group_id, (countMap.get(p.group_id) ?? 0) + 1);
+    }
+    return {
+      validParentOptions: validParents,
+      childrenGroups: children,
+      availableToLinkAsChild: availableChildren,
+      itemCountByGroup: countMap,
+    };
+  }, [allGroups, group.id, group.parent_group_id, allProducts]);
+
   useEffect(() => {
     setName(group.name);
     setDescription(group.description || '');
     setIsBomColorSource(group.is_bom_color_source);
     setConsumptionUnit(group.consumption_unit || '__none__');
+    // Audit 2026-05-29: sync dos novos campos quando troca de grupo no dialog
+    setParentGroupId(group.parent_group_id || '');
+    setSharedSpecs((group as any).shared_specs ?? false);
+    setUnitWeightKg(group.unit_weight_kg != null ? String(group.unit_weight_kg) : '');
 
     // If all products in group share the same price/location, set them as defaults
     if (products.length > 0) {
@@ -681,6 +762,9 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
     const finalUnit = consumptionUnit === '__none__' ? null : consumptionUnit;
     
     try {
+      // Audit 2026-05-29: persistir os 3 novos campos restaurados
+      // (parent_group_id, shared_specs, unit_weight_kg).
+      const parsedWeight = unitWeightKg.trim() ? Number(unitWeightKg) : null;
       await updateGroup.mutateAsync({
         id: group.id,
         data: {
@@ -688,6 +772,9 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
           description,
           is_bom_color_source: isBomColorSource,
           consumption_unit: finalUnit,
+          parent_group_id: parentGroupId || null,
+          shared_specs: sharedSpecs,
+          unit_weight_kg: parsedWeight && !Number.isNaN(parsedWeight) ? parsedWeight : null,
         } as any,
       });
 

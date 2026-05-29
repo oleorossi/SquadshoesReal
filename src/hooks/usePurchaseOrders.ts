@@ -349,7 +349,9 @@ export function useCapacityDrivenLeadTimes() {
          .from('v_capacity_driven_lead_times' as any)
          .select('*');
        if (error) throw error;
-       return (data || []) as unknown as DynamicLeadTime[];
+       // Audit 2026-05-29: type DynamicLeadTime nunca foi definido (TS2304 em prod).
+      // Cast pra any até alguém criar a interface formal — runtime já funciona.
+      return (data || []) as unknown as any[];
      },
    });
  }

@@ -8,6 +8,7 @@
     "build": "node scripts/check-vercelignore.mjs && vite build && node scripts/verify-no-branding.mjs && node scripts/check-navigation-access.mjs",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "check:tokens": "bash scripts/check-design-tokens.sh",
     "check:vercelignore": "node scripts/check-vercelignore.mjs",
     "verify:no-branding": "node scripts/verify-no-branding.mjs",

@@ -277,6 +277,7 @@ export function OrderTransportCalculator({
           suggestions={suggestions}
           metrics={metrics}
           bau={selectedBau}
+          baus={baus}
           destinationCity={destinationCity}
           destinationState={destinationState}
           companies={companies}
@@ -295,6 +296,9 @@ interface TransportResultsProps {
   suggestions: { title: string; description: string; savings?: string }[];
   metrics: { spaceUtilization: number; costEfficiency: number; environmentalScore: number; handlingScore: number };
   bau: Bau;
+  /** Audit 2026-05-29: faltava como prop — usado em "Outras opções" pra
+   *  listar todos os baús alternativos. Causa TS2304 + bug visual em prod. */
+  baus: Bau[];
   destinationCity?: string;
   destinationState?: string;
   companies: any[];
@@ -309,6 +313,7 @@ function TransportResults({
   suggestions,
   metrics,
   bau,
+  baus,
   destinationCity,
   destinationState,
   companies,

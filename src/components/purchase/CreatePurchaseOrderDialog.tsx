@@ -7,7 +7,7 @@
  import { useSuppliers } from '@/hooks/useSuppliers';
  import { useProducts } from '@/hooks/useProducts';
  import { useCreatePurchaseOrder } from '@/hooks/usePurchaseOrders';
- import { Plus, Trash as Trash2, MagnifyingGlass as Search, CircleNotch as Loader2 } from '@phosphor-icons/react';
+ import { Plus, Trash as Trash2, MagnifyingGlass as Search, CircleNotch as Loader2, ArrowsLeftRight as ArrowRightLeft } from '@phosphor-icons/react';
  import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
  import { toast } from 'sonner';
  import { effectiveConversionFactor, describeConversion } from '@/lib/purchaseConversion';

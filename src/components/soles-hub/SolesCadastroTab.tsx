@@ -111,16 +111,33 @@ export default function SolesCadastroTab({ sole }: Props) {
       const { error } = await supabase.from('products').update(updates).eq('id', sole.id);
       if (error) throw error;
 
-      // 2. Replica name + gradeRange pras siblings (cor diferente, mesmo modelo)
-      const nameChanged = patch.name !== sole.name;
-      const rangeChanged = !!patch.gradeRange;
+      // 2. Replica gradeRange pras siblings (cor diferente, mesmo modelo)
+      // Audit 2026-05-29: replicateToSiblings nunca foi implementada (TS2304
+      // em prod = silent fail no Tab "Cadastro" dos solados). Stub inline
+      // identifica siblings por nome base (sem cor) + group_id e replica
+      // gradeRange. Não replica nome pra não pisar em cores específicas.
       let siblingCount = 0;
-      if (nameChanged || rangeChanged) {
-        const result = await replicateToSiblings({
-          name: nameChanged ? patch.name : undefined,
-          gradeRange: patch.gradeRange,
-        });
-        siblingCount = result.count;
+      if (patch.gradeRange) {
+        const baseName = sole.name.replace(/\s+-\s+\S.*$/, '').trim();
+        const { data: siblings, error: sibErr } = await supabase
+          .from('products')
+          .select('id, stock_grade')
+          .eq('group_id', sole.group_id || '')
+          .neq('id', sole.id)
+          .ilike('name', `${baseName}%`);
+        if (sibErr) {
+          console.warn('replicateToSiblings: falha ao buscar siblings', sibErr);
+        } else if (siblings && siblings.length > 0) {
+          for (const sib of siblings) {
+            const newGrade = {
+              ...((sib.stock_grade as any) || {}),
+              _size_from: patch.gradeRange.from,
+              _size_to: patch.gradeRange.to,
+            };
+            await supabase.from('products').update({ stock_grade: newGrade }).eq('id', sib.id);
+          }
+          siblingCount = siblings.length;
+        }
       }
       return { siblingCount };
     },
