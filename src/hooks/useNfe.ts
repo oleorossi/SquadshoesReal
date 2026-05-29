@@ -205,26 +205,30 @@ export function useSetPrimaryCompany() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      // Clear all primaries first (brief window with zero primary is safer than
-      // two primaries — emit-nfe falls back to fiscal_config when none found).
+      // Auditoria 2026-05-29: clear-OTHERS-then-set em vez de clear-all-then-set
+      // — o `neq('id', id)` no clear deixa a primária-alvo intacta (se já era
+      // primária, fica; se não era, vai pro set). Combinado ao unique parcial
+      // uq_companies_single_primary, garante invariante (≤1 primária ativa).
+      const { data: target, error: checkErr } = await supabase
+        .from('companies')
+        .select('id, active')
+        .eq('id', id)
+        .maybeSingle();
+      if (checkErr) throw checkErr;
+      if (!target || !target.active) {
+        throw new Error('Empresa inativa — ative-a antes de definir como principal.');
+      }
       const { error: clearErr } = await supabase
         .from('companies')
         .update({ is_primary: false })
-        .eq('active', true);
+        .eq('active', true)
+        .neq('id', id);
       if (clearErr) throw clearErr;
-      // Set the new primary — add .eq('active', true) so an inactive company
-      // can never become primary (emit-nfe queries active+primary; an inactive
-      // primary row produces a "no active primary" fallback to fiscal_config).
-      const { data: set, error } = await supabase
+      const { error: setErr } = await supabase
         .from('companies')
         .update({ is_primary: true })
-        .eq('id', id)
-        .eq('active', true)
-        .select('id');
-      if (error) throw error;
-      if (!set || set.length === 0) {
-        throw new Error('Empresa inativa — ative-a antes de definir como principal.');
-      }
+        .eq('id', id);
+      if (setErr) throw setErr;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['companies'] });

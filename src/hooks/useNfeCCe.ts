@@ -101,6 +101,27 @@ export function useMarkCCeEmitted() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (args: { id: string; protocol: string; sefazResponse?: string }) => {
+      // Auditoria 2026-05-29: valida janela legal de 30 dias da emissão da NF
+      // original. SEFAZ rejeita CCe após 720h (30 dias corridos) com erro 478.
+      // Antes só havia texto informativo no painel — operador podia "marcar
+      // emitida" CCe que a SEFAZ recusaria.
+      const { data: cce, error: cceErr } = await supabase
+        .from('nfe_cce' as any)
+        .select('nfe_id, nfe_emitidas(data_emissao)')
+        .eq('id', args.id)
+        .maybeSingle();
+      if (cceErr) throw cceErr;
+      const dataEmissao = (cce as any)?.nfe_emitidas?.data_emissao;
+      if (dataEmissao) {
+        const diffMs = Date.now() - new Date(dataEmissao).getTime();
+        const diffDays = diffMs / (1000 * 60 * 60 * 24);
+        if (diffDays > 30) {
+          throw new Error(
+            `Prazo SEFAZ de 30 dias excedido (NF emitida há ${Math.floor(diffDays)} dias). ` +
+            `CCe será rejeitada — emita NF substitutiva ou faça devolução.`
+          );
+        }
+      }
       const { error } = await supabase
         .from('nfe_cce' as any)
         .update({

@@ -55,7 +55,14 @@ function splitAddress(addr: string | null | undefined, manualComplemento?: strin
   if (idx < 0) return { logradouro: raw, complemento: manual };
   const logradouro = raw.slice(0, idx).trim();
   const restoDoEndereco = raw.slice(idx + 1).trim();
-  // Junta manual + extraído (manual primeiro se houver, separado por " - ")
+  // Auditoria 2026-05-29: se o resto começa com número puro (ex: "123, Centro"),
+  // é o NÚMERO do imóvel — não vai pra complemento (GestaoClick infere número
+  // separadamente). Antes "Rua X, 123, Centro" virava logradouro="Rua X" /
+  // complemento="123, Centro" — número errado.
+  const startsWithDigit = /^\d+\b/.test(restoDoEndereco);
+  if (startsWithDigit) {
+    return { logradouro: raw, complemento: manual };
+  }
   const complemento = manual && restoDoEndereco
     ? `${manual} - ${restoDoEndereco}`
     : (manual || restoDoEndereco);
@@ -258,15 +265,37 @@ Deno.serve(async (req) => {
       }), { status: 409, headers: corsHeaders });
     }
 
-    // Limite de retentativas (qualquer status): PV-00104 acumulou 10 NFs em mai/2026
-    // (r1+r2 rejeitada pelo mesmo motivo, r3-r9 ficaram em processando, r10 cancelada).
-    // Cada tentativa ocupa numeração SEFAZ. >= 5 NFs do mesmo PV = sinal de cadastro
-    // quebrado — bloqueia até alguém investigar (cancelar antigas no painel GC).
+    // Auditoria 2026-05-29: janela temporal de 10min entre tentativas — antes
+    // operador podia clicar Emitir 10x em sequência após rejeição imediata,
+    // queimando numeração SEFAZ. PV-00104 documenta 10 tentativas, 8 números
+    // perdidos. Bloqueia se houve QUALQUER nfe_emitidas criada nos últimos 10
+    // minutos pro mesmo PV, independente de status.
+    const { data: recentNfes } = await adminClient
+      .from("nfe_emitidas")
+      .select("id, status, created_at")
+      .eq("sale_order_id", sale_order_id)
+      .gte("created_at", new Date(Date.now() - 10 * 60 * 1000).toISOString())
+      .order("created_at", { ascending: false })
+      .limit(1);
+    if (recentNfes && recentNfes.length > 0) {
+      const last = recentNfes[0];
+      const ageSec = Math.floor((Date.now() - new Date(last.created_at).getTime()) / 1000);
+      const waitSec = 10 * 60 - ageSec;
+      return new Response(JSON.stringify({
+        error: `Última tentativa há ${ageSec}s (status ${last.status}). Aguarde ${Math.ceil(waitSec / 60)}min antes de retentar — ` +
+               `evita queimar números SEFAZ em retries rápidos.`,
+        wait_seconds: waitSec,
+      }), { status: 429, headers: corsHeaders });
+    }
+
+    // Hard limit reduzido de 5 → 3 (auditoria 2026-05-29): PV-00104 acumulou 10
+    // antes do guard antigo (=5) atuar tarde demais. 3 tentativas é suficiente
+    // pra cobrir flapping legítimo de SEFAZ; mais que isso = cadastro quebrado.
     const { count: totalNfes } = await adminClient
       .from("nfe_emitidas")
       .select("id", { count: "exact", head: true })
       .eq("sale_order_id", sale_order_id);
-    if (totalNfes !== null && totalNfes >= 5) {
+    if (totalNfes !== null && totalNfes >= 3) {
       return new Response(JSON.stringify({
         error: `Limite de retentativas atingido: ${totalNfes} NF-es já criadas pra este pedido. ` +
                `Provável problema persistente no cadastro do cliente. ` +
@@ -899,13 +928,16 @@ Deno.serve(async (req) => {
       const n = lista.length;
       const totalCent = Math.round(sumItems * 100);
       const baseCent = Math.floor(totalCent / n);
-      const hoje = new Date();
+      // Auditoria 2026-05-29: usar timezone BRT (America/Sao_Paulo) em vez do
+      // UTC default do isolate Deno. Emissão às 22h BRT (1h UTC do dia seguinte)
+      // gerava data_vencimento +1 dia, causando discussão com cliente.
+      const hojeBrt = new Date(Date.now() - 3 * 3600 * 1000);
       return lista.map((dias, i) => {
-        const venc = new Date(hoje);
-        venc.setDate(venc.getDate() + dias);
-        const dd = String(venc.getDate()).padStart(2, "0");
-        const mm = String(venc.getMonth() + 1).padStart(2, "0");
-        const yyyy = venc.getFullYear();
+        const venc = new Date(hojeBrt);
+        venc.setUTCDate(venc.getUTCDate() + dias);
+        const dd = String(venc.getUTCDate()).padStart(2, "0");
+        const mm = String(venc.getUTCMonth() + 1).padStart(2, "0");
+        const yyyy = venc.getUTCFullYear();
         // última parcela absorve o resto do arredondamento
         const cent = i === n - 1 ? totalCent - baseCent * (n - 1) : baseCent;
         return {
