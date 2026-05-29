@@ -108,15 +108,24 @@ export function useDeleteEmployee() {
         // Sem chaves pra match — assume 0 registros
         timeQ = timeQ.eq('id', '00000000-0000-0000-0000-000000000000');
       }
-      const [advRes, timeRes] = await Promise.all([
+      // Audit 2026-05-29: também bloquear se há folhas (mesmo rascunho — perde
+      // base de cálculo no cascade) ou ausências cadastradas. Antes só checava
+      // advances+time_records → DELETE cascade apagava histórico contábil.
+      const [advRes, timeRes, prRes, absRes] = await Promise.all([
         supabase.from('employee_advances').select('id', { count: 'exact', head: true }).eq('employee_id', id),
         timeQ,
+        (supabase as any).from('payroll_runs').select('id', { count: 'exact', head: true }).eq('employee_id', id),
+        (supabase as any).from('employee_absences').select('id', { count: 'exact', head: true }).eq('employee_id', id),
       ]);
       if (advRes.error) throw advRes.error;
       if (timeRes.error) throw timeRes.error;
+      if (prRes.error) throw prRes.error;
+      if (absRes.error) throw absRes.error;
       const blockers: string[] = [];
       if ((advRes.count ?? 0) > 0) blockers.push(`${advRes.count} ${advRes.count === 1 ? 'adiantamento' : 'adiantamentos'}`);
       if ((timeRes.count ?? 0) > 0) blockers.push(`${timeRes.count} ${timeRes.count === 1 ? 'registro' : 'registros'} de ponto`);
+      if ((prRes.count ?? 0) > 0) blockers.push(`${prRes.count} folha(s) de pagamento`);
+      if ((absRes.count ?? 0) > 0) blockers.push(`${absRes.count} ausência(s)`);
       if (blockers.length > 0) {
         throw new Error(`Não é possível excluir: funcionário tem ${blockers.join(' e ')} no histórico. Inative o cadastro em vez de excluir.`);
       }
@@ -155,6 +164,20 @@ export function useAddAdvance() {
   return useMutation({
     mutationFn: async (form: AdvanceForm) => {
       if (!Number.isFinite((form as any).amount) || (form as any).amount <= 0) throw new Error('Valor do vale deve ser positivo.');
+      // Audit 2026-05-29: bloquear vale retroativo em folha finalizada — antes
+      // ficava órfão (status=deducted sem ser abatido do líquido pago).
+      const advDate = (form as any).advance_date as string | undefined;
+      const empId = (form as any).employee_id as string | undefined;
+      if (advDate && empId) {
+        const period = advDate.slice(0, 7);
+        const { data: pr, error: prErr } = await (supabase as any)
+          .from('payroll_runs').select('id, status')
+          .eq('employee_id', empId).eq('period', period).maybeSingle();
+        if (prErr) throw new Error(`Falha ao verificar folha do período: ${prErr.message}`);
+        if (pr && pr.status !== 'rascunho') {
+          throw new Error(`Folha do período ${period} já ${pr.status === 'pago' ? 'paga' : 'aprovada'} — desfaça antes de cadastrar vale retroativo.`);
+        }
+      }
       const { error } = await supabase.from('employee_advances').insert(form as any);
       if (error) throw error;
     },

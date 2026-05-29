@@ -245,7 +245,7 @@ export function useAbsences(filters?: { employeeId?: string; from?: string; to?:
   return useQuery({
     queryKey: ['absences', filters],
     queryFn: async () => {
-      let q = (supabase as any).from('absences').select('*').order('start_date', { ascending: false });
+      let q = (supabase as any).from('employee_absences').select('*').order('start_date', { ascending: false });
       if (filters?.employeeId) q = q.eq('employee_id', filters.employeeId);
       if (filters?.from) q = q.gte('end_date', filters.from);
       if (filters?.to)   q = q.lte('start_date', filters.to);
@@ -270,11 +270,16 @@ export function useUpsertAbsence() {
       if (pr && pr.status !== 'rascunho') {
         throw new Error(`Folha do período ${period} já ${pr.status === 'pago' ? 'paga' : 'aprovada'} — desfaça antes de alterar ausências.`);
       }
+      // Audit 2026-05-29: derive `justified` from absence_type pra alimentar
+      // is_employee_absent_on (motor banco). Sem flag explícita, default DB é false
+      // (não justificada → zera horas + desconta DSR).
+      const justifiedTypes: AbsenceType[] = ['atestado','licenca_maternidade','licenca_paternidade','licenca_obito','licenca_casamento','falta_justificada','ferias','folga','abono'];
+      const payload = { ...rest, justified: justifiedTypes.includes(a.absence_type) };
       if (id) {
-        const { error } = await (supabase as any).from('absences').update(rest).eq('id', id);
+        const { error } = await (supabase as any).from('employee_absences').update(payload).eq('id', id);
         if (error) throw error;
       } else {
-        const { error } = await (supabase as any).from('absences').insert(rest);
+        const { error } = await (supabase as any).from('employee_absences').insert(payload);
         if (error) throw error;
       }
     },
@@ -290,15 +295,10 @@ export function useDeleteAbsence() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      // Block delete if a non-draft payroll run for the absence's period already exists,
-      // to prevent retroactive edits to closed/paid payroll history.
       const { data: abs, error: absErr } = await (supabase as any)
-        .from('absences').select('employee_id, start_date').eq('id', id).single();
+        .from('employee_absences').select('employee_id, start_date').eq('id', id).single();
       if (absErr) throw absErr;
       const period = (abs.start_date as string).slice(0, 7);
-      // CRITICAL: capture the error. A silent SELECT failure (RLS / network) yielded
-      // pr===null, bypassing the closed-payroll guard and allowing retroactive edits
-      // to a paid/approved payroll period.
       const { data: pr, error: prErr } = await (supabase as any)
         .from('payroll_runs').select('id, status')
         .eq('employee_id', abs.employee_id).eq('period', period).maybeSingle();
@@ -306,7 +306,7 @@ export function useDeleteAbsence() {
       if (pr && pr.status !== 'rascunho') {
         throw new Error(`Folha do período ${period} já ${pr.status === 'pago' ? 'paga' : 'aprovada'} — desfaça antes de remover ausência.`);
       }
-      const { error } = await (supabase as any).from('absences').delete().eq('id', id);
+      const { error } = await (supabase as any).from('employee_absences').delete().eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => {

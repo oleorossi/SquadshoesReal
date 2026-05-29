@@ -246,6 +246,8 @@ export default function Payroll() {
             id: emp.id,
             name: emp.name,
             base_salary: Number(emp.salary) || 0,
+            admission_date: (emp as any).admission_date ?? null,
+            termination_date: (emp as any).termination_date ?? null,
             receives_vt: (emp as any).receives_vt ?? true,
             receives_vr: (emp as any).receives_vr ?? false,
             receives_va: (emp as any).receives_va ?? false,

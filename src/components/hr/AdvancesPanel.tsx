@@ -53,7 +53,9 @@ export default function AdvancesPanel() {
       if (search) {
         const emp = empMap.get(a.employee_id);
         const q = normalizeForSearch(search);
-        if (!emp?.normalizeForSearch(name).includes(q) && !normalizeForSearch(a.description).includes(q)) return false;
+        const empMatches = emp ? normalizeForSearch(emp.name).includes(q) : false;
+        const descMatches = normalizeForSearch(a.description || '').includes(q);
+        if (!empMatches && !descMatches) return false;
       }
       return true;
     });

@@ -40,6 +40,11 @@ export interface PayrollEmployeeInput {
   id: string;
   name: string;
   base_salary: number;
+  /** ISO YYYY-MM-DD — usado pra cálculo proporcional (mês de admissão).
+   *  Auditoria 2026-05-29. */
+  admission_date?: string | null;
+  /** ISO YYYY-MM-DD — usado pra cálculo proporcional (mês de demissão). */
+  termination_date?: string | null;
   receives_vt: boolean;
   receives_vr: boolean;
   receives_va: boolean;
@@ -244,9 +249,33 @@ export function calculatePayroll(
   config: BenefitsConfig,
   paidOvertimeMinutes?: { ot50: number; ot100: number },
 ): PayrollResult {
-  const baseSalary = Number(employee.base_salary) || 0;
+  const baseSalaryFull = Number(employee.base_salary) || 0;
+
+  // Auditoria 2026-05-29: salário proporcional ao mês de admissão/demissão.
+  // Antes funcionário admitido em 06/04 ganhava R$1600 cheios em Abril em
+  // vez de ~R$1333. CLT manda proporcional por dias trabalhados / dias do mês.
+  let baseSalary = baseSalaryFull;
+  if (days.length > 0) {
+    const firstDay = new Date(days[0].date + 'T00:00:00');
+    const lastDay = new Date(days[days.length - 1].date + 'T00:00:00');
+    const monthDays = new Date(firstDay.getFullYear(), firstDay.getMonth() + 1, 0).getDate();
+    const admissionDate = employee.admission_date ? new Date(employee.admission_date + 'T00:00:00') : null;
+    const terminationDate = employee.termination_date ? new Date(employee.termination_date + 'T00:00:00') : null;
+    let workedDaysInMonth = monthDays;
+    if (admissionDate && admissionDate > firstDay && admissionDate <= lastDay) {
+      workedDaysInMonth = monthDays - admissionDate.getDate() + 1;
+    }
+    if (terminationDate && terminationDate >= firstDay && terminationDate < lastDay) {
+      const terminationDay = terminationDate.getDate();
+      workedDaysInMonth = Math.min(workedDaysInMonth, terminationDay);
+    }
+    if (workedDaysInMonth < monthDays) {
+      baseSalary = Math.round((baseSalaryFull * workedDaysInMonth / monthDays) * 100) / 100;
+    }
+  }
+
   const monthlyHours = config.monthly_hours || 220;
-  const hourlyRate = monthlyHours > 0 ? baseSalary / monthlyHours : 0;
+  const hourlyRate = monthlyHours > 0 ? baseSalaryFull / monthlyHours : 0;
   const minuteRate = hourlyRate / 60;
 
   // Tolerância e mínimo de HE — defaults alinhados com work_schedules e com

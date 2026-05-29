@@ -59,6 +59,17 @@ export function useCreateAbsence() {
       if (input.end_date < input.start_date) {
         throw new Error('Data final deve ser igual ou posterior ao início.');
       }
+      // Audit 2026-05-29: bloquear cadastro retroativo de ausência em folha
+      // já finalizada (antes era possível inserir → ficava fantasma no
+      // histórico, fora do cálculo da folha paga).
+      const period = input.start_date.slice(0, 7);
+      const { data: pr, error: prErr } = await (supabase as any)
+        .from('payroll_runs').select('id, status')
+        .eq('employee_id', input.employee_id).eq('period', period).maybeSingle();
+      if (prErr) throw new Error(`Falha ao verificar folha do período: ${prErr.message}`);
+      if (pr && pr.status !== 'rascunho') {
+        throw new Error(`Folha do período ${period} já ${pr.status === 'pago' ? 'paga' : 'aprovada'} — desfaça antes de cadastrar ausência retroativa.`);
+      }
       const { data, error } = await (supabase as any)
         .from('employee_absences')
         .insert({
@@ -91,6 +102,18 @@ export function useDeleteAbsence() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
+      // Audit 2026-05-29: mesma guard de folha finalizada que createAbsence
+      const { data: abs, error: absErr } = await (supabase as any)
+        .from('employee_absences').select('employee_id, start_date').eq('id', id).single();
+      if (absErr) throw new Error(absErr.message);
+      const period = (abs.start_date as string).slice(0, 7);
+      const { data: pr, error: prErr } = await (supabase as any)
+        .from('payroll_runs').select('id, status')
+        .eq('employee_id', abs.employee_id).eq('period', period).maybeSingle();
+      if (prErr) throw new Error(`Falha ao verificar folha do período: ${prErr.message}`);
+      if (pr && pr.status !== 'rascunho') {
+        throw new Error(`Folha do período ${period} já ${pr.status === 'pago' ? 'paga' : 'aprovada'} — desfaça antes de remover ausência.`);
+      }
       const { error } = await (supabase as any).from('employee_absences').delete().eq('id', id);
       if (error) throw new Error(error.message);
     },

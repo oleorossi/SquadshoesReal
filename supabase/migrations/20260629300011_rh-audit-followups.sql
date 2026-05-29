@@ -1,0 +1,67 @@
+-- P-RH-AUDIT (2026-05-29): correções da auditoria de RH (Opus 4.8).
+-- 6 CRITICAL + 5 MAJOR + 4 hygiene aplicados em produção. Sintomas
+-- medidos antes:
+--   - bank_hours_balance (lista) usava v4 sem skip_missing /
+--     BankHours.tsx detail usava v6 com skip=true. Quesia: lista -4883
+--     (devendo) / detalhe +1057 (a receber). 10 funcionários divergiam
+--     em ~108k min cumulativo (~1809h = 1,5 ano de débito fantasma).
+--   - 2 tabelas paralelas de ausências: useEmployeeAbsences (UI escreve)
+--     em employee_absences; useRH.useAbsences (folha lê) em absences
+--     (sempre vazia). Folha ignorava 100% das ausências cadastradas.
+--   - calculate_employee_bank_balance(uuid,date,date) ambíguo via SQL
+--     ad-hoc (42725 confirmado em prod). View bindava OID antiga.
+--   - v_bank_hours_per_sector só somava bank_hours_movements (vazio em
+--     prod) → painel RH zerado em todos setores. Round 6 não cobriu.
+--   - payroll_runs sem DELETE trigger → folha aprovada/paga deletável,
+--     cascade SET NULL libera advances pra cobrança duplicada.
+--   - CHECK constraint não permitia 'cancelado' que tg_payroll_lock
+--     referencia → branch de estorno = dead code (23514).
+--   - tg_payroll_link não recalcula advances_total quando vale criado
+--     após snapshot. Marcio: advances_total=150 com 2 vales (150+50).
+--   - resolve_weekly/monthly_overtime ON CONFLICT vaza movement + FE
+--     antigos (latente, 0 rows).
+--   - is_employee_absent_on default COALESCE(justified, true) → falta
+--     sem flag conta como justificada (DSR pago errado).
+--   - weekly_balance_snapshot.worked_min hardcoded 0 (latente).
+--   - pay_bank_hours_balance multiplier 1.20 uniforme → subpaga 100%
+--     domingo/feriado em R$80/evento (latente).
+--   - payrollCalc não usa admission/termination_date → mês parcial
+--     pagava cheio (Quesia abr/26: R$1600 em vez de R$1333).
+--   - tg_audit_bank_hours_movements só UPDATE/DELETE (sem trilha de
+--     criação).
+--   - AdvancesPanel.tsx:56 sintaxe quebrada (emp.normalizeForSearch
+--     não existe), busca por nome retornava sempre vazio.
+--   - PreFolha.tsx:110 comparava 'draft' mas DB usa 'rascunho' →
+--     contador sempre 0.
+--
+-- Migrations aplicadas separadamente via MCP em 5 partes para captura
+-- de erro fino:
+--   1. rh_audit_grupoA_unification — schema unification, status CHECK
+--   2. rh_audit_grupoA_views_and_drop_v4 — views recriadas + drop v4
+--   3. rh_audit_grupoB_guards_advances — DELETE trigger, advances_total
+--   4. rh_audit_grupoC_calc_fixes — is_absent_on, snapshot worked_min
+--   5. rh_audit_grupoC_pay_50_100_split — pay 100% primeiro
+--   6. rh_audit_grupoC_resolve_overtime_cancel_old — cancel old + lock
+--   7. rh_audit_grupoE_audit_insert_drop_pay_dupe — INSERT trigger
+--
+-- Refutados na verificação ground-truth:
+--   - useAddBankHoursMovement sem guard → REFUTADO. Linhas 117-120 já
+--     têm check de folha finalizada (Agent B errou).
+--   - AbsenceReport.tsx dead page → REFUTADO. Importada em
+--     RelatoriosRH.tsx (tab Absenteísmo).
+--   - pay_bank_hours duplicada de pay_bank_hours_balance → REFUTADO.
+--     Sigs distintas: pay_bank_hours recebe hourly_rate explícito;
+--     pay_bank_hours_balance usa employees.hourly_rate. Caso de uso
+--     diferente.
+--
+-- Deferidos (precisam revisão CLT mais profunda):
+--   - Adicional noturno fator 7/8 no motor de banco (folha já trata
+--     em payrollCalc.countNightMinutes).
+--   - Cap 2h/dia overtime warning em calculate_day_summary.
+--   - Views 13o/vacation regra "≥15 dias = +1 mês" (M7).
+--   - RLS payroll_runs scope por setor (M9 LGPD).
+--
+-- Arquivo é puramente documental — alterações reais foram aplicadas
+-- via MCP nas 7 migrations acima.
+
+SELECT 1; -- no-op

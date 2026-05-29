@@ -107,7 +107,7 @@ export default function PreFolha() {
       proventos: acc.proventos + (r.total_proventos || 0),
       descontos: acc.descontos + (r.total_descontos || 0),
       liquido: acc.liquido + (r.total_liquido || 0),
-      pendentes: acc.pendentes + (r.status === 'draft' || !r.approved_at ? 1 : 0),
+      pendentes: acc.pendentes + (r.status === 'rascunho' || !r.approved_at ? 1 : 0),
       aprovadas: acc.aprovadas + (r.approved_at ? 1 : 0),
     }), {
       he50Min: 0, he50Value: 0, he100Min: 0, he100Value: 0,
