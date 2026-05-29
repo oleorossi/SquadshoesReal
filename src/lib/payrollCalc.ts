@@ -1,69 +1,65 @@
 /**
- * Cálculo de folha de pagamento — REGIME DE CONTRATO (não-CLT).
+ * Cálculo de pagamento — REGIME PJ (Pessoa Jurídica / Contratado).
  *
- * Empresa contrata por contrato (PJ/prestador) — cada profissional é
- * responsável pelos próprios impostos (INSS, IRRF). A folha aqui calcula:
+ * Todos os funcionários da empresa são PJ — emitem NF própria e cuidam dos
+ * próprios impostos (INSS, IRRF, etc.). A empresa contratante apenas paga
+ * o valor acordado. O relógio de ponto é APENAS pra contabilizar horas
+ * trabalhadas; não há vínculo CLT.
  *
- *   - Valor da hora normal      = salário / divisor_mensal (220h padrão)
- *   - HE em dia útil            = horas_extra × valor_hora × (1 + employee.overtime_50_pct/100)
- *   - HE em dom/feriado         = horas × valor_hora × (1 + employee.overtime_100_pct/100)
- *   - Adic. noturno             = minutos_22h_5h × (valor_hora/60) × (employee.night_bonus_pct/100)
- *   - Tolerância/min HE         = aplicados SEMANALMENTE (employee.tolerance_minutes
- *                                  e minimum_overtime_minutes; defaults 10/10)
- *   - Benefícios pagos          = VR (por dia útil), VA (mensal flat)
- *   - Descontos                 = plano de saúde + faltas + adiantamentos
- *   - Líquido                   = proventos − descontos
+ * Modelo simplificado de pagamento:
  *
- * Multiplicadores de HE são CONFIGURÁVEIS por funcionário (cada contrato
- * pode ter regra própria — alguns hora simples, outros adicional). Defaults
- * em zero (= hora simples sem adicional).
+ *   bruto    = base_salary                                  (valor fixo mensal acordado em contrato)
+ *            + horas_extras_pagas × valor_hora              (sem multiplier — acordo PJ não tem CLT art. 7 XVI)
+ *            + VR (R$/dia útil trabalhado)                  (benefício contratual opcional)
+ *            + VA (R$ flat mensal)                          (benefício contratual opcional)
+ *   descontos = plano_saúde + faltas_descontadas + adiantamentos
+ *   líquido  = bruto − descontos
  *
- * INSS/IRRF/DSR/VT-desconto NÃO se aplicam (não-CLT). As funções calculateINSS
- * e calculateIRRF ficam mantidas como utilitários históricos / pra simulação.
+ * O QUE NÃO SE APLICA (porque não há CLT):
+ *   - INSS / IRRF / VT discount / FGTS              (PJ paga próprios impostos)
+ *   - DSR reflexo sobre HE (Súmula 172 TST)         (regra CLT mensalista)
+ *   - Adicional noturno fator 7/8 (art. 73)         (regra CLT)
+ *   - Multiplier de hora extra 50%/100% (art. 7)    (regra CLT mensalista)
+ *   - 13º salário (Lei 4090/62)                     (verba CLT)
+ *   - Férias remuneradas (CLT)                      (verba CLT)
+ *
+ * Tolerância e mínimo de HE em minutos continuam relevantes porque são
+ * acordos práticos de "margem de erro" no relógio (PJ pode acordar 10min de
+ * folga sem ser cobrado dos dois lados). Banco de horas (compensação) é
+ * acordo livre entre as partes.
  */
 
 export interface BenefitsConfig {
-  vt_daily_value: number;
-  vt_employee_discount_pct: number;
+  /** R$/dia útil trabalhado — benefício PJ opcional. */
   vr_daily_value: number;
+  /** R$ mensal flat — benefício PJ opcional. */
   va_monthly_value: number;
+  /** Desconto padrão de plano de saúde se employee.health_plan_value == 0. */
   health_plan_default: number;
+  /** Divisor mensal pra cálculo de valor-hora. Default 220. */
   monthly_hours: number;
-  overtime_50_pct: number;
-  overtime_100_pct: number;
-  night_bonus_pct: number;
-  night_shift_start_min: number;
-  night_shift_end_min: number;
 }
 
 export interface PayrollEmployeeInput {
   id: string;
   name: string;
+  /** Valor fixo mensal acordado em contrato PJ. */
   base_salary: number;
-  /** ISO YYYY-MM-DD — usado pra cálculo proporcional (mês de admissão).
-   *  Auditoria 2026-05-29. */
+  /** Data de início do contrato — usada pra cálculo proporcional se o
+   *  contrato começou/terminou no meio do mês. */
   admission_date?: string | null;
-  /** ISO YYYY-MM-DD — usado pra cálculo proporcional (mês de demissão). */
+  /** Data de encerramento do contrato — usada pra cálculo proporcional. */
   termination_date?: string | null;
-  receives_vt: boolean;
   receives_vr: boolean;
   receives_va: boolean;
   health_plan_value: number;
   /** Carga semanal contratada (ex: 44, 40, 36). Default 44. */
   weekly_hours?: number;
-  /** Tolerância em minutos: variações <= este valor não geram HE nem débito.
-   *  Default 10 (alinhado com work_schedules.tolerance_minutes default e RPC). */
+  /** Tolerância em minutos: variações <= este valor não geram crédito/débito
+   *  no banco de horas. Default 10. */
   tolerance_minutes?: number;
-  /** HE < este valor é descartada (aplicada por semana). Default 0 — alinhado
-   *  com work_schedules.minimum_overtime_minutes default e UI fallback. */
+  /** HE < este valor é descartada (aplicada por semana). Default 0. */
   minimum_overtime_minutes?: number;
-  /** Multiplicador da HE em dia útil. Default 0 = hora simples (sem adicional).
-   *  Vem de employees.overtime_50_pct — configurável por contrato. */
-  overtime_50_pct?: number;
-  /** Multiplicador da HE em domingo/feriado. Default 0 = hora simples. */
-  overtime_100_pct?: number;
-  /** % adicional pelas horas noturnas. Default 0 = sem adicional. */
-  night_bonus_pct?: number;
 }
 
 export interface PayrollDayInput {
@@ -91,121 +87,50 @@ export interface PayrollResult {
   business_days: number;
   business_days_worked: number;
   absent_days: number;
-  overtime_50_minutes: number;
-  overtime_100_minutes: number;
-  night_minutes: number;
-  overtime_50_value: number;
-  overtime_100_value: number;
-  night_bonus_value: number;
-  dsr_value: number;
+  /** Total de minutos de HE autorizados (vindos de paidOvertimeMinutes —
+   *  decisão explícita do gestor de pagar via folha). Antes era ot_50/100
+   *  separados (regra CLT); em PJ não há essa distinção, soma única. */
+  overtime_paid_minutes: number;
+  overtime_paid_value: number;
   vr_value: number;
   va_value: number;
-  vt_total_value: number;
-  vt_employee_discount: number;
   health_plan_discount: number;
-  inss_value: number;
-  irrf_value: number;
   absence_discount: number;
   total_proventos: number;
   total_descontos: number;
   total_liquido: number;
-}
 
-// ── Tabelas INSS/IRRF ───────────────────────────────────────────────────────
-// ATENÇÃO: estas tabelas são publicadas pelo governo e mudam normalmente em
-// JANEIRO de cada ano. Quando mudar, atualizar AQUI e bumpar PAYROLL_TAX_YEAR.
-// O frontend exibe alerta âmbar em /payroll quando o ano da folha calculada
-// não bate com PAYROLL_TAX_YEAR.
-export const PAYROLL_TAX_YEAR = 2026;
-
-// INSS: alíquota incide sobre cada faixa (progressiva). Em ordem crescente.
-export const INSS_BANDS = [
-  { upTo: 1412.00, rate: 0.075 },
-  { upTo: 2666.68, rate: 0.09 },
-  { upTo: 4000.03, rate: 0.12 },
-  { upTo: 7786.02, rate: 0.14 },
-];
-export const INSS_CEILING_VALUE = 908.86; // INSS máximo (teto)
-
-// IRRF: alíquota progressiva com dedução
-export const IRRF_BANDS = [
-  { upTo: 2259.20, rate: 0,     deduction: 0 },
-  { upTo: 2826.65, rate: 0.075, deduction: 169.44 },
-  { upTo: 3751.05, rate: 0.15,  deduction: 381.44 },
-  { upTo: 4664.68, rate: 0.225, deduction: 662.77 },
-  { upTo: Infinity, rate: 0.275, deduction: 896.00 },
-];
-
-
-export function calculateINSS(grossSalary: number): number {
-  if (grossSalary <= 0) return 0;
-  let total = 0;
-  let prev = 0;
-  for (const band of INSS_BANDS) {
-    if (grossSalary <= band.upTo) {
-      total += (grossSalary - prev) * band.rate;
-      return Number(total.toFixed(2));
-    }
-    total += (band.upTo - prev) * band.rate;
-    prev = band.upTo;
-  }
-  // Acima do teto: usa valor fixo do teto
-  return INSS_CEILING_VALUE;
-}
-
-/**
- * @deprecated Mantida pra histórico/auditoria. Cálculo de IRRF segue a tabela
- * RFB vigente. NÃO é chamada em calculatePayroll() — regime de contrato
- * (não-CLT) não retém IRRF; cada contratado é responsável pelo próprio.
- */
-export function calculateIRRF(baseAfterINSS: number): number {
-  if (baseAfterINSS <= 0) return 0;
-  for (const band of IRRF_BANDS) {
-    if (baseAfterINSS <= band.upTo) {
-      const tax = baseAfterINSS * band.rate - band.deduction;
-      return Math.max(0, Number(tax.toFixed(2)));
-    }
-  }
-  return 0;
+  /**
+   * @deprecated Campos legados CLT — preservados zerados pra backward-compat
+   * com callers e DB schema. Não usados em regime PJ. Próxima migração de
+   * schema poderá removê-los.
+   */
+  overtime_50_minutes: number;
+  /** @deprecated CLT-only. Use overtime_paid_minutes. */
+  overtime_100_minutes: number;
+  /** @deprecated CLT-only. Use overtime_paid_minutes. */
+  night_minutes: number;
+  /** @deprecated CLT-only. Soma agregada em overtime_paid_value. */
+  overtime_50_value: number;
+  /** @deprecated CLT-only. */
+  overtime_100_value: number;
+  /** @deprecated CLT-only. */
+  night_bonus_value: number;
+  /** @deprecated CLT-only (Súmula 172 TST não aplica PJ). */
+  dsr_value: number;
+  /** @deprecated CLT-only. */
+  vt_total_value: number;
+  /** @deprecated CLT-only. */
+  vt_employee_discount: number;
+  /** @deprecated CLT-only — PJ paga próprios impostos. */
+  inss_value: number;
+  /** @deprecated CLT-only — PJ paga próprios impostos. */
+  irrf_value: number;
 }
 
 function timeToMin(t: string): number {
   const [h, m] = t.split(':').map(Number);
   return h * 60 + m;
-}
-
-/**
- * Conta minutos noturnos (entre night_shift_start_min e night_shift_end_min,
- * cruzando meia-noite) em pares de batidas (entrada-saída).
- */
-function countNightMinutes(
-  punches: string[],
-  nightStart: number,
-  nightEnd: number,
-): number {
-  if (punches.length < 2) return 0;
-  let total = 0;
-  for (let i = 0; i + 1 < punches.length; i += 2) {
-    const start = timeToMin(punches[i]);
-    const end   = timeToMin(punches[i + 1]);
-    if (end === start) continue;
-
-    // Midnight-crossing shift: split into two intra-day segments.
-    // e.g. 22:30→05:00 becomes [1350,1440] and [0,300].
-    const segments: [number, number][] =
-      end < start ? [[start, 1440], [0, end]] : [[start, end]];
-
-    for (const [s, e] of segments) {
-      // Janela noturna: [nightStart, 1440] ∪ [0, nightEnd]
-      const a = Math.max(s, nightStart);
-      const b = Math.min(e, 1440);
-      if (b > a) total += b - a;
-      const c = Math.max(s, 0);
-      const d = Math.min(e, nightEnd);
-      if (d > c) total += d - c;
-    }
-  }
-  return total;
 }
 
 /**
@@ -219,27 +144,21 @@ function workedMinutesFromPunches(punches: string[]): number {
   for (let i = 0; i + 1 < punches.length; i += 2) {
     const a = timeToMin(punches[i]);
     const b = timeToMin(punches[i + 1]);
-    // Midnight-crossing: b < a means the shift ends after midnight
+    // Cruzando meia-noite: b < a significa que o turno termina depois da meia-noite
     total += b > a ? b - a : b < a ? (1440 - a) + b : 0;
   }
   return total;
 }
 
-/** Retorna a segunda-feira (00:00) da semana de `date`, em YYYY-MM-DD. */
-function mondayOf(dateISO: string): string {
-  const d = new Date(dateISO + 'T00:00:00');
-  const dow = d.getDay();             // 0 = dom, 1 = seg
-  const diff = dow === 0 ? -6 : 1 - dow;
-  d.setDate(d.getDate() + diff);
-  return d.toISOString().slice(0, 10);
-}
-
 /**
- * @param paidOvertimeMinutes Quando fornecido, DESATIVA o cálculo automático
- * de HE 50/100. Esses minutos vêm de `bank_hours_movements` onde RH marcou
- * explicitamente "pagar". Decisão da gestão (2026-05-21): a fábrica não
- * segue o padrão CLT teórico — HE só vai pra folha se for explicitamente
- * autorizada pelo RH.
+ * Calcula folha PJ. Parâmetros:
+ *  - employee: contratado e seus parâmetros de pagamento (R$/mês, beneficios)
+ *  - days: dias do período com batidas pra contabilizar horas trabalhadas
+ *  - absences: ausências pra descontar faltas não-pagas
+ *  - advancesTotal: total de vales/adiantamentos do período (já em R$)
+ *  - paidOvertimeMinutes: minutos de HE explicitamente autorizados pelo gestor
+ *    (vêm de bank_hours_movements onde RH marcou "pagar"). Em PJ, HE só vai
+ *    pra folha se for explicitamente autorizada — fábrica não segue CLT teórico.
  */
 export function calculatePayroll(
   employee: PayrollEmployeeInput,
@@ -247,13 +166,13 @@ export function calculatePayroll(
   absences: PayrollAbsenceInput[],
   advancesTotal: number,
   config: BenefitsConfig,
-  paidOvertimeMinutes?: { ot50: number; ot100: number },
+  paidOvertimeMinutes?: number,
 ): PayrollResult {
   const baseSalaryFull = Number(employee.base_salary) || 0;
 
-  // Auditoria 2026-05-29: salário proporcional ao mês de admissão/demissão.
-  // Antes funcionário admitido em 06/04 ganhava R$1600 cheios em Abril em
-  // vez de ~R$1333. CLT manda proporcional por dias trabalhados / dias do mês.
+  // Proporcional ao mês de admissão/demissão. Em PJ é opcional (depende do
+  // contrato), mas adotamos prorata por padrão — gestor pode editar manual
+  // se acordo diferente.
   let baseSalary = baseSalaryFull;
   if (days.length > 0) {
     const firstDay = new Date(days[0].date + 'T00:00:00');
@@ -278,23 +197,8 @@ export function calculatePayroll(
   const hourlyRate = monthlyHours > 0 ? baseSalaryFull / monthlyHours : 0;
   const minuteRate = hourlyRate / 60;
 
-  // Tolerância e mínimo de HE — defaults alinhados com work_schedules e com
-  // calculate_employee_bank_balance() do banco. Aplicados POR SEMANA (não dia)
-  // pra evitar discrepância entre o cálculo da folha e o saldo do banco de horas.
-  // Defaults idênticos aos do RPC calculate_employee_bank_balance:
-  //   tolerance_minutes default 10, minimum_overtime_minutes default 0.
-  // Antes minimum_overtime_minutes usava `?? 10`, divergindo do RPC e dos
-  // fallbacks de UI (Timesheet.tsx, useTimeAnalytics.ts: =0). Resultado:
-  // funcionários sem work_schedule tinham HE entre 1–9 min descartadas só
-  // na folha, batendo divergência com banco de horas exibido na UI.
-  const TOLERANCE_MIN = Math.max(0, employee.tolerance_minutes ?? 10);
-  const MIN_OT_MIN   = Math.max(0, employee.minimum_overtime_minutes ?? 0);
-
   let workedMin = 0;
   let expectedMin = 0;
-  let ot50Min = 0;
-  let ot100Min = 0;
-  let nightMin = 0;
   let businessDays = 0;
   let businessDaysWorked = 0;
 
@@ -310,66 +214,21 @@ export function calculatePayroll(
     }
   }
 
-  // Agrupa dias por semana (chave = segunda-feira) pra aplicar tolerância
-  // semanal: dias curtos compensam dias longos antes de gerar HE.
-  type WeekBucket = {
-    workedBusiness: number;     // minutos trabalhados em dias úteis (não-feriado, não-domingo)
-    expectedBusiness: number;   // minutos esperados em dias úteis
-    workedHolidaySunday: number; // minutos trabalhados em domingo/feriado (vão pra HE 100)
-  };
-  const weeks = new Map<string, WeekBucket>();
-
   for (const d of days) {
     expectedMin += d.expectedMinutes;
     if (d.isBusinessDay && !d.isHoliday) businessDays++;
-
     const dayWorked = workedMinutesFromPunches(d.punches);
     workedMin += dayWorked;
     if (dayWorked > 0 && d.isBusinessDay && !d.isHoliday) businessDaysWorked++;
-
-    const weekKey = mondayOf(d.date);
-    const bucket = weeks.get(weekKey) ?? { workedBusiness: 0, expectedBusiness: 0, workedHolidaySunday: 0 };
-
-    if (d.isHoliday || d.dayOfWeek === 0) {
-      bucket.workedHolidaySunday += dayWorked;
-    } else {
-      bucket.workedBusiness += dayWorked;
-      bucket.expectedBusiness += d.expectedMinutes;
-    }
-    weeks.set(weekKey, bucket);
-
-    nightMin += countNightMinutes(d.punches, config.night_shift_start_min, config.night_shift_end_min);
   }
 
-  // HE manual (decisão 2026-05-21): se o caller passou paidOvertimeMinutes,
-  // usa esses valores e PULA o cálculo automático semanal. Isso garante que
-  // a folha só pague o que o RH explicitamente aprovou em bank_hours_movements
-  // (movement_type='pay' ou similar) — alinhado com a regra "fábrica não
-  // segue CLT teórico".
-  if (paidOvertimeMinutes) {
-    ot50Min = Math.max(0, paidOvertimeMinutes.ot50);
-    ot100Min = Math.max(0, paidOvertimeMinutes.ot100);
-  } else {
-    // Fallback legado: cálculo automático semanal (caller antigo não migrado).
-    // - Se |worked - expected| <= tolerância → ignora (saldo = 0 na semana)
-    // - Se diff > 0 mas < mínimo de HE → ignora (não gera HE)
-    // - Domingo/feriado sempre vira HE 100, sem tolerância (CLT)
-    for (const [, w] of weeks) {
-      const diff = w.workedBusiness - w.expectedBusiness;
-      if (Math.abs(diff) > TOLERANCE_MIN) {
-        if (diff > 0 && diff >= MIN_OT_MIN) {
-          ot50Min += diff;
-        }
-        // diff < 0 (devedor) NÃO entra como HE; cai no banco de horas (negativo)
-      }
-      // Domingo/feriado: aplica só o mínimo de HE pra evitar "5 min de HE 100"
-      if (w.workedHolidaySunday >= MIN_OT_MIN) {
-        ot100Min += w.workedHolidaySunday;
-      }
-    }
-  }
+  // Horas extras: SOMENTE as explicitamente autorizadas (paidOvertimeMinutes).
+  // Em PJ não há CLT mandando pagar HE automaticamente; cabe ao gestor decidir
+  // o que vai pra folha (e a quantidade tipicamente vem de bank_hours_movements).
+  const otMin = Math.max(0, paidOvertimeMinutes ?? 0);
+  const otValue = otMin * minuteRate; // sem multiplier — acordo PJ paga hora cheia
 
-  // Faltas injustificadas (descontadas)
+  // Faltas injustificadas (descontadas se acordado)
   let absentDays = 0;
   let absenceDiscount = 0;
   const dailyRate = baseSalary / Math.max(1, businessDays || 22);
@@ -380,41 +239,7 @@ export function calculatePayroll(
     }
   }
 
-  // Multiplicadores POR FUNCIONÁRIO (regime contrato — cada um tem seu acordo).
-  // Default 0 = hora simples (sem adicional CLT). employees.overtime_*_pct
-  // sobrescreve por funcionário; config.overtime_*_pct é fallback global.
-  const ot50Pct      = employee.overtime_50_pct  ?? config.overtime_50_pct  ?? 0;
-  const ot100Pct     = employee.overtime_100_pct ?? config.overtime_100_pct ?? 0;
-  const nightBonus   = employee.night_bonus_pct  ?? config.night_bonus_pct  ?? 0;
-
-  const ot50Value = ot50Min * minuteRate * (1 + ot50Pct / 100);
-  const ot100Value = ot100Min * minuteRate * (1 + ot100Pct / 100);
-  const nightBonusValue = nightMin * minuteRate * (nightBonus / 100);
-
-  // DSR reflexo sobre HE (Súmula 172 TST + Lei 605/49) — passivo trabalhista
-  // mais comum em fábrica. Toda HE paga ao mensalista gera reflexo no DSR:
-  //   DSR_HE = total_HE × (dias_descanso ÷ dias_úteis_mês)
-  // Onde dias_descanso = domingos + feriados; dias_úteis = seg-sáb não-feriado.
-  // Fator típico ~0.1538 (4 dom / 26 úteis) — varia com feriados.
-  // Contabilizado dos `days` que recebeu (não do calendar lib pra evitar drift).
-  let restDays = 0;
-  let workWeekDays = 0;
-  for (const d of days) {
-    if (d.dayOfWeek === 0 || d.isHoliday) restDays++;
-    else workWeekDays++;
-  }
-  const dsrFactor = workWeekDays > 0 ? restDays / workWeekDays : 0;
-  const totalOvertimeValue = ot50Value + ot100Value;
-  const dsrValue = totalOvertimeValue * dsrFactor;
-
-  // INSS / IRRF / VT desconto: NÃO se aplicam em regime de contrato (não-CLT).
-  // Contratado é PJ/prestador — cada um cuida dos próprios impostos.
-  const inssValue = 0;
-  const irrfValue = 0;
-  const vtTotal = 0;
-  const vtEmployeeDiscount = 0;
-
-  // Benefícios pagos (não-CLT, são acordos contratuais — VR/VA continuam)
+  // Benefícios contratuais (acordos opcionais; defaults zero)
   const vrValue = employee.receives_vr ? config.vr_daily_value * businessDaysWorked : 0;
   const vaValue = employee.receives_va ? config.va_monthly_value : 0;
 
@@ -422,7 +247,7 @@ export function calculatePayroll(
     ? employee.health_plan_value
     : config.health_plan_default;
 
-  const totalProventos = baseSalary + ot50Value + ot100Value + nightBonusValue + dsrValue + vrValue + vaValue;
+  const totalProventos = baseSalary + otValue + vrValue + vaValue;
   const totalDescontos = healthPlanDiscount + absenceDiscount + advancesTotal;
   const totalLiquido = totalProventos - totalDescontos;
 
@@ -435,23 +260,28 @@ export function calculatePayroll(
     business_days: businessDays,
     business_days_worked: businessDaysWorked,
     absent_days: absentDays,
-    overtime_50_minutes: ot50Min,
-    overtime_100_minutes: ot100Min,
-    night_minutes: nightMin,
-    overtime_50_value: round2(ot50Value),
-    overtime_100_value: round2(ot100Value),
-    night_bonus_value: round2(nightBonusValue),
-    dsr_value: round2(dsrValue),
+    overtime_paid_minutes: otMin,
+    overtime_paid_value: round2(otValue),
     vr_value: round2(vrValue),
     va_value: round2(vaValue),
-    vt_total_value: round2(vtTotal),
-    vt_employee_discount: round2(vtEmployeeDiscount),
     health_plan_discount: round2(healthPlanDiscount),
-    inss_value: round2(inssValue),
-    irrf_value: round2(irrfValue),
     absence_discount: round2(absenceDiscount),
     total_proventos: round2(totalProventos),
     total_descontos: round2(totalDescontos),
     total_liquido: round2(totalLiquido),
+
+    // Campos legados CLT — zerados (PJ não tem essas verbas). Preservados
+    // pra não quebrar callers/schema. Limpeza completa em migração futura.
+    overtime_50_minutes: 0,
+    overtime_100_minutes: 0,
+    night_minutes: 0,
+    overtime_50_value: 0,
+    overtime_100_value: 0,
+    night_bonus_value: 0,
+    dsr_value: 0,
+    vt_total_value: 0,
+    vt_employee_discount: 0,
+    inss_value: 0,
+    irrf_value: 0,
   };
 }

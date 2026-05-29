@@ -21,10 +21,8 @@ export function useSaveBenefitsConfig() {
   return useMutation({
     mutationFn: async (payload: Partial<BenefitsConfig> & { id?: string; notes?: string }) => {
       const { id, ...rest } = payload;
-      // CLT minimum rates (Brazilian labor law)
-      if (rest.overtime_50_pct !== undefined && (rest.overtime_50_pct < 50)) throw new Error('Hora extra 50% deve ser de no mínimo 50% (CLT art. 59).');
-      if (rest.overtime_100_pct !== undefined && (rest.overtime_100_pct < 100)) throw new Error('Hora extra 100% deve ser de no mínimo 100% (CLT art. 59).');
-      if (rest.night_bonus_pct !== undefined && (rest.night_bonus_pct < 20)) throw new Error('Adicional noturno deve ser de no mínimo 20% (CLT art. 73).');
+      // Regime PJ — sem validação de mínimos CLT (art. 59 / 73). Acordo
+      // contratual é livre entre as partes.
       if (id) {
         const { error } = await (supabase as any).from('benefits_config').update(rest).eq('id', id);
         if (error) throw error;
@@ -49,8 +47,9 @@ export interface BankHoursMovement {
   /**
    * Tipo do lançamento:
    * - credit/debit/adjustment/compensation/payout — legados
-   * - 'pay' — RH marca HE pra pagamento na folha do mês (decisão 2026-05-21).
-   *   Quando 'pay', payrollCalc lê esses minutos via overtime_pct (50/100).
+   * - 'pay' — RH marca HE pra pagamento na folha do mês. Em regime PJ
+   *   esses minutos vão pra payrollCalc como overtime_paid_minutes
+   *   (soma agregada, sem distinção 50/100 — não há CLT art. 7 XVI).
    */
   movement_type: 'credit' | 'debit' | 'adjustment' | 'compensation' | 'payout' | 'pay';
   minutes: number;
@@ -329,12 +328,23 @@ export interface PayrollRun {
   business_days: number;
   business_days_worked: number;
   absent_days: number;
+  /** Regime PJ — total agregado de HE autorizada (substitui ot_50/100 que
+   *  eram split CLT). Os campos legados continuam no schema/interface pra
+   *  backward-compat (histórico de folhas já calculadas). */
+  overtime_paid_value: number;
+  /** @deprecated CLT-only — substituído por overtime_paid_value. */
   overtime_50_minutes: number;
+  /** @deprecated CLT-only — substituído por overtime_paid_value. */
   overtime_100_minutes: number;
+  /** @deprecated CLT-only — não aplica em PJ. */
   night_minutes: number;
+  /** @deprecated CLT-only. */
   overtime_50_value: number;
+  /** @deprecated CLT-only. */
   overtime_100_value: number;
+  /** @deprecated CLT-only (art. 73). */
   night_bonus_value: number;
+  /** @deprecated CLT-only (Súmula 172 TST). */
   dsr_value: number;
   vr_value: number;
   va_value: number;

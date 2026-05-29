@@ -1,0 +1,27 @@
+-- P-RH-PJ-REGIME (2026-05-29): empresa contrata 100% PJ. Reverte premissas
+-- CLT aplicadas em auditorias anteriores. Aplicada via MCP em 3 partes:
+--   1. rh_pj_drop_clt_views — DROP v_employee_13o_provision,
+--      v_employee_fgts_provision, v_employee_vacation_balance (CASCADE
+--      derruba também v_clt_provisions_summary). PJ não tem 13º/FGTS/férias.
+--   2. rh_pj_pay_bank_no_multiplier — pay_bank_hours_balance pago direto
+--      minutos/60 × hourly_rate, sem split 50/100 (não há CLT art. 7 XVI
+--      em acordo PJ). Resposta JSON adiciona regime='PJ' pra rastreabilidade.
+--   3. rh_pj_resolve_overtime_no_multiplier — resolve_weekly_overtime e
+--      resolve_monthly_overtime aplicam multiplier_snapshot=1.0 hardcoded
+--      no INSERT, removendo COALESCE(employee.overtime_multiplier, 1.20).
+--
+-- Frontend (commit que aplicou):
+--   - src/lib/payrollCalc.ts reescrito pra modelo PJ — drops:
+--     calculateINSS, calculateIRRF, INSS_BANDS, IRRF_BANDS, PAYROLL_TAX_YEAR,
+--     countNightMinutes, DSR reflexo, multipliers HE 50/100, adicional noturno
+--   - src/pages/Payroll.tsx caller atualizado pra novo schema
+--   - src/hooks/useRH.ts:
+--       - removida validação CLT (overtime_50_pct ≥ 50, ot_100_pct ≥ 100,
+--         night_bonus_pct ≥ 20)
+--       - PayrollRun ganha overtime_paid_value (matches DB column existente)
+--       - campos CLT marcados @deprecated mas mantidos pra back-compat
+--   - testes payrollCalc.clt.test.ts DELETADO, substituído por
+--     payrollCalc.pj.test.ts (cases PJ-relevant)
+--   - CLAUDE.md ganha seção "Regime de RH — 100% PJ"
+
+SELECT 1; -- no-op

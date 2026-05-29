@@ -195,19 +195,18 @@ export default function Payroll() {
       // minutes com overtime_pct 50 ou 100). Sem isso, calculatePayroll
       // pula o cálculo automático. Tolera bank_hours_movements vazia
       // (cai no fallback automático legado).
+      // Regime PJ — soma total de HE explicitamente autorizada pelo RH
+      // (movement_type='pay'). Sem distinção 50/100 (não há CLT art. 7 XVI).
       const { data: paidOtRows } = await (supabase as any)
         .from('bank_hours_movements')
-        .select('employee_id, minutes, overtime_pct, movement_type')
+        .select('employee_id, minutes, movement_type')
         .gte('movement_date', periodRange.from!)
         .lte('movement_date', periodRange.to!)
         .in('movement_type', ['pay', 'pay_overtime']);
-      const paidOtByEmp = new Map<string, { ot50: number; ot100: number }>();
+      const paidOtByEmp = new Map<string, number>();
       for (const r of (paidOtRows || []) as any[]) {
-        const e = paidOtByEmp.get(r.employee_id) ?? { ot50: 0, ot100: 0 };
-        const m = Math.abs(Number(r.minutes || 0));
-        if (Number(r.overtime_pct) === 100) e.ot100 += m;
-        else e.ot50 += m;
-        paidOtByEmp.set(r.employee_id, e);
+        const cur = paidOtByEmp.get(r.employee_id) ?? 0;
+        paidOtByEmp.set(r.employee_id, cur + Math.abs(Number(r.minutes || 0)));
       }
 
       let calculated = 0;
@@ -248,18 +247,12 @@ export default function Payroll() {
             base_salary: Number(emp.salary) || 0,
             admission_date: (emp as any).admission_date ?? null,
             termination_date: (emp as any).termination_date ?? null,
-            receives_vt: (emp as any).receives_vt ?? true,
             receives_vr: (emp as any).receives_vr ?? false,
             receives_va: (emp as any).receives_va ?? false,
             health_plan_value: Number((emp as any).health_plan_value) || 0,
             weekly_hours: weeklyHours,
             tolerance_minutes: toleranceMin,
             minimum_overtime_minutes: minOTMin,
-            // Multiplicadores POR FUNCIONÁRIO (regime contrato — cada um pode
-            // ter regra própria). Defaults 0 = hora simples.
-            overtime_50_pct:  Number((emp as any).overtime_50_pct  ?? 0),
-            overtime_100_pct: Number((emp as any).overtime_100_pct ?? 0),
-            night_bonus_pct:  Number((emp as any).night_bonus_pct  ?? 0),
           },
           days,
           (absencesByEmp.get(emp.id) || []).map(a => ({

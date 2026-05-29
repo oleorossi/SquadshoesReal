@@ -39,6 +39,32 @@ supabase db push → DB live
 
 **Status / configuração**: rode `bash scripts/setup-cicd.sh` pra ver o status atual, URLs e os passos pendentes (especialmente os 3 secrets do Supabase que precisam ser cadastrados manualmente).
 
+## Regime de RH — 100% PJ (não-CLT)
+
+**Todos os funcionários da empresa são Pessoa Jurídica (PJ) contratados.**
+O relógio de ponto é APENAS pra contabilizar horas trabalhadas. NADA segue
+regime CLT. Implicações pro código:
+
+- **NÃO se aplica**: INSS, IRRF, FGTS, 13º, férias remuneradas, DSR reflexo
+  (Súmula 172 TST), adicional noturno (art. 73), multiplier de hora extra
+  50%/100% (art. 7 XVI), vale-transporte obrigatório.
+- **`payrollCalc.ts`** segue modelo PJ simplificado:
+  `liquido = base_salary_proporcional + horas_extras_autorizadas × valor_hora + VR + VA − plano_saude − faltas − adiantamentos`.
+- **Horas extras**: pagas APENAS quando explicitamente autorizadas pelo
+  gestor via `bank_hours_movements.movement_type='pay'`. Sem multiplier.
+- **`pay_bank_hours_balance`** e **`resolve_*_overtime`** pagam direto
+  `minutos/60 × hourly_rate` (sem split 50/100).
+- **Views droppadas** (não aplicam): `v_employee_13o_provision`,
+  `v_employee_fgts_provision`, `v_employee_vacation_balance`,
+  `v_clt_provisions_summary`.
+- **Campos legados** (`overtime_50_*`, `overtime_100_*`, `night_*`,
+  `dsr_value`, `inss_value`, `irrf_value`) ainda existem no schema e nas
+  interfaces TS, marcados `@deprecated`. Preservados zerados pra
+  back-compat com folhas históricas; serão dropados em migração futura.
+
+Histórico — auditoria 2026-05-29 reverteu premissas CLT que tinham sido
+aplicadas em auditorias anteriores erradamente.
+
 ## Conflict Resolution Strategy
 
 | Direction | Strategy | Rationale |
