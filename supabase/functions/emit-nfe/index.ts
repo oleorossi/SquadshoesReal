@@ -256,7 +256,11 @@ Deno.serve(async (req) => {
       .eq("sale_order_id", sale_order_id)
       .in("status", ["processando", "autorizada", "cancelando"])
       .limit(1);
-    if (existingActiveNfe && existingActiveNfe.length > 0) {
+    // Audit Round 2 (2026-05-29): dry_run skip dos guards de duplicidade,
+    // janela temporal e hard-limit. Preview é pure read-only — operador
+    // precisa poder visualizar payload mesmo após várias tentativas
+    // falhadas. Validações de payload (UUID, items, NCM, etc.) continuam.
+    if (!isDryRun && existingActiveNfe && existingActiveNfe.length > 0) {
       const ex = existingActiveNfe[0];
       return new Response(JSON.stringify({
         error: `Já existe uma NF-e ${ex.status} para este pedido (ref ${ex.ref_nfe || ex.id}). Aguarde a autorização ou cancele antes de re-emitir.`,
@@ -265,43 +269,47 @@ Deno.serve(async (req) => {
       }), { status: 409, headers: corsHeaders });
     }
 
-    // Auditoria 2026-05-29: janela temporal de 10min entre tentativas — antes
-    // operador podia clicar Emitir 10x em sequência após rejeição imediata,
-    // queimando numeração SEFAZ. PV-00104 documenta 10 tentativas, 8 números
-    // perdidos. Bloqueia se houve QUALQUER nfe_emitidas criada nos últimos 10
-    // minutos pro mesmo PV, independente de status.
-    const { data: recentNfes } = await adminClient
-      .from("nfe_emitidas")
-      .select("id, status, created_at")
-      .eq("sale_order_id", sale_order_id)
-      .gte("created_at", new Date(Date.now() - 10 * 60 * 1000).toISOString())
-      .order("created_at", { ascending: false })
-      .limit(1);
-    if (recentNfes && recentNfes.length > 0) {
-      const last = recentNfes[0];
-      const ageSec = Math.floor((Date.now() - new Date(last.created_at).getTime()) / 1000);
-      const waitSec = 10 * 60 - ageSec;
-      return new Response(JSON.stringify({
-        error: `Última tentativa há ${ageSec}s (status ${last.status}). Aguarde ${Math.ceil(waitSec / 60)}min antes de retentar — ` +
-               `evita queimar números SEFAZ em retries rápidos.`,
-        wait_seconds: waitSec,
-      }), { status: 429, headers: corsHeaders });
-    }
+    if (!isDryRun) {
+      // Janela temporal de 10min entre tentativas — antes operador podia
+      // clicar Emitir 10x em sequência após rejeição imediata, queimando
+      // numeração SEFAZ. PV-00104 documenta 10 tentativas, 8 números
+      // perdidos. Bloqueia se houve QUALQUER nfe_emitidas criada nos
+      // últimos 10 minutos pro mesmo PV, independente de status.
+      const { data: recentNfes } = await adminClient
+        .from("nfe_emitidas")
+        .select("id, status, created_at")
+        .eq("sale_order_id", sale_order_id)
+        .gte("created_at", new Date(Date.now() - 10 * 60 * 1000).toISOString())
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (recentNfes && recentNfes.length > 0) {
+        const last = recentNfes[0];
+        const ageSec = Math.floor((Date.now() - new Date(last.created_at).getTime()) / 1000);
+        const waitSec = 10 * 60 - ageSec;
+        return new Response(JSON.stringify({
+          error: `Última tentativa há ${ageSec}s (status ${last.status}). Aguarde ${Math.ceil(waitSec / 60)}min antes de retentar — ` +
+                 `evita queimar números SEFAZ em retries rápidos.`,
+          wait_seconds: waitSec,
+        }), { status: 429, headers: corsHeaders });
+      }
 
-    // Hard limit reduzido de 5 → 3 (auditoria 2026-05-29): PV-00104 acumulou 10
-    // antes do guard antigo (=5) atuar tarde demais. 3 tentativas é suficiente
-    // pra cobrir flapping legítimo de SEFAZ; mais que isso = cadastro quebrado.
-    const { count: totalNfes } = await adminClient
-      .from("nfe_emitidas")
-      .select("id", { count: "exact", head: true })
-      .eq("sale_order_id", sale_order_id);
-    if (totalNfes !== null && totalNfes >= 3) {
-      return new Response(JSON.stringify({
-        error: `Limite de retentativas atingido: ${totalNfes} NF-es já criadas pra este pedido. ` +
-               `Provável problema persistente no cadastro do cliente. ` +
-               `Verifique o histórico de NF-es, cancele as antigas no painel GestaoClick e corrija o erro antes de re-emitir.`,
-        nfe_count: totalNfes,
-      }), { status: 429, headers: corsHeaders });
+      // Hard limit reduzido de 5 → 3 (audit 2026-05-29). Round 2 (29/05):
+      // filtra terminais (erro/rejeitada/cancelada) que NÃO ocupam numeração
+      // SEFAZ ativa nem podem ser re-emitidas — só conta tentativas com
+      // efeito fiscal pendente/efetivo. Antes PV-00104 ficou permanentemente
+      // bloqueado pelo histórico de 10 NFs (todas terminais).
+      const { count: activeNfes } = await adminClient
+        .from("nfe_emitidas")
+        .select("id", { count: "exact", head: true })
+        .eq("sale_order_id", sale_order_id)
+        .in("status", ["processando", "autorizada", "cancelando"]);
+      if (activeNfes !== null && activeNfes >= 3) {
+        return new Response(JSON.stringify({
+          error: `Limite de retentativas ATIVAS atingido: ${activeNfes} NF-es ativas pra este pedido. ` +
+                 `Cancele/aguarde antes de re-emitir.`,
+          nfe_count: activeNfes,
+        }), { status: 429, headers: corsHeaders });
+      }
     }
 
     const { data: items, error: itemsErr } = await adminClient

@@ -1,0 +1,41 @@
+-- P-NFE-AUDIT-R2 (2026-05-29): correções round 2 após auditoria de
+-- VERIFICAÇÃO Opus 4.8 do commit 5e1735b. Foram identificados 8 itens:
+-- 2 HIGH (PV bloqueado pelo hard-limit; estado histórico não limpo),
+-- 5 MEDIUM (sync cron não dispara trigger; sync não seta data_cancelamento;
+-- dry_run bloqueado; revert não normaliza erro; devolução sem unique),
+-- 1 LOW (splitAddress edge case).
+--
+-- Migrations aplicadas via MCP em 4 partes:
+--   1. nfe_r2_pacoteA_backfill — historical state cleanup
+--   2. nfe_r2_pacoteB_trigger_expanded — tg_clear_so_nfe_on_cancel cobre
+--      qualquer transição pra 'cancelada' (antes só autorizada→cancelada)
+--   3. (frontend) sync-nfe-from-provider seta data_cancelamento; emit-nfe
+--      filtra hard-limit por status ATIVO + skip guards em dry_run
+--   4. nfe_r2_pacoteD_devolucao_unique_revert_erro — unique parcial em
+--      nfe_devolucoes + revert normaliza erro/rejeitada
+--
+-- Sintomas medidos pré-fix:
+--   - 5 NFs canceladas sem data_cancelamento (209,237,245,246,247).
+--     Causa: sync-nfe-from-provider mudava status sem setar data.
+--     Backfill: data = updated_at + nota explicativa.
+--   - 4 SOs com nfe órfão (PVs 207, 208, 238, 176 — NFs nunca
+--     sincronizaram). Backfill: nfe=NULL onde não há NF ativa matching.
+--   - PV-00104 (e9985e90) permanentemente bloqueado: 10 NFs históricas
+--     (todas em status terminal erro/rejeitada/cancelada) faziam o
+--     hard-limit de 3 sempre disparar. Fix: filtrar só status ativos.
+--   - Trigger só forward (autorizada→cancelada). Sync cron transicionando
+--     processando→cancelada deixava sale_orders.nfe stale.
+--   - Dry_run bloqueado pelos guards: operador querendo visualizar
+--     payload recebia 429/409 mesmo sem afetar estado.
+--   - Revert deixava NFs 'erro' apontando pra SO — estado inconsistente
+--     em re-fluxos posteriores.
+--
+-- Validação esperada pós-fix:
+--   - 0 NFs canceladas com data_cancelamento NULL
+--   - 0 sale_orders.nfe apontando pra NF não existente
+--   - PV-00104 pode emitir (hard-limit conta só ativas, todas estão erro)
+--   - Trigger dispara em qualquer NEW.status='cancelada' (não cancelada→cancelada)
+--   - Dry_run pode ser chamado mesmo com 10+ tentativas históricas
+--   - revert_invoiced_sale_order normaliza erro/rejeitada/processando/pendente
+
+SELECT 1; -- no-op

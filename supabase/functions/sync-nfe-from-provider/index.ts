@@ -279,6 +279,13 @@ Deno.serve(async (req) => {
       };
       if (emissaoTs) payload.data_emissao = emissaoTs;
       if (refNfe) payload.ref_nfe = refNfe;
+      // Audit Round 2 (2026-05-29): sync da SEFAZ DEVE setar data_cancelamento
+      // quando recebe status='cancelada'. Antes deixava NULL — gerou 5 NFs
+      // canceladas sem data (209,237,245,246,247 em 26/05). Usa data_emissao
+      // do GC se disponível (mais fiel à SEFAZ); fallback NOW.
+      if (status === "cancelada") {
+        payload.data_cancelamento = emissaoTs || new Date().toISOString();
+      }
 
       if (existing) {
         const { error: upErr } = await adminClient
