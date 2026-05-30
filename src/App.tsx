@@ -973,6 +973,11 @@ const router = createBrowserRouter([
         lazy: () => import("./pages/EstoqueQualidade").then(m => ({ Component: m.default })),
       },
       {
+        // Alçadas de aprovação de compras (gate por valor)
+        path: "compras/alcadas",
+        lazy: () => import("./pages/AlcadasCompras").then(m => ({ Component: m.default })),
+      },
+      {
         // Novidade A4 — relatório diário de produção (template do redesign)
         path: "relatorios/diario-producao",
         lazy: () => import("./pages/RelDiarioA4").then(m => ({ Component: m.default })),

@@ -1,4 +1,4 @@
-import { Package, ShoppingCart, Gear as Settings, Truck, Factory, Kanban, SquaresFour as LayoutDashboard, Wallet, FileText, Users, UserCheck, Briefcase, Ruler, ShieldCheck, Lightning as Zap, ShoppingBag, ChartBar as BarChart3, Receipt, Footprints, Sparkle as Sparkles, ClipboardText as ClipboardCheck, CurrencyDollar as DollarSign, Calendar, Cube as Box, ClockCounterClockwise as History, ListChecks, Stack as Boxes, Clock, HandHeart as HeartHandshake, FileXls as FileSpreadsheet, Scales as Scale, Warning as AlertTriangle, Path as RouteIcon, Pulse as Activity, ChartLine as GanttChartSquare, Printer, Tag, ChatText as MessageSquare, TrendUp as TrendingUp, Calculator, Lock, Monitor, Cpu, Timer, Buildings } from '@phosphor-icons/react';
+import { Package, ShoppingCart, Gear as Settings, Truck, Factory, Kanban, SquaresFour as LayoutDashboard, Wallet, FileText, Users, UserCheck, Briefcase, Ruler, ShieldCheck, Lightning as Zap, ShoppingBag, ChartBar as BarChart3, Receipt, Footprints, Sparkle as Sparkles, ClipboardText as ClipboardCheck, CurrencyDollar as DollarSign, Calendar, Cube as Box, ClockCounterClockwise as History, ListChecks, Stack as Boxes, Clock, HandHeart as HeartHandshake, FileXls as FileSpreadsheet, Scales as Scale, Warning as AlertTriangle, Path as RouteIcon, Pulse as Activity, ChartLine as GanttChartSquare, Printer, Tag, ChatText as MessageSquare, TrendUp as TrendingUp, Calculator, Lock, Monitor, Cpu, Timer, Buildings, Gavel } from '@phosphor-icons/react';
 
 // ════════════════════════════════════════════════════════════════════════
 // SQUAD SHOES — Sidebar
@@ -77,6 +77,7 @@ export const menuGroups = [
       { name: "Planejamento",     icon: Calendar,        path: "/purchase-planning" },
       { name: "Fornecedores",     icon: Briefcase,       path: "/suppliers" },
       { name: "Custos de Insumos", icon: DollarSign,     path: "/custos-insumos" },
+      { name: "Alçadas",          icon: Gavel,           path: "/compras/alcadas" },
     ],
   },
   {
