@@ -12,6 +12,8 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useRepresentatives, useCreateRepresentative, useUpdateRepresentative, useDeleteRepresentative, RepresentativeFormData, Representative } from '@/hooks/useRepresentatives';
+import { CommissionTiersDialog } from '@/components/settings/CommissionTiersDialog';
+import { Stairs } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { normalizeForSearch } from '@/lib/searchUtils';
@@ -21,7 +23,7 @@ const emptyForm: RepresentativeFormData = {
   cep: '', endereco: '', numero: '', complemento: '', bairro: '', cidade: '', estado: '',
 };
 
-function RepCard({ rep, onEdit, onDelete }: { rep: Representative; onEdit: () => void; onDelete: () => void }) {
+function RepCard({ rep, onEdit, onDelete, onTiers }: { rep: Representative; onEdit: () => void; onDelete: () => void; onTiers: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const initials = rep.name.split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
 
@@ -77,6 +79,7 @@ function RepCard({ rep, onEdit, onDelete }: { rep: Representative; onEdit: () =>
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setExpanded(!expanded)}>
               {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onTiers} title="Faixas de comissão escalonada"><Stairs className="h-4 w-4" /></Button>
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onEdit}><Pencil className="h-4 w-4" /></Button>
             <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={onDelete}><Trash2 className="h-4 w-4" /></Button>
           </div>
@@ -94,6 +97,7 @@ export default function RepresentativesPanel() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<RepresentativeFormData>(emptyForm);
   const [editId, setEditId] = useState<string | null>(null);
+  const [tiersRep, setTiersRep] = useState<Representative | null>(null);
   const [loadingCep, setLoadingCep] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
@@ -214,9 +218,15 @@ export default function RepresentativesPanel() {
             size="sm"
           />
         ) : filtered.map(r => (
-          <RepCard key={r.id} rep={r} onEdit={() => openEdit(r)} onDelete={() => deleteRep.mutate(r.id)} />
+          <RepCard key={r.id} rep={r} onEdit={() => openEdit(r)} onDelete={() => deleteRep.mutate(r.id)} onTiers={() => setTiersRep(r)} />
         ))}
       </div>
+
+      <CommissionTiersDialog
+        representative={tiersRep ? { id: tiersRep.id, name: tiersRep.name, commission_pct: tiersRep.commission_pct } : null}
+        open={!!tiersRep}
+        onOpenChange={(v) => { if (!v) setTiersRep(null); }}
+      />
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">

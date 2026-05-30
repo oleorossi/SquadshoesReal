@@ -13,6 +13,7 @@ import { useSaleOrderAllItems } from '@/hooks/useSaleOrders';
 import { useFactoringConfigs } from '@/components/finance/FactoringTab';
 import { calculateFactoringDiscount } from '@/lib/factoringCalc';
 import { printHtml } from '@/lib/printOrder';
+import { useCommissionTiers, calcTieredCommission, triggerLabel, type CommissionTier } from '@/hooks/useCommissionTiers';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -34,6 +35,7 @@ export default function ComissoesTab() {
   const { data: saleOrders = [] } = useSaleOrders();
   const { data: allItems = [] } = useSaleOrderAllItems();
   const { data: factoringConfigs = [] } = useFactoringConfigs();
+  const { data: allTiers = [] } = useCommissionTiers();
   const [filterMonth, setFilterMonth] = useState<string>('all');
   const [filterRep, setFilterRep] = useState<string>('all');
 
@@ -58,6 +60,9 @@ export default function ComissoesTab() {
       totalSales: number;          // soma do valor BRUTO dos pedidos
       totalCommissionBase: number; // soma da BASE da comissão (líquida quando há factoring)
       totalCommission: number;
+      tiered?: boolean;            // true quando comissão escalonada (faixas) foi aplicada
+      effPct?: number;             // alíquota efetiva resultante das faixas
+      tierEvent?: string;          // evento gatilho das faixas aplicadas
     }>();
 
     // Initialize all reps
@@ -138,12 +143,36 @@ export default function ComissoesTab() {
       entry.totalCommission += commissionValue;
     });
 
+    // Segundo passo: comissão ESCALONADA (faixas progressivas).
+    // Quando o rep tem faixas ativas, a comissão do período é progressiva sobre a
+    // base acumulada (espelho da RPC calculate_tiered_commission). Redistribuímos a
+    // alíquota efetiva por pedido pra as linhas continuarem somando o total.
+    // Preferência de evento quando há faixas de mais de um tipo: faturamento > pedido > liquidez.
+    const EVENT_PREF = ['faturamento', 'pedido', 'liquidez'];
+    repMap.forEach((entry) => {
+      const repTiers = allTiers.filter((t: CommissionTier) => t.representative_id === entry.rep.id && t.active);
+      if (!repTiers.length || entry.totalCommissionBase <= 0) return;
+      const chosenEvent = EVENT_PREF.find((ev) => repTiers.some((t) => t.trigger_event === ev));
+      if (!chosenEvent) return;
+      const tiersForEvent = repTiers.filter((t) => t.trigger_event === chosenEvent);
+      const tieredTotal = calcTieredCommission(entry.totalCommissionBase, tiersForEvent);
+      const effPct = (tieredTotal / entry.totalCommissionBase) * 100;
+      entry.totalCommission = tieredTotal;
+      entry.tiered = true;
+      entry.effPct = effPct;
+      entry.tierEvent = chosenEvent;
+      entry.orders.forEach((o) => {
+        o.commissionValue = o.commissionBase * (effPct / 100);
+        o.commissionPct = Math.round(effPct * 100) / 100;
+      });
+    });
+
     let result = Array.from(repMap.values()).filter(e => e.orders.length > 0 || filterRep !== 'all');
     if (filterRep !== 'all') {
       result = result.filter(e => e.rep.id === filterRep);
     }
     return result.sort((a, b) => b.totalCommission - a.totalCommission);
-  }, [representatives, saleOrders, allItems, filterMonth, filterRep, factoringConfigs]);
+  }, [representatives, saleOrders, allItems, filterMonth, filterRep, factoringConfigs, allTiers]);
 
   const grandTotal = commissionData.reduce((s, d) => s + d.totalCommission, 0);
   const grandSales = commissionData.reduce((s, d) => s + d.totalSales, 0);
@@ -308,7 +337,13 @@ export default function ComissoesTab() {
                     <div className="flex items-center gap-2">
                       <UserCheck className="h-4 w-4 text-primary" />
                       <span className="font-semibold text-sm">{d.rep.name}</span>
-                      <Badge variant="secondary" className="text-xs">{d.rep.commission_pct}%</Badge>
+                      {d.tiered ? (
+                        <Badge variant="default" className="text-xs" title={`Faixas escalonadas · ${triggerLabel(d.tierEvent || '')}`}>
+                          escalonada · {d.effPct!.toFixed(2)}% efetiva
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-xs">{d.rep.commission_pct}%</Badge>
+                      )}
                     </div>
                     <div className="flex items-center gap-4 text-sm">
                       <span>Vendas: <strong>{fmt(d.totalSales)}</strong></span>
