@@ -11,12 +11,13 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileText, Plus, CheckCircle, Trash as Trash2, CircleNotch as Loader2, Lock, ArrowCounterClockwise as RotateCcw, Package } from '@phosphor-icons/react';
+import { FileText, Plus, CheckCircle, Trash as Trash2, CircleNotch as Loader2, Lock, ArrowCounterClockwise as RotateCcw, Package, Truck } from '@phosphor-icons/react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { useSaleOrdersWeightBatch } from '@/hooks/useSaleOrderWeight';
 import { IncompleteWeightWarning } from '@/components/weight/IncompleteWeightWarning';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { MdfeFromManifestDialog } from '@/components/fiscal/MdfeFromManifestDialog';
 
 type MdfeStatus = 'rascunho' | 'autorizado' | 'encerrado' | 'cancelado';
 
@@ -71,6 +72,7 @@ export default function MDFe() {
   const [editing, setEditing] = useState<any | null>(null);
   const [creating, setCreating] = useState(false);
   const [authorizing, setAuthorizing] = useState<any | null>(null);
+  const [fromManifest, setFromManifest] = useState(false);
 
   const { data: items = [], isLoading } = useQuery({
     queryKey: ['mdfe_emissions_list'],
@@ -113,9 +115,14 @@ export default function MDFe() {
         title="MDF-e · Manifesto Eletrônico"
         description="Documento fiscal pra transporte rodoviário com múltiplas NF-es / CT-es por viagem. Esta UI grava o rascunho e registra protocolo após emissão externa."
         actions={
-          <Button onClick={() => setCreating(true)} className="gap-1.5">
-            <Plus className="h-4 w-4" /> Novo MDF-e
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setFromManifest(true)} className="gap-1.5">
+              <Truck className="h-4 w-4" /> Gerar de romaneio
+            </Button>
+            <Button onClick={() => setCreating(true)} className="gap-1.5">
+              <Plus className="h-4 w-4" /> Novo MDF-e
+            </Button>
+          </div>
         }
       />
 
@@ -196,6 +203,8 @@ export default function MDFe() {
         mdfe={authorizing}
         onClose={() => setAuthorizing(null)}
       />
+
+      <MdfeFromManifestDialog open={fromManifest} onClose={() => setFromManifest(false)} />
     </div>
   );
 }
