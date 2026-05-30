@@ -55,6 +55,7 @@ export const menuGroups = [
       { name: "Ajustes",          icon: Boxes,        path: "/ajuste-estoque" },
       { name: "Contagens",        icon: ClipboardCheck,path: "/contagens-ciclo" },
       { name: "Localizações",     icon: RouteIcon,    path: "/localizacoes" },
+      { name: "Lotes",            icon: Tag,          path: "/lotes" },
       { name: "Histórico",        icon: History,      path: "/estoque/historico" },
     ],
   },
