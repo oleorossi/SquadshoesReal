@@ -537,7 +537,7 @@ export interface DaySummary {
   overtimeFormatted: string;
   isHoliday: boolean;
   isAbsent: boolean;
-  status: 'normal' | 'overtime' | 'absent' | 'holiday' | 'weekend' | 'incomplete' | 'irregular' | 'inconsistent';
+  status: 'normal' | 'overtime' | 'absent' | 'late' | 'holiday' | 'weekend' | 'incomplete' | 'irregular' | 'inconsistent';
 }
 
 export function calculateDaySummary(
@@ -661,7 +661,10 @@ export function calculateDaySummary(
   let status: DaySummary['status'] = 'normal';
   if (isHoliday && workedMinutes > 0) status = 'holiday';
   else if (workedMinutes > expectedMinutes + tolerance) status = 'overtime';
-  else if (workedMinutes < expectedMinutes - tolerance && expectedMinutes > 0) status = 'absent';
+  else if (workedMinutes < expectedMinutes - tolerance && expectedMinutes > 0) {
+    // Atraso (trabalhou parcialmente com déficit) ≠ falta total (não bateu ponto).
+    status = workedMinutes > 0 ? 'late' : 'absent';
+  }
 
   return {
     dayOfWeek,

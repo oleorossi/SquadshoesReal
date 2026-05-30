@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type DayStatus =
-  | 'normal' | 'overtime' | 'absent' | 'partial'
+  | 'normal' | 'overtime' | 'absent' | 'late' | 'partial'
   | 'irregular' | 'inconsistent' | 'holiday' | 'weekend';
 export type Urgency = 'fresh' | 'aging' | 'overdue';
 export type SuggestionSource = 'observed' | 'schedule' | 'none';

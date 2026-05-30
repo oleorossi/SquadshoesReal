@@ -41,9 +41,22 @@ const STATUS_LABEL: Record<string, string> = {
   partial:      'Parcial',
   normal:       'Normal',
   overtime:     'Hora extra',
+  late:         'Atraso',
   absent:       'Faltou',
   holiday:      'Feriado',
   weekend:      'Fim de semana',
+};
+
+const STATUS_TONE: Record<string, string> = {
+  inconsistent: 'bg-red-500/10 text-red-700 border-red-500/30 dark:text-red-400',
+  irregular:    'bg-red-500/10 text-red-700 border-red-500/30 dark:text-red-400',
+  partial:      'bg-amber-500/10 text-amber-700 border-amber-500/30 dark:text-amber-400',
+  late:         'bg-amber-500/10 text-amber-700 border-amber-500/30 dark:text-amber-400',
+  absent:       'bg-red-500/10 text-red-700 border-red-500/30 dark:text-red-400',
+  overtime:     'bg-emerald-500/10 text-emerald-700 border-emerald-500/30 dark:text-emerald-400',
+  normal:       'bg-muted text-muted-foreground border-border',
+  holiday:      'bg-muted text-muted-foreground border-border',
+  weekend:      'bg-muted text-muted-foreground border-border',
 };
 
 const CONFIDENCE_STYLE: Record<string, string> = {
@@ -383,7 +396,10 @@ export default function TimePendingsPage() {
                         )}
                       </TableCell>
                       <TableCell className="cursor-pointer" onClick={() => setEditing(p)}>
-                        <Badge variant="outline" className="text-[10px] uppercase">
+                        <Badge
+                          variant="outline"
+                          className={cn('text-[10px] uppercase', STATUS_TONE[p.day_summary?.status])}
+                        >
                           {STATUS_LABEL[p.day_summary?.status] || p.day_summary?.status}
                         </Badge>
                       </TableCell>

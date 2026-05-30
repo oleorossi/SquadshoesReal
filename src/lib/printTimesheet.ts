@@ -98,6 +98,7 @@ function statusLabel(status: string): string {
     case 'normal': return '✓';
     case 'overtime': return '⏰ HE';
     case 'absent': return '✗ Falta';
+    case 'late': return '⚠ Atraso';
     case 'holiday': return '🏖️ Feriado';
     case 'weekend': return '— Folga';
     case 'incomplete': return '⚠️ Incompleto';
