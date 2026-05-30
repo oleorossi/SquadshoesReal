@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, MagnifyingGlass as Search, Footprints, Pencil, ShieldCheck, ArchiveBox } from '@phosphor-icons/react';
+import { Plus, MagnifyingGlass as Search, Footprints, Pencil, ShieldCheck, Package } from '@phosphor-icons/react';
 import { useLasts, useCreateLast, useUpdateLast, type LastInput, type LastWithUsage } from '@/hooks/useLasts';
 import { useClients } from '@/hooks/useClients';
 import { normalizeForSearch } from '@/lib/searchUtils';
@@ -141,7 +141,7 @@ export default function LastsPage() {
           <StatCard icon={Footprints} label="Formas catalogadas" value={totals.total} hint="total" />
           <StatCard icon={ShieldCheck} label="Em uso" value={totals.active} hint="status ativo" tone={totals.active > 0 ? 'success' : 'default'} />
           <StatCard icon={Pencil} label="Em desenvolvimento" value={totals.dev} hint="ainda em projeto" tone="warning" />
-          <StatCard icon={ArchiveBox} label="Vinculadas a ficha" value={totals.inUse} hint="com FK em technical_sheets" />
+          <StatCard icon={Package} label="Vinculadas a ficha" value={totals.inUse} hint="com FK em technical_sheets" />
         </StatGrid>
 
         <Panel flush>
