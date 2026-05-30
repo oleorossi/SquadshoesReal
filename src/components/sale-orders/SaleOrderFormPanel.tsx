@@ -1,5 +1,5 @@
  import { useMemo, useEffect, useRef, useState, useCallback } from 'react';
-import { Plus, CircleNotch as Loader2, User, Truck, ClipboardText as ClipboardList, Info, Percent, CaretUpDown as ChevronsUpDown, Check, ClockCounterClockwise as History, Warning as AlertTriangle, CheckCircle as CheckCircle2, Calculator, Money as Banknote } from '@phosphor-icons/react';
+import { Plus, CircleNotch as Loader2, User, Truck, ClipboardText as ClipboardList, Info, Percent, CaretUpDown as ChevronsUpDown, Check, ClockCounterClockwise as History, Warning as AlertTriangle, CheckCircle as CheckCircle2, Calculator, Money as Banknote, Receipt } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -1024,7 +1024,7 @@ export default function SaleOrderFormPanel({
                 <Checkbox
                   id="nfe_required_off"
                   checked={form.nfe_required === false}
-                  onCheckedChange={(checked) => setForm(f => ({ ...f, nfe_required: !checked }))}
+                  onCheckedChange={(checked) => setForm(f => ({ ...f, nfe_required: !checked, nfe_external: false }))}
                   className="mt-0.5"
                 />
                 <div className="flex-1 -mt-0.5">
@@ -1039,6 +1039,42 @@ export default function SaleOrderFormPanel({
                   </p>
                 </div>
               </div>
+
+              {/* NF emitida por outra empresa — quando uma terceira empresa
+                  do grupo/parceiro emite a nota fiscal, esse sistema não
+                  precisa exigir NF-e autorizada pra expedir. Registra o
+                  número da NF externa pra rastreabilidade fiscal. */}
+              {form.nfe_required !== false && (
+                <div className="flex items-start gap-3 p-3 rounded-lg border border-blue-500/30 bg-blue-500/5">
+                  <Checkbox
+                    id="nfe_external_on"
+                    checked={(form as any).nfe_external === true}
+                    onCheckedChange={(checked) => setForm(f => ({ ...f, nfe_external: !!checked }))}
+                    className="mt-0.5"
+                  />
+                  <div className="flex-1 -mt-0.5 space-y-2">
+                    <Label htmlFor="nfe_external_on" className="text-xs font-bold cursor-pointer flex items-center gap-1.5 text-blue-700 dark:text-blue-300">
+                      <Receipt className="h-3.5 w-3.5" />
+                      NF emitida por outra empresa
+                    </Label>
+                    <p className="text-xs text-muted-foreground leading-snug">
+                      Marque quando a nota fiscal deste pedido é emitida por <strong>outra empresa do grupo / parceiro</strong>, fora deste sistema.
+                      A expedição libera sem exigir NF-e autorizada interna. Status final: <strong>Expedido</strong>.
+                    </p>
+                    {(form as any).nfe_external === true && (
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Nº/Chave da NF externa (opcional, recomendado)</Label>
+                        <Input
+                          value={(form as any).external_nfe_number || ''}
+                          onChange={e => setForm(f => ({ ...f, external_nfe_number: e.target.value } as any))}
+                          placeholder="Ex.: 12345 ou chave 44-dígitos"
+                          className="h-8 mt-1 font-mono text-xs"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
           )}

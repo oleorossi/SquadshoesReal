@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 
 export interface NotificationItem {
   id: string;
-  category: 'finance' | 'stock' | 'production' | 'hr' | 'purchasing';
+  category: 'finance' | 'stock' | 'production' | 'hr' | 'purchasing' | 'crm';
   severity: 'critical' | 'warning' | 'info';
   title: string;
   description: string;
@@ -24,7 +24,11 @@ export function useNotifications() {
     queryFn: async () => {
       // Promise.allSettled — if one source fails (e.g. notifications table is
       // unreachable), still render whatever the other call returned.
-      const [dashRes, sectorRes, bottleneckRes] = await Promise.allSettled([
+      // crmRes: agendamentos CRM em até 3 dias OU atrasados (alerta no sino).
+      const now = new Date();
+      const in3days = new Date(now);
+      in3days.setDate(in3days.getDate() + 3);
+      const [dashRes, sectorRes, bottleneckRes, crmRes] = await Promise.allSettled([
         apiService.getDashboardNotifications(),
         supabase
           .from('notifications')
@@ -39,6 +43,14 @@ export function useNotifications() {
           .eq('is_bottleneck', true)
           .order('week_start', { ascending: true })
           .limit(10),
+        (supabase as any)
+          .from('crm_interactions')
+          .select('id, subject, scheduled_for, interaction_type, external_contact_name, clients(razao_social)')
+          .is('completed_at', null)
+          .not('scheduled_for', 'is', null)
+          .lte('scheduled_for', in3days.toISOString())
+          .order('scheduled_for', { ascending: true })
+          .limit(30),
       ]);
       const data = dashRes.status === 'fulfilled' ? dashRes.value : {
         overduePayables: [], overdueReceivables: [], lowStockProducts: [],
@@ -187,6 +199,62 @@ export function useNotifications() {
               `${b.sector} semana ${new Date(b.week_start + 'T00:00:00').toLocaleDateString('pt-BR')} (${b.utilization_pct}%)`
             ).join('; '),
             link: '/gargalos',
+          });
+        }
+      }
+
+      // --- Agendamentos CRM (próximos 3 dias + atrasados) ---
+      const crmScheduled =
+        crmRes.status === 'fulfilled' && !crmRes.value.error
+          ? (crmRes.value.data || [])
+          : [];
+      if (crmRes.status === 'fulfilled' && crmRes.value.error) {
+        console.warn('[useNotifications] crm query failed:', crmRes.value.error.message);
+      }
+      if (crmScheduled.length > 0) {
+        const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+        const tomorrowStart = new Date(todayStart); tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+        const overdue = crmScheduled.filter((c: any) => new Date(c.scheduled_for) < todayStart);
+        const today = crmScheduled.filter((c: any) => {
+          const d = new Date(c.scheduled_for);
+          return d >= todayStart && d < tomorrowStart;
+        });
+        const upcoming = crmScheduled.filter((c: any) => new Date(c.scheduled_for) >= tomorrowStart);
+
+        if (overdue.length > 0) {
+          notifications.push({
+            id: 'crm-overdue',
+            category: 'crm',
+            severity: 'critical',
+            title: `${overdue.length} contato(s) CRM atrasado(s)`,
+            description: overdue.slice(0, 3).map((c: any) =>
+              `${c.clients?.razao_social || c.external_contact_name || '—'}: ${c.subject}`
+            ).join('; ') + (overdue.length > 3 ? '...' : ''),
+            link: '/crm',
+          });
+        }
+        if (today.length > 0) {
+          notifications.push({
+            id: 'crm-today',
+            category: 'crm',
+            severity: 'warning',
+            title: `${today.length} contato(s) CRM hoje`,
+            description: today.slice(0, 3).map((c: any) =>
+              `${c.clients?.razao_social || c.external_contact_name || '—'}: ${c.subject}`
+            ).join('; ') + (today.length > 3 ? '...' : ''),
+            link: '/crm',
+          });
+        }
+        if (upcoming.length > 0) {
+          notifications.push({
+            id: 'crm-upcoming',
+            category: 'crm',
+            severity: 'info',
+            title: `${upcoming.length} contato(s) CRM próximo(s) (3 dias)`,
+            description: upcoming.slice(0, 3).map((c: any) =>
+              `${c.clients?.razao_social || c.external_contact_name || '—'} em ${new Date(c.scheduled_for).toLocaleDateString('pt-BR')}`
+            ).join('; ') + (upcoming.length > 3 ? '...' : ''),
+            link: '/crm',
           });
         }
       }

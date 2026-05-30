@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Phone, Envelope as Mail, ChatText as MessageSquare, Calendar, Cake, WarningCircle as AlertCircle, Repeat } from '@phosphor-icons/react';
+import { Plus, Phone, Envelope as Mail, ChatText as MessageSquare, Calendar, Cake, WarningCircle as AlertCircle, Repeat, Bell, CheckCircle } from '@phosphor-icons/react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -26,12 +26,15 @@ const CHANNEL_ICONS: Record<string, any> = {
 export default function CRM() {
   const qc = useQueryClient();
   const [newOpen, setNewOpen] = useState(false);
+  const [contactMode, setContactMode] = useState<'client' | 'external'>('client');
   const [newInt, setNewInt] = useState({
     client_id: '',
+    external_contact_name: '',
     interaction_type: 'ligacao',
     subject: '',
     notes: '',
     outcome: '',
+    scheduled_for: '',
   });
 
   const { data: clientsList = [] } = useQuery({
@@ -45,22 +48,54 @@ export default function CRM() {
 
   const createInteraction = useMutation({
     mutationFn: async () => {
-      if (!newInt.client_id || !newInt.subject) throw new Error('Cliente e assunto são obrigatórios');
+      const hasClient = contactMode === 'client' && !!newInt.client_id;
+      const hasExternal = contactMode === 'external' && !!newInt.external_contact_name.trim();
+      if (!hasClient && !hasExternal) {
+        throw new Error('Selecione um cliente OU informe o nome do contato externo');
+      }
+      if (!newInt.subject) throw new Error('Assunto é obrigatório');
+      // Quando há data agendada, NÃO marca completed_at — é um agendamento
+      // futuro. Quando não há, é uma interação que já aconteceu (completed_at=now).
+      const hasSchedule = !!newInt.scheduled_for;
       const { error } = await (supabase as any).from('crm_interactions').insert({
-        client_id: newInt.client_id,
+        client_id: hasClient ? newInt.client_id : null,
+        external_contact_name: hasExternal ? newInt.external_contact_name.trim() : null,
         interaction_type: newInt.interaction_type,
         subject: newInt.subject,
         notes: newInt.notes || null,
         outcome: newInt.outcome || null,
-        completed_at: new Date().toISOString(),
+        scheduled_for: hasSchedule ? new Date(newInt.scheduled_for).toISOString() : null,
+        completed_at: hasSchedule ? null : new Date().toISOString(),
       });
+      if (error) throw error;
+      return { hasSchedule };
+    },
+    onSuccess: ({ hasSchedule }) => {
+      qc.invalidateQueries({ queryKey: ['crm_interactions'] });
+      qc.invalidateQueries({ queryKey: ['crm_scheduled'] });
+      qc.invalidateQueries({ queryKey: ['notifications_aggregated'] });
+      setNewOpen(false);
+      setNewInt({ client_id: '', external_contact_name: '', interaction_type: 'ligacao', subject: '', notes: '', outcome: '', scheduled_for: '' });
+      setContactMode('client');
+      toast.success(hasSchedule ? 'Contato agendado — você será avisado' : 'Interação registrada');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  // Marcar agendamento como concluído (limpa scheduled_for, seta completed_at=now)
+  const completeInteraction = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await (supabase as any)
+        .from('crm_interactions')
+        .update({ completed_at: new Date().toISOString() })
+        .eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['crm_interactions'] });
-      setNewOpen(false);
-      setNewInt({ client_id: '', interaction_type: 'ligacao', subject: '', notes: '', outcome: '' });
-      toast.success('Interação registrada');
+      qc.invalidateQueries({ queryKey: ['crm_scheduled'] });
+      qc.invalidateQueries({ queryKey: ['notifications_aggregated'] });
+      toast.success('Contato marcado como concluído');
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -71,11 +106,36 @@ export default function CRM() {
       const { data } = await (supabase as any)
         .from('crm_interactions')
         .select('*, clients(razao_social)')
+        .not('completed_at', 'is', null)
         .order('completed_at', { ascending: false })
         .limit(50);
       return data || [];
     },
   });
+
+  // Contatos agendados (scheduled_for futuro/hoje, ainda não completos)
+  const { data: scheduled = [] } = useQuery({
+    queryKey: ['crm_scheduled'],
+    queryFn: async () => {
+      const { data } = await (supabase as any)
+        .from('crm_interactions')
+        .select('*, clients(razao_social)')
+        .is('completed_at', null)
+        .not('scheduled_for', 'is', null)
+        .order('scheduled_for', { ascending: true })
+        .limit(50);
+      return data || [];
+    },
+    refetchInterval: 5 * 60 * 1000, // refresca a cada 5min (sino também)
+  });
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+  const overdueCount = scheduled.filter((s: any) => new Date(s.scheduled_for) < today).length;
+  const todayCount = scheduled.filter((s: any) => {
+    const d = new Date(s.scheduled_for);
+    return d >= today && d < tomorrow;
+  }).length;
 
   const { data: inactive = [] } = useQuery({
     queryKey: ['crm_inactive'],
@@ -140,13 +200,49 @@ export default function CRM() {
           <DialogHeader><DialogTitle>Nova Interação</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label className="text-xs">Cliente *</Label>
-              <Select value={newInt.client_id} onValueChange={v => setNewInt({ ...newInt, client_id: v })}>
-                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>
-                  {clientsList.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.razao_social}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <div className="flex items-center justify-between mb-1.5">
+                <Label className="text-xs">Contato *</Label>
+                <div className="flex gap-1 border rounded-sm p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setContactMode('client')}
+                    className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-sm transition-colors ${
+                      contactMode === 'client' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Cliente
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setContactMode('external')}
+                    className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-sm transition-colors ${
+                      contactMode === 'external' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Externo
+                  </button>
+                </div>
+              </div>
+              {contactMode === 'client' ? (
+                <Select value={newInt.client_id} onValueChange={v => setNewInt({ ...newInt, client_id: v })}>
+                  <SelectTrigger><SelectValue placeholder="Selecione cliente" /></SelectTrigger>
+                  <SelectContent>
+                    {clientsList.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.razao_social}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  value={newInt.external_contact_name}
+                  onChange={e => setNewInt({ ...newInt, external_contact_name: e.target.value })}
+                  placeholder="Nome ou empresa do prospect"
+                  autoFocus
+                />
+              )}
+              <p className="text-[10px] text-muted-foreground mt-1">
+                {contactMode === 'client'
+                  ? 'Cliente da base — fica vinculado pra histórico e métricas.'
+                  : 'Contato fora da base (lead, prospect) — só fica no CRM, sem virar cliente.'}
+              </p>
             </div>
             <div>
               <Label className="text-xs">Canal</Label>
@@ -186,17 +282,42 @@ export default function CRM() {
               <Label className="text-xs">Anotações</Label>
               <Textarea rows={3} value={newInt.notes} onChange={e => setNewInt({ ...newInt, notes: e.target.value })} />
             </div>
+            <div>
+              <Label className="text-xs flex items-center gap-1.5">
+                <Bell className="h-3 w-3" />
+                Agendar próximo contato (opcional)
+              </Label>
+              <Input
+                type="datetime-local"
+                value={newInt.scheduled_for}
+                onChange={e => setNewInt({ ...newInt, scheduled_for: e.target.value })}
+                min={format(new Date(), "yyyy-MM-dd'T'HH:mm")}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Quando preenchido, vira agendamento (não é registrado como histórico)
+                — você recebe alerta no sino 3 dias antes e atrasos.
+              </p>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setNewOpen(false)}>Cancelar</Button>
             <Button onClick={() => createInteraction.mutate()} disabled={createInteraction.isPending || !newInt.client_id || !newInt.subject}>
-              {createInteraction.isPending ? 'Salvando...' : 'Registrar'}
+              {createInteraction.isPending
+                ? 'Salvando...'
+                : newInt.scheduled_for ? 'Agendar Contato' : 'Registrar'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <StatGrid>
+        <StatCard
+          label="Retornos hoje"
+          value={todayCount}
+          hint={overdueCount > 0 ? `${overdueCount} atrasado(s)` : 'agendados pra hoje'}
+          tone={overdueCount > 0 ? 'destructive' : todayCount > 0 ? 'warning' : 'default'}
+          icon={Bell}
+        />
         <StatCard
           label="Interações 30d"
           value={interactions.length}
@@ -209,11 +330,6 @@ export default function CRM() {
           tone="warning"
         />
         <StatCard
-          label="Aniversariantes"
-          value={birthdays.length}
-          hint="este mês"
-        />
-        <StatCard
           label="NPS Score"
           value={npsScore}
           hint="últimas respostas"
@@ -221,14 +337,73 @@ export default function CRM() {
         />
       </StatGrid>
 
-      <Tabs defaultValue="interactions">
+      <Tabs defaultValue={scheduled.length > 0 ? 'scheduled' : 'interactions'}>
         <TabsList>
+          <TabsTrigger value="scheduled" className="gap-1.5">
+            <Bell className="h-3 w-3" />
+            Agendados
+            {scheduled.length > 0 && (
+              <Badge variant={overdueCount > 0 ? 'destructive' : 'outline'} className="h-4 px-1 text-xs">
+                {scheduled.length}
+              </Badge>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="interactions">Interações</TabsTrigger>
           <TabsTrigger value="inactive">Inativos</TabsTrigger>
           <TabsTrigger value="birthdays">Aniversariantes</TabsTrigger>
           <TabsTrigger value="repurchase">Recompra Prevista</TabsTrigger>
           <TabsTrigger value="nps">NPS</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="scheduled">
+          <Panel flush>
+            {scheduled.length === 0 ? (
+              <EmptyState
+                icon={Bell}
+                title="Nenhum contato agendado"
+                description='Use "Nova Interação" e preencha "Agendar próximo contato" pra criar lembretes.'
+              />
+            ) : (
+              <div className="divide-y">
+                {scheduled.map((s: any) => {
+                  const when = new Date(s.scheduled_for);
+                  const isOverdue = when < today;
+                  const isToday = when >= today && when < tomorrow;
+                  const Icon = CHANNEL_ICONS[s.interaction_type] || Calendar;
+                  return (
+                    <div key={s.id} className="p-3 flex items-start gap-3 text-sm">
+                      <Icon className={`h-4 w-4 mt-0.5 shrink-0 ${
+                        isOverdue ? 'text-destructive' : isToday ? 'text-amber-500' : 'text-primary'
+                      }`} />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold truncate">{s.subject}</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {s.clients?.razao_social || s.external_contact_name || '—'} · {format(when, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                        </p>
+                        {s.notes && <p className="text-xs mt-1 text-muted-foreground">{s.notes}</p>}
+                      </div>
+                      <div className="flex flex-col items-end gap-1.5">
+                        <Badge variant={isOverdue ? 'destructive' : isToday ? 'warning' : 'outline'} className="text-xs">
+                          {isOverdue ? 'Atrasado' : isToday ? 'Hoje' : format(when, 'dd/MM')}
+                        </Badge>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 px-2 text-xs gap-1"
+                          onClick={() => completeInteraction.mutate(s.id)}
+                          disabled={completeInteraction.isPending}
+                        >
+                          <CheckCircle className="h-3 w-3" />
+                          Concluir
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Panel>
+        </TabsContent>
 
         <TabsContent value="interactions">
           <Panel flush>
@@ -248,7 +423,7 @@ export default function CRM() {
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold truncate">{i.subject}</p>
                           <p className="text-xs text-muted-foreground truncate">
-                            {i.clients?.razao_social || '—'} · {format(new Date(i.completed_at), 'dd/MM HH:mm', { locale: ptBR })}
+                            {i.clients?.razao_social || i.external_contact_name || '—'} · {format(new Date(i.completed_at), 'dd/MM HH:mm', { locale: ptBR })}
                           </p>
                           {i.notes && <p className="text-xs mt-1 text-muted-foreground">{i.notes}</p>}
                         </div>

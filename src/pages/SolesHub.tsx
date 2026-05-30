@@ -11,13 +11,14 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { CircleNotch as Loader2, Package, MagnifyingGlass as Search, Gear as Settings2, Stack as Boxes, ClockCounterClockwise as History, Warning as AlertTriangle, CaretRight as ChevronRight, ListPlus } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, Package, MagnifyingGlass as Search, Gear as Settings2, Stack as Boxes, ClockCounterClockwise as History, Warning as AlertTriangle, CaretRight as ChevronRight, ListPlus, Plus } from '@phosphor-icons/react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { cn } from '@/lib/utils';
 import SolesCadastroTab from '@/components/soles-hub/SolesCadastroTab';
 import SolesEstoqueTab from '@/components/soles-hub/SolesEstoqueTab';
 import SolesConsumosTab from '@/components/soles-hub/SolesConsumosTab';
 import SolesHistoricoTab from '@/components/soles-hub/SolesHistoricoTab';
+import SoleCreateDialog from '@/components/soles-hub/SoleCreateDialog';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 // ── Tipos ───────────────────────────────────────────────────────────────────
@@ -62,6 +63,7 @@ export default function SolesHub() {
   const [tab, setTab] = usePersistedState<string>('soles-hub-tab', 'cadastro');
   const [selectedId, setSelectedId] = usePersistedState<string | null>('soles-hub-selected', null);
   const [search, setSearch] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
 
   const filtered = useMemo(() => {
     const q = normalizeForSearch(search);
@@ -108,7 +110,7 @@ export default function SolesHub() {
           title="Gestão de Solados"
           description="Tudo sobre solados num só lugar — cadastro, conjugação, estoque e consumos."
           actions={
-            <div className="flex gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <Card className="px-3 py-2">
                 <p className="text-xs uppercase tracking-wider text-muted-foreground">Solados</p>
                 <p className="text-lg font-bold font-mono">{stats.totalSoles}</p>
@@ -125,8 +127,22 @@ export default function SolesHub() {
                   <p className="text-lg font-bold font-mono text-amber-700 dark:text-amber-400">{stats.lowStock}</p>
                 </Card>
               )}
+              <Button onClick={() => setCreateOpen(true)} className="gap-1.5">
+                <Plus className="h-4 w-4" />
+                Adicionar Solado
+              </Button>
             </div>
           }
+        />
+
+        <SoleCreateDialog
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+          onCreated={(newId) => {
+            // Auto-seleciona o solado recém-criado e abre na aba Cadastro
+            setSelectedId(newId);
+            setTab('cadastro');
+          }}
         />
 
         {/* Layout: lista esquerda + detalhe direita */}

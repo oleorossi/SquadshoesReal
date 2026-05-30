@@ -6099,12 +6099,16 @@ function CostsTab({ sheetId, form, groups }: {
   const grandTotal = materialTotal + modTotalCost + overheadPerPair + packagingPerPair;
   const formatCurrency = (v: any) => globalFormatCurrency(v);
 
+  // IMPORTANTE: chamar TODOS os hooks antes de qualquer early return.
+  // Antes esse useOverheadHistory ficava depois do `if (!hasAnyData) return`,
+  // causando "Rendered fewer/more hooks than during the previous render"
+  // toda vez que a ficha alternava entre ter dados e não ter.
+  const { data: overheadHistory = [] } = useOverheadHistory(sheetId);
+
   const hasAnyData = materials.length > 0 || specsCosts.length > 0 || strapsCosts.length > 0 || operations.length > 0;
   if (!hasAnyData) {
     return <div className="text-center py-8 text-muted-foreground"><p className="text-sm">Adicione materiais no BOM, operações ou preencha Especificações para calcular custos</p></div>;
   }
-
-  const { data: overheadHistory = [] } = useOverheadHistory(sheetId);
 
   return (
     <div className="space-y-6">
