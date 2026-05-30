@@ -23,6 +23,7 @@ import {
   DispatchContributingOrder,
 } from '@/hooks/useCosturaPlanner';
 import { useProductionSettings } from '@/hooks/useProductionSettings';
+import { useTableRealtime } from '@/hooks/useTableRealtime';
 import { BulkAssignServiceOrderDialog } from '@/components/bottlenecks/BulkAssignServiceOrderDialog';
 import { ContributingOrder } from '@/hooks/useSectorBottlenecks';
 
@@ -48,6 +49,15 @@ export default function CosturaPlannerPanel() {
   const { data: backlog = [], isLoading: loadingBacklog } = useCosturaBacklog();
   const { data: dispatchPlan, isLoading: loadingDispatch } = useCosturaDispatchPlan(30);
   const { data: settings } = useProductionSettings();
+
+  // Realtime: orders/order_stages/service_orders mudam o backlog e o capacity
+  // plan. Notifications usadas pelo sino do header reagem em INSERT.
+  useTableRealtime([
+    { table: 'orders', invalidate: [['costura_backlog_30d'], ['costura_capacity_plan'], ['costura_dispatch_plan', 30]] },
+    { table: 'order_stages', invalidate: [['costura_backlog_30d'], ['costura_capacity_plan'], ['costura_dispatch_plan', 30]] },
+    { table: 'service_orders', invalidate: [['costura_backlog_30d'], ['costura_capacity_plan'], ['costura_dispatch_plan', 30]] },
+    { table: 'production_settings', invalidate: [['production_settings'], ['costura_capacity_plan']] },
+  ], { channelName: 'costura-planner' });
 
   const [selectedDay, setSelectedDay] = useState<DispatchOverflowDay | null>(null);
 

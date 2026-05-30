@@ -1,5 +1,6 @@
 import { Bell, CurrencyDollar as DollarSign, Package, Factory, Users as Users2, Package as PackageSearch, ArrowSquareOut as ExternalLink } from '@phosphor-icons/react';
 import { useNotifications, NotificationItem } from '@/hooks/useNotifications';
+import { useTableRealtime } from '@/hooks/useTableRealtime';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -36,6 +37,13 @@ const SEVERITY_DOT: Record<string, string> = {
 
  export default function NotificationBell({ className }: { className?: string }) {
   const { data } = useNotifications();
+  // Realtime: novas notifications no banco invalidam o agregado direto, sem
+  // esperar refetchInterval de 10min. Cobre o sino subir badge em segundos
+  // quando notify_costura_overflow ou trigger de bottleneck dispara.
+  useTableRealtime([
+    { table: 'notifications', invalidate: [['notifications_aggregated']] },
+  ], { channelName: 'notification-bell' });
+
   // Guard defensivo: se cache cruzado entregar um objeto (em vez de array),
   // não quebra a render. Vide PR queryKey collision 2026-05-24.
   const notifications = Array.isArray(data) ? data : [];

@@ -9,6 +9,7 @@ import { useAllOrderStages } from '@/hooks/useOrderStages';
 import { useAllQualityRecords } from '@/hooks/useQualityRecords';
 import { useAllReservations } from '@/hooks/useReservations';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
+import { useTableRealtime } from '@/hooks/useTableRealtime';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { differenceInHours, parseISO } from 'date-fns';
 import { LateItemsAlertCard } from '@/components/dashboard/LateItemsAlertCard';
@@ -40,6 +41,15 @@ const CustomTooltip = ({ active, payload, label, formatter }: any) => {
 const SECTORS = ['Corte Palmilha', 'Corte Forração', 'Mesa', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
 
 export default function PCPDashboard() {
+  // Realtime: dashboard reage em segundos a movimentações de OP/etapa/
+  // qualidade/reservas. Substitui o polling implícito do staleTime.
+  useTableRealtime([
+    { table: 'orders', invalidate: [['orders']] },
+    { table: 'order_stages', invalidate: [['order_stages']] },
+    { table: 'quality_records', invalidate: [['quality_records']] },
+    { table: 'material_reservations', invalidate: [['material_reservations']] },
+  ], { channelName: 'pcp-dashboard' });
+
   const { data: orders = [] } = useOrders();
   const orderIds = useMemo(() => orders.map(o => o.id), [orders]);
   const { data: allStages = [] } = useAllOrderStages(orderIds.length > 0 ? orderIds : undefined);
