@@ -4,7 +4,7 @@ import {
   calculateDaySummary, WorkSchedule,
 } from '@/hooks/useTimesheet';
 import { useEmployees } from '@/hooks/useEmployees';
-import { useBenefitsConfig, useBankHoursMovements } from '@/hooks/useRH';
+import { useBenefitsConfig, useBankHoursMovements, useAbsences } from '@/hooks/useRH';
 import { calculateWeeklyPeriod, WeeklyCalcDay, WeekSummary } from '@/lib/weeklyTimeCalculation';
 import { findEmployeeMatch } from '@/lib/employeeMatching';
 
@@ -48,6 +48,8 @@ export interface MonthlyClosingRow {
   incompleteDays: number;
   holidaysWorked: number;
   daysWithRecords: number;
+  /** Dias úteis esperados sem ponto e sem ausência justificada (= faltas). */
+  missingDays: number;
   normalHourRate: number;
   otHourRate: number;
   overtimeMultiplier: number;
@@ -80,6 +82,19 @@ function isHolidayOn(holidays: { holiday_date: string; recurring: boolean }[], d
   );
 }
 
+/** YYYY-MM-DD de hoje (local) — usado pra nunca apurar déficit no futuro. */
+function todayISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Soma 1 dia a um YYYY-MM-DD (sem fuso). */
+function addDay(iso: string): string {
+  const d = new Date(iso + 'T12:00:00');
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
 export function useMonthlyClosing(from: string, to: string) {
   const { data: employees = [], isLoading: empLoading } = useEmployees();
   const { data: schedules = [] } = useWorkSchedules();
@@ -87,6 +102,7 @@ export function useMonthlyClosing(from: string, to: string) {
   const { data: records = [], isLoading: recLoading } = useTimeRecords(undefined, from, to);
   const { data: benefits } = useBenefitsConfig();
   const { data: movements = [] } = useBankHoursMovements(undefined, { from, to });
+  const { data: absences = [] } = useAbsences({ from, to });
 
   const monthlyHours = benefits?.monthly_hours || 220;
 
@@ -112,14 +128,41 @@ export function useMonthlyClosing(from: string, to: string) {
       bankByEmp.set(m.employee_id, (bankByEmp.get(m.employee_id) || 0) + Number(m.minutes || 0));
     }
 
+    // Dias de ausência justificada (atestado/férias/folga/etc) por funcionário.
+    // Esses dias NÃO contam como falta — são neutros na apuração.
+    const absenceDaysByEmp = new Map<string, Set<string>>();
+    for (const a of absences) {
+      const set = absenceDaysByEmp.get(a.employee_id) || new Set<string>();
+      let cur = a.start_date;
+      // guard de segurança contra range invertido/aberto
+      for (let i = 0; i < 400 && cur <= a.end_date; i++) {
+        set.add(cur);
+        cur = addDay(cur);
+      }
+      absenceDaysByEmp.set(a.employee_id, set);
+    }
+
+    // Limite superior de apuração: nunca conta déficit de dias futuros (sem ponto
+    // porque ainda não aconteceram). Espelha a decisão de apurar só o período real.
+    const today = todayISO();
+
     const out: MonthlyClosingRow[] = [];
 
     for (const emp of employees.filter(e => e.active)) {
       const sched = schedules.find(s => s.id === emp.work_schedule_id) || defaultSchedule;
-      const empRecords = (recordsByEmp.get(emp.id) || []).filter(
-        r => !emp.termination_date || r.record_date <= emp.termination_date,
-      );
 
+      // Janela efetiva do funcionário: [max(from, admissão), min(to, hoje, demissão)].
+      const effFrom = emp.admission_date && emp.admission_date > from ? emp.admission_date : from;
+      let effTo = to < today ? to : today;
+      if (emp.termination_date && emp.termination_date < effTo) effTo = emp.termination_date;
+
+      const empRecords = (recordsByEmp.get(emp.id) || []).filter(
+        r => r.record_date >= effFrom && r.record_date <= effTo,
+      );
+      const recordDates = new Set(empRecords.map(r => r.record_date));
+      const absenceSet = absenceDaysByEmp.get(emp.id) || new Set<string>();
+
+      // Dias com ponto → vira WeeklyCalcDay normal.
       const days: WeeklyCalcDay[] = empRecords.map(r => {
         const d = new Date(r.record_date + 'T12:00:00');
         const dow = d.getDay();
@@ -139,6 +182,34 @@ export function useMonthlyClosing(from: string, to: string) {
         };
       });
 
+      // Dias úteis esperados SEM ponto e SEM ausência justificada → falta (déficit).
+      // Decisão do usuário (auditoria 2026-05-30): dia útil sem batida conta como
+      // hora a menos, mas SÓ dentro do período real (effFrom..effTo) — nunca futuro.
+      let missingDays = 0;
+      for (let cur = effFrom; cur <= effTo; cur = addDay(cur)) {
+        if (recordDates.has(cur)) continue;        // já tem ponto
+        if (absenceSet.has(cur)) continue;          // ausência justificada = neutro
+        const d = new Date(cur + 'T12:00:00');
+        const dow = d.getDay();
+        const isHol = isHolidayOn(holidays, cur);
+        // calculateDaySummary com punches vazio devolve o expected do dia (0 em
+        // fim de semana/feriado), então só dias úteis geram déficit.
+        const s = calculateDaySummary([], dow, sched, isHol);
+        if (s.expectedMinutes <= 0) continue;
+        missingDays++;
+        days.push({
+          date: cur,
+          dayOfWeek: dow,
+          workedMinutes: 0,
+          expectedMinutes: s.expectedMinutes,
+          overtimeMinutes: 0,
+          isHoliday: isHol,
+          isAbsent: true,
+          status: 'absent',
+          punches: [],
+        });
+      }
+
       const period = calculateWeeklyPeriod(days, sched);
       const overtimeMin = period.totalOvertimeMinutes;
       const deficitMin = period.totalDeficitMinutes;
@@ -154,7 +225,7 @@ export function useMonthlyClosing(from: string, to: string) {
       const deficitValue = (deficitMin / 60) * normalHourRate;
 
       let status: ClosingStatus;
-      if (daysWithRecords === 0) status = 'sem_ponto';
+      if (daysWithRecords === 0 && missingDays === 0) status = 'sem_ponto';
       else if (overtimeMin > 0 && deficitMin > 0) status = 'misto';
       else if (overtimeMin > 0) status = 'extra';
       else if (deficitMin > 0) status = 'devedor';
@@ -175,6 +246,7 @@ export function useMonthlyClosing(from: string, to: string) {
         incompleteDays: period.totalIncomplete,
         holidaysWorked: period.totalHolidaysWorked,
         daysWithRecords,
+        missingDays,
         normalHourRate,
         otHourRate,
         overtimeMultiplier,
@@ -208,7 +280,7 @@ export function useMonthlyClosing(from: string, to: string) {
     };
 
     return { rows: out, totals };
-  }, [employees, schedules, holidays, records, movements, monthlyHours, defaultSchedule]);
+  }, [employees, schedules, holidays, records, movements, absences, monthlyHours, defaultSchedule]);
 
   return { rows, totals, isLoading: empLoading || recLoading };
 }

@@ -333,7 +333,7 @@ function EmployeeDetail({ row }: { row: MonthlyClosingRow }) {
     <div className="space-y-2">
       <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
         <span>Dias com ponto: <strong className="text-foreground">{row.daysWithRecords}</strong></span>
-        <span>Faltas/ausências: <strong className="text-foreground">{row.absences}</strong></span>
+        <span>Faltas (sem ponto): <strong className={row.missingDays > 0 ? 'text-red-600 dark:text-red-400' : 'text-foreground'}>{row.missingDays}</strong></span>
         <span>Batidas incompletas: <strong className="text-foreground">{row.incompleteDays}</strong></span>
         <span>Feriados trabalhados: <strong className="text-foreground">{row.holidaysWorked}</strong></span>
         <span>Valor hora: <strong className="text-foreground">{fmtBRL(row.normalHourRate)}</strong></span>
