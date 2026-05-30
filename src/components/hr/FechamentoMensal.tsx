@@ -333,8 +333,11 @@ function EmployeeDetail({ row }: { row: MonthlyClosingRow }) {
     <div className="space-y-2">
       <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
         <span>Dias com ponto: <strong className="text-foreground">{row.daysWithRecords}</strong></span>
-        <span title="Dias úteis no período sem ponto importado e sem ausência cadastrada. NÃO entram no déficit — são alerta de cobertura: importe o ponto ou registre a ausência.">
-          Dias úteis sem ponto: <strong className={row.missingDays > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-foreground'}>{row.missingDays}</strong>
+        <span title="Faltas reais: dias úteis em que o relógio foi lido (houve importação de algum funcionário) mas este funcionário não bateu ponto e não tem ausência cadastrada. Entram no déficit.">
+          Faltas: <strong className={row.missingDays > 0 ? 'text-red-600 dark:text-red-400' : 'text-foreground'}>{row.missingDays}</strong>
+        </span>
+        <span title="Dias úteis sem importação de ponto de nenhum funcionário (lacuna de cobertura — ponto não importado). NÃO contam como falta. Importe o ponto desses dias para fechar.">
+          Sem importação: <strong className={row.noImportDays > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-foreground'}>{row.noImportDays}</strong>
         </span>
         <span>Batidas incompletas: <strong className="text-foreground">{row.incompleteDays}</strong></span>
         <span>Feriados trabalhados: <strong className="text-foreground">{row.holidaysWorked}</strong></span>

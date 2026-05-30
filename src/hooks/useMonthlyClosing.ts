@@ -73,8 +73,10 @@ export interface MonthlyClosingRow {
   incompleteDays: number;
   holidaysWorked: number;
   daysWithRecords: number;
-  /** Dias úteis esperados sem ponto e sem ausência justificada (= faltas). */
+  /** Faltas reais: dia útil coberto (relógio lido) sem ponto deste funcionário. */
   missingDays: number;
+  /** Dias úteis sem importação alguma (lacuna de cobertura — não vira falta). */
+  noImportDays: number;
   normalHourRate: number;
   otHourRate: number;
   overtimeMultiplier: number;
@@ -171,6 +173,13 @@ export function useMonthlyClosing(from: string, to: string) {
     // porque ainda não aconteceram). Espelha a decisão de apurar só o período real.
     const today = todayISO();
 
+    // Dias "cobertos": datas em que HOUVE importação de ponto de QUALQUER
+    // funcionário (o relógio foi lido). Critério de falta (decisão do usuário,
+    // 2026-05-30): dia útil sem registro só é falta se o dia foi coberto; dia
+    // sem importação alguma = lacuna de cobertura (ponto não importado), neutro.
+    // Espelha o RPC v8 calculate_employee_bank_balance.
+    const coveredDays = new Set(records.map(r => r.record_date));
+
     const out: MonthlyClosingRow[] = [];
 
     for (const emp of employees.filter(e => e.active)) {
@@ -208,13 +217,17 @@ export function useMonthlyClosing(from: string, to: string) {
       });
 
       // Dias úteis esperados SEM ponto e SEM ausência justificada.
-      // Decisão do usuário (auditoria 2026-05-30): NÃO contar como falta — o ponto
-      // não é importado todos os dias, então dia sem registro = dado faltante, não
-      // ausência real. Tratar como falta inflava o déficit (450–630h/pessoa só por
-      // ponto não importado). Aqui apenas CONTAMOS esses dias (missingDays) como
-      // alerta de cobertura pro RH; o déficit sai só de dias COM ponto onde o
-      // funcionário trabalhou menos que o esperado.
+      // Decisão do usuário (auditoria 2026-05-30): dia sem registro É falta SE o
+      // dia foi "coberto" (houve importação de algum funcionário = relógio lido).
+      // Se NENHUM funcionário tem ponto no dia, é lacuna de cobertura (ponto não
+      // importado) → neutro, não penaliza. Isso separa "faltou" de "ponto não
+      // importado" e espelha o RPC v8. Funcionário home office (escala 0h) tem
+      // expectedMinutes=0 em todo dia, então nunca gera falta aqui.
+      // missingDays = faltas reais (dias cobertos sem ponto); são injetadas como
+      // dias 'absent' pra entrar no déficit semanal.
+      // noImportDays = dias úteis sem importação alguma (alerta de cobertura).
       let missingDays = 0;
+      let noImportDays = 0;
       for (let cur = effFrom; cur <= effTo; cur = addDay(cur)) {
         if (recordDates.has(cur)) continue;        // já tem ponto
         if (absenceSet.has(cur)) continue;          // ausência justificada = neutro
@@ -222,8 +235,24 @@ export function useMonthlyClosing(from: string, to: string) {
         const dow = d.getDay();
         const isHol = isHolidayOn(holidays, cur);
         const s = calculateDaySummary([], dow, sched, isHol);
-        if (s.expectedMinutes <= 0) continue;       // fim de semana/feriado
-        missingDays++;                              // só conta, NÃO vira déficit
+        if (s.expectedMinutes <= 0) continue;       // fim de semana/feriado/home office
+        if (!coveredDays.has(cur)) {                 // dia sem importação alguma
+          noImportDays++;
+          continue;                                  // lacuna de cobertura: neutro
+        }
+        // Dia coberto sem ponto deste funcionário = falta real → entra no déficit.
+        missingDays++;
+        days.push({
+          date: cur,
+          dayOfWeek: dow,
+          workedMinutes: 0,
+          expectedMinutes: s.expectedMinutes,
+          overtimeMinutes: 0,
+          isHoliday: isHol,
+          isAbsent: true,
+          status: 'absent',
+          punches: [],
+        });
       }
 
       const period = calculateWeeklyPeriod(days, sched);
@@ -263,6 +292,7 @@ export function useMonthlyClosing(from: string, to: string) {
         holidaysWorked: period.totalHolidaysWorked,
         daysWithRecords,
         missingDays,
+        noImportDays,
         normalHourRate,
         otHourRate,
         overtimeMultiplier,
