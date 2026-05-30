@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Clock, Plus, Trash, Warning as AlertTriangle, CheckCircle, Lightning, ArrowSquareOut } from '@phosphor-icons/react';
+import { Clock, Plus, Trash, Warning as AlertTriangle, CheckCircle, ArrowSquareOut } from '@phosphor-icons/react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
@@ -11,13 +11,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useCompletePunches, type TimePending } from '@/hooks/useTimePendings';
-
-const CONFIDENCE_STYLE: Record<string, { label: string; cls: string }> = {
-  high:   { label: 'alta',  cls: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30 dark:text-emerald-400' },
-  medium: { label: 'média', cls: 'bg-amber-500/10 text-amber-700 border-amber-500/30 dark:text-amber-400' },
-  low:    { label: 'baixa', cls: 'bg-muted text-muted-foreground border-border' },
-  none:   { label: '—',     cls: 'bg-muted text-muted-foreground border-border' },
-};
 
 /**
  * Dialog pra completar as batidas faltantes de um time_record.
@@ -168,75 +161,6 @@ export function CompletePunchesDialog({ open, onOpenChange, pending }: CompleteP
                 <span className="text-muted-foreground">Esperado p/ este dia:</span>
                 <span className="mono font-semibold">{fmtHHMM(expectedMin)}</span>
               </div>
-            </div>
-          )}
-
-          {/* ─── Card de padrão do funcionário ─── */}
-          {suggestion && suggestion.source !== 'none' && (
-            <div className={cn(
-              'rounded-md border p-3 text-xs space-y-2',
-              suggestion.confidence === 'high'   && 'border-emerald-500/30 bg-emerald-500/5',
-              suggestion.confidence === 'medium' && 'border-amber-500/30 bg-amber-500/5',
-              suggestion.confidence === 'low'    && 'border-border bg-muted/30',
-            )}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 font-semibold text-foreground">
-                  <Lightning className="h-3.5 w-3.5" />
-                  Padrão do funcionário
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Badge variant="outline" className={cn('text-[10px] uppercase', CONFIDENCE_STYLE[suggestion.confidence].cls)}>
-                    {suggestion.source === 'observed' ? 'Observado' : 'Horário oficial'}
-                    {' · '}
-                    {CONFIDENCE_STYLE[suggestion.confidence].label}
-                  </Badge>
-                </div>
-              </div>
-
-              {/* Padrão observado (se houver) */}
-              {suggestion.pattern.observed && (
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-muted-foreground text-[10px] uppercase tracking-wider shrink-0">
-                    Hist ({suggestion.observed_days}d):
-                  </span>
-                  <span className="font-mono text-foreground tabular-nums">
-                    {suggestion.pattern.observed.join(' · ')}
-                  </span>
-                </div>
-              )}
-
-              {/* Schedule oficial */}
-              {suggestion.pattern.schedule && (
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-muted-foreground text-[10px] uppercase tracking-wider shrink-0">Oficial:</span>
-                  <span className="font-mono text-muted-foreground tabular-nums">
-                    {suggestion.pattern.schedule.join(' · ')}
-                  </span>
-                </div>
-              )}
-
-              {/* Sugestão final (preserva batidas reais) */}
-              <div className="flex items-baseline justify-between gap-2 pt-1 border-t border-current/20">
-                <span className="text-foreground text-[10px] uppercase tracking-wider font-bold shrink-0">
-                  Sugestão:
-                </span>
-                <span className="font-mono text-foreground font-semibold tabular-nums">
-                  {suggestion.suggested.join(' · ')}
-                </span>
-              </div>
-
-              <p className="text-[10px] text-muted-foreground italic">{suggestion.reason}</p>
-
-              <Button
-                type="button"
-                size="sm"
-                className="w-full h-8 text-xs gap-1.5"
-                disabled={!canApplySuggestion}
-                onClick={applySuggestion}
-              >
-                <Lightning className="h-3.5 w-3.5" />
-                Aplicar padrão · preencher form
-              </Button>
             </div>
           )}
 
