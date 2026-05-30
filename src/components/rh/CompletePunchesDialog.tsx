@@ -75,22 +75,10 @@ export function CompletePunchesDialog({ open, onOpenChange, pending }: CompleteP
   const remove = (i: number) => setPunches((prev) => prev.filter((_, idx) => idx !== i));
   const add = () => setPunches((prev) => [...prev, '']);
 
-  // Aplica a sugestão do servidor (padrão observado ou schedule)
+  // Sugestão do servidor — usada só pra ler a escala oficial (pattern.schedule)
+  // e os alertas de dia vazio. O preenchimento por "média observada" foi
+  // removido a pedido do RH: completar batidas usa o horário NORMAL da escala.
   const suggestion = pending?.suggestion ?? null;
-  const canApplySuggestion = !!suggestion
-    && suggestion.source !== 'none'
-    && suggestion.suggested.length === 4
-    && suggestion.suggested.every((p) => HH_MM_RE.test(p));
-  const applySuggestion = () => {
-    if (!suggestion || !canApplySuggestion) return;
-    setPunches([...suggestion.suggested]);
-    if (reason.trim().length === 0) {
-      const src = suggestion.source === 'observed'
-        ? `padrão observado (${suggestion.observed_days} dias)`
-        : 'horário oficial do funcionário';
-      setReason(`Completado via ${src} — batidas reais preservadas.`);
-    }
-  };
 
   // Atalho "dia normal": preenche os 4 horários da escala oficial do funcionário
   // (entrada · saída almoço · retorno · saída) de uma vez, em vez de digitar
