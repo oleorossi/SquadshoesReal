@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { SquaresFour as LayoutDashboard, Users, Alarm as AlarmClock, CurrencyDollar as DollarSign, FileText, CircleNotch as Loader2 } from '@phosphor-icons/react';
+import { SquaresFour as LayoutDashboard, Users, Alarm as AlarmClock, CurrencyDollar as DollarSign, FileText, Calculator, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 const PainelRH         = lazy(() => import('@/components/hr/PainelRH'));
 const Employees        = lazy(() => import('./Employees'));
 const Timesheet        = lazy(() => import('./Timesheet'));
+const FechamentoMensal = lazy(() => import('@/components/hr/FechamentoMensal'));
 const FolhaConsolidada = lazy(() => import('@/components/hr/FolhaConsolidada'));
 const RelatoriosRH     = lazy(() => import('@/components/hr/RelatoriosRH'));
 
@@ -20,15 +21,16 @@ const TabLoader = () => (
   </div>
 );
 
-const TABS = ['painel', 'funcionarios', 'ponto', 'folha', 'relatorios'] as const;
+const TABS = ['painel', 'funcionarios', 'ponto', 'fechamento', 'folha', 'relatorios'] as const;
 type Tab = typeof TABS[number];
 
 const tabs: { value: Tab; label: string; icon: typeof LayoutDashboard }[] = [
-  { value: 'painel',       label: 'Painel',       icon: LayoutDashboard },
-  { value: 'funcionarios', label: 'Funcionários', icon: Users },
-  { value: 'ponto',        label: 'Ponto',        icon: AlarmClock },
-  { value: 'folha',        label: 'Folha',        icon: DollarSign },
-  { value: 'relatorios',   label: 'Relatórios',   icon: FileText },
+  { value: 'painel',       label: 'Painel',          icon: LayoutDashboard },
+  { value: 'funcionarios', label: 'Funcionários',    icon: Users },
+  { value: 'ponto',        label: 'Ponto',           icon: AlarmClock },
+  { value: 'fechamento',   label: 'Fechamento',      icon: Calculator },
+  { value: 'folha',        label: 'Folha',           icon: DollarSign },
+  { value: 'relatorios',   label: 'Relatórios',      icon: FileText },
 ];
 
 // Contexto por aba: o header global muda título/descrição/sectionLabel
@@ -37,6 +39,7 @@ const TAB_HEADERS: Record<Tab, { section: string; title: string; description: st
   painel:       { section: 'RH · PAINEL',        title: 'Painel',        description: 'Visão geral, alertas e evolução do quadro' },
   funcionarios: { section: 'RH · COLABORADORES', title: 'Funcionários',  description: 'Gestão de equipe e adiantamentos' },
   ponto:        { section: 'RH · PONTO',         title: 'Controle de Ponto', description: 'Registros, pendências, resolução de HE e configuração' },
+  fechamento:   { section: 'RH · FECHAMENTO',    title: 'Fechamento Mensal', description: 'Hora extra, horas a menos e desconto sugerido por funcionário' },
   folha:        { section: 'RH · FOLHA',         title: 'Folha & Banco', description: 'Folha mensal, banco de horas e adiantamentos' },
   relatorios:   { section: 'RH · RELATÓRIOS',    title: 'Relatórios',    description: 'Custo, HE, produtividade, absenteísmo e quadro' },
 };
@@ -119,6 +122,7 @@ export default function RHHub() {
           <TabsContent value="painel"><PainelRH onNavigateTab={handleNavigateTab} /></TabsContent>
           <TabsContent value="funcionarios"><Employees /></TabsContent>
           <TabsContent value="ponto"><Timesheet /></TabsContent>
+          <TabsContent value="fechamento"><FechamentoMensal /></TabsContent>
           <TabsContent value="folha"><FolhaConsolidada /></TabsContent>
           <TabsContent value="relatorios"><RelatoriosRH /></TabsContent>
         </Suspense>
