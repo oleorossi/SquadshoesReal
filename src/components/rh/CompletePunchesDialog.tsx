@@ -99,6 +99,21 @@ export function CompletePunchesDialog({ open, onOpenChange, pending }: CompleteP
     }
   };
 
+  // Atalho "dia normal": preenche os 4 horários da escala oficial do funcionário
+  // (entrada · saída almoço · retorno · saída) de uma vez, em vez de digitar
+  // batida por batida. Caso mais comum de pendência (esqueceu de bater).
+  const normalDay = suggestion?.pattern.schedule ?? null;
+  const canFillNormalDay = !!normalDay
+    && normalDay.length === 4
+    && normalDay.every((p) => HH_MM_RE.test(p));
+  const fillNormalDay = () => {
+    if (!canFillNormalDay || !normalDay) return;
+    setPunches([...normalDay]);
+    if (reason.trim().length === 0) {
+      setReason('Dia normal conforme escala — batidas completadas pelo RH.');
+    }
+  };
+
   const canSubmit = !!pending && diff.valid && reason.trim().length >= 4;
 
   const handleSubmit = async () => {
@@ -262,6 +277,20 @@ export function CompletePunchesDialog({ open, onOpenChange, pending }: CompleteP
                 a menos que o funcionário tenha trabalhado mesmo assim.
               </p>
             </div>
+          )}
+
+          {/* Atalho de 1 clique: lançamento do dia normal (escala oficial) */}
+          {canFillNormalDay && normalDay && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="w-full h-9 text-xs gap-1.5"
+              onClick={fillNormalDay}
+            >
+              <Clock className="h-3.5 w-3.5" />
+              Preencher dia normal ({normalDay[0]}–{normalDay[3]})
+            </Button>
           )}
 
           <div className="space-y-2">
