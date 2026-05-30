@@ -103,6 +103,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   // Páginas novas da Onda 1-7 (adicionadas em mai/2026)
   '/price-lists': 'vendas',
   '/crm': 'vendas',
+  '/notas': 'vendas',
   '/sac': 'vendas',
   '/forecast': 'vendas',
   '/centro-controle': 'producao',
