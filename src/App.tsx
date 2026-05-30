@@ -79,6 +79,7 @@ const CycleCountsPage = lazy(() => import("./pages/CycleCountsPage"));
 const BinLocationsPage = lazy(() => import("./pages/BinLocationsPage"));
 const LotsPage = lazy(() => import("./pages/LotsPage"));
 const DemandForecastPage = lazy(() => import("./pages/DemandForecastPage"));
+const LastsPage = lazy(() => import("./pages/LastsPage"));
 const OrderFlowAudit = lazy(() => import("./pages/OrderFlowAudit"));
 const NavigationAudit = lazy(() => import("./pages/NavigationAudit"));
 const UnitAudit = lazy(() => import("./pages/UnitAudit"));
@@ -608,6 +609,10 @@ const router = createBrowserRouter([
       {
         path: "forecast",
         element: <DemandForecastPage />,
+      },
+      {
+        path: "formas",
+        element: <LastsPage />,
       },
       {
         // Legacy: /references → /fichas-tecnicas (página References foi removida)

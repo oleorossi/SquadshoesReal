@@ -65,6 +65,7 @@ export const menuGroups = [
     icon: Ruler,
     items: [
       { name: "Fichas Técnicas",  icon: Ruler,        path: "/fichas-tecnicas" },
+      { name: "Formas (lasts)",   icon: Footprints,   path: "/formas" },
       { name: "Solados",          icon: Footprints,   path: "/solados" },
       { name: "Silks",            icon: Sparkles,     path: "/silks" },
       { name: "Receitas",         icon: Sparkles,     path: "/artisanal-recipes" },
