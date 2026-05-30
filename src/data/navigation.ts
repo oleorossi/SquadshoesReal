@@ -56,6 +56,7 @@ export const menuGroups = [
       { name: "Contagens",        icon: ClipboardCheck,path: "/contagens-ciclo" },
       { name: "Localizações",     icon: RouteIcon,    path: "/localizacoes" },
       { name: "Lotes",            icon: Tag,          path: "/lotes" },
+      { name: "Forecast",         icon: TrendingUp,   path: "/forecast" },
       { name: "Histórico",        icon: History,      path: "/estoque/historico" },
     ],
   },

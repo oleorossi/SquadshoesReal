@@ -26,6 +26,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/contagens-ciclo': 'estoque',
   '/localizacoes': 'estoque',
   '/lotes': 'estoque',
+  '/forecast': 'estoque',
   '/order-flow-audit': 'ordens',
   '/labels': 'expedicao',
   '/label-system': 'expedicao',
