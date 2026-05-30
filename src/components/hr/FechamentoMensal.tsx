@@ -54,6 +54,7 @@ const STATUS_META: Record<ClosingStatus, { label: string; cls: string }> = {
   misto:    { label: 'Misto',         cls: 'bg-amber-500/10 text-amber-700 border-amber-500/30 dark:text-amber-400' },
   em_dia:   { label: 'Em dia',        cls: 'bg-muted text-muted-foreground border-border' },
   sem_ponto:{ label: 'Sem ponto',     cls: 'bg-muted/50 text-muted-foreground border-border/60' },
+  diarista: { label: 'Diarista',      cls: 'bg-blue-500/10 text-blue-700 border-blue-500/30 dark:text-blue-400' },
 };
 
 type StatusFilter = 'all' | ClosingStatus;
@@ -254,8 +255,12 @@ export default function FechamentoMensal() {
                             <div className="font-medium text-sm leading-tight">{r.name}</div>
                             <div className="text-xs text-muted-foreground">{r.department} · {r.scheduleName}</div>
                           </TableCell>
-                          <TableCell className="text-right font-mono text-sm">{fmtMin(r.workedMin)}</TableCell>
-                          <TableCell className="text-right font-mono text-sm text-muted-foreground">{fmtMin(r.expectedMin)}</TableCell>
+                          <TableCell className="text-right font-mono text-sm">
+                            {r.paymentType === 'diarista'
+                              ? <span className="text-blue-700 dark:text-blue-400">{r.diaristaFullDays + (r.diaristaHalfDays ? `+${r.diaristaHalfDays}½` : '')} dia{r.diaristaFullDays !== 1 ? 's' : ''}</span>
+                              : fmtMin(r.workedMin)}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm text-muted-foreground">{r.paymentType === 'diarista' ? '—' : fmtMin(r.expectedMin)}</TableCell>
                           <TableCell className="text-right font-mono text-sm">
                             {r.overtimeMin > 0 ? <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{fmtMin(r.overtimeMin)}</span> : <span className="text-muted-foreground">—</span>}
                           </TableCell>
@@ -263,7 +268,9 @@ export default function FechamentoMensal() {
                             {r.deficitMin > 0 ? <span className="text-red-600 dark:text-red-400 font-semibold">{fmtMin(r.deficitMin)}</span> : <span className="text-muted-foreground">—</span>}
                           </TableCell>
                           <TableCell className="text-right font-mono text-sm">
-                            {r.overtimeValue > 0 ? <span className="text-emerald-600 dark:text-emerald-400">{fmtBRL(r.overtimeValue)}</span> : <span className="text-muted-foreground">—</span>}
+                            {r.paymentType === 'diarista'
+                              ? <span className="text-blue-700 dark:text-blue-400">{fmtBRL(r.diaristaPay)}</span>
+                              : r.overtimeValue > 0 ? <span className="text-emerald-600 dark:text-emerald-400">{fmtBRL(r.overtimeValue)}</span> : <span className="text-muted-foreground">—</span>}
                           </TableCell>
                           <TableCell className="text-right font-mono text-sm">
                             {r.deficitValue > 0 ? <span className="text-red-600 dark:text-red-400">{fmtBRL(r.deficitValue)}</span> : <span className="text-muted-foreground">—</span>}
@@ -274,7 +281,7 @@ export default function FechamentoMensal() {
                           <TableCell className="text-right py-2">
                             <Button
                               size="sm" variant="outline" className="h-7 text-xs"
-                              disabled={r.status === 'sem_ponto' || r.status === 'em_dia'}
+                              disabled={r.status === 'sem_ponto' || r.status === 'em_dia' || r.status === 'diarista'}
                               onClick={(e) => { e.stopPropagation(); setActionRow(r); }}
                             >
                               Resolver

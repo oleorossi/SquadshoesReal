@@ -13,6 +13,10 @@ export interface Employee {
   pix_type: string;
   salary: number;
   overtime_hourly_rate: number | null;
+  /** Tipo de pagamento: mensalista (salário + banco de horas) ou diarista (por dia). */
+  payment_type: 'mensalista' | 'diarista';
+  /** Valor da diária (R$/dia) quando diarista. */
+  daily_rate: number | null;
   work_schedule_id: string | null;
   role: string;
   department: string;

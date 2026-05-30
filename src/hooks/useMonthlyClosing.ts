@@ -56,7 +56,7 @@ const FALLBACK_SCHEDULE: WorkSchedule = {
   tolerance_minutes: 10, minimum_overtime_minutes: 0, is_default: true, created_at: '', updated_at: '',
 };
 
-export type ClosingStatus = 'extra' | 'devedor' | 'misto' | 'em_dia' | 'sem_ponto';
+export type ClosingStatus = 'extra' | 'devedor' | 'misto' | 'em_dia' | 'sem_ponto' | 'diarista';
 
 export interface MonthlyClosingRow {
   employeeId: string;
@@ -88,6 +88,12 @@ export interface MonthlyClosingRow {
   bankMovementsMin: number;
   status: ClosingStatus;
   weeks: WeekSummary[];
+  /** Tipo de pagamento. 'diarista' = pago por dia, fora do cálculo de HE/falta. */
+  paymentType: 'mensalista' | 'diarista';
+  /** Diarista: nº de dias cheios (≥6h) + meios dias (2–6h) e total a pagar. */
+  diaristaFullDays: number;
+  diaristaHalfDays: number;
+  diaristaPay: number;
 }
 
 export interface MonthlyClosingTotals {
@@ -196,6 +202,33 @@ export function useMonthlyClosing(from: string, to: string) {
       const recordDates = new Set(empRecords.map(r => r.record_date));
       const absenceSet = absenceDaysByEmp.get(emp.id) || new Set<string>();
 
+      // ── DIARISTA: pago por dia trabalhado, fora do cálculo de HE/falta/banco. ──
+      // Espelha o RPC v10: dia ≥6h = 1 diária; 2–6h = meia diária; <2h não conta.
+      if ((emp as any).payment_type === 'diarista') {
+        let fullD = 0, halfD = 0;
+        for (const r of empRecords) {
+          const d = new Date(r.record_date + 'T12:00:00');
+          const isHol = isHolidayOn(holidays, r.record_date);
+          const s = calculateDaySummary((r.punches as string[]) || [], d.getDay(), sched, isHol);
+          if (s.workedMinutes >= 360) fullD++;
+          else if (s.workedMinutes >= 120) halfD++;
+        }
+        const rate = Number((emp as any).daily_rate) || 0;
+        const pay = (fullD + halfD * 0.5) * rate;
+        out.push({
+          employeeId: emp.id, name: emp.name, department: emp.department || '—',
+          scheduleName: 'Diarista', weeklyHours: 0,
+          workedMin: 0, expectedMin: 0, overtimeMin: 0, deficitMin: 0, netMin: 0,
+          absences: 0, incompleteDays: 0, holidaysWorked: 0,
+          daysWithRecords: fullD + halfD, missingDays: 0, noImportDays: 0,
+          normalHourRate: 0, otHourRate: 0, overtimeMultiplier: 0,
+          overtimeValue: 0, deficitValue: 0, bankMovementsMin: 0,
+          status: 'diarista', weeks: [],
+          paymentType: 'diarista', diaristaFullDays: fullD, diaristaHalfDays: halfD, diaristaPay: pay,
+        });
+        continue;
+      }
+
       // Dias com ponto → vira WeeklyCalcDay normal.
       const days: WeeklyCalcDay[] = empRecords.map(r => {
         const d = new Date(r.record_date + 'T12:00:00');
@@ -301,6 +334,10 @@ export function useMonthlyClosing(from: string, to: string) {
         bankMovementsMin: bankByEmp.get(emp.id) || 0,
         status,
         weeks: period.weeks,
+        paymentType: 'mensalista',
+        diaristaFullDays: 0,
+        diaristaHalfDays: 0,
+        diaristaPay: 0,
       });
     }
 
