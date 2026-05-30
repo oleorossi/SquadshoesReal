@@ -11,7 +11,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { CircleNotch as Loader2, Plus, WarningCircle } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, Plus, WarningCircle, Check, X } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 
 type SoleClassification = 'tradicional' | 'palmilha_pronta' | 'conjugado';
@@ -48,6 +48,8 @@ export default function SoleCreateDialog({ open, onOpenChange, onCreated }: Prop
   const [isFachetado, setIsFachetado] = useState(false);
   const [minStock, setMinStock] = useState<number>(0);
   const [groupId, setGroupId] = useState<string>('');
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
   const [notes, setNotes] = useState('');
 
   // Sugestões pra autocomplete (cores já cadastradas em outros solados)
@@ -112,8 +114,42 @@ export default function SoleCreateDialog({ open, onOpenChange, onCreated }: Prop
     setIsFachetado(false);
     setMinStock(0);
     setGroupId('');
+    setCreatingGroup(false);
+    setNewGroupName('');
     setNotes('');
   };
+
+  // Cria nova família de solado on-the-fly e seleciona-a no form.
+  // Schema product_groups: só 'name' é obrigatório — resto tem default.
+  const createGroup = useMutation({
+    mutationFn: async () => {
+      const trimmed = newGroupName.trim();
+      if (trimmed.length < 2) throw new Error('Nome da família precisa ter no mínimo 2 caracteres.');
+      const { data, error } = await (supabase as any)
+        .from('product_groups')
+        .insert({ name: trimmed })
+        .select('id, name')
+        .single();
+      if (error) {
+        if (error.code === '23505') {
+          throw new Error(`Família "${trimmed}" já existe — selecione na lista.`);
+        }
+        throw error;
+      }
+      return data as { id: string; name: string };
+    },
+    onSuccess: (newGroup) => {
+      toast.success(`Família "${newGroup.name}" criada.`);
+      qc.invalidateQueries({ queryKey: ['sole_groups_for_create'] });
+      qc.invalidateQueries({ queryKey: ['product_groups'] });
+      setGroupId(newGroup.id);
+      setCreatingGroup(false);
+      setNewGroupName('');
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Erro ao criar família');
+    },
+  });
 
   const create = useMutation({
     mutationFn: async () => {
@@ -312,18 +348,76 @@ export default function SoleCreateDialog({ open, onOpenChange, onCreated }: Prop
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="sole-group">Grupo (opcional)</Label>
-              <Select value={groupId || 'none'} onValueChange={(v) => setGroupId(v === 'none' ? '' : v)}>
-                <SelectTrigger id="sole-group">
-                  <SelectValue placeholder="Sem grupo" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Sem grupo</SelectItem>
-                  {soleGroups.map((g) => (
-                    <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="sole-group">Família (opcional)</Label>
+              {creatingGroup ? (
+                <div className="flex gap-1">
+                  <Input
+                    id="sole-group-new"
+                    value={newGroupName}
+                    onChange={(e) => setNewGroupName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (newGroupName.trim().length >= 2 && !createGroup.isPending) createGroup.mutate();
+                      } else if (e.key === 'Escape') {
+                        e.preventDefault();
+                        setCreatingGroup(false);
+                        setNewGroupName('');
+                      }
+                    }}
+                    placeholder="Nome da nova família"
+                    autoFocus
+                    disabled={createGroup.isPending}
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="default"
+                    onClick={() => createGroup.mutate()}
+                    disabled={newGroupName.trim().length < 2 || createGroup.isPending}
+                    aria-label="Criar família"
+                    className="shrink-0"
+                  >
+                    {createGroup.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => { setCreatingGroup(false); setNewGroupName(''); }}
+                    disabled={createGroup.isPending}
+                    aria-label="Cancelar"
+                    className="shrink-0"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <Select
+                  value={groupId || 'none'}
+                  onValueChange={(v) => {
+                    if (v === '__new__') {
+                      setCreatingGroup(true);
+                      return;
+                    }
+                    setGroupId(v === 'none' ? '' : v);
+                  }}
+                >
+                  <SelectTrigger id="sole-group">
+                    <SelectValue placeholder="Sem família" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sem família</SelectItem>
+                    {soleGroups.map((g) => (
+                      <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
+                    ))}
+                    <SelectItem value="__new__" className="text-primary font-semibold">
+                      + Criar nova família...
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           </div>
 
