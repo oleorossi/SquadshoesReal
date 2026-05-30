@@ -24,6 +24,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/cycle-count': 'sistema',
   '/ajuste-estoque': 'estoque',
   '/contagens-ciclo': 'estoque',
+  '/localizacoes': 'estoque',
   '/order-flow-audit': 'ordens',
   '/labels': 'expedicao',
   '/label-system': 'expedicao',

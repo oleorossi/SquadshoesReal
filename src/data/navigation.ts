@@ -54,6 +54,7 @@ export const menuGroups = [
       { name: "MRP",              icon: Boxes,        path: "/mrp" },
       { name: "Ajustes",          icon: Boxes,        path: "/ajuste-estoque" },
       { name: "Contagens",        icon: ClipboardCheck,path: "/contagens-ciclo" },
+      { name: "Localizações",     icon: RouteIcon,    path: "/localizacoes" },
       { name: "Histórico",        icon: History,      path: "/estoque/historico" },
     ],
   },
