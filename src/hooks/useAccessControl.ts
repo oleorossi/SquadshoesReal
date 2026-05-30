@@ -28,6 +28,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/lotes': 'estoque',
   '/forecast': 'estoque',
   '/formas': 'produtos',
+  '/rotas': 'expedicao',
   '/order-flow-audit': 'ordens',
   '/labels': 'expedicao',
   '/label-system': 'expedicao',

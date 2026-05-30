@@ -89,6 +89,7 @@ export const menuGroups = [
       { name: "Expedição",        icon: Package,        path: "/expedicao" },
       { name: "Conferência",      icon: ClipboardCheck, path: "/conferencia-saida" },
       { name: "Romaneios",        icon: FileText,       path: "/manifests" },
+      { name: "Rotas próprias",   icon: RouteIcon,      path: "/rotas" },
       { name: "Entregas",         icon: RouteIcon,      path: "/entregas" },
       { name: "Transportadoras",  icon: Truck,          path: "/transporters" },
     ],

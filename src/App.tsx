@@ -80,6 +80,7 @@ const BinLocationsPage = lazy(() => import("./pages/BinLocationsPage"));
 const LotsPage = lazy(() => import("./pages/LotsPage"));
 const DemandForecastPage = lazy(() => import("./pages/DemandForecastPage"));
 const LastsPage = lazy(() => import("./pages/LastsPage"));
+const DeliveryRoutesPage = lazy(() => import("./pages/DeliveryRoutesPage"));
 const OrderFlowAudit = lazy(() => import("./pages/OrderFlowAudit"));
 const NavigationAudit = lazy(() => import("./pages/NavigationAudit"));
 const UnitAudit = lazy(() => import("./pages/UnitAudit"));
@@ -613,6 +614,10 @@ const router = createBrowserRouter([
       {
         path: "formas",
         element: <LastsPage />,
+      },
+      {
+        path: "rotas",
+        element: <DeliveryRoutesPage />,
       },
       {
         // Legacy: /references → /fichas-tecnicas (página References foi removida)
