@@ -121,6 +121,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/bank-reconciliation': 'financeiro',
   '/sped': 'financeiro',
   '/sped/bloco-k': 'financeiro',
+  '/perfis-tributarios': 'financeiro',
   '/lgpd': 'sistema',
   '/security': 'sistema',
   // System pages — admin only

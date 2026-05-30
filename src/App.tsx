@@ -958,6 +958,11 @@ const router = createBrowserRouter([
         lazy: () => import("./pages/BlocoK").then(m => ({ Component: m.default })),
       },
       {
+        // Perfis tributários por NCM (CST/CFOP/alíquotas/ST)
+        path: "perfis-tributarios",
+        lazy: () => import("./pages/PerfisTributarios").then(m => ({ Component: m.default })),
+      },
+      {
         // Novidade A4 — relatório diário de produção (template do redesign)
         path: "relatorios/diario-producao",
         lazy: () => import("./pages/RelDiarioA4").then(m => ({ Component: m.default })),
