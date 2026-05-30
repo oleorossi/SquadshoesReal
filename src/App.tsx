@@ -991,6 +991,7 @@ const router = createBrowserRouter([
        // ─── Expansão ERP (gap analysis 2026-05-10) ───
        { path: "price-lists",         lazy: () => import("./pages/PriceLists").then(m => ({ Component: m.default })) },
        { path: "crm",                 lazy: () => import("./pages/CRM").then(m => ({ Component: m.default })) },
+       { path: "notas",               lazy: () => import("./pages/Notes").then(m => ({ Component: m.default })) },
        { path: "sac",                 lazy: () => import("./pages/SAC").then(m => ({ Component: m.default })) },
        { path: "forecast",            lazy: () => import("./pages/Forecast").then(m => ({ Component: m.default })) },
        { path: "quotations",          lazy: () => import("./pages/Quotations").then(m => ({ Component: m.default })) },

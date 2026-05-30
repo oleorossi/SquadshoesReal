@@ -31,6 +31,7 @@ export const menuGroups = [
       { name: "Pronta-Entrega",   icon: Box,              path: "/pronta-entrega" },
       { name: "Clientes",         icon: Users,            path: "/clients" },
       { name: "CRM",              icon: HeartHandshake,   path: "/crm" },
+      { name: "Notas",            icon: FileText,         path: "/notas" },
       { name: "Tabelas de Preço", icon: DollarSign,       path: "/price-lists" },
     ],
   },

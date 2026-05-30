@@ -4074,15 +4074,20 @@ export type Database = {
           bank_hours_initial_min: number
           cost_center: string | null
           created_at: string
+          daily_rate: number | null
           department: string | null
           external_id: string | null
           health_plan_value: number
           hourly_rate: number | null
           id: string
           name: string
+          night_bonus_pct: number
           notes: string | null
+          overtime_100_pct: number
+          overtime_50_pct: number
           overtime_hourly_rate: number | null
           overtime_multiplier: number
+          payment_type: "mensalista" | "diarista"
           phone: string | null
           pix_key: string | null
           pix_type: string | null
@@ -4101,15 +4106,20 @@ export type Database = {
           bank_hours_initial_min?: number
           cost_center?: string | null
           created_at?: string
+          daily_rate?: number | null
           department?: string | null
           external_id?: string | null
           health_plan_value?: number
           hourly_rate?: number | null
           id?: string
           name: string
+          night_bonus_pct?: number
           notes?: string | null
+          overtime_100_pct?: number
+          overtime_50_pct?: number
           overtime_hourly_rate?: number | null
           overtime_multiplier?: number
+          payment_type?: string
           phone?: string | null
           pix_key?: string | null
           pix_type?: string | null
@@ -4128,15 +4138,20 @@ export type Database = {
           bank_hours_initial_min?: number
           cost_center?: string | null
           created_at?: string
+          daily_rate?: number | null
           department?: string | null
           external_id?: string | null
           health_plan_value?: number
           hourly_rate?: number | null
           id?: string
           name?: string
+          night_bonus_pct?: number
           notes?: string | null
+          overtime_100_pct?: number
+          overtime_50_pct?: number
           overtime_hourly_rate?: number | null
           overtime_multiplier?: number
+          payment_type?: string
           phone?: string | null
           pix_key?: string | null
           pix_type?: string | null

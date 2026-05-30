@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Clock, Plus, Trash, Warning as AlertTriangle, CheckCircle, Lightning, ArrowSquareOut } from '@phosphor-icons/react';
+import { Clock, Plus, Trash, Warning as AlertTriangle, CheckCircle, ArrowSquareOut } from '@phosphor-icons/react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
@@ -11,13 +11,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useCompletePunches, type TimePending } from '@/hooks/useTimePendings';
-
-const CONFIDENCE_STYLE: Record<string, { label: string; cls: string }> = {
-  high:   { label: 'alta',  cls: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30 dark:text-emerald-400' },
-  medium: { label: 'média', cls: 'bg-amber-500/10 text-amber-700 border-amber-500/30 dark:text-amber-400' },
-  low:    { label: 'baixa', cls: 'bg-muted text-muted-foreground border-border' },
-  none:   { label: '—',     cls: 'bg-muted text-muted-foreground border-border' },
-};
 
 /**
  * Dialog pra completar as batidas faltantes de um time_record.
@@ -82,20 +75,23 @@ export function CompletePunchesDialog({ open, onOpenChange, pending }: CompleteP
   const remove = (i: number) => setPunches((prev) => prev.filter((_, idx) => idx !== i));
   const add = () => setPunches((prev) => [...prev, '']);
 
-  // Aplica a sugestão do servidor (padrão observado ou schedule)
+  // Sugestão do servidor — usada só pra ler a escala oficial (pattern.schedule)
+  // e os alertas de dia vazio. O preenchimento por "média observada" foi
+  // removido a pedido do RH: completar batidas usa o horário NORMAL da escala.
   const suggestion = pending?.suggestion ?? null;
-  const canApplySuggestion = !!suggestion
-    && suggestion.source !== 'none'
-    && suggestion.suggested.length === 4
-    && suggestion.suggested.every((p) => HH_MM_RE.test(p));
-  const applySuggestion = () => {
-    if (!suggestion || !canApplySuggestion) return;
-    setPunches([...suggestion.suggested]);
+
+  // Atalho "dia normal": preenche os 4 horários da escala oficial do funcionário
+  // (entrada · saída almoço · retorno · saída) de uma vez, em vez de digitar
+  // batida por batida. Caso mais comum de pendência (esqueceu de bater).
+  const normalDay = suggestion?.pattern.schedule ?? null;
+  const canFillNormalDay = !!normalDay
+    && normalDay.length === 4
+    && normalDay.every((p) => HH_MM_RE.test(p));
+  const fillNormalDay = () => {
+    if (!canFillNormalDay || !normalDay) return;
+    setPunches([...normalDay]);
     if (reason.trim().length === 0) {
-      const src = suggestion.source === 'observed'
-        ? `padrão observado (${suggestion.observed_days} dias)`
-        : 'horário oficial do funcionário';
-      setReason(`Completado via ${src} — batidas reais preservadas.`);
+      setReason('Dia normal conforme escala — batidas completadas pelo RH.');
     }
   };
 
@@ -156,75 +152,6 @@ export function CompletePunchesDialog({ open, onOpenChange, pending }: CompleteP
             </div>
           )}
 
-          {/* ─── Card de padrão do funcionário ─── */}
-          {suggestion && suggestion.source !== 'none' && (
-            <div className={cn(
-              'rounded-md border p-3 text-xs space-y-2',
-              suggestion.confidence === 'high'   && 'border-emerald-500/30 bg-emerald-500/5',
-              suggestion.confidence === 'medium' && 'border-amber-500/30 bg-amber-500/5',
-              suggestion.confidence === 'low'    && 'border-border bg-muted/30',
-            )}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 font-semibold text-foreground">
-                  <Lightning className="h-3.5 w-3.5" />
-                  Padrão do funcionário
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Badge variant="outline" className={cn('text-[10px] uppercase', CONFIDENCE_STYLE[suggestion.confidence].cls)}>
-                    {suggestion.source === 'observed' ? 'Observado' : 'Horário oficial'}
-                    {' · '}
-                    {CONFIDENCE_STYLE[suggestion.confidence].label}
-                  </Badge>
-                </div>
-              </div>
-
-              {/* Padrão observado (se houver) */}
-              {suggestion.pattern.observed && (
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-muted-foreground text-[10px] uppercase tracking-wider shrink-0">
-                    Hist ({suggestion.observed_days}d):
-                  </span>
-                  <span className="font-mono text-foreground tabular-nums">
-                    {suggestion.pattern.observed.join(' · ')}
-                  </span>
-                </div>
-              )}
-
-              {/* Schedule oficial */}
-              {suggestion.pattern.schedule && (
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-muted-foreground text-[10px] uppercase tracking-wider shrink-0">Oficial:</span>
-                  <span className="font-mono text-muted-foreground tabular-nums">
-                    {suggestion.pattern.schedule.join(' · ')}
-                  </span>
-                </div>
-              )}
-
-              {/* Sugestão final (preserva batidas reais) */}
-              <div className="flex items-baseline justify-between gap-2 pt-1 border-t border-current/20">
-                <span className="text-foreground text-[10px] uppercase tracking-wider font-bold shrink-0">
-                  Sugestão:
-                </span>
-                <span className="font-mono text-foreground font-semibold tabular-nums">
-                  {suggestion.suggested.join(' · ')}
-                </span>
-              </div>
-
-              <p className="text-[10px] text-muted-foreground italic">{suggestion.reason}</p>
-
-              <Button
-                type="button"
-                size="sm"
-                className="w-full h-8 text-xs gap-1.5"
-                disabled={!canApplySuggestion}
-                onClick={applySuggestion}
-              >
-                <Lightning className="h-3.5 w-3.5" />
-                Aplicar padrão · preencher form
-              </Button>
-            </div>
-          )}
-
           {/* ─── Alerta: dia vazio sem cobertura ─── */}
           {pending && pending.punches.length === 0 && suggestion && !suggestion.is_absent_covered && (
             <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs space-y-1.5">
@@ -262,6 +189,20 @@ export function CompletePunchesDialog({ open, onOpenChange, pending }: CompleteP
                 a menos que o funcionário tenha trabalhado mesmo assim.
               </p>
             </div>
+          )}
+
+          {/* Atalho de 1 clique: lançamento do dia normal (escala oficial) */}
+          {canFillNormalDay && normalDay && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="w-full h-9 text-xs gap-1.5"
+              onClick={fillNormalDay}
+            >
+              <Clock className="h-3.5 w-3.5" />
+              Preencher dia normal ({normalDay[0]}–{normalDay[3]})
+            </Button>
           )}
 
           <div className="space-y-2">

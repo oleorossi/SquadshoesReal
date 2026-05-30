@@ -35,6 +35,7 @@ import { normalizeForSearch } from '@/lib/searchUtils';
 const emptyEmployee = {
   name: '', cpf: '', external_id: '', role: '', department: '', salary: 0, overtime_hourly_rate: null as number | null,
   hourly_rate: null as number | null, overtime_multiplier: 1.20,
+  payment_type: 'mensalista' as 'mensalista' | 'diarista', daily_rate: null as number | null,
   work_schedule_id: null as string | null, phone: '', whatsapp: '', pix_key: '', pix_type: '', notes: '', active: true, admission_date: new Date().toISOString().split('T')[0], termination_date: null as string | null,
   // Multiplicadores POR funcionário (regime contrato — cada contrato pode ter regra própria).
   // Default 0 = hora simples (sem adicional). 50/100/20 = padrão CLT se quiser usar.
@@ -490,12 +491,40 @@ export default function Employees() {
               admissionDate={form.admission_date}
               terminationDate={(form as any).termination_date}
             />
-            <div><Label>Salário (R$)</Label><CurrencyInput value={form.salary} onChange={v => setForm(f => ({ ...f, salary: v }))} /></div>
-            <div>
-              <Label>Valor Hora (R$/hr)</Label>
-              <CurrencyInput value={form.hourly_rate ?? 0} onChange={v => setForm(f => ({ ...f, hourly_rate: v > 0 ? v : null }))} />
-              <p className="text-xs text-muted-foreground mt-1">Se vazio, usa salário ÷ 220h (padrão CLT).</p>
+            <div className="col-span-2">
+              <Label>Tipo de pagamento</Label>
+              <Select
+                value={form.payment_type}
+                onValueChange={(v: 'mensalista' | 'diarista') => setForm(f => ({ ...f, payment_type: v }))}
+              >
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="mensalista">Mensalista — salário mensal + banco de horas/HE</SelectItem>
+                  <SelectItem value="diarista">Diarista — pago por dia trabalhado (sem HE/falta)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                Diarista não entra no cálculo de hora extra, falta ou banco de horas — o pagamento é por dia trabalhado.
+              </p>
             </div>
+
+            {form.payment_type === 'diarista' ? (
+              <div className="col-span-2">
+                <Label>Valor da diária (R$/dia)</Label>
+                <CurrencyInput value={form.daily_rate ?? 0} onChange={v => setForm(f => ({ ...f, daily_rate: v > 0 ? v : null }))} />
+                <p className="text-xs text-muted-foreground mt-1">Pago a cada dia trabalhado. Dia completo = diária cheia; meio período = meia diária.</p>
+              </div>
+            ) : (
+              <>
+                <div><Label>Salário (R$)</Label><CurrencyInput value={form.salary} onChange={v => setForm(f => ({ ...f, salary: v }))} /></div>
+                <div>
+                  <Label>Valor Hora (R$/hr)</Label>
+                  <CurrencyInput value={form.hourly_rate ?? 0} onChange={v => setForm(f => ({ ...f, hourly_rate: v > 0 ? v : null }))} />
+                  <p className="text-xs text-muted-foreground mt-1">Se vazio, usa salário ÷ 220h (padrão CLT).</p>
+                </div>
+              </>
+            )}
+            {form.payment_type === 'mensalista' && (
             <div className="col-span-2">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Adicionais sobre a hora (regime contrato)
@@ -531,6 +560,8 @@ export default function Employees() {
                 </div>
               </div>
             </div>
+            )}
+            {form.payment_type === 'mensalista' && (
             <div>
               <Label>Escala de Trabalho</Label>
               <Select value={form.work_schedule_id || 'none'} onValueChange={v => setForm(f => ({ ...f, work_schedule_id: v === 'none' ? null : v }))}>
@@ -544,6 +575,7 @@ export default function Employees() {
               </Select>
               <p className="text-xs text-muted-foreground mt-1">Define horários e multiplicadores individuais.</p>
             </div>
+            )}
 
             {/* Editor de horário individual do funcionário (cada funcionário tem seu
                 próprio work_schedule após migration 2026-05-21). Só aparece em modo
