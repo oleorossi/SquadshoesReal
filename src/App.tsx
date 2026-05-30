@@ -943,6 +943,11 @@ const router = createBrowserRouter([
         lazy: () => import("./pages/CostPolicies").then(m => ({ Component: m.default })),
       },
       {
+        // Cronoanálise — estudo de tempos que alimenta bom_operations.standard_time_minutes
+        path: "cronoanalise",
+        lazy: () => import("./pages/Cronoanalise").then(m => ({ Component: m.default })),
+      },
+      {
         // Novidade A4 — relatório diário de produção (template do redesign)
         path: "relatorios/diario-producao",
         lazy: () => import("./pages/RelDiarioA4").then(m => ({ Component: m.default })),

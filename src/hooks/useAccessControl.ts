@@ -59,6 +59,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   // módulo 'reports'. Mantém consistência com NavigationAccessConsistency.test.
   '/relatorios': 'sistema',
   '/cost-policies': 'financeiro',
+  '/cronoanalise': 'producao',
   '/relatorios/qualidade': 'reports',
   '/relatorios/refugo': 'reports',
   '/relatorios/semanal': 'reports',
