@@ -227,6 +227,19 @@ function QuotationDetail({ id, onBack }: { id: string; onBack: () => void }) {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const genPo = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await (supabase as any).rpc('create_po_from_quotation', { p_quotation_id: id });
+      if (error) throw error;
+      return data as string;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['purchase_orders'] });
+      toast.success('Ordem de compra gerada do vencedor — veja em Compras.');
+    },
+    onError: (e: Error) => toast.error(`Erro ao gerar OC: ${e.message}`),
+  });
+
   if (!q) return <p className="p-6 text-sm text-muted-foreground">Carregando…</p>;
 
   return (
@@ -246,6 +259,11 @@ function QuotationDetail({ id, onBack }: { id: string; onBack: () => void }) {
             </p>
           </div>
         </div>
+        {(q.status === 'aprovada' || q.selected_supplier_id) && (
+          <Button onClick={() => genPo.mutate()} disabled={genPo.isPending} className="gap-1.5">
+            <FileSpreadsheet className="h-4 w-4" /> {genPo.isPending ? 'Gerando…' : 'Gerar OC do vencedor'}
+          </Button>
+        )}
       </div>
 
       <Tabs defaultValue="items">

@@ -78,6 +78,7 @@ export const menuGroups = [
       { name: "Fornecedores",     icon: Briefcase,       path: "/suppliers" },
       { name: "Custos de Insumos", icon: DollarSign,     path: "/custos-insumos" },
       { name: "Alçadas",          icon: Gavel,           path: "/compras/alcadas" },
+      { name: "Inspeção Receb.",  icon: ClipboardCheck,  path: "/compras/inspecao" },
     ],
   },
   {
