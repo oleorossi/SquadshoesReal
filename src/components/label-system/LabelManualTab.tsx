@@ -7,8 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { Printer, Upload, Plus, Minus, ArrowCounterClockwise as RotateCcw, Eye, ArrowSquareIn as Import, X } from '@phosphor-icons/react';
-import { buildThermalLabelsHtml, buildBoxIdentificationHtml, DEFAULT_THERMAL_CONFIG } from '@/lib/printLabels';
+import { Printer, Upload, Plus, Minus, ArrowCounterClockwise as RotateCcw, Eye, ArrowSquareIn as Import, X, Download } from '@phosphor-icons/react';
+import { buildThermalLabelsHtml, buildBoxIdentificationHtml, buildThermalLabelsZpl, DEFAULT_THERMAL_CONFIG } from '@/lib/printLabels';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -264,33 +264,51 @@ export function LabelManualTab() {
   const copies = Math.max(1, Number(form.copies) || 1);
   const mainMaterial = form.materials.filter(Boolean).join(', ');
 
+  const buildThermalRows = () => grade.length > 0
+    ? grade.flatMap(g =>
+        Array.from({ length: copies }, () => ({
+          refCode: form.referencia,
+          refName: form.materials[0] || form.referencia,
+          mainMaterial,
+          color: form.cor,
+          size: g.size,
+          barcode: (form.referencia + g.size).replace(/\s/g, ''),
+          imageUrl: form.imageUrl || undefined,
+          clientOrderNumber: form.lote || undefined,
+          qty: g.qty > 1 ? g.qty : undefined,
+        }))
+      )
+    : Array.from({ length: copies }, () => ({
+        refCode: form.referencia,
+        refName: form.materials[0] || form.referencia,
+        mainMaterial,
+        color: form.cor,
+        size: '',
+        barcode: form.referencia.replace(/\s/g, '') || 'MANUAL',
+        imageUrl: form.imageUrl || undefined,
+        clientOrderNumber: form.lote || undefined,
+      }));
+
+  // ZPL direto pra impressora Zebra/Elgin — só faz sentido pra thermal.
+  const handleDownloadZpl = () => {
+    if (form.labelType !== 'thermal') return;
+    const rows = buildThermalRows();
+    if (rows.length === 0) return;
+    const zpl = buildThermalLabelsZpl(rows, { width: 100, height: 30 });
+    const blob = new Blob([zpl], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `etiquetas-manual-${rows.length}un-${Date.now()}.zpl`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
   const handlePrint = () => {
     if (form.labelType === 'thermal') {
-      const rows = grade.length > 0
-        ? grade.flatMap(g =>
-            Array.from({ length: copies }, () => ({
-              refCode: form.referencia,
-              refName: form.materials[0] || form.referencia,
-              mainMaterial,
-              color: form.cor,
-              size: g.size,
-              barcode: (form.referencia + g.size).replace(/\s/g, ''),
-              imageUrl: form.imageUrl || undefined,
-              clientOrderNumber: form.lote || undefined,
-              qty: g.qty > 1 ? g.qty : undefined,
-            }))
-          )
-        : Array.from({ length: copies }, () => ({
-            refCode: form.referencia,
-            refName: form.materials[0] || form.referencia,
-            mainMaterial,
-            color: form.cor,
-            size: '',
-            barcode: form.referencia.replace(/\s/g, '') || 'MANUAL',
-            imageUrl: form.imageUrl || undefined,
-            clientOrderNumber: form.lote || undefined,
-          }));
-      openPrint(buildThermalLabelsHtml(rows, '', { width: 100, height: 30 }, DEFAULT_THERMAL_CONFIG));
+      openPrint(buildThermalLabelsHtml(buildThermalRows(), '', { width: 100, height: 30 }, DEFAULT_THERMAL_CONFIG));
     } else if (form.labelType === 'box') {
       const items = Array.from({ length: copies }, (_, i) => ({
         orderNumber: form.lote || '—',
@@ -644,6 +662,12 @@ export function LabelManualTab() {
               <Printer className="h-4 w-4" />
               Imprimir
             </Button>
+            {form.labelType === 'thermal' && (
+              <Button variant="outline" onClick={handleDownloadZpl} className="gap-2 border-blue-500/40 text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/30" title="Baixar ZPL — envia direto pra Zebra/Elgin sem driver">
+                <Download className="h-4 w-4" />
+                ZPL
+              </Button>
+            )}
             <Button variant="outline" onClick={handlePreview} className="gap-2">
               <Eye className="h-4 w-4" />
               Pré-visualizar

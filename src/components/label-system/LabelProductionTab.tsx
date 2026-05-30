@@ -33,7 +33,7 @@ import logoImg from '@/assets/logo-squad-shoes.jpg';
 import { supabase } from '@/integrations/supabase/client';
 import { resolveProductImage, resolveProductImageWithSource } from '@/lib/imageFallback';
 import { fetchMainMaterial } from '@/lib/labelUtils';
-import { buildBoxIdentificationHtml, buildThermalLabelsHtml, buildThermalLabelsPdf, buildHangtagHtml, type BoxIdentificationData, type ThermalLabelConfig, DEFAULT_THERMAL_CONFIG } from '@/lib/printLabels';
+import { buildBoxIdentificationHtml, buildThermalLabelsHtml, buildThermalLabelsPdf, buildThermalLabelsZpl, buildHangtagHtml, type BoxIdentificationData, type ThermalLabelConfig, DEFAULT_THERMAL_CONFIG } from '@/lib/printLabels';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useOrders } from '@/hooks/useOrders';
@@ -878,6 +878,83 @@ export function LabelProductionTab() {
     }
   };
 
+  // ZPL: envio direto para Zebra/Elgin sem driver. O .zpl pode ser arrastado
+  // para fila de impressão no Mac (Generic Text printer) ou enviado por
+  // utilitário (Elgin Gerenciador, Zebra Setup Utilities) ou raw socket
+  // (porta 9100). Mesma lógica de coleta do PDF, troca o builder.
+  const handleDownloadZpl = async () => {
+    const selectedGroups = filtered.filter(g => selected.has(g.groupKey));
+    const thermalGroups = selectedGroups.filter(g => getAllowedLabelTypes(g.packagingMode).thermal);
+    if (thermalGroups.length === 0) {
+      toast.error('Nenhum pedido selecionado permite etiquetas individuais.');
+      return;
+    }
+    setIsGenerating(true);
+    try {
+      const uniqueRefIds = [...new Set(thermalGroups.map(g => g.referenceId))];
+      const [refDataMap, materialMap] = await Promise.all([
+        supabase.from('technical_sheets').select('id, code, shoe_category').in('id', uniqueRefIds)
+          .then(({ data }) => { const map = new Map<string, any>(); for (const r of data || []) map.set(r.id, r); return map; }),
+        Promise.all(uniqueRefIds.map(async id => [id, await fetchMainMaterial(id).catch(() => '')] as const)).then(entries => new Map(entries)),
+      ]);
+
+      const labels: { refCode: string; refName: string; mainMaterial: string; color: string; size: string; barcode: string; }[] = [];
+      for (const group of thermalGroups) {
+        const mainMaterial = materialMap.get(group.referenceId) || '';
+        const colorName = group.colors[0] || '';
+        const effRefCode = getEffectiveRefCode(group);
+        const effRefName = getEffectiveRefName(group);
+        if (thermalMode === 'quantity') {
+          for (const [size, qty] of Object.entries(group.aggregatedGrade)) {
+            for (let i = 0; i < Math.min(qty as number, 2000); i++) {
+              labels.push({
+                refCode: effRefCode, refName: effRefName, mainMaterial,
+                color: getEffectiveColor(group, colorName), size, barcode: effRefCode || group.groupKey,
+              });
+            }
+          }
+        } else {
+          for (const order of group.orders) {
+            const orderColor = order.color || colorName;
+            const { gradeText, pairsInOneFicha, numFichas } = getOrderFichaMetrics(order);
+            for (let i = 0; i < numFichas; i++) {
+              labels.push({
+                refCode: effRefCode, refName: effRefName, mainMaterial,
+                color: getEffectiveColor(group, orderColor), size: gradeText || `${pairsInOneFicha} PRS`,
+                barcode: effRefCode || order.order_number || group.groupKey,
+              });
+            }
+          }
+        }
+      }
+      if (labels.length === 0) {
+        toast.error('Nada para gerar.');
+        return;
+      }
+
+      const zpl = buildThermalLabelsZpl(labels, { width: currentSize.width, height: currentSize.height });
+      const blob = new Blob([zpl], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `etiquetas-${currentSize.id}-${labels.length}un-${Date.now()}.zpl`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+      const orderIds = thermalGroups.flatMap(g => g.orders.map((o: any) => o.id));
+      await supabase.from('print_jobs').insert({ batch_name: `ZPL ${currentSize.label} - ${new Date().toLocaleString()}`, total_labels: labels.length, status: 'completed', order_ids: orderIds } as any);
+      queryClient.invalidateQueries({ queryKey: ['printed_order_ids'] });
+      queryClient.invalidateQueries({ queryKey: ['print_history'] });
+      toast.success(`ZPL gerado: ${labels.length} etiquetas (${currentSize.label}). Envie o .zpl direto pra impressora térmica.`);
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao gerar ZPL');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   const handlePrintBoxLabels = async () => {
     const selectedGroups = filtered.filter(g => selected.has(g.groupKey));
     // Filter: only groups that allow master/box labels
@@ -1309,6 +1386,9 @@ export function LabelProductionTab() {
                       </Select>
                       <Button onClick={handleDownloadPdf} variant="outline" size="sm" className="gap-1.5 h-9 border-emerald-500/40 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/30" title="Baixar PDF — abre em qualquer leitor (Preview, Adobe, navegador) e imprime direto">
                         <Download className="h-3.5 w-3.5" />PDF
+                      </Button>
+                      <Button onClick={handleDownloadZpl} variant="outline" size="sm" className="gap-1.5 h-9 border-blue-500/40 text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/30" title="Baixar ZPL — envia direto pra Zebra/Elgin sem driver (porta 9100, Generic Text printer, ou utilitário do fabricante)">
+                        <Download className="h-3.5 w-3.5" />ZPL
                       </Button>
                     </div>
                     <span className="text-xs text-muted-foreground truncate max-w-[200px]">
