@@ -12,12 +12,18 @@ export interface Employee {
   pix_key: string;
   pix_type: string;
   salary: number;
+  hourly_rate: number | null;
   overtime_hourly_rate: number | null;
+  overtime_multiplier: number;
   /** Tipo de pagamento: mensalista (salário + banco de horas) ou diarista (por dia). */
   payment_type: 'mensalista' | 'diarista';
   /** Valor da diária (R$/dia) quando diarista. */
   daily_rate: number | null;
   work_schedule_id: string | null;
+  /** Adicionais de HE por funcionário (regime contrato). 0 = hora simples. */
+  overtime_50_pct: number;
+  overtime_100_pct: number;
+  night_bonus_pct: number;
   role: string;
   department: string;
   admission_date: string;
@@ -56,7 +62,10 @@ export function useEmployees() {
         .select('*')
         .order('name');
       if (error) throw error;
-      return data as Employee[];
+      // Cast via unknown: a Row do Supabase usa string|null em vários campos
+      // (department, role, etc.) enquanto a interface Employee os trata como
+      // string. Mapeamento conhecido e seguro.
+      return data as unknown as Employee[];
     },
     staleTime: 5 * 60_000,
   });
