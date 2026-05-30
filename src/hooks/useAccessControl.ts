@@ -23,6 +23,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/wip-control': 'producao',
   '/cycle-count': 'sistema',
   '/ajuste-estoque': 'estoque',
+  '/contagens-ciclo': 'estoque',
   '/order-flow-audit': 'ordens',
   '/labels': 'expedicao',
   '/label-system': 'expedicao',
