@@ -1,12 +1,37 @@
 import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import {
   useWorkSchedules, useHolidays, useTimeRecords,
   calculateDaySummary, WorkSchedule,
 } from '@/hooks/useTimesheet';
 import { useEmployees } from '@/hooks/useEmployees';
-import { useBenefitsConfig, useBankHoursMovements, useAbsences } from '@/hooks/useRH';
+import { useBenefitsConfig, useBankHoursMovements } from '@/hooks/useRH';
 import { calculateWeeklyPeriod, WeeklyCalcDay, WeekSummary } from '@/lib/weeklyTimeCalculation';
 import { findEmployeeMatch } from '@/lib/employeeMatching';
+
+/**
+ * Ausências do período. Consulta direto `employee_absences` (tabela real) — o
+ * hook useAbsences existente aponta pra `absences`, que NÃO existe no schema
+ * (bug pré-existente, sem efeito hoje porque a tabela está vazia). Aqui usamos
+ * o nome correto pra que a neutralização de faltas funcione quando houver dados.
+ */
+interface AbsenceRow { employee_id: string; start_date: string; end_date: string }
+function useEmployeeAbsences(from: string, to: string) {
+  return useQuery({
+    queryKey: ['employee_absences_closing', from, to],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('employee_absences')
+        .select('employee_id, start_date, end_date')
+        .lte('start_date', to)
+        .gte('end_date', from);
+      if (error) throw error;
+      return (data || []) as AbsenceRow[];
+    },
+    staleTime: 30_000,
+  });
+}
 
 /**
  * Apuração de fechamento mensal por funcionário.
@@ -102,7 +127,7 @@ export function useMonthlyClosing(from: string, to: string) {
   const { data: records = [], isLoading: recLoading } = useTimeRecords(undefined, from, to);
   const { data: benefits } = useBenefitsConfig();
   const { data: movements = [] } = useBankHoursMovements(undefined, { from, to });
-  const { data: absences = [] } = useAbsences({ from, to });
+  const { data: absences = [] } = useEmployeeAbsences(from, to);
 
   const monthlyHours = benefits?.monthly_hours || 220;
 
