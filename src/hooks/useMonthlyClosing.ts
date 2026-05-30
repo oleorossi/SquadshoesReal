@@ -207,9 +207,13 @@ export function useMonthlyClosing(from: string, to: string) {
         };
       });
 
-      // Dias úteis esperados SEM ponto e SEM ausência justificada → falta (déficit).
-      // Decisão do usuário (auditoria 2026-05-30): dia útil sem batida conta como
-      // hora a menos, mas SÓ dentro do período real (effFrom..effTo) — nunca futuro.
+      // Dias úteis esperados SEM ponto e SEM ausência justificada.
+      // Decisão do usuário (auditoria 2026-05-30): NÃO contar como falta — o ponto
+      // não é importado todos os dias, então dia sem registro = dado faltante, não
+      // ausência real. Tratar como falta inflava o déficit (450–630h/pessoa só por
+      // ponto não importado). Aqui apenas CONTAMOS esses dias (missingDays) como
+      // alerta de cobertura pro RH; o déficit sai só de dias COM ponto onde o
+      // funcionário trabalhou menos que o esperado.
       let missingDays = 0;
       for (let cur = effFrom; cur <= effTo; cur = addDay(cur)) {
         if (recordDates.has(cur)) continue;        // já tem ponto
@@ -217,22 +221,9 @@ export function useMonthlyClosing(from: string, to: string) {
         const d = new Date(cur + 'T12:00:00');
         const dow = d.getDay();
         const isHol = isHolidayOn(holidays, cur);
-        // calculateDaySummary com punches vazio devolve o expected do dia (0 em
-        // fim de semana/feriado), então só dias úteis geram déficit.
         const s = calculateDaySummary([], dow, sched, isHol);
-        if (s.expectedMinutes <= 0) continue;
-        missingDays++;
-        days.push({
-          date: cur,
-          dayOfWeek: dow,
-          workedMinutes: 0,
-          expectedMinutes: s.expectedMinutes,
-          overtimeMinutes: 0,
-          isHoliday: isHol,
-          isAbsent: true,
-          status: 'absent',
-          punches: [],
-        });
+        if (s.expectedMinutes <= 0) continue;       // fim de semana/feriado
+        missingDays++;                              // só conta, NÃO vira déficit
       }
 
       const period = calculateWeeklyPeriod(days, sched);
@@ -250,7 +241,7 @@ export function useMonthlyClosing(from: string, to: string) {
       const deficitValue = (deficitMin / 60) * normalHourRate;
 
       let status: ClosingStatus;
-      if (daysWithRecords === 0 && missingDays === 0) status = 'sem_ponto';
+      if (daysWithRecords === 0) status = 'sem_ponto';
       else if (overtimeMin > 0 && deficitMin > 0) status = 'misto';
       else if (overtimeMin > 0) status = 'extra';
       else if (deficitMin > 0) status = 'devedor';
