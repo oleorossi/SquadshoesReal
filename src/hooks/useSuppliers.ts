@@ -20,6 +20,20 @@ export type Supplier = {
   notes: string;
   active: boolean;
   is_own_manufacturing: boolean;
+  // Métricas de performance — calculadas automaticamente quando OCs são recebidas
+  // (trigger tg_refresh_supplier_lead_time_stats em purchase_orders, mig 2026-05-29)
+  avg_lead_time_days?: number | null;
+  on_time_rate?: number | null;
+  last_purchase_date?: string | null;
+  // Cadastrais adicionais (existiam no DB, agora expostos no form)
+  min_order_quantity?: number;
+  supplier_category?: 'materia_prima' | 'servico' | 'embalagem' | 'outro' | null;
+  homologation_status?: 'ativo' | 'em_homologacao' | 'bloqueado' | null;
+  certifications?: string | null;
+  quality_rating?: number | null;
+  delivery_rating?: number | null;
+  price_rating?: number | null;
+  service_rating?: number | null;
   created_at: string;
   updated_at: string;
 };
