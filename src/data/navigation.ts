@@ -158,6 +158,7 @@ export const secondaryRoutes: ReadonlyArray<{ name: string; icon: typeof Box; pa
   { name: "Patrimônio",           icon: Buildings,        path: "/patrimonio",             group: "Financeiro" },
   { name: "SPED Bloco K",         icon: Factory,          path: "/sped/bloco-k",           group: "Financeiro" },
   { name: "Perfis Tributários",   icon: Receipt,          path: "/perfis-tributarios",     group: "Financeiro" },
+  { name: "Apuração de Impostos", icon: Calculator,       path: "/apuracao-impostos",      group: "Financeiro" },
   // Sistema (admin)
   { name: "Auditoria (Logs)",     icon: FileText,         path: "/audit-logs",             group: "Sistema" },
   { name: "LGPD",                 icon: Lock,             path: "/lgpd",                   group: "Sistema" },

@@ -963,6 +963,11 @@ const router = createBrowserRouter([
         lazy: () => import("./pages/PerfisTributarios").then(m => ({ Component: m.default })),
       },
       {
+        // Apuração mensal de impostos (estimativa via perfis tributários)
+        path: "apuracao-impostos",
+        lazy: () => import("./pages/ApuracaoImpostos").then(m => ({ Component: m.default })),
+      },
+      {
         // Novidade A4 — relatório diário de produção (template do redesign)
         path: "relatorios/diario-producao",
         lazy: () => import("./pages/RelDiarioA4").then(m => ({ Component: m.default })),

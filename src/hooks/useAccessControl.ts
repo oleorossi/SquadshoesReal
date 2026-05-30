@@ -122,6 +122,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/sped': 'financeiro',
   '/sped/bloco-k': 'financeiro',
   '/perfis-tributarios': 'financeiro',
+  '/apuracao-impostos': 'financeiro',
   '/lgpd': 'sistema',
   '/security': 'sistema',
   // System pages — admin only
