@@ -948,6 +948,11 @@ const router = createBrowserRouter([
         lazy: () => import("./pages/Cronoanalise").then(m => ({ Component: m.default })),
       },
       {
+        // Patrimônio / Imobilizado — cadastro de bens, depreciação linear e baixa
+        path: "patrimonio",
+        lazy: () => import("./pages/Patrimonio").then(m => ({ Component: m.default })),
+      },
+      {
         // Novidade A4 — relatório diário de produção (template do redesign)
         path: "relatorios/diario-producao",
         lazy: () => import("./pages/RelDiarioA4").then(m => ({ Component: m.default })),
