@@ -156,6 +156,7 @@ export const secondaryRoutes: ReadonlyArray<{ name: string; icon: typeof Box; pa
   { name: "MDF-e",                icon: FileText,         path: "/mdfe",                   group: "Financeiro" },
   { name: "CNAB / Boletos",       icon: FileSpreadsheet,  path: "/cnab",                   group: "Financeiro" },
   { name: "Patrimônio",           icon: Buildings,        path: "/patrimonio",             group: "Financeiro" },
+  { name: "SPED Bloco K",         icon: Factory,          path: "/sped/bloco-k",           group: "Financeiro" },
   // Sistema (admin)
   { name: "Auditoria (Logs)",     icon: FileText,         path: "/audit-logs",             group: "Sistema" },
   { name: "LGPD",                 icon: Lock,             path: "/lgpd",                   group: "Sistema" },

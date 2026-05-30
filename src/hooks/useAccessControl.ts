@@ -120,6 +120,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/cnab': 'financeiro',
   '/bank-reconciliation': 'financeiro',
   '/sped': 'financeiro',
+  '/sped/bloco-k': 'financeiro',
   '/lgpd': 'sistema',
   '/security': 'sistema',
   // System pages — admin only

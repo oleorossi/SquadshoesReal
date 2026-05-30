@@ -953,6 +953,11 @@ const router = createBrowserRouter([
         lazy: () => import("./pages/Patrimonio").then(m => ({ Component: m.default })),
       },
       {
+        // SPED Bloco K — livro de produção e estoque (K100/K200/K230/K235)
+        path: "sped/bloco-k",
+        lazy: () => import("./pages/BlocoK").then(m => ({ Component: m.default })),
+      },
+      {
         // Novidade A4 — relatório diário de produção (template do redesign)
         path: "relatorios/diario-producao",
         lazy: () => import("./pages/RelDiarioA4").then(m => ({ Component: m.default })),
