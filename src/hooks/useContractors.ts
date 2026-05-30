@@ -49,6 +49,10 @@ export interface ServiceOrder {
   receipt_generated_at: string | null;
   signed_photo_url: string | null;
   sale_order_id: string | null;
+  // Array com todos os PVs vinculados (preenchido pelo upsert_open_service_order
+  // quando uma OS é agregada de múltiplos PVs). Primary sale_order_id pode
+  // ficar null em agregações — usar o primeiro do array como fallback.
+  linked_sale_order_ids?: string[] | null;
   // Artisanal production fields
   artisanal_recipe_id?: string | null;
   artisanal_output_name?: string | null;

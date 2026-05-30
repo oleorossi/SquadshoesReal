@@ -269,7 +269,10 @@ export default function WeeklyClosePage() {
               {weekSnaps.map((s) => (
                 <TableRow key={s.id} className="hover:bg-muted/30">
                   <TableCell className="text-xs">
-                    <div className="font-mono text-[11px] text-muted-foreground">{s.employee_id.slice(0, 8)}…</div>
+                    <div className="font-medium text-foreground truncate max-w-[220px]" title={s.employees?.full_name || s.employee_id}>
+                      {s.employees?.full_name || '— sem nome'}
+                    </div>
+                    <div className="font-mono text-[10px] text-muted-foreground/60">{s.employee_id.slice(0, 8)}…</div>
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-xs mono">{fmtHHMM(s.expected_min)}</TableCell>
                   <TableCell className={cn(
@@ -401,8 +404,17 @@ export default function WeeklyClosePage() {
                     <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                       {formatDateTimeBR(a.changed_at)}
                     </TableCell>
-                    <TableCell className="text-xs font-mono">
-                      {a.employee_id ? a.employee_id.slice(0, 8) + '…' : '—'}
+                    <TableCell className="text-xs">
+                      {a.employees?.full_name ? (
+                        <>
+                          <div className="font-medium text-foreground truncate max-w-[180px]" title={a.employees.full_name}>
+                            {a.employees.full_name}
+                          </div>
+                          <div className="font-mono text-[10px] text-muted-foreground/60">{a.employee_id?.slice(0, 8)}…</div>
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className={cn('text-[10px]', meta.cls)}>

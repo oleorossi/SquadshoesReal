@@ -20,6 +20,9 @@ export interface WeeklySnapshot {
   locked_reason: string | null;
   computed_at: string;
   apuracao_label: string | null;
+  /** Nome do funcionário (resolvido via JOIN com employees pela FK).
+   *  Não é coluna da tabela — vem do select embedded. */
+  employees?: { full_name: string | null } | null;
 }
 
 export function useWeeklySnapshots(employeeId?: string | null) {
@@ -28,7 +31,9 @@ export function useWeeklySnapshots(employeeId?: string | null) {
     queryFn: async () => {
       let q = (supabase as any)
         .from('weekly_balance_snapshot')
-        .select('*')
+        // Embedded resource via FK weekly_balance_snapshot_employee_id_fkey →
+        // traz full_name do funcionário pra UI exibir nome em vez de UUID.
+        .select('*, employees(full_name)')
         .order('week_start', { ascending: false });
       if (employeeId) q = q.eq('employee_id', employeeId);
       const { data, error } = await q;
@@ -138,6 +143,8 @@ export interface AuditLogEntry {
   changed_at: string;
   changed_by: string | null;
   metadata: Record<string, any>;
+  /** Nome do funcionário via FK (embedded resource). */
+  employees?: { full_name: string | null } | null;
 }
 
 export function useWeeklyAuditLog(filters?: { employeeId?: string | null; weekStart?: string | null }) {
@@ -146,7 +153,8 @@ export function useWeeklyAuditLog(filters?: { employeeId?: string | null; weekSt
     queryFn: async () => {
       let q = (supabase as any)
         .from('weekly_balance_audit_log')
-        .select('*')
+        // Resolve nome via FK weekly_balance_audit_log_employee_id_fkey
+        .select('*, employees(full_name)')
         .order('changed_at', { ascending: false })
         .limit(200);
       if (filters?.employeeId) q = q.eq('employee_id', filters.employeeId);

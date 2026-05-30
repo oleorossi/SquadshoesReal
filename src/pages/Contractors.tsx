@@ -1813,7 +1813,16 @@ export default function Contractors() {
                   <Input value={editingOrder.description || ''} onChange={e => setEditingOrder(p => ({ ...p, description: e.target.value }))} className="h-9" />
                 </div>
                 <div className="col-span-2 space-y-1.5">
-                  <Label className="text-xs font-medium text-muted-foreground">Pedido de Venda (PV) — rastreio</Label>
+                  <Label className="text-xs font-medium text-muted-foreground flex items-center gap-2">
+                    Pedido de Venda (PV) — rastreio
+                    {/* Quando há múltiplos PVs vinculados (OS auto agregada),
+                        mostra contagem como info de rastreabilidade */}
+                    {(editingOrder.linked_sale_order_ids?.length || 0) > 1 && (
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-foreground/10 text-foreground" title="OS gerada a partir de múltiplos PVs">
+                        +{(editingOrder.linked_sale_order_ids?.length || 0) - 1} PVs vinculados
+                      </span>
+                    )}
+                  </Label>
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button variant="outline" role="combobox" className="h-9 w-full justify-between text-sm font-normal">

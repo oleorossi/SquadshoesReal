@@ -420,18 +420,21 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
   // Calculate averages or just show unit price if it's unique
   const avgUnitPrice = grandTotalPairs > 0 ? grandTotalValue / grandTotalPairs : unitPrice;
 
-
-  // Status badge color por status (cor semântica)
-  const statusColors: Record<string, { bg: string; fg: string; border: string }> = {
-    'Rascunho':     { bg: '#f1f5f9', fg: '#475569', border: '#cbd5e1' },
-    'Pendente':     { bg: '#fef3c7', fg: '#92400e', border: '#fbbf24' },
-    'Aprovado':     { bg: '#dbeafe', fg: '#1e40af', border: '#60a5fa' },
-    'Em Produção':  { bg: '#ede9fe', fg: '#6d28d9', border: '#a78bfa' },
-    'Pronto':       { bg: '#d1fae5', fg: '#065f46', border: '#34d399' },
-    'Faturado':     { bg: '#cffafe', fg: '#155e75', border: '#22d3ee' },
-    'Cancelado':    { bg: '#fee2e2', fg: '#991b1b', border: '#f87171' },
+  // Industrial Editorial Pro: status são INK+texto, não bg colorido infantil.
+  // Manter só accent semântico no dot (verde/âmbar/vermelho).
+  const statusDot: Record<string, string> = {
+    'Rascunho':           '#a1a1aa',
+    'Pendente':           '#f59e0b',
+    'Aprovado':           '#0a7b2c',
+    'Em Produção':        '#3b82f6',
+    'Pronto':             '#0a7b2c',
+    'Faturado':           '#0a7b2c',
+    'Expedido':           '#0a7b2c',
+    'Concluído':          '#0a7b2c',
+    'Finalizado s/ NF':   '#a1a1aa',
+    'Cancelado':          '#D9264E',
   };
-  const sc = statusColors[order.status] || statusColors['Rascunho'];
+  const dotColor = statusDot[order.status] || '#a1a1aa';
 
   const issuedDate = order.created_at
     ? new Date(order.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -439,440 +442,590 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
 
   return `
 <style>
+  /* ═══════════════════════════════════════════════════════════════════════
+     PV PRINT — Industrial Editorial Pro (2026-05-29 redesign)
+     PAPER #FAFAF7 · INK #0A0A0A · RED #D9264E
+     Anton (display) · Inter Tight (body) · JetBrains Mono (numbers)
+     Rule-thick 3px · radius sharp 2px · sem gradientes
+     ═══════════════════════════════════════════════════════════════════════ */
+  @import url('https://fonts.googleapis.com/css2?family=Anton&family=Inter+Tight:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
   .pv-doc {
-    font-family: 'Helvetica Neue', -apple-system, 'Segoe UI', Arial, sans-serif;
-    color: #1a1a1a;
-    font-size: 11px;
-    line-height: 1.4;
+    font-family: 'Inter Tight', system-ui, -apple-system, sans-serif;
+    color: #0A0A0A;
+    font-size: 10.5px;
+    line-height: 1.45;
+    background: #FAFAF7;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
   .pv-doc * { box-sizing: border-box; }
 
-  /* Header — burgundy band com identidade Squad Shoes */
-  .pv-header {
-    display: flex;
-    align-items: stretch;
-    margin-bottom: 12px;
-    border-radius: 6px;
-    overflow: hidden;
-    border: 1px solid #d4d4d4;
-  }
-  .pv-header__brand {
-    background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%);
-    color: #fff;
-    padding: 14px 18px;
-    flex: 0 0 36%;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 4px;
-  }
-  .pv-header__brand-title {
-    font-size: 9px;
-    font-weight: 700;
+  /* ── Eyebrow MONO (10px tracking widest uppercase) ── */
+  .ed-eyebrow {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 8px;
+    font-weight: 600;
     letter-spacing: 0.18em;
     text-transform: uppercase;
-    opacity: 0.85;
-  }
-  .pv-header__brand-name {
-    font-size: 18px;
-    font-weight: 900;
-    letter-spacing: -0.2px;
+    color: rgba(10,10,10,0.55);
     line-height: 1;
   }
-  .pv-header__brand-tag {
-    font-size: 9px;
-    opacity: 0.7;
-    margin-top: 2px;
-    letter-spacing: 0.05em;
+
+  /* ── Header editorial: 3 colunas com rule-thick embaixo ── */
+  .pv-header {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: flex-end;
+    gap: 24px;
+    padding: 0 0 14px 0;
+    border-bottom: 3px solid #0A0A0A;
+    margin-bottom: 16px;
   }
-  .pv-header__title {
-    flex: 1;
-    padding: 14px 18px;
-    background: #fff;
+  .pv-header__brand {
     display: flex;
     flex-direction: column;
-    justify-content: center;
     gap: 6px;
   }
-  .pv-header__doc {
-    font-size: 9px;
-    font-weight: 800;
-    letter-spacing: 0.2em;
-    color: #71717a;
+  .pv-header__brand-mark {
+    font-family: 'Anton', Impact, sans-serif;
+    font-size: 28px;
+    letter-spacing: -0.02em;
+    line-height: 0.9;
     text-transform: uppercase;
+    color: #0A0A0A;
+    padding-top: 0.06em;
+  }
+  .pv-header__brand-mark .dot { color: #D9264E; }
+  .pv-header__brand-tag {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 8.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(10,10,10,0.55);
+  }
+  .pv-header__title {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  .pv-header__title-eyebrow {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: rgba(10,10,10,0.55);
   }
   .pv-header__num {
-    font-size: 22px;
-    font-weight: 900;
-    color: #18181b;
-    line-height: 1;
-    letter-spacing: -0.5px;
-    font-family: 'SFMono-Regular', 'Courier New', monospace;
+    font-family: 'Anton', Impact, sans-serif;
+    font-size: 38px;
+    letter-spacing: -0.01em;
+    line-height: 0.9;
+    color: #0A0A0A;
+    padding-top: 0.05em;
   }
   .pv-header__meta {
     display: flex;
-    gap: 14px;
-    font-size: 9.5px;
-    color: #52525b;
-    margin-top: 2px;
+    gap: 16px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    text-align: right;
   }
-  .pv-header__meta strong { color: #18181b; }
-  .pv-header__status {
-    flex: 0 0 110px;
-    background: ${sc.bg};
-    border-left: 1px solid #d4d4d4;
+  .pv-header__meta-item {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    padding: 10px;
+    gap: 3px;
+    min-width: 80px;
+    text-align: right;
   }
-  .pv-header__status-label {
+  .pv-header__meta-label {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
     font-size: 8px;
-    font-weight: 700;
-    color: ${sc.fg};
-    letter-spacing: 0.15em;
+    font-weight: 600;
+    letter-spacing: 0.18em;
     text-transform: uppercase;
-    opacity: 0.7;
+    color: rgba(10,10,10,0.55);
   }
-  .pv-header__status-value {
+  .pv-header__meta-value {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
     font-size: 11px;
-    font-weight: 800;
-    color: ${sc.fg};
+    font-weight: 700;
+    color: #0A0A0A;
+    font-variant-numeric: tabular-nums;
+  }
+  .pv-header__status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 9px;
+    border: 1.5px solid #0A0A0A;
+    border-radius: 2px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    color: #0A0A0A;
+  }
+  .pv-header__status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: ${dotColor};
   }
 
-  /* Cards de informações */
+  /* ── Cards de informações: 3 colunas, sharp 2px, sem fundo ── */
   .pv-info {
     display: grid;
-    grid-template-columns: 1.4fr 1fr 1fr;
-    gap: 8px;
-    margin-bottom: 12px;
+    grid-template-columns: 1.3fr 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 16px;
   }
   .pv-card {
-    border: 1px solid #d4d4d4;
-    border-radius: 6px;
-    padding: 8px 12px;
-    background: #fafafa;
     page-break-inside: avoid;
   }
   .pv-card__title {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
     font-size: 8.5px;
-    font-weight: 800;
-    color: #71717a;
+    font-weight: 600;
+    color: #0A0A0A;
     text-transform: uppercase;
-    letter-spacing: 0.12em;
-    margin-bottom: 4px;
-    padding-bottom: 4px;
-    border-bottom: 1px solid #e4e4e7;
+    letter-spacing: 0.18em;
+    padding-bottom: 6px;
+    margin-bottom: 8px;
+    border-bottom: 1.5px solid #0A0A0A;
   }
-  .pv-card__row { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; font-size: 10px; }
-  .pv-card__row .lbl { color: #71717a; font-weight: 600; }
-  .pv-card__row .val { color: #18181b; font-weight: 600; text-align: right; }
+  .pv-card__row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 3px 0;
+    font-size: 10.5px;
+    align-items: baseline;
+  }
+  .pv-card__row .lbl {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 8.5px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(10,10,10,0.55);
+    white-space: nowrap;
+  }
+  .pv-card__row .val {
+    color: #0A0A0A;
+    font-weight: 600;
+    text-align: right;
+    font-size: 11px;
+  }
   .pv-card__row .val strong { font-weight: 800; }
+  .pv-card__row .val.mono {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+  }
 
-  /* Tabela de itens */
+  /* ── Section title antes da tabela (rule + eyebrow + Anton) ── */
   .pv-items-title {
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     justify-content: space-between;
-    margin-bottom: 6px;
+    padding-bottom: 8px;
+    border-bottom: 1.5px solid #0A0A0A;
+    margin-bottom: 8px;
+  }
+  .pv-items-title__h {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .pv-items-title__eyebrow {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 8px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: rgba(10,10,10,0.55);
   }
   .pv-items-title h2 {
-    font-size: 11px;
-    font-weight: 800;
+    font-family: 'Anton', Impact, sans-serif;
+    font-size: 18px;
+    letter-spacing: -0.01em;
     text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: #18181b;
+    color: #0A0A0A;
     margin: 0;
+    line-height: 1;
+    padding-top: 0.05em;
   }
-  .pv-items-title .count { font-size: 9.5px; color: #71717a; font-weight: 600; }
+  .pv-items-title .count {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 10px;
+    font-weight: 700;
+    color: #0A0A0A;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.04em;
+  }
+  .pv-items-title .count em { color: rgba(10,10,10,0.55); font-style: normal; font-weight: 500; margin: 0 4px; }
 
+  /* ── Tabela editorial — borda sharp, header INK ── */
   .pv-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 9.5px;
-    margin-bottom: 4px;
-    border: 1px solid #d4d4d4;
-    border-radius: 6px;
+    font-size: 10px;
+    margin-bottom: 0;
+    border: 1.5px solid #0A0A0A;
+    border-radius: 2px;
     overflow: hidden;
   }
   .pv-table thead th {
-    background: #18181b;
-    color: #fff;
+    background: #0A0A0A;
+    color: #FAFAF7;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
     font-weight: 700;
     font-size: 8.5px;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    padding: 6px 4px;
+    letter-spacing: 0.12em;
+    padding: 8px 4px;
     text-align: center;
     border: none;
   }
-  .pv-table thead th:first-child { border-top-left-radius: 6px; }
-  .pv-table thead th:last-child  { border-top-right-radius: 6px; }
-  .pv-table thead th.text-left { text-align: left; padding-left: 8px; }
+  .pv-table thead th.text-left { text-align: left; padding-left: 10px; }
 
   .pv-table tbody td {
-    padding: 3px 5px;
+    padding: 4px 5px;
     vertical-align: middle;
-    font-size: 9.5px;
+    font-size: 10px;
     border: none;
   }
-  /* Separador entre grupos de item (foto/ref/cor). Linha leve, não pesada. */
-  .pv-row-qty td { border-top: 1px solid #d4d4d4; }
+  .pv-row-qty td { border-top: 1.5px solid #0A0A0A; }
   .pv-table tbody tr:first-child td { border-top: none; }
 
-  .pv-img-cell { width: 56px; text-align: center; padding: 4px !important; background: #fafafa; }
+  .pv-img-cell {
+    width: 60px;
+    text-align: center;
+    padding: 5px !important;
+    background: #FAFAF7;
+    border-right: 1px solid rgba(10,10,10,0.12);
+  }
   .pv-img-cell img {
-    width: 48px;
-    height: 48px;
+    width: 50px;
+    height: 50px;
     object-fit: cover;
-    border-radius: 4px;
-    border: 1px solid #e4e4e7;
+    border-radius: 2px;
+    border: 1.5px solid #0A0A0A;
     display: block;
     margin: 0 auto;
   }
   .pv-img-cell.empty {
-    color: #d4d4d8;
-    font-size: 8px;
+    color: rgba(10,10,10,0.35);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 7.5px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .pv-ref-cell {
+    font-weight: 700;
+    color: #0A0A0A;
+    font-size: 11px;
+    padding-left: 10px !important;
+    border-right: 1px solid rgba(10,10,10,0.12);
+  }
+  .pv-ref-cell .ref-code {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    color: #0A0A0A;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    font-size: 12px;
+  }
+  .pv-ref-cell .ref-name {
+    color: rgba(10,10,10,0.55);
+    font-weight: 500;
+    font-size: 9px;
+    display: block;
+    margin-top: 2px;
     font-style: italic;
   }
 
-  .pv-ref-cell { font-weight: 700; color: #18181b; font-size: 10.5px; padding-left: 8px !important; }
-  .pv-ref-cell .ref-code { color: #7f1d1d; font-weight: 800; letter-spacing: 0.02em; }
-  .pv-ref-cell .ref-name { color: #71717a; font-weight: 500; font-size: 9px; display: block; margin-top: 1px; }
-
   .pv-color-cell {
-    font-weight: 600;
-    color: #18181b;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-weight: 700;
+    color: #0A0A0A;
     font-size: 9.5px;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border-right: 1px solid rgba(10,10,10,0.12);
+    text-align: center;
   }
 
   .pv-type-cell {
-    background: #fafafa;
-    font-weight: 700;
+    background: rgba(10,10,10,0.04);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-weight: 600;
     font-size: 8.5px;
-    color: #71717a;
+    color: rgba(10,10,10,0.55);
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.12em;
     text-align: left;
-    padding-left: 8px !important;
-    width: 54px;
+    padding-left: 10px !important;
+    width: 60px;
     white-space: nowrap;
+    border-right: 1px solid rgba(10,10,10,0.12);
   }
-  /* Linha PEDIDO: label preto pra reforçar que é a linha primária */
   .pv-type-cell--qty {
-    color: #18181b;
-    background: #f4f4f5;
+    color: #0A0A0A;
+    background: rgba(10,10,10,0.08);
+    font-weight: 700;
   }
 
   .pv-size-cell {
     text-align: center;
-    font-family: 'SFMono-Regular', 'Courier New', monospace;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
     font-variant-numeric: tabular-nums;
-    color: #3f3f46;
-    padding: 3px 4px;
+    color: rgba(10,10,10,0.7);
+    padding: 4px 4px;
   }
-  .pv-size-cell.empty { color: #d4d4d8; }
-  /* Quantidade (linha primária): texto mais escuro e bold */
-  .pv-row-qty .pv-size-cell { color: #18181b; font-weight: 700; font-size: 11px; }
-  /* Preço unitário: cinza médio, menor */
-  .pv-row-unit .pv-size-cell { color: #71717a; font-size: 8.5px; font-weight: 500; }
-  /* Valor total: contraste médio, mantém destaque numérico */
-  .pv-row-total .pv-size-cell { color: #3f3f46; font-size: 8.5px; font-weight: 600; }
+  .pv-size-cell.empty { color: rgba(10,10,10,0.18); }
+  .pv-row-qty .pv-size-cell {
+    color: #0A0A0A;
+    font-weight: 700;
+    font-size: 12px;
+  }
+  .pv-row-unit .pv-size-cell {
+    color: rgba(10,10,10,0.5);
+    font-size: 8.5px;
+    font-weight: 500;
+  }
+  .pv-row-total .pv-size-cell {
+    color: rgba(10,10,10,0.7);
+    font-size: 8.5px;
+    font-weight: 600;
+  }
 
   .pv-total-cell {
     text-align: center;
-    font-family: 'SFMono-Regular', 'Courier New', monospace;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
     font-variant-numeric: tabular-nums;
-    color: #18181b;
-    background: #fafafa;
-    border-left: 1px solid #e4e4e7;
+    color: #0A0A0A;
+    background: rgba(10,10,10,0.04);
+    border-left: 1.5px solid #0A0A0A;
   }
-  .pv-total-cell--qty { font-weight: 800; font-size: 11px; }
-  .pv-total-cell--unit { font-weight: 600; font-size: 9px; color: #52525b; }
-  .pv-total-cell--total { font-weight: 800; font-size: 10px; color: #7f1d1d; }
+  .pv-total-cell--qty { font-weight: 800; font-size: 12px; }
+  .pv-total-cell--unit { font-weight: 600; font-size: 9px; color: rgba(10,10,10,0.6); }
+  .pv-total-cell--total { font-weight: 800; font-size: 10.5px; color: #D9264E; }
 
-  /* Linha do PEDIDO recebe leve realce de fundo pra firmar hierarquia */
-  .pv-row-qty .pv-size-cell { background: #fdfdfd; }
-
-  /* Totais */
+  /* ── Linha de totais geral (INK) ── */
   .pv-totals-row td {
-    background: #18181b !important;
-    color: #fff !important;
+    background: #0A0A0A !important;
+    color: #FAFAF7 !important;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
     font-weight: 700;
-    padding: 7px 5px;
-    font-size: 10px;
+    padding: 9px 5px;
+    font-size: 10.5px;
     border: none !important;
+    border-top: 2px solid #0A0A0A !important;
   }
   .pv-totals-row .label-cell {
     text-align: right;
-    padding-right: 12px;
-    letter-spacing: 0.08em;
+    padding-right: 14px;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
     font-size: 9px;
   }
   .pv-totals-value-row td {
-    background: #fafafa !important;
-    color: #27272a !important;
+    background: rgba(10,10,10,0.04) !important;
+    color: rgba(10,10,10,0.85) !important;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
     font-weight: 700;
-    padding: 6px 5px;
+    padding: 7px 5px;
     font-size: 9.5px;
     border: none !important;
-    border-top: 1px solid #e4e4e7 !important;
+    border-top: 1px solid rgba(10,10,10,0.12) !important;
   }
   .pv-totals-value-row .label-cell {
     text-align: right;
-    padding-right: 12px;
-    letter-spacing: 0.08em;
+    padding-right: 14px;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: #71717a;
+    color: rgba(10,10,10,0.55);
     font-size: 9px;
+    font-weight: 600;
   }
 
-  /* Card resumo financeiro */
+  /* ── Resumo: notas + KPI hero ── */
   .pv-summary {
     display: grid;
-    grid-template-columns: 1.5fr 1fr 1fr;
-    gap: 8px;
-    margin-top: 12px;
+    grid-template-columns: 1.6fr 1fr 1fr;
+    gap: 14px;
+    margin-top: 16px;
     page-break-inside: avoid;
   }
   .pv-summary__notes {
-    border: 1px solid #d4d4d4;
-    border-radius: 6px;
-    padding: 8px 12px;
-    background: #fffbeb;
-    border-color: #fde68a;
+    padding: 12px 14px;
+    background: #FAFAF7;
+    border: 1.5px solid #0A0A0A;
+    border-radius: 2px;
   }
   .pv-summary__notes-title {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
     font-size: 8.5px;
-    font-weight: 800;
-    color: #92400e;
+    font-weight: 600;
+    color: #0A0A0A;
     text-transform: uppercase;
-    letter-spacing: 0.12em;
-    margin-bottom: 3px;
+    letter-spacing: 0.18em;
+    margin-bottom: 6px;
+    padding-bottom: 5px;
+    border-bottom: 1.5px solid #0A0A0A;
   }
   .pv-summary__notes-content {
-    font-size: 10px;
-    color: #422006;
+    font-family: 'Inter Tight', sans-serif;
+    font-size: 10.5px;
+    color: #0A0A0A;
     line-height: 1.5;
     white-space: pre-wrap;
   }
+  .pv-summary__notes-content.empty {
+    color: rgba(10,10,10,0.35);
+    font-style: italic;
+  }
   .pv-summary__kpi {
-    border: 1px solid #d4d4d4;
-    border-radius: 6px;
-    padding: 8px 12px;
-    background: #fafafa;
+    padding: 12px 14px;
+    background: #FAFAF7;
+    border: 1.5px solid #0A0A0A;
+    border-radius: 2px;
     display: flex;
     flex-direction: column;
     justify-content: center;
+    gap: 4px;
   }
   .pv-summary__kpi.primary {
-    background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%);
-    color: #fff;
-    border-color: #7f1d1d;
+    background: #0A0A0A;
+    color: #FAFAF7;
+    border-color: #0A0A0A;
   }
   .pv-summary__kpi-label {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
     font-size: 8.5px;
-    font-weight: 700;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: #71717a;
-    margin-bottom: 4px;
+    letter-spacing: 0.18em;
+    color: rgba(10,10,10,0.55);
   }
-  .pv-summary__kpi.primary .pv-summary__kpi-label { color: #fbcfe8; opacity: 0.9; }
+  .pv-summary__kpi.primary .pv-summary__kpi-label {
+    color: rgba(250,250,247,0.65);
+  }
   .pv-summary__kpi-value {
-    font-size: 18px;
-    font-weight: 900;
-    font-family: 'SFMono-Regular', 'Courier New', monospace;
-    color: #18181b;
-    line-height: 1;
-    letter-spacing: -0.5px;
+    font-family: 'Anton', Impact, sans-serif;
+    font-size: 32px;
+    font-weight: 400;
+    color: #0A0A0A;
+    line-height: 0.92;
+    letter-spacing: -0.02em;
+    padding-top: 0.05em;
+    font-variant-numeric: tabular-nums;
   }
-  .pv-summary__kpi.primary .pv-summary__kpi-value { color: #fff; font-size: 20px; }
+  .pv-summary__kpi.primary .pv-summary__kpi-value {
+    color: #FAFAF7;
+    font-size: 28px;
+  }
   .pv-summary__kpi-sub {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
     font-size: 9px;
-    color: #71717a;
-    margin-top: 3px;
+    font-weight: 500;
+    color: rgba(10,10,10,0.55);
+    margin-top: 2px;
+    letter-spacing: 0.04em;
   }
-  .pv-summary__kpi.primary .pv-summary__kpi-sub { color: #fde2e2; }
+  .pv-summary__kpi.primary .pv-summary__kpi-sub {
+    color: rgba(250,250,247,0.55);
+  }
 
-  /* Footer / assinaturas */
+  /* ── Assinaturas: rule INK 1.5px ── */
   .pv-signatures {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 24px;
-    margin-top: 22px;
-    padding: 0 8px;
+    gap: 32px;
+    margin-top: 28px;
+    padding: 0 4px;
     page-break-inside: avoid;
   }
   .pv-sig-box {
     text-align: center;
-    border-top: 1px solid #18181b;
-    padding-top: 6px;
+    border-top: 1.5px solid #0A0A0A;
+    padding-top: 8px;
   }
   .pv-sig-box .lbl {
-    font-size: 8.5px;
-    color: #52525b;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 9px;
+    color: #0A0A0A;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.18em;
   }
   .pv-sig-box .sub {
-    font-size: 8px;
-    color: #a1a1aa;
-    margin-top: 2px;
+    font-family: 'Inter Tight', sans-serif;
+    font-size: 9px;
+    color: rgba(10,10,10,0.55);
+    margin-top: 3px;
+    font-style: italic;
   }
 
   .pv-footer {
-    margin-top: 14px;
-    padding-top: 8px;
-    border-top: 1px solid #e4e4e7;
-    font-size: 8px;
-    color: #a1a1aa;
+    margin-top: 18px;
+    padding-top: 10px;
+    border-top: 1.5px solid #0A0A0A;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 8.5px;
+    color: rgba(10,10,10,0.55);
     text-align: center;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
   }
 </style>
 
 <div class="pv-doc">
-  <!-- Cabeçalho -->
+  <!-- Header editorial: 3 colunas + rule-thick -->
   <div class="pv-header">
     <div class="pv-header__brand">
-      <div class="pv-header__brand-title">Squad Shoes · Indústria</div>
-      <div class="pv-header__brand-name">SQUAD SHOES</div>
-      <div class="pv-header__brand-tag">GESTÃO COMERCIAL</div>
+      <div class="pv-header__brand-mark">Squad<span class="dot">·</span>Shoes</div>
+      <div class="pv-header__brand-tag">Gestão Industrial · Indústria</div>
     </div>
     <div class="pv-header__title">
-      <div class="pv-header__doc">Pedido de Venda</div>
+      <div class="pv-header__title-eyebrow">Pedido de Venda</div>
       <div class="pv-header__num">${escapeHtml(order.order_number || '—')}</div>
-      <div class="pv-header__meta">
-        <span>Emitido em <strong>${issuedDate}</strong></span>
-        ${order.client_order_number ? `<span>Ped. cliente <strong>${escapeHtml(order.client_order_number)}</strong></span>` : ''}
-      </div>
     </div>
-    <div class="pv-header__status">
-      <div class="pv-header__status-label">Status</div>
-      <div class="pv-header__status-value">${escapeHtml(order.status || '—')}</div>
+    <div class="pv-header__meta">
+      <div class="pv-header__meta-item">
+        <span class="pv-header__meta-label">Emitido</span>
+        <span class="pv-header__meta-value">${issuedDate}</span>
+      </div>
+      ${order.client_order_number ? `
+      <div class="pv-header__meta-item">
+        <span class="pv-header__meta-label">Ped. cliente</span>
+        <span class="pv-header__meta-value">${escapeHtml(order.client_order_number)}</span>
+      </div>` : ''}
+      <div class="pv-header__status">
+        <span class="pv-header__status-dot"></span>
+        ${escapeHtml(order.status || '—')}
+      </div>
     </div>
   </div>
 
-  <!-- Cards de info -->
+  <!-- Cards informativos -->
   <div class="pv-info">
     <div class="pv-card">
       <div class="pv-card__title">Cliente</div>
       <div class="pv-card__row">
-        <span class="lbl">Razão Social</span>
+        <span class="lbl">Razão</span>
         <span class="val">
-          ${(order as any).client_number ? `<strong style="color:#7f1d1d;">#${escapeHtml((order as any).client_number)}</strong> · ` : ''}<strong>${escapeHtml(order.client_name || '—')}</strong>
+          ${(order as any).client_number ? `<strong>#${escapeHtml((order as any).client_number)}</strong> · ` : ''}<strong>${escapeHtml(order.client_name || '—')}</strong>
         </span>
       </div>
       <div class="pv-card__row">
-        <span class="lbl">CNPJ / CPF</span>
+        <span class="lbl">CNPJ/CPF</span>
         <span class="val mono">${escapeHtml(order.client_cnpj || '—')}</span>
       </div>
       <div class="pv-card__row">
@@ -883,7 +1036,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
     <div class="pv-card">
       <div class="pv-card__title">Comercial</div>
       <div class="pv-card__row">
-        <span class="lbl">Representante</span>
+        <span class="lbl">Vendedor</span>
         <span class="val">${escapeHtml(order.representative || '—')}</span>
       </div>
       <div class="pv-card__row">
@@ -893,19 +1046,19 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
       ${order.commission_value ? `
       <div class="pv-card__row">
         <span class="lbl">Comissão</span>
-        <span class="val">R$ ${formatCurrency(Number(order.commission_value))}</span>
+        <span class="val mono">R$ ${formatCurrency(Number(order.commission_value))}</span>
       </div>` : ''}
     </div>
     <div class="pv-card">
       <div class="pv-card__title">Entrega</div>
       <div class="pv-card__row">
         <span class="lbl">Prazo</span>
-        <span class="val"><strong>${order.delivery_deadline ? new Date(order.delivery_deadline + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</strong></span>
+        <span class="val mono"><strong>${order.delivery_deadline ? new Date(order.delivery_deadline + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</strong></span>
       </div>
       ${order.delivery_month ? `
       <div class="pv-card__row">
-        <span class="lbl">Mês fatur.</span>
-        <span class="val">${escapeHtml(order.delivery_month)}${order.delivery_week ? ` · ${escapeHtml(order.delivery_week)}` : ''}</span>
+        <span class="lbl">Faturamento</span>
+        <span class="val mono">${escapeHtml(order.delivery_month)}${order.delivery_week ? ` · ${escapeHtml(order.delivery_week)}` : ''}</span>
       </div>` : ''}
       ${order.nfe ? `
       <div class="pv-card__row">
@@ -915,10 +1068,13 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
     </div>
   </div>
 
-  <!-- Tabela de itens -->
+  <!-- Section title editorial pra tabela -->
   <div class="pv-items-title">
-    <h2>Itens do Pedido</h2>
-    <span class="count">${items.length} ${items.length === 1 ? 'referência' : 'referências'} · ${grandTotalPairs} pares</span>
+    <div class="pv-items-title__h">
+      <span class="pv-items-title__eyebrow">Detalhamento</span>
+      <h2>Itens do Pedido</h2>
+    </div>
+    <span class="count">${items.length}<em>${items.length === 1 ? 'ref' : 'refs'}</em>${grandTotalPairs}<em>pares</em>R$ ${formatCurrency(grandTotalValue)}</span>
   </div>
 
   <table class="pv-table">
@@ -935,39 +1091,39 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
     <tbody>
       ${bodyRows}
       <tr class="pv-totals-row">
-        <td colspan="3" class="label-cell">Total Geral · Pares</td>
-        <td class="pv-type-cell" style="background:transparent !important; color:#fff !important;font-weight:700;">PARES</td>
-        ${sizes.map(s => `<td class="pv-size-cell" style="color:#fff !important;font-weight:800;font-size:11px;">${grandTotals[s].pedida || '·'}</td>`).join('')}
-        <td class="pv-total-cell" style="background:#27272a !important; color:#fff !important; border-left:1px solid #3f3f46 !important;font-weight:800;font-size:11px;">${grandTotalPairs}</td>
+        <td colspan="3" class="label-cell">Total · Pares</td>
+        <td class="pv-type-cell" style="background:transparent !important; color:#FAFAF7 !important;font-weight:700;border-right:none !important;">PARES</td>
+        ${sizes.map(s => `<td class="pv-size-cell" style="color:#FAFAF7 !important;font-weight:800;font-size:12px;">${grandTotals[s].pedida || '·'}</td>`).join('')}
+        <td class="pv-total-cell" style="background:transparent !important; color:#FAFAF7 !important; border-left:1.5px solid rgba(250,250,247,0.3) !important;font-weight:800;font-size:12px;">${grandTotalPairs}</td>
       </tr>
       <tr class="pv-totals-value-row">
         <td colspan="4" class="label-cell">Valor por Numeração</td>
-        ${sizes.map(s => `<td class="pv-size-cell" style="font-size:8.5px;color:#52525b !important;">${grandTotals[s].valor > 0 ? formatCurrency(grandTotals[s].valor) : '·'}</td>`).join('')}
-        <td class="pv-total-cell" style="color:#7f1d1d !important;font-weight:800;font-size:10px;">${formatCurrency(grandTotalValue)}</td>
+        ${sizes.map(s => `<td class="pv-size-cell" style="font-family:'JetBrains Mono',monospace;font-size:8.5px;color:rgba(10,10,10,0.7) !important;">${grandTotals[s].valor > 0 ? formatCurrency(grandTotals[s].valor) : '·'}</td>`).join('')}
+        <td class="pv-total-cell" style="color:#D9264E !important;font-weight:800;font-size:10.5px;border-left:1.5px solid #0A0A0A !important;">${formatCurrency(grandTotalValue)}</td>
       </tr>
     </tbody>
   </table>
 
-  <!-- Resumo + KPIs -->
+  <!-- Resumo + KPIs editorial -->
   <div class="pv-summary">
     ${order.notes ? `
     <div class="pv-summary__notes">
-      <div class="pv-summary__notes-title">📝 Observações</div>
+      <div class="pv-summary__notes-title">Observações</div>
       <div class="pv-summary__notes-content">${escapeHtml(order.notes)}</div>
     </div>` : `
-    <div class="pv-summary__notes" style="background:#fafafa; border-color:#e4e4e7;">
-      <div class="pv-summary__notes-title" style="color:#a1a1aa;">Observações</div>
-      <div class="pv-summary__notes-content" style="color:#a1a1aa; font-style:italic;">Nenhuma observação adicional.</div>
+    <div class="pv-summary__notes">
+      <div class="pv-summary__notes-title">Observações</div>
+      <div class="pv-summary__notes-content empty">Nenhuma observação adicional.</div>
     </div>`}
     <div class="pv-summary__kpi">
-      <div class="pv-summary__kpi-label">Total de Pares</div>
+      <div class="pv-summary__kpi-label">Pares</div>
       <div class="pv-summary__kpi-value">${grandTotalPairs}</div>
       <div class="pv-summary__kpi-sub">${items.length} ${items.length === 1 ? 'referência' : 'referências'}</div>
     </div>
     <div class="pv-summary__kpi primary">
-      <div class="pv-summary__kpi-label">Valor Total</div>
+      <div class="pv-summary__kpi-label">Total</div>
       <div class="pv-summary__kpi-value">R$ ${formatCurrency(grandTotalValue)}</div>
-      <div class="pv-summary__kpi-sub">Preço médio R$ ${formatCurrency(avgUnitPrice)}/par</div>
+      <div class="pv-summary__kpi-sub">R$ ${formatCurrency(avgUnitPrice)} / par</div>
     </div>
   </div>
 
@@ -984,7 +1140,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
   </div>
 
   <div class="pv-footer">
-    Documento gerado pelo Squad Shoes — Sistema de Gestão Comercial · ${new Date().toLocaleString('pt-BR')}
+    Squad Shoes · Gestão Comercial · ${new Date().toLocaleString('pt-BR')}
   </div>
 </div>`;
 }

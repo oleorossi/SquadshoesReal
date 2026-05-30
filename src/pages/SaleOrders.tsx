@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { getSignedUrl } from '@/lib/getSignedUrl';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown as ChevronDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload, Trash as Trash2 } from '@phosphor-icons/react';
+import { ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown as ChevronDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload, Trash as Trash2, ListChecks } from '@phosphor-icons/react';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { BulkActionsBar, MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
 import { cn } from "@/lib/utils";
@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SmartSearch, SmartSearchSuggestion } from '@/components/ui/smart-search';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -307,6 +307,8 @@ export default function SaleOrders() {
   const [importClientsOpen, setImportClientsOpen] = useState(false);
   const [bulkNfeOpen, setBulkNfeOpen] = useState(false);
   const [bulkNfeMode, setBulkNfeMode] = useState<'preview' | 'emit'>('preview');
+  const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
+  const [bulkStatusTarget, setBulkStatusTarget] = useState<string>('');
   const [mainTab, setMainTab] = usePersistedState<string>('saleOrderMainTab', 'ativos');
 
   // Derived data
@@ -2011,6 +2013,7 @@ export default function SaleOrders() {
         itemLabel={sel.count === 1 ? 'PV selecionado' : 'PVs selecionados'}
         actions={[
           { label: 'Aprovar', icon: <Check className="h-3.5 w-3.5" />, onClick: handleBulkApprove },
+          { label: 'Alterar Status', icon: <ListChecks className="h-3.5 w-3.5" />, variant: 'outline', onClick: () => { setBulkStatusTarget(''); setBulkStatusOpen(true); } },
           { label: 'Pré-visualizar NF-e', icon: <Receipt className="h-3.5 w-3.5" />, variant: 'outline', onClick: () => openBulkNfe('preview') },
           { label: 'Emitir NF-e', icon: <Receipt className="h-3.5 w-3.5" />, onClick: () => openBulkNfe('emit') },
           { label: 'Cancelar', icon: <X className="h-3.5 w-3.5" />, variant: 'destructive', onClick: handleBulkCancel },
@@ -2027,6 +2030,52 @@ export default function SaleOrders() {
         saleOrders={bulkNfeOrders}
         mode={bulkNfeMode}
       />
+
+      {/* Alterar Status em LOTE — select arbitrário do status alvo */}
+      <Dialog open={bulkStatusOpen} onOpenChange={setBulkStatusOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ListChecks className="h-4 w-4" />
+              Alterar status em lote
+            </DialogTitle>
+            <DialogDescription>
+              {sel.count} pedido(s) selecionado(s) — escolha o status alvo.
+              Cancelado/Rascunho não checam viabilidade; Aprovado/Em Produção
+              alertam se houver datas inviáveis.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2.5 pt-1">
+            <Label className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Status alvo</Label>
+            <Select value={bulkStatusTarget} onValueChange={setBulkStatusTarget}>
+              <SelectTrigger><SelectValue placeholder="Selecione o status" /></SelectTrigger>
+              <SelectContent>
+                {STATUS_OPTIONS.map(s => (
+                  <SelectItem key={s} value={s}>
+                    <span className="flex items-center gap-2">
+                      <span className={`h-2 w-2 rounded-full ${STATUS_DOT[s] || 'bg-muted'}`} />
+                      {s}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter className="pt-3">
+            <Button variant="outline" onClick={() => setBulkStatusOpen(false)}>Cancelar</Button>
+            <Button
+              disabled={!bulkStatusTarget}
+              onClick={async () => {
+                setBulkStatusOpen(false);
+                await handleBulkStatusChange(bulkStatusTarget);
+                setBulkStatusTarget('');
+              }}
+            >
+              Aplicar para {sel.count} PV(s)
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* IMPORT CLIENTS DIALOG */}
       <ImportClientsDialog open={importClientsOpen} onOpenChange={setImportClientsOpen} />

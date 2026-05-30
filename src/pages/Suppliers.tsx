@@ -535,10 +535,35 @@ export default function Suppliers() {
                                   <CreditCard className="h-3 w-3" /> {s.payment_terms}
                                 </span>
                               )}
-                              {s.lead_time_days > 0 && (
-                                <span className="flex items-center gap-0.5">
-                                  <Clock className="h-3 w-3" /> {s.lead_time_days}d
+                              {/* Lead time: prioriza avg_lead_time_days (calculado) sobre lead_time_days (configurado).
+                                  Quando ambos existem, mostra ambos pra transparência. */}
+                              {(s.avg_lead_time_days != null || s.lead_time_days > 0) && (
+                                <span className="flex items-center gap-0.5" title={
+                                  s.avg_lead_time_days != null
+                                    ? `Real ${s.avg_lead_time_days}d · Configurado ${s.lead_time_days}d`
+                                    : `Configurado ${s.lead_time_days}d (sem OCs recebidas pra calcular real)`
+                                }>
+                                  <Clock className="h-3 w-3" />
+                                  {s.avg_lead_time_days != null
+                                    ? <><strong>{s.avg_lead_time_days}d</strong><span className="text-muted-foreground/60 ml-0.5">/{s.lead_time_days}d cfg</span></>
+                                    : <>{s.lead_time_days}d</>}
                                 </span>
+                              )}
+                              {s.on_time_rate != null && s.on_time_rate < 100 && (
+                                <span className={`flex items-center gap-0.5 ${s.on_time_rate < 70 ? 'text-destructive' : s.on_time_rate < 90 ? 'text-amber-600' : 'text-emerald-600'}`}
+                                  title="% de OCs recebidas no prazo prometido">
+                                  {s.on_time_rate}% no prazo
+                                </span>
+                              )}
+                              {s.homologation_status === 'em_homologacao' && (
+                                <Badge variant="outline" className="text-[10px] h-4 px-1.5 border-amber-500/40 text-amber-600">
+                                  Em homologação
+                                </Badge>
+                              )}
+                              {s.homologation_status === 'bloqueado' && (
+                                <Badge variant="destructive" className="text-[10px] h-4 px-1.5">
+                                  Bloqueado
+                                </Badge>
                               )}
                             </div>
                           </div>
