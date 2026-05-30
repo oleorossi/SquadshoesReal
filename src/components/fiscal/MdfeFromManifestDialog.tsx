@@ -36,12 +36,15 @@ export function MdfeFromManifestDialog({ open, onClose }: Props) {
 
   const gen = useMutation({
     mutationFn: async (manifestId: string) => {
-      const { error } = await supabase.rpc('mdfe_draft_from_manifest' as any, { p_manifest_id: manifestId });
+      const { data, error } = await supabase.rpc('mdfe_draft_from_manifest' as any, { p_manifest_id: manifestId });
       if (error) throw error;
+      return (data ?? {}) as { mdfe_id?: string; chaves_count?: number };
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['mdfe_emissions_list'] });
-      toast.success('Rascunho de MDF-e gerado a partir do romaneio.');
+      const n = res?.chaves_count ?? 0;
+      if (n > 0) toast.success(`Rascunho de MDF-e gerado — ${n} NF-e vinculada(s).`);
+      else toast.warning('Rascunho de MDF-e gerado, mas nenhuma NF-e autorizada foi encontrada nos PVs do romaneio.');
       onClose();
     },
     onError: (e: Error) => toast.error(`Erro: ${e.message}`),

@@ -71,7 +71,7 @@ export default function ApuracaoImpostos() {
 
       <div className="flex items-start gap-2 rounded-md bg-muted/40 border border-border px-3 py-2 text-xs text-muted-foreground">
         <Info className="size-4 mt-0.5 shrink-0" />
-        <span>Estimativa de apoio gerencial baseada nos <strong>perfis tributários por NCM</strong>. Os valores oficiais de imposto são os do XML emitido pelo provider. Itens sem perfil aparecem como "base sem perfil" — configure-os em <strong>Perfis Tributários</strong>.</span>
+        <span>Estimativa de apoio gerencial baseada nos <strong>perfis tributários por NCM</strong>. Os valores oficiais de imposto são os do XML emitido pelo provider. Itens sem perfil aparecem como "base sem perfil" — configure-os em <strong>Perfis Tributários</strong>. Obs.: o <strong>faturamento bruto</strong> é o total das NF-e (com impostos/frete/desconto); a <strong>base</strong> é o valor de mercadoria (preço × qtd, pré-imposto) — por isso os dois divergem.</span>
       </div>
 
       {!result ? (

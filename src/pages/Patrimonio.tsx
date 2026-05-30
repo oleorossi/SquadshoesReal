@@ -104,9 +104,10 @@ export default function Patrimonio() {
     setDialogOpen(true);
   }
   async function save() {
+    // mutateAsync rejeita em erro (toast no onError) — só fecha se resolver.
     if (editingId) await update.mutateAsync({ id: editingId, data: form });
     else await add.mutateAsync(form);
-    if (!update.isError && !add.isError) setDialogOpen(false);
+    setDialogOpen(false);
   }
   function openDispose(a: FixedAsset) {
     setDisposeAsset(a);
@@ -120,7 +121,7 @@ export default function Patrimonio() {
       disposal_value: parseFloat(disposeForm.disposal_value.replace(',', '.')) || 0,
       disposal_reason: disposeForm.disposal_reason,
     });
-    if (!dispose.isError) setDisposeAsset(null);
+    setDisposeAsset(null);
   }
 
   const saving = add.isPending || update.isPending;

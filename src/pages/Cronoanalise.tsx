@@ -132,9 +132,10 @@ export default function Cronoanalise() {
   }
 
   async function save() {
+    // mutateAsync rejeita em erro (toast no onError) — só fecha se resolver.
     if (editingId) await updateStudy.mutateAsync({ id: editingId, data: form });
     else await addStudy.mutateAsync(form);
-    if (!updateStudy.isError && !addStudy.isError) setDialogOpen(false);
+    setDialogOpen(false);
   }
 
   const saving = addStudy.isPending || updateStudy.isPending;

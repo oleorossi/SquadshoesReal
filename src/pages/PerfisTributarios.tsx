@@ -66,9 +66,10 @@ export default function PerfisTributarios() {
     setDialogOpen(true);
   }
   async function save() {
+    // mutateAsync rejeita em erro (toast no onError) — só fecha se resolver.
     if (editingId) await update.mutateAsync({ id: editingId, data: form });
     else await add.mutateAsync(form);
-    if (!update.isError && !add.isError) setDialogOpen(false);
+    setDialogOpen(false);
   }
   const saving = add.isPending || update.isPending;
   const set = (patch: Partial<TaxProfileFormData>) => setForm((f) => ({ ...f, ...patch }));
