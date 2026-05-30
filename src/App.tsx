@@ -968,6 +968,11 @@ const router = createBrowserRouter([
         lazy: () => import("./pages/ApuracaoImpostos").then(m => ({ Component: m.default })),
       },
       {
+        // Qualidade de estoque — quarentena/bloqueio/descarte + recall de lote
+        path: "estoque/qualidade",
+        lazy: () => import("./pages/EstoqueQualidade").then(m => ({ Component: m.default })),
+      },
+      {
         // Novidade A4 — relatório diário de produção (template do redesign)
         path: "relatorios/diario-producao",
         lazy: () => import("./pages/RelDiarioA4").then(m => ({ Component: m.default })),
