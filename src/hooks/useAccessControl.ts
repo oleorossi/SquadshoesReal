@@ -10,6 +10,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/conferencia-saida': 'expedicao',
   '/estoque/historico': 'estoque',
   '/estoque/qualidade': 'estoque',
+  '/estoque/inventario': 'estoque',
   '/compras/alcadas': 'financeiro',
   '/compras/inspecao': 'financeiro',
   '/references': 'produtos',

@@ -56,6 +56,7 @@ export const menuGroups = [
       { name: "Ajustes",          icon: Boxes,        path: "/ajuste-estoque" },
       { name: "Histórico",        icon: History,      path: "/estoque/historico" },
       { name: "Qualidade",        icon: ShieldCheck,  path: "/estoque/qualidade" },
+      { name: "Inventário ABC",   icon: BarChart3,    path: "/estoque/inventario" },
     ],
   },
   {
