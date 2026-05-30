@@ -1,6 +1,6 @@
 import AppLayout from "@/components/layout/AppLayout";
 import { useMemo, useState } from 'react';
- import { ShieldCheck, Warning as AlertTriangle, XCircle, CheckCircle as CheckCircle2, Clock, MagnifyingGlass as Search, Funnel as Filter, ClipboardText as ClipboardCheck } from '@phosphor-icons/react';
+ import { ShieldCheck, Warning as AlertTriangle, XCircle, CheckCircle as CheckCircle2, Clock, MagnifyingGlass as Search, Funnel as Filter, ClipboardText as ClipboardCheck, ChartBar, BookOpen } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,6 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
  import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
  import LotTestingTab from '@/components/quality/LotTestingTab';
+import { ParetoBySectorPanel } from '@/components/quality/ParetoBySectorPanel';
+import { DefectCatalogPanel } from '@/components/quality/DefectCatalogPanel';
 import { useAllQualityRecords, useResolveQualityRecord } from '@/hooks/useQualityRecords';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -65,7 +67,13 @@ export default function Quality() {
          <Tabs defaultValue="defects" className="space-y-5">
            <TabsList>
              <TabsTrigger value="defects" className="gap-2">
-               <AlertTriangle className="h-4 w-4" /> Ocorrências de Produção
+               <AlertTriangle className="h-4 w-4" /> Ocorrências
+             </TabsTrigger>
+             <TabsTrigger value="pareto" className="gap-2">
+               <ChartBar className="h-4 w-4" /> Pareto por setor
+             </TabsTrigger>
+             <TabsTrigger value="catalog" className="gap-2">
+               <BookOpen className="h-4 w-4" /> Catálogo de defeitos
              </TabsTrigger>
              <TabsTrigger value="batch-test" className="gap-2">
                <ClipboardCheck className="h-4 w-4" /> Testes de Lote
@@ -184,6 +192,14 @@ export default function Quality() {
              )}
            </TabsContent>
  
+           <TabsContent value="pareto">
+             <ParetoBySectorPanel />
+           </TabsContent>
+
+           <TabsContent value="catalog">
+             <DefectCatalogPanel />
+           </TabsContent>
+
            <TabsContent value="batch-test">
              <LotTestingTab />
            </TabsContent>
