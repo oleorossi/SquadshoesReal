@@ -75,6 +75,7 @@ const PCPDashboard = lazy(() => import("./pages/PCPDashboard"));
 const PickingListPage = lazy(() => import("./pages/PickingListPage"));
 const MrpPage = lazy(() => import("./pages/MrpPage"));
 const StockAdjustmentPage = lazy(() => import("./pages/StockAdjustmentPage"));
+const CycleCountsPage = lazy(() => import("./pages/CycleCountsPage"));
 const OrderFlowAudit = lazy(() => import("./pages/OrderFlowAudit"));
 const NavigationAudit = lazy(() => import("./pages/NavigationAudit"));
 const UnitAudit = lazy(() => import("./pages/UnitAudit"));
@@ -588,6 +589,10 @@ const router = createBrowserRouter([
       {
         path: "ajuste-estoque",
         element: <StockAdjustmentPage />,
+      },
+      {
+        path: "contagens-ciclo",
+        element: <CycleCountsPage />,
       },
       {
         // Legacy: /references → /fichas-tecnicas (página References foi removida)
