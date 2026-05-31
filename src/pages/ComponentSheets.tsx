@@ -39,7 +39,7 @@ const DIM_UNITS = ['mm', 'cm', 'm', 'm linear', 'dm²', 'cm²', 'm²'];
 const SIZE_GRADE_CATEGORIES = [
   { aliases: ['solado', 'sola'], label: 'Solado' },
   { aliases: ['palmilha', 'placa de palmilha', 'placa'], label: 'Palmilha' },
-  { aliases: ['forro', 'forração', 'forracao'], label: 'Forro' },
+  { aliases: ['forro', 'forração', 'forracao'], label: 'Forração' },
   { aliases: ['cabedal', 'napa', 'couro', 'napa soft', 'camurça'], label: 'Cabedal' },
 ];
 
