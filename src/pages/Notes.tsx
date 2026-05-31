@@ -12,6 +12,9 @@ import {
   Image as ImageIcon,
   SidebarSimple,
   Columns,
+  ListChecks,
+  Flag,
+  DotsThree as MoreHorizontal,
 } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -37,6 +40,15 @@ import {
   useUpsertFolder, useDeleteFolder, buildNoteTree,
   type Note, type NoteTreeNode,
 } from '@/hooks/useNotes';
+import {
+  useNoteTasks, useCreateNoteTask, useUpdateNoteTask, useDeleteNoteTask,
+  PRIORITY_LABEL, PRIORITY_COLOR,
+  type NoteTaskPriority,
+} from '@/hooks/useNoteTasks';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 
 const NO_FOLDER = '__none__';
 
@@ -108,7 +120,7 @@ export default function Notes() {
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null); // null = todas
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [mode, setMode] = useState<'edit' | 'split' | 'preview'>('edit');
+  const [mode, setMode] = useState<'edit' | 'split' | 'preview' | 'tasks'>('edit');
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [folderName, setFolderName] = useState('');
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
@@ -558,6 +570,16 @@ export default function Notes() {
                   >
                     <Eye className="h-3 w-3" /> Preview
                   </button>
+                  <button
+                    onClick={() => setMode('tasks')}
+                    className={cn(
+                      'px-2.5 py-1 rounded-sm text-xs font-bold uppercase tracking-wider gap-1 inline-flex items-center transition-colors',
+                      mode === 'tasks' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
+                    )}
+                    title="Lista de tarefas (auto-ordenadas por prioridade)"
+                  >
+                    <ListChecks className="h-3 w-3" /> Tarefas
+                  </button>
                 </div>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -573,7 +595,7 @@ export default function Notes() {
                 />
               </div>
 
-              {/* Toolbar markdown — visível em edit e split */}
+              {/* Toolbar markdown — visível só em edit e split (não em tasks/preview) */}
               {(mode === 'edit' || mode === 'split') && (
                 <div className="px-5 py-2 border-b border-foreground/10 flex items-center gap-1 flex-wrap bg-foreground/[0.02]">
                   {TOOLBAR.map((action) => {
@@ -684,6 +706,13 @@ export default function Notes() {
                         {draftContent || '*Nota vazia.*'}
                       </ReactMarkdown>
                     </article>
+                  </div>
+                )}
+
+                {/* Tarefas (visível só em tasks) */}
+                {mode === 'tasks' && selected && (
+                  <div className="overflow-auto px-8 py-6">
+                    <NoteTasksPanel noteId={selected.id} />
                   </div>
                 )}
               </div>
@@ -910,3 +939,216 @@ function NoteTreeRow({
     </>
   );
 }
+
+// ────────────────────────────────────────────────────────────────────────
+// NoteTasksPanel — Painel de tarefas estruturadas dentro da nota
+// Auto-ordenado por prioridade (alta → média → baixa); feitas vão pro fim.
+// ────────────────────────────────────────────────────────────────────────
+function NoteTasksPanel({ noteId }: { noteId: string }) {
+  const { data: tasks = [], isLoading } = useNoteTasks(noteId);
+  const createTask = useCreateNoteTask();
+  const updateTask = useUpdateNoteTask();
+  const deleteTask = useDeleteNoteTask();
+
+  const [newText, setNewText] = useState("");
+  const [newPriority, setNewPriority] = useState<NoteTaskPriority>("media");
+
+  const handleAdd = () => {
+    const text = newText.trim();
+    if (!text) return;
+    createTask.mutate(
+      { note_id: noteId, text, priority: newPriority },
+      { onSuccess: () => { setNewText(""); setNewPriority("media"); } },
+    );
+  };
+
+  const openTasks = tasks.filter(t => !t.done);
+  const doneTasks = tasks.filter(t => t.done);
+
+  return (
+    <div className="max-w-3xl mx-auto space-y-5">
+      {/* Header */}
+      <div className="flex items-end justify-between gap-3 pb-3 border-b border-foreground/10">
+        <div>
+          <p className="ed-eyebrow">Lista de Tarefas</p>
+          <h2 className="text-xl font-bold mt-1">
+            {openTasks.length} aberta{openTasks.length === 1 ? "" : "s"}
+            {doneTasks.length > 0 && (
+              <span className="text-muted-foreground font-normal text-sm ml-2">
+                · {doneTasks.length} concluída{doneTasks.length === 1 ? "" : "s"}
+              </span>
+            )}
+          </h2>
+        </div>
+      </div>
+
+      {/* Adicionar nova */}
+      <div className="rounded-sm border-[1.5px] border-foreground/10 bg-foreground/[0.02] p-3 space-y-2">
+        <Input
+          value={newText}
+          onChange={e => setNewText(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              handleAdd();
+            }
+          }}
+          placeholder="O que precisa ser feito? (Enter pra adicionar)"
+          className="h-9 bg-card"
+          autoFocus
+        />
+        <div className="flex items-center gap-2">
+          <span className="ed-eyebrow text-muted-foreground">Prioridade:</span>
+          <Select value={newPriority} onValueChange={v => setNewPriority(v as NoteTaskPriority)}>
+            <SelectTrigger className="h-8 w-32 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="alta">🔴 Alta</SelectItem>
+              <SelectItem value="media">🟡 Média</SelectItem>
+              <SelectItem value="baixa">⚪ Baixa</SelectItem>
+            </SelectContent>
+          </Select>
+          <div className="flex-1" />
+          <Button
+            size="sm"
+            onClick={handleAdd}
+            disabled={!newText.trim() || createTask.isPending}
+            className="gap-1.5 h-8"
+          >
+            <Plus className="h-3.5 w-3.5" /> Adicionar
+          </Button>
+        </div>
+      </div>
+
+      {/* Lista */}
+      {isLoading ? (
+        <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+      ) : tasks.length === 0 ? (
+        <p className="text-sm text-muted-foreground italic text-center py-8">
+          Nenhuma tarefa criada. Use o campo acima pra adicionar.
+        </p>
+      ) : (
+        <>
+          {/* Abertas */}
+          {openTasks.length > 0 && (
+            <div className="space-y-1.5">
+              {openTasks.map(task => (
+                <TaskRow
+                  key={task.id}
+                  task={task}
+                  onToggle={() => updateTask.mutate({ id: task.id, note_id: noteId, data: { done: !task.done } })}
+                  onChangePriority={(p) => updateTask.mutate({ id: task.id, note_id: noteId, data: { priority: p } })}
+                  onChangeText={(t) => updateTask.mutate({ id: task.id, note_id: noteId, data: { text: t } })}
+                  onDelete={() => deleteTask.mutate({ id: task.id, note_id: noteId })}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Concluídas */}
+          {doneTasks.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 pt-3">
+                <span className="ed-eyebrow text-muted-foreground">Concluídas</span>
+                <div className="flex-1 h-px bg-foreground/10" />
+                <span className="text-xs text-muted-foreground tabular-nums">{doneTasks.length}</span>
+              </div>
+              {doneTasks.map(task => (
+                <TaskRow
+                  key={task.id}
+                  task={task}
+                  onToggle={() => updateTask.mutate({ id: task.id, note_id: noteId, data: { done: !task.done } })}
+                  onChangePriority={(p) => updateTask.mutate({ id: task.id, note_id: noteId, data: { priority: p } })}
+                  onChangeText={(t) => updateTask.mutate({ id: task.id, note_id: noteId, data: { text: t } })}
+                  onDelete={() => deleteTask.mutate({ id: task.id, note_id: noteId })}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function TaskRow({ task, onToggle, onChangePriority, onChangeText, onDelete }: {
+  task: { id: string; text: string; priority: NoteTaskPriority; done: boolean };
+  onToggle: () => void;
+  onChangePriority: (p: NoteTaskPriority) => void;
+  onChangeText: (t: string) => void;
+  onDelete: () => void;
+}) {
+  const color = PRIORITY_COLOR[task.priority];
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(task.text);
+
+  return (
+    <div className={cn(
+      "group flex items-start gap-3 px-3 py-2.5 rounded-sm border border-foreground/10 bg-card transition-colors hover:bg-foreground/[0.02]",
+      task.done && "opacity-60",
+    )}>
+      {/* Checkbox */}
+      <Checkbox
+        checked={task.done}
+        onCheckedChange={onToggle}
+        className="mt-0.5 shrink-0"
+        aria-label={task.done ? "Desmarcar tarefa" : "Marcar como concluída"}
+      />
+
+      {/* Dot prioridade */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className={cn("h-2 w-2 rounded-full shrink-0 mt-2", color.dot)} aria-label={PRIORITY_LABEL[task.priority]} />
+        </TooltipTrigger>
+        <TooltipContent>Prioridade {PRIORITY_LABEL[task.priority]}</TooltipContent>
+      </Tooltip>
+
+      {/* Texto editável */}
+      <div className="flex-1 min-w-0">
+        {editing ? (
+          <Input
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onBlur={() => { if (draft.trim() && draft !== task.text) onChangeText(draft.trim()); setEditing(false); }}
+            onKeyDown={e => {
+              if (e.key === "Enter") { e.currentTarget.blur(); }
+              else if (e.key === "Escape") { setDraft(task.text); setEditing(false); }
+            }}
+            autoFocus
+            className="h-7 text-sm py-0 px-1"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className={cn(
+              "text-sm text-left w-full break-words",
+              task.done ? "line-through text-muted-foreground" : "text-foreground",
+            )}
+          >
+            {task.text}
+          </button>
+        )}
+      </div>
+
+      {/* Ações inline (aparecem no hover) */}
+      <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+        <Select value={task.priority} onValueChange={(v) => onChangePriority(v as NoteTaskPriority)}>
+          <SelectTrigger className="h-7 w-[88px] text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="alta">🔴 Alta</SelectItem>
+            <SelectItem value="media">🟡 Média</SelectItem>
+            <SelectItem value="baixa">⚪ Baixa</SelectItem>
+          </SelectContent>
+        </Select>
+        <button
+          onClick={() => { if (confirm("Excluir tarefa?")) onDelete(); }}
+          className="h-7 w-7 inline-flex items-center justify-center rounded-sm text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+          aria-label="Excluir tarefa"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
