@@ -33,6 +33,7 @@ interface SoleSpec {
   size: number;
   lining_consumption_dm2: number | null;
   insole_consumption_dm2: number | null;
+  insole_lining_consumption_dm2: number | null;
   fachete_lining_consumption_dm2: number | null;
 }
 
@@ -171,7 +172,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
       const next = { ...prev };
       for (const s of row.sizes) {
         next[s] = {
-          ...(next[s] || { size: s, lining_consumption_dm2: null, insole_consumption_dm2: null, fachete_lining_consumption_dm2: null }),
+          ...(next[s] || { size: s, lining_consumption_dm2: null, insole_consumption_dm2: null, insole_lining_consumption_dm2: null, fachete_lining_consumption_dm2: null }),
           [field]: numValue,
         };
       }
@@ -282,6 +283,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
         size: item.size,
         lining_consumption_dm2: item.lining_consumption_dm2,
         insole_consumption_dm2: item.insole_consumption_dm2,
+        insole_lining_consumption_dm2: item.insole_lining_consumption_dm2 ?? null,
         fachete_lining_consumption_dm2: item.fachete_lining_consumption_dm2 ?? null,
       };
     });
@@ -372,6 +374,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
         size: item.size,
         lining_consumption_dm2: item.lining_consumption_dm2,
         insole_consumption_dm2: item.insole_consumption_dm2,
+        insole_lining_consumption_dm2: item.insole_lining_consumption_dm2 ?? null,
         fachete_lining_consumption_dm2: item.fachete_lining_consumption_dm2 ?? null,
       };
     });
@@ -405,7 +408,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
     setSpecs((prev) => {
       const next: Record<number, SoleSpec> = {};
       presetSizes.forEach((s) => {
-        next[s] = prev[s] || { size: s, lining_consumption_dm2: null, insole_consumption_dm2: null, fachete_lining_consumption_dm2: null };
+        next[s] = prev[s] || { size: s, lining_consumption_dm2: null, insole_consumption_dm2: null, insole_lining_consumption_dm2: null, fachete_lining_consumption_dm2: null };
       });
       return next;
     });
@@ -419,7 +422,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
     setSizes(next);
     setSpecs((prev) => ({
       ...prev,
-      [n]: { size: n, lining_consumption_dm2: null, insole_consumption_dm2: null, fachete_lining_consumption_dm2: null },
+      [n]: { size: n, lining_consumption_dm2: null, insole_consumption_dm2: null, insole_lining_consumption_dm2: null, fachete_lining_consumption_dm2: null },
     }));
     setNewSize("");
   };
@@ -437,13 +440,13 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
   // novo modelo de displayRows (linhas conjugadas atômicas) — handleRowInputChange
   // já escreve em todos os sizes da linha em uma chamada.
 
-  const fillRemaining = (field: "lining_consumption_dm2" | "insole_consumption_dm2" | "fachete_lining_consumption_dm2") => {
+  const fillRemaining = (field: "lining_consumption_dm2" | "insole_consumption_dm2" | "insole_lining_consumption_dm2" | "fachete_lining_consumption_dm2") => {
     const firstValue = Object.values(specs).find((s) => s[field] !== null)?.[field];
     if (firstValue === undefined || firstValue === null) return;
     const next = { ...specs };
     sizes.forEach((size) => {
       if (!next[size] || next[size][field] === null) {
-        next[size] = { ...(next[size] || { size, lining_consumption_dm2: null, insole_consumption_dm2: null, fachete_lining_consumption_dm2: null }), [field]: firstValue };
+        next[size] = { ...(next[size] || { size, lining_consumption_dm2: null, insole_consumption_dm2: null, insole_lining_consumption_dm2: null, fachete_lining_consumption_dm2: null }), [field]: firstValue };
       }
     });
     setSpecs(next);
@@ -499,6 +502,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
         size,
         lining_consumption_dm2: specs[size]?.lining_consumption_dm2 ?? null,
         insole_consumption_dm2: specs[size]?.insole_consumption_dm2 ?? null,
+        insole_lining_consumption_dm2: specs[size]?.insole_lining_consumption_dm2 ?? null,
         fachete_lining_consumption_dm2: specs[size]?.fachete_lining_consumption_dm2 ?? null,
         reference_sole_id: referenceInfo?.id || null,
         reference_date: referenceInfo ? new Date().toISOString() : null
@@ -528,6 +532,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
             size,
             lining_consumption_dm2: specs[size]?.lining_consumption_dm2 ?? null,
             insole_consumption_dm2: specs[size]?.insole_consumption_dm2 ?? null,
+            insole_lining_consumption_dm2: specs[size]?.insole_lining_consumption_dm2 ?? null,
             fachete_lining_consumption_dm2: specs[size]?.fachete_lining_consumption_dm2 ?? null,
             reference_sole_id: referenceInfo?.id || null,
             reference_date: referenceInfo ? new Date().toISOString() : null
@@ -968,6 +973,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                     };
                     replicate('lining_consumption_dm2');
                     replicate('insole_consumption_dm2');
+                    replicate('insole_lining_consumption_dm2');
                     if (isFachetado) replicate('fachete_lining_consumption_dm2');
                     toast.success('Valor do primeiro tamanho replicado para todas as numerações.');
                   }}
@@ -1004,8 +1010,16 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                     </TableHead>
                     <TableHead>
                       <div className="flex items-center justify-between">
-                        <span>Palmilha (dm²/par)</span>
+                        <span>Palmilha · Placa (dm²/par)</span>
                         <Button variant="ghost" size="icon" className="h-6 w-6" title="Replicar primeiro valor para tamanhos vazios" onClick={() => fillRemaining("insole_consumption_dm2")}>
+                          <RefreshCw className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </TableHead>
+                    <TableHead>
+                      <div className="flex items-center justify-between">
+                        <span title="Área da napa que forra a palmilha (usa a napa do Forro)">Palmilha · Forração (dm²/par)</span>
+                        <Button variant="ghost" size="icon" className="h-6 w-6" title="Replicar primeiro valor para tamanhos vazios" onClick={() => fillRemaining("insole_lining_consumption_dm2")}>
                           <RefreshCw className="h-3 w-3" />
                         </Button>
                       </div>
@@ -1070,6 +1084,16 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                           placeholder="0.00"
                         />
                       </TableCell>
+                      <TableCell className="p-1.5">
+                        <Input
+                          type="text"
+                          inputMode="decimal"
+                          className="h-8 text-right font-mono"
+                          value={getRowValue(row, "insole_lining_consumption_dm2")?.toString() ?? ""}
+                          onChange={(e) => handleRowInputChange(row, "insole_lining_consumption_dm2", e.target.value)}
+                          placeholder="0.00"
+                        />
+                      </TableCell>
                       {isFachetado && (
                         <TableCell className="bg-amber-500/5 p-1.5">
                           <Input
@@ -1107,7 +1131,8 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                 <tr className="border-b bg-muted/50">
                   <th className="text-center py-2">TAM</th>
                   <th className="text-right py-2 px-4">Forração (dm²)</th>
-                  <th className="text-right py-2 px-4">Palmilha (dm²)</th>
+                  <th className="text-right py-2 px-4">Palmilha · Placa (dm²)</th>
+                  <th className="text-right py-2 px-4">Palmilha · Forração (dm²)</th>
                   {isFachetado && <th className="text-right py-2 px-4">Fachete (dm²)</th>}
                 </tr>
               </thead>
@@ -1120,6 +1145,9 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                     </td>
                     <td className="text-right py-2 px-4 font-mono">
                       {spec.insole_consumption_dm2 !== null ? safeToFixed(spec.insole_consumption_dm2, 2) : "-"}
+                    </td>
+                    <td className="text-right py-2 px-4 font-mono">
+                      {spec.insole_lining_consumption_dm2 != null ? safeToFixed(spec.insole_lining_consumption_dm2, 2) : "-"}
                     </td>
                     {isFachetado && (
                       <td className="text-right py-2 px-4 font-mono">

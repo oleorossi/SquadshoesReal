@@ -113,6 +113,9 @@ export type SheetFormData = {
   default_silk_url: string;
   lining_consumption_per_size: Record<string, number>;
   insole_consumption_per_size: Record<string, number>;
+  // Forração da palmilha (napa do forro que cobre a placa) — área própria por número, vinda do solado
+  insole_lining_consumption: number;
+  insole_lining_consumption_per_size: Record<string, number>;
   upper_consumption_per_size: Record<string, number>;
   // Construction & routing complexity
   construction_type: 'corte_fio' | 'corte_costura' | 'tiras' | 'misto';
@@ -166,6 +169,8 @@ export const emptySheetForm: SheetFormData = {
   default_silk_url: '',
   lining_consumption_per_size: {},
   insole_consumption_per_size: {},
+  insole_lining_consumption: 0,
+  insole_lining_consumption_per_size: {},
   upper_consumption_per_size: {},
   construction_type: 'corte_costura',
   requires_cutting: true,

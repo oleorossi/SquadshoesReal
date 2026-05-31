@@ -1556,20 +1556,24 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       // 1. Try sole_technical_specs first (direct per-sole specs)
       const { data: specs } = await supabase
         .from('sole_technical_specs')
-        .select('size, lining_consumption_dm2, insole_consumption_dm2')
+        .select('size, lining_consumption_dm2, insole_consumption_dm2, insole_lining_consumption_dm2')
         .eq('sole_id', soleProductId);
 
-      const hasDirectSpecs = specs && specs.some(s => s.lining_consumption_dm2 !== null || s.insole_consumption_dm2 !== null);
+      const hasDirectSpecs = specs && specs.some(s => s.lining_consumption_dm2 !== null || s.insole_consumption_dm2 !== null || (s as any).insole_lining_consumption_dm2 !== null);
 
       if (hasDirectSpecs) {
         const liningMap: Record<string, number> = {};
         const insoleMap: Record<string, number> = {};
+        const insoleLiningMap: Record<string, number> = {};
         specs!.forEach(s => {
           if (s.lining_consumption_dm2 !== null) liningMap[String(s.size)] = Number(s.lining_consumption_dm2);
           if (s.insole_consumption_dm2 !== null) insoleMap[String(s.size)] = Number(s.insole_consumption_dm2);
+          const il = (s as any).insole_lining_consumption_dm2;
+          if (il !== null && il !== undefined) insoleLiningMap[String(s.size)] = Number(il);
         });
         const liningVals = Object.values(liningMap);
         const insoleVals = Object.values(insoleMap);
+        const insoleLiningVals = Object.values(insoleLiningMap);
         if (liningVals.length > 0) {
           updateField('lining_consumption', Number((liningVals.reduce((a, b) => a + b, 0) / liningVals.length).toFixed(4)));
           updateField('lining_consumption_per_size', liningMap);
@@ -1579,6 +1583,11 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
           updateField('insole_consumption', Number((insoleVals.reduce((a, b) => a + b, 0) / insoleVals.length).toFixed(4)));
           updateField('insole_consumption_per_size', insoleMap);
           flashField('insole_consumption_per_size');
+        }
+        if (insoleLiningVals.length > 0) {
+          updateField('insole_lining_consumption', Number((insoleLiningVals.reduce((a, b) => a + b, 0) / insoleLiningVals.length).toFixed(4)));
+          updateField('insole_lining_consumption_per_size', insoleLiningMap);
+          flashField('insole_lining_consumption_per_size');
         }
         toast.success("Consumos técnicos do solado aplicados com sucesso!");
         return;
