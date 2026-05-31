@@ -73,10 +73,18 @@ export function SoleStandardItemsPanel({ soleProductId }: Props) {
     category: string;
     variantCount: number;
     representative: any;
+    isStd: boolean; // categoria "padrão" (cola/palmilha/forro…) — só pra ordenar no topo
+  };
+
+  // Qualquer produto pode ser item de solado, EXCETO os próprios solados.
+  // (Antes filtrava por isStandardItem e deixava produtos de fora — pedido user.)
+  const isSelectableItem = (p: any) => {
+    const cat = (p?.category || '').toLowerCase();
+    return !(cat.includes('solado') || cat === 'sola');
   };
 
   const standardCatalog = useMemo<StandardEntry[]>(() => {
-    const items = (products as any[]).filter(isStandardItem);
+    const items = (products as any[]).filter(isSelectableItem);
     const map = new Map<string, any[]>();
     items.forEach((p) => {
       // Regra global: agrupar SEMPRE por nome normalizado (sem cor).
@@ -98,15 +106,19 @@ export function SoleStandardItemsPanel({ soleProductId }: Props) {
         category: rep.category || '',
         variantCount: sorted.length,
         representative: rep,
+        isStd: isStandardItem(rep),
       });
     });
-    return entries.sort((a, b) => a.displayName.localeCompare(b.displayName, 'pt-BR'));
+    // Itens "padrão" (palmilha, forração, cola…) primeiro; depois alfabético.
+    return entries.sort((a, b) =>
+      (a.isStd === b.isStd) ? a.displayName.localeCompare(b.displayName, 'pt-BR') : (a.isStd ? -1 : 1)
+    );
   }, [products]);
 
   // Mapa: id de qualquer variante -> entry (resolve rows persistidas)
   const entryByAnyId = useMemo(() => {
     const map = new Map<string, StandardEntry>();
-    const items = (products as any[]).filter(isStandardItem);
+    const items = (products as any[]).filter(isSelectableItem);
     items.forEach((p) => {
       const key = productGroupingKey(p.name || '');
       const entry = standardCatalog.find((e) => e.groupKey === key);
@@ -239,10 +251,13 @@ export function SoleStandardItemsPanel({ soleProductId }: Props) {
            category: rep.category || '',
            variantCount: sorted.length,
            representative: rep,
+           isStd: isStandardItem(rep),
          });
        }
      });
-     return entries.sort((a, b) => a.displayName.localeCompare(b.displayName, 'pt-BR'));
+     return entries.sort((a, b) =>
+       (a.isStd === b.isStd) ? a.displayName.localeCompare(b.displayName, 'pt-BR') : (a.isStd ? -1 : 1)
+     );
    }, [standardCatalog, drafts, searchTerm, products]);
 
   // Resolver entry destacada e scrollar até ela quando aparecer.
