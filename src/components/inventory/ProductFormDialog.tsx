@@ -33,7 +33,7 @@ import { toast } from 'sonner';
 import { X, Stack as Layers, ArrowsLeftRight as ArrowRightLeft, Footprints, Cube as Box, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import React from 'react';
-// SoleSizeConjugationsEditor removido em 2026-05-31 — feature deletada.
+import { SoleSizeConjugationsEditor } from './SoleSizeConjugationsEditor';
 import { useSoleConjugations } from '@/hooks/useSoleConjugations';
 
 // Constantes vazias estáveis pra evitar loop de re-render quando hooks
@@ -1393,11 +1393,22 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
               </div>
             )}
 
-            {/* SoleSizeConjugationsEditor removido em 2026-05-31 */}
+            {hasGrade && (
+              <div className="col-span-2 p-3 rounded-lg border bg-muted/30">
+                <SoleSizeConjugationsEditor
+                  soleGroupId={form.group_id}
+                  sizeFrom={sizeFrom}
+                  sizeTo={sizeTo}
+                />
+              </div>
+            )}
 
             {hasGrade && sizeFrom != null && sizeTo != null && sizeTo >= sizeFrom && (
               <div className="col-span-2">
                 <Label className="text-xs font-semibold">Grade de Numeração (pares por tamanho)</Label>
+                {soleConjugations.length > 0 && (
+                  <p className="text-xs text-primary mt-1 mb-1">Numerações conjugadas ativas — grade usa chaves conjugadas</p>
+                )}
                 <div className={`grid gap-2 mt-2`} style={{ gridTemplateColumns: `repeat(${gradeSizes.length}, minmax(0, 1fr))` }}>
                   {gradeSizes.map(size => (
                     <div key={size} className="text-center">

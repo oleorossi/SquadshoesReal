@@ -175,10 +175,19 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     staleTime: 5 * 60_000,
   });
 
-  // Feature de Numerações Conjugadas removida em 2026-05-31.
-  // soleConjugations vira sempre array vazio — callers se mantém funcionais
-  // (fallback pra tamanhos individuais).
-  const soleConjugations: Array<{ size_key: string; sizes: number[]; display_order: number }> = [];
+  const { data: soleConjugations = [] } = useQuery({
+    queryKey: ['sole_size_conjugations', sheetSpecs?.sole_group_id],
+    enabled: !!sheetSpecs?.sole_group_id,
+    queryFn: async () => {
+      const { data } = await (supabase as any)
+        .from('sole_size_conjugations')
+        .select('size_key, sizes, display_order')
+        .eq('sole_group_id', sheetSpecs!.sole_group_id!)
+        .order('display_order');
+      return (data || []) as Array<{ size_key: string; sizes: number[]; display_order: number }>;
+    },
+    staleTime: 5 * 60_000,
+  });
 
   // Grade size list — RANGE vem do SOLADO (fonte da verdade física).
   //

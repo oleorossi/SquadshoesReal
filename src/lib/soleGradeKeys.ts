@@ -1,30 +1,66 @@
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+
 /**
- * Helper de keys de grade de solado.
+ * Helper compartilhado pra montar a lista de keys que devem aparecer numa
+ * grade de tamanhos quando o solado pode ter CONJUGAÇÕES (ex: 23/24 = 1 par
+ * único). Quando o solado tem conjugações cadastradas em
+ * sole_size_conjugations, os tamanhos individuais que estão dentro de uma
+ * conjugação são SUBSTITUÍDOS pelo key conjugado.
  *
- * Histórico:
- *   - 19/05/2026: criado pra suportar conjugações de numeração (33/34 = 1 par).
- *   - 31/05/2026: feature de conjugação REMOVIDA por decisão do user. Tabela
- *     sole_size_conjugations dropada; estoque conjugado migrado pra
- *     tamanhos individuais via split 50/50.
+ * Origem: 19/05/2026 — user reportou que a grade de "Consumo de Cabedal por
+ * Numeração" só mostrava tamanhos individuais, mesmo quando o solado tinha
+ * conjugações cadastradas (gerando consumo zero pros conjugados em produção).
  *
- * API mantida pra não quebrar callers — retorna sempre `sizes.map(String)`
- * direto. Sem query no DB.
+ * Já estava implementado em SaleOrderItemForm.tsx — extraído pra util pra
+ * reuso na ficha técnica (cabedal/forro/palmilha/fachete) sem duplicação.
  */
 
-/** Faixa numérica → keys individuais (sem conjugação). */
+type Conjugation = { size_key: string; sizes: number[]; display_order?: number };
+
+/** Faixa numérica → keys com conjugações aplicadas. */
 export function buildDisplayKeysWithConjugations(opts: {
   sizes: number[];
-  /** @deprecated parâmetro ignorado — conjugação removida 31/05/2026. */
-  conjugations?: unknown;
+  conjugations: Conjugation[];
 }): string[] {
-  return opts.sizes.map(String);
+  const { sizes, conjugations } = opts;
+  if (!conjugations || conjugations.length === 0) return sizes.map(String);
+
+  const result: string[] = [];
+  const added = new Set<string>();
+  for (const s of sizes) {
+    const conj = conjugations.find(c => c.sizes.includes(s));
+    if (conj) {
+      if (!added.has(conj.size_key)) {
+        result.push(conj.size_key);
+        added.add(conj.size_key);
+      }
+    } else {
+      result.push(String(s));
+    }
+  }
+  return result;
 }
 
-/** Hook React — retorna lista de keys (1:1 com sizes). Sem query DB. */
+/** Hook React: carrega conjugações do solado e retorna lista pronta. */
 export function useDisplaySizeKeys(opts: {
   sizes: number[];
-  /** @deprecated parâmetro ignorado — conjugação removida 31/05/2026. */
   soleGroupId?: string | null;
 }): string[] {
-  return opts.sizes.map(String);
+  const { sizes, soleGroupId } = opts;
+  const { data: conjugations = [] } = useQuery({
+    queryKey: ['sole_size_conjugations', soleGroupId || null],
+    enabled: !!soleGroupId,
+    queryFn: async () => {
+      if (!soleGroupId) return [] as Conjugation[];
+      const { data } = await (supabase as any)
+        .from('sole_size_conjugations')
+        .select('size_key, sizes, display_order')
+        .eq('sole_group_id', soleGroupId)
+        .order('display_order');
+      return (data || []) as Conjugation[];
+    },
+    staleTime: 5 * 60_000,
+  });
+  return buildDisplayKeysWithConjugations({ sizes, conjugations });
 }
