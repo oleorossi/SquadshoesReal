@@ -10,6 +10,8 @@ import {
   CaretRight as ChevronRight, CaretDown as ChevronDown,
   DotsThreeVertical as MoreVertical,
   Image as ImageIcon,
+  SidebarSimple,
+  Columns,
 } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -106,11 +108,23 @@ export default function Notes() {
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null); // null = todas
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [mode, setMode] = useState<'edit' | 'preview'>('edit');
+  const [mode, setMode] = useState<'edit' | 'split' | 'preview'>('edit');
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [folderName, setFolderName] = useState('');
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
   const [draggingNoteId, setDraggingNoteId] = useState<string | null>(null);
+  // Sidebar collapsed = só editor visível (modo "focar na nota").
+  // Persistido em localStorage pra preservar entre sessões.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return localStorage.getItem('notes-sidebar-collapsed') === 'true'; } catch { return false; }
+  });
+  const toggleSidebar = () => {
+    setSidebarCollapsed(prev => {
+      const next = !prev;
+      try { localStorage.setItem('notes-sidebar-collapsed', String(next)); } catch {}
+      return next;
+    });
+  };
 
   const [draftTitle, setDraftTitle] = useState('');
   const [draftContent, setDraftContent] = useState('');
@@ -369,7 +383,8 @@ export default function Notes() {
 
       <div className="grid grid-cols-12 gap-0 surface-sharp overflow-hidden" style={{ minHeight: 'calc(100vh - 220px)' }}>
 
-        {/* ═══════════════ COL 1 · PASTAS ═══════════════ */}
+        {/* ═══════════════ COL 1 · PASTAS (esconde quando sidebar collapsed) ═══════════════ */}
+        {!sidebarCollapsed && (
         <aside
           className="col-span-12 md:col-span-2 border-r border-foreground/10 bg-foreground/[0.015]"
           onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
@@ -415,8 +430,10 @@ export default function Notes() {
             ))}
           </div>
         </aside>
+        )}
 
-        {/* ═══════════════ COL 2 · TREE DE NOTAS ═══════════════ */}
+        {/* ═══════════════ COL 2 · TREE DE NOTAS (esconde quando sidebar collapsed) ═══════════════ */}
+        {!sidebarCollapsed && (
         <aside className="col-span-12 md:col-span-3 border-r border-foreground/10 flex flex-col">
           <div className="p-3 border-b border-foreground/10 space-y-2.5">
             <div className="relative">
@@ -472,9 +489,13 @@ export default function Notes() {
             )}
           </div>
         </aside>
+        )}
 
-        {/* ═══════════════ COL 3 · EDITOR ═══════════════ */}
-        <main className="col-span-12 md:col-span-7 flex flex-col">
+        {/* ═══════════════ COL 3 · EDITOR (expande pra 12 quando sidebar collapsed) ═══════════════ */}
+        <main className={cn(
+          'col-span-12 flex flex-col',
+          sidebarCollapsed ? 'md:col-span-12' : 'md:col-span-7',
+        )}>
           {!selected ? (
             <div className="flex-1 flex items-center justify-center">
               <EmptyState
@@ -487,6 +508,21 @@ export default function Notes() {
             <>
               {/* Toolbar superior — título + modo + ações de página */}
               <div className="px-5 py-3 border-b border-foreground/10 flex items-center gap-2 flex-wrap">
+                {/* Botão toggle sidebar — esconde pastas + tree pra focar na nota */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0"
+                      onClick={toggleSidebar}
+                      aria-label={sidebarCollapsed ? 'Mostrar menu' : 'Esconder menu'}
+                    >
+                      <SidebarSimple className={cn('h-4 w-4', sidebarCollapsed && 'rotate-180')} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{sidebarCollapsed ? 'Mostrar pastas e árvore' : 'Focar na nota (esconder menu)'}</TooltipContent>
+                </Tooltip>
                 <Input
                   value={draftTitle}
                   onChange={e => { setDraftTitle(e.target.value); scheduleSave({ title: e.target.value }); }}
@@ -502,6 +538,16 @@ export default function Notes() {
                     )}
                   >
                     <Code className="h-3 w-3" /> Edit
+                  </button>
+                  <button
+                    onClick={() => setMode('split')}
+                    className={cn(
+                      'px-2.5 py-1 rounded-sm text-xs font-bold uppercase tracking-wider gap-1 inline-flex items-center transition-colors',
+                      mode === 'split' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
+                    )}
+                    title="Editor + preview lado-a-lado"
+                  >
+                    <Columns className="h-3 w-3" /> Split
                   </button>
                   <button
                     onClick={() => setMode('preview')}
@@ -527,8 +573,8 @@ export default function Notes() {
                 />
               </div>
 
-              {/* Toolbar markdown */}
-              {mode === 'edit' && (
+              {/* Toolbar markdown — visível em edit e split */}
+              {(mode === 'edit' || mode === 'split') && (
                 <div className="px-5 py-2 border-b border-foreground/10 flex items-center gap-1 flex-wrap bg-foreground/[0.02]">
                   {TOOLBAR.map((action) => {
                     const Icon = action.icon;
@@ -599,10 +645,14 @@ export default function Notes() {
                 className="hidden"
               />
 
-              {/* Conteúdo: editor ou preview */}
-              <div className="flex-1 overflow-auto px-8 py-6 relative">
-                {mode === 'edit' ? (
-                  <>
+              {/* Conteúdo: editor, split (lado-a-lado) ou preview */}
+              <div className={cn(
+                'flex-1 overflow-hidden relative',
+                mode === 'split' ? 'grid grid-cols-2 divide-x divide-foreground/10' : '',
+              )}>
+                {/* Editor (visível em edit e split) */}
+                {(mode === 'edit' || mode === 'split') && (
+                  <div className="relative overflow-auto px-8 py-6">
                     <Textarea
                       ref={editorRef}
                       value={draftContent}
@@ -615,7 +665,6 @@ export default function Notes() {
                       placeholder="Comece a escrever... (arraste imagens ou cole com ⌘V)"
                       className="min-h-full font-mono text-sm leading-relaxed resize-none border-0 px-0 focus-visible:ring-0 bg-transparent"
                     />
-                    {/* Overlay visual durante drag de arquivo sobre o editor */}
                     {imageDropTarget && (
                       <div className="absolute inset-4 pointer-events-none border-2 border-dashed border-primary bg-primary/5 rounded-sm flex items-center justify-center">
                         <div className="text-center">
@@ -624,13 +673,18 @@ export default function Notes() {
                         </div>
                       </div>
                     )}
-                  </>
-                ) : (
-                  <article className="note-markdown prose-sm max-w-none">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {draftContent || '*Nota vazia.*'}
-                    </ReactMarkdown>
-                  </article>
+                  </div>
+                )}
+
+                {/* Preview (visível em preview e split) */}
+                {(mode === 'preview' || mode === 'split') && (
+                  <div className="overflow-auto px-8 py-6 bg-foreground/[0.015]">
+                    <article className="note-markdown prose-sm max-w-none">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {draftContent || '*Nota vazia.*'}
+                      </ReactMarkdown>
+                    </article>
+                  </div>
                 )}
               </div>
             </>
