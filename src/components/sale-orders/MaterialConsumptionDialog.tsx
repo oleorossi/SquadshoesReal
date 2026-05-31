@@ -111,37 +111,30 @@ const addConsumptionRow = (map: Map<string, ConsumptionRow>, row: ConsumptionRow
  * colorida por disponibilidade: verde = estoque do nº cobre o necessário,
  * vermelho = falta. Pedido user 2026-05-30.
  */
+// Ordena numerações (dígito ou conjugada "33/34") pelo primeiro número.
+const sizeSortKey = (s: string) => { const n = parseInt(s, 10); return Number.isFinite(n) ? n : 9999; };
+
+// Estoque da COLUNA (numeração da grade, possivelmente conjugada "33/34"):
+// direto se a chave existe no stock_grade; senão soma os números-membro.
+const haveForCol = (stock: Record<string, number> | undefined, col: string): number => {
+  if (!stock) return 0;
+  if (stock[col] != null) return Number(stock[col]) || 0;
+  const members = col.split(/[/-]/).map((x) => x.trim());
+  if (members.length > 1) return members.reduce((s, m) => s + (Number(stock[m]) || 0), 0);
+  return 0;
+};
+
 function SoleMatrix({ rows }: { rows: ConsumptionRow[] }) {
   const sizes = useMemo(() => {
     const set = new Set<string>();
     for (const r of rows) for (const s of Object.keys(r.sizeBreakdown || {})) set.add(s);
-    return Array.from(set).sort((a, b) => Number(a) - Number(b));
+    return Array.from(set).sort((a, b) => sizeSortKey(a) - sizeSortKey(b));
   }, [rows]);
   const totalsBySize = useMemo(() => {
     const m: Record<string, number> = {};
     for (const r of rows) for (const [s, q] of Object.entries(r.sizeBreakdown || {})) m[s] = (m[s] || 0) + (Number(q) || 0);
     return m;
   }, [rows]);
-
-  // Estoque efetivo por número: chaves diretas + baldes conjugados ("33/34")
-  // DISTRIBUÍDOS entre os números que cobrem (proporcional à necessidade), pra
-  // não contar o mesmo balde duas vezes em números diferentes.
-  const effectiveStock = (stock: Record<string, number> | undefined, needs: Record<string, number>): Record<string, number> => {
-    const eff: Record<string, number> = {};
-    if (!stock) return eff;
-    for (const [k, v] of Object.entries(stock)) {
-      if (!/[/-]/.test(k)) { eff[k] = (eff[k] || 0) + v; continue; }
-      const members = k.split(/[/-]/).map((x) => x.trim());
-      const needy = members.filter((m) => (needs[m] || 0) > 0);
-      const targets = needy.length ? needy : members;
-      const totalNeed = targets.reduce((s, m) => s + (needs[m] || 0), 0);
-      for (const m of targets) {
-        const share = totalNeed > 0 ? v * ((needs[m] || 0) / totalNeed) : v / targets.length;
-        eff[m] = (eff[m] || 0) + share;
-      }
-    }
-    return eff;
-  };
 
   // Fallback: solado sem breakdown por numeração — tabela simples por cor,
   // colorida pelo total (soma do stock_grade ≥ total necessário).
@@ -182,23 +175,20 @@ function SoleMatrix({ rows }: { rows: ConsumptionRow[] }) {
       <Table>
         <TableHeader>
           <TableRow className="bg-muted/50">
-            <TableHead>Solado</TableHead>
             <TableHead>Cor</TableHead>
-            {sizes.map((s) => <TableHead key={s} className="text-center px-2">Nº {s}</TableHead>)}
+            {sizes.map((s) => <TableHead key={s} className="text-center px-2 whitespace-nowrap">{s}</TableHead>)}
             <TableHead className="text-right">Total</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {rows.map((r, i) => {
             const total = Object.values(r.sizeBreakdown || {}).reduce((s, v) => s + (Number(v) || 0), 0) || r.totalQuantity;
-            const eff = effectiveStock(r.soleSizeStock, r.sizeBreakdown || {});
             return (
               <TableRow key={i}>
-                <TableCell className="font-medium whitespace-nowrap">{r.groupName}</TableCell>
                 <TableCell><Badge variant="outline" className="text-xs">{r.color}</Badge></TableCell>
                 {sizes.map((s) => {
                   const need = r.sizeBreakdown?.[s] || 0;
-                  const have = eff[s] || 0;
+                  const have = haveForCol(r.soleSizeStock, s);
                   if (need <= 0) return <TableCell key={s} className="text-center text-muted-foreground">·</TableCell>;
                   const ok = have >= need;
                   return (
@@ -216,12 +206,38 @@ function SoleMatrix({ rows }: { rows: ConsumptionRow[] }) {
             );
           })}
           <TableRow className="bg-muted/40 font-semibold">
-            <TableCell colSpan={2}>Total por numeração</TableCell>
+            <TableCell>Total por numeração</TableCell>
             {sizes.map((s) => <TableCell key={s} className="text-center font-mono tabular-nums">{totalsBySize[s] || 0}</TableCell>)}
             <TableCell className="text-right font-mono">{Object.values(totalsBySize).reduce((s, v) => s + v, 0)} <span className="text-[10px] text-muted-foreground">par</span></TableCell>
           </TableRow>
         </TableBody>
       </Table>
+    </div>
+  );
+}
+
+/**
+ * Seção Solado: uma MATRIZ POR TIPO DE SOLADO (separadas). Ex.: solado 01 e 238 no
+ * mesmo PV/OC aparecem em tabelas distintas, cada uma com sua própria numeração
+ * (conjugada ou individual) × cor. Pedido user 2026-05-30.
+ */
+function SoleSection({ rows }: { rows: ConsumptionRow[] }) {
+  const bySole = useMemo(() => {
+    const m = new Map<string, ConsumptionRow[]>();
+    for (const r of rows) { const k = r.groupName || '—'; if (!m.has(k)) m.set(k, []); m.get(k)!.push(r); }
+    return Array.from(m.entries()).sort((a, b) => a[0].localeCompare(b[0], 'pt-BR'));
+  }, [rows]);
+  return (
+    <div className="space-y-3">
+      {bySole.map(([sole, soleRows]) => (
+        <div key={sole} className="space-y-1 keep-together">
+          <div className="text-xs font-semibold flex items-center gap-2">
+            <span className="inline-block rounded bg-muted px-2 py-0.5 text-foreground">Solado {sole}</span>
+            <span className="text-muted-foreground font-normal">{soleRows.length} cor(es)</span>
+          </div>
+          <SoleMatrix rows={soleRows} />
+        </div>
+      ))}
     </div>
   );
 }
@@ -550,10 +566,14 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
         const grade = (item as any).grade as Record<string, number> | null | undefined;
         const scaledBreakdown: Record<string, number> = {};
         if (grade && typeof grade === 'object') {
-          const baseSum = Object.values(grade).reduce((s, v) => s + (Number(v) || 0), 0);
+          // Mantém numerações conjugadas (ex: "33/34", "39/40") — só descarta meta
+          // (_size_from/_size_to). Antes filtrava só dígitos puros e SUMIA com as
+          // conjugadas, deixando a matriz vazia pra solados conjugados (ex: 238).
+          const isSize = (k: string) => !k.startsWith('_');
+          const baseSum = Object.entries(grade).reduce((s, [k, v]) => isSize(k) ? s + (Number(v) || 0) : s, 0);
           const multiplier = baseSum > 0 ? itemQuantity / baseSum : 0;
           for (const [size, qty] of Object.entries(grade)) {
-            if (!/^\d+$/.test(size)) continue;
+            if (!isSize(size)) continue;
             const scaled = Math.round((Number(qty) || 0) * multiplier);
             if (scaled > 0) scaledBreakdown[size] = scaled;
           }
@@ -943,7 +963,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                   <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">{componentType}</h3>
                 )}
                 {componentType === 'Solado'
-                  ? <SoleMatrix rows={componentRows} />
+                  ? <SoleSection rows={componentRows} />
                   : (
                  <div className="rounded-lg border overflow-hidden overflow-x-auto">
                    <Table>
