@@ -9,7 +9,10 @@ import {
   Link as LinkIcon, Code as CodeIcon, Quotes,
   CaretRight as ChevronRight, CaretDown as ChevronDown,
   DotsThreeVertical as MoreVertical,
+  Image as ImageIcon,
 } from '@phosphor-icons/react';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -111,8 +114,11 @@ export default function Notes() {
 
   const [draftTitle, setDraftTitle] = useState('');
   const [draftContent, setDraftContent] = useState('');
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [imageDropTarget, setImageDropTarget] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const selected = useMemo(() => notes.find(n => n.id === selectedId) || null, [notes, selectedId]);
 
@@ -185,6 +191,122 @@ export default function Notes() {
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
+  };
+
+  // ── Upload de imagem (3 caminhos: botão, drag-drop, paste) ──
+  const uploadImageFiles = useCallback(async (files: FileList | File[]) => {
+    const arr = Array.from(files).filter(f => f.type.startsWith('image/'));
+    if (arr.length === 0) return;
+    if (!selectedId) {
+      toast.error('Selecione ou crie uma nota antes de enviar imagem');
+      return;
+    }
+
+    setUploadingImage(true);
+    try {
+      const inserts: string[] = [];
+      for (const file of arr) {
+        // Validação simples: ≤ 10MB (bucket também tem limit no DB)
+        if (file.size > 10 * 1024 * 1024) {
+          toast.error(`"${file.name}" excede 10 MB e foi pulada`);
+          continue;
+        }
+
+        // Path: notes/<noteId>/<timestamp>-<slug>.<ext>
+        const ext = file.name.split('.').pop()?.toLowerCase() || 'png';
+        const safeName = file.name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9-_]/g, '-').slice(0, 40);
+        const path = `notes/${selectedId}/${Date.now()}-${safeName || 'img'}.${ext}`;
+
+        const { error: upErr } = await supabase.storage
+          .from('note-images')
+          .upload(path, file, { cacheControl: '3600', upsert: false });
+        if (upErr) {
+          toast.error(`Falha no upload de "${file.name}": ${upErr.message}`);
+          continue;
+        }
+
+        const { data: pub } = supabase.storage.from('note-images').getPublicUrl(path);
+        if (pub?.publicUrl) {
+          inserts.push(`![${safeName || 'imagem'}](${pub.publicUrl})`);
+        }
+      }
+
+      if (inserts.length === 0) return;
+
+      // Insere todas as imagens no cursor (uma por linha)
+      const ta = editorRef.current;
+      const block = inserts.join('\n') + '\n';
+      let next: string;
+      let cursorAt: number;
+      if (ta) {
+        const start = ta.selectionStart;
+        const end = ta.selectionEnd;
+        // Quebra de linha antes se o cursor não está no início da linha
+        const needsLeadingBreak = start > 0 && draftContent[start - 1] !== '\n';
+        const prefix = needsLeadingBreak ? '\n' : '';
+        next = draftContent.slice(0, start) + prefix + block + draftContent.slice(end);
+        cursorAt = start + prefix.length + block.length;
+      } else {
+        next = draftContent + (draftContent && !draftContent.endsWith('\n') ? '\n' : '') + block;
+        cursorAt = next.length;
+      }
+      setDraftContent(next);
+      scheduleSave({ content: next });
+      requestAnimationFrame(() => {
+        if (ta) {
+          ta.focus();
+          ta.setSelectionRange(cursorAt, cursorAt);
+        }
+      });
+      toast.success(`${inserts.length} imagem(ns) inseridas`);
+    } finally {
+      setUploadingImage(false);
+    }
+  }, [selectedId, draftContent, scheduleSave]);
+
+  const handleImageButton = () => fileInputRef.current?.click();
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      void uploadImageFiles(e.target.files);
+      e.target.value = ''; // permite re-selecionar o mesmo arquivo
+    }
+  };
+
+  // Drag-drop de arquivos no editor
+  const handleEditorDragOver = (e: React.DragEvent<HTMLTextAreaElement>) => {
+    if (Array.from(e.dataTransfer.items).some(i => i.kind === 'file')) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      setImageDropTarget(true);
+    }
+  };
+  const handleEditorDragLeave = () => setImageDropTarget(false);
+  const handleEditorDrop = (e: React.DragEvent<HTMLTextAreaElement>) => {
+    setImageDropTarget(false);
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      e.preventDefault();
+      void uploadImageFiles(files);
+    }
+  };
+
+  // Paste de imagem (Cmd+V de print, copy de imagem do browser, etc.)
+  const handleEditorPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const imageFiles: File[] = [];
+    for (const item of Array.from(items)) {
+      if (item.kind === 'file' && item.type.startsWith('image/')) {
+        const f = item.getAsFile();
+        if (f) imageFiles.push(f);
+      }
+    }
+    if (imageFiles.length > 0) {
+      e.preventDefault();
+      void uploadImageFiles(imageFiles);
+    }
+    // Sem imagem no clipboard? Deixa o paste de texto seguir normal.
   };
 
   // ── Toolbar markdown ──
@@ -429,6 +551,26 @@ export default function Notes() {
                     );
                   })}
                   <div className="w-px h-5 bg-foreground/10 mx-1" />
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={handleImageButton}
+                        disabled={uploadingImage}
+                        className="h-7 px-2 inline-flex items-center gap-1.5 rounded-sm text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/5 transition-colors font-medium disabled:opacity-50"
+                      >
+                        {uploadingImage ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <ImageIcon className="h-3.5 w-3.5" />
+                        )}
+                        Imagem
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Inserir imagem · também aceita arrastar arquivo ou colar (⌘V) no editor
+                    </TooltipContent>
+                  </Tooltip>
                   <button
                     type="button"
                     onClick={insertTemplate}
@@ -438,25 +580,51 @@ export default function Notes() {
                     <TableIcon className="h-3.5 w-3.5" /> Tabela
                   </button>
                   <div className="flex-1" />
-                  {updateNote.isPending && (
+                  {(updateNote.isPending || uploadingImage) && (
                     <span className="text-muted-foreground text-xs inline-flex items-center gap-1.5 px-1">
-                      <Loader2 className="h-3 w-3 animate-spin" /> salvando…
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      {uploadingImage ? 'enviando imagem…' : 'salvando…'}
                     </span>
                   )}
                 </div>
               )}
 
+              {/* Input file oculto — usado pelo botão "Imagem" da toolbar */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,image/svg+xml"
+                multiple
+                onChange={handleFileInput}
+                className="hidden"
+              />
+
               {/* Conteúdo: editor ou preview */}
-              <div className="flex-1 overflow-auto px-8 py-6">
+              <div className="flex-1 overflow-auto px-8 py-6 relative">
                 {mode === 'edit' ? (
-                  <Textarea
-                    ref={editorRef}
-                    value={draftContent}
-                    onChange={e => { setDraftContent(e.target.value); scheduleSave({ content: e.target.value }); }}
-                    onKeyDown={onEditorKeyDown}
-                    placeholder="Comece a escrever..."
-                    className="min-h-full font-mono text-sm leading-relaxed resize-none border-0 px-0 focus-visible:ring-0 bg-transparent"
-                  />
+                  <>
+                    <Textarea
+                      ref={editorRef}
+                      value={draftContent}
+                      onChange={e => { setDraftContent(e.target.value); scheduleSave({ content: e.target.value }); }}
+                      onKeyDown={onEditorKeyDown}
+                      onDragOver={handleEditorDragOver}
+                      onDragLeave={handleEditorDragLeave}
+                      onDrop={handleEditorDrop}
+                      onPaste={handleEditorPaste}
+                      placeholder="Comece a escrever... (arraste imagens ou cole com ⌘V)"
+                      className="min-h-full font-mono text-sm leading-relaxed resize-none border-0 px-0 focus-visible:ring-0 bg-transparent"
+                    />
+                    {/* Overlay visual durante drag de arquivo sobre o editor */}
+                    {imageDropTarget && (
+                      <div className="absolute inset-4 pointer-events-none border-2 border-dashed border-primary bg-primary/5 rounded-sm flex items-center justify-center">
+                        <div className="text-center">
+                          <ImageIcon className="h-8 w-8 mx-auto text-primary mb-2" weight="duotone" />
+                          <p className="ed-eyebrow text-primary">Solte para inserir imagem</p>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <article className="note-markdown prose-sm max-w-none">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
