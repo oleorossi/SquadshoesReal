@@ -12,7 +12,10 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { FloppyDisk as Save, Gear as Settings2, Stack as Layers, Palette, Link as Link2, Plus, Info, Footprints as Shoe, Crown, CheckCircle, WarningCircle } from '@phosphor-icons/react';
 import { toast } from 'sonner';
-import { SoleSizeConjugationsEditor } from '@/components/inventory/SoleSizeConjugationsEditor';
+// SoleSizeConjugationsEditor removido SÓ desta tela em 2026-05-31.
+// Componente continua existindo e é usado em ProductFormDialog +
+// MasterVariantDialog + TechnicalSheets — feature de numeração conjugada
+// continua ativa no backend.
 import { SoleColorConjugationsEditor } from './SoleColorConjugationsEditor';
 import { useDisplaySizeKeys } from '@/lib/soleGradeKeys';
 import type { SoleProduct } from './types';
@@ -446,25 +449,14 @@ export default function SolesCadastroTab({ sole }: Props) {
             </div>
           )}
 
-          {/* Editor de conjugações inline — sempre visível quando há grupo, independente de classification */}
-          {groupId && (
-            <details className="rounded-md border bg-muted/20" open={classification === 'conjugado'}>
-              <summary className="px-3 py-2 cursor-pointer text-xs font-semibold flex items-center gap-2 select-none">
-                <Link2 className="h-3.5 w-3.5 text-primary" />
-                Conjugações de Numeração
-                <span className="text-xs text-muted-foreground font-normal ml-1">
-                  (ex.: 33/34, 39/40 — quando 2 tamanhos compartilham estoque)
-                </span>
-              </summary>
-              <div className="border-t px-3 py-3">
-                <SoleSizeConjugationsEditor
-                  soleGroupId={groupId}
-                  sizeFrom={Number(form.size_from) || 33}
-                  sizeTo={Number(form.size_to) || 40}
-                />
-              </div>
-            </details>
-          )}
+          {/* Bloco "Conjugações de Numeração" REMOVIDO da UI em 2026-05-31
+              por pedido do user — só esconde o editor visual aqui em
+              /solados → Gestão de Solados. Backend, débito, cálculo de
+              consumo e demais UIs (PV, ficha técnica, ProductFormDialog
+              em /estoque) continuam funcionando normal com a feature
+              de numeração conjugada. Pra editar conjugações use
+              /estoque → solado → Editar (ProductFormDialog) ou via
+              MasterVariantDialog. */}
           {!groupId && classification === 'conjugado' && (
             <div className="rounded-md border bg-muted/20 p-3">
               <GroupBindingFallback soleId={sole.id} />
