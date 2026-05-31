@@ -1286,7 +1286,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
   const { data: groups = [] } = useQuery({
     queryKey: ['product_groups_for_straps'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('product_groups').select('id, name, dimensions_length, dimensions_width, dimensions_unit, box_type_id').order('name');
+      // consumption_unit ADICIONADO em 2026-05-31: sem ele, getUnitForGroupName
+      // caía no fallback dimensions_unit (geralmente 'mm'), exibindo MM em
+      // grupos cuja UoM canónica de BOM é 'm' (ex: ELÁSTICO SARJA).
+      const { data, error } = await supabase.from('product_groups').select('id, name, consumption_unit, dimensions_length, dimensions_width, dimensions_unit, box_type_id').order('name');
       if (error) {
         console.error('[TechnicalSheets] Falha ao carregar product_groups:', error);
         return [];
