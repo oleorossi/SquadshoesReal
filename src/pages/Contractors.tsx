@@ -438,56 +438,30 @@ export default function Contractors() {
     }
 
     const outputMeters = Number(order.artisanal_output_meters) || 0;
-    const yieldRate = Number(recipe.yield_per_meter) || 1;
-    const baseMetersTotal = outputMeters / yieldRate;
+    // A base (MP) é estornada automaticamente pelo trigger server-side
+    // tg_revert_service_order_base_on_cancel ao cancelar a OS — não calcular aqui.
     // Net stock credited = total output − for_order portion (which went directly to production)
     const netCredited = outputMeters - (Number(order.artisanal_for_order_meters) || 0);
     const outputName = (order.artisanal_output_name || recipe.artisanal_product_name || '').trim();
 
     if (order.sale_order_id) {
-      // Path A (per-color PV distribution): stock reversal requires per-color lookup
-      // and cannot be automated. Block the cancel entirely to prevent the race where
-      // AP is voided + flag is reset but stock stays credited — causing double AP and
-      // double stock entry if the OS is later re-completed.
-      // Operator must: (1) revert stock manually, then (2) cancel the AP manually,
-      // then (3) cancel the OS manually in the database.
+      // Path A (per-color PV distribution): a saída (tira) precisa de lookup por cor
+      // e não dá pra automatizar com segurança. Bloqueia o cancel pra evitar a corrida
+      // onde a AP é estornada + flag resetada mas o estoque da tira segue creditado.
+      // A base (MP) é estornada automaticamente pelo trigger ao cancelar a OS no banco.
       toast.error(
         `OS artesanal vinculada ao PV — cancele manualmente:\n` +
-        `1. Reponha base: +${baseMetersTotal.toFixed(2)}m de "${recipe.base_product_name}"\n` +
-        `2. Debite saída: -${netCredited.toFixed(2)}m de "${outputName}"\n` +
-        `3. Cancele a conta a pagar da OS ${orderNumber}`,
+        `1. Debite saída: -${netCredited.toFixed(2)}m de "${outputName}"\n` +
+        `2. Cancele a conta a pagar da OS ${orderNumber}\n` +
+        `(a base "${recipe.base_product_name}" é estornada automaticamente ao cancelar)`,
         { duration: 15000 },
       );
       return; // do NOT cancel AP or reset the flag without stock reversal
     } else {
-      const baseColor = (order.artisanal_base_color || order.artisanal_output_color || '').trim();
       const outputColor = (order.artisanal_output_color || '').trim();
 
-      // Re-credit base material from fresh DB read
-      if (baseMetersTotal > 0) {
-        const { data: baseRows } = await supabase
-          .from('products')
-          .select('id, quantity, name, color')
-          .ilike('name', `${recipe.base_product_name}%`)
-          .limit(20);
-        const baseMatch = (baseRows || []).find((p: any) => {
-          const base = getBaseName(p.name) || p.name;
-          if (base !== recipe.base_product_name) return false;
-          const pc = (p.color || '').trim().toLowerCase();
-          return !baseColor || pc === baseColor.toLowerCase();
-        });
-        if (baseMatch) {
-          const prev = Number(baseMatch.quantity);
-          const res = await adjustStockSafe({
-            productId: baseMatch.id, expectedPrevious: prev, newQty: prev + baseMetersTotal,
-            reason: `Estorno artesanal "${recipe.name}" — OS ${orderNumber} cancelada`, orderId: osId,
-          });
-          if (res.success) toast.info(`Base restituída: +${baseMetersTotal.toFixed(2)}m de ${recipe.base_product_name}`);
-          else toast.error(`Erro ao restituir base: ${res.errorMessage || ''}`);
-        } else {
-          toast.warning(`Produto base "${recipe.base_product_name}" (${baseColor}) não encontrado — estorno manual necessário.`);
-        }
-      }
+      // A base (MP) é estornada automaticamente pelo trigger server-side
+      // tg_revert_service_order_base_on_cancel — não reverter aqui (evita duplo estorno).
 
       // Debit output product by the net credited amount
       if (netCredited > 0) {
@@ -584,8 +558,8 @@ export default function Contractors() {
       return;
     }
     const outputMeters = Number(order.artisanal_output_meters) || 0;
-    const yieldRate = Number(recipe.yield_per_meter) || 1;
-    const baseMetersTotal = outputMeters / yieldRate;
+    // A base (MP) é debitada na CRIAÇÃO da OS pelo trigger tg_debit_service_order_base.
+    // Aqui (conclusão) só lançamos a entrada da tira + a baixa for_order.
     const outputName = (order.artisanal_output_name || recipe.artisanal_product_name || '').trim();
     const stockMetersTotal = Number(order.artisanal_for_stock_meters) || 0;
     const forOrderMetersTotal = Number(order.artisanal_for_order_meters) || 0;
@@ -612,54 +586,12 @@ export default function Contractors() {
         let hadColorFailure = false;
         for (const item of validItems) {
           const fraction = (item.quantity || 0) / totalQty;
-          const baseForColor = baseMetersTotal * fraction;
           const stockForColor = stockMetersTotal * fraction;
           const forOrderForColor = forOrderMetersTotal * fraction;
           const itemColor = (item.color || '').trim();
 
-          // 1) Find and debit base material in this color
-          const baseMatch = products.find((p) => {
-            const base = getBaseName(p.name) || p.name;
-            if (base !== recipe.base_product_name) return false;
-            if (!itemColor) return true;
-            const pc = (p.color || '').trim().toLowerCase();
-            return pc === itemColor.toLowerCase() || getDerivedProductColor(p).toLowerCase() === itemColor.toLowerCase();
-          });
-
-          if (!baseMatch) {
-            toast.error(`MP "${recipe.base_product_name}" (${itemColor}) não encontrada — saída artesanal cancelada para esta cor`);
-            hadColorFailure = true;
-            continue;
-          } else {
-            const prevBaseQty = getQty(baseMatch);
-            if (prevBaseQty < baseForColor) {
-              // CRITICAL: estoque insuficiente NÃO pode permitir step 2 (output credit)
-              // sem ter debitado a MP. Bug anterior: só mostrava warning e continuava o
-              // loop, creditando saída artesanal sem nenhum débito de entrada → ganho
-              // de estoque do nada (corrompia o ledger).
-              toast.error(
-                `Estoque insuficiente de "${recipe.base_product_name}" (${itemColor}): disponível ${prevBaseQty.toFixed(2)}m, necessário ${baseForColor.toFixed(2)}m. Saída artesanal cancelada para esta cor — ajuste o estoque ou reduza a quantidade.`,
-                { duration: 8000 },
-              );
-              hadColorFailure = true;
-              continue;
-            }
-            const newBaseQty = prevBaseQty - baseForColor;
-            const baseResult = await adjustStockSafe({
-              productId: baseMatch.id,
-              expectedPrevious: prevBaseQty,
-              newQty: newBaseQty,
-              reason: `Consumo artesanal "${recipe.name}" (${itemColor}) — OS ${orderNumber}`,
-              orderId: orderId || null,
-            });
-            if (!baseResult.success) {
-              toast.error(`Erro ao debitar MP "${recipe.base_product_name}" (${itemColor}): ${baseResult.errorMessage || ''}`);
-              hadColorFailure = true;
-              continue;
-            }
-            stockOverrides.set(baseMatch.id, newBaseQty);
-            toast.info(`MP debitada: ${recipe.base_product_name} ${itemColor} -${baseForColor.toFixed(2)}m`);
-          }
+          // 1) A base (MP) já foi debitada na CRIAÇÃO da OS pelo trigger
+          //    tg_debit_service_order_base — não debitar aqui (evita duplo débito).
 
           // 2) Register artisanal output in this color (for_stock portion).
           // Track the output product ID so step 3 can use it even if the product
@@ -755,47 +687,11 @@ export default function Contractors() {
     }
 
     // ── Path B: OS sem vínculo de PV → cor única selecionada manualmente ──
-    const baseColor = (order.artisanal_base_color || order.artisanal_output_color || '').trim();
     const outputColor = (order.artisanal_output_color || '').trim();
     let hadFailure = false;
 
-    // 1) Debit base material
-    const baseMatch = products.find((p) => {
-      const base = getBaseName(p.name) || p.name;
-      if (base !== recipe.base_product_name) return false;
-      if (!baseColor) return true;
-      const pc = (p.color || '').trim().toLowerCase();
-      return pc === baseColor.toLowerCase() || getDerivedProductColor(p).toLowerCase() === baseColor.toLowerCase();
-    });
-
-    if (!baseMatch) {
-      toast.error(`MP "${recipe.base_product_name}" (${baseColor || 'sem cor'}) não encontrada — entrada artesanal cancelada`);
-      return;
-    } else if ((baseMatch.quantity || 0) < baseMetersTotal) {
-      toast.error(
-        `Estoque insuficiente de "${recipe.base_product_name}": disponível ${baseMatch.quantity}, necessário ${baseMetersTotal.toFixed(2)}m`,
-      );
-      return;
-    } else {
-      const prevBaseQty = baseMatch.quantity || 0;
-      const newQty = prevBaseQty - baseMetersTotal;
-      const result = await adjustStockSafe({
-        productId: baseMatch.id,
-        expectedPrevious: prevBaseQty,
-        newQty,
-        reason: `Consumo artesanal "${recipe.name}" — OS ${orderNumber}`,
-        orderId: orderId || null,
-      });
-      if (result.success) {
-        toast.info(`MP debitada: ${recipe.base_product_name} -${baseMetersTotal.toFixed(2)}m`);
-      } else {
-        // CRITICAL: se o débito da MP falhou (concorrência, lock, etc),
-        // NÃO podemos creditar o output — caso contrário ganho de estoque
-        // do nada. Aborta a operação para evitar corrupção do ledger.
-        toast.error(`Erro ao debitar MP — entrada artesanal cancelada: ${result.errorMessage || ''}`);
-        return;
-      }
-    }
+    // 1) A base (MP) já foi debitada na CRIAÇÃO da OS pelo trigger
+    //    tg_debit_service_order_base — não debitar aqui (evita duplo débito).
 
     // Track output product info across steps 2 and 3
     let artisanalOutputProdId: string | null = null;
