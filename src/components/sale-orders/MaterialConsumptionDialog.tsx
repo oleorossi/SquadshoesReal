@@ -619,10 +619,30 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
           }
 
           let productUnit = product.unit || 'un';
-          let totalQty = (Number(material.quantity_per_unit) || 0) * itemQuantity;
+          const unitLc = productUnit.toLowerCase();
+          const isLinearUnit = ['m', 'metro', 'mt', 'meters', 'metros', 'cm'].includes(unitLc);
+          const rawQty = (Number(material.quantity_per_unit) || 0) * itemQuantity;
+          let totalQty = rawQty;
+          let widthMissing = false;
 
-          if (productUnit === 'cm') {
-            totalQty = totalQty / 100;
+          // Materiais de ÁREA cortados de bobina (napa/couro): têm ficha de componente
+          // e quantity_per_unit está em dm²/par. Converter para metros lineares pela
+          // largura — antes era multiplicado direto e aparecia ~100× inflado (ex: napa
+          // 5.7 dm²/par × 720 = 4104 "m" em vez de ~30 m). Tiras/itens sem ficha (qty
+          // já em metro/unidade) passam direto. Bug reportado no PV-00116 (2026-05-30).
+          const cs = (componentSheets || []).find((c: any) => c.product_id === material.product_id) || null;
+          if (isLinearUnit && cs) {
+            if (!isLinearWidthMissing(cs as any, productUnit)) {
+              totalQty = convertDm2ToLinearMeters(rawQty, cs as any);
+              productUnit = 'metro';
+            } else {
+              // tem ficha de área mas sem largura → não dá pra converter; marca aviso
+              widthMissing = true;
+              totalQty = unitLc === 'cm' ? rawQty / 100 : rawQty;
+              productUnit = unitLc === 'cm' ? 'metro' : productUnit;
+            }
+          } else if (unitLc === 'cm') {
+            totalQty = rawQty / 100;
             productUnit = 'metro';
           }
 
@@ -633,6 +653,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
             productUnit,
             color: material.color || '—',
             totalQuantity: totalQty,
+            widthMissing,
           });
         }
       }
