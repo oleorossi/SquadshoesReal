@@ -45,14 +45,14 @@ type ConsumptionRow = {
   soleSizeStock?: Record<string, number>;
 };
 
-const COMPONENT_ORDER = ['Cabedal', 'Forro', 'Palmilha', 'Solado', 'Tiras', 'Químicos', 'Embalagem', 'Outros'] as const;
+const COMPONENT_ORDER = ['Cabedal', 'Forração', 'Palmilha', 'Solado', 'Tiras', 'Químicos', 'Embalagem', 'Outros'] as const;
 
 const classifyBomMaterial = (groupName: string, productName: string, category: string): string => {
   const normalized = `${groupName} ${productName} ${category}`.toLowerCase();
   if (normalized.includes('cabedal') || normalized.includes('napa') || normalized.includes('velvet') || normalized.includes('couro')) return 'Cabedal';
   if (normalized.includes('solado')) return 'Solado';
   if (normalized.includes('palmilha') || normalized.includes('placa')) return 'Palmilha';
-  if (normalized.includes('forro')) return 'Forro';
+  if (normalized.includes('forração') || normalized.includes('forracao') || normalized.includes('forro')) return 'Forração';
   if (normalized.includes('tira')) return 'Tiras';
   if (normalized.includes('cola') || normalized.includes('adesivo')) return 'Químicos';
   if (normalized.includes('embalagem') || normalized.includes('caixa')) return 'Embalagem';
@@ -498,7 +498,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
            const soleProductId = soleColorMap.get(`${item.reference_id}::${orderColor}`) || null;
            const { total: liningTotal } = calculateConsumptionWithUnit(item, liningMatch.consumption, liningSheet, 'metro', undefined, soleProductId, sheet?.sole_drives_consumption);
            addConsumptionRow(consumptionMap, {
-             componentType: 'Forro',
+             componentType: 'Forração',
              groupName: liningMatch.group,
              materialName: 'Forração',
              productUnit: 'metro',
@@ -663,7 +663,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
             const isInsoleGroup = sheet?.insole_material?.toLowerCase() === groupKey;
             const isSoleGroup = sheet?.sole_material?.toLowerCase() === groupKey;
             const shouldSkip = (isUpperGroup && bomType === 'Cabedal') ||
-                               (isLiningGroup && bomType === 'Forro') ||
+                               (isLiningGroup && bomType === 'Forração') ||
                                (isInsoleGroup && (bomType === 'Palmilha' || product.category?.toLowerCase().includes('palmilha'))) ||
                                (isSoleGroup && bomType === 'Solado');
             if (shouldSkip) continue;
@@ -846,7 +846,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
     // Cores de cabeçalho por componentType (visual hierarchy)
     const componentColors: Record<string, { bg: string; border: string; text: string }> = {
       'Cabedal':    { bg: '#fef3c7', border: '#f59e0b', text: '#78350f' },
-      'Forro':      { bg: '#cffafe', border: '#06b6d4', text: '#155e75' },
+      'Forração':      { bg: '#cffafe', border: '#06b6d4', text: '#155e75' },
       'Palmilha':   { bg: '#dbeafe', border: '#3b82f6', text: '#1e3a8a' },
       'Solado':     { bg: '#dcfce7', border: '#22c55e', text: '#14532d' },
       'Tiras':      { bg: '#fce7f3', border: '#ec4899', text: '#831843' },

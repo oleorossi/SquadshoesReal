@@ -104,7 +104,7 @@ export function CopyFromAnySoleDialog({
             Copiar specs de outro solado
           </DialogTitle>
           <DialogDescription>
-            Selecione um solado já cadastrado como base. As specs (forro, palmilha,
+            Selecione um solado já cadastrado como base. As specs (forração, palmilha,
             fachete por tamanho) serão copiadas pra <strong>{targetSoleName || 'este solado'}</strong>.
             Você pode ajustar os valores depois.
           </DialogDescription>

@@ -169,7 +169,7 @@ const SECTOR_THEME: Record<GroupedSector, {
 const KIT_FLOWS: Record<GroupedSector, { receive: string[]; deliver: string[]; nextSector: string } | null> = {
   'Corte Forração': {
     receive: ['Palmilhas recebidas do Corte Palmilha', 'Cor de forração conferida com ficha técnica'],
-    deliver: ['Forros agrupados por cor', 'Sacolas etiquetadas (cor + qtd)', 'Encaminhado ao próximo setor'],
+    deliver: ['Forrações agrupadas por cor', 'Sacolas etiquetadas (cor + qtd)', 'Encaminhado ao próximo setor'],
     nextSector: 'Aviamento / Costura',
   },
   'Corte Cabedal': {
@@ -178,12 +178,12 @@ const KIT_FLOWS: Record<GroupedSector, { receive: string[]; deliver: string[]; n
     nextSector: 'Costura',
   },
   'Costura': {
-    receive: ['Cabedal recebido do Corte', 'Forros recebidos do Corte Forração', 'Linha na cor conferida'],
+    receive: ['Cabedal recebido do Corte', 'Forrações recebidas do Corte Forração', 'Linha na cor conferida'],
     deliver: ['Peças costuradas conferidas', 'Encaminhado ao Aviamento'],
     nextSector: 'Aviamento',
   },
   'Aviamento': {
-    receive: ['Palmilha + forro + cabedal recebidos', 'Aviamentos (fivelas/ilhoses) separados por cor', 'Componentes batem com a ficha técnica'],
+    receive: ['Palmilha + forração + cabedal recebidos', 'Aviamentos (fivelas/ilhoses) separados por cor', 'Componentes batem com a ficha técnica'],
     deliver: ['Conjuntos completos por par', 'Sacolas etiquetadas (cor + numeração)', 'Encaminhado à Montagem'],
     nextSector: 'Montagem',
   },
@@ -577,7 +577,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                         )}
                         {(theme.showMaterials === 'lining' || theme.showMaterials === 'both') && (
                           <div>
-                            <span className="section-label block" style={{ color: '#000' }}>Forro</span>
+                            <span className="section-label block" style={{ color: '#000' }}>Forração</span>
                             <p className="font-bold text-black uppercase mt-0.5 leading-tight">{cg.liningMaterial || '—'}</p>
                             {cg.liningConsumptionPerPair && (
                               <p className="font-mono text-[10px] text-black tracking-wider">{cg.liningConsumptionPerPair.toFixed(2)} dm²/par</p>

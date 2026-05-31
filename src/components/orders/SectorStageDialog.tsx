@@ -29,7 +29,7 @@ const STAGE_CONFIGS: Record<string, { color: string; icon: LucideIcon; hints: st
   'Expedição':      { color: 'bg-indigo-500/15 text-indigo-700 border-indigo-500/30', icon: Truck,       hints: 'Revisar par aprovado, conferir etiqueta de cliente, embalar por lote, gerar romaneio.' },
   // ── Legacy names (kept for backward compat with old OPs) ──────────────────
   'Corte':     { color: 'bg-blue-500/15 text-blue-700 border-blue-500/30',     icon: Scissors,   hints: 'Registrar quantidade de peças cortadas, tipo de faca utilizada, defeitos de corte.' },
-  'Forração':  { color: 'bg-purple-500/15 text-purple-700 border-purple-500/30', icon: Layers,   hints: 'Registrar tipos de forro aplicados, verificar aderência e acabamento.' },
+  'Forração':  { color: 'bg-purple-500/15 text-purple-700 border-purple-500/30', icon: Layers,   hints: 'Registrar tipos de forração aplicados, verificar aderência e acabamento.' },
   'Aviamento': { color: 'bg-amber-500/15 text-amber-700 border-amber-500/30',   icon: Gem,        hints: 'Conferir aviamentos aplicados (fivelas, enfeites, ilhoses), registrar substituições.' },
   'Costura':   { color: 'bg-indigo-500/15 text-indigo-700 border-indigo-500/30', icon: PenLine,   hints: 'Verificar costuras, alinhamento e tensão da linha.' },
   'Embalagem': { color: 'bg-teal-500/15 text-teal-700 border-teal-500/30',      icon: Box,        hints: 'Embalar produto final, etiquetagem, conferência visual.' },

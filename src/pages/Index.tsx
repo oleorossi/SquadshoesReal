@@ -22,7 +22,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 const MATERIAL_CATEGORIES = [
   { value: 'all',       label: 'Todos' },
   { value: 'Cabedal',   label: 'Cabedal' },
-  { value: 'Forro',     label: 'Forro' },
+  { value: 'Forração',     label: 'Forração' },
   { value: 'Palmilha',  label: 'Palmilha' },
   { value: 'Químico',   label: 'Químicos' },
   { value: 'Componente',label: 'Componentes' },

@@ -34,7 +34,7 @@ const COMPONENT_CATEGORIES = [
   { key: 'Cabedal', label: 'Cabedal', icon: Layers, color: 'text-amber-600' },
   { key: 'Solado', label: 'Solado', icon: Footprints, color: 'text-stone-600' },
   { key: 'Palmilha', label: 'Palmilha', icon: Shield, color: 'text-blue-600' },
-  { key: 'Forro', label: 'Forro', icon: Scissors, color: 'text-purple-600' },
+  { key: 'Forração', label: 'Forração', icon: Scissors, color: 'text-purple-600' },
   { key: 'Componente', label: 'Componentes', icon: Box, color: 'text-pink-600' },
   { key: 'Embalagem', label: 'Embalagem', icon: Box, color: 'text-green-600' },
   { key: 'Químico', label: 'Químicos (Cola, Primer, etc.)', icon: Droplets, color: 'text-red-600' },

@@ -165,7 +165,7 @@ export const CONVERSION_TEMPLATES: ConversionTemplate[] = [
   },
   {
     key: 'tecido-cabedal-14',
-    label: 'Tecido cabedal/forro — largura 1,4 m',
+    label: 'Tecido cabedal/forração — largura 1,4 m',
     description: 'Compra em metro linear; largura típica de tecido 1,40 m.',
     unit: 'dm²',
     purchase_unit: 'm',
@@ -176,7 +176,7 @@ export const CONVERSION_TEMPLATES: ConversionTemplate[] = [
   },
   {
     key: 'tecido-cabedal-16',
-    label: 'Tecido cabedal/forro — largura 1,6 m',
+    label: 'Tecido cabedal/forração — largura 1,6 m',
     description: 'Compra em metro linear; largura 1,60 m.',
     unit: 'dm²',
     purchase_unit: 'm',

@@ -39,7 +39,7 @@ describe('consumptionService — nova hierarquia de fontes', () => {
     rpcMock.mockResolvedValueOnce({
       data: [
         line({ component: 'Cabedal',  source: 'sheet_per_size', consumption_per_unit: 9.29, required: 92.9 }),
-        line({ component: 'Forro',    source: 'sheet_per_size', consumption_per_unit: 5.7,  required: 57 }),
+        line({ component: 'Forração',    source: 'sheet_per_size', consumption_per_unit: 5.7,  required: 57 }),
         line({ component: 'Palmilha', source: 'sheet_per_size', consumption_per_unit: 4.16, required: 41.6 }),
         line({ component: 'Solado',   source: 'primary_sole',   consumption_per_unit: 1,    required: 10, debit_mode: 'hard' }),
       ],
@@ -56,7 +56,7 @@ describe('consumptionService — nova hierarquia de fontes', () => {
   it('marca soldDriven=true quando alguma linha vem do sole_spec (fallback intermediário)', async () => {
     rpcMock.mockResolvedValueOnce({
       data: [
-        line({ component: 'Forro',    source: 'sole_spec',    consumption_per_unit: 5.7, required: 57 }),
+        line({ component: 'Forração',    source: 'sole_spec',    consumption_per_unit: 5.7, required: 57 }),
         line({ component: 'Palmilha', source: 'sole_spec',    consumption_per_unit: 4.16, required: 41.6 }),
         line({ component: 'Solado',   source: 'primary_sole', consumption_per_unit: 1,    required: 10, debit_mode: 'hard' }),
       ],
@@ -71,7 +71,7 @@ describe('consumptionService — nova hierarquia de fontes', () => {
     rpcMock.mockResolvedValueOnce({
       data: [
         line({ component: 'Cabedal',  source: 'sheet_materials', consumption_per_unit: 9.29, required: 92.9 }),
-        line({ component: 'Forro',    source: 'sheet_materials', consumption_per_unit: 5.7,  required: 57 }),
+        line({ component: 'Forração',    source: 'sheet_materials', consumption_per_unit: 5.7,  required: 57 }),
         line({ component: 'Palmilha', source: 'sheet_materials', consumption_per_unit: 4.16, required: 41.6 }),
       ],
       error: null,
@@ -116,7 +116,7 @@ describe('consumptionService — nova hierarquia de fontes', () => {
     rpcMock.mockResolvedValueOnce({
       data: [
         line({ component: 'Cabedal', required: 100, available: 50, stock_ok: false }),
-        line({ component: 'Forro',   required: 30,  available: 100, stock_ok: true }),
+        line({ component: 'Forração',   required: 30,  available: 100, stock_ok: true }),
       ],
       error: null,
     });
@@ -129,13 +129,13 @@ describe('consumptionService — nova hierarquia de fontes', () => {
   it('groupByComponent agrupa linhas por componente preservando ordem', async () => {
     const lines = [
       line({ component: 'Cabedal' }),
-      line({ component: 'Forro' }),
+      line({ component: 'Forração' }),
       line({ component: 'Cabedal', product_id: 'p-2' }),
     ];
     const grouped = groupByComponent(lines);
-    expect(Object.keys(grouped).sort()).toEqual(['Cabedal', 'Forro']);
+    expect(Object.keys(grouped).sort()).toEqual(['Cabedal', 'Forração']);
     expect(grouped['Cabedal']).toHaveLength(2);
-    expect(grouped['Forro']).toHaveLength(1);
+    expect(grouped['Forração']).toHaveLength(1);
   });
 
   it('validateConsumption lista erros por linha faltante', async () => {
@@ -162,7 +162,7 @@ describe('consumptionService — cenário ST15 (regressão da nova hierarquia)',
     rpcMock.mockResolvedValueOnce({
       data: [
         line({ component: 'Cabedal',  source: 'sheet_per_size', consumption_per_unit: 9.29, required: 92.9 }),
-        line({ component: 'Forro',    source: 'sheet_per_size', consumption_per_unit: 5.7,  required: 57 }),
+        line({ component: 'Forração',    source: 'sheet_per_size', consumption_per_unit: 5.7,  required: 57 }),
         line({ component: 'Palmilha', source: 'sheet_per_size', consumption_per_unit: 4.16, required: 41.6 }),
         line({ component: 'Solado',   source: 'primary_sole',   consumption_per_unit: 1,    required: 10, debit_mode: 'hard' }),
       ],
@@ -171,7 +171,7 @@ describe('consumptionService — cenário ST15 (regressão da nova hierarquia)',
 
     const summary = await calculateConsumption({ referenceId: 'st15', quantity: 10, color: 'Preto', size: 37 });
     const cabedal = summary.lines.find(l => l.component === 'Cabedal')!;
-    const forro = summary.lines.find(l => l.component === 'Forro')!;
+    const forro = summary.lines.find(l => l.component === 'Forração')!;
     const palmilha = summary.lines.find(l => l.component === 'Palmilha')!;
 
     expect(cabedal.required).toBe(92.9);

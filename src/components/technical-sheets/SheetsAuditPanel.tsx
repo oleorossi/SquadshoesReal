@@ -75,8 +75,8 @@ type AuditSummary = {
 const GAP_LABELS: { key: keyof AuditRow; label: string; severity: 'critical' | 'warn' }[] = [
   { key: 'missing_upper_material', label: 'Grupo do cabedal', severity: 'critical' },
   { key: 'missing_upper_consumption', label: 'Consumo do cabedal', severity: 'critical' },
-  { key: 'missing_lining_material', label: 'Grupo do forro', severity: 'critical' },
-  { key: 'missing_lining_consumption', label: 'Consumo do forro', severity: 'critical' },
+  { key: 'missing_lining_material', label: 'Grupo da forração', severity: 'critical' },
+  { key: 'missing_lining_consumption', label: 'Consumo da forração', severity: 'critical' },
   { key: 'missing_insole_material', label: 'Grupo da palmilha', severity: 'critical' },
   { key: 'missing_insole_consumption', label: 'Consumo da palmilha', severity: 'critical' },
   { key: 'missing_sole_material', label: 'Grupo do solado', severity: 'critical' },
@@ -204,7 +204,7 @@ export function SheetsAuditPanel({
           <div className="space-y-3 mt-2">
             <p className="text-xs text-muted-foreground">
               <strong>Solado é o driver primário do consumo</strong> — quando uma ficha tem
-              "Solado dirige consumo", os valores de forro/palmilha vêm das specs do solado.
+              "Solado dirige consumo", os valores de forração/palmilha vêm das specs do solado.
               Se aqui o solado não tiver specs, o cálculo cai em fallback (média da ficha) e
               fica impreciso. Cadastre as specs por tamanho na página do produto-solado.
             </p>
@@ -246,7 +246,7 @@ export function SheetsAuditPanel({
                           </div>
                           <div className="flex flex-wrap gap-2 mt-2 text-xs">
                             <Badge variant="outline" className={sole.missing_lining_specs ? 'bg-red-500/10 text-red-700 border-red-500/40' : 'bg-emerald-500/10 text-emerald-700 border-emerald-500/40'}>
-                              Forro: {sole.sizes_with_lining} tamanho{sole.sizes_with_lining !== 1 ? 's' : ''}
+                              Forração: {sole.sizes_with_lining} tamanho{sole.sizes_with_lining !== 1 ? 's' : ''}
                             </Badge>
                             <Badge variant="outline" className={sole.missing_insole_specs ? 'bg-red-500/10 text-red-700 border-red-500/40' : 'bg-emerald-500/10 text-emerald-700 border-emerald-500/40'}>
                               Palmilha: {sole.sizes_with_insole}
@@ -350,7 +350,7 @@ function SheetsAuditTab({
         {summary && (
           <div className="grid grid-cols-3 md:grid-cols-6 gap-2 mt-1 text-xs">
             <div className="rounded bg-muted/30 px-2 py-1.5">
-              <span className="text-muted-foreground">Forro: </span>
+              <span className="text-muted-foreground">Forração: </span>
               <strong>{summary.sem_consumo_forro}</strong>
               <span className="text-muted-foreground"> / </span>
               <strong>{summary.sem_grupo_forro}</strong>

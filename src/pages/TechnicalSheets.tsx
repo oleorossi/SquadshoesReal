@@ -207,7 +207,7 @@ const COMPONENT_CATEGORIES = [
   // === Base do Solado (padrão, independente de cor) ===
   { key: 'Solado', label: 'Solado', icon: Footprints, color: 'text-stone-600', aliases: ['solado'], section: 'base' },
   { key: 'Palmilha', label: 'Palmilha', icon: Shield, color: 'text-blue-600', aliases: ['palmilha', 'placa de palmilha'], section: 'base' },
-  { key: 'Forro', label: 'Forro / Forração', icon: Scissors, color: 'text-purple-600', aliases: ['forro', 'forração', 'forração da palmilha'], section: 'base' },
+  { key: 'Forração', label: 'Forração', icon: Scissors, color: 'text-purple-600', aliases: ['forro', 'forração', 'forração da palmilha'], section: 'base' },
   { key: 'Químico', label: 'Químicos', icon: Droplets, color: 'text-red-600', aliases: ['químico', 'quimico', 'cola', 'adesivo', 'hotmel', 'primer'], section: 'base' },
   // === Depende do Modelo ===
   { key: 'Cabedal', label: 'Cabedal', icon: Layers, color: 'text-amber-600', aliases: ['cabedal', 'napa', 'napa soft', 'couro', 'sintético', 'tecido', 'glow', 'metalic', 'velvet', 'tira', 'trança'], section: 'modelo' },
@@ -2172,7 +2172,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   min={0}
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Cabedal + forro + solado + ferragens montados. Sem este valor, o PV deste item entra como "peso incompleto" nas telas fiscais.
+                  Cabedal + forração + solado + ferragens montados. Sem este valor, o PV deste item entra como "peso incompleto" nas telas fiscais.
                 </p>
               </div>
               <div>
@@ -2821,7 +2821,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
 
             {/* Forração + Palmilha REMOVIDOS da UI (user pediu em 2026-05):
                 'retirar de ficha técnica a partir de seleção de palmilha e
-                de forro — tudo isso já está contido em solados'.
+                de forração — tudo isso já está contido em solados'.
                 Ambos os materiais vêm agora do cadastro do solado (Solados
                 → Consumos → Forração/Palmilha). Os campos lining_material
                 e insole_material continuam no DB pra compatibilidade com
@@ -2860,7 +2860,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   <GroupMaterialSelect label="Material Principal" value={form.lining_material} onChange={v => { updateField('lining_material', v); autoFillConsumption(v, 'lining_material'); }} />
 
                   {/* Acessórios alternativos de forração removidos. Cada ref tem
-                      APENAS um material principal de forro. Botão "Outra Opção" e
+                      APENAS um material principal de forração. Botão "Outra Opção" e
                       blocos extras escondidos (mantidos no banco pra fichas legacy). */}
                 </div>
               </div>
@@ -3412,7 +3412,7 @@ function PhotosByColorTab({ sheetId, form, groups, products }: {
           <EmptyState
             icon={ImagePlus}
             title="Nenhuma cor disponível"
-            description='Configure os grupos de material em Forro / Forração na aba "Materiais & BOM" para que as cores apareçam aqui.'
+            description='Configure os grupos de material em Forração na aba "Materiais & BOM" para que as cores apareçam aqui.'
             size="sm"
           />
         </CardContent>
@@ -5018,7 +5018,7 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
        // As categorias abaixo são tratadas via Especificações Técnicas (modern specs) 
        // na parte superior da aba. Para evitar confusão visual e duplicidade
        // no motor de débito de estoque (BOM vs Specs), ocultamos essas categorias do BOM legado.
-       if (['Solado', 'Cabedal', 'Forro', 'Palmilha'].includes(cat)) return;
+       if (['Solado', 'Cabedal', 'Forração', 'Palmilha'].includes(cat)) return;
 
        if (!groups[cat]) groups[cat] = [];
        groups[cat].push(m);

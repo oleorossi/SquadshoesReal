@@ -164,7 +164,7 @@ export default function SaldoFinalTab() {
         };
 
         if (sheet.upper_consumption > 0) addMaterial(sheet.upper_material || 'Cabedal', 'Cabedal', sheet.upper_consumption, true);
-        if (sheet.lining_consumption > 0) addMaterial(sheet.lining_material || 'Forro', 'Forro', sheet.lining_consumption, true);
+        if (sheet.lining_consumption > 0) addMaterial(sheet.lining_material || 'Forração', 'Forração', sheet.lining_consumption, true);
         if (sheet.insole_consumption > 0) addMaterial(sheet.insole_material || 'Palmilha', 'Palmilha', sheet.insole_consumption, true);
         if (sheet.sole_consumption > 0) addMaterial(sheet.sole_material || sheet.sole_type || 'Solado', 'Solado', sheet.sole_consumption, false);
 

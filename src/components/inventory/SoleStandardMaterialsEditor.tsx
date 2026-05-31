@@ -376,7 +376,7 @@ export function SoleStandardMaterialsEditor({ soleGroupId, soleClassification }:
         <div className="text-center py-6 px-4 rounded border border-dashed text-xs text-muted-foreground">
           Nenhum material padrão cadastrado.
           <br />
-          <span className="text-xs">Ex.: Cola PU 0,02 kg/par · Linha 60 1,5 m/par · Forro 4 dm²/par</span>
+          <span className="text-xs">Ex.: Cola PU 0,02 kg/par · Linha 60 1,5 m/par · Forração 4 dm²/par</span>
         </div>
       )}
 

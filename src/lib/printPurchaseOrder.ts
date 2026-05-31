@@ -46,7 +46,7 @@ function classifyCategory(name: string, category: string): string {
   if (n.includes('tira') || c.includes('tira')) return 'Tiras';
   if (n.includes('cola') || c.includes('cola') || n.includes('adesivo')) return 'Colas / Adesivos';
   if (n.includes('napa') || n.includes('couro') || n.includes('cabedal')) return 'Cabedal / Napa';
-  if (n.includes('forro') || n.includes('espuma')) return 'Forro / Espuma';
+  if (n.includes('forro') || n.includes('espuma')) return 'Forração / Espuma';
   if (n.includes('palmilha') || n.includes('insole')) return 'Palmilhas';
   if (n.includes('solado') || n.includes('sola') || c.includes('solado')) return 'Solados';
   if (n.includes('caixa') || n.includes('embalagem') || n.includes('saco')) return 'Embalagem';

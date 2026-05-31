@@ -90,7 +90,7 @@ describe('consumptionService — schema do JSONB por edge-case de size', () => {
     rpcMock.mockResolvedValueOnce({
       data: [
         lineFixture({ component: 'Cabedal', source: 'sheet_per_size' }),
-        lineFixture({ component: 'Forro', product_id: 'p-2', product_name: 'TEST_FORRO', consumption_per_unit: 5.7, required: 57, source: 'sheet_per_size' }),
+        lineFixture({ component: 'Forração', product_id: 'p-2', product_name: 'TEST_FORRO', consumption_per_unit: 5.7, required: 57, source: 'sheet_per_size' }),
         lineFixture({ component: 'Palmilha', product_id: 'p-3', product_name: 'TEST_PALMILHA', consumption_per_unit: 4.16, required: 41.6, source: 'sheet_per_size' }),
       ],
       error: null,
@@ -108,7 +108,7 @@ describe('consumptionService — schema do JSONB por edge-case de size', () => {
     rpcMock.mockResolvedValueOnce({
       data: [
         lineFixture({ component: 'Cabedal', source: 'sheet_materials', consumption_per_unit: 9.0, required: 90 }),
-        lineFixture({ component: 'Forro', source: 'sole_spec', consumption_per_unit: 6.1, required: 61 }),
+        lineFixture({ component: 'Forração', source: 'sole_spec', consumption_per_unit: 6.1, required: 61 }),
         lineFixture({ component: 'Palmilha', source: 'sole_spec', consumption_per_unit: 4.5, required: 45 }),
       ],
       error: null,
@@ -123,7 +123,7 @@ describe('consumptionService — schema do JSONB por edge-case de size', () => {
     rpcMock.mockResolvedValueOnce({
       data: [
         lineFixture({ component: 'Cabedal', source: 'sheet_materials', consumption_per_unit: 9.0, required: 90 }),
-        lineFixture({ component: 'Forro', source: 'sheet_materials', consumption_per_unit: 5.5, required: 55 }),
+        lineFixture({ component: 'Forração', source: 'sheet_materials', consumption_per_unit: 5.5, required: 55 }),
       ],
       error: null,
     });

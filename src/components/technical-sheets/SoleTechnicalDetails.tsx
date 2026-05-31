@@ -1018,7 +1018,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                     </TableHead>
                     <TableHead>
                       <div className="flex items-center justify-between">
-                        <span title="Área da napa que forra a palmilha (usa a napa do Forro)">Palmilha · Forração (dm²/par)</span>
+                        <span title="Área da napa que forra a palmilha (usa a napa da Forração)">Palmilha · Forração (dm²/par)</span>
                         <Button variant="ghost" size="icon" className="h-6 w-6" title="Replicar primeiro valor para tamanhos vazios" onClick={() => fillRemaining("insole_lining_consumption_dm2")}>
                           <RefreshCw className="h-3 w-3" />
                         </Button>

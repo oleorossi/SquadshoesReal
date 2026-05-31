@@ -611,7 +611,7 @@ import { supabase } from '@/integrations/supabase/client';
 
                  {/* Forro — produto + consumo */}
                  <div className="grid grid-cols-4 items-center gap-2">
-                   <Label className="text-right text-xs">Forro · produto</Label>
+                   <Label className="text-right text-xs">Forração · produto</Label>
                    <select
                      className="col-span-3 h-8 text-xs rounded-md border border-input bg-background px-2"
                      value={formData.lining_material_product_id ?? ''}
@@ -624,7 +624,7 @@ import { supabase } from '@/integrations/supabase/client';
                    </select>
                  </div>
                  <div className="grid grid-cols-4 items-center gap-2">
-                   <Label className="text-right text-xs">Forro dm²/par</Label>
+                   <Label className="text-right text-xs">Forração dm²/par</Label>
                    <Input
                      type="number"
                      step="0.01"

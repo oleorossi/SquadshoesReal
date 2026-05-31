@@ -644,7 +644,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
                     )}
                     {o.lining_material && (
                       <div>
-                        <span className="section-label" style={{ color: '#666' }}>Forro</span>
+                        <span className="section-label" style={{ color: '#666' }}>Forração</span>
                         <span className="ml-1.5">{o.lining_material}</span>
                       </div>
                     )}

@@ -4,12 +4,12 @@ import { supabase } from '@/integrations/supabase/client';
 export type ConsumptionComponent =
   | 'Solado'
   | 'Cabedal'
-  | 'Forro'
+  | 'Forração'
   | 'Palmilha'
   | 'Fachete'
   | 'Componente Direto'
   | 'BOM'
-  | 'Forro (alternativa)';
+  | 'Forração (alternativa)';
 
 export interface ConsumptionRow {
   component: ConsumptionComponent;
@@ -129,20 +129,20 @@ export const filterConsumptionForSector = (
     case 'Corte Palmilha':
       return rows.filter(r => r.component === 'Palmilha' || byName(/palmilha|eva|forma/));
     case 'Corte Forração':
-      return rows.filter(r => r.component === 'Forro' || r.component === 'Fachete');
+      return rows.filter(r => r.component === 'Forração' || r.component === 'Fachete');
     case 'Corte Cabedal':
       return rows.filter(r => r.component === 'Cabedal' || r.component === 'Fachete');
     case 'Costura':
       return rows.filter(r =>
         r.component === 'Cabedal' ||
-        r.component === 'Forro' ||
+        r.component === 'Forração' ||
         byName(/linha|fio/),
       );
     case 'Aviamento':
       return rows.filter(r =>
         r.component === 'Componente Direto' ||
         r.component === 'BOM' ||
-        r.component === 'Forro (alternativa)' ||
+        r.component === 'Forração (alternativa)' ||
         byName(/fivela|ilhos|tira|presilha|botão|rebite|tachas/),
       );
     case 'Silk':

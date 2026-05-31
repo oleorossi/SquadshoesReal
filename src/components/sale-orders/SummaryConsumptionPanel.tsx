@@ -37,7 +37,7 @@ const classifyBomMaterial = (groupName: string, productName: string, category: s
    if (normalized.includes('cabedal') || normalized.includes('napa') || normalized.includes('velvet') || normalized.includes('couro')) return 'Cabedal';
   if (normalized.includes('solado')) return 'Solado';
   if (normalized.includes('palmilha') || normalized.includes('placa')) return 'Palmilha';
-  if (normalized.includes('forro')) return 'Forro';
+  if (normalized.includes('forração') || normalized.includes('forracao') || normalized.includes('forro')) return 'Forração';
   if (normalized.includes('tira')) return 'Tiras';
   if (normalized.includes('cola') || normalized.includes('adesivo')) return 'Químicos';
   if (normalized.includes('embalagem') || normalized.includes('caixa')) return 'Embalagem';
@@ -282,7 +282,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
             soleProductId,
             sheet?.sole_drives_consumption
           );
-          addConsumptionRow(consumptionMap, { componentType: 'Forro', groupName: liningMatch.group, materialName: 'Forração', productUnit: 'metro', color: orderColor, totalQuantity: liningTotal });
+          addConsumptionRow(consumptionMap, { componentType: 'Forração', groupName: liningMatch.group, materialName: 'Forração', productUnit: 'metro', color: orderColor, totalQuantity: liningTotal });
         }
 
         // Palmilha: converte consumo dm²/par em placas usando dimensões do GRUPO (consistente com Ficha Técnica)
@@ -387,7 +387,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
             const isSoleGroup = sheet?.sole_material?.toLowerCase() === groupKey;
             // Skip only if the BOM classification matches the spec that uses this group
             const shouldSkip = (isUpperGroup && bomType === 'Cabedal') ||
-                               (isLiningGroup && bomType === 'Forro') ||
+                               (isLiningGroup && bomType === 'Forração') ||
                                (isInsoleGroup && bomType === 'Palmilha') ||
                                (isSoleGroup && bomType === 'Solado') ||
                                // Also skip if classified as same component type (generic match)
@@ -401,7 +401,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
         }
       }
 
-      const categoryOrder = ['Cabedal', 'Forro', 'Palmilha', 'Solado', 'Tiras', 'Químicos', 'Embalagem', 'Outros'];
+      const categoryOrder = ['Cabedal', 'Forração', 'Palmilha', 'Solado', 'Tiras', 'Químicos', 'Embalagem', 'Outros'];
       const sortedRows = Array.from(consumptionMap.values()).sort((a, b) => {
         const catA = categoryOrder.indexOf(a.componentType);
         const catB = categoryOrder.indexOf(b.componentType);
@@ -440,7 +440,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
   }, [rows]);
 
   const handlePrintConsumption = useCallback(() => {
-    const sectionOrder = ['Cabedal', 'Forro', 'Palmilha', 'Solado', 'Tiras', 'Químicos', 'Embalagem', 'Outros'];
+    const sectionOrder = ['Cabedal', 'Forração', 'Palmilha', 'Solado', 'Tiras', 'Químicos', 'Embalagem', 'Outros'];
     let sectionsHtml = '';
     for (const section of sectionOrder) {
       const sectionRows = grouped.get(section);

@@ -329,7 +329,7 @@ export default function SoleCreateDialog({ open, onOpenChange, onCreated }: Prop
                   onCheckedChange={setIsFachetado}
                 />
                 <span className="text-sm text-muted-foreground">
-                  {isFachetado ? 'Com forro extra' : 'Sem forro extra'}
+                  {isFachetado ? 'Com forração extra' : 'Sem forração extra'}
                 </span>
               </div>
             </div>

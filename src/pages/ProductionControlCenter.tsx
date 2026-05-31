@@ -1127,7 +1127,7 @@ function OutsourceDialog({ target, onClose }: { target: BottleneckRow | null; on
             <div className="col-span-2">
               <Label>Materiais enviados</Label>
               <Textarea rows={2} value={materialsNotes} onChange={e => setMaterialsNotes(e.target.value)}
-                placeholder="Ex: 220 cabedais MOD-038 marrom, 220 forros..." />
+                placeholder="Ex: 220 cabedais MOD-038 marrom, 220 forrações..." />
             </div>
 
             <div className="col-span-2">

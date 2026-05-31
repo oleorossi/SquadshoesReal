@@ -174,7 +174,7 @@ export function SoleDriverPicker({
         <div className="mt-3 flex items-start gap-2 p-3 bg-blue-500/10 border border-blue-500/20 rounded text-xs text-blue-700 dark:text-blue-300">
           <Info className="w-4 h-4 shrink-0 mt-0.5" />
           <div>
-            <strong>Modo solado-driver ativo.</strong> O consumo de cabedal, forro e palmilha será
+            <strong>Modo solado-driver ativo.</strong> O consumo de cabedal, forração e palmilha será
             calculado a partir das specs técnicas do solado (tabela <code>sole_technical_specs</code>)
             para o tamanho <strong>{referenceSize}</strong>.
           </div>

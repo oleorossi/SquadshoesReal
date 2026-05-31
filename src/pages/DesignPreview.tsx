@@ -406,7 +406,7 @@ function MockupEditorFicha() {
           <ul className="space-y-1.5">
             {[
               { n: 'A', label: 'Cabedal', count: 3, active: true },
-              { n: 'B', label: 'Forro', count: 1 },
+              { n: 'B', label: 'Forração', count: 1 },
               { n: 'C', label: 'Palmilha', count: 2 },
               { n: 'D', label: 'Solado', count: 1 },
               { n: 'E', label: 'Embalagem', count: 4 },
@@ -510,7 +510,7 @@ function SectionB() {
 
       <div className="grid grid-cols-3 gap-px" style={{ background: 'rgba(10,10,10,0.10)' }}>
         {[
-          { label: 'Material', value: 'Forro Sintético Bege', subtitle: 'Group: Forros / Cor única' },
+          { label: 'Material', value: 'Forração Sintética Bege', subtitle: 'Group: Forrações / Cor única' },
           { label: 'Consumo / par', value: '8,2 dm²', subtitle: 'Padrão calculado' },
           { label: 'Custo / par', value: 'R$ 2,40', subtitle: 'A 0,29 R$/dm²' },
         ].map((c, i) => (

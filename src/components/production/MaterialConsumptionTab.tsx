@@ -43,7 +43,7 @@ const classifyComponentType = (groupName: string, productName: string, category:
   const normalized = `${groupName} ${productName} ${category}`.toLowerCase();
   if (normalized.includes('solado')) return 'Solado';
   if (normalized.includes('palmilha') || normalized.includes('placa')) return 'Palmilha';
-  if (normalized.includes('forro')) return 'Forro';
+  if (normalized.includes('forração') || normalized.includes('forracao') || normalized.includes('forro')) return 'Forração';
   if (normalized.includes('tira')) return 'Tiras';
   if (normalized.includes('cola') || normalized.includes('adesivo')) return 'Químicos';
   if (normalized.includes('embalagem') || normalized.includes('caixa')) return 'Embalagem';

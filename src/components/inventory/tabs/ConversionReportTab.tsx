@@ -96,7 +96,7 @@ function classifyProduct(p: ProductRow): IssueInfo {
 const CATEGORY_LABELS: Record<string, string> = {
   all: 'Todas categorias',
   Cabedal: 'Cabedal',
-  Forro: 'Forro',
+  Forro: 'Forração',
   Palmilha: 'Palmilha',
   Componente: 'Componente',
   'Químico': 'Químico',

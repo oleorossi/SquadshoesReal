@@ -1037,7 +1037,7 @@ function classifyGroup(name: string): string {
   if (n.includes('napa') || n.includes('couro')) return '3_Napas / Couros';
   if (n.includes('solado') || n.includes('sola')) return '4_Solados';
   if (n.includes('palmilha')) return '5_Palmilhas';
-  if (n.includes('forro')) return '6_Forros';
+  if (n.includes('forro')) return '6_Forrações';
   if (n.includes('embalagem') || n.includes('caixa')) return '7_Embalagens';
   return '8_Outros';
 }

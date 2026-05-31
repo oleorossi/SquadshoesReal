@@ -1268,7 +1268,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         // Antes checava liningFlag (forração da palmilha) — falso-positivo.
         const isSoleFachetado = soleFachetadoLookup.get(`${sheetId}::${cabedelColorLower}`) === true;
         if (isSoleFachetado) {
-          alerts.push({ text: 'Solado fachetado — duplicar corte de forro do salto', variant: 'warning' });
+          alerts.push({ text: 'Solado fachetado — duplicar corte de forração do salto', variant: 'warning' });
         }
         // Sequência de tiras na ordem da ficha técnica (TIRA 1, TIRA 2, ...).
         // Renderizada no Aviamento pra o operador montar na ordem certa.

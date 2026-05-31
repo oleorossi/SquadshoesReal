@@ -240,7 +240,7 @@ export default function BaseConsumption() {
                 {/* Consumo Base */}
                 <TabsContent value="consumo" className="m-0 p-4">
                   <p className="text-xs text-muted-foreground mb-4">
-                    Consumo de itens padrão (palmilha, colas, forro, etc.) por numeração.
+                    Consumo de itens padrão (palmilha, colas, forração, etc.) por numeração.
                     Alterações se propagam automaticamente para todas as cores deste modelo.
                   </p>
                   <SoleStandardItemsPanel soleProductId={selectedSoleId} />

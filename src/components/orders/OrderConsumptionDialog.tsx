@@ -32,14 +32,14 @@ type ConsumptionRow = {
   totalQuantity: number;
 };
 
-const COMPONENT_ORDER = ['Cabedal', 'Forro', 'Palmilha', 'Solado', 'Tiras', 'Químicos', 'Embalagem', 'Outros'] as const;
+const COMPONENT_ORDER = ['Cabedal', 'Forração', 'Palmilha', 'Solado', 'Tiras', 'Químicos', 'Embalagem', 'Outros'] as const;
 
 const classifyBomMaterial = (groupName: string, productName: string, category: string): string => {
   const normalized = `${groupName} ${productName} ${category}`.toLowerCase();
   if (normalized.includes('cabedal') || normalized.includes('napa') || normalized.includes('velvet') || normalized.includes('couro')) return 'Cabedal';
   if (normalized.includes('solado')) return 'Solado';
   if (normalized.includes('palmilha') || normalized.includes('placa')) return 'Palmilha';
-  if (normalized.includes('forro')) return 'Forro';
+  if (normalized.includes('forração') || normalized.includes('forracao') || normalized.includes('forro')) return 'Forração';
   if (normalized.includes('tira')) return 'Tiras';
   if (normalized.includes('cola') || normalized.includes('adesivo')) return 'Químicos';
   if (normalized.includes('embalagem') || normalized.includes('caixa')) return 'Embalagem';
@@ -294,7 +294,7 @@ export default function OrderConsumptionDialog({ open, onOpenChange, orderIds, t
           const soleProductId = soleColorMap.get(`${order.reference_id}::${orderColor}`) || null;
           const { total: liningTotal } = calculateConsumptionWithUnit(item, liningMatch.consumption, liningSheet, 'metro', undefined, soleProductId, sheet?.sole_drives_consumption);
           addConsumptionRow(consumptionMap, {
-            componentType: 'Forro', groupName: liningMatch.group, materialName: 'Forração',
+            componentType: 'Forração', groupName: liningMatch.group, materialName: 'Forração',
             productUnit: 'metro', color: orderColor, totalQuantity: liningTotal,
           });
         }
@@ -372,7 +372,7 @@ export default function OrderConsumptionDialog({ open, onOpenChange, orderIds, t
             const isInsoleGroup = sheet?.insole_material?.toLowerCase() === groupKey;
             const isSoleGroup = sheet?.sole_material?.toLowerCase() === groupKey;
             const shouldSkip = (isUpperGroup && bomType === 'Cabedal') ||
-                               (isLiningGroup && bomType === 'Forro') ||
+                               (isLiningGroup && bomType === 'Forração') ||
                                (isInsoleGroup && (bomType === 'Palmilha' || product.category?.toLowerCase().includes('palmilha'))) ||
                                (isSoleGroup && bomType === 'Solado');
             if (shouldSkip) continue;

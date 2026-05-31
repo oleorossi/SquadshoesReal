@@ -80,6 +80,38 @@ export function useCreateNoteTask() {
   });
 }
 
+/**
+ * Cria múltiplas tarefas de uma vez (mesma prioridade). Útil pro user
+ * digitar várias linhas e salvar tudo em batch.
+ * Retorna o array criado (em ordem do input).
+ */
+export function useBulkCreateNoteTasks() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { note_id: string; texts: string[]; priority?: NoteTaskPriority }) => {
+      const cleaned = input.texts.map(t => t.trim()).filter(t => t.length > 0);
+      if (cleaned.length === 0) throw new Error('Digite pelo menos uma tarefa.');
+      const rows = cleaned.map(text => ({
+        note_id: input.note_id,
+        text,
+        priority: input.priority || 'media',
+      }));
+      const { data, error } = await (supabase as any)
+        .from('note_tasks')
+        .insert(rows)
+        .select();
+      if (error) throw error;
+      return (data || []) as NoteTask[];
+    },
+    onSuccess: (tasks) => {
+      const noteId = tasks[0]?.note_id;
+      if (noteId) qc.invalidateQueries({ queryKey: ['note_tasks', noteId] });
+      toast.success(`${tasks.length} tarefa${tasks.length === 1 ? '' : 's'} adicionada${tasks.length === 1 ? '' : 's'}`);
+    },
+    onError: (e: any) => toast.error(e.message || 'Erro ao criar tarefas'),
+  });
+}
+
 export function useUpdateNoteTask() {
   const qc = useQueryClient();
   return useMutation({

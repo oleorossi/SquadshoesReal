@@ -37,7 +37,7 @@ const SIZES = ['17','18','19','20','21','22','23','24','25','26','27','28','29',
 // Maps actual product group/category to cutting sections
 const CABEDAL_KEYWORDS = ['napa', 'velvet', 'tira', 'trança', 'glow', 'couro', 'metalic'];
 const PALMILHA_KEYWORDS = ['palmilha', 'placa'];
-const FORRO_KEYWORDS = ['forro'];
+const FORRO_KEYWORDS = ['forro', 'forração', 'forracao'];
 const EXCLUDED_KEYWORDS = ['cola', 'embalagem', 'solado', 'linhanyl', 'componente', 'caixa'];
 
 function classifyCuttingCategory(groupName: string, isBomColorSource: boolean): string | null {
@@ -45,7 +45,7 @@ function classifyCuttingCategory(groupName: string, isBomColorSource: boolean): 
   if (EXCLUDED_KEYWORDS.some(k => lower.includes(k))) return null;
   if (isBomColorSource || CABEDAL_KEYWORDS.some(k => lower.includes(k))) return 'Cabedal';
   if (PALMILHA_KEYWORDS.some(k => lower.includes(k))) return 'Palmilha';
-  if (FORRO_KEYWORDS.some(k => lower.includes(k))) return 'Forro';
+  if (FORRO_KEYWORDS.some(k => lower.includes(k))) return 'Forração';
   return null; // skip non-cutting materials
 }
 
@@ -283,7 +283,7 @@ if (totalPairsAll !== palmTotal) {
   // Aggregate by category
   const palmilhaRows = cuttingData.filter(r => r.materialCategory === 'Palmilha');
   const cabedalRows = cuttingData.filter(r => r.materialCategory === 'Cabedal');
-  const forroRows = cuttingData.filter(r => r.materialCategory === 'Forro');
+  const forroRows = cuttingData.filter(r => r.materialCategory === 'Forração');
 
   // Aggregate consolidated view (group by color across all orders)
   const aggregateByCategory = (rows: CuttingRow[]) => {
@@ -514,7 +514,7 @@ if (totalPairsAll !== palmTotal) {
           const orderRows = cuttingData.filter(r => r.orderId === order.id);
           const palmilha = orderRows.filter(r => r.materialCategory === 'Palmilha');
           const cabedal = orderRows.filter(r => r.materialCategory === 'Cabedal');
-          const forro = orderRows.filter(r => r.materialCategory === 'Forro');
+          const forro = orderRows.filter(r => r.materialCategory === 'Forração');
           const grade = order.grade as Record<string, number> | null;
           const activeSizes = SIZES.filter(s => grade && Number(grade[s]) > 0);
           const isExpanded = expandedOrderId === order.id;
@@ -665,7 +665,7 @@ if (totalPairsAll !== palmTotal) {
                   )}
                   {forro.length > 0 && (
                     <div>
-                      <p className="text-xs font-semibold mb-1">🧵 Forro</p>
+                      <p className="text-xs font-semibold mb-1">🧵 Forração</p>
                       {forro.map((r, i) => (
                         <p key={i} className="text-xs text-muted-foreground">
                           {r.materialName} ({r.color}) — {activeSizes.map(s => `${s}:${(r.sizes[s] || 0)}`).join(' | ')} = <strong>{r.totalPairs}</strong>
@@ -771,20 +771,20 @@ if (totalPairsAll !== palmTotal) {
                         const allMats = buildMatsHtml([
                           { label: '👞 Cabedal (Tira)', category: 'Cabedal' },
                           { label: '🦶 Palmilha', category: 'Palmilha' },
-                          { label: '🧵 Forro', category: 'Forro' },
+                          { label: '🧵 Forração', category: 'Forração' },
                         ]);
                         printHtml(`Corte - ${order.order_number}`, `${buildHeader('')}${allMats}`);
                       } else {
                         const page1Mats = buildMatsHtml([
                           { label: '🦶 Palmilha', category: 'Palmilha' },
-                          { label: '🧵 Forro', category: 'Forro' },
+                          { label: '🧵 Forração', category: 'Forração' },
                         ]);
                         const page2Mats = buildMatsHtml([
                           { label: '👞 Cabedal', category: 'Cabedal' },
                         ]);
 
                         const html = `
-                          ${buildHeader('Palmilha & Forro')}
+                          ${buildHeader('Palmilha & Forração')}
                           ${page1Mats}
                           <div style="page-break-after:always;"></div>
                           ${buildHeader('Cabedal')}
@@ -812,7 +812,7 @@ if (totalPairsAll !== palmTotal) {
     const allData = [
       { title: 'Cabedal', data: consolidatedCabedal },
       { title: 'Palmilha', data: consolidatedPalmilha },
-      { title: 'Forro', data: consolidatedForro },
+      { title: 'Forração', data: consolidatedForro },
     ].filter(d => d.data.length > 0);
 
     const activeSizes = SIZES.filter(s => cuttingData.some(r => (r.sizes[s] || 0) > 0));
@@ -981,7 +981,7 @@ if (totalPairsAll !== palmTotal) {
 
               const repCabedal = aggregateByCategory(rows.filter(r => r.materialCategory === 'Cabedal'));
               const repPalmilha = aggregateByCategory(rows.filter(r => r.materialCategory === 'Palmilha'));
-              const repForro = aggregateByCategory(rows.filter(r => r.materialCategory === 'Forro'));
+              const repForro = aggregateByCategory(rows.filter(r => r.materialCategory === 'Forração'));
 
               const totalCabedal = repCabedal.reduce((s, r) => s + r.total, 0);
               const totalPalmilha = repPalmilha.reduce((s, r) => s + r.total, 0);
@@ -1110,7 +1110,7 @@ if (totalPairsAll !== palmTotal) {
                   if (items.length === 0) return '';
                   return `<span style="font-size:8px;color:#555;">${emoji} ${items.map(m => `${m.materialName} (${m.color})`).join(', ')}</span>`;
                 };
-                const matsHtml = [matsLine('Cabedal', '👞'), matsLine('Palmilha', '🦶'), matsLine('Forro', '🧵')].filter(Boolean).join(' &nbsp;|&nbsp; ');
+                const matsHtml = [matsLine('Cabedal', '👞'), matsLine('Palmilha', '🦶'), matsLine('Forração', '🧵')].filter(Boolean).join(' &nbsp;|&nbsp; ');
 
                 opDetailCardsHtml += `
                   <div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid #eee;${i === 0 ? '' : ''}">
@@ -1136,13 +1136,13 @@ if (totalPairsAll !== palmTotal) {
                   <div style="text-align:center;padding:6px 14px;background:#f5f5f0;border:1px solid #ddd;border-radius:6px;"><p style="font-size:18px;font-weight:700;color:#333;">${totalPairsAll}</p><p style="font-size:9px;color:#666;">Total Pares</p></div>
                   <div style="text-align:center;padding:6px 14px;background:#f5f5f0;border:1px solid #ddd;border-radius:6px;"><p style="font-size:18px;font-weight:700;color:#333;">${totalCabedal}</p><p style="font-size:9px;color:#666;">Cabedal</p></div>
                   <div style="text-align:center;padding:6px 14px;background:#f5f5f0;border:1px solid #ddd;border-radius:6px;"><p style="font-size:18px;font-weight:700;color:#333;">${totalPalmilha}</p><p style="font-size:9px;color:#666;">Palmilha</p></div>
-                  <div style="text-align:center;padding:6px 14px;background:#f5f5f0;border:1px solid #ddd;border-radius:6px;"><p style="font-size:18px;font-weight:700;color:#333;">${totalForro}</p><p style="font-size:9px;color:#666;">Forro</p></div>
+                  <div style="text-align:center;padding:6px 14px;background:#f5f5f0;border:1px solid #ddd;border-radius:6px;"><p style="font-size:18px;font-weight:700;color:#333;">${totalForro}</p><p style="font-size:9px;color:#666;">Forração</p></div>
                 </div>
                 ${detailHtml}
                 ${photoGalleryHtml}
                 ${buildTable('👞 Cabedal', repCabedal)}
                 ${buildTable('🦶 Palmilha', repPalmilha)}
-                ${buildTable('🧵 Forro', repForro)}
+                ${buildTable('🧵 Forração', repForro)}
                 ${opDetailCardsHtml}`;
               writePrintWindow(printWin, 'Relatório Corte', html);
             }}>
@@ -1252,12 +1252,12 @@ if (totalPairsAll !== palmTotal) {
                   fullHtml += buildHeader('') + buildMatsHtml([
                     { label: '👞 Cabedal (Tira)', category: 'Cabedal' },
                     { label: '🦶 Palmilha', category: 'Palmilha' },
-                    { label: '🧵 Forro', category: 'Forro' },
+                    { label: '🧵 Forração', category: 'Forração' },
                   ]);
                 } else {
-                  fullHtml += buildHeader('Palmilha & Forro') + buildMatsHtml([
+                  fullHtml += buildHeader('Palmilha & Forração') + buildMatsHtml([
                     { label: '🦶 Palmilha', category: 'Palmilha' },
-                    { label: '🧵 Forro', category: 'Forro' },
+                    { label: '🧵 Forração', category: 'Forração' },
                   ]);
                   fullHtml += '<div style="page-break-before:always;"></div>';
                   fullHtml += buildHeader('Cabedal') + buildMatsHtml([
@@ -1307,7 +1307,7 @@ if (totalPairsAll !== palmTotal) {
             value={consolidatedPalmilha.reduce((s, r) => s + r.total, 0)}
           />
           <StatCard
-            label="Forro (demanda)"
+            label="Forração (demanda)"
             value={consolidatedForro.reduce((s, r) => s + r.total, 0)}
             tone="success"
           />

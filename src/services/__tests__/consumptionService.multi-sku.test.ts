@@ -95,12 +95,12 @@ describe('calculateConsumptionMultiSku — agregação por material', () => {
     rpcMock
       .mockResolvedValueOnce(rpcResult([
         line({ component: 'Cabedal', product_id: 'napa', required: 90 }),
-        line({ component: 'Forro', product_id: 'forro', required: 55 }),
+        line({ component: 'Forração', product_id: 'forro', required: 55 }),
         line({ component: 'Palmilha', product_id: 'palm', required: 40 }),
       ]))
       .mockResolvedValueOnce(rpcResult([
         line({ component: 'Cabedal', product_id: 'napa', required: 45 }),
-        line({ component: 'Forro', product_id: 'forro', required: 27.5 }),
+        line({ component: 'Forração', product_id: 'forro', required: 27.5 }),
         line({ component: 'Palmilha', product_id: 'palm', required: 20 }),
       ]));
 
@@ -216,7 +216,7 @@ describe('calculateConsumptionMultiSku — agregação por material', () => {
       .mockResolvedValueOnce(rpcResult([line({ component: 'Cabedal', required: 90 })]))
       .mockResolvedValueOnce(rpcResult([
         line({ component: 'Cabedal', required: 45 }),
-        line({ component: 'Forro', product_id: 'forro', required: 27 }),
+        line({ component: 'Forração', product_id: 'forro', required: 27 }),
       ]));
 
     const items: MultiSkuItem[] = [

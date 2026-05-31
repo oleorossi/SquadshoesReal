@@ -41,7 +41,7 @@ import {
   type Note, type NoteTreeNode,
 } from '@/hooks/useNotes';
 import {
-  useNoteTasks, useCreateNoteTask, useUpdateNoteTask, useDeleteNoteTask,
+  useNoteTasks, useCreateNoteTask, useBulkCreateNoteTasks, useUpdateNoteTask, useDeleteNoteTask,
   PRIORITY_LABEL, PRIORITY_COLOR,
   type NoteTaskPriority,
 } from '@/hooks/useNoteTasks';
@@ -946,18 +946,22 @@ function NoteTreeRow({
 // ────────────────────────────────────────────────────────────────────────
 function NoteTasksPanel({ noteId }: { noteId: string }) {
   const { data: tasks = [], isLoading } = useNoteTasks(noteId);
-  const createTask = useCreateNoteTask();
   const updateTask = useUpdateNoteTask();
   const deleteTask = useDeleteNoteTask();
+  const bulkCreate = useBulkCreateNoteTasks();
 
   const [newText, setNewText] = useState("");
   const [newPriority, setNewPriority] = useState<NoteTaskPriority>("media");
 
+  // Cada linha não-vazia do textarea vira uma tarefa. Mesma prioridade
+  // aplicada pra todas — perfeito pra batch de tarefas similares.
+  const parsedLines = newText.split('\n').map(t => t.trim()).filter(t => t.length > 0);
+  const lineCount = parsedLines.length;
+
   const handleAdd = () => {
-    const text = newText.trim();
-    if (!text) return;
-    createTask.mutate(
-      { note_id: noteId, text, priority: newPriority },
+    if (lineCount === 0) return;
+    bulkCreate.mutate(
+      { note_id: noteId, texts: parsedLines, priority: newPriority },
       { onSuccess: () => { setNewText(""); setNewPriority("media"); } },
     );
   };
@@ -982,22 +986,24 @@ function NoteTasksPanel({ noteId }: { noteId: string }) {
         </div>
       </div>
 
-      {/* Adicionar nova */}
+      {/* Adicionar — Textarea aceita várias linhas, cada linha = 1 tarefa.
+          Mesma prioridade aplica pra todo o batch. Cmd/Ctrl+Enter salva. */}
       <div className="rounded-sm border-[1.5px] border-foreground/10 bg-foreground/[0.02] p-3 space-y-2">
-        <Input
+        <Textarea
           value={newText}
           onChange={e => setNewText(e.target.value)}
           onKeyDown={e => {
-            if (e.key === "Enter" && !e.shiftKey) {
+            // Cmd/Ctrl + Enter envia o batch (Enter solto cria nova linha)
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
               e.preventDefault();
               handleAdd();
             }
           }}
-          placeholder="O que precisa ser feito? (Enter pra adicionar)"
-          className="h-9 bg-card"
+          placeholder={'O que precisa ser feito?\nUma tarefa por linha — todas serão criadas com a mesma prioridade.\n\nEx:\nLigar fornecedor X\nFechar PV-00120\nRevisar ficha CF03\n\n⌘+Enter pra salvar tudo'}
+          className="min-h-[120px] bg-card resize-y font-mono text-sm leading-relaxed"
           autoFocus
         />
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="ed-eyebrow text-muted-foreground">Prioridade:</span>
           <Select value={newPriority} onValueChange={v => setNewPriority(v as NoteTaskPriority)}>
             <SelectTrigger className="h-8 w-32 text-xs"><SelectValue /></SelectTrigger>
@@ -1007,14 +1013,24 @@ function NoteTasksPanel({ noteId }: { noteId: string }) {
               <SelectItem value="baixa">⚪ Baixa</SelectItem>
             </SelectContent>
           </Select>
+          {lineCount > 0 && (
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {lineCount} tarefa{lineCount === 1 ? '' : 's'} pronta{lineCount === 1 ? '' : 's'} pra adicionar
+            </span>
+          )}
           <div className="flex-1" />
           <Button
             size="sm"
             onClick={handleAdd}
-            disabled={!newText.trim() || createTask.isPending}
+            disabled={lineCount === 0 || bulkCreate.isPending}
             className="gap-1.5 h-8"
           >
-            <Plus className="h-3.5 w-3.5" /> Adicionar
+            {bulkCreate.isPending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Plus className="h-3.5 w-3.5" />
+            )}
+            {lineCount > 1 ? `Adicionar ${lineCount}` : 'Adicionar'}
           </Button>
         </div>
       </div>
