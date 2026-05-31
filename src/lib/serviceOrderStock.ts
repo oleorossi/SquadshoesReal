@@ -73,7 +73,10 @@ export async function debitStockForServiceOrder(
       product = ctx.products.find((p) => {
         const pc = normalize(p.color);
         const targetColor = normalize(mat.color);
-        if (group && p.group_id === group.id) return pc === targetColor;
+        // Grupo resolvido: casa SÓ por group_id (evita vazar pra produto homônimo
+        // de outro grupo, ex.: "NAPA SOFT" dentro do grupo NAPA SUDANI).
+        if (group) return p.group_id === group.id && pc === targetColor;
+        // Sem grupo cadastrado com esse nome: fallback por nome do produto.
         const base = normalize(getBaseName(p.name));
         return base === normalize(mat.material) && pc === targetColor;
       });
@@ -129,7 +132,8 @@ export function resolveMaterialProduct(
   const found = products.find((p) => {
     const pc = normalize(p.color);
     const targetColor = normalize(color);
-    if (group && p.group_id === group.id) return pc === targetColor;
+    // Grupo resolvido: casa SÓ por group_id (evita homônimo de outro grupo).
+    if (group) return p.group_id === group.id && pc === targetColor;
     const base = normalize(getBaseName(p.name));
     return base === normalize(material) && pc === targetColor;
   });

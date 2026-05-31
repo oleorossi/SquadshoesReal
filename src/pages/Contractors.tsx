@@ -465,16 +465,15 @@ export default function Contractors() {
 
       // Debit output product by the net credited amount
       if (netCredited > 0) {
-        const { data: outRows } = await supabase
-          .from('products')
-          .select('id, quantity, name, color')
-          .ilike('name', `${outputName}%`)
-          .limit(20);
+        // Resolve por GRUPO (robusto p/ nomenclatura "GRUPO: COR"); fallback por nome.
+        const outGroup = productGroups.find((g: any) => g.name === outputName);
+        let outQuery = supabase.from('products').select('id, quantity, name, color, group_id');
+        outQuery = outGroup ? outQuery.eq('group_id', outGroup.id) : outQuery.ilike('name', `${outputName}%`);
+        const { data: outRows } = await outQuery.limit(50);
         const outMatch = (outRows || []).find((p: any) => {
-          const base = getBaseName(p.name) || p.name;
-          if (base !== outputName) return false;
+          if (!outGroup) { const base = getBaseName(p.name) || p.name; if (base !== outputName) return false; }
           const pc = (p.color || '').trim().toLowerCase();
-          return !outputColor || pc === outputColor.toLowerCase();
+          return !outputColor || pc === outputColor.toLowerCase() || getDerivedProductColor(p).toLowerCase() === outputColor.toLowerCase();
         });
         if (outMatch) {
           const prev = Number(outMatch.quantity);
@@ -507,7 +506,7 @@ export default function Contractors() {
     queryClient.invalidateQueries({ queryKey: ['products'] });
     queryClient.invalidateQueries({ queryKey: ['service_orders'] });
     toast.success('OS cancelada: conta a pagar cancelada e entradas de estoque revertidas.');
-  }, [artisanalRecipes, queryClient]);
+  }, [artisanalRecipes, productGroups, products, queryClient]);
 
   const debitStockForMaterials = async (materials: MaterialSent[], orderNumber: string, orderId?: string, saleOrderId?: string | null) => {
     const so = saleOrderId ? saleOrders.find((s: any) => s.id === saleOrderId) : null;
@@ -566,6 +565,19 @@ export default function Contractors() {
 
     if (outputMeters <= 0 || !outputName) return;
 
+    // Resolve o produto da tira (output) por GRUPO — robusto contra nomenclatura
+    // "GRUPO: COR" e diferença de caixa. Fallback por nome só quando o grupo não existe.
+    const outGroup = productGroups.find((g: any) => g.name === outputName);
+    const findOutputProd = (color: string) => {
+      const c = (color || '').trim().toLowerCase();
+      return products.find((p: any) => {
+        if (outGroup) { if (p.group_id !== outGroup.id) return false; }
+        else { const base = getBaseName(p.name) || p.name; if (base !== outputName) return false; }
+        const pc = (p.color || '').trim().toLowerCase();
+        return pc === c || getDerivedProductColor(p).toLowerCase() === c;
+      });
+    };
+
     // ── Path A: OS vinculada a um PV → debit por cor dos itens do pedido ──
     if (order.sale_order_id) {
       const { data: soItems } = await supabase
@@ -598,11 +610,7 @@ export default function Contractors() {
           // was just created (stale React Query cache wouldn't have it yet).
           let outputProdId: string | null = null;
           if (stockForColor > 0) {
-            const existing = products.find((p) => {
-              const base = getBaseName(p.name) || p.name;
-              if (base !== outputName) return false;
-              return (p.color || '').trim().toLowerCase() === itemColor.toLowerCase();
-            });
+            const existing = findOutputProd(itemColor);
             if (existing) {
               outputProdId = existing.id;
               const prevOutQty = getQty(existing);
@@ -642,11 +650,7 @@ export default function Contractors() {
             }
           } else {
             // No stock entry — still resolve ID for immediate debit (step 3)
-            const p = products.find((p) => {
-              const base = getBaseName(p.name) || p.name;
-              if (base !== outputName) return false;
-              return (p.color || '').trim().toLowerCase() === itemColor.toLowerCase();
-            });
+            const p = findOutputProd(itemColor);
             if (p) outputProdId = p.id;
           }
 
@@ -699,12 +703,7 @@ export default function Contractors() {
 
     // 2) Register artisanal output (for_stock portion)
     if (stockMetersTotal > 0) {
-      const existing = products.find((p) => {
-        const base = getBaseName(p.name) || p.name;
-        if (base !== outputName) return false;
-        const pc = (p.color || '').trim().toLowerCase();
-        return pc === outputColor.toLowerCase();
-      });
+      const existing = findOutputProd(outputColor);
       if (existing) {
         artisanalOutputProdId = existing.id;
         artisanalBaseAfterEntry = (existing.quantity || 0) + stockMetersTotal;
