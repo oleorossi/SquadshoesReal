@@ -1,4 +1,5 @@
  import { startOfWeek, format, parseISO, addDays, isTuesday, nextTuesday } from 'date-fns';
+import { convertDm2ToLinearMeters, convertDm2ToPlates, isLinearWidthMissing, type ComponentSheetCandidate } from './materialConsumption';
 
 export interface WeeklyOrder {
   id: string;
@@ -47,40 +48,65 @@ export interface WeeklyPlanResult {
 }
 
 /**
- * Calculate required amount using per-size consumption when grade is available.
- * Falls back to quantity_per_unit × total quantity when no grade/per-size data.
+ * Calcula a quantidade necessária na UNIDADE FÍSICA do produto.
+ * Usa consumo por numeração quando há grade; senão, consumo médio × qtd total.
+ *
+ * A5 (auditoria): material de ÁREA cortado de bobina/placa (napa/couro/forro) tem o
+ * consumo armazenado em dm²/par e precisa ser convertido pela LARGURA da ficha de
+ * componente (regra canônica) — antes o valor cru era multiplicado pelo preço (R$/m),
+ * inflando ~137×. Item linear DIRETO sem ficha (tira/elástico) já está na unidade
+ * nativa e NÃO converte. As funções convertDm2To* aplicam a perda (waste_pct da ficha).
  */
 function calculateRequiredAmount(
   mat: SheetMaterial,
   order: WeeklyOrder,
-  wastePct: number
+  cs: ComponentSheetCandidate | null
 ): number {
-  const multiplier = 1 + wastePct / 100;
+  const wastePct = Number(cs?.waste_pct) || 0;
   const perSize = mat.consumption_per_size;
   const grade = order.grade;
 
-  // Use per-size consumption with grade when both available
+  // Total bruto na unidade de CONSUMO armazenada (dm²/par p/ material de área)
+  let rawTotal = 0;
   if (perSize && grade && Object.keys(perSize).length > 0 && Object.keys(grade).length > 0) {
-    let total = 0;
     for (const [size, pairs] of Object.entries(grade)) {
       const pairsNum = Number(pairs) || 0;
       if (pairsNum <= 0) continue;
       const consumptionForSize = perSize[size] !== undefined ? Number(perSize[size]) : (Number(mat.quantity_per_unit) || 0);
-      total += pairsNum * consumptionForSize;
+      rawTotal += pairsNum * consumptionForSize;
     }
-    return total * multiplier;
+  } else {
+    rawTotal = order.quantity * (Number(mat.quantity_per_unit) || 0);
   }
 
-  // Fallback: average consumption × total quantity
-  return order.quantity * mat.quantity_per_unit * multiplier;
+  const unit = (mat.products?.unit || '').toLowerCase();
+  const isLinear = ['m', 'metro', 'metros', 'cm'].includes(unit);
+  const isPlate = unit === 'placa' || unit === 'chapa';
+
+  // Área → metros lineares (÷ largura da ficha) quando o produto é linear e a ficha tem largura.
+  if (isLinear && cs && !isLinearWidthMissing(cs, unit)) {
+    return convertDm2ToLinearMeters(rawTotal, cs);
+  }
+  // Área → placas quando o produto é placa.
+  if (isPlate && cs) {
+    return convertDm2ToPlates(rawTotal, cs);
+  }
+  // Linear direto / contagem / sem ficha: já na unidade nativa, só aplica perda.
+  return rawTotal * (1 + wastePct / 100);
 }
 
 export function generateWeeklyPurchasingPlan(
   orders: WeeklyOrder[],
   sheetMaterials: SheetMaterial[],
-  wastePctMap: Record<string, number>
+  componentSheets: Array<ComponentSheetCandidate & { product_id: string }> = []
 ): WeeklyPlanResult {
   const weeklyDemands: Record<string, Record<string, number>> = {};
+
+  // A5: ficha de componente por produto — fonte da LARGURA (conversão dm²→unidade física) e da perda.
+  const csByProduct = new Map<string, ComponentSheetCandidate>();
+  for (const cs of componentSheets) {
+    if (cs && (cs as any).product_id) csByProduct.set((cs as any).product_id, cs);
+  }
 
   const materialsBySheet = new Map<string, SheetMaterial[]>();
   for (const sm of sheetMaterials) {
@@ -111,9 +137,9 @@ export function generateWeeklyPurchasingPlan(
     for (const mat of materials) {
       if (!mat.products || mat.products.is_artisanal) continue;
 
-      // A quebra (waste) vem da ficha técnica (sheet_id) que é a reference_id da OP
-      const wastePct = wastePctMap[order.reference_id] || 0;
-      const requiredAmount = calculateRequiredAmount(mat, order, wastePct);
+      // A5: a perda + a largura vêm da ficha de COMPONENTE do produto (não da reference_id).
+      const cs = csByProduct.get(mat.product_id) || null;
+      const requiredAmount = calculateRequiredAmount(mat, order, cs);
 
       if (!weeklyDemands[weekKey][mat.product_id]) {
         weeklyDemands[weekKey][mat.product_id] = 0;

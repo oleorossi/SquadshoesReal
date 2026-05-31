@@ -238,7 +238,14 @@ export default function MobileNewOrder() {
           .single();
         if (!error && created?.id) {
           const itemsToInsert = itemsPayload.map(i => ({ ...i, sale_order_id: created.id }));
-          await supabase.from('sale_order_items').insert(itemsToInsert);
+          const { error: itemsError } = await supabase.from('sale_order_items').insert(itemsToInsert);
+          if (itemsError) {
+            // C4 (auditoria): itens falharam — remove o header órfão e cai pro enqueue
+            // (header+itens juntos), SEM marcar sent nem apagar o rascunho. Evita PV
+            // sem itens + perda silenciosa de dados (e o trap do client_request_id UNIQUE).
+            await supabase.from('sale_orders').delete().eq('id', created.id);
+            throw itemsError;
+          }
           sent = true;
           pvNumberLocal = created.order_number || null;
           setCreatedPvNumber(pvNumberLocal);

@@ -87,13 +87,13 @@ export default function Colagem() {
       const orderIds = Array.from(selectedOrders);
       
       const results = (await Promise.all(
-        orderIds.map(orderId => finalizeSectorTask(orderId, 'Aviamento'))
+        orderIds.map(orderId => finalizeSectorTask(orderId, 'Colagem'))
       )) as any[];
 
       const successCount = results.filter(r => r && r.success).length;
 
       if (successCount > 0) {
-        toast.success(`Aviamento finalizado para ${successCount} OP(s)!`);
+        toast.success(`Colagem finalizado para ${successCount} OP(s)!`);
         setSelectedOrders(new Set());
         queryClient.invalidateQueries({ queryKey: ['order_stages'] });
         queryClient.invalidateQueries({ queryKey: ['orders'] });
@@ -114,7 +114,7 @@ export default function Colagem() {
       if (filterStatus === 'active' && status !== 'em produção') return false;
 
       const stages = allStages.filter(s => s.order_id === order.id);
-      const stage = stages.find(s => s.stage_name === 'Aviamento');
+      const stage = stages.find(s => s.stage_name === 'Colagem');
       if (!stage) return filterStatus === 'all';
       if (filterStatus === 'active' && stage.status !== 'pendente' && stage.status !== 'em_andamento') return false;
 
@@ -227,7 +227,7 @@ export default function Colagem() {
       <div style="display:flex;gap:16px;align-items:flex-start;margin-bottom:16px;">
         ${imageHtml}
         <div style="flex:1;">
-          <h1 style="font-size:16px;margin-bottom:2px;">🧷 Ficha de Aviamento</h1>
+          <h1 style="font-size:16px;margin-bottom:2px;">🧷 Ficha de Colagem</h1>
           <p style="font-size:12px;margin-bottom:8px;"><strong>OP:</strong> ${order.order_number}</p>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;font-size:11px;">
             <div><strong>Referência:</strong> ${ref?.code || ''} — ${ref?.name || ''}</div>
@@ -243,7 +243,7 @@ export default function Colagem() {
         </div>
       </div>
       <h2 style="font-size:13px;margin:16px 0 8px;border-bottom:1px solid #ccc;padding-bottom:3px;">
-        Controle de Aviamento — ${totalFichas} fichas (${totalPairs} pares | ${pairsPerFicha} pares/ficha)
+        Controle de Colagem — ${totalFichas} fichas (${totalPairs} pares | ${pairsPerFicha} pares/ficha)
       </h2>
       <p style="font-size:9px;color:#666;margin-bottom:8px;">Marque cada quadrado conforme concluir a ficha de ${pairsPerFicha} pares.</p>
       <div style="display:flex;flex-wrap:wrap;gap:0;">
@@ -251,7 +251,7 @@ export default function Colagem() {
       </div>
     `;
 
-    printHtml(`Aviamento - ${order.order_number}`, html);
+    printHtml(`Colagem - ${order.order_number}`, html);
   };
 
   return (
@@ -259,7 +259,7 @@ export default function Colagem() {
       <div className="space-y-5 page-enter">
         <EditorialPageHeader
           sectionLabel="PRODUÇÃO · COLAGEM"
-          title="Setor de Aviamento"
+          title="Setor de Colagem"
           description="Fichas de controle com checklist de pares para aviamento"
           actions={<>
             {selectedOrders.size > 0 && (
@@ -281,7 +281,7 @@ export default function Colagem() {
                 return;
               }
 
-              const printWin = openPrintWindow('Relatório Aviamento');
+              const printWin = openPrintWindow('Relatório Colagem');
 
               const pairsPerFicha = 12;
 
@@ -468,7 +468,7 @@ export default function Colagem() {
                     <div style="display:flex;gap:16px;align-items:flex-start;margin-bottom:16px;">
                       ${imageHtml}
                       <div style="flex:1;">
-                        <h1 style="font-size:16px;margin-bottom:2px;">🧷 Ficha de Aviamento</h1>
+                        <h1 style="font-size:16px;margin-bottom:2px;">🧷 Ficha de Colagem</h1>
                         <p style="font-size:12px;margin-bottom:8px;"><strong>OP:</strong> ${order.order_number}</p>
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;font-size:11px;">
                           <div><strong>Referência:</strong> ${ref?.code || ''} — ${ref?.name || ''}</div>
@@ -484,7 +484,7 @@ export default function Colagem() {
                       </div>
                     </div>
                     <h2 style="font-size:13px;margin:16px 0 8px;border-bottom:1px solid #ccc;padding-bottom:3px;">
-                      Controle de Aviamento — ${totalFichas} fichas (${tp} pares | ${pairsPerFicha} pares/ficha)
+                      Controle de Colagem — ${totalFichas} fichas (${tp} pares | ${pairsPerFicha} pares/ficha)
                     </h2>
                     <p style="font-size:9px;color:#666;margin-bottom:8px;">Marque cada quadrado conforme concluir a ficha de ${pairsPerFicha} pares.</p>
                     <div style="display:flex;flex-wrap:wrap;gap:0;">${squaresHtml}</div>
@@ -497,7 +497,7 @@ export default function Colagem() {
               const html = `
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
                   <div>
-                    <h1 style="font-size:18px;margin-bottom:4px;">🧷 Relatório do Setor de Aviamento</h1>
+                    <h1 style="font-size:18px;margin-bottom:4px;">🧷 Relatório do Setor de Colagem</h1>
                     <p style="font-size:10px;color:#666;margin-bottom:12px;">Gerado em ${new Date().toLocaleString('pt-BR')} | ${ordersToprint.length} ${ordersToprint.length === 1 ? 'OP' : 'OPs'} | ${totalPairs} pares | ${groups.length} ${groups.length === 1 ? 'grupo' : 'grupos'} ref+cor</p>
                     <div style="display:flex;gap:16px;flex-wrap:wrap;">
                       <div style="text-align:center;padding:6px 14px;background:#f5f5f0;border:1px solid #ddd;border-radius:6px;"><p style="font-size:18px;font-weight:700;">${ordersToprint.length}</p><p style="font-size:9px;color:#666;">OPs</p></div>
@@ -524,7 +524,7 @@ export default function Colagem() {
                 <h2 style="font-size:13px;margin:12px 0 6px;border-bottom:1px solid #ccc;padding-bottom:3px;">📋 Checklist Agrupado — Corrugado 12 pares</h2>
                 ${opChecklistHtml}
                 ${opsHtml}`;
-              writePrintWindow(printWin, 'Relatório Aviamento', html);
+              writePrintWindow(printWin, 'Relatório Colagem', html);
             }} disabled={aviamentoOrders.length === 0}>
               <Printer className="h-3.5 w-3.5 mr-1" /> Relatório PDF
             </Button>
@@ -554,7 +554,7 @@ export default function Colagem() {
         {/* Stats */}
         <StatGrid>
           <StatCard
-            label="OPs p/ Aviamento"
+            label="OPs p/ Colagem"
             value={aviamentoOrders.length}
             tone="primary"
           />
@@ -635,7 +635,7 @@ export default function Colagem() {
                 const isExpanded = expandedOrderId === order.id;
                 const isSelected = selectedOrders.has(order.id);
 
-                  const aviamentoStage = allStages.find(s => s.order_id === order.id && s.stage_name === 'Aviamento');
+                  const aviamentoStage = allStages.find(s => s.order_id === order.id && s.stage_name === 'Colagem');
                   const stageColor = aviamentoStage?.status === 'concluido' ? 'border-l-emerald-500' : aviamentoStage?.status === 'em_andamento' ? 'border-l-amber-500' : 'border-l-red-500';
 
                   return (

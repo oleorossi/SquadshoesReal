@@ -59,14 +59,9 @@ export default function WeeklyPurchasingContent() {
         grade: o.grade as Record<string, number> | null,
       }));
 
-    const wastePctMap: Record<string, number> = {};
-    if (componentSheets) {
-      for (const cs of componentSheets) {
-        wastePctMap[cs.product_id] = cs.waste_pct || 0;
-      }
-    }
-
-    return generateWeeklyPurchasingPlan(filteredOrders, allSheetMaterials, wastePctMap);
+    // A5 (auditoria): passa as fichas de componente (largura + perda) p/ converter
+    // material de área dm²→unidade física pela largura da ficha (antes inflava ~137×).
+    return generateWeeklyPurchasingPlan(filteredOrders, allSheetMaterials, (componentSheets as any) || []);
   }, [orders, allSheetMaterials, componentSheets, statusFilter]);
 
   const filteredPlan = useMemo(() => {

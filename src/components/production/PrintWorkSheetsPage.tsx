@@ -21,6 +21,7 @@ import { SectorRegion } from '@/components/production/worksheet/SectorRegion';
 import logoSquad from '@/assets/logo-squad-shoes.jpg';
 import { useOrderLotsBatch } from '@/hooks/useOrderLots';
 import { expandOrdersByLots, type LotMetadata } from '@/lib/lotExpansion';
+import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 
 const printStyles = `
   /* ─────────────────────────────────────────────────────────────
@@ -1585,11 +1586,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       const baseSumExp = Object.values(baseGridForExp).reduce((s: number, v) => s + (Number(v) || 0), 0);
       const orderTotalExp = Number(order.total_pairs ?? 0);
       const multExp = baseSumExp > 0 ? orderTotalExp / baseSumExp : 0;
-      const scaledGridExp: Record<string, number> = {};
-      for (const [size, qty] of Object.entries(baseGridForExp)) {
-        const s = Math.round((Number(qty) || 0) * multExp);
-        if (s > 0) scaledGridExp[size] = s;
-      }
+      // A10 (auditoria): largest-remainder p/ as células por numeração SOMAREM o Total
+      // (a Expedição é o documento de conferência par-a-par antes do faturamento).
+      const scaledGridExp = scaleGradeWithLargestRemainder(baseGridForExp, multExp, orderTotalExp);
       cust.orders.push({
         id: order.id,
         op_number: order.op_number,
@@ -1734,11 +1733,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       const baseSum = Object.values(baseGrid).reduce((s: number, v) => s + (Number(v) || 0), 0);
       const orderTotal = Number(order.total_pairs ?? 0);
       const mult = baseSum > 0 ? orderTotal / baseSum : 0;
-      const scaledGrade: Record<string, number> = {};
-      for (const [size, qty] of Object.entries(baseGrid)) {
-        const s = Math.round((Number(qty) || 0) * mult);
-        if (s > 0) scaledGrade[size] = s;
-      }
+      // A10 (auditoria): largest-remainder p/ as células somarem o Total no Relatório Gerencial.
+      const scaledGrade = scaleGradeWithLargestRemainder(baseGrid, mult, orderTotal);
 
       // Pares/caixa do solado.
       const soleMapping = (soleMappings as any[]).find(
