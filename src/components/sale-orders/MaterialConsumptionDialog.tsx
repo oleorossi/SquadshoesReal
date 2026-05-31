@@ -275,6 +275,9 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
             lining_consumption,
             insole_material,
             insole_consumption,
+            insole_has_lining,
+            insole_ready_made,
+            insole_lining_consumption,
             sole_material,
             sole_consumption,
             sole_color,
@@ -300,7 +303,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
           .in('sheet_id', refIds),
         supabase
           .from('products')
-          .select('id, name, color, group_id, quantity, reserved_stock, stock_grade')
+          .select('id, name, color, group_id, quantity, reserved_stock, stock_grade, sole_classification')
           .eq('active', true),
         supabase
           .from('product_groups')
@@ -505,40 +508,68 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
            });
          }
 
-         // Palmilha
-         const palmMapping = palmilhaColorMap.get(`${item.reference_id}::${orderColor.toLowerCase()}`) || palmilhaDefaultMap.get(item.reference_id);
-         const insoleGroupName = sheet?.insole_material || '';
-         const insoleGroup = (productGroups || []).find((g: any) => g.name === insoleGroupName);
-         const palmColor = palmMapping?.color || '—';
-         const palmProductId = palmMapping?.productId;
+         // Palmilha = PLACA (base) + FORRAÇÃO (napa do forro). Pulada INTEIRA quando
+         // a palmilha é pronta (insole_ready_made ou solado classificado
+         // palmilha_pronta) — espelha o ramo SQL calculate_order_consumption*:
+         // pronta = não debita nada (nem placa, nem forração).
+         const soleProductIdForInsole = soleColorMap.get(`${item.reference_id}::${orderColor}`) || null;
+         const insoleSoleProd = soleProductIdForInsole ? (allProducts || []).find(p => p.id === soleProductIdForInsole) : null;
+         const isPalmilhaPronta = (sheet?.insole_ready_made === true)
+           || ((insoleSoleProd as any)?.sole_classification === 'palmilha_pronta');
 
-         // If it's a specific product mapping (unit-based)
-         if (palmProductId) {
-           const prod = (allProducts || []).find(p => p.id === palmProductId);
-           addConsumptionRow(consumptionMap, {
-             componentType: 'Palmilha',
-             groupName: insoleGroupName,
-             materialName: prod?.name || 'Palmilha',
-             productUnit: 'par',
-             color: prod?.color || palmColor,
-             totalQuantity: itemQuantity,
-           });
-         } else {
-           // Legacy/Material-based Palmilha (converted to plates)
-           const soleProductIdForInsole = soleColorMap.get(`${item.reference_id}::${orderColor}`) || null;
-           const insoleSheet = getPreferredGroupSheet(insoleGroupName, { mode: 'plate', preferYield: true });
-           const insoleDm2 = calculateGradeBasedDm2(item, Number(sheet?.insole_consumption) || 0, insoleSheet, undefined, soleProductIdForInsole, sheet?.sole_drives_consumption);
-           const groupPlateArea = calcGroupPlateAreaDm2(insoleGroup);
-           const insolePlates = groupPlateArea > 0 ? (insoleDm2 / groupPlateArea) : convertDm2ToPlates(insoleDm2, insoleSheet);
-           
-           addConsumptionRow(consumptionMap, {
-             componentType: 'Palmilha',
-             groupName: insoleGroupName,
-             materialName: 'Palmilha',
-             productUnit: 'placa',
-             color: palmColor,
-             totalQuantity: insolePlates,
-           });
+         if (!isPalmilhaPronta) {
+           const palmMapping = palmilhaColorMap.get(`${item.reference_id}::${orderColor.toLowerCase()}`) || palmilhaDefaultMap.get(item.reference_id);
+           const insoleGroupName = sheet?.insole_material || '';
+           const insoleGroup = (productGroups || []).find((g: any) => g.name === insoleGroupName);
+           const palmColor = palmMapping?.color || '—';
+           const palmProductId = palmMapping?.productId;
+
+           // PLACA (base): produto específico (unidade) ou material convertido a placas
+           if (palmProductId) {
+             const prod = (allProducts || []).find(p => p.id === palmProductId);
+             addConsumptionRow(consumptionMap, {
+               componentType: 'Palmilha',
+               groupName: insoleGroupName,
+               materialName: prod?.name || 'Palmilha',
+               productUnit: 'par',
+               color: prod?.color || palmColor,
+               totalQuantity: itemQuantity,
+             });
+           } else {
+             const insoleSheet = getPreferredGroupSheet(insoleGroupName, { mode: 'plate', preferYield: true });
+             const insoleDm2 = calculateGradeBasedDm2(item, Number(sheet?.insole_consumption) || 0, insoleSheet, undefined, soleProductIdForInsole, sheet?.sole_drives_consumption);
+             const groupPlateArea = calcGroupPlateAreaDm2(insoleGroup);
+             const insolePlates = groupPlateArea > 0 ? (insoleDm2 / groupPlateArea) : convertDm2ToPlates(insoleDm2, insoleSheet);
+
+             addConsumptionRow(consumptionMap, {
+               componentType: 'Palmilha',
+               groupName: insoleGroupName,
+               materialName: 'Palmilha',
+               productUnit: 'placa',
+               color: palmColor,
+               totalQuantity: insolePlates,
+             });
+           }
+
+           // FORRAÇÃO da palmilha: napa do forro (lining_material) que cobre a placa.
+           // Linha linear ADICIONAL (mesma napa do Forro do cabedal). Só quando há
+           // forro (insole_has_lining) e área de forração da palmilha > 0.
+           const insoleLiningCons = Number(sheet?.insole_lining_consumption) || 0;
+           const liningGroupForPalm = sheet?.lining_material || '';
+           if (insoleLiningCons > 0 && liningGroupForPalm && sheet?.insole_has_lining !== false) {
+             const mappedLiningColor = liningColorMap.get(`${item.reference_id}::${orderColor.toLowerCase()}`) || liningDefaultMap.get(item.reference_id) || orderColor;
+             const forrSheet = getPreferredGroupSheet(liningGroupForPalm, { color: mappedLiningColor, mode: 'linear', preferYield: true });
+             const { total: forrTotal } = calculateConsumptionWithUnit(item, insoleLiningCons, forrSheet, 'metro', undefined, soleProductIdForInsole, sheet?.sole_drives_consumption);
+             addConsumptionRow(consumptionMap, {
+               componentType: 'Palmilha',
+               groupName: liningGroupForPalm,
+               materialName: 'Forração Palmilha',
+               productUnit: 'metro',
+               color: mappedLiningColor,
+               totalQuantity: forrTotal,
+               widthMissing: isLinearWidthMissing(forrSheet, 'm'),
+             });
+           }
          }
 
         // Solado: resolver cor real via technical_sheet_sole_colors (mapeamento
