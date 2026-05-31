@@ -18,9 +18,18 @@
 --
 --   🟡 Match de cor com unaccent (Café = Cafe), alinhando com debit_strap_stock.
 --
--- O estorno no cancelamento (tg_revert_service_order_base_on_cancel) recebe o
--- mesmo fix de FK e passa a só estornar quando houve débito de base lançado —
--- assim NÃO credita NAPA das 24 OSs antigas (criadas sem trigger, nunca debitadas).
+--   🟢 Match do material base por GRUPO (group_id), não por nome de produto. A
+--      receita guarda o NOME DO GRUPO selecionado (base_product_name). Casar por
+--      products.name = nome-do-grupo só funciona para grupos cujos produtos têm
+--      nome puro (ex.: NAPA SOFT). A maioria dos grupos usa o formato "GRUPO: COR"
+--      (tiras, NAPA SANTORINE, DUBLAGEM, TRANÇA…), onde o match por nome falha.
+--      Resolvendo o group_id a partir do nome do grupo e casando produtos por
+--      group_id + cor, o débito funciona para QUALQUER grupo selecionável. Mantém
+--      fallback por nome para o caso de base_product_name não ser um grupo.
+--
+-- O estorno no cancelamento (tg_revert_service_order_base_on_cancel) recebe os
+-- mesmos fixes e passa a só estornar quando houve débito de base lançado — assim
+-- NÃO credita NAPA das OSs antigas (criadas sem trigger, nunca debitadas).
 -- =============================================================================
 
 -- ─── Débito da base na criação ──────────────────────────────────────────────
@@ -32,6 +41,7 @@ SET search_path TO 'public', 'extensions'
 AS $$
 DECLARE
   v_recipe      RECORD;
+  v_group_id    uuid;
   v_product_id  uuid;
   v_product_qty numeric;
   v_required    numeric;
@@ -61,18 +71,40 @@ BEGIN
   -- Quantidade necessária do base = output_meters / yield_per_meter
   v_required := NEW.artisanal_output_meters / v_recipe.yield_per_meter;
 
-  -- Match: products.name = recipe.base_product_name + cor (unaccent), prioriza cor exata.
-  SELECT p.id, p.quantity INTO v_product_id, v_product_qty
-    FROM public.products p
-   WHERE p.active = true
-     AND lower(trim(unaccent(p.name))) = lower(trim(unaccent(v_recipe.base_product_name)))
-     AND (NEW.artisanal_base_color IS NULL
-          OR NEW.artisanal_base_color = ''
-          OR lower(trim(unaccent(coalesce(p.color, '')))) = lower(trim(unaccent(NEW.artisanal_base_color))))
-   ORDER BY (NEW.artisanal_base_color IS NOT NULL
-             AND lower(trim(unaccent(coalesce(p.color, '')))) = lower(trim(unaccent(NEW.artisanal_base_color)))) DESC NULLS LAST
-   LIMIT 1
-   FOR UPDATE;
+  -- base_product_name é o NOME DO GRUPO selecionado na receita. Resolve o grupo
+  -- para casar produtos por group_id (robusto contra a nomenclatura "GRUPO: COR").
+  SELECT id INTO v_group_id
+    FROM public.product_groups
+   WHERE lower(trim(unaccent(name))) = lower(trim(unaccent(v_recipe.base_product_name)))
+   LIMIT 1;
+
+  IF v_group_id IS NOT NULL THEN
+    -- Match primário: por grupo + cor. Entre vários da mesma cor, o de maior estoque.
+    SELECT p.id, p.quantity INTO v_product_id, v_product_qty
+      FROM public.products p
+     WHERE p.active = true
+       AND p.group_id = v_group_id
+       AND (NEW.artisanal_base_color IS NULL
+            OR NEW.artisanal_base_color = ''
+            OR lower(trim(unaccent(coalesce(p.color, '')))) = lower(trim(unaccent(NEW.artisanal_base_color))))
+     ORDER BY p.quantity DESC NULLS LAST
+     LIMIT 1
+     FOR UPDATE;
+  END IF;
+
+  -- Fallback legado: base_product_name não é um grupo → casa por nome do produto.
+  IF v_product_id IS NULL THEN
+    SELECT p.id, p.quantity INTO v_product_id, v_product_qty
+      FROM public.products p
+     WHERE p.active = true
+       AND lower(trim(unaccent(p.name))) = lower(trim(unaccent(v_recipe.base_product_name)))
+       AND (NEW.artisanal_base_color IS NULL
+            OR NEW.artisanal_base_color = ''
+            OR lower(trim(unaccent(coalesce(p.color, '')))) = lower(trim(unaccent(NEW.artisanal_base_color))))
+     ORDER BY p.quantity DESC NULLS LAST
+     LIMIT 1
+     FOR UPDATE;
+  END IF;
 
   IF v_product_id IS NULL THEN
     RAISE WARNING 'OS %: produto base "%" (cor %) não encontrado — não debitando estoque',
@@ -124,6 +156,7 @@ SET search_path TO 'public', 'extensions'
 AS $$
 DECLARE
   v_recipe     RECORD;
+  v_group_id   uuid;
   v_product_id uuid;
   v_required   numeric;
 BEGIN
@@ -149,14 +182,35 @@ BEGIN
 
     v_required := NEW.artisanal_output_meters / v_recipe.yield_per_meter;
 
-    SELECT p.id INTO v_product_id
-      FROM public.products p
-     WHERE p.active = true
-       AND lower(trim(unaccent(p.name))) = lower(trim(unaccent(v_recipe.base_product_name)))
-       AND (NEW.artisanal_base_color IS NULL
-            OR NEW.artisanal_base_color = ''
-            OR lower(trim(unaccent(coalesce(p.color, '')))) = lower(trim(unaccent(NEW.artisanal_base_color))))
+    -- Mesmo match por grupo (group_id) usado no débito, com fallback por nome.
+    SELECT id INTO v_group_id
+      FROM public.product_groups
+     WHERE lower(trim(unaccent(name))) = lower(trim(unaccent(v_recipe.base_product_name)))
      LIMIT 1;
+
+    IF v_group_id IS NOT NULL THEN
+      SELECT p.id INTO v_product_id
+        FROM public.products p
+       WHERE p.active = true
+         AND p.group_id = v_group_id
+         AND (NEW.artisanal_base_color IS NULL
+              OR NEW.artisanal_base_color = ''
+              OR lower(trim(unaccent(coalesce(p.color, '')))) = lower(trim(unaccent(NEW.artisanal_base_color))))
+       ORDER BY p.quantity DESC NULLS LAST
+       LIMIT 1;
+    END IF;
+
+    IF v_product_id IS NULL THEN
+      SELECT p.id INTO v_product_id
+        FROM public.products p
+       WHERE p.active = true
+         AND lower(trim(unaccent(p.name))) = lower(trim(unaccent(v_recipe.base_product_name)))
+         AND (NEW.artisanal_base_color IS NULL
+              OR NEW.artisanal_base_color = ''
+              OR lower(trim(unaccent(coalesce(p.color, '')))) = lower(trim(unaccent(NEW.artisanal_base_color))))
+       ORDER BY p.quantity DESC NULLS LAST
+       LIMIT 1;
+    END IF;
 
     IF v_product_id IS NOT NULL THEN
       UPDATE public.products
@@ -171,7 +225,7 @@ BEGIN
       SELECT id, 'in', v_required,
              quantity - v_required, quantity,
              'Estorno OS ' || COALESCE(NEW.order_number, '?') || ' cancelada — base',
-             NULL  -- FK fix: order_id -> orders
+             NULL
         FROM public.products WHERE id = v_product_id;
     END IF;
   END IF;
