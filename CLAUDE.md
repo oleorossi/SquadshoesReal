@@ -55,6 +55,56 @@ supabase db push → DB live
 4. **TypeScript must stay clean** — run `bunx tsc --noEmit` before committing.
 5. **Após edits visuais** — run `npm run check:tokens` to detect hardcoded colors that should be design tokens.
 
+## Regra de cálculo de consumo de materiais (CANÔNICA)
+
+> Fonte de referência do cálculo exibido no modal **"Consumo de Materiais"** do PV
+> (`src/components/sale-orders/MaterialConsumptionDialog.tsx`) e na lib
+> `src/lib/materialConsumption.ts`. Toda mudança de consumo deve respeitar isto.
+
+**Princípio central:** um valor de consumo armazenado como **dm²/par (área)** NUNCA pode
+ser exibido/usado cru como se fosse a unidade linear do produto. Ele tem que ser
+convertido para a unidade física do produto usando as dimensões da **ficha de
+componente** (`component_sheets`).
+
+### Conversões
+- **Material de ÁREA cortado de bobina** (napa, couro, forro): `quantity_per_unit` /
+  `*_consumption` está em **dm²/par**.
+  - → **metros lineares** = `dm² ÷ (largura_mm / 10) × (1 + perda%)` quando o produto é
+    unidade linear (m/cm) e a ficha tem largura. (`convertDm2ToLinearMeters`)
+  - → **placas** = `dm² ÷ área_da_placa_dm²` quando a unidade é placa.
+    (`convertDm2ToPlates`)
+- **Item linear DIRETO sem ficha de componente** (tiras, elásticos): `quantity_per_unit`
+  já está na unidade nativa (metro/contagem) → **NÃO converter**.
+- **Solado**: por par, segmentado por **numeração** (`sizeBreakdown`), nunca por área.
+
+### Quando converter (sinal de decisão)
+Presença de **ficha de componente com largura > 0**. Caminhos que aplicam a regra:
+upper (cabedal), lining (forro), insole (palmilha) e **sheet_materials (BOM)** — este
+último foi corrigido em **2026-05-30** (antes multiplicava `quantity_per_unit × qtd`
+direto → inflava ~100×, ex.: napa 5,7 dm²/par × 720 = 4104 "m" em vez de ~30 m no
+PV-00116). A largura mora em `component_sheets.dimensions_width` (+ `dimensions_unit`),
+por produto.
+
+### Ficha de área SEM largura
+Não dá pra converter → manter o valor e marcar `widthMissing` (aviso âmbar; o consumo
+fica ~100× inflado até cadastrar a largura em **Materiais → Ficha de Componente →
+Dimensões**). A UI deixa a linha **neutra** (não verde/vermelho), pois a comparação
+com estoque é inválida nesse caso.
+
+### Disponibilidade (verde = em estoque / vermelho = em falta)
+Marcada no momento da consulta:
+- **Não-solado**: disponível = `products.quantity − reserved_stock` (líquido), somado
+  entre produtos do grupo que casam na cor. Verde se cobre o consumo.
+- **Solado**: por **número**, usando `stock_grade` (bruto — não há reserva por
+  numeração). Baldes conjugados (`"33/34"`) são **distribuídos** entre os números que
+  cobrem (proporcional à necessidade), pra não contar o mesmo balde duas vezes.
+
+### ⚠ Divergência conhecida (servidor)
+O custeio e o MRP usam funções SQL (`calculate_order_consumption*`) — caminho
+**separado** do modal. Não há garantia de que apliquem esta mesma regra; ao mexer em
+consumo de área, verificar se o lado SQL também converte dm²→unidade física, senão
+custeio/MRP divergem do modal.
+
 ## Design Token System — DO NOT use hardcoded colors
 
 This project uses **CSS custom property tokens** defined in `src/index.css`. Using
