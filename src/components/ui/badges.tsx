@@ -247,7 +247,7 @@ export function FilterChip({ active, count, children, className, ...props }: Fil
     <button
       type="button"
       className={cn(
-        'inline-flex cursor-pointer items-center gap-1.5 rounded-[7px] border px-[11px] py-[5px] text-xs font-semibold transition-all duration-[140ms]',
+        'inline-flex cursor-pointer items-center gap-1.5 rounded-[7px] border px-[11px] py-[5px] text-xs font-semibold transition-all duration-150',
         active
           ? 'text-white shadow-[0_2px_4px_hsl(192_75%_21%/0.18)]'
           : 'border-[hsl(200_14%_88%)] bg-card text-[hsl(200_12%_45%)] hover:border-[hsl(192_75%_21%)] hover:text-[hsl(192_75%_21%)]',
