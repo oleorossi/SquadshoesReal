@@ -9,7 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { PencilSimple as Pencil, Warning as AlertTriangle, FolderOpen, CaretDown as ChevronDown, ArrowsDownUp as ArrowUpDown, ArrowUp, ArrowDown, Stack as Layers, Package as PackageMinus, GridFour as Grid3X3, Gear as Settings2, Package, Image as ImageIcon, X, Flask as FlaskConical } from '@phosphor-icons/react';
+import { PencilSimple as Pencil, Warning as AlertTriangle, FolderOpen, CaretDown as ChevronDown, ArrowsDownUp as ArrowUpDown, ArrowUp, ArrowDown, Stack as Layers, Package as PackageMinus, GridFour as Grid3X3, Gear as Settings2, Package, Image as ImageIcon, X, Flask as FlaskConical, WarningCircle } from '@phosphor-icons/react';
+import { useMaterialsConfigIssuesByProduct, ISSUE_LABELS } from '@/hooks/useMaterialsConfigIssues';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { cn, getSoleModelName, stripColorFromName } from '@/lib/utils';
 import { useGroups, ProductGroup } from '@/hooks/useGroups';
@@ -239,6 +240,46 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
                      <TooltipContent side="bottom" className="text-xs">Item padrão de solado: adicionado automaticamente ao BOM</TooltipContent>
                    </Tooltip>
                  )}
+                 {/* Badge de "config faltando" — sinaliza materiais cujo
+                     consumo/custeio está prejudicado por campo faltante
+                     (largura, conversion_rate, preço, yield). Critical em
+                     vermelho (afeta consumo), warning em âmbar (afeta custo). */}
+                 {(() => {
+                   const issues = configIssuesByProduct.get(product.id);
+                   if (!issues || issues.length === 0) return null;
+                   const hasCritical = issues.some(i => i.severity === 'critical');
+                   const label = issues.length === 1
+                     ? ISSUE_LABELS[issues[0].issue_type]
+                     : `${issues.length} pendências`;
+                   return (
+                     <Tooltip>
+                       <TooltipTrigger asChild>
+                         <Badge
+                           variant="outline"
+                           className={cn(
+                             'gap-1 px-1.5 h-5 cursor-help',
+                             hasCritical
+                               ? 'bg-destructive/10 text-destructive border-destructive/30'
+                               : 'bg-amber-500/10 text-amber-700 border-amber-500/30 dark:text-amber-300',
+                           )}
+                         >
+                           <WarningCircle className="h-3 w-3" />
+                           <span className="text-xs font-bold uppercase tracking-wider">{label}</span>
+                         </Badge>
+                       </TooltipTrigger>
+                       <TooltipContent side="bottom" className="text-xs max-w-xs">
+                         <p className="font-bold mb-1">
+                           {hasCritical ? 'Consumo prejudicado' : 'Cadastro incompleto'}
+                         </p>
+                         <ul className="space-y-0.5">
+                           {issues.map((i, idx) => (
+                             <li key={idx} className="leading-snug">• {i.description}</li>
+                           ))}
+                         </ul>
+                       </TooltipContent>
+                     </Tooltip>
+                   );
+                 })()}
               </div>
               {product.category.toLowerCase().includes('solado') && (() => {
                 // Alerta de estoque mínimo removido - solados usam grade de numeração
@@ -430,6 +471,9 @@ type SubGroup = {
 export function ProductTable({ products, onEdit, onDelete, externalSort }: ProductTableProps) {
   const { data: groups = [] } = useGroups();
   const { density, isVisible, visibleCount } = useTableView();
+  // Issues de config (largura faltando, conversion_rate zerado, preço zerado)
+  // — uma query global; map em memória pra lookup O(1) por produto na linha.
+  const { byProduct: configIssuesByProduct } = useMaterialsConfigIssuesByProduct();
   // Material column always shown; +1 for it.
   const colCount = visibleCount + 1;
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
