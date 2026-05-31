@@ -2693,36 +2693,65 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
 
                     {/* Materiais mandatórios também ocultos — pertencem a outro
                         local (Materiais Padrão do Solado: cola, palmilha, linha). */}
-                    {false && (form.components_accessories || []).map((extra: any, rawIdx: number) => ({ extra, rawIdx })).filter(({ extra }) => extra.mandatory === true).length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-dashed border-emerald-300 dark:border-emerald-800">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Check className="h-3.5 w-3.5 text-emerald-600" />
-                          <span className="text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">Materiais Sempre Consumidos</span>
+                    {/* Componentes Extras do Cabedal — cada um soma ao consumo principal
+                        (mandatory=true → débito independente, não substitui o cabedal).
+                        Ex: Napa principal (dm²) + Elástico Traseiro 6mm (m) +
+                        Elástico Frente 8mm (m) + Tira reforço (m).
+                        Cada componente tem label livre pra distinguir na ficha. */}
+                    <div className="mt-3 pt-3 border-t border-dashed border-emerald-300 dark:border-emerald-800">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <Plus className="h-3.5 w-3.5 text-emerald-600" />
+                          <span className="text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                            Componentes Extras do Cabedal
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            · somam ao consumo principal e debitam estoque
+                          </span>
                         </div>
-                        {(form.components_accessories || []).map((extra: any, rawIdx: number) => ({ extra, rawIdx })).filter(({ extra }) => extra.mandatory === true).map(({ extra, rawIdx }, displayIdx) => {
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 gap-1.5 text-xs"
+                          onClick={() => {
+                            const arr = [...(form.components_accessories || [])];
+                            arr.push({ material: '', mandatory: true, label: '', consumption: 0, consumption_per_size: {} });
+                            updateField('components_accessories', arr);
+                          }}
+                        >
+                          <Plus className="h-3 w-3" /> Adicionar Componente
+                        </Button>
+                      </div>
+
+                      {(() => {
+                        const mandatoryItems = (form.components_accessories || []).map((extra: any, rawIdx: number) => ({ extra, rawIdx })).filter(({ extra }) => extra.mandatory === true);
+                        if (mandatoryItems.length === 0) {
+                          return (
+                            <p className="text-xs text-muted-foreground italic px-2 py-3">
+                              Nenhum componente extra. Use o botão acima pra adicionar elásticos, reforços, tiras
+                              ou qualquer material que vai além do cabedal principal.
+                            </p>
+                          );
+                        }
+                        return mandatoryItems.map(({ extra, rawIdx }, displayIdx) => {
                           const unit = getUnitForGroupName(extra.material || '', extra.material_unit);
                           return (
-                            <div key={rawIdx} className="space-y-2 border-l-2 border-emerald-400/60 pl-3 mb-3">
-                              <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-4 items-end">
-                                <GroupMaterialSelect
-                                  label={`Material Fixo ${displayIdx + 1}`}
-                                  value={extra.material || ''}
-                                  onChange={v => {
-                                    const arr = [...(form.components_accessories || [])];
-                                    const grp = (groups || []).find((x: any) => (x.name || '').trim() === v.trim());
-                                    const resolvedProd = grp
-                                      ? ((products || []).find((p: any) => p.group_id === grp.id && p.active && (p.unit || '').trim())
-                                         || (products || []).find((p: any) => p.group_id === grp.id && (p.unit || '').trim()))
-                                      : null;
-                                    const material_unit =
-                                      ((grp as any)?.consumption_unit || '').toString().trim()
-                                      || ((grp as any)?.dimensions_unit || '').toString().trim()
-                                      || (resolvedProd?.unit || '').trim()
-                                      || undefined;
-                                    arr[rawIdx] = { ...arr[rawIdx], material: v, mandatory: true, ...(material_unit ? { material_unit } : {}) };
-                                    updateField('components_accessories', arr);
-                                  }}
-                                />
+                            <div key={rawIdx} className="space-y-2 border-l-2 border-emerald-400/60 pl-3 mb-4">
+                              {/* Linha 1: Label livre + delete */}
+                              <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end">
+                                <div>
+                                  <Label className="text-xs text-muted-foreground">Nome do componente</Label>
+                                  <Input
+                                    value={extra.label || ''}
+                                    onChange={e => {
+                                      const arr = [...(form.components_accessories || [])];
+                                      arr[rawIdx] = { ...arr[rawIdx], label: e.target.value };
+                                      updateField('components_accessories', arr);
+                                    }}
+                                    placeholder={`Ex: Elástico Traseiro 6mm · Componente ${displayIdx + 1}`}
+                                    className="h-9 mt-1"
+                                  />
+                                </div>
                                 <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:text-destructive" onClick={() => {
                                   const arr = [...(form.components_accessories || [])];
                                   arr.splice(rawIdx, 1);
@@ -2731,6 +2760,29 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               </div>
+
+                              {/* Linha 2: Material (grupo) */}
+                              <GroupMaterialSelect
+                                label="Material"
+                                value={extra.material || ''}
+                                onChange={v => {
+                                  const arr = [...(form.components_accessories || [])];
+                                  const grp = (groups || []).find((x: any) => (x.name || '').trim() === v.trim());
+                                  const resolvedProd = grp
+                                    ? ((products || []).find((p: any) => p.group_id === grp.id && p.active && (p.unit || '').trim())
+                                       || (products || []).find((p: any) => p.group_id === grp.id && (p.unit || '').trim()))
+                                    : null;
+                                  const material_unit =
+                                    ((grp as any)?.consumption_unit || '').toString().trim()
+                                    || ((grp as any)?.dimensions_unit || '').toString().trim()
+                                    || (resolvedProd?.unit || '').trim()
+                                    || undefined;
+                                  arr[rawIdx] = { ...arr[rawIdx], material: v, mandatory: true, ...(material_unit ? { material_unit } : {}) };
+                                  updateField('components_accessories', arr);
+                                }}
+                              />
+
+                              {/* Linha 3: Grade de consumo por numeração (unidade do material) */}
                               {extra.material && renderSizeGrid(
                                 extra.consumption_per_size || {},
                                 unit,
@@ -2745,9 +2797,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                               )}
                             </div>
                           );
-                        })}
-                      </div>
-                    )}
+                        });
+                      })()}
+                    </div>
                   </>
                 );
               })()}
@@ -5895,7 +5947,13 @@ function CostsTab({ sheetId, form, groups }: {
       const eff = effectiveConsumption(extra.consumption_per_size, extra.consumption);
       if (extra.material && eff > 0 && !extra.id) {
         const price = getGroupPricePerDm2(extra.material);
-        const label = extra.mandatory ? `Material Fixo (${extra.material})` : `Cabedal ${idx + 2}`;
+        // Prioriza label custom (ex: "Elástico Traseiro 6mm") sobre genérico
+        const customLabel = (extra.label || '').toString().trim();
+        const label = customLabel
+          ? `${customLabel} (${extra.material})`
+          : extra.mandatory
+            ? `Componente Extra (${extra.material})`
+            : `Cabedal ${idx + 2}`;
         items.push({ label, material: extra.material, consumption: eff, pricePerUnit: price, cost: eff * price });
       }
     });
