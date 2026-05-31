@@ -789,15 +789,15 @@ export default function Contractors() {
         artisanal_output_meters: totalToProduce,
         artisanal_for_order_meters: forOrderMeters,
         artisanal_for_stock_meters: forStockMeters,
-        artisanal_base_color: artBaseColor,
+        artisanal_base_color: artOutputColor, // regra: a tira é cortada da NAPA da MESMA cor
         artisanal_stock_entry_done: false,
         description: editingOrder.description?.trim() ||
           `Produção artesanal: ${recipe.artisanal_product_name} (${artOutputColor}) — ${totalToProduce.toFixed(2)}m`,
         total_value: laborCost,
         unit_price: laborCost,
       };
-      if (artBaseColor && baseMetersSend > 0) {
-        artMaterials = [{ material: recipe.base_product_name, color: artBaseColor, meters: Number(baseMetersSend.toFixed(4)) }];
+      if (artOutputColor && baseMetersSend > 0) {
+        artMaterials = [{ material: recipe.base_product_name, color: artOutputColor, meters: Number(baseMetersSend.toFixed(4)) }];
       }
     }
 
@@ -1753,10 +1753,8 @@ export default function Contractors() {
                                              value={c}
                                              onSelect={v => {
                                                setArtOutputColor(v);
-                                               // Auto-set base color to match output color as per user request
-                                               if (!artBaseColor || artBaseColor === '') {
-                                                 setArtBaseColor(v);
-                                               }
+                                               // Regra: a tira é cortada da NAPA da MESMA cor → base sempre = output
+                                               setArtBaseColor(v);
                                              }}
                                            >
                                              <Check className={cn('mr-2 h-3.5 w-3.5', artOutputColor === c ? 'opacity-100' : 'opacity-0')} />
@@ -1771,23 +1769,8 @@ export default function Contractors() {
                             </div>
                             <div className="space-y-1.5">
                               <Label className="text-xs text-muted-foreground">Cor da Matéria-Prima Base</Label>
-                              <Popover>
-                                <PopoverTrigger asChild>
-                                  <Button variant="outline" role="combobox" className="h-9 w-full justify-between text-sm font-normal">
-                                    {artBaseColor || 'Selecione a cor'}
-                                    <ChevronsUpDown className="ml-2 h-3.5 w-3.5 opacity-50" />
-                                  </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-[200px] p-0" align="start">
-                                  <Command><CommandInput placeholder="Buscar cor..." /><CommandList><CommandEmpty>Nenhuma cor.</CommandEmpty><CommandGroup>
-                                    {getColorsForMaterial(recipe.base_product_name).map(c => (
-                                      <CommandItem key={c} value={c} onSelect={v => setArtBaseColor(v)}>
-                                        <Check className={cn('mr-2 h-3.5 w-3.5', artBaseColor === c ? 'opacity-100' : 'opacity-0')} />{c}
-                                      </CommandItem>
-                                    ))}
-                                  </CommandGroup></CommandList></Command>
-                                </PopoverContent>
-                              </Popover>
+                              <Input value={artBaseColor || artOutputColor || '—'} disabled className="h-9 bg-muted/40" />
+                              <p className="text-[11px] text-muted-foreground">= cor do produto (a tira é cortada da NAPA da mesma cor).</p>
                             </div>
                             <div className="col-span-2 space-y-1.5">
                               <Label className="text-xs text-muted-foreground">Metros necessários para o pedido (m)</Label>
@@ -2081,11 +2064,11 @@ export default function Contractors() {
                         <div className="space-y-1.5">
                           <Label className="text-xs font-medium text-muted-foreground">Cor da MP Base</Label>
                           <Input
-                            placeholder="Ex.: Caramelo"
-                            value={editingOrder.artisanal_base_color || ''}
-                            onChange={(e) => setEditingOrder((p) => ({ ...p, artisanal_base_color: e.target.value }))}
-                            className="h-9"
+                            value={editingOrder.artisanal_output_color || ''}
+                            disabled
+                            className="h-9 bg-muted/40"
                           />
+                          <p className="text-[11px] text-muted-foreground">= cor do produto (a tira é cortada da NAPA da mesma cor).</p>
                         </div>
                         <div className="space-y-1.5">
                           <Label className="text-xs font-medium text-muted-foreground">Produto Artesanal</Label>
