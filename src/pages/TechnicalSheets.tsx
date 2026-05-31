@@ -5750,6 +5750,26 @@ function CostsTab({ sheetId, form, groups }: {
   const { data: operations = [] } = useBomOperations(sheetId);
   const { data: costPolicy } = useCostPolicies();
 
+  // BOM audit: warning quando grupo tem ≥5 variantes-cor (heurística de
+  // BOM inflado por bulk insert/clone). Migration 20260531130000 criou
+  // a view v_bom_audit_issues.
+  const { data: bomIssues = [] } = useQuery({
+    queryKey: ['bom_audit_issues', sheetId],
+    enabled: !!sheetId,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('v_bom_audit_issues')
+        .select('*')
+        .eq('sheet_id', sheetId);
+      if (error) throw error;
+      return (data || []) as Array<{
+        sheet_id: string; group_id: string; group_name: string;
+        variants_count: number; colors_in_bom: string;
+        severity: 'critical' | 'warning';
+      }>;
+    },
+  });
+
   const { data: groupsWithPricing = [] } = useQuery({
     queryKey: ['product_groups_pricing'],
     queryFn: async () => {
@@ -5939,6 +5959,38 @@ function CostsTab({ sheetId, form, groups }: {
 
   return (
     <div className="space-y-6">
+      {/* Warning: BOM inflado por variantes-cor (heurística ≥5 cores do
+          mesmo grupo). Vem da view v_bom_audit_issues no DB. */}
+      {bomIssues.length > 0 && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
+          <div className="flex items-start gap-2.5">
+            <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+            <div className="flex-1 space-y-1.5">
+              <p className="text-sm font-bold text-amber-700 dark:text-amber-300">
+                BOM possivelmente inflado — {bomIssues.length} grupo{bomIssues.length > 1 ? 's' : ''} com muitas variantes-cor
+              </p>
+              <p className="text-xs text-muted-foreground leading-snug">
+                Fichas saudáveis raramente têm mais de 2-3 cores do mesmo material no BOM.
+                Cada cor extra duplica o custo. Revise e remova as cores que não pertencem
+                a esta ficha em "Especificações por Componente" ou "Materiais".
+              </p>
+              <ul className="text-xs space-y-0.5 mt-1.5">
+                {bomIssues.map((i) => (
+                  <li key={i.group_id} className="font-mono">
+                    <span className={i.severity === 'critical' ? 'text-destructive font-bold' : 'text-amber-700 dark:text-amber-400'}>
+                      {i.variants_count}× cores
+                    </span>
+                    {' '}
+                    <strong>{i.group_name}</strong>
+                    <span className="text-muted-foreground"> · {i.colors_in_bom || '—'}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <SectionTitle>Análise de Custo por Par</SectionTitle>
         {overheadHistory.length > 0 && (
