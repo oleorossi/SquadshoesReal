@@ -35,6 +35,7 @@ function toCanonical(u: string): string {
     case 'un': case 'unid': case 'unidade': case 'und': return 'un';
     case 'par': return 'par';
     case 'cx': case 'caixa': return 'cx';
+    case 'placa': case 'chapa': case 'ch': case 'plc': return 'placa';
     case 'pc': case 'pct': case 'pacote': case 'pç': return 'pc';
     case 'sc': case 'saco': return 'pc'; // saco treated same as pc for conversion purposes
     case 'rl': case 'rolo': return 'rl';
@@ -86,7 +87,13 @@ export function convertNfToStockUnit(
   const nfCan = toCanonical(nfU);
   const prodCan = toCanonical(prodU);
 
-  const pkgLike = new Set(['un', 'pc', 'cx', 'rl', 'fh', 'jg', 'par']);
+  // Mesma unidade CANÔNICA (ex.: NF 'MT'/'METRO'/'MTS' vs produto 'm'; 'KG' vs 'kg';
+  // 'CHAPA'/'PLACA' vs 'placa') → a quantidade entra como está, sem conversão.
+  // Sem isto, uma napa faturada em "MT" caía em "precisa configurar" mesmo sendo
+  // a mesma unidade do estoque. (Pedido user 2026-05-30: ler a unidade da NF certa.)
+  if (nfCan === prodCan) return { qty: nfQty, unitPrice: nfUnitPrice, converted: false };
+
+  const pkgLike = new Set(['un', 'pc', 'cx', 'rl', 'fh', 'jg', 'par', 'placa']);
   const measuredLike = new Set(['kg', 'g', 'mg', 'l', 'ml', 'm³', 'm', 'cm', 'mm', 'm²', 'dm²', 'cm²']);
 
   // Resolve the product's purchase unit (prefer purchase_unit, fall back to purchase_order_unit)

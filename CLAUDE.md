@@ -105,6 +105,35 @@ O custeio e o MRP usam funções SQL (`calculate_order_consumption*`) — caminh
 consumo de área, verificar se o lado SQL também converte dm²→unidade física, senão
 custeio/MRP divergem do modal.
 
+### Unidades de medida — lista CANÔNICA (1 unidade-base por produto)
+
+Padrão industrial: cada produto tem UMA unidade-base (`products.unit` = estoque +
+consumo). Grafias devem ser sempre canônicas — normalizado em massa em 2026-05-30
+(migration `20260702120000`, ver `docs/UNIDADES_E_CONVERSOES.md` + `docs/AUDITORIA_UNIDADES_PRODUTOS.md`).
+
+| Categoria | Canônica | Sinônimos proibidos (normalizar) |
+|---|---|---|
+| Linear | `m` (`cm`/`mm` p/ dimensões) | `metro`, `metros`, `mt`, `mts` |
+| Área | `dm²` (`m²`/`cm²`) | `dm2`, `m2`, `cm2` |
+| Contagem | `un`, `par` | `unid`, `unidade`, `und` |
+| Placa | `placa` | `chapa` |
+| Massa | `kg`, `g` | `gr`, `grama`, `gramas` |
+| Volume | `L`, `ml` | `litro`, `litros`, `l` |
+
+**Invariante:** `purchase_unit == unit` ⇒ `conversion_rate = 1`. O fator só existe
+quando a unidade de compra é diferente da de estoque (ex.: PLACA EVA `placa`→`dm²`,
+rate 150). `conversion_rate = 0` é sempre inválido. ⚠ A conversão dm²→metro de
+material de área (napa) NÃO vai em `conversion_rate` — mora na **largura da ficha de
+componente** (senão infla o estoque na entrada de compra).
+
+**Importação de NF (entrada):** `convertNfToStockUnit` (`src/lib/nfUnitConversion.ts`)
+normaliza a unidade da NF (`uCom`, ex.: `KG`/`MT`/`METRO`/`CHAPA`) ao canônico via
+`toCanonical`. Se o canônico da NF == canônico do produto, entra a qtd como está; se
+diferir, converte por `conversion_rate`/`CONVERSOES`/`package_weight_kg`; se não houver
+regra segura, **bloqueia o item** (`needsConfig`) em vez de gravar qtd errada. Ao
+adicionar unidade nova, atualizar `toCanonical` E `src/lib/materialConsumption.ts`
+(`LINEAR_UNITS`/`PLATE_UNITS`).
+
 ## Design Token System — DO NOT use hardcoded colors
 
 This project uses **CSS custom property tokens** defined in `src/index.css`. Using

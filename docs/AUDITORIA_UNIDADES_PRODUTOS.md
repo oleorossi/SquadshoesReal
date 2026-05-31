@@ -1,5 +1,11 @@
 # Auditoria de Unidades por Produto — para validação
 
+> ✅ **APLICADO em 2026-05-30** (migration `20260702120000_normalize-product-units-canonical.sql`):
+> Bloco 1 (grafias→canônico) + Bloco 2 (todas as correções) implementados. Validado no
+> banco: grafias 100% canônicas; único `conversion_rate≠1` restante = PLACA EVA (150,
+> placa→dm², correto); napas com rate=1; consumo do PV-00116 inalterado (~30 m).
+> Importação de NF corrigida (`convertNfToStockUnit`: aceita unidade canônica-igual).
+
 > Gerado em 2026-05-30 a partir dos dados reais do banco. Objetivo: normalizar as
 > unidades para a **lista canônica** (uma unidade-base por produto, conforme padrão
 > de ERP industrial). **Você valida; eu aplico migration só do que aprovar.**
