@@ -46,7 +46,11 @@ export function useProducts() {
         const results = await Promise.all(batchPages.map(i =>
           supabase
             .from('products')
-            .select('*, product_groups(name)')
+            // consumption_unit incluído (2026-05-31): TechnicalReferencePanel
+            // lê product.product_groups?.consumption_unit ao adicionar material
+            // ao BOM. Sem ele cai pro fallback product.unit (estoque, ex: 'un'/
+            // 'rolo'), gerando consumo na unidade errada.
+            .select('*, product_groups(name, consumption_unit)')
             .order('updated_at', { ascending: false })
             .range(i * PAGE, (i + 1) * PAGE - 1),
         ));

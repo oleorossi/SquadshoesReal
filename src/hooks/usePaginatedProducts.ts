@@ -29,7 +29,10 @@ export function usePaginatedProducts(params: PaginatedProductsParams = {}) {
     queryFn: async () => {
       // Fetch products and in-production quantities in parallel
       const [productsResult, inProdResult] = await Promise.all([
-        supabase.from('products').select('*, product_groups(name)'),
+        // consumption_unit incluído (2026-05-31) pelo mesmo motivo de useProducts:
+        // callers podem ler product.product_groups?.consumption_unit (UoM canônica
+        // de BOM) pra preencher consumo no estoque/ficha.
+        supabase.from('products').select('*, product_groups(name, consumption_unit)'),
         supabase.rpc('get_in_production_stock' as any),
       ]);
 
