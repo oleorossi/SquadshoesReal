@@ -82,9 +82,13 @@ export function useAddComponentSheet() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (form: ComponentSheetFormData) => {
+      // upsert por product_id: convive com o trigger que herda a ficha do grupo
+      // ao criar a cor (trg_inherit_component_sheet_on_product). Se a ficha já
+      // existir (herdada), atualiza com os valores informados em vez de quebrar
+      // no UNIQUE(product_id).
       const { data, error } = await supabase
         .from('component_sheets')
-        .insert(form as any)
+        .upsert(form as any, { onConflict: 'product_id' })
         .select()
         .single();
       if (error) throw error;
