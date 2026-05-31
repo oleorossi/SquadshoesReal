@@ -20,7 +20,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { toast } from 'sonner';
-import { SoleSizeConjugationsEditor } from './SoleSizeConjugationsEditor';
+// SoleSizeConjugationsEditor removido em 2026-05-31 — feature de
+// numerações conjugadas deletada por decisão do usuário.
 
 const ALL_SIZES = Array.from({ length: 22 }, (_, i) => 20 + i); // 20–41
 const CALC_METHODS: Array<'weight' | 'meter' | 'unit'> = ['weight', 'meter', 'unit'];
@@ -757,20 +758,8 @@ export function MasterVariantDialog({
                   {/* ── Numerações conjugadas (compartilhadas pelo grupo) ── */}
                   {(() => {
                     const activeVariant = variants.find(v => v.id === activeGradeTab) || variants[0];
-                    const existing = activeVariant?.stock_grade as Record<string, any> | null;
-                    const sizeFrom = rangeChanges[activeVariant?.id]?.sizeFrom
-                      ?? (existing?._size_from != null ? Number(existing._size_from) : null);
-                    const sizeTo = rangeChanges[activeVariant?.id]?.sizeTo
-                      ?? (existing?._size_to != null ? Number(existing._size_to) : null);
-                    return (
-                      <div className="pt-3 border-t">
-                        <SoleSizeConjugationsEditor
-                          soleGroupId={activeVariant?.group_id ?? null}
-                          sizeFrom={sizeFrom}
-                          sizeTo={sizeTo}
-                        />
-                      </div>
-                    );
+                    // Bloco SoleSizeConjugationsEditor removido em 2026-05-31.
+                    return null;
                   })()}
                 </div>
               )}

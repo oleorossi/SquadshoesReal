@@ -193,7 +193,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { EmptyState } from '@/components/ui/empty-state';
 import { normalizeForSearch } from '@/lib/searchUtils';
 import { Link as Link2 } from '@phosphor-icons/react';
-import { SoleSizeConjugationsEditor } from '@/components/inventory/SoleSizeConjugationsEditor';
+// SoleSizeConjugationsEditor removido em 2026-05-31 — feature deletada.
 const STATUSES = ['Ativo', 'Em desenvolvimento', 'Descontinuado'] as const;
 const STATUS_FICHA = ['rascunho', 'em_revisao', 'validada', 'publicada'] as const;
 const STATUS_FICHA_LABELS: Record<string, string> = { rascunho: 'Rascunho', em_revisao: 'Em Revisão', validada: 'Validada', publicada: 'Publicada' };
@@ -2053,28 +2053,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 </div>
               </div>
 
-              {/* Editor de conjugações inline. Aparece quando há solado vinculado.
-                  Sem ele, o user tinha que ir em Solados Hub pra cadastrar — fluxo
-                  quebrado quando estava editando uma ficha. Reuso do componente
-                  compartilhado que já existe em SolesCadastroTab/MasterVariantDialog. */}
-              {form.sole_group_id && (
-                <details className="rounded-md border bg-muted/20" open={soleSizeKeys.some(k => k.includes('/'))}>
-                  <summary className="px-3 py-2 cursor-pointer text-xs font-semibold flex items-center gap-2 select-none">
-                    <Link2 className="h-3.5 w-3.5 text-primary" />
-                    Numerações Conjugadas
-                    <span className="text-xs text-muted-foreground font-normal ml-1">
-                      (ex: 33/34 = 1 par único)
-                    </span>
-                  </summary>
-                  <div className="border-t px-3 py-3">
-                    <SoleSizeConjugationsEditor
-                      soleGroupId={form.sole_group_id}
-                      sizeFrom={soleSizeKeysNumeric.length > 0 ? Math.min(...soleSizeKeysNumeric) : null}
-                      sizeTo={soleSizeKeysNumeric.length > 0 ? Math.max(...soleSizeKeysNumeric) : null}
-                    />
-                  </div>
-                </details>
-              )}
+              {/* Editor de "Numerações Conjugadas" removido em 2026-05-31 */}
             </div>
           </div>
 
