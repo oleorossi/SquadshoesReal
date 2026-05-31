@@ -5763,8 +5763,9 @@ function CostsTab({ sheetId, form, groups }: {
         .eq('sheet_id', sheetId);
       if (error) throw error;
       return (data || []) as Array<{
-        sheet_id: string; group_id: string; group_name: string;
+        sheet_id: string; group_id: string | null; group_name: string;
         variants_count: number; colors_in_bom: string;
+        issue_type: 'bom_color_variants_inflated' | 'bom_default_qty_per_unit';
         severity: 'critical' | 'warning';
       }>;
     },
@@ -5959,26 +5960,32 @@ function CostsTab({ sheetId, form, groups }: {
 
   return (
     <div className="space-y-6">
-      {/* Warning: BOM inflado por variantes-cor (heurística ≥5 cores do
-          mesmo grupo). Vem da view v_bom_audit_issues no DB. */}
+      {/* Warning: BOM com sintomas de bulk insert/clone errado.
+          2 padrões cobertos pela view v_bom_audit_issues:
+            - bom_color_variants_inflated: ≥5 variantes-cor do mesmo grupo
+            - bom_default_qty_per_unit: ≥80% dos itens com qty_per_unit=1
+              (default do cadastro, deveria ser fracionário) */}
       {bomIssues.length > 0 && (
         <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
           <div className="flex items-start gap-2.5">
             <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
             <div className="flex-1 space-y-1.5">
               <p className="text-sm font-bold text-amber-700 dark:text-amber-300">
-                BOM possivelmente inflado — {bomIssues.length} grupo{bomIssues.length > 1 ? 's' : ''} com muitas variantes-cor
+                BOM possivelmente inflado — {bomIssues.length} alerta{bomIssues.length > 1 ? 's' : ''} detectado{bomIssues.length > 1 ? 's' : ''}
               </p>
               <p className="text-xs text-muted-foreground leading-snug">
                 Fichas saudáveis raramente têm mais de 2-3 cores do mesmo material no BOM.
-                Cada cor extra duplica o custo. Revise e remova as cores que não pertencem
-                a esta ficha em "Especificações por Componente" ou "Materiais".
+                E <strong>consumo (qty/par) deve ser FRACIONÁRIO</strong> — ex: 0.005 lata de cola,
+                não 1 lata por par. Itens com qty=1 inflam o custo em 50-100×.
+                Revise em "Especificações por Componente" ou "Materiais".
               </p>
               <ul className="text-xs space-y-0.5 mt-1.5">
-                {bomIssues.map((i) => (
-                  <li key={i.group_id} className="font-mono">
+                {bomIssues.map((i, idx) => (
+                  <li key={`${i.issue_type}-${i.group_id || idx}`} className="font-mono">
                     <span className={i.severity === 'critical' ? 'text-destructive font-bold' : 'text-amber-700 dark:text-amber-400'}>
-                      {i.variants_count}× cores
+                      {i.issue_type === 'bom_default_qty_per_unit'
+                        ? `consumo default`
+                        : `${i.variants_count}× cores`}
                     </span>
                     {' '}
                     <strong>{i.group_name}</strong>
