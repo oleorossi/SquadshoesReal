@@ -123,14 +123,24 @@ function SoleMatrix({ rows }: { rows: ConsumptionRow[] }) {
     return m;
   }, [rows]);
 
-  // Estoque do nº: direto, ou via chave conjugada que contenha o nº (ex: "33/34" cobre "34").
-  const haveForSize = (stock: Record<string, number> | undefined, size: string): number => {
-    if (!stock) return 0;
-    if (stock[size] != null) return stock[size];
-    for (const k of Object.keys(stock)) {
-      if (/[/-]/.test(k) && k.split(/[/-]/).map((x) => x.trim()).includes(size)) return stock[k];
+  // Estoque efetivo por número: chaves diretas + baldes conjugados ("33/34")
+  // DISTRIBUÍDOS entre os números que cobrem (proporcional à necessidade), pra
+  // não contar o mesmo balde duas vezes em números diferentes.
+  const effectiveStock = (stock: Record<string, number> | undefined, needs: Record<string, number>): Record<string, number> => {
+    const eff: Record<string, number> = {};
+    if (!stock) return eff;
+    for (const [k, v] of Object.entries(stock)) {
+      if (!/[/-]/.test(k)) { eff[k] = (eff[k] || 0) + v; continue; }
+      const members = k.split(/[/-]/).map((x) => x.trim());
+      const needy = members.filter((m) => (needs[m] || 0) > 0);
+      const targets = needy.length ? needy : members;
+      const totalNeed = targets.reduce((s, m) => s + (needs[m] || 0), 0);
+      for (const m of targets) {
+        const share = totalNeed > 0 ? v * ((needs[m] || 0) / totalNeed) : v / targets.length;
+        eff[m] = (eff[m] || 0) + share;
+      }
     }
-    return 0;
+    return eff;
   };
 
   // Fallback: solado sem breakdown por numeração — tabela simples por cor,
@@ -181,19 +191,20 @@ function SoleMatrix({ rows }: { rows: ConsumptionRow[] }) {
         <TableBody>
           {rows.map((r, i) => {
             const total = Object.values(r.sizeBreakdown || {}).reduce((s, v) => s + (Number(v) || 0), 0) || r.totalQuantity;
+            const eff = effectiveStock(r.soleSizeStock, r.sizeBreakdown || {});
             return (
               <TableRow key={i}>
                 <TableCell className="font-medium whitespace-nowrap">{r.groupName}</TableCell>
                 <TableCell><Badge variant="outline" className="text-xs">{r.color}</Badge></TableCell>
                 {sizes.map((s) => {
                   const need = r.sizeBreakdown?.[s] || 0;
-                  const have = haveForSize(r.soleSizeStock, s);
+                  const have = eff[s] || 0;
                   if (need <= 0) return <TableCell key={s} className="text-center text-muted-foreground">·</TableCell>;
                   const ok = have >= need;
                   return (
                     <TableCell
                       key={s}
-                      title={`Necessário ${need} · Em estoque ${have}`}
+                      title={`Necessário ${need} · Em estoque ${Math.round(have * 10) / 10}`}
                       className={`text-center font-mono font-semibold tabular-nums ${ok ? 'bg-green-500/15 text-green-700 dark:text-green-400' : 'bg-red-500/15 text-red-700 dark:text-red-400'}`}
                     >
                       {need}
@@ -643,11 +654,16 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       const groupAvailable = (groupName: string, color: string): number => {
         const group = (productGroups || []).find((g: any) => normTxt(g.name) === normTxt(groupName));
         return (allProducts || []).filter((p: any) => {
-          const inGroup = group ? p.group_id === group.id : false;
-          const nameMatch = normTxt(p.name) === normTxt(groupName);
-          if (!inGroup && !nameMatch) return false;
+          // membro do grupo; só cai no match por nome quando o grupo não existe
+          // (evita puxar produto de OUTRO grupo que só compartilha o nome)
+          const ok = group ? p.group_id === group.id : normTxt(p.name) === normTxt(groupName);
+          if (!ok) return false;
           return colorMatchesProduct(p, color);
-        }).reduce((s: number, p: any) => s + (Number(p.quantity) || 0), 0);
+        }).reduce((s: number, p: any) => {
+          // disponível = quantidade − reservado (consistente com o resto do app)
+          const avail = (Number(p.quantity) || 0) - (Number(p.reserved_stock) || 0);
+          return s + Math.max(0, avail);
+        }, 0);
       };
       const soleStockGrade = (groupName: string, color: string): Record<string, number> => {
         const prod = (allProducts || []).find((p: any) => normTxt(p.name) === normTxt(groupName) && colorMatchesProduct(p, color))
@@ -932,9 +948,13 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                     </TableHeader>
                     <TableBody>
                       {componentRows.map((row, index) => {
+                        // widthMissing infla o consumo ~100× — comparar com estoque seria
+                        // enganoso, então a linha fica neutra (o aviso âmbar permanece).
+                        const known = !row.widthMissing;
                         const ok = (row.available ?? 0) >= row.totalQuantity;
+                        const rowBg = !known ? '' : ok ? 'bg-green-500/10' : 'bg-red-500/10';
                         return (
-                        <TableRow key={`${row.componentType}-${row.groupName}-${row.materialName}-${row.color}-${index}`} className={ok ? 'bg-green-500/10' : 'bg-red-500/10'}>
+                        <TableRow key={`${row.componentType}-${row.groupName}-${row.materialName}-${row.color}-${index}`} className={rowBg}>
                           <TableCell className="font-medium">
                             <div className="flex items-center gap-1.5">
                               {row.widthMissing && (
@@ -958,8 +978,8 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                           <TableCell>{row.materialName}</TableCell>
                           <TableCell>{row.color}</TableCell>
                           <TableCell className="text-right font-mono font-bold">{row.totalQuantity.toFixed(2)}</TableCell>
-                          <TableCell className={`text-right font-mono font-semibold ${ok ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
-                            {(row.available ?? 0).toFixed(2)}
+                          <TableCell className={`text-right font-mono font-semibold ${!known ? 'text-muted-foreground' : ok ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
+                            {!known ? '—' : (row.available ?? 0).toFixed(2)}
                           </TableCell>
                           <TableCell className="text-center">
                             <Badge variant="outline" className="text-xs">{formatUnit(row.productUnit)}</Badge>

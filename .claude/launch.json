@@ -7,6 +7,13 @@
       "runtimeArgs": ["run", "dev"],
       "port": 8080,
       "autoPort": false
+    },
+    {
+      "name": "squadshoes-preview",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "dev", "--", "--port", "8095", "--strictPort"],
+      "port": 8095,
+      "autoPort": false
     }
   ]
 }
