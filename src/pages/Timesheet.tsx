@@ -497,7 +497,7 @@ function TimesheetRecordsTab() {
     }
   };
 
-  const handleImport = () => {
+  const doImport = () => {
     if (!preview) return;
     // Replace parsed names with matched registered names
     const mappedEmployees = preview.employees.map(emp => ({
@@ -533,6 +533,27 @@ function TimesheetRecordsTab() {
       }
     });
     setPreview(null);
+  };
+
+  // Bloqueio (decisão 2026-06-01): matrícula do arquivo que NÃO casa com nenhum
+  // funcionário cadastrado → avisa e lista antes de importar. Sem isto, as horas
+  // dessas matrículas somem da folha em silêncio (casamento é por matrícula).
+  const handleImport = () => {
+    if (!preview) return;
+    const unmatched = preview.employees.filter(e => !findBestEmployeeMatch(e.name, e.externalId));
+    if (unmatched.length > 0) {
+      const list = unmatched
+        .map(e => `• matrícula ${e.externalId || '?'} (${e.name}) — ${e.records.length} dia(s)`)
+        .join('\n');
+      const ok = window.confirm(
+        `⚠ ${unmatched.length} matrícula(s) do arquivo NÃO casam com nenhum funcionário cadastrado:\n\n${list}\n\n` +
+        `As horas dessas matrículas NÃO entram na folha até você cadastrá-las ` +
+        `(Funcionários → preencher a matrícula no campo de identificação do relógio).\n\n` +
+        `Cancelar para cadastrar agora, ou OK para importar assim mesmo.`,
+      );
+      if (!ok) return;
+    }
+    doImport();
   };
 
   // Group records by employee, resolving names via employee registry.
