@@ -13,6 +13,7 @@ import { Plus, CurrencyDollar as DollarSign, Calendar, Tag, PencilSimple as Penc
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
+import { PriceListItemsDialog } from '@/components/sale-orders/PriceListItemsDialog';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -43,6 +44,7 @@ export default function PriceLists() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState<PriceList>(EMPTY);
+  const [itemsFor, setItemsFor] = useState<{ id: string; name: string } | null>(null);
 
   const { data: lists = [], isLoading } = useQuery({
     queryKey: ['price_lists'],
@@ -194,6 +196,12 @@ export default function PriceLists() {
               {pl.is_promotional && (
                 <Badge variant="outline" className="text-xs mt-1">PROMOCIONAL</Badge>
               )}
+              <Button
+                size="sm" variant="outline" className="w-full mt-2 h-7 gap-1.5"
+                onClick={(e) => { e.stopPropagation(); setItemsFor({ id: pl.id, name: pl.name }); }}
+              >
+                <DollarSign className="h-3.5 w-3.5" /> Itens / Preços
+              </Button>
             </CardContent>
           </Card>
         ))}
@@ -272,6 +280,8 @@ export default function PriceLists() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <PriceListItemsDialog open={!!itemsFor} onClose={() => setItemsFor(null)} priceList={itemsFor} />
     </div>
   );
 }
