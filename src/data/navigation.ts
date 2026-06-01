@@ -32,6 +32,7 @@ export const menuGroups = [
       { name: "Clientes",         icon: Users,            path: "/clients" },
       { name: "CRM",              icon: HeartHandshake,   path: "/crm" },
       { name: "Notas",            icon: FileText,         path: "/notas" },
+      { name: "Tarefas",          icon: ListChecks,       path: "/tarefas" },
       { name: "Tabelas de Preço", icon: DollarSign,       path: "/price-lists" },
     ],
   },

@@ -29,6 +29,30 @@ const PRIORITY_ORDER: Record<NoteTaskPriority, number> = {
   baixa: 3,
 };
 
+/**
+ * Lista TODAS as tarefas (globais), com título da nota vinculada quando houver.
+ * Usado pela rota /tarefas (módulo standalone).
+ */
+export function useAllNoteTasks() {
+  return useQuery({
+    queryKey: ['all_note_tasks'],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('note_tasks')
+        .select('*, notes(title)')
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return ((data || []) as Array<NoteTask & { notes?: { title: string } | null }>).slice().sort((a, b) => {
+        if (a.done !== b.done) return a.done ? 1 : -1;
+        const dp = PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
+        if (dp !== 0) return dp;
+        return (a.created_at || '').localeCompare(b.created_at || '');
+      });
+    },
+    staleTime: 30_000,
+  });
+}
+
 /** Lista todas as tarefas de uma nota, auto-ordenadas por prioridade. */
 export function useNoteTasks(noteId: string | null | undefined) {
   return useQuery({
@@ -60,11 +84,11 @@ export function useNoteTasks(noteId: string | null | undefined) {
 export function useCreateNoteTask() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { note_id: string; text: string; priority?: NoteTaskPriority }) => {
+    mutationFn: async (input: { note_id?: string | null; text: string; priority?: NoteTaskPriority }) => {
       const { data, error } = await (supabase as any)
         .from('note_tasks')
         .insert({
-          note_id: input.note_id,
+          note_id: input.note_id ?? null,
           text: input.text.trim(),
           priority: input.priority || 'media',
         })
@@ -75,6 +99,7 @@ export function useCreateNoteTask() {
     },
     onSuccess: (task) => {
       qc.invalidateQueries({ queryKey: ['note_tasks', task.note_id] });
+      qc.invalidateQueries({ queryKey: ['all_note_tasks'] });
     },
     onError: (e: any) => toast.error(e.message || 'Erro ao criar tarefa'),
   });
@@ -88,11 +113,11 @@ export function useCreateNoteTask() {
 export function useBulkCreateNoteTasks() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { note_id: string; texts: string[]; priority?: NoteTaskPriority }) => {
+    mutationFn: async (input: { note_id?: string | null; texts: string[]; priority?: NoteTaskPriority }) => {
       const cleaned = input.texts.map(t => t.trim()).filter(t => t.length > 0);
       if (cleaned.length === 0) throw new Error('Digite pelo menos uma tarefa.');
       const rows = cleaned.map(text => ({
-        note_id: input.note_id,
+        note_id: input.note_id ?? null,
         text,
         priority: input.priority || 'media',
       }));
@@ -106,6 +131,7 @@ export function useBulkCreateNoteTasks() {
     onSuccess: (tasks) => {
       const noteId = tasks[0]?.note_id;
       if (noteId) qc.invalidateQueries({ queryKey: ['note_tasks', noteId] });
+      qc.invalidateQueries({ queryKey: ['all_note_tasks'] });
       toast.success(`${tasks.length} tarefa${tasks.length === 1 ? '' : 's'} adicionada${tasks.length === 1 ? '' : 's'}`);
     },
     onError: (e: any) => toast.error(e.message || 'Erro ao criar tarefas'),
@@ -117,7 +143,7 @@ export function useUpdateNoteTask() {
   return useMutation({
     mutationFn: async ({ id, note_id, data }: {
       id: string;
-      note_id: string;
+      note_id: string | null;
       data: Partial<Pick<NoteTask, 'text' | 'priority' | 'done'>>;
     }) => {
       const { error } = await (supabase as any).from('note_tasks').update(data).eq('id', id);
@@ -125,7 +151,8 @@ export function useUpdateNoteTask() {
       return { id, note_id };
     },
     onSuccess: ({ note_id }) => {
-      qc.invalidateQueries({ queryKey: ['note_tasks', note_id] });
+      if (note_id) qc.invalidateQueries({ queryKey: ['note_tasks', note_id] });
+      qc.invalidateQueries({ queryKey: ['all_note_tasks'] });
     },
     onError: (e: any) => toast.error(e.message || 'Erro ao atualizar tarefa'),
   });
@@ -134,13 +161,14 @@ export function useUpdateNoteTask() {
 export function useDeleteNoteTask() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, note_id }: { id: string; note_id: string }) => {
+    mutationFn: async ({ id, note_id }: { id: string; note_id: string | null }) => {
       const { error } = await (supabase as any).from('note_tasks').delete().eq('id', id);
       if (error) throw error;
       return note_id;
     },
     onSuccess: (note_id) => {
-      qc.invalidateQueries({ queryKey: ['note_tasks', note_id] });
+      if (note_id) qc.invalidateQueries({ queryKey: ['note_tasks', note_id] });
+      qc.invalidateQueries({ queryKey: ['all_note_tasks'] });
     },
     onError: (e: any) => toast.error(e.message || 'Erro ao excluir tarefa'),
   });
