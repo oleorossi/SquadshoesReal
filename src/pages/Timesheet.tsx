@@ -1,11 +1,7 @@
 import ExceptionsTab from '@/components/timesheet/ExceptionsTab';
-import DivergencesTab from '@/components/timesheet/DivergencesTab';
 import ManualEntryTab from '@/components/timesheet/ManualEntryTab';
-import LateArrivalsTab from '@/components/timesheet/LateArrivalsTab';
 import ImportHistoryPanel from '@/components/timesheet/ImportHistoryPanel';
 import PendingTimeRecordsPanel from '@/components/timesheet/PendingTimeRecordsPanel';
-import TimeValidationPanel from '@/components/timeControl/TimeValidationPanel';
-import { OvertimeResolutionPanel } from '@/components/timesheet/OvertimeResolutionPanel';
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Clock, Upload, Plus, Trash as Trash2, CircleNotch as Loader2, Calendar, Gear as Settings2, Warning as AlertTriangle, FileXls as FileSpreadsheet, CaretDown as ChevronDown, Sun, Moon, Coffee, CheckCircle as CheckCircle2, XCircle, MinusCircle, Printer, Users as Users2, CurrencyDollar as DollarSign, Link as Link2, Unlink2, Shield, FileText, Clipboard as ClipboardEdit, Alarm as AlarmClock, ClockCounterClockwise as History, Wallet } from '@phosphor-icons/react';
@@ -1532,16 +1528,15 @@ export default function Timesheet() {
   return (
     <div className="space-y-4 page-enter">
       <Tabs defaultValue={mapLegacyTab(initialTab)} className="space-y-4">
-        {/* 11 → 5 sub-tabs (mai/2026): pending+late+occurrences viraram
-            "Pendências" (tudo que pede ação no mesmo lugar); schedule+
-            holidays+history viraram "Configuração" (coisas raras); overview
-            e reports migraram pro Painel RH e Relatórios respectivamente. */}
+        {/* Refocus 2026-06-01 (folha por hora): Ponto gira só em torno das
+            batidas + feriados. Resolução HE, divergências, atrasos, validação
+            de jornada e escala foram aposentados — o modelo por hora não usa
+            jornada esperada. */}
         <HubTabsList tabs={[
-          { value: 'records',     label: 'Ponto',         icon: FileSpreadsheet },
-          { value: 'manual',      label: 'Lançamento',    icon: ClipboardEdit },
-          { value: 'pending',     label: 'Pendências',    icon: AlertTriangle },
-          { value: 'overtime',    label: 'Resolução HE',  icon: Wallet },
-          { value: 'config',      label: 'Configuração',  icon: Clock },
+          { value: 'records',     label: 'Ponto',        icon: FileSpreadsheet },
+          { value: 'manual',      label: 'Lançamento',   icon: ClipboardEdit },
+          { value: 'pending',     label: 'Pendências',   icon: AlertTriangle },
+          { value: 'config',      label: 'Configuração', icon: Clock },
         ]} />
 
         <TabsContent value="records"><TimesheetRecordsTab /></TabsContent>
@@ -1549,18 +1544,9 @@ export default function Timesheet() {
         <TabsContent value="pending" className="space-y-6">
           <PendingTimeRecordsPanel />
           <Separator />
-          <LateArrivalsTab />
-          <Separator />
-          <DivergencesTab />
-          <Separator />
           <ExceptionsTab />
-          <Separator />
-          <TimeValidationPanel />
         </TabsContent>
-        <TabsContent value="overtime"><OvertimeResolutionPanel /></TabsContent>
         <TabsContent value="config" className="space-y-6">
-          <WorkScheduleTab />
-          <Separator />
           <HolidaysTab />
           <Separator />
           <ImportHistoryPanel />
@@ -1577,6 +1563,7 @@ function mapLegacyTab(t: string): string {
     case 'late':
     case 'occurrences': return 'pending';      // unificado em Pendências
     case 'reports':     return 'records';      // relatórios migraram pro RH > Relatórios
+    case 'overtime':    return 'records';      // resolução HE aposentada (folha por hora)
     case 'history':
     case 'schedule':
     case 'holidays':    return 'config';       // unificado em Configuração
