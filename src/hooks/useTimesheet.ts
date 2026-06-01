@@ -844,6 +844,46 @@ export function useTimeRecords(batch?: string, startDate?: string, endDate?: str
   });
 }
 
+/**
+ * Cobertura do ponto: dias que JÁ têm batida importada (1+ time_record) no range.
+ * Decisão 2026-06-01: a folha NÃO pode contar dias ainda não baixados do relógio
+ * como 0h (subpagaria). Este hook diz até onde foi importado — pro calendário e
+ * pro clamp da folha. Robusto p/ os dados atuais (não depende de time_import_logs,
+ * hoje vazia); um dia coberto = dia com ao menos uma batida.
+ */
+export function useTimesheetCoverage(from?: string, to?: string) {
+  return useQuery({
+    queryKey: ['timesheet_coverage', from, to],
+    enabled: !!(from && to),
+    queryFn: async () => {
+      const covered = new Set<string>();
+      const PAGE = 1000;
+      let offset = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from('time_records')
+          .select('record_date')
+          .gte('record_date', from!)
+          .lte('record_date', to!)
+          .range(offset, offset + PAGE - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        for (const r of data) covered.add((r as { record_date: string }).record_date);
+        if (data.length < PAGE) break;
+        offset += PAGE;
+      }
+      const dates = [...covered].sort();
+      return {
+        coveredDates: covered,
+        minCovered: dates[0] ?? null,
+        maxCovered: dates[dates.length - 1] ?? null,
+        count: dates.length,
+      };
+    },
+    staleTime: 30_000,
+  });
+}
+
 export function useImportBatches() {
   return useQuery({
     queryKey: ['time_records_batches'],

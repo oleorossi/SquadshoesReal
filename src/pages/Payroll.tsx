@@ -11,7 +11,7 @@ import {
 import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Calculator, CheckCircle as CheckCircle2, Receipt, Warning as AlertTriangle, Wallet, Clock } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
 import { useEmployees } from '@/hooks/useEmployees';
-import { useHolidays } from '@/hooks/useTimesheet';
+import { useHolidays, useTimesheetCoverage } from '@/hooks/useTimesheet';
 import { usePayrollRuns, useUpsertPayrollRun, useUpdatePayrollStatus } from '@/hooks/useRH';
 import { calculateHourlyPayroll, MONTHLY_HOURS_DIVISOR, type HourlyDayInput } from '@/lib/hourlyPayroll';
 import { supabase } from '@/integrations/supabase/client';
@@ -72,6 +72,9 @@ export default function Payroll() {
     return { from: days[0]?.date, to: days[days.length - 1]?.date };
   }, [period]);
 
+  // Cobertura: até onde o ponto foi importado neste mês (dias com batida).
+  const { data: coverage } = useTimesheetCoverage(periodRange.from, periodRange.to);
+
   const employeeMap = useMemo(() => new Map(employees.map(e => [e.id, e])), [employees]);
 
   const totals = useMemo(() => {
@@ -86,6 +89,12 @@ export default function Payroll() {
     setCalcRunning(true);
     try {
       const monthDays = getMonthDays(period);
+      // Clamp à cobertura: só conta dias já importados (≤ última data com batida).
+      // Dias após isso NÃO entram — senão contaria 0h e subpagaria quem ainda não
+      // teve o ponto baixado. A folha fica "parcial" até importar o resto.
+      const maxCov = coverage?.maxCovered || null;
+      const coveredDays = maxCov ? monthDays.filter(d => d.date <= maxCov) : monthDays;
+      const clamped = !!(maxCov && periodRange.to && maxCov < periodRange.to);
 
       // Batidas do período. time_records não tem FK pra employees — casa por
       // matrícula (employee_external_id) ou nome.
@@ -134,7 +143,7 @@ export default function Payroll() {
           || byName.get(emp.name.toLowerCase().trim())
           || new Map<string, string[]>();
 
-        const days: HourlyDayInput[] = monthDays.map(d => ({
+        const days: HourlyDayInput[] = coveredDays.map(d => ({
           date: d.date,
           dayOfWeek: d.dow,
           isHoliday: holidaysSet.has(d.date),
@@ -168,6 +177,7 @@ export default function Payroll() {
       }
       toast.success(
         `Folha calculada: ${calculated} funcionário(s).` +
+        (clamped ? ` Parcial: ponto importado só até ${maxCov!.split('-').reverse().join('/')}.` : '') +
         (withIncomplete > 0 ? ` ${withIncomplete} com batida incompleta — confira no Ponto.` : ''),
       );
     } catch (err: any) {
@@ -201,6 +211,22 @@ export default function Payroll() {
           </Button>
         </div>
       </div>
+
+      {coverage && coverage.count === 0 && (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-800 flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>Nenhuma batida importada para {period}. Importe o arquivo do relógio (aba Ponto) antes de calcular.</span>
+        </div>
+      )}
+      {coverage && coverage.maxCovered && periodRange.to && coverage.maxCovered < periodRange.to && (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-800 flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>
+            Ponto importado só até <strong>{coverage.maxCovered.split('-').reverse().join('/')}</strong> neste mês —
+            os dias seguintes <strong>não entram</strong> na folha (evita subpagar). Fica <strong>parcial</strong> até você importar o resto.
+          </span>
+        </div>
+      )}
 
       <PayrollPendingAdvancesAlert period={period} />
 
