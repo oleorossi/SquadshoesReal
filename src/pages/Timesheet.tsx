@@ -1,4 +1,5 @@
 import ExceptionsTab from '@/components/timesheet/ExceptionsTab';
+import CoverageCalendar from '@/components/timesheet/CoverageCalendar';
 import ManualEntryTab from '@/components/timesheet/ManualEntryTab';
 import ImportHistoryPanel from '@/components/timesheet/ImportHistoryPanel';
 import PendingTimeRecordsPanel from '@/components/timesheet/PendingTimeRecordsPanel';
@@ -1536,6 +1537,7 @@ export default function Timesheet() {
           { value: 'records',     label: 'Ponto',        icon: FileSpreadsheet },
           { value: 'manual',      label: 'Lançamento',   icon: ClipboardEdit },
           { value: 'pending',     label: 'Pendências',   icon: AlertTriangle },
+          { value: 'calendario',  label: 'Calendário',   icon: Calendar },
           { value: 'config',      label: 'Configuração', icon: Clock },
         ]} />
 
@@ -1546,6 +1548,7 @@ export default function Timesheet() {
           <Separator />
           <ExceptionsTab />
         </TabsContent>
+        <TabsContent value="calendario"><CoverageCalendar /></TabsContent>
         <TabsContent value="config" className="space-y-6">
           <HolidaysTab />
           <Separator />
