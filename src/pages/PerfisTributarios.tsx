@@ -138,7 +138,10 @@ export default function PerfisTributarios() {
                   <TableCell className="text-right tabular-nums">{pct(p.aliquota_ipi)}</TableCell>
                   <TableCell className="text-right tabular-nums">{pct(p.aliquota_pis)}</TableCell>
                   <TableCell className="text-right tabular-nums">{pct(p.aliquota_cofins)}</TableCell>
-                  <TableCell className="text-right tabular-nums font-semibold">{pct(estimatedTaxLoad(p))}</TableCell>
+                  <TableCell
+                    className={`text-right tabular-nums font-semibold ${p.active && estimatedTaxLoad(p) === 0 ? 'text-amber-600' : ''}`}
+                    title={p.active && estimatedTaxLoad(p) === 0 ? 'Perfil ATIVO com todas as alíquotas zeradas — apura imposto ZERO para este NCM. Confira se faltou preencher.' : undefined}
+                  >{pct(estimatedTaxLoad(p))}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(p)}><Pencil className="size-3.5" /></Button>

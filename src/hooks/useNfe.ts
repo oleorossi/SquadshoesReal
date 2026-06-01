@@ -336,8 +336,20 @@ export function useEmitStandaloneNfe() {
       if (nfeData?.error) throw new Error(String(nfeData.error));
       return { sale_order_id: so.id, ...nfeData };
     },
-    onSuccess: () => {
+    onSuccess: async (data: { sale_order_id?: string }) => {
       toast.success('NF Avulsa enviada para processamento!');
+      // Auditoria fiscal C2: reconhece receita + AR na autorização da NF avulsa
+      // (o gate em syncFinancialRecords só cria se a NF estiver autorizada).
+      // Antes, a NF avulsa criava PV 'Faturado' sem receita — mesmo gap do useEmitNfe.
+      if (data?.sale_order_id) {
+        try {
+          await syncFinancialRecords(data.sale_order_id);
+          qc.invalidateQueries({ queryKey: ['accounts_receivable'] });
+          qc.invalidateQueries({ queryKey: ['financial_entries'] });
+        } catch (e) {
+          console.error('[useEmitStandaloneNfe] reconhecimento de receita falhou:', e);
+        }
+      }
     },
     onError: (err: Error) => toast.error(`Erro ao emitir NF Avulsa: ${err.message}`),
     onSettled: () => {
