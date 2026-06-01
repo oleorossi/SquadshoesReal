@@ -1,12 +1,13 @@
 import { lazy, Suspense } from 'react';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { HubTabsList } from '@/components/layout/HubTabs';
-import { CurrencyDollar as DollarSign, Hourglass, Wallet, Calculator, CircleNotch as Loader2 } from '@phosphor-icons/react';
+import { CurrencyDollar as DollarSign, Wallet, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 
-const PreFolha = lazy(() => import('./PreFolha'));
+// Refocus 2026-06-01: folha por hora trabalhada. Pré-folha (HE/DSR/INSS/VR) e
+// Banco de Horas foram aposentados — sobra a folha do mês + adiantamentos
+// (único desconto).
 const Payroll = lazy(() => import('@/pages/Payroll'));
-const BankHours = lazy(() => import('@/pages/BankHours'));
 const AdvancesPanel = lazy(() => import('./AdvancesPanel'));
 
 const TabLoader = () => (
@@ -17,22 +18,19 @@ const TabLoader = () => (
 
 export default function FolhaConsolidada() {
   const [tab, setTab] = usePersistedState<string>('rh-folha-tab', 'folha');
+  // Estado legado ('pre-folha'/'banco-horas') cai na folha.
+  const safeTab = tab === 'adiantamentos' ? tab : 'folha';
 
   return (
     <div className="space-y-4">
-      {/* Masthead local removido — header global no RHHub. */}
-      <Tabs value={tab} onValueChange={setTab} className="w-full">
+      <Tabs value={safeTab} onValueChange={setTab} className="w-full">
         <HubTabsList tabs={[
-          { value: 'pre-folha',   label: 'Pré-folha',        icon: Calculator },
-          { value: 'folha',       label: 'Folha do Mês',     icon: DollarSign },
-          { value: 'banco-horas', label: 'Banco de Horas',   icon: Hourglass },
-          { value: 'adiantamentos', label: 'Adiantamentos',  icon: Wallet },
+          { value: 'folha',         label: 'Folha do Mês',  icon: DollarSign },
+          { value: 'adiantamentos', label: 'Adiantamentos', icon: Wallet },
         ]} />
 
         <Suspense fallback={<TabLoader />}>
-          <TabsContent value="pre-folha"><PreFolha /></TabsContent>
           <TabsContent value="folha"><Payroll /></TabsContent>
-          <TabsContent value="banco-horas"><BankHours /></TabsContent>
           <TabsContent value="adiantamentos"><AdvancesPanel /></TabsContent>
         </Suspense>
       </Tabs>

@@ -1,17 +1,15 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { SquaresFour as LayoutDashboard, Users, Alarm as AlarmClock, CurrencyDollar as DollarSign, FileText, Calculator, CircleNotch as Loader2 } from '@phosphor-icons/react';
+import { SquaresFour as LayoutDashboard, Users, Alarm as AlarmClock, CurrencyDollar as DollarSign, FileText, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { usePendingTotal } from '@/hooks/useTimePendings';
 import { cn } from '@/lib/utils';
 
-const PainelRH         = lazy(() => import('@/components/hr/PainelRH'));
 const Employees        = lazy(() => import('./Employees'));
 const Timesheet        = lazy(() => import('./Timesheet'));
-const FechamentoMensal = lazy(() => import('@/components/hr/FechamentoMensal'));
 const FolhaConsolidada = lazy(() => import('@/components/hr/FolhaConsolidada'));
 const RelatoriosRH     = lazy(() => import('@/components/hr/RelatoriosRH'));
 
@@ -21,57 +19,58 @@ const TabLoader = () => (
   </div>
 );
 
-const TABS = ['painel', 'funcionarios', 'ponto', 'fechamento', 'folha', 'relatorios'] as const;
+// Refocus 2026-06-01: RH é pagamento por hora trabalhada. Abas 'painel'
+// (KPIs de banco de horas) e 'fechamento' (HE/jornada esperada) foram
+// aposentadas — caem na 'folha' via LEGACY_TAB_MAP + guard.
+const TABS = ['funcionarios', 'ponto', 'folha', 'relatorios'] as const;
 type Tab = typeof TABS[number];
 
 const tabs: { value: Tab; label: string; icon: typeof LayoutDashboard }[] = [
-  { value: 'painel',       label: 'Painel',          icon: LayoutDashboard },
-  { value: 'funcionarios', label: 'Funcionários',    icon: Users },
-  { value: 'ponto',        label: 'Ponto',           icon: AlarmClock },
-  { value: 'fechamento',   label: 'Fechamento',      icon: Calculator },
-  { value: 'folha',        label: 'Folha',           icon: DollarSign },
-  { value: 'relatorios',   label: 'Relatórios',      icon: FileText },
+  { value: 'funcionarios', label: 'Funcionários', icon: Users },
+  { value: 'ponto',        label: 'Ponto',        icon: AlarmClock },
+  { value: 'folha',        label: 'Folha',        icon: DollarSign },
+  { value: 'relatorios',   label: 'Relatórios',   icon: FileText },
 ];
 
-// Contexto por aba: o header global muda título/descrição/sectionLabel
-// conforme a navegação — evita "Recursos Humanos" abstrato em toda tela.
 const TAB_HEADERS: Record<Tab, { section: string; title: string; description: string }> = {
-  painel:       { section: 'RH · PAINEL',        title: 'Painel',        description: 'Visão geral, alertas e evolução do quadro' },
-  funcionarios: { section: 'RH · COLABORADORES', title: 'Funcionários',  description: 'Gestão de equipe e adiantamentos' },
-  ponto:        { section: 'RH · PONTO',         title: 'Controle de Ponto', description: 'Registros, pendências, resolução de HE e configuração' },
-  fechamento:   { section: 'RH · FECHAMENTO',    title: 'Fechamento Mensal', description: 'Hora extra, horas a menos e desconto sugerido por funcionário' },
-  folha:        { section: 'RH · FOLHA',         title: 'Folha & Banco', description: 'Folha mensal, banco de horas e adiantamentos' },
-  relatorios:   { section: 'RH · RELATÓRIOS',    title: 'Relatórios',    description: 'Custo, HE, produtividade, absenteísmo e quadro' },
+  funcionarios: { section: 'RH · COLABORADORES', title: 'Funcionários',    description: 'Gestão de equipe e adiantamentos' },
+  ponto:        { section: 'RH · PONTO',         title: 'Controle de Ponto', description: 'Importação e lançamento de batidas' },
+  folha:        { section: 'RH · FOLHA',         title: 'Folha por hora',   description: 'Pagamento por hora trabalhada e adiantamentos' },
+  relatorios:   { section: 'RH · RELATÓRIOS',    title: 'Relatórios',       description: 'Custo, produtividade e quadro' },
 };
 
-// Compatibilidade com URLs legadas que usavam tabs antigas
+// URLs/estado legados que apontavam pra abas aposentadas → folha/relatórios.
 const LEGACY_TAB_MAP: Record<string, Tab> = {
+  'painel':      'folha',
+  'fechamento':  'folha',
   'banco-horas': 'folha',
   'absenteismo': 'relatorios',
   'headcount':   'relatorios',
 };
 
 export default function RHHub() {
-  const [activeTab, setActiveTab] = usePersistedState<Tab>('rh-active-tab', 'painel');
+  const [activeTab, setActiveTab] = usePersistedState<Tab>('rh-active-tab', 'folha');
   const [searchParams, setSearchParams] = useSearchParams();
-  // Badge de pendências de ponto — aparece sempre, redireciona pra tab 'ponto' ao clicar
   const { total: pendingTotal, overdueTotal } = usePendingTotal(30);
 
-  // Sincroniza ?tab=xxx com o estado persistido
+  // Sincroniza ?tab=xxx com o estado persistido.
   useEffect(() => {
     const fromUrl = searchParams.get('tab');
     if (!fromUrl) return;
     const mapped = (TABS as readonly string[]).includes(fromUrl)
       ? (fromUrl as Tab)
       : LEGACY_TAB_MAP[fromUrl];
-    if (mapped && mapped !== activeTab) {
-      setActiveTab(mapped);
-    }
+    if (mapped && mapped !== activeTab) setActiveTab(mapped);
   }, [searchParams, activeTab, setActiveTab]);
+
+  // Estado persistido pode apontar pra uma aba aposentada (painel/fechamento)
+  // — sem isso o Tabs renderiza em branco. Cai na folha.
+  useEffect(() => {
+    if (!(TABS as readonly string[]).includes(activeTab)) setActiveTab('folha');
+  }, [activeTab, setActiveTab]);
 
   const handleNavigateTab = (tab: string) => {
     setActiveTab(tab as Tab);
-    // Atualiza URL sem reload pra manter atalhos copiáveis
     setSearchParams(prev => {
       const next = new URLSearchParams(prev);
       next.set('tab', tab);
@@ -79,7 +78,7 @@ export default function RHHub() {
     }, { replace: true });
   };
 
-  const header = TAB_HEADERS[activeTab] ?? TAB_HEADERS.painel;
+  const header = TAB_HEADERS[activeTab] ?? TAB_HEADERS.folha;
 
   return (
     <div className="space-y-4 editorial-stagger">
@@ -119,10 +118,8 @@ export default function RHHub() {
         </div>
 
         <Suspense fallback={<TabLoader />}>
-          <TabsContent value="painel"><PainelRH onNavigateTab={handleNavigateTab} /></TabsContent>
           <TabsContent value="funcionarios"><Employees /></TabsContent>
           <TabsContent value="ponto"><Timesheet /></TabsContent>
-          <TabsContent value="fechamento"><FechamentoMensal /></TabsContent>
           <TabsContent value="folha"><FolhaConsolidada /></TabsContent>
           <TabsContent value="relatorios"><RelatoriosRH /></TabsContent>
         </Suspense>

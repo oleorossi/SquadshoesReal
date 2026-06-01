@@ -109,11 +109,7 @@ export const menuGroups = [
     label: "RH",
     icon: Users,
     items: [
-      { name: "Painel RH",          icon: LayoutDashboard,path: "/rh" },
-      { name: "Banco de Horas",     icon: Clock,          path: "/rh/banco-de-horas" },
-      { name: "Pendências de Ponto",icon: AlertTriangle,  path: "/rh/pendencias-ponto" },
-      { name: "Ausências",          icon: Calendar,       path: "/rh/ausencias" },
-      { name: "Fechamento Semanal", icon: Lock,           path: "/rh/fechamento-semanal" },
+      { name: "Ponto & Folha",      icon: LayoutDashboard,path: "/rh" },
       { name: "Terceirizados",      icon: UserCheck,      path: "/contractors" },
       { name: "Relatório Terceiros",icon: BarChart3,      path: "/terceiros/relatorios" },
     ],

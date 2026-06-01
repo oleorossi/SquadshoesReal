@@ -28,7 +28,6 @@ import { useBenefitsConfig } from '@/hooks/useRH';
 import { toast } from 'sonner';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
-import { EmployeeScheduleEditor } from '@/components/rh/EmployeeScheduleEditor';
 import { EmptyState } from '@/components/ui/empty-state';
 import { normalizeForSearch } from '@/lib/searchUtils';
 
@@ -492,99 +491,14 @@ export default function Employees() {
               terminationDate={(form as any).termination_date}
             />
             <div className="col-span-2">
-              <Label>Tipo de pagamento</Label>
-              <Select
-                value={form.payment_type}
-                onValueChange={(v: 'mensalista' | 'diarista') => setForm(f => ({ ...f, payment_type: v }))}
-              >
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="mensalista">Mensalista — salário mensal + banco de horas/HE</SelectItem>
-                  <SelectItem value="diarista">Diarista — pago por dia trabalhado (sem HE/falta)</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label>Salário (R$)</Label>
+              <CurrencyInput value={form.salary} onChange={v => setForm(f => ({ ...f, salary: v }))} />
               <p className="text-xs text-muted-foreground mt-1">
-                Diarista não entra no cálculo de hora extra, falta ou banco de horas — o pagamento é por dia trabalhado.
+                Referência de jornada cheia (220h/mês). Valor-hora = salário ÷ 220 ={' '}
+                <strong className="text-foreground">{fmt(form.salary > 0 ? form.salary / 220 : 0)}/h</strong>.
+                {' '}Paga-se por hora efetivamente batida — sáb/dom/feriado e após 18h valem 1,5×.
               </p>
             </div>
-
-            {form.payment_type === 'diarista' ? (
-              <div className="col-span-2">
-                <Label>Valor da diária (R$/dia)</Label>
-                <CurrencyInput value={form.daily_rate ?? 0} onChange={v => setForm(f => ({ ...f, daily_rate: v > 0 ? v : null }))} />
-                <p className="text-xs text-muted-foreground mt-1">Pago a cada dia trabalhado. Dia completo = diária cheia; meio período = meia diária.</p>
-              </div>
-            ) : (
-              <>
-                <div><Label>Salário (R$)</Label><CurrencyInput value={form.salary} onChange={v => setForm(f => ({ ...f, salary: v }))} /></div>
-                <div>
-                  <Label>Valor Hora (R$/hr)</Label>
-                  <CurrencyInput value={form.hourly_rate ?? 0} onChange={v => setForm(f => ({ ...f, hourly_rate: v > 0 ? v : null }))} />
-                  <p className="text-xs text-muted-foreground mt-1">Se vazio, usa salário ÷ 220h (padrão CLT).</p>
-                </div>
-              </>
-            )}
-            {form.payment_type === 'mensalista' && (
-            <div className="col-span-2">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Adicionais sobre a hora (regime contrato)
-              </Label>
-              <p className="text-xs text-muted-foreground mt-0.5 mb-2">
-                Define o % adicional pago sobre a hora normal. <strong>0 = hora simples</strong>
-                {' '}(sem adicional). Quem segue CLT-like usa <code className="px-1 bg-muted rounded">50 / 100 / 20</code>.
-              </p>
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <Label className="text-xs">HE dia útil (%)</Label>
-                  <Input
-                    type="number" step="1" min="0" max="500"
-                    value={form.overtime_50_pct ?? 0}
-                    onChange={e => setForm(f => ({ ...f, overtime_50_pct: Number(e.target.value) || 0 }))}
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">HE dom/feriado (%)</Label>
-                  <Input
-                    type="number" step="1" min="0" max="500"
-                    value={form.overtime_100_pct ?? 0}
-                    onChange={e => setForm(f => ({ ...f, overtime_100_pct: Number(e.target.value) || 0 }))}
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">Adic. noturno (%)</Label>
-                  <Input
-                    type="number" step="1" min="0" max="100"
-                    value={form.night_bonus_pct ?? 0}
-                    onChange={e => setForm(f => ({ ...f, night_bonus_pct: Number(e.target.value) || 0 }))}
-                  />
-                </div>
-              </div>
-            </div>
-            )}
-            {form.payment_type === 'mensalista' && (
-            <div>
-              <Label>Escala de Trabalho</Label>
-              <Select value={form.work_schedule_id || 'none'} onValueChange={v => setForm(f => ({ ...f, work_schedule_id: v === 'none' ? null : v }))}>
-                <SelectTrigger className="mt-1"><SelectValue placeholder="Padrão do sistema" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">— Usar escala padrão —</SelectItem>
-                  {schedules.filter(s => s.id && String(s.id).trim().length > 0).map(s => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}{s.is_default ? ' (padrão)' : ''}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground mt-1">Define horários e multiplicadores individuais.</p>
-            </div>
-            )}
-
-            {/* Editor de horário individual do funcionário (cada funcionário tem seu
-                próprio work_schedule após migration 2026-05-21). Só aparece em modo
-                edit (funcionário já tem id) — em criar/novo o backfill é via trigger. */}
-            {editing?.id && (
-              <div className="col-span-2 mt-2">
-                <EmployeeScheduleEditor employeeId={editing.id} />
-              </div>
-            )}
             <div><Label>Telefone</Label><Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></div>
             <div><Label>WhatsApp</Label><Input value={form.whatsapp} onChange={e => setForm(f => ({ ...f, whatsapp: e.target.value }))} /></div>
             <div className="col-span-2"><Label>Chave PIX</Label><Input value={form.pix_key} onChange={e => setForm(f => ({ ...f, pix_key: e.target.value }))} /></div>
