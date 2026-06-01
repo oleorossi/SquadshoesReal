@@ -170,6 +170,7 @@ Deno.serve(async (req) => {
 
     let created = 0;
     let updated = 0;
+    let skipped = 0;
     const errors: Array<{ provider_id: string | null; error: string }> = [];
 
     for (const summary of collected) {
@@ -232,6 +233,21 @@ Deno.serve(async (req) => {
           "",
       ) || null;
 
+      // A11 (auditoria): pular notas de ENTRADA/DEVOLUÇÃO ao gravar em nfe_emitidas
+      // (que representa SAÍDA/faturamento). Sem isso, devolução/entrada entra como
+      // +receita na apuração de impostos e duplica com nfe_devolucoes. Checa campos
+      // NF-e padrão (tpNF/finalidade/natureza) + candidatos do GestaoClick; em dúvida,
+      // mantém o comportamento atual (importa como saída).
+      const _tipoNf = String(d?.tipo_nf ?? d?.tipo ?? d?.tipo_operacao ?? d?.tpNF ?? "").toLowerCase().trim();
+      const _finalidade = String(d?.finalidade ?? d?.finalidade_nfe ?? d?.finNFe ?? "").toLowerCase().trim();
+      const _natureza = String(d?.natureza_operacao ?? d?.natureza ?? "").toLowerCase();
+      const _isEntrada = _tipoNf === "0" || _tipoNf === "entrada" || _tipoNf === "e";
+      const _isDevolucao = _finalidade === "4" || _finalidade.includes("devol") || _natureza.includes("devol");
+      if (_isEntrada || _isDevolucao) {
+        skipped++;
+        continue;
+      }
+
       // Resolve sale_order_id: 1) mantém o existente se já tem registro; 2)
       // tenta achar por número do PV mencionado nas observações; 3) deixa NULL.
       let saleOrderId: string | null = null;
@@ -263,8 +279,6 @@ Deno.serve(async (req) => {
         status,
         chave_acesso: chave || null,
         protocolo: protocolo || null,
-        numero: numero || "",
-        serie: serie || "",
         valor_total: Number.isFinite(valor) ? valor : 0,
         cnpj_emitente: cnpjEmit || "",
         sale_order_id: saleOrderId,
@@ -279,6 +293,10 @@ Deno.serve(async (req) => {
       };
       if (emissaoTs) payload.data_emissao = emissaoTs;
       if (refNfe) payload.ref_nfe = refNfe;
+      // A11/medium: numero/serie só quando não-vazios — não sobrescrever valores já
+      // corretos com '' quando o detalhe GC vier sem esses campos.
+      if (numero) payload.numero = numero;
+      if (serie) payload.serie = serie;
 
       if (existing) {
         const { error: upErr } = await adminClient
@@ -321,6 +339,7 @@ Deno.serve(async (req) => {
       total_seen: collected.length,
       created,
       updated,
+      skipped_entrada_devolucao: skipped,
       errors,
     }), {
       headers: corsHeaders,
