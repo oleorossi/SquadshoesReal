@@ -217,7 +217,7 @@ export function BulkNfeDialog({ open, onOpenChange, saleOrders, mode }: Props) {
 
                 {it.status === 'preview_ok' && it.preview?.totais && (
                   <Badge variant="outline" className="text-xs font-mono">
-                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(it.preview.totais.valor_total)}
+                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(it.preview.totais.total_pedido ?? it.preview.totais.soma_itens ?? 0)}
                   </Badge>
                 )}
               </button>

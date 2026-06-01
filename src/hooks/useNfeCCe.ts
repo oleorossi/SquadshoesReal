@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
-export type NfeCCeStatus = 'rascunho' | 'emitida' | 'rejeitada' | 'erro';
+export type NfeCCeStatus = 'rascunho' | 'emitida' | 'rejeitada' | 'erro' | 'cancelada';
 
 export interface NfeCCe {
   id: string;
@@ -70,7 +70,20 @@ export function useSaveCCe() {
         const { error } = await supabase.from('nfe_cce' as any).update(payload).eq('id', id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('nfe_cce' as any).insert(payload);
+        let { error } = await supabase.from('nfe_cce' as any).insert(payload);
+        // Race na sequência (unique nfe_chave+sequencia): se dois rascunhos da
+        // mesma NF calcularam o mesmo número, recomputa o próximo e tenta uma
+        // vez antes de propagar o erro cru do Postgres ao usuário.
+        if (error && (error as { code?: string }).code === '23505' && payload.nfe_id) {
+          const { data: maxRow } = await supabase
+            .from('nfe_cce' as any)
+            .select('sequencia')
+            .eq('nfe_id', payload.nfe_id)
+            .order('sequencia', { ascending: false })
+            .limit(1);
+          const nextSeq = (((maxRow?.[0] as { sequencia?: number })?.sequencia) ?? 0) + 1;
+          ({ error } = await supabase.from('nfe_cce' as any).insert({ ...payload, sequencia: nextSeq }));
+        }
         if (error) throw error;
       }
     },

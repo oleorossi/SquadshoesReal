@@ -25,6 +25,7 @@ const STATUS_META: Record<NfeCCeStatus, { label: string; className: string; icon
   emitida:   { label: 'Emitida',   className: 'bg-green-500/10 text-green-600 border-green-500/20',     icon: <CheckCircle className="h-3 w-3" /> },
   rejeitada: { label: 'Rejeitada', className: 'bg-red-500/10 text-red-600 border-red-500/20',           icon: <AlertCircle className="h-3 w-3" /> },
   erro:      { label: 'Erro',      className: 'bg-red-500/10 text-red-600 border-red-500/20',           icon: <AlertCircle className="h-3 w-3" /> },
+  cancelada: { label: 'Cancelada', className: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20', icon: <AlertCircle className="h-3 w-3" /> },
 };
 
 function CCeStatusBadge({ status }: { status: NfeCCeStatus }) {
@@ -368,6 +369,7 @@ export default function NfeCCePanel() {
             <SelectItem value="emitida">Emitida</SelectItem>
             <SelectItem value="rejeitada">Rejeitada</SelectItem>
             <SelectItem value="erro">Erro</SelectItem>
+            <SelectItem value="cancelada">Cancelada</SelectItem>
           </SelectContent>
         </Select>
       </div>
