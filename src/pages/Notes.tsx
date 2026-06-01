@@ -393,12 +393,21 @@ export default function Notes() {
         live
       />
 
-      <div className="grid grid-cols-12 gap-0 surface-sharp overflow-hidden" style={{ minHeight: 'calc(100vh - 220px)' }}>
+      {/* Grid reorganizado em 2026-06-01: pastas + tree com largura FIXA
+          compacta; editor ocupa o resto (1fr). Quando sidebar collapsed,
+          editor span tudo. Mobile sempre empilhado (1 col). */}
+      <div
+        className={cn(
+          'grid grid-cols-1 gap-0 surface-sharp overflow-hidden',
+          sidebarCollapsed ? 'md:grid-cols-1' : 'md:grid-cols-[160px_220px_1fr]',
+        )}
+        style={{ minHeight: 'calc(100vh - 220px)' }}
+      >
 
         {/* ═══════════════ COL 1 · PASTAS (esconde quando sidebar collapsed) ═══════════════ */}
         {!sidebarCollapsed && (
         <aside
-          className="col-span-12 md:col-span-2 border-r border-foreground/10 bg-foreground/[0.015]"
+          className="border-r border-foreground/10 bg-foreground/[0.015]"
           onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
         >
           <div className="px-3 py-2.5 border-b border-foreground/10 flex items-center justify-between">
@@ -446,7 +455,7 @@ export default function Notes() {
 
         {/* ═══════════════ COL 2 · TREE DE NOTAS (esconde quando sidebar collapsed) ═══════════════ */}
         {!sidebarCollapsed && (
-        <aside className="col-span-12 md:col-span-3 border-r border-foreground/10 flex flex-col">
+        <aside className="border-r border-foreground/10 flex flex-col min-w-0">
           <div className="p-3 border-b border-foreground/10 space-y-2.5">
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
@@ -503,11 +512,8 @@ export default function Notes() {
         </aside>
         )}
 
-        {/* ═══════════════ COL 3 · EDITOR (expande pra 12 quando sidebar collapsed) ═══════════════ */}
-        <main className={cn(
-          'col-span-12 flex flex-col',
-          sidebarCollapsed ? 'md:col-span-12' : 'md:col-span-7',
-        )}>
+        {/* ═══════════════ COL 3 · EDITOR (sempre o 1fr restante do grid) ═══════════════ */}
+        <main className="flex flex-col min-w-0">
           {!selected ? (
             <div className="flex-1 flex items-center justify-center">
               <EmptyState
