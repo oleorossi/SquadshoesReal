@@ -662,7 +662,28 @@ export type SaleOrderFormData = {
   /** Marca que aparece em xMarca de cada produto na NF-e. Default 'SquadShoes'
    *  — editável por PV pra atender private label/OEM. Pedido em 15/05/2026. */
   brand?: string;
+  /** Tipo/natureza comercial do pedido. Default 'carteira'. Valores batem com o
+   *  CHECK de sale_orders.order_type (carteira, programado, make_to_order,
+   *  pronta_entrega, amostra, bonificacao, troca, exportacao). Paridade Tutor32. */
+  order_type?: string;
 };
+
+/** Tipos de pedido (paridade Tutor32) — os `value` batem EXATAMENTE com o CHECK
+ *  constraint de sale_orders.order_type. Fonte única usada pelo Select do form
+ *  e pelo badge da lista de PVs. */
+export const ORDER_TYPES = [
+  { value: 'carteira', label: 'Carteira' },
+  { value: 'programado', label: 'Programado' },
+  { value: 'make_to_order', label: 'Sob Encomenda (MTO)' },
+  { value: 'pronta_entrega', label: 'Pronta-Entrega' },
+  { value: 'amostra', label: 'Amostra' },
+  { value: 'bonificacao', label: 'Bonificação' },
+  { value: 'troca', label: 'Troca' },
+  { value: 'exportacao', label: 'Exportação' },
+] as const;
+
+export const ORDER_TYPE_LABELS: Record<string, string> =
+  Object.fromEntries(ORDER_TYPES.map(t => [t.value, t.label]));
 
 export type SaleOrderItemFormData = {
   reference_id: string;

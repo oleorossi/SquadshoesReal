@@ -41,6 +41,7 @@ const emptyForm: SaleOrderFormData = {
   own_delivery: false,
   informacoes_complementares_nf: '',
   brand: 'Squad Shoes',
+  order_type: 'carteira',
 };
 
 const emptyItem: SaleOrderItemFormData = {
@@ -316,6 +317,7 @@ export default function SaleOrderForm() {
         own_delivery: (order as any).own_delivery === true,
         informacoes_complementares_nf: (order as any).informacoes_complementares_nf || '',
         brand: (order as any).brand || 'Squad Shoes',
+        order_type: (order as any).order_type || 'carteira',
       });
       setPackagingProductId((order as any).packaging_product_id || '');
       setPackagingQuantity((order as any).packaging_quantity || 0);
