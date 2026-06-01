@@ -948,6 +948,11 @@ const router = createBrowserRouter([
         lazy: () => import("./pages/Cronoanalise").then(m => ({ Component: m.default })),
       },
       {
+        // Paradas & OEE — apontamento de parada por setor + OEE real (view v_sector_oee)
+        path: "producao/paradas",
+        lazy: () => import("./pages/ParadasOee").then(m => ({ Component: m.default })),
+      },
+      {
         // Patrimônio / Imobilizado — cadastro de bens, depreciação linear e baixa
         path: "patrimonio",
         lazy: () => import("./pages/Patrimonio").then(m => ({ Component: m.default })),
