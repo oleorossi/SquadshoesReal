@@ -321,10 +321,9 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
           </div>
           <div class="grade-grid" style="grid-template-columns:repeat(${gradeCols}, 1fr);">
             <div class="row-marca">
-              ${renderSilkMarkHtml(silk, 22)}
-              <span class="silk-legend">${silkLegend}</span>
+              <span class="brand-mark">Squad Shoes</span>
             </div>
-            <div class="row-ref">${escapeHtml(item.refCode || '—')}</div>
+            <div class="row-ref">${escapeHtml(item.refName || item.refCode || '—')}</div>
             ${sizeCells}<div class="cell total tam-total">TT</div>
             ${qtyCells}<div class="cell total qtd-total">${totalQty}</div>
           </div>
@@ -458,6 +457,7 @@ ${LABEL_PRINT_HARDENING}
 .grade-grid > .cell.qtd-total{background:#000;color:#FFE94A;font-size:18px;border-bottom:none;}
 .grade-grid .row-marca{grid-column:1 / -1;background:#000;color:#FFE94A;padding:3px 10px;text-align:left;display:flex;align-items:center;gap:8px;border-right:none;border-bottom:1px solid #FFE94A;}
 .grade-grid .row-marca .silk-legend{font-family:'Fira Code',monospace;font-size:10px;letter-spacing:0.1em;color:rgba(255,233,74,0.65);}
+.grade-grid .row-marca .brand-mark{font-family:'Anton',sans-serif;font-size:18px;letter-spacing:0.08em;color:#FFE94A;line-height:1;}
 .grade-grid .row-ref{grid-column:1 / -1;text-align:left;padding:4px 10px;font-size:14px;border-right:none;border-bottom:1px solid #000;font-family:'Fira Code',monospace;font-weight:700;}
 
 /* SilkMark inline (espelha src/components/ui/silk-mark.tsx) */
