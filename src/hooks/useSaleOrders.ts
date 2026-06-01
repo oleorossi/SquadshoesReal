@@ -1758,7 +1758,9 @@ export function useUpdateSaleOrderStatus() {
             // for materials that were only soft-reserved (never converted by Kanban entry).
             for (const op of reservadoOps) {
               const { error: convErr } = await (supabase as any).rpc('convert_reservation_to_out', { p_order_id: op.id });
-              if (convErr) console.warn(`convert_reservation_to_out failed for OP ${op.id}:`, convErr.message);
+              // C2 (auditoria): NÃO engolir o erro. Se o consumo das reservas falhar, abortar o
+              // faturamento — senão o PV é faturado sem baixar o solado/estoque (receita sem lastro).
+              if (convErr) throw new Error(`Falha ao consumir reservas da OP ${op.id} no faturamento (estoque não baixado): ${convErr.message}`);
             }
           }
 
