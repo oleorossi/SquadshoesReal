@@ -57,8 +57,12 @@ export interface HourlyPayrollResult {
 }
 
 function timeToMin(t: string): number {
-  const [h, m] = String(t).split(':').map(Number);
-  return (h || 0) * 60 + (m || 0);
+  // Tolera anotações do relógio de ponto: '18:00*' marca batida ASSUMIDA/inferida
+  // pelo sistema antigo (e há minutos ≠ 0, ex.: '12:37*'). Sem descartar o '*',
+  // Number('37*')=NaN zeraria os minutos. Remove tudo que não for dígito/':'.
+  const clean = String(t).replace(/[^\d:]/g, '');
+  const [h, m] = clean.split(':').map(Number);
+  return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
 }
 
 /**

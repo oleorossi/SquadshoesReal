@@ -49,6 +49,18 @@ describe('splitDayMinutes', () => {
     expect(r).toEqual({ normal: 0, premium: 540, incomplete: true });
   });
 
+  it('tolera batida assumida com * e minutos não-zero (12:37*, 18:00*)', () => {
+    // 08:00, 12:37*(=12:37), 13:00, 18:00*(=18:00) → manhã 4h37 + tarde 5h
+    const r = splitDayMinutes(['08:00', '12:37*', '13:00', '18:00*'], WED, false);
+    expect(r.normal).toBe((757 - 480) + (1080 - 780)); // 277 + 300 = 577
+    expect(r.premium).toBe(0);
+  });
+
+  it('batida assumida só entrada+saída (08:09, 18:00*) deduz 1h almoço', () => {
+    const r = splitDayMinutes(['08:09', '18:00*'], WED, false);
+    expect(r.normal).toBe((1080 - 489) - 60); // span 591 − 60 = 531
+  });
+
   it('batida única ou vazia: 0h (única marca incompleto)', () => {
     expect(splitDayMinutes(['08:00'], WED, false)).toEqual({ normal: 0, premium: 0, incomplete: true });
     expect(splitDayMinutes([], WED, false)).toEqual({ normal: 0, premium: 0, incomplete: false });
