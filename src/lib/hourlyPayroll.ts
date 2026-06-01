@@ -29,6 +29,11 @@ export const MONTHLY_HOURS_DIVISOR = 220;
 export const PREMIUM_CUTOFF_MIN = 18 * 60;
 /** Multiplicador da hora "extra" (após 18h / fim de semana / feriado). */
 export const PREMIUM_MULTIPLIER = 1.5;
+/** Almoço padrão deduzido quando o almoço NÃO foi batido (só entrada+saída,
+ *  ou batida faltando) e o dia é longo. */
+export const STANDARD_LUNCH_MIN = 60;
+/** Acima disso (6h) assume-se que houve 1h de almoço, mesmo sem batida. */
+export const LONG_DAY_MIN = 360;
 
 export interface HourlyDayInput {
   date: string; // YYYY-MM-DD
@@ -60,23 +65,46 @@ function timeToMin(t: string): number {
  * Divide os minutos batidos de UM dia em normais × 1,5×.
  * - Sábado/domingo/feriado → tudo 1,5×.
  * - Dia útil → antes das 18:00 normal; depois das 18:00 vira 1,5×.
- * Pares (i, i+1); o intervalo 12:00→15:00 (almoço) some sozinho porque não é
- * um par batido. Batida ímpar sobrando é ignorada e marca o dia como incompleto
- * (RH corrige na entrada manual). Cruzamento de meia-noite é tratado de forma
- * defensiva (raro em fábrica): [a,24:00] no dia + [00:00,b] como madrugada normal.
+ *
+ * Tratamento das batidas:
+ * - **4+ batidas pares** (ex.: 08:00,12:00,13:00,18:00) → soma os pares; o
+ *   almoço (12:00→13:00) sai sozinho por ser o gap entre dois pares → 9h.
+ * - **Só entrada+saída** (2 batidas, ex.: 08:00,18:00) OU **batida faltando**
+ *   (nº ímpar, ex.: 08:00,13:00,18:00 — esqueceu o 12:00) → conta o span do 1º
+ *   ao último (não perde a tarde) e, se o dia for longo (>6h), deduz 1h de
+ *   ALMOÇO padrão que não foi batida → 9h. Dia ímpar fica marcado `incomplete`
+ *   pra RH conferir, mas É contabilizado.
+ * Cruzamento de meia-noite é tratado de forma defensiva (raro em fábrica).
  */
 export function splitDayMinutes(
   punches: string[],
   dayOfWeek: number,
   isHoliday: boolean,
 ): { normal: number; premium: number; incomplete: boolean } {
+  const n = punches.length;
+  if (n < 2) return { normal: 0, premium: 0, incomplete: n === 1 };
   const allPremium = isHoliday || dayOfWeek === 0 || dayOfWeek === 6;
+
+  // Define os intervalos trabalhados + se há almoço não-batido a deduzir.
+  let intervals: [number, number][];
+  let deductLunch = false;
+  if (n >= 4 && n % 2 === 0) {
+    // Pares completos: o almoço já está nos gaps entre pares.
+    intervals = [];
+    for (let i = 0; i + 1 < n; i += 2) intervals.push([timeToMin(punches[i]), timeToMin(punches[i + 1])]);
+  } else {
+    // 2 batidas OU nº ímpar (faltou bater) → span do 1º ao último, sem perder
+    // a tarde. Dia longo (>6h) sem almoço batido → deduz 1h padrão.
+    const first = timeToMin(punches[0]);
+    const last = timeToMin(punches[n - 1]);
+    intervals = [[first, last]];
+    const span = last >= first ? last - first : (1440 - first) + last;
+    deductLunch = span > LONG_DAY_MIN;
+  }
+
   let normal = 0;
   let premium = 0;
-  for (let i = 0; i + 1 < punches.length; i += 2) {
-    const a = timeToMin(punches[i]);
-    const b = timeToMin(punches[i + 1]);
-    if (b === a) continue;
+  for (const [a, b] of intervals) {
     // Cruza meia-noite (b<a) → dois segmentos intra-dia.
     const segments: [number, number][] = b < a ? [[a, 1440], [0, b]] : [[a, b]];
     for (const [s, e] of segments) {
@@ -92,8 +120,18 @@ export function splitDayMinutes(
       premium += dur - normalPart;
     }
   }
-  const incomplete = punches.length % 2 !== 0 && punches.length > 0;
-  return { normal, premium, incomplete };
+
+  if (deductLunch) {
+    // Almoço é no meio do dia (hora normal) → deduz do normal; se não houver
+    // normal suficiente (sáb/dom/feriado = tudo 1,5×), deduz o resto do premium.
+    let ded = STANDARD_LUNCH_MIN;
+    const fromNormal = Math.min(ded, normal);
+    normal -= fromNormal;
+    ded -= fromNormal;
+    premium = Math.max(0, premium - ded);
+  }
+
+  return { normal, premium, incomplete: n % 2 !== 0 };
 }
 
 export function calculateHourlyPayroll(
