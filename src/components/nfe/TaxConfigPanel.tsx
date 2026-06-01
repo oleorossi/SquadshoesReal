@@ -88,6 +88,10 @@ export default function TaxConfigPanel() {
           regime_tributario: form.regime_tributario,
           pis_cofins_regime: form.pis_cofins_regime,
           natureza_operacao: form.natureza_operacao,
+          // emit-nfe lê companies.cfop (e flipa interno→externo p/ interestadual).
+          // Mantém a coluna legada em sincronia com o CFOP industrial interno
+          // editado aqui, senão a edição do painel não surtia efeito na emissão.
+          cfop: form.cfop_industrial_interno,
           cfop_industrial_interno: form.cfop_industrial_interno,
           cfop_industrial_externo: form.cfop_industrial_externo,
           cfop_revenda_interno:    form.cfop_revenda_interno,
