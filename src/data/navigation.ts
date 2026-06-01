@@ -150,6 +150,7 @@ export const secondaryRoutes: ReadonlyArray<{ name: string; icon: typeof Box; pa
   { name: "Picking (Produção)",   icon: ClipboardCheck,   path: "/picking",                group: "Produção" },
   { name: "Cronoanálise",         icon: Timer,            path: "/cronoanalise",           group: "Produção" },
   { name: "Paradas & OEE",        icon: Gauge,            path: "/producao/paradas",       group: "Produção" },
+  { name: "Tempos de Setup",      icon: Clock,            path: "/producao/setup-times",   group: "Produção" },
   // Logística
   { name: "Embalagens",           icon: Box,              path: "/embalagens",             group: "Logística" },
   { name: "Sessões de Picking",   icon: ClipboardCheck,   path: "/picking-sessions",       group: "Logística" },

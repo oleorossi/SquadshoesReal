@@ -953,6 +953,11 @@ const router = createBrowserRouter([
         lazy: () => import("./pages/ParadasOee").then(m => ({ Component: m.default })),
       },
       {
+        // Tempos de Setup — cadastro de tempo de troca de referência/cor por setor
+        path: "producao/setup-times",
+        lazy: () => import("./pages/SetupTimes").then(m => ({ Component: m.default })),
+      },
+      {
         // Patrimônio / Imobilizado — cadastro de bens, depreciação linear e baixa
         path: "patrimonio",
         lazy: () => import("./pages/Patrimonio").then(m => ({ Component: m.default })),
