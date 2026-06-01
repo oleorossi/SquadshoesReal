@@ -120,7 +120,12 @@ export default function Notes() {
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null); // null = todas
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [mode, setMode] = useState<'edit' | 'split' | 'preview' | 'tasks'>('edit');
+  // mode: variantes de visualização da NOTA (Edit/Split/Preview).
+  // Default = 'preview' — clicar na nota abre direto em preview. Clicar
+  // no texto do preview muda pra 'edit'.
+  const [mode, setMode] = useState<'edit' | 'split' | 'preview'>('preview');
+  // topTab: aba superior — Nota (com editor) ou Tarefas (lista de tasks).
+  const [topTab, setTopTab] = useState<'note' | 'tasks'>('note');
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [folderName, setFolderName] = useState('');
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
@@ -496,7 +501,7 @@ export default function Notes() {
                     selectedId={selectedId}
                     expandedIds={expandedNotes}
                     draggingId={draggingNoteId}
-                    onSelect={(id) => { setSelectedId(id); setMode('edit'); }}
+                    onSelect={(id) => { setSelectedId(id); setMode('preview'); }}
                     onToggle={toggleExpand}
                     onAddChild={(parentId) => handleNewNote(parentId)}
                     onPin={togglePin}
@@ -576,16 +581,6 @@ export default function Notes() {
                   >
                     <Eye className="h-3 w-3" /> Preview
                   </button>
-                  <button
-                    onClick={() => setMode('tasks')}
-                    className={cn(
-                      'px-2.5 py-1 rounded-sm text-xs font-bold uppercase tracking-wider gap-1 inline-flex items-center transition-colors',
-                      mode === 'tasks' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
-                    )}
-                    title="Lista de tarefas (auto-ordenadas por prioridade)"
-                  >
-                    <ListChecks className="h-3 w-3" /> Tarefas
-                  </button>
                 </div>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -601,8 +596,35 @@ export default function Notes() {
                 />
               </div>
 
-              {/* Toolbar markdown — visível só em edit e split (não em tasks/preview) */}
-              {(mode === 'edit' || mode === 'split') && (
+              {/* Aba superior: Nota | Tarefas (pedido user 2026-06-01) */}
+              <div className="px-5 border-b border-foreground/10 flex items-center gap-0 bg-foreground/[0.015]">
+                <button
+                  onClick={() => setTopTab('note')}
+                  className={cn(
+                    'px-3 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors border-b-2 -mb-px',
+                    topTab === 'note'
+                      ? 'border-foreground text-foreground'
+                      : 'border-transparent text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  Nota
+                </button>
+                <button
+                  onClick={() => setTopTab('tasks')}
+                  className={cn(
+                    'px-3 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors border-b-2 -mb-px gap-1.5 inline-flex items-center',
+                    topTab === 'tasks'
+                      ? 'border-foreground text-foreground'
+                      : 'border-transparent text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  <ListChecks className="h-3.5 w-3.5" />
+                  Tarefas
+                </button>
+              </div>
+
+              {/* Toolbar markdown — visível só em edit e split (não em preview) E só na aba Nota */}
+              {topTab === 'note' && (mode === 'edit' || mode === 'split') && (
                 <div className="px-5 py-2 border-b border-foreground/10 flex items-center gap-1 flex-wrap bg-foreground/[0.02]">
                   {TOOLBAR.map((action) => {
                     const Icon = action.icon;
@@ -673,55 +695,62 @@ export default function Notes() {
                 className="hidden"
               />
 
-              {/* Conteúdo: editor, split (lado-a-lado) ou preview */}
-              <div className={cn(
-                'flex-1 overflow-hidden relative',
-                mode === 'split' ? 'grid grid-cols-2 divide-x divide-foreground/10' : '',
-              )}>
-                {/* Editor (visível em edit e split) */}
-                {(mode === 'edit' || mode === 'split') && (
-                  <div className="relative overflow-auto px-8 py-6">
-                    <Textarea
-                      ref={editorRef}
-                      value={draftContent}
-                      onChange={e => { setDraftContent(e.target.value); scheduleSave({ content: e.target.value }); }}
-                      onKeyDown={onEditorKeyDown}
-                      onDragOver={handleEditorDragOver}
-                      onDragLeave={handleEditorDragLeave}
-                      onDrop={handleEditorDrop}
-                      onPaste={handleEditorPaste}
-                      placeholder="Comece a escrever... (arraste imagens ou cole com ⌘V)"
-                      className="min-h-full font-mono text-sm leading-relaxed resize-none border-0 px-0 focus-visible:ring-0 bg-transparent"
-                    />
-                    {imageDropTarget && (
-                      <div className="absolute inset-4 pointer-events-none border-2 border-dashed border-primary bg-primary/5 rounded-sm flex items-center justify-center">
-                        <div className="text-center">
-                          <ImageIcon className="h-8 w-8 mx-auto text-primary mb-2" weight="duotone" />
-                          <p className="ed-eyebrow text-primary">Solte para inserir imagem</p>
+              {/* Conteúdo: aba Nota (editor/preview/split) ou aba Tarefas */}
+              {topTab === 'tasks' ? (
+                <div className="flex-1 overflow-auto px-8 py-6">
+                  <NoteTasksPanel noteId={selected.id} />
+                </div>
+              ) : (
+                <div className={cn(
+                  'flex-1 overflow-hidden relative',
+                  mode === 'split' ? 'grid grid-cols-2 divide-x divide-foreground/10' : '',
+                )}>
+                  {/* Editor (visível em edit e split) */}
+                  {(mode === 'edit' || mode === 'split') && (
+                    <div className="relative overflow-auto px-8 py-6">
+                      <Textarea
+                        ref={editorRef}
+                        value={draftContent}
+                        onChange={e => { setDraftContent(e.target.value); scheduleSave({ content: e.target.value }); }}
+                        onKeyDown={onEditorKeyDown}
+                        onDragOver={handleEditorDragOver}
+                        onDragLeave={handleEditorDragLeave}
+                        onDrop={handleEditorDrop}
+                        onPaste={handleEditorPaste}
+                        placeholder="Comece a escrever... (arraste imagens ou cole com ⌘V)"
+                        className="min-h-full font-mono text-sm leading-relaxed resize-none border-0 px-0 focus-visible:ring-0 bg-transparent"
+                      />
+                      {imageDropTarget && (
+                        <div className="absolute inset-4 pointer-events-none border-2 border-dashed border-primary bg-primary/5 rounded-sm flex items-center justify-center">
+                          <div className="text-center">
+                            <ImageIcon className="h-8 w-8 mx-auto text-primary mb-2" weight="duotone" />
+                            <p className="ed-eyebrow text-primary">Solte para inserir imagem</p>
+                          </div>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                )}
+                      )}
+                    </div>
+                  )}
 
-                {/* Preview (visível em preview e split) */}
-                {(mode === 'preview' || mode === 'split') && (
-                  <div className="overflow-auto px-8 py-6 bg-foreground/[0.015]">
-                    <article className="note-markdown prose-sm max-w-none">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {draftContent || '*Nota vazia.*'}
-                      </ReactMarkdown>
-                    </article>
-                  </div>
-                )}
-
-                {/* Tarefas (visível só em tasks) */}
-                {mode === 'tasks' && selected && (
-                  <div className="overflow-auto px-8 py-6">
-                    <NoteTasksPanel noteId={selected.id} />
-                  </div>
-                )}
-              </div>
+                  {/* Preview (visível em preview e split) — clicar no texto vai pra Edit */}
+                  {(mode === 'preview' || mode === 'split') && (
+                    <div
+                      className={cn(
+                        'overflow-auto px-8 py-6 bg-foreground/[0.015]',
+                        mode === 'preview' && 'cursor-text hover:bg-foreground/[0.025] transition-colors',
+                      )}
+                      onClick={mode === 'preview' ? () => setMode('edit') : undefined}
+                      role={mode === 'preview' ? 'button' : undefined}
+                      title={mode === 'preview' ? 'Clique pra editar' : undefined}
+                    >
+                      <article className="note-markdown prose-sm max-w-none">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {draftContent || '*Nota vazia. Clique pra começar a escrever.*'}
+                        </ReactMarkdown>
+                      </article>
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
         </main>
@@ -975,39 +1004,40 @@ function NoteTasksPanel({ noteId }: { noteId: string }) {
   const openTasks = tasks.filter(t => !t.done);
   const doneTasks = tasks.filter(t => t.done);
 
+  // Agrupamento estilo Todoist — abertas por prioridade, concluídas em grupo separado
+  const tasksByPriority = {
+    alta:  openTasks.filter(t => t.priority === 'alta'),
+    media: openTasks.filter(t => t.priority === 'media'),
+    baixa: openTasks.filter(t => t.priority === 'baixa'),
+  };
+
   return (
-    <div className="max-w-3xl mx-auto space-y-5">
-      {/* Header */}
-      <div className="flex items-end justify-between gap-3 pb-3 border-b border-foreground/10">
-        <div>
-          <p className="ed-eyebrow">Lista de Tarefas</p>
-          <h2 className="text-xl font-bold mt-1">
-            {openTasks.length} aberta{openTasks.length === 1 ? "" : "s"}
-            {doneTasks.length > 0 && (
-              <span className="text-muted-foreground font-normal text-sm ml-2">
-                · {doneTasks.length} concluída{doneTasks.length === 1 ? "" : "s"}
-              </span>
-            )}
-          </h2>
-        </div>
+    <div className="max-w-3xl mx-auto">
+      {/* Header Todoist-style: contador grande */}
+      <div className="pb-4 mb-4 border-b border-foreground/10">
+        <p className="ed-eyebrow text-muted-foreground">Lista de Tarefas</p>
+        <h1 className="text-3xl font-bold mt-2">Tarefas</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          {openTasks.length === 0 ? 'Sem tarefas abertas' :
+            `${openTasks.length} tarefa${openTasks.length === 1 ? '' : 's'} aberta${openTasks.length === 1 ? '' : 's'}`}
+          {doneTasks.length > 0 && <> · {doneTasks.length} concluída{doneTasks.length === 1 ? '' : 's'}</>}
+        </p>
       </div>
 
-      {/* Adicionar — Textarea aceita várias linhas, cada linha = 1 tarefa.
-          Mesma prioridade aplica pra todo o batch. Cmd/Ctrl+Enter salva. */}
-      <div className="rounded-sm border-[1.5px] border-foreground/10 bg-foreground/[0.02] p-3 space-y-2">
+      {/* Adicionar — Textarea aceita várias linhas. Mesma prioridade aplica pra todas.
+          ⌘+Enter envia. */}
+      <div className="rounded-sm border-[1.5px] border-foreground/10 bg-foreground/[0.02] p-3 space-y-2 mb-6">
         <Textarea
           value={newText}
           onChange={e => setNewText(e.target.value)}
           onKeyDown={e => {
-            // Cmd/Ctrl + Enter envia o batch (Enter solto cria nova linha)
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
               e.preventDefault();
               handleAdd();
             }
           }}
-          placeholder={'O que precisa ser feito?\nUma tarefa por linha — todas serão criadas com a mesma prioridade.\n\nEx:\nLigar fornecedor X\nFechar PV-00120\nRevisar ficha CF03\n\n⌘+Enter pra salvar tudo'}
-          className="min-h-[120px] bg-card resize-y font-mono text-sm leading-relaxed"
-          autoFocus
+          placeholder={'O que precisa ser feito? (uma tarefa por linha)\n\n⌘+Enter pra salvar tudo'}
+          className="min-h-[90px] bg-card resize-y text-sm leading-relaxed"
         />
         <div className="flex items-center gap-2 flex-wrap">
           <span className="ed-eyebrow text-muted-foreground">Prioridade:</span>
@@ -1021,7 +1051,7 @@ function NoteTasksPanel({ noteId }: { noteId: string }) {
           </Select>
           {lineCount > 0 && (
             <span className="text-xs text-muted-foreground tabular-nums">
-              {lineCount} tarefa{lineCount === 1 ? '' : 's'} pronta{lineCount === 1 ? '' : 's'} pra adicionar
+              {lineCount} tarefa{lineCount === 1 ? '' : 's'} pronta{lineCount === 1 ? '' : 's'}
             </span>
           )}
           <div className="flex-1" />
@@ -1031,60 +1061,60 @@ function NoteTasksPanel({ noteId }: { noteId: string }) {
             disabled={lineCount === 0 || bulkCreate.isPending}
             className="gap-1.5 h-8"
           >
-            {bulkCreate.isPending ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Plus className="h-3.5 w-3.5" />
-            )}
+            {bulkCreate.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
             {lineCount > 1 ? `Adicionar ${lineCount}` : 'Adicionar'}
           </Button>
         </div>
       </div>
 
-      {/* Lista */}
+      {/* Lista Todoist-style: grupos colapsáveis por prioridade */}
       {isLoading ? (
         <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
       ) : tasks.length === 0 ? (
-        <p className="text-sm text-muted-foreground italic text-center py-8">
-          Nenhuma tarefa criada. Use o campo acima pra adicionar.
+        <p className="text-sm text-muted-foreground italic text-center py-12">
+          Nenhuma tarefa criada ainda.
         </p>
       ) : (
         <>
-          {/* Abertas */}
-          {openTasks.length > 0 && (
-            <div className="space-y-1.5">
-              {openTasks.map(task => (
-                <TaskRow
-                  key={task.id}
-                  task={task}
-                  onToggle={() => updateTask.mutate({ id: task.id, note_id: noteId, data: { done: !task.done } })}
-                  onChangePriority={(p) => updateTask.mutate({ id: task.id, note_id: noteId, data: { priority: p } })}
-                  onChangeText={(t) => updateTask.mutate({ id: task.id, note_id: noteId, data: { text: t } })}
-                  onDelete={() => deleteTask.mutate({ id: task.id, note_id: noteId })}
-                />
-              ))}
-            </div>
-          )}
+          <PriorityGroup
+            label="Alta"
+            priority="alta"
+            tasks={tasksByPriority.alta}
+            noteId={noteId}
+            updateTask={updateTask}
+            deleteTask={deleteTask}
+            defaultOpen
+          />
+          <PriorityGroup
+            label="Média"
+            priority="media"
+            tasks={tasksByPriority.media}
+            noteId={noteId}
+            updateTask={updateTask}
+            deleteTask={deleteTask}
+            defaultOpen
+          />
+          <PriorityGroup
+            label="Baixa"
+            priority="baixa"
+            tasks={tasksByPriority.baixa}
+            noteId={noteId}
+            updateTask={updateTask}
+            deleteTask={deleteTask}
+            defaultOpen
+          />
 
-          {/* Concluídas */}
+          {/* Concluídas (grupo separado, fechado por padrão) */}
           {doneTasks.length > 0 && (
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2 pt-3">
-                <span className="ed-eyebrow text-muted-foreground">Concluídas</span>
-                <div className="flex-1 h-px bg-foreground/10" />
-                <span className="text-xs text-muted-foreground tabular-nums">{doneTasks.length}</span>
-              </div>
-              {doneTasks.map(task => (
-                <TaskRow
-                  key={task.id}
-                  task={task}
-                  onToggle={() => updateTask.mutate({ id: task.id, note_id: noteId, data: { done: !task.done } })}
-                  onChangePriority={(p) => updateTask.mutate({ id: task.id, note_id: noteId, data: { priority: p } })}
-                  onChangeText={(t) => updateTask.mutate({ id: task.id, note_id: noteId, data: { text: t } })}
-                  onDelete={() => deleteTask.mutate({ id: task.id, note_id: noteId })}
-                />
-              ))}
-            </div>
+            <PriorityGroup
+              label="Concluídas"
+              priority={null}
+              tasks={doneTasks}
+              noteId={noteId}
+              updateTask={updateTask}
+              deleteTask={deleteTask}
+              defaultOpen={false}
+            />
           )}
         </>
       )}
@@ -1092,6 +1122,53 @@ function NoteTasksPanel({ noteId }: { noteId: string }) {
   );
 }
 
+// Grupo Todoist-style com header colapsável + linha divisora + contador
+function PriorityGroup({
+  label, priority, tasks, noteId, updateTask, deleteTask, defaultOpen,
+}: {
+  label: string;
+  priority: NoteTaskPriority | null;
+  tasks: any[];
+  noteId: string;
+  updateTask: ReturnType<typeof useUpdateNoteTask>;
+  deleteTask: ReturnType<typeof useDeleteNoteTask>;
+  defaultOpen: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  if (tasks.length === 0) return null;
+
+  return (
+    <div className="mb-6">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-2 py-2 group/header"
+      >
+        <ChevronRight className={cn('h-3.5 w-3.5 transition-transform text-muted-foreground', open && 'rotate-90')} />
+        <span className="text-sm font-semibold text-foreground">{label}</span>
+        <span className="text-xs text-muted-foreground tabular-nums">{tasks.length}</span>
+        <div className="flex-1 h-px bg-foreground/10 ml-2" />
+      </button>
+      {open && (
+        <div className="divide-y divide-foreground/5">
+          {tasks.map(task => (
+            <TaskRow
+              key={task.id}
+              task={task}
+              onToggle={() => updateTask.mutate({ id: task.id, note_id: noteId, data: { done: !task.done } })}
+              onChangePriority={(p) => updateTask.mutate({ id: task.id, note_id: noteId, data: { priority: p } })}
+              onChangeText={(t) => updateTask.mutate({ id: task.id, note_id: noteId, data: { text: t } })}
+              onDelete={() => deleteTask.mutate({ id: task.id, note_id: noteId })}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// TaskRow Todoist-style: linha LISA (sem card individual), checkbox grande,
+// texto principal, metadata em linha embaixo. Ações no hover do lado direito.
 function TaskRow({ task, onToggle, onChangePriority, onChangeText, onDelete }: {
   task: { id: string; text: string; priority: NoteTaskPriority; done: boolean };
   onToggle: () => void;
@@ -1105,27 +1182,22 @@ function TaskRow({ task, onToggle, onChangePriority, onChangeText, onDelete }: {
 
   return (
     <div className={cn(
-      "group flex items-start gap-3 px-3 py-2.5 rounded-sm border border-foreground/10 bg-card transition-colors hover:bg-foreground/[0.02]",
-      task.done && "opacity-60",
+      "group flex items-center gap-3 py-3 transition-colors",
+      task.done && "opacity-50",
     )}>
-      {/* Checkbox */}
+      {/* Checkbox circular Todoist-style */}
       <Checkbox
         checked={task.done}
         onCheckedChange={onToggle}
-        className="mt-0.5 shrink-0"
+        className={cn(
+          "h-5 w-5 shrink-0 rounded-full border-2",
+          color.dot.replace('bg-', 'border-'),
+        )}
         aria-label={task.done ? "Desmarcar tarefa" : "Marcar como concluída"}
       />
 
-      {/* Dot prioridade */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className={cn("h-2 w-2 rounded-full shrink-0 mt-2", color.dot)} aria-label={PRIORITY_LABEL[task.priority]} />
-        </TooltipTrigger>
-        <TooltipContent>Prioridade {PRIORITY_LABEL[task.priority]}</TooltipContent>
-      </Tooltip>
-
-      {/* Texto editável */}
-      <div className="flex-1 min-w-0">
+      {/* Texto + linha de metadata (clica pra editar) */}
+      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => !task.done && setEditing(true)}>
         {editing ? (
           <Input
             value={draft}
@@ -1135,24 +1207,35 @@ function TaskRow({ task, onToggle, onChangePriority, onChangeText, onDelete }: {
               if (e.key === "Enter") { e.currentTarget.blur(); }
               else if (e.key === "Escape") { setDraft(task.text); setEditing(false); }
             }}
+            onClick={e => e.stopPropagation()}
             autoFocus
-            className="h-7 text-sm py-0 px-1"
+            className="h-8 text-sm py-0 px-2"
           />
         ) : (
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            className={cn(
-              "text-sm text-left w-full break-words",
+          <>
+            <p className={cn(
+              "text-sm leading-snug break-words",
               task.done ? "line-through text-muted-foreground" : "text-foreground",
+            )}>
+              {task.text}
+            </p>
+            {/* Linha de metadata: badge prioridade pequeno */}
+            {!task.done && (
+              <div className="flex items-center gap-1.5 mt-1">
+                <span className={cn(
+                  "inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider",
+                  color.text,
+                )}>
+                  <span className={cn("h-1.5 w-1.5 rounded-full", color.dot)} />
+                  {PRIORITY_LABEL[task.priority]}
+                </span>
+              </div>
             )}
-          >
-            {task.text}
-          </button>
+          </>
         )}
       </div>
 
-      {/* Ações inline (aparecem no hover) */}
+      {/* Ações inline (hover) */}
       <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
         <Select value={task.priority} onValueChange={(v) => onChangePriority(v as NoteTaskPriority)}>
           <SelectTrigger className="h-7 w-[88px] text-xs"><SelectValue /></SelectTrigger>
