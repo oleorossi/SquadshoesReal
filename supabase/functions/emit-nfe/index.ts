@@ -423,6 +423,13 @@ Deno.serve(async (req) => {
         error: `Valor total do pedido (R$ ${orderTotalNum.toFixed(2)}) difere da soma dos itens (R$ ${sumItems.toFixed(2)}). Atualize o pedido antes de emitir a NF-e.`,
       }), { status: 400, headers: corsHeaders });
     }
+    // Frete (auditoria fiscal 01/06/2026): order.total e sumItems são SÓ
+    // mercadoria; valor_frete é coluna à parte e o GestaoClick soma ao vNF.
+    // Pra a NF fechar (soma das duplicatas + valor_total gravado = mercadoria +
+    // frete = vNF), calculamos o total-com-frete e usamos nas duplicatas e no
+    // valor_total. Sem frete, totalComFrete == sumItems (comportamento intacto).
+    const valorFrete = Number(order.valor_frete) || 0;
+    const totalComFrete = Number((sumItems + valorFrete).toFixed(2));
 
     // CFOP por código (GestaoClick aceita `codigo_cfop` diretamente).
     // Auditoria A14: valida formato do CFOP configurado. Se preenchido mas
@@ -611,10 +618,11 @@ Deno.serve(async (req) => {
       const price = effectivePrice(it);
       const baseName = ts?.name || prod?.name || "Produto";
       const desc = (variant?.description_override || (it.color ? `${baseName} - ${it.color}` : baseName)).trim();
-      // Auditoria 16/05/2026 — Squad Shoes vende exclusivamente calçado e a
-      // unidade na NF sempre tem que ser PAR (mesmo NF avulsa de standalone).
-      // Antes, NF avulsa puxava de products.unit que podia ser "UN"/"kg"/etc.
-      const unidade = "PAR";
+      // Unidade comercial na NF. Pedido do dono em 01/06/2026, validando contra
+      // a NF #248 revisada pela contabilidade (o DANFE de referência sai com
+      // "UN", não "PAR"): forçar "UN". Vale também p/ NF avulsa de standalone
+      // (antes puxava products.unit que podia vir "kg"/etc).
+      const unidade = "UN";
 
       // Resolução do produto no GestaoClick — POR NOME.
       // BUG CRÍTICO da cor (e do duplicado) corrigido aqui:
@@ -671,7 +679,7 @@ Deno.serve(async (req) => {
           const productPayload: Record<string, unknown> = {
             nome: nomeProduto,
             valor_venda: price.toFixed(2),
-            unidade: "PAR",
+            unidade: "UN",
             ncm,
             tipo: "P",
             marca: orderBrand, // marca aparece no XML SEFAZ <prod><xMarca>
@@ -710,7 +718,7 @@ Deno.serve(async (req) => {
         // total saía qtd² × preço (ex: R$ 8.3M em vez de R$ 25k).
         valor_venda: price.toFixed(2),
         cfop: resolvedCfop,
-        unidade: "PAR",
+        unidade: "UN",
         NCM: ncm,
         tipo: "P",
         marca: orderBrand, // pedido em 15/05/2026 — sempre Squad Shoes na NF
@@ -720,7 +728,7 @@ Deno.serve(async (req) => {
         ncm,
         cfop: resolvedCfop,
         quantidade: qty,
-        unidade: "PAR",
+        unidade: "UN",
         valor_unitario: price,
         valor_total: Number((qty * price).toFixed(2)),
         gc_status: gcStatus,
@@ -897,7 +905,7 @@ Deno.serve(async (req) => {
       const prazos = (cond.match(/\d+/g) || []).map(Number).filter((n) => n >= 0);
       const lista = prazos.length > 0 ? prazos : [0]; // sem prazo → à vista
       const n = lista.length;
-      const totalCent = Math.round(sumItems * 100);
+      const totalCent = Math.round(totalComFrete * 100);
       const baseCent = Math.floor(totalCent / n);
       const hoje = new Date();
       return lista.map((dias, i) => {
@@ -1136,7 +1144,7 @@ Deno.serve(async (req) => {
           produtos: produtosPreview,
           totais: {
             soma_itens: Number(sumItems.toFixed(2)),
-            total_pedido: Number((Number(order.total) || 0).toFixed(2)),
+            total_pedido: totalComFrete,
             qtd_itens: produtosPreview.length,
             qtd_pares: produtosPreview.reduce((s, p) => s + p.quantidade, 0),
           },
@@ -1189,7 +1197,7 @@ Deno.serve(async (req) => {
         sale_order_id,
         ref_nfe: ref,
         status: "rejeitada",
-        valor_total: Number(sumItems.toFixed(2)),
+        valor_total: totalComFrete,
         motivo_rejeicao: isTimeout
           ? `Timeout no GestaoClick (>30s). NF pode ter sido criada lá — confira no painel pelo número de PV antes de re-emitir (evita NF duplicada). Detalhe: ${errMsg}`
           : `Erro de rede: ${errMsg}`,
@@ -1212,7 +1220,7 @@ Deno.serve(async (req) => {
         sale_order_id,
         ref_nfe: ref,
         status: "rejeitada",
-        valor_total: Number(sumItems.toFixed(2)),
+        valor_total: totalComFrete,
         motivo_rejeicao: `Cadastro: ${msg}`,
         cnpj_emitente: fiscal.cnpj.replace(/\D/g, ""),
         nome_destinatario: order.client_name || client?.razao_social || client?.nome || null,
@@ -1280,7 +1288,7 @@ Deno.serve(async (req) => {
       sale_order_id,
       ref_nfe: ref,
       status: finalStatus,
-      valor_total: Number(sumItems.toFixed(2)),
+      valor_total: totalComFrete,
       // Sempre grava o motivo quando rejeitada. Precedência: motivo da SEFAZ
       // (mais específico) > emitMsg (genérico do emit) > situacao > fallback.
       motivo_rejeicao: finalStatus === "rejeitada"
