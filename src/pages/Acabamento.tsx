@@ -212,7 +212,7 @@ export default function Acabamento() {
     }
 
     const squaresHtml = Array.from({ length: totalFichas }, (_, i) =>
-      `<div style="width:44px;height:44px;border:2px solid #333;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;font-size:14px;color:#cc0000;margin:2px;font-weight:700;font-family:'JetBrains Mono',monospace;">${i + 1}</div>`
+      `<div style="width:44px;height:44px;border:2px solid #333;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;font-size:14px;color:#cc0000;margin:2px;font-weight:700;font-family:'Fira Code',monospace;">${i + 1}</div>`
     ).join('');
 
     const html = `

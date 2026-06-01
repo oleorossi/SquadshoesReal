@@ -43,7 +43,7 @@ export const SectorAlerts = ({ alerts }: Props) => {
                 <Icon className="h-4 w-4 text-black" weight="bold" />
                 <span
                   className="section-label"
-                  style={{ color: '#000', fontFamily: "'Inter Tight', sans-serif" }}
+                  style={{ color: '#000', fontFamily: "'Fira Sans', sans-serif" }}
                 >
                   {label}
                 </span>
@@ -52,7 +52,7 @@ export const SectorAlerts = ({ alerts }: Props) => {
             <div className="flex items-center px-3 py-2 flex-1">
               <span
                 className="text-[13px] text-black leading-tight"
-                style={{ fontWeight: 600, fontFamily: "'Inter Tight', sans-serif" }}
+                style={{ fontWeight: 600, fontFamily: "'Fira Sans', sans-serif" }}
               >
                 {a.text}
               </span>

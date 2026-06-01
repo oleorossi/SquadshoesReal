@@ -282,7 +282,7 @@ export default function EspelhoPontoPage() {
       {/* Folha A4 — print-natural: pode ocupar múltiplas A4 se necessário */}
       <div
         className="w-[210mm] mx-auto bg-white text-black p-[12mm] print:p-[8mm] print:shadow-none shadow-lg my-6 print:my-0 print-natural"
-        style={{ minHeight: '297mm', fontFamily: "'Inter Tight', sans-serif", fontSize: '10pt' }}
+        style={{ minHeight: '297mm', fontFamily: "'Fira Sans', sans-serif", fontSize: '10pt' }}
       >
         {/* Cabeçalho — atómico */}
         <div className="border-b-2 border-black pb-2 mb-3 keep-together keep-with-next">

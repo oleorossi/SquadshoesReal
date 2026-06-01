@@ -385,7 +385,7 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
 ${preloadLinks}
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-html,body{background:#e8e6e1;font-family:'Inter Tight',sans-serif;color:#000;-webkit-font-smoothing:antialiased;}
+html,body{background:#e8e6e1;font-family:'Fira Sans',sans-serif;color:#000;-webkit-font-smoothing:antialiased;}
 body{padding:24px;}
 ${LABEL_PRINT_HARDENING}
 
@@ -405,7 +405,7 @@ ${LABEL_PRINT_HARDENING}
 .label-cx-ext{
   width:192mm;height:132mm;background:#FFE94A;
   border:1.5px solid #000;color:#000;
-  font-family:'Inter Tight',sans-serif;
+  font-family:'Fira Sans',sans-serif;
   display:flex;flex-direction:column;
   page-break-inside:avoid;break-inside:avoid;
   overflow:hidden;position:relative;
@@ -424,41 +424,41 @@ ${LABEL_PRINT_HARDENING}
 /* HEADER NF / PROG ─────────────────── */
 .nf-row{display:grid;grid-template-columns:1.4fr 1fr;border-bottom:1.5px solid #000;flex-shrink:0;}
 .nf-cell{padding:6px 12px;border-right:1.5px solid #000;display:flex;align-items:baseline;gap:8px;background:#000;color:#FFE94A;}
-.nf-cell .nf-label{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:13px;letter-spacing:0.06em;}
+.nf-cell .nf-label{font-family:'Fira Code',monospace;font-weight:700;font-size:13px;letter-spacing:0.06em;}
 .nf-cell .nf-value{font-family:'Anton',sans-serif;font-size:34px;letter-spacing:0.02em;line-height:1;}
 .prog-cell{padding:6px 12px;display:flex;align-items:baseline;gap:6px;}
-.prog-cell .prog-label{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11.5px;letter-spacing:0.06em;}
-.prog-cell .prog-value{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;}
+.prog-cell .prog-label{font-family:'Fira Code',monospace;font-weight:700;font-size:11.5px;letter-spacing:0.06em;}
+.prog-cell .prog-value{font-family:'Fira Code',monospace;font-size:14px;font-weight:700;}
 
 /* CORPO 2 colunas ──────────────────── */
 .body{display:flex;flex:1;min-height:0;}
 .body-left{flex:1.3;border-right:1.5px solid #000;padding:8px 14px;display:flex;flex-direction:column;gap:3px;font-size:11px;font-weight:600;}
 .body-left .field{display:flex;gap:6px;align-items:baseline;border-bottom:0.5px solid #000;padding-bottom:1px;line-height:1.25;}
-.body-left .field .lbl{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:10px;letter-spacing:0.06em;min-width:76px;}
+.body-left .field .lbl{font-family:'Fira Code',monospace;font-weight:700;font-size:10px;letter-spacing:0.06em;min-width:76px;}
 .body-left .field .val{font-weight:700;font-size:12px;flex:1;}
-.body-left .field.mono .val{font-family:'JetBrains Mono',monospace;}
+.body-left .field.mono .val{font-family:'Fira Code',monospace;}
 .body-left .gap{height:4px;}
 
 .body-right{flex:1;display:flex;flex-direction:column;padding:8px 10px 6px;}
 .photo-frame{flex:1;border:2px solid #000;background:#FFE94A;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;}
 .photo-frame img{max-width:100%;max-height:100%;object-fit:contain;}
-.photo-fallback-badge{position:absolute;top:2px;left:2px;background:#000;color:#FFE94A;font-size:8px;font-weight:800;padding:2px 5px;letter-spacing:0.5px;text-transform:uppercase;font-family:'JetBrains Mono',monospace;}
+.photo-fallback-badge{position:absolute;top:2px;left:2px;background:#000;color:#FFE94A;font-size:8px;font-weight:800;padding:2px 5px;letter-spacing:0.5px;text-transform:uppercase;font-family:'Fira Code',monospace;}
 .cor-row{margin-top:4px;display:flex;justify-content:space-between;align-items:center;gap:6px;}
-.cor-row .cor-name{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;}
+.cor-row .cor-name{font-family:'Fira Code',monospace;font-weight:700;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;}
 
 /* TABELA grade ───────────────────── */
 .grade-table{display:flex;border-top:1.5px solid #000;flex-shrink:0;}
 .grade-labels{border-right:1.5px solid #000;display:flex;flex-direction:column;}
-.grade-labels .lbl{padding:5px 10px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:10px;letter-spacing:0.06em;min-width:110px;border-bottom:1px solid #000;}
+.grade-labels .lbl{padding:5px 10px;font-family:'Fira Code',monospace;font-weight:700;font-size:10px;letter-spacing:0.06em;min-width:110px;border-bottom:1px solid #000;}
 .grade-labels .lbl.first{background:#000;color:#FFE94A;}
 .grade-labels .lbl.last{border-bottom:none;}
 .grade-grid{flex:1;display:grid;}
-.grade-grid > .cell{text-align:center;border-right:1px solid #000;border-bottom:1px solid #000;font-family:'JetBrains Mono',monospace;font-weight:700;color:#000;padding:4px 0;font-size:13px;}
+.grade-grid > .cell{text-align:center;border-right:1px solid #000;border-bottom:1px solid #000;font-family:'Fira Code',monospace;font-weight:700;color:#000;padding:4px 0;font-size:13px;}
 .grade-grid > .cell.tam-total{background:#000;color:#FFE94A;}
 .grade-grid > .cell.qtd-total{background:#000;color:#FFE94A;font-size:18px;border-bottom:none;}
 .grade-grid .row-marca{grid-column:1 / -1;background:#000;color:#FFE94A;padding:3px 10px;text-align:left;display:flex;align-items:center;gap:8px;border-right:none;border-bottom:1px solid #FFE94A;}
-.grade-grid .row-marca .silk-legend{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.1em;color:rgba(255,233,74,0.65);}
-.grade-grid .row-ref{grid-column:1 / -1;text-align:left;padding:4px 10px;font-size:14px;border-right:none;border-bottom:1px solid #000;font-family:'JetBrains Mono',monospace;font-weight:700;}
+.grade-grid .row-marca .silk-legend{font-family:'Fira Code',monospace;font-size:10px;letter-spacing:0.1em;color:rgba(255,233,74,0.65);}
+.grade-grid .row-ref{grid-column:1 / -1;text-align:left;padding:4px 10px;font-size:14px;border-right:none;border-bottom:1px solid #000;font-family:'Fira Code',monospace;font-weight:700;}
 
 /* SilkMark inline (espelha src/components/ui/silk-mark.tsx) */
 .silk-mark{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;background:#000;color:#FFE94A;box-sizing:border-box;line-height:1;}
@@ -469,13 +469,13 @@ ${LABEL_PRINT_HARDENING}
 .footer{display:flex;border-top:1.5px solid #000;background:#000;color:#FFE94A;flex-shrink:0;}
 .footer .pedido{flex:1;padding:6px 12px;border-right:1.5px solid #FFE94A;display:flex;align-items:center;gap:8px;}
 .footer .volume{padding:6px 14px;display:flex;align-items:baseline;gap:8px;}
-.footer .lbl{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:13px;letter-spacing:0.06em;}
+.footer .lbl{font-family:'Fira Code',monospace;font-weight:700;font-size:13px;letter-spacing:0.06em;}
 .footer .val{font-family:'Anton',sans-serif;font-size:28px;letter-spacing:0.02em;line-height:1;}
 .footer .volume .sep{font-size:16px;}
 
 /* Linha de corte entre as 2 etiquetas (visível só em tela, sumindo em print) */
 .cut-line{width:100%;height:0;border-top:1px dashed #888;position:relative;margin:0 auto;}
-.cut-line span{position:absolute;left:50%;top:-7px;transform:translateX(-50%);background:#fff;padding:0 8px;font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:0.18em;color:#999;}
+.cut-line span{position:absolute;left:50%;top:-7px;transform:translateX(-50%);background:#fff;padding:0 8px;font-family:'Fira Code',monospace;font-size:8px;letter-spacing:0.18em;color:#999;}
 @media print{.cut-line{border-top:none;}.cut-line span{display:none;}}
 
 /* Print footer (botões "Imprimir" / "Voltar" — só em tela) */
@@ -1494,7 +1494,7 @@ export function buildHangtagHtml(labels: {
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter+Tight:wght@400;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
   *{box-sizing:border-box;margin:0;padding:0;}
-  body{background:#e8e8e8;font-family:'Inter Tight',system-ui,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  body{background:#e8e8e8;font-family:'Fira Sans',system-ui,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
   .hangtag-page{
     width:${W}mm;height:${H}mm;background:#fff;margin:8px auto;
     overflow:hidden;position:relative;page-break-after:always;
@@ -1522,7 +1522,7 @@ export function buildHangtagHtml(labels: {
   }
   .ht-size-block{display:flex;flex-direction:column;align-items:center;gap:1mm;}
   .ht-size-label{
-    font-family:'JetBrains Mono',monospace;
+    font-family:'Fira Code',monospace;
     font-size:5.5pt;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:#777;
   }
   .ht-size-circle{
@@ -1536,7 +1536,7 @@ export function buildHangtagHtml(labels: {
     padding:2mm 0;
   }
   .ht-info-row{font-size:7pt;line-height:1.6;text-align:center;}
-  .ht-info-label{font-family:'JetBrains Mono',monospace;color:#888;font-weight:600;text-transform:uppercase;font-size:6pt;letter-spacing:0.12em;margin-right:0.5mm;}
+  .ht-info-label{font-family:'Fira Code',monospace;color:#888;font-weight:600;text-transform:uppercase;font-size:6pt;letter-spacing:0.12em;margin-right:0.5mm;}
   .ht-info-value{font-weight:900;color:#000;text-transform:uppercase;}
   .ht-composition{
     font-size:5.5pt;color:#555;line-height:1.5;text-align:center;

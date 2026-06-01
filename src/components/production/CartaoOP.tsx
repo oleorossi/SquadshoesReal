@@ -103,7 +103,7 @@ function ShoeBox({ photoUrl, ref: refCode }: { photoUrl?: string; ref: string })
         width: 110, height: 92,
         border: '1px solid var(--p-line-2)', background: 'var(--p-soft)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontFamily: 'JetBrains Mono, monospace', fontSize: 8,
+        fontFamily: 'Fira Code, monospace', fontSize: 8,
         letterSpacing: '0.14em', color: 'var(--p-mute)',
         flexShrink: 0,
       }}
@@ -126,7 +126,7 @@ function QRPlaceholder({ shortUrl }: { shortUrl?: string }) {
       {shortUrl && (
         <div
           style={{
-            fontFamily: 'JetBrains Mono, monospace', fontSize: 7.5,
+            fontFamily: 'Fira Code, monospace', fontSize: 7.5,
             color: 'var(--p-mute)', marginTop: 4,
           }}
         >
@@ -152,7 +152,7 @@ function ColorChipsRow({ swatches }: { swatches?: CartaoOPProps['swatches'] }) {
           {s.name && (
             <span
               style={{
-                fontFamily: 'JetBrains Mono, monospace', fontSize: 9,
+                fontFamily: 'Fira Code, monospace', fontSize: 9,
                 color: 'var(--p-ink-2)', letterSpacing: '0.06em',
               }}
             >
@@ -203,7 +203,7 @@ export function CartaoOP(props: CartaoOPProps) {
             </div>
             <div
               style={{
-                fontFamily: 'JetBrains Mono, monospace', fontSize: 7.5,
+                fontFamily: 'Fira Code, monospace', fontSize: 7.5,
                 letterSpacing: '0.18em', opacity: 0.7, marginTop: 2,
               }}
             >
@@ -211,7 +211,7 @@ export function CartaoOP(props: CartaoOPProps) {
             </div>
           </div>
         </div>
-        <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, letterSpacing: '0.16em' }}>
+        <div style={{ fontFamily: 'Fira Code, monospace', fontSize: 9, letterSpacing: '0.16em' }}>
           A5{printedAt ? ` · IMPRESSO ${printedAt}` : ''}
         </div>
       </div>
@@ -244,7 +244,7 @@ export function CartaoOP(props: CartaoOPProps) {
                 style={{
                   background: 'var(--p-ink)', color: '#fff',
                   padding: '2px 8px',
-                  fontFamily: 'JetBrains Mono, monospace', fontSize: 10,
+                  fontFamily: 'Fira Code, monospace', fontSize: 10,
                   fontWeight: 700, letterSpacing: '0.1em',
                 }}
               >
@@ -278,7 +278,7 @@ export function CartaoOP(props: CartaoOPProps) {
             {sku && (
               <div
                 style={{
-                  fontFamily: 'JetBrains Mono, monospace', fontSize: 8.5,
+                  fontFamily: 'Fira Code, monospace', fontSize: 8.5,
                   color: 'var(--p-red)', fontWeight: 700, letterSpacing: '0.1em',
                 }}
               >
@@ -316,7 +316,7 @@ export function CartaoOP(props: CartaoOPProps) {
           >
             <div
               style={{
-                fontFamily: 'JetBrains Mono, monospace', fontSize: 7.5,
+                fontFamily: 'Fira Code, monospace', fontSize: 7.5,
                 letterSpacing: '0.18em', color: 'var(--p-mute)',
                 textTransform: 'uppercase',
               }}
@@ -345,7 +345,7 @@ export function CartaoOP(props: CartaoOPProps) {
       >
         <div
           style={{
-            fontFamily: 'JetBrains Mono, monospace', fontSize: 8.5,
+            fontFamily: 'Fira Code, monospace', fontSize: 8.5,
             letterSpacing: '0.18em', color: 'var(--p-red)', fontWeight: 700,
           }}
         >
@@ -361,7 +361,7 @@ export function CartaoOP(props: CartaoOPProps) {
             {currentStage}
           </div>
           {(stageStart || stageEnd) && (
-            <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: 'var(--p-ink)' }}>
+            <div style={{ fontFamily: 'Fira Code, monospace', fontSize: 10, color: 'var(--p-ink)' }}>
               {[stageStart, stageEnd].filter(Boolean).join(' → ')}
             </div>
           )}
@@ -377,7 +377,7 @@ export function CartaoOP(props: CartaoOPProps) {
           <table
             style={{
               width: '100%', borderCollapse: 'collapse',
-              fontFamily: 'JetBrains Mono, monospace', fontSize: 11,
+              fontFamily: 'Fira Code, monospace', fontSize: 11,
             }}
           >
             <thead>
@@ -453,7 +453,7 @@ export function CartaoOP(props: CartaoOPProps) {
                   background: isActive ? 'var(--p-red)' : isDone ? 'var(--p-ink)' : '#fff',
                   color: isActive || isDone ? '#fff' : 'var(--p-mute)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontFamily: 'JetBrains Mono, monospace', fontSize: 9,
+                  fontFamily: 'Fira Code, monospace', fontSize: 9,
                   fontWeight: 700, letterSpacing: '0.04em',
                   flexShrink: 0,
                 }}
@@ -486,7 +486,7 @@ export function CartaoOP(props: CartaoOPProps) {
         <div
           style={{
             textAlign: 'right',
-            fontFamily: 'JetBrains Mono, monospace', fontSize: 8,
+            fontFamily: 'Fira Code, monospace', fontSize: 8,
             color: 'var(--p-mute)', letterSpacing: '0.14em',
           }}
         >

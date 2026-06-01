@@ -136,7 +136,7 @@ const OperatorWorkSheet = ({
   return (
     <div
       className="w-[210mm] p-[6mm] print:w-full print:p-0 bg-white shadow-none print:shadow-none m-auto flex flex-col gap-0"
-      style={{ boxSizing: 'border-box', fontFamily: "'Inter Tight', sans-serif", color: '#000' }}
+      style={{ boxSizing: 'border-box', fontFamily: "'Fira Sans', sans-serif", color: '#000' }}
     >
       {/* ── Header — Industrial Editorial ── */}
       {/* Sector title bar — top of the page (per user feedback May/2026) */}
@@ -187,7 +187,7 @@ const OperatorWorkSheet = ({
             </span>
             <span
               className="text-black font-mono leading-none mt-1"
-              style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '30px', fontWeight: 700, letterSpacing: '-0.02em' }}
+              style={{ fontFamily: "'Fira Code', monospace", fontSize: '30px', fontWeight: 700, letterSpacing: '-0.02em' }}
             >
               {opNumbers && opNumbers.length > 1 ? `${opNumbers[0]}+` : order.op_number}
             </span>
@@ -198,7 +198,7 @@ const OperatorWorkSheet = ({
               <span className="section-label" style={{ color: '#000' }}>Pedido</span>
               <span
                 className="text-black font-mono leading-none mt-1"
-                style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '20px', fontWeight: 700, letterSpacing: '-0.02em' }}
+                style={{ fontFamily: "'Fira Code', monospace", fontSize: '20px', fontWeight: 700, letterSpacing: '-0.02em' }}
               >
                 {order.sale_order_number || order.pv_number}
               </span>
@@ -529,7 +529,7 @@ const OperatorWorkSheet = ({
                       className="py-1.5 text-black font-bold"
                       style={{
                         fontSize: '14px',
-                        fontFamily: "'JetBrains Mono', monospace",
+                        fontFamily: "'Fira Code', monospace",
                         borderRight: i < chunk.length - 1 ? '1px solid #000' : (ci === sizeChunks.length - 1 ? '1px solid #000' : 'none'),
                       }}
                     >

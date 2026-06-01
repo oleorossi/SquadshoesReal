@@ -57,7 +57,7 @@ const T = {
 
   // Type
   sans: "'Plus Jakarta Sans', 'Inter', system-ui, sans-serif",
-  mono: "'JetBrains Mono', monospace",
+  mono: "'Fira Code', monospace",
 
   // Radius (14px)
   r: 14,

@@ -3,7 +3,7 @@
  *
  * Substitui o padrão antigo `<Card><p className="text-2xl font-bold">`.
  * Visual editorial: rule preta no topo, eyebrow ALL-CAPS, número em
- * JetBrains Mono tabular, delta opcional com tom semântico.
+ * Fira Code tabular, delta opcional com tom semântico.
  *
  * Chrome 100% via design tokens (bg-card, border-border, text-foreground,
  * text-muted-foreground). `tone` colore só o número.

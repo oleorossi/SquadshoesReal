@@ -266,7 +266,7 @@ const printStyles = `
     @media print {
       .sector-page-marker {
         display: block !important;
-        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-family: 'Fira Code', ui-monospace, monospace;
         font-size: 8px;
         line-height: 1;
         color: #000;

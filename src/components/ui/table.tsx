@@ -44,7 +44,7 @@ TableRow.displayName = "TableRow";
 
 const TableHead = React.forwardRef<HTMLTableCellElement, React.ThHTMLAttributes<HTMLTableCellElement>>(
   // Industrial Editorial Pro: header cells em eyebrow style (10px uppercase
-  // tracking wider, JetBrains Mono via font-mono). Mais compactos (h-10) e
+  // tracking wider, Fira Code via font-mono). Mais compactos (h-10) e
   // foreground sólido em vez de muted.
   ({ className, ...props }, ref) => (
     <th

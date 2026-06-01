@@ -3,7 +3,8 @@
    Light tone, cinzas claros, vermelho só em destaques
    ═══════════════════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Anton&family=Inter+Tight:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Fraunces:opsz,wght@9..144,400;9..144,600&display=swap');
+/* Fontes atualizadas 2026-05-31: Fira Sans → Fira Sans, Fira Code → Fira Code (ui-ux-pro-max). Anton + Fraunces mantidas. */
+@import url('https://fonts.googleapis.com/css2?family=Anton&family=Fira+Sans:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,600&display=swap');
 
 :root {
   --p-bg:        #F4F2EE;
@@ -24,7 +25,7 @@
 }
 
 .paper, .paper * {
-  font-family: 'Inter Tight', system-ui, sans-serif;
+  font-family: 'Fira Sans', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 .paper {
@@ -52,7 +53,7 @@
 }
 
 .p-eyebrow {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Fira Code', monospace;
   font-size: 9px; font-weight: 600;
   letter-spacing: 0.18em; text-transform: uppercase;
   color: var(--p-mute);
@@ -64,7 +65,7 @@
   font-weight: 400;
 }
 .p-serif { font-family: 'Fraunces', 'Times New Roman', serif; font-weight: 400; }
-.p-mono  { font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.p-mono  { font-family: 'Fira Code', monospace; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
 
 .p-rule       { height: 1px; background: var(--p-line); border: 0; }
 .p-rule-thick { height: 2px; background: var(--p-ink); border: 0; }
@@ -78,7 +79,7 @@
   height: 18px; padding: 0 7px;
   border: 1px solid var(--p-line-2);
   border-radius: 999px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Fira Code', monospace;
   font-size: 8.5px; font-weight: 700;
   letter-spacing: 0.12em; text-transform: uppercase;
   color: var(--p-ink-2);
@@ -96,7 +97,7 @@
 }
 .p-tbl thead th {
   background: var(--p-soft);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Fira Code', monospace;
   font-size: 8.5px; font-weight: 700;
   letter-spacing: 0.14em; text-transform: uppercase;
   color: var(--p-mute);
@@ -104,7 +105,7 @@
   border-bottom: 1px solid var(--p-line-2);
 }
 .p-tbl-zebra tbody tr:nth-child(even) td { background: var(--p-soft); }
-.p-tbl .num, .p-tbl-num { text-align: right; font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; }
+.p-tbl .num, .p-tbl-num { text-align: right; font-family: 'Fira Code', monospace; font-variant-numeric: tabular-nums; }
 
 /* A4 header band — fixed widths, no wraps */
 .a4-head {
@@ -134,7 +135,7 @@
   white-space: nowrap;
 }
 .a4-head .brand-sub {
-  font-family: 'JetBrains Mono', monospace; font-size: 8px;
+  font-family: 'Fira Code', monospace; font-size: 8px;
   letter-spacing: 0.18em; text-transform: uppercase; color: var(--p-mute);
   margin-top: 4px; white-space: nowrap;
 }
@@ -145,12 +146,12 @@
   white-space: nowrap;
 }
 .a4-head .doc-num {
-  font-family: 'JetBrains Mono', monospace; font-size: 10.5px;
+  font-family: 'Fira Code', monospace; font-size: 10.5px;
   color: var(--p-red); margin-top: 8px; font-weight: 600; letter-spacing: 0.04em;
   white-space: nowrap;
 }
 .a4-head .doc-emit {
-  font-family: 'JetBrains Mono', monospace; font-size: 8px;
+  font-family: 'Fira Code', monospace; font-size: 8px;
   letter-spacing: 0.16em; text-transform: uppercase; color: var(--p-mute);
   margin-top: 4px; white-space: nowrap;
 }
@@ -161,7 +162,7 @@
   display: flex; justify-content: space-between; align-items: center;
   padding-top: 8px;
   border-top: 1px solid var(--p-line);
-  font-family: 'JetBrains Mono', monospace; font-size: 8px;
+  font-family: 'Fira Code', monospace; font-size: 8px;
   letter-spacing: 0.12em; text-transform: uppercase; color: var(--p-mute);
 }
 .a4-foot.l { left: 40px; right: 40px; }
@@ -174,20 +175,20 @@
   height: 1px; background: var(--p-ink); margin-top: 28px;
 }
 .sig-cap {
-  font-family: 'JetBrains Mono', monospace; font-size: 8.5px;
+  font-family: 'Fira Code', monospace; font-size: 8.5px;
   letter-spacing: 0.14em; text-transform: uppercase; color: var(--p-mute);
   margin-top: 6px; text-align: center;
 }
 
 /* KPI block (print) */
 .p-kpi { padding: 8px 10px; border: 1px solid var(--p-line); background: var(--p-soft); }
-.p-kpi .lbl { font-family: 'JetBrains Mono', monospace; font-size: 8px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--p-mute); }
+.p-kpi .lbl { font-family: 'Fira Code', monospace; font-size: 8px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--p-mute); }
 .p-kpi .val { font-family: 'Anton', sans-serif; font-size: 24px; color: var(--p-ink); margin-top: 4px; line-height: 0.9; }
 .p-kpi .sub { font-size: 9px; color: var(--p-mute); margin-top: 2px; }
 .p-kpi.red .val { color: var(--p-red); }
 
 /* Web (non-A4) light surfaces for the order screens */
-.light-app, .light-app * { font-family: 'Inter Tight', system-ui, sans-serif; }
+.light-app, .light-app * { font-family: 'Fira Sans', system-ui, sans-serif; }
 .light-app {
   background: var(--p-bg);
   color: var(--p-ink);
@@ -206,10 +207,10 @@
   font-family: inherit; width: 100%;
 }
 .light-input:focus { outline: none; border-color: var(--p-red); box-shadow: 0 0 0 3px rgba(183,20,31,0.12); }
-.light-input.tabular { font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; }
+.light-input.tabular { font-family: 'Fira Code', monospace; font-variant-numeric: tabular-nums; }
 
 .light-label {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Fira Code', monospace;
   font-size: 9.5px; font-weight: 600;
   letter-spacing: 0.14em; text-transform: uppercase;
   color: var(--p-mute);
@@ -255,14 +256,14 @@
 .stepper .dot {
   width: 28px; height: 28px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 11px;
+  font-family: 'Fira Code', monospace; font-weight: 700; font-size: 11px;
   border: 1.5px solid var(--p-line-2); background: var(--p-paper); color: var(--p-mute);
   flex-shrink: 0;
 }
 .stepper .step.done .dot { background: var(--p-ink); border-color: var(--p-ink); color: white; }
 .stepper .step.active .dot { background: var(--p-red); border-color: var(--p-red); color: white; }
 .stepper .step .lbl {
-  font-family: 'JetBrains Mono', monospace; font-size: 9.5px;
+  font-family: 'Fira Code', monospace; font-size: 9.5px;
   letter-spacing: 0.14em; text-transform: uppercase; color: var(--p-mute);
 }
 .stepper .step.active .lbl { color: var(--p-ink); }
@@ -271,7 +272,7 @@
 
 /* Grade input table */
 .grade {
-  border-collapse: collapse; font-family: 'JetBrains Mono', monospace;
+  border-collapse: collapse; font-family: 'Fira Code', monospace;
   font-size: 11px; font-variant-numeric: tabular-nums;
 }
 .grade th, .grade td {
@@ -303,7 +304,7 @@
 .flow-stage.done { background: #F0EDE7; }
 .flow-stage.active { border-color: var(--p-red); background: var(--p-red-soft); }
 .flow-stage .lbl {
-  font-family: 'JetBrains Mono', monospace; font-size: 8.5px;
+  font-family: 'Fira Code', monospace; font-size: 8.5px;
   letter-spacing: 0.16em; text-transform: uppercase; color: var(--p-mute);
 }
 .flow-stage .nm {
@@ -315,7 +316,7 @@
 .grade-display {
   display: grid; gap: 1px; background: var(--p-line-2);
   border: 1px solid var(--p-line-2);
-  font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums;
+  font-family: 'Fira Code', monospace; font-variant-numeric: tabular-nums;
 }
 .grade-display > div {
   background: var(--p-paper); padding: 6px 4px; text-align: center; font-size: 11px;
@@ -330,7 +331,7 @@
 .bar-row .bar { flex: 1; height: 10px; background: var(--p-soft); border: 1px solid var(--p-line); position: relative; }
 .bar-row .bar > span { position: absolute; left: 0; top: 0; bottom: 0; background: var(--p-ink); }
 .bar-row .bar > span.red { background: var(--p-red); }
-.bar-row .val { width: 60px; text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 700; }
+.bar-row .val { width: 60px; text-align: right; font-family: 'Fira Code', monospace; font-weight: 700; }
 
 /* Print rules — evita quebras feias em A4 */
 @media print {

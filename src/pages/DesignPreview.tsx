@@ -7,7 +7,7 @@
  * Rota: /design-preview (standalone, sem AppLayout)
  *
  * Princípios da direção:
- *   - Tipografia: Anton (display uppercase) + Inter Tight (body) + JetBrains Mono (numeric)
+ *   - Tipografia: Anton (display uppercase) + Fira Sans (body) + Fira Code (numeric)
  *   - Bordas decisivas 1-2px em vez de shadow-sm / gradients
  *   - Accent: vermelho squad SÓ pra estados ativos / ações primárias
  *   - Eyebrow labels 10px tracking-widest uppercase
@@ -17,8 +17,8 @@
  *
  * Atalhos visuais usados nesse arquivo:
  *   - .ed-display  → fonte Anton
- *   - .ed-body     → fonte Inter Tight
- *   - .ed-mono     → fonte JetBrains Mono (tabular)
+ *   - .ed-body     → fonte Fira Sans
+ *   - .ed-mono     → fonte Fira Code (tabular)
  *   - .ed-eyebrow  → label categoria
  */
 import { useState } from 'react';
@@ -47,8 +47,8 @@ import {
 
 const ed = {
   display: { fontFamily: "'Anton', Impact, sans-serif", letterSpacing: '-0.02em', textTransform: 'uppercase' as const, lineHeight: 1 },
-  body: { fontFamily: "'Inter Tight', system-ui, sans-serif" },
-  mono: { fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontVariantNumeric: 'tabular-nums' as const },
+  body: { fontFamily: "'Fira Sans', system-ui, sans-serif" },
+  mono: { fontFamily: "'Fira Code', ui-monospace, monospace", fontVariantNumeric: 'tabular-nums' as const },
 };
 
 const SQUAD_RED = '#D9264E';

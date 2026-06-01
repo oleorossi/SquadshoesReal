@@ -153,9 +153,9 @@ export function printServiceOrderReceipt(
 <style>
   @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; font-family: 'Inter Tight', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #0f172a; }
+  html, body { margin: 0; padding: 0; font-family: 'Fira Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #0f172a; }
   body { font-size: 10.5pt; line-height: 1.45; }
-  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  .mono { font-family: 'Fira Code', ui-monospace, monospace; }
   .strong { font-weight: 700; }
   .left { text-align: left; }
   .right { text-align: right; }
@@ -202,7 +202,7 @@ export function printServiceOrderReceipt(
   .totals table { width: 280px; border: 1.5px solid #0f172a; }
   .totals td { padding: 5px 10px; font-size: 10pt; }
   .totals .label { color: #475569; }
-  .totals .value { text-align: right; font-family: 'JetBrains Mono', ui-monospace, monospace; font-weight: 600; }
+  .totals .value { text-align: right; font-family: 'Fira Code', ui-monospace, monospace; font-weight: 600; }
   .totals tr.total td { background: #0f172a; color: #fff; font-size: 12pt; font-weight: 700; }
   .totals tr.total td.value { font-family: 'Anton', Impact, sans-serif; letter-spacing: 0.04em; }
 

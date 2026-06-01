@@ -88,7 +88,7 @@ export const WorksheetHeader = ({
 
       {/* Editorial index strip */}
       <div className="flex items-baseline justify-between mb-0.5 gap-3">
-        <span className="section-label" style={{ color: '#000', fontFamily: "'Inter Tight', sans-serif" }}>
+        <span className="section-label" style={{ color: '#000', fontFamily: "'Fira Sans', sans-serif" }}>
           {editorialIndex}
         </span>
         <div className="flex items-baseline gap-3 shrink-0">

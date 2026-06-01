@@ -51,7 +51,7 @@ export const SignatureFooter = ({
             <div key={item.label}>
               <span
                 className="section-label block mb-0.5"
-                style={{ color: '#000', fontFamily: "'Inter Tight', sans-serif" }}
+                style={{ color: '#000', fontFamily: "'Fira Sans', sans-serif" }}
               >
                 {item.label}
               </span>
@@ -66,7 +66,7 @@ export const SignatureFooter = ({
             <div className="border-t border-black pt-1 mt-4">
               <p
                 className="section-label"
-                style={{ color: '#000', fontFamily: "'Inter Tight', sans-serif" }}
+                style={{ color: '#000', fontFamily: "'Fira Sans', sans-serif" }}
               >
                 Assinatura · {label}
               </p>

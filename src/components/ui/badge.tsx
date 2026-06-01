@@ -28,7 +28,7 @@ const badgeVariants = cva(
         "destructive-soft": "border-[hsl(var(--destructive-soft-foreground))]/30 bg-[hsl(var(--destructive-soft))] text-[hsl(var(--destructive-soft-foreground))]",
         // Industrial Editorial Pro 2.0 — variants opt-in
         // live: dot red animado + INK fundo + texto paper, pra realtime
-        // mono: JetBrains Mono pra códigos/IDs/datas em telas-hero
+        // mono: Fira Code pra códigos/IDs/datas em telas-hero
         // ink: bloco INK puro (statement decisivo)
         live: "border-transparent bg-foreground text-background font-mono tracking-wider gap-1.5 before:content-[''] before:block before:w-1.5 before:h-1.5 before:rounded-full before:bg-primary before:animate-pulse-slow",
         mono: "border-foreground/20 bg-card text-foreground font-mono tracking-wider",

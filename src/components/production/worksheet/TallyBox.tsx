@@ -75,7 +75,7 @@ export const TallyBox = ({ count, pairsPerCard = 12, title, size = 'md' }: Props
   return (
     <div className="my-2 text-black">
       <div className="keep-together keep-with-next flex items-baseline justify-between mb-1.5">
-        <span className="section-label" style={{ color: '#000', fontFamily: "'Inter Tight', sans-serif" }}>
+        <span className="section-label" style={{ color: '#000', fontFamily: "'Fira Sans', sans-serif" }}>
           {titleText}
         </span>
         <span className="font-mono text-[10px] text-black tracking-widest uppercase">

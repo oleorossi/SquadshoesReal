@@ -102,7 +102,7 @@ export const ExpedicaoWorkSheet = ({ group, date }: Props) => {
   return (
     <div
       className="w-[210mm] p-[6mm] print:w-full print:p-0 bg-white shadow-none print:shadow-none m-auto flex flex-col gap-0"
-      style={{ boxSizing: 'border-box', fontFamily: "'Inter Tight', sans-serif", color: '#000' }}
+      style={{ boxSizing: 'border-box', fontFamily: "'Fira Sans', sans-serif", color: '#000' }}
     >
       <WorksheetHeader
         sector="Expedição"
@@ -252,7 +252,7 @@ export const ExpedicaoWorkSheet = ({ group, date }: Props) => {
                 <th
                   key={s}
                   className="py-1.5 text-black font-bold"
-                  style={{ width: 26, fontSize: '11px', fontFamily: "'JetBrains Mono', monospace", borderRight: '1px solid #000' }}
+                  style={{ width: 26, fontSize: '11px', fontFamily: "'Fira Code', monospace", borderRight: '1px solid #000' }}
                 >
                   {s}
                 </th>

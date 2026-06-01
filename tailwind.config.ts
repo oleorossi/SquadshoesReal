@@ -14,13 +14,14 @@ export default {
     },
     extend: {
       fontFamily: {
-        // Industrial Editorial Pro (22/05/2026): font-display = Anton (era
-        // Plus Jakarta Sans, inconsistente com --font-display do CSS).
-        // font-sans = Inter Tight (body). font-mono = JetBrains Mono.
+        // Industrial Editorial Pro · atualizado 2026-05-31 via ui-ux-pro-max:
+        // display = Anton (mantido, identidade)
+        // sans/editorial = Fira Sans (era Inter Tight) — humanist com caráter
+        // mono = Fira Code (era JetBrains Mono) — unifica com Fira family
         display: ['Anton', 'Impact', 'sans-serif'],
-        sans: ['"Inter Tight"', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
-        editorial: ['"Inter Tight"', 'Inter', 'system-ui', 'sans-serif'],
-        mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+        sans: ['"Fira Sans"', 'system-ui', '-apple-system', 'sans-serif'],
+        editorial: ['"Fira Sans"', 'system-ui', 'sans-serif'],
+        mono: ['"Fira Code"', 'ui-monospace', 'monospace'],
       },
       colors: {
         border: "hsl(var(--border))",

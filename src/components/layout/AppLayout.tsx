@@ -359,7 +359,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
                       onClick={() => toggleGroup(group.label)}
                       className={cn(
                         // Industrial Editorial Pro: group label vira eyebrow
-                        // (JetBrains Mono 10px tracking widest uppercase).
+                        // (Fira Code 10px tracking widest uppercase).
                         "w-full flex items-center justify-between px-3 py-1.5 ed-eyebrow transition-colors mt-2",
                         active ? "text-primary" : "text-sidebar-muted hover:text-sidebar-foreground"
                       )}

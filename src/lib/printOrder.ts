@@ -445,13 +445,13 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
   /* ═══════════════════════════════════════════════════════════════════════
      PV PRINT — Industrial Editorial Pro (2026-05-29 redesign)
      PAPER #FAFAF7 · INK #0A0A0A · RED #D9264E
-     Anton (display) · Inter Tight (body) · JetBrains Mono (numbers)
+     Anton (display) · Fira Sans (body) · Fira Code (numbers)
      Rule-thick 3px · radius sharp 2px · sem gradientes
      ═══════════════════════════════════════════════════════════════════════ */
   @import url('https://fonts.googleapis.com/css2?family=Anton&family=Inter+Tight:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
   .pv-doc {
-    font-family: 'Inter Tight', system-ui, -apple-system, sans-serif;
+    font-family: 'Fira Sans', system-ui, -apple-system, sans-serif;
     color: #0A0A0A;
     font-size: 10.5px;
     line-height: 1.45;
@@ -463,7 +463,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
 
   /* ── Eyebrow MONO (10px tracking widest uppercase) ── */
   .ed-eyebrow {
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: 'Fira Code', ui-monospace, monospace;
     font-size: 8px;
     font-weight: 600;
     letter-spacing: 0.18em;
@@ -498,7 +498,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
   }
   .pv-header__brand-mark .dot { color: #D9264E; }
   .pv-header__brand-tag {
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: 'Fira Code', ui-monospace, monospace;
     font-size: 8.5px;
     letter-spacing: 0.16em;
     text-transform: uppercase;
@@ -512,7 +512,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
     gap: 4px;
   }
   .pv-header__title-eyebrow {
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: 'Fira Code', ui-monospace, monospace;
     font-size: 9px;
     font-weight: 600;
     letter-spacing: 0.22em;
@@ -543,7 +543,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
     text-align: right;
   }
   .pv-header__meta-label {
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: 'Fira Code', ui-monospace, monospace;
     font-size: 8px;
     font-weight: 600;
     letter-spacing: 0.18em;
@@ -551,7 +551,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
     color: rgba(10,10,10,0.55);
   }
   .pv-header__meta-value {
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: 'Fira Code', ui-monospace, monospace;
     font-size: 11px;
     font-weight: 700;
     color: #0A0A0A;
@@ -564,7 +564,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
     padding: 4px 9px;
     border: 1.5px solid #0A0A0A;
     border-radius: 2px;
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: 'Fira Code', ui-monospace, monospace;
     font-size: 9.5px;
     font-weight: 700;
     letter-spacing: 0.1em;
@@ -588,7 +588,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
     page-break-inside: avoid;
   }
   .pv-card__title {
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: 'Fira Code', ui-monospace, monospace;
     font-size: 8.5px;
     font-weight: 600;
     color: #0A0A0A;
@@ -607,7 +607,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
     align-items: baseline;
   }
   .pv-card__row .lbl {
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: 'Fira Code', ui-monospace, monospace;
     font-size: 8.5px;
     font-weight: 500;
     letter-spacing: 0.08em;
@@ -623,7 +623,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
   }
   .pv-card__row .val strong { font-weight: 800; }
   .pv-card__row .val.mono {
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: 'Fira Code', ui-monospace, monospace;
     font-variant-numeric: tabular-nums;
   }
 
@@ -642,7 +642,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
     gap: 4px;
   }
   .pv-items-title__eyebrow {
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: 'Fira Code', ui-monospace, monospace;
     font-size: 8px;
     font-weight: 600;
     letter-spacing: 0.2em;
@@ -660,7 +660,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
     padding-top: 0.05em;
   }
   .pv-items-title .count {
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: 'Fira Code', ui-monospace, monospace;
     font-size: 10px;
     font-weight: 700;
     color: #0A0A0A;
@@ -682,7 +682,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
   .pv-table thead th {
     background: #0A0A0A;
     color: #FAFAF7;
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: 'Fira Code', ui-monospace, monospace;
     font-weight: 700;
     font-size: 8.5px;
     text-transform: uppercase;
@@ -720,7 +720,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
   }
   .pv-img-cell.empty {
     color: rgba(10,10,10,0.35);
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: 'Fira Code', ui-monospace, monospace;
     font-size: 7.5px;
     font-weight: 600;
     letter-spacing: 0.1em;
@@ -735,7 +735,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
     border-right: 1px solid rgba(10,10,10,0.12);
   }
   .pv-ref-cell .ref-code {
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: 'Fira Code', ui-monospace, monospace;
     color: #0A0A0A;
     font-weight: 800;
     letter-spacing: 0.02em;
@@ -751,7 +751,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
   }
 
   .pv-color-cell {
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: 'Fira Code', ui-monospace, monospace;
     font-weight: 700;
     color: #0A0A0A;
     font-size: 9.5px;
@@ -763,7 +763,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
 
   .pv-type-cell {
     background: rgba(10,10,10,0.04);
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: 'Fira Code', ui-monospace, monospace;
     font-weight: 600;
     font-size: 8.5px;
     color: rgba(10,10,10,0.55);
@@ -783,7 +783,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
 
   .pv-size-cell {
     text-align: center;
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: 'Fira Code', ui-monospace, monospace;
     font-variant-numeric: tabular-nums;
     color: rgba(10,10,10,0.7);
     padding: 4px 4px;
@@ -807,7 +807,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
 
   .pv-total-cell {
     text-align: center;
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: 'Fira Code', ui-monospace, monospace;
     font-variant-numeric: tabular-nums;
     color: #0A0A0A;
     background: rgba(10,10,10,0.04);
@@ -821,7 +821,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
   .pv-totals-row td {
     background: #0A0A0A !important;
     color: #FAFAF7 !important;
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: 'Fira Code', ui-monospace, monospace;
     font-weight: 700;
     padding: 9px 5px;
     font-size: 10.5px;
@@ -838,7 +838,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
   .pv-totals-value-row td {
     background: rgba(10,10,10,0.04) !important;
     color: rgba(10,10,10,0.85) !important;
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: 'Fira Code', ui-monospace, monospace;
     font-weight: 700;
     padding: 7px 5px;
     font-size: 9.5px;
@@ -870,7 +870,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
     border-radius: 2px;
   }
   .pv-summary__notes-title {
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: 'Fira Code', ui-monospace, monospace;
     font-size: 8.5px;
     font-weight: 600;
     color: #0A0A0A;
@@ -881,7 +881,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
     border-bottom: 1.5px solid #0A0A0A;
   }
   .pv-summary__notes-content {
-    font-family: 'Inter Tight', sans-serif;
+    font-family: 'Fira Sans', sans-serif;
     font-size: 10.5px;
     color: #0A0A0A;
     line-height: 1.5;
@@ -907,7 +907,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
     border-color: #0A0A0A;
   }
   .pv-summary__kpi-label {
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: 'Fira Code', ui-monospace, monospace;
     font-size: 8.5px;
     font-weight: 600;
     text-transform: uppercase;
@@ -932,7 +932,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
     font-size: 28px;
   }
   .pv-summary__kpi-sub {
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: 'Fira Code', ui-monospace, monospace;
     font-size: 9px;
     font-weight: 500;
     color: rgba(10,10,10,0.55);
@@ -958,7 +958,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
     padding-top: 8px;
   }
   .pv-sig-box .lbl {
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: 'Fira Code', ui-monospace, monospace;
     font-size: 9px;
     color: #0A0A0A;
     font-weight: 700;
@@ -966,7 +966,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
     letter-spacing: 0.18em;
   }
   .pv-sig-box .sub {
-    font-family: 'Inter Tight', sans-serif;
+    font-family: 'Fira Sans', sans-serif;
     font-size: 9px;
     color: rgba(10,10,10,0.55);
     margin-top: 3px;
@@ -977,7 +977,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
     margin-top: 18px;
     padding-top: 10px;
     border-top: 1.5px solid #0A0A0A;
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: 'Fira Code', ui-monospace, monospace;
     font-size: 8.5px;
     color: rgba(10,10,10,0.55);
     text-align: center;
@@ -1098,7 +1098,7 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
       </tr>
       <tr class="pv-totals-value-row">
         <td colspan="4" class="label-cell">Valor por Numeração</td>
-        ${sizes.map(s => `<td class="pv-size-cell" style="font-family:'JetBrains Mono',monospace;font-size:8.5px;color:rgba(10,10,10,0.7) !important;">${grandTotals[s].valor > 0 ? formatCurrency(grandTotals[s].valor) : '·'}</td>`).join('')}
+        ${sizes.map(s => `<td class="pv-size-cell" style="font-family:'Fira Code',monospace;font-size:8.5px;color:rgba(10,10,10,0.7) !important;">${grandTotals[s].valor > 0 ? formatCurrency(grandTotals[s].valor) : '·'}</td>`).join('')}
         <td class="pv-total-cell" style="color:#D9264E !important;font-weight:800;font-size:10.5px;border-left:1.5px solid #0A0A0A !important;">${formatCurrency(grandTotalValue)}</td>
       </tr>
     </tbody>

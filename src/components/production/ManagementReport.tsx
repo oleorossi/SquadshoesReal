@@ -208,7 +208,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
       className="w-[210mm] p-[6mm] print:w-full print:p-[5mm] bg-white text-black m-auto editorial-stagger"
       style={{
         boxSizing: 'border-box',
-        fontFamily: "'Inter Tight', 'Inter', system-ui, sans-serif",
+        fontFamily: "'Fira Sans', 'Inter', system-ui, sans-serif",
         fontSize: '10pt',
       }}
     >
@@ -881,7 +881,7 @@ function KpiBlock({
       <p
         className="font-mono font-bold leading-none"
         style={{
-          fontFamily: "'JetBrains Mono', monospace",
+          fontFamily: "'Fira Code', monospace",
           fontSize: '22pt',
           letterSpacing: '-0.03em',
           color: accent === 'negative' ? '#E11D2E' : '#000',
