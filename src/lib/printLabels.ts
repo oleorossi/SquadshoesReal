@@ -312,21 +312,15 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
           </div>
         </div>
 
-        <div class="grade-table">
-          <div class="grade-labels">
-            <div class="lbl first">MARCA:</div>
-            <div class="lbl">REFERENCIA</div>
-            <div class="lbl">TAMANHO</div>
-            <div class="lbl last">QUANTIDADE</div>
-          </div>
-          <div class="grade-grid" style="grid-template-columns:repeat(${gradeCols}, 1fr);">
-            <div class="row-marca">
-              <span class="brand-mark">Squad Shoes</span>
-            </div>
-            <div class="row-ref">${escapeHtml(item.refName || item.refCode || '—')}</div>
-            ${sizeCells}<div class="cell total tam-total">TT</div>
-            ${qtyCells}<div class="cell total qtd-total">${totalQty}</div>
-          </div>
+        <div class="grade-table" style="grid-template-columns:110px repeat(${gradeCols}, 1fr);">
+          <div class="glabel first">MARCA:</div>
+          <div class="row-marca"><span class="brand-mark">Squad Shoes</span></div>
+          <div class="glabel">REFERENCIA</div>
+          <div class="row-ref">${escapeHtml(item.refName || item.refCode || '—')}</div>
+          <div class="glabel">TAMANHO</div>
+          ${sizeCells}<div class="cell total tam-total">TT</div>
+          <div class="glabel last">QUANTIDADE</div>
+          ${qtyCells}<div class="cell total qtd-total">${totalQty}</div>
         </div>
 
         <div class="footer">
@@ -446,19 +440,20 @@ ${LABEL_PRINT_HARDENING}
 .cor-row .cor-name{font-family:'Fira Code',monospace;font-weight:700;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;}
 
 /* TABELA grade ───────────────────── */
-.grade-table{display:flex;border-top:1.5px solid #000;flex-shrink:0;}
-.grade-labels{border-right:1.5px solid #000;display:flex;flex-direction:column;}
-.grade-labels .lbl{padding:5px 10px;font-family:'Fira Code',monospace;font-weight:700;font-size:10px;letter-spacing:0.06em;min-width:110px;border-bottom:1px solid #000;}
-.grade-labels .lbl.first{background:#000;color:#FFE94A;}
-.grade-labels .lbl.last{border-bottom:none;}
-.grade-grid{flex:1;display:grid;}
-.grade-grid > .cell{text-align:center;border-right:1px solid #000;border-bottom:1px solid #000;font-family:'Fira Code',monospace;font-weight:700;color:#000;padding:4px 0;font-size:13px;}
-.grade-grid > .cell.tam-total{background:#000;color:#FFE94A;}
-.grade-grid > .cell.qtd-total{background:#000;color:#FFE94A;font-size:18px;border-bottom:none;}
-.grade-grid .row-marca{grid-column:1 / -1;background:#000;color:#FFE94A;padding:3px 10px;text-align:left;display:flex;align-items:center;gap:8px;border-right:none;border-bottom:1px solid #FFE94A;}
-.grade-grid .row-marca .silk-legend{font-family:'Fira Code',monospace;font-size:10px;letter-spacing:0.1em;color:rgba(255,233,74,0.65);}
-.grade-grid .row-marca .brand-mark{font-family:'Anton',sans-serif;font-size:18px;letter-spacing:0.08em;color:#FFE94A;line-height:1;}
-.grade-grid .row-ref{grid-column:1 / -1;text-align:left;padding:4px 10px;font-size:14px;border-right:none;border-bottom:1px solid #000;font-family:'Fira Code',monospace;font-weight:700;}
+/* Grade unificada num único grid: col 1 = rótulos, cols 2..N = valores.
+   Garante que cada rótulo (MARCA/REFERENCIA/TAMANHO/QUANTIDADE) compartilhe a
+   altura da sua linha de valores (antes eram 2 colunas flex independentes que
+   desalinhavam por terem alturas de linha calculadas separadamente). */
+.grade-table{display:grid;border-top:1.5px solid #000;flex-shrink:0;}
+.grade-table > .glabel{border-right:1.5px solid #000;border-bottom:1px solid #000;padding:4px 10px;font-family:'Fira Code',monospace;font-weight:700;font-size:10px;letter-spacing:0.06em;display:flex;align-items:center;}
+.grade-table > .glabel.first{background:#000;color:#FFE94A;}
+.grade-table > .glabel.last{border-bottom:none;}
+.grade-table > .cell{text-align:center;border-right:1px solid #000;border-bottom:1px solid #000;font-family:'Fira Code',monospace;font-weight:700;color:#000;font-size:13px;padding:3px 0;display:flex;align-items:center;justify-content:center;}
+.grade-table > .cell.tam-total{background:#000;color:#FFE94A;}
+.grade-table > .cell.qtd-total{background:#000;color:#FFE94A;font-size:18px;border-bottom:none;}
+.grade-table > .row-marca{grid-column:2 / -1;background:#000;color:#FFE94A;padding:3px 10px;text-align:left;display:flex;align-items:center;gap:8px;border-bottom:1px solid #FFE94A;}
+.grade-table > .row-marca .brand-mark{font-family:'Anton',sans-serif;font-size:18px;letter-spacing:0.08em;color:#FFE94A;line-height:1;}
+.grade-table > .row-ref{grid-column:2 / -1;text-align:left;padding:4px 10px;font-size:14px;border-bottom:1px solid #000;font-family:'Fira Code',monospace;font-weight:700;display:flex;align-items:center;}
 
 /* SilkMark inline (espelha src/components/ui/silk-mark.tsx) */
 .silk-mark{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;background:#000;color:#FFE94A;box-sizing:border-box;line-height:1;}
