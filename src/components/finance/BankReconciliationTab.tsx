@@ -208,6 +208,21 @@ export default function BankReconciliationTab() {
     return { total, matched, noMatch, totalIn, totalOut };
   }, [lineMatches]);
 
+  // Auto-conciliação: linhas com EXATAMENTE um match de ALTA confiança (sem
+  // ambiguidade) e ainda não conciliadas. Conservador de propósito — uma ação
+  // financeira automática não deve adivinhar entre dois candidatos plausíveis;
+  // linhas com 2+ candidatos altos ficam pro usuário decidir manualmente.
+  const autoMatchable = useMemo(() => {
+    const out: { lineIdx: number; match: MatchCandidate }[] = [];
+    lineMatches.forEach((lm, idx) => {
+      const altas = lm.matches.filter(m => m.confidence === 'alta');
+      if (altas.length === 1 && !reconciled.has(`${idx}:${altas[0].id}`)) {
+        out.push({ lineIdx: idx, match: altas[0] });
+      }
+    });
+    return out;
+  }, [lineMatches, reconciled]);
+
   const reconcile = async (lineIdx: number, match: MatchCandidate) => {
     const key = `${lineIdx}:${match.id}`;
     if (reconciled.has(key)) return;
@@ -251,6 +266,19 @@ export default function BankReconciliationTab() {
     }
   };
 
+  // Conciliação em lote dos matches de alta confiança (1 clique em vez de N).
+  // Reusa reconcile() — herda o guard .not(status in paid/cancelled), então é
+  // idempotente mesmo se o estado React estiver defasado dentro do loop.
+  const autoReconcileHighConfidence = async () => {
+    if (!autoMatchable.length || busy) return;
+    if (!window.confirm(`Conciliar automaticamente ${autoMatchable.length} lançamento(s) de ALTA confiança? Cada conta será marcada como paga/recebida com a data do extrato.`)) return;
+    const batch = [...autoMatchable];
+    for (const { lineIdx, match } of batch) {
+      await reconcile(lineIdx, match);
+    }
+    toast.success(`Auto-conciliação concluída — ${batch.length} de alta confiança processado(s).`);
+  };
+
   return (
     <div className="space-y-4">
       <Card>
@@ -285,6 +313,11 @@ export default function BankReconciliationTab() {
             >
               <RefreshCw className="h-3.5 w-3.5 mr-1" /> Recarregar contas
             </Button>
+            {autoMatchable.length > 0 && (
+              <Button size="sm" onClick={autoReconcileHighConfidence} disabled={busy} className="gap-1">
+                <CheckCircle2 className="h-3.5 w-3.5" /> Conciliar {autoMatchable.length} de alta confiança
+              </Button>
+            )}
             {summary.total > 0 && (
               <div className="flex items-center gap-2 text-xs flex-wrap">
                 <Badge variant="outline">{summary.total} linha(s)</Badge>
