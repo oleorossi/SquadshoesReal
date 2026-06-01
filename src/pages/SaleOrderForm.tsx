@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/dialog';
 import SaleOrderFormPanel from '@/components/sale-orders/SaleOrderFormPanel';
 import { useCreateSaleOrder, useUpdateSaleOrder, SaleOrderFormData, SaleOrderItemFormData } from '@/hooks/useSaleOrders';
+import { calculateOrderCost, type OrderCostResult } from '@/services/costingService';
 import { useCancelOrdersBatch } from '@/hooks/useOrders';
 import { CancelOpsAndEditDialog, type BlockingOp } from '@/components/sale-orders/CancelOpsAndEditDialog';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
@@ -395,6 +396,49 @@ export default function SaleOrderForm() {
   };
 
   /**
+   * #3 Guardrail de margem (pós-save, NÃO bloqueia). Decisão do usuário (2026-06-01):
+   * avisar pós-save + piso = prejuízo (<0%). Custeia o pedido recém-salvo via
+   * calculate_order_cost e:
+   *  - margem < 0 → toast de erro (vende abaixo do custo) — o caso acionável;
+   *  - margem ≥ 0 mas custo PARCIAL → toast.info (margem otimista) — porque hoje
+   *    o MOD (cronoanálise/bom_operations) e larguras de ficha podem faltar,
+   *    subestimando o custo e inflando a margem. persist=true também popula
+   *    order_costs (usado no Relatório Gerencial). Falha no custeio é silenciosa
+   *    (o pedido já foi salvo); roda async sem travar a navegação.
+   */
+  const isCostPartial = (c: OrderCostResult): boolean => {
+    const noLabor = !c.labor_cost || c.labor_cost <= 0; // MOD ausente (sem cronoanálise)
+    const scan = (r?: OrderCostResult) => (r?.breakdown?.materials || []).some(m => !!m.conversion_warning);
+    const widthMissing = scan(c) || (c.items || []).some(scan); // largura de ficha faltando
+    return noLabor || widthMissing;
+  };
+
+  const checkMarginAfterSave = async (orderId?: string) => {
+    if (!orderId) return;
+    try {
+      const cost = await calculateOrderCost(orderId, undefined, true);
+      const partial = isCostPartial(cost);
+      const fmt = (v: number) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      if (Number(cost.margin) < 0) {
+        toast.error(
+          `Margem NEGATIVA neste PV: ${Number(cost.margin_pct).toFixed(1)}% ` +
+          `(receita ${fmt(cost.revenue)} − custo ${fmt(cost.total_cost)})` +
+          (partial ? ' · custo parcial (MOD/largura faltando — margem ainda otimista)' : ''),
+          { duration: 12000 },
+        );
+      } else if (partial && Number(cost.total_cost) > 0) {
+        toast.info(
+          `Margem estimada ${Number(cost.margin_pct).toFixed(1)}% — custo parcial ` +
+          `(MOD/largura faltando), pode estar otimista.`,
+          { duration: 7000 },
+        );
+      }
+    } catch {
+      /* custeio falhou — não atrapalha o salvamento, que já foi persistido */
+    }
+  };
+
+  /**
    * Executa de fato a mutação (sem pre-checks de OPs). Separado de doSubmit
    * pra permitir re-disparo após confirmação do CancelOpsAndEditDialog.
    */
@@ -419,7 +463,7 @@ export default function SaleOrderForm() {
         packaging_product_id: packagingProductId || null,
         packaging_quantity: packagingQuantity,
       } as any, {
-        onSuccess: () => navigate('/sales'),
+        onSuccess: () => { void checkMarginAfterSave(id!); navigate('/sales'); },
       });
     } else {
       createOrder.mutate({
@@ -431,7 +475,7 @@ export default function SaleOrderForm() {
         packaging_product_id: packagingProductId || null,
         packaging_quantity: packagingQuantity,
       } as any, {
-        onSuccess: () => navigate('/sales'),
+        onSuccess: (created: { id?: string } | undefined) => { void checkMarginAfterSave(created?.id); navigate('/sales'); },
       });
     }
   };
