@@ -75,7 +75,7 @@ function usePainelData() {
       const [employeesRes, advancesRes, absencesRes, schedulesRes] = await Promise.all([
         supabase.from('employees').select('*'),
         supabase.from('employee_advances').select('*').gte('advance_date', monthStart).lte('advance_date', monthEnd),
-        (supabase as any).from('absences').select('*').gte('end_date', monthStart).lte('start_date', monthEnd),
+        (supabase as any).from('employee_absences').select('*').gte('end_date', monthStart).lte('start_date', monthEnd),
         supabase.from('work_schedules').select('id, name, weekly_hours'),
       ]);
 
