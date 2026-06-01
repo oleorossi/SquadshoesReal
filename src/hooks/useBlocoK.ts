@@ -25,7 +25,9 @@ function efdDate(iso: string): string {
 
 /** Número → string com vírgula decimal (separador do EFD). */
 function efdNum(n: number): string {
-  return (n ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 3, useGrouping: false });
+  // Até 5 casas decimais: insumos de baixo consumo unitário (ex.: cola 0,0144 kg)
+  // perdiam o 4º dígito com maximumFractionDigits=3. O EFD aceita mais casas em QTD.
+  return (n ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 5, useGrouping: false });
 }
 
 /** Monta o conteúdo TXT dos registros do Bloco K (K100/K230/K235/K200). */
@@ -45,6 +47,9 @@ export function buildBlocoKTxt(r: BlocoKResult): { txt: string; records: number 
   for (const s of r.k200) {
     lines.push(`|K200|${efdDate(s.dt_est)}|${s.cod_item}|${efdNum(s.qtd)}|${s.ind_est}||`);
   }
+  // K990 — totalizador do bloco K. QTD_LIN_K conta TODAS as linhas do bloco K,
+  // incluindo o próprio K990. Obrigatório no EFD: sem ele o PVA recusa o bloco.
+  lines.push(`|K990|${lines.length + 1}|`);
   return { txt: lines.join('\r\n') + '\r\n', records: lines.length };
 }
 

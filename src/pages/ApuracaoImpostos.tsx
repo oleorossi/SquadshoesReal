@@ -99,6 +99,13 @@ export default function ApuracaoImpostos() {
             </p>
           )}
 
+          {((result as any).base_sem_itens ?? 0) > 0 && (
+            <p className="flex items-center gap-2 text-xs text-amber-600 bg-amber-500/10 border border-amber-500/20 rounded-md px-3 py-2">
+              <Warning className="size-4 shrink-0" />
+              {formatCurrency((result as any).base_sem_itens)} em {String((result as any).notes_sem_itens ?? 0)} NF-e autorizada(s) <strong>sem vínculo a pedido</strong> (sincronizadas do GestaoClick) — entram no faturamento bruto mas <strong>não</strong> na base por NCM. Vincule ao PV ou emita pelo sistema para apurar por NCM.
+            </p>
+          )}
+
           <Panel eyebrow="DÉBITOS ESTIMADOS" title="Impostos do período">
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               {[
