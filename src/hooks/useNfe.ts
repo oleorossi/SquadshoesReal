@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { syncFinancialRecords } from '@/hooks/useSaleOrders';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -513,7 +514,7 @@ export function useEmitNfe() {
       if (parsed?.error) throw new Error(String(parsed.error));
       return parsed;
     },
-    onSuccess: (data: any) => {
+    onSuccess: async (data: any, variables: { saleOrderId: string; companyId?: string }) => {
       if (data?.reconciliation_needed) {
         toast.warning(
           `NF-e aceita pelo GestaoClick${data.provider_nfe_id ? ` (id ${data.provider_nfe_id})` : ''} mas falhou ao salvar no banco. Reconcilie manualmente no painel GestaoClick.`,
@@ -531,6 +532,18 @@ export function useEmitNfe() {
             onClick: () => { window.location.href = '/nfe'; },
           },
         });
+      }
+      // Auditoria fiscal C2: reconhece receita + AR na AUTORIZAÇÃO da NF-e.
+      // Antes, o caminho fiscal só fazia UPDATE status='Faturado' e NADA criava
+      // receita (os PVs com NF autorizada ficavam com receita zero). O gate em
+      // syncFinancialRecords garante que só cria se a NF estiver 'autorizada' —
+      // se ficou 'processando', não cria (espera a autorização via sync/cron).
+      try {
+        await syncFinancialRecords(variables.saleOrderId);
+        qc.invalidateQueries({ queryKey: ['accounts_receivable'] });
+        qc.invalidateQueries({ queryKey: ['financial_entries'] });
+      } catch (e) {
+        console.error('[useEmitNfe] reconhecimento de receita pós-autorização falhou:', e);
       }
     },
     onError: (err: Error) => toast.error(`Erro ao emitir NF-e: ${err.message}`),

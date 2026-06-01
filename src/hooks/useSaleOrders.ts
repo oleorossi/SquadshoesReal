@@ -149,7 +149,7 @@ async function reconcileARInstallments(
  * - Cancelado: cancels linked receivables
  * - Value/qty changes: updates linked receivable amounts
  */
-async function syncFinancialRecords(saleOrderId: string) {
+export async function syncFinancialRecords(saleOrderId: string) {
   const must = (op: string, err: any) => { if (err) throw new Error(`${op}: ${err.message}`); };
 
   const { data: so, error: soErr } = await supabase
@@ -231,6 +231,35 @@ async function syncFinancialRecords(saleOrderId: string) {
   }
 
   if (so.status === 'Faturado') {
+    // Gate anti-ghost-revenue (auditoria fiscal C1): só reconhece receita se
+    // houver NF-e AUTORIZADA quando o PV exige NF. Antes, marcar 'Faturado'
+    // pela UI criava receita 'confirmed' sem documento fiscal (R$ 255k de ghost
+    // revenue medidos na auditoria). Quando a NF autoriza, useEmitNfe re-roda
+    // este sync — aí o gate passa e a receita é criada normalmente.
+    if (so.nfe_required !== false) {
+      const { data: authNfe, error: authErr } = await supabase
+        .from('nfe_emitidas')
+        .select('id')
+        .eq('sale_order_id', saleOrderId)
+        .eq('status', 'autorizada')
+        .limit(1);
+      must('Verificar NF-e autorizada (gate de receita)', authErr);
+      if (!authNfe || authNfe.length === 0) {
+        console.warn(`syncFinancialRecords: PV ${saleOrderId} 'Faturado' SEM NF-e autorizada — receita NÃO reconhecida (gate anti-ghost-revenue).`);
+        if (existingAR && existingAR.length > 0) {
+          const idsToCancel = existingAR.filter(ar => ar.status !== 'cancelled' && ar.status !== 'received').map(ar => ar.id);
+          if (idsToCancel.length > 0) {
+            const { error } = await supabase.from('accounts_receivable').update({ status: 'cancelled' }).in('id', idsToCancel).neq('status', 'received');
+            must('Cancelar AR de PV sem NF autorizada', error);
+          }
+        }
+        const { error: delErr } = await supabase.from('financial_entries').delete()
+          .eq('reference_id', saleOrderId).eq('reference_type', 'sale_order')
+          .not('status', 'in', '(posted,paid,reconciled,confirmed)');
+        must('Remover receita não-postada (gate)', delErr);
+        return;
+      }
+    }
     // If factoring is enabled, calculate discounted amount and due date
     let factoringDiscountedTotal = total;
     let factoringConfigForEntry: { name?: string | null; receiving_days?: number; monthly_interest_rate?: number } | null = null;
