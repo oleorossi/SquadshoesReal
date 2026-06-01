@@ -325,6 +325,14 @@ export interface PayrollRun {
   base_salary: number;
   hourly_rate: number;
   worked_minutes: number;
+  /** Folha por hora (2026-06-01): minutos 1,0× (dia útil até 18h). */
+  normal_minutes: number;
+  /** Folha por hora: minutos 1,5× (após 18h / sáb / dom / feriado). */
+  premium_minutes: number;
+  /** Folha por hora: R$ das horas normais. */
+  normal_value: number;
+  /** Folha por hora: R$ das horas 1,5× (já com o multiplicador). */
+  premium_value: number;
   expected_minutes: number;
   business_days: number;
   business_days_worked: number;
