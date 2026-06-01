@@ -637,18 +637,14 @@ export function calculateDaySummary(
     workedMinutes += pairMin;
   }
 
-  // When there are exactly 2 punches spanning the full day (entry before lunch, exit after lunch),
-  // automatically deduct the lunch break. Without this, the system would count lunch as worked time.
+  // A6 (auditoria): padrão Squad = 2 batidas (entrada+saída, sem registrar almoço).
+  // SEMPRE inferir o almoço agendado em dia útil com 2 batidas, INDEPENDENTEMENTE de
+  // cobrir a janela agendada — espelha o SQL canônico (calculate_day_summary) usado pelo
+  // banco de horas/Espelho. Antes só deduzia quando as 2 batidas cobriam a janela, o que
+  // divergia ~60min do SQL em turnos parciais (ex.: 13:08→18:00).
   if (sorted.length === 2 && !isSaturday && !isSunday && !isHoliday) {
-    const entryMin = timeToMinutes(sorted[0]);
-    const exitMin = timeToMinutes(sorted[1]);
-    const lunchStartMin = timeToMinutes(schedule.lunch_start);
-    const lunchEndMin = timeToMinutes(schedule.lunch_end);
-    // If the two punches span across the lunch break, deduct it
-    if (entryMin <= lunchStartMin && exitMin >= lunchEndMin) {
-      const lunchDuration = lunchEndMin - lunchStartMin;
-      workedMinutes -= lunchDuration;
-    }
+    const lunchDuration = timeToMinutes(schedule.lunch_end) - timeToMinutes(schedule.lunch_start);
+    if (lunchDuration > 0) workedMinutes = Math.max(0, workedMinutes - lunchDuration);
   }
 
   const tolerance = schedule.tolerance_minutes || 10;
