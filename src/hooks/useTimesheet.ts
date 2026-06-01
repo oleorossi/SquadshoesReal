@@ -265,7 +265,7 @@ export function parseTimesheetXlsx(file: File): Promise<{ employees: ParsedEmplo
 
 // ── TXT Parsing (REP / ponto eletrônico) ─────────────
 // Internal TXT parser — receives already-decoded text
-function parseTimesheetTxtContent(text: string): { employees: ParsedEmployee[]; startDate: string; endDate: string } {
+export function parseTimesheetTxtContent(text: string): { employees: ParsedEmployee[]; startDate: string; endDate: string } {
         const lines = text.split(/\r?\n/).filter(l => l.trim());
 
         const employeeMap = new Map<string, { name: string; department: string; records: Map<string, string[]> }>();
@@ -284,6 +284,31 @@ function parseTimesheetTxtContent(text: string): { employees: ParsedEmployee[]; 
         const AGL_TOTAL_MIN = Object.values(AGL_COL_WIDTHS).reduce((s, v) => s + (v > 0 ? v : 0), 0);
 
         for (const line of lines) {
+          // ── 0) ZKTeco/AGL TSV (tab-delimitado): No⇥TMNo⇥EnNo⇥Name⇥⇥…⇥DateTime⇥TR ──
+          // O AGL_001.TXT do relógio é UTF-16 + TAB-separado, 1 linha por batida.
+          // EnNo (3ª coluna) = matrícula; DateTime = "YYYY-MM-DD  HH:MM:SS".
+          if (line.includes('\t')) {
+            const f = line.split('\t').map(s => s.trim());
+            const dtField = f.find(x => /^\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}/.test(x));
+            const dm = dtField?.match(/(\d{4}-\d{2}-\d{2})\s+(\d{1,2}):(\d{2})/);
+            if (dm) {
+              const date = dm[1];
+              const timeHm = `${dm[2].padStart(2, '0')}:${dm[3]}`;
+              const id = f[2] || '';      // EnNo = matrícula
+              const name = f[3] || '';    // nome curto do relógio
+              const key = id || name;
+              if (key) {
+                if (!employeeMap.has(key)) employeeMap.set(key, { name: name || key, department: '', records: new Map() });
+                const emp = employeeMap.get(key)!;
+                if (!emp.records.has(date)) emp.records.set(date, []);
+                emp.records.get(date)!.push(timeHm);
+                if (!minDate || date < minDate) minDate = date;
+                if (!maxDate || date > maxDate) maxDate = date;
+                continue;
+              }
+            }
+          }
+
           // ── 1) AGL fixed-width spaced format ──
           // Detect: line is long enough and contains spaced date pattern like "2 0 2 5 - 1 0 - 2 1"
           if (line.length >= AGL_TOTAL_MIN && /\d\s\d\s\d\s\d\s-\s\d\s\d\s-\s\d\s\d/.test(line)) {
@@ -489,29 +514,35 @@ function parseTimesheetTxtContent(text: string): { employees: ParsedEmployee[]; 
         return { employees, startDate: minDate, endDate: maxDate };
 }
 
-// Read file with a given encoding and parse
-function readTxtWithEncoding(file: File, encoding: string): Promise<{ employees: ParsedEmployee[]; startDate: string; endDate: string }> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        resolve(parseTimesheetTxtContent(e.target!.result as string));
-      } catch (err) {
-        reject(err);
-      }
-    };
-    reader.onerror = () => reject(new Error('Erro ao ler arquivo TXT'));
-    reader.readAsText(file, encoding);
-  });
+// Detecta o encoding pelo BOM (UTF-16LE/BE, UTF-8) ou por heurística de bytes
+// nulos. O relógio (AGL_001.TXT) exporta UTF-16LE — sem isto o parser lia o
+// arquivo como UTF-8/latin1 e obtinha 0 registros (bytes nulos viram lixo).
+export function detectTxtEncodings(buf: ArrayBuffer): string[] {
+  const b = new Uint8Array(buf);
+  if (b.length >= 2 && b[0] === 0xFF && b[1] === 0xFE) return ['utf-16le'];
+  if (b.length >= 2 && b[0] === 0xFE && b[1] === 0xFF) return ['utf-16be'];
+  if (b.length >= 3 && b[0] === 0xEF && b[1] === 0xBB && b[2] === 0xBF) return ['utf-8'];
+  // Sem BOM: muitos 0x00 ⇒ UTF-16 sem BOM (endianness pela posição dos nulos).
+  const n = Math.min(b.length, 4000);
+  let odd = 0, even = 0;
+  for (let i = 0; i < n; i++) if (b[i] === 0) (i % 2 ? odd++ : even++);
+  if (odd + even > n * 0.15) return [odd >= even ? 'utf-16le' : 'utf-16be', 'utf-8'];
+  return ['utf-8', 'iso-8859-1']; // texto comum (REP latin1, CSV, etc.)
 }
 
 export function parseTimesheetTxt(file: File): Promise<{ employees: ParsedEmployee[]; startDate: string; endDate: string }> {
-  // Try UTF-8 first; if it yields nothing (garbled Latin-1), retry with iso-8859-1,
-  // which is common in Brazilian REP/ponto-eletrônico devices.
-  return readTxtWithEncoding(file, 'utf-8').then(result => {
-    if (result.employees.length === 0) return readTxtWithEncoding(file, 'iso-8859-1');
-    return result;
-  }).catch(() => readTxtWithEncoding(file, 'iso-8859-1'));
+  return file.arrayBuffer().then(buf => {
+    let lastErr: unknown;
+    for (const enc of detectTxtEncodings(buf)) {
+      try {
+        const text = new TextDecoder(enc as string).decode(buf);
+        const res = parseTimesheetTxtContent(text);
+        if (res.employees.length > 0) return res;
+      } catch (err) { lastErr = err; }
+    }
+    if (lastErr instanceof Error) throw lastErr;
+    throw new Error('Nenhum registro de ponto encontrado no arquivo TXT');
+  });
 }
 
 // ── Calculation helpers ──────────────────────────────
