@@ -253,7 +253,7 @@ Deno.serve(async (req) => {
       let saleOrderId: string | null = null;
       const { data: existing } = await adminClient
         .from("nfe_emitidas")
-        .select("id, sale_order_id")
+        .select("id, sale_order_id, status")
         .eq("provider_nfe_id", providerId)
         .maybeSingle();
 
@@ -279,7 +279,6 @@ Deno.serve(async (req) => {
         status,
         chave_acesso: chave || null,
         protocolo: protocolo || null,
-        valor_total: Number.isFinite(valor) ? valor : 0,
         cnpj_emitente: cnpjEmit || "",
         sale_order_id: saleOrderId,
         company_id: companyId,
@@ -297,6 +296,16 @@ Deno.serve(async (req) => {
       // corretos com '' quando o detalhe GC vier sem esses campos.
       if (numero) payload.numero = numero;
       if (serie) payload.serie = serie;
+      // M6 (auditoria): só grava valor_total com valor real (>0) — não rebaixar
+      // um valor já correto num re-sync degradado. NF nova grava 0 só se não existir.
+      if (Number.isFinite(valor) && valor > 0) payload.valor_total = valor;
+      else if (!existing) payload.valor_total = 0;
+      // M1 (auditoria): não ressuscitar NF terminal 'erro' → 'processando' num
+      // re-sync (GC devolve situacao vazia). Preserva 'erro' só quando o novo
+      // status mapeado seria 'processando'; status terminal real do GC atualiza.
+      if (existing && (existing as { status?: string }).status === 'erro' && status === 'processando') {
+        payload.status = 'erro';
+      }
 
       if (existing) {
         const { error: upErr } = await adminClient
