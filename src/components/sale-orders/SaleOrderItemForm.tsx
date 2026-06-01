@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Trash as Trash2, Lock, CaretUpDown as ChevronsUpDown, Check, Package, ArrowSquareOut as ExternalLink, MagnifyingGlass as Search, Command, Palette, Plus, X, ChatText as MessageSquare } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { resolvePrice, type PriceLookup } from '@/lib/mobile/clientContext';
 import { SaleOrderItemFormData } from '@/hooks/useSaleOrders';
 import { useAccessControl } from '@/hooks/useAccessControl';
 import { useSheetMaterials } from '@/hooks/useTechnicalSheets';
@@ -49,6 +50,10 @@ interface Props {
   /** Bulk select (20/05/2026): checkbox no header pra marcar pra edição em lote. */
   isSelected?: boolean;
   onToggleSelect?: (idx: number) => void;
+  /** Tabela de preço do cliente (price_list_items) — auto-aplica preço por ref/cor. */
+  priceLookup?: PriceLookup;
+  /** Desconto máximo permitido (clients.max_discount_pct) — avisa quando furar. */
+  maxDiscountPct?: number;
 }
 
 function parseSizeRange(sizes?: string | null, shoeCategory?: string | null): number[] {
@@ -67,7 +72,7 @@ function parseSizeRange(sizes?: string | null, shoeCategory?: string | null): nu
 const formatCurrency = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
-function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, onUpdate, onRemove, onCopyGradeFromPrevious, onSaveStateAndNavigate, isSelected, onToggleSelect }: Props) {
+function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, onUpdate, onRemove, onCopyGradeFromPrevious, onSaveStateAndNavigate, isSelected, onToggleSelect, priceLookup, maxDiscountPct = 0 }: Props) {
   const qc = useQueryClient();
   const { canSeeFinancialValues } = useAccessControl();
   const fichas = item.fichas || 1;
@@ -508,9 +513,14 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     const currentStraps = Array.isArray(item.strap_colors) ? (item.strap_colors as any[]) : [];
     const { index: idx, onUpdate: update } = latestRef.current;
 
-    // Auto-populate unit price from reference if it's 0 and reference just loaded/changed
-    if (selectedRef && selectedRef.sale_price != null && item.unit_price === 0) {
-      update(idx, 'unit_price', selectedRef.sale_price);
+    // Auto-popula o preço quando está 0 e a ref carregou/mudou. Prioridade: preço
+    // da TABELA do cliente (price_list_items via priceLookup); sem tabela/sem preço
+    // pra ref+cor, cai no sale_price da ficha (comportamento legado). priceLookup
+    // entra nas deps deste effect p/ reaplicar quando o pricing do cliente carrega.
+    if (selectedRef && item.unit_price === 0) {
+      const tablePrice = priceLookup ? resolvePrice(priceLookup, selectedRef.id, item.color || '') : 0;
+      const autoPrice = tablePrice > 0 ? tablePrice : selectedRef.sale_price;
+      if (autoPrice != null) update(idx, 'unit_price', autoPrice);
     }
 
     // Strap sync: only run once per reference change. If the same reference's
@@ -561,7 +571,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         }
       }
     }
-  }, [item.reference_id, selectedRef?.id, selectedRef?.strap_colors]);
+  }, [item.reference_id, selectedRef?.id, selectedRef?.strap_colors, priceLookup]);
 
   useEffect(() => {
     if (isFirstRender.current) {
@@ -572,8 +582,12 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     const refChanged = prevRefId.current !== item.reference_id && prevRefId.current !== '';
     if (refChanged) {
       const { index: idx, onUpdate: update } = latestRef.current;
-      if (selectedRef && selectedRef.sale_price != null && (item.unit_price === 0 || !isAdmin)) {
-        update(idx, 'unit_price', selectedRef.sale_price);
+      if (selectedRef && (item.unit_price === 0 || !isAdmin)) {
+        // Mesma prioridade: tabela do cliente > sale_price da ficha. Na troca de
+        // ref a cor é resetada logo abaixo, então resolve pelo preço base da ref.
+        const tablePrice = priceLookup ? resolvePrice(priceLookup, selectedRef.id, '') : 0;
+        const autoPrice = tablePrice > 0 ? tablePrice : selectedRef.sale_price;
+        if (autoPrice != null) update(idx, 'unit_price', autoPrice);
       }
       update(idx, 'grade', {});
       update(idx, 'color', '');
@@ -904,6 +918,21 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                 />
                 {pdv > 0 && !isAdmin && <div className="absolute right-2 top-1/2 -translate-y-1/2"><Lock className="h-3 w-3 text-muted-foreground opacity-30" /></div>}
               </div>
+              {(() => {
+                // Teto de desconto (c): avisa (não bloqueia) quando o preço cai mais
+                // que max_discount_pct abaixo do preço de tabela do cliente.
+                if (!priceLookup || !selectedRef || maxDiscountPct <= 0) return null;
+                const tablePrice = resolvePrice(priceLookup, selectedRef.id, item.color || '');
+                if (tablePrice <= 0 || !(item.unit_price > 0)) return null;
+                const floor = tablePrice * (1 - maxDiscountPct / 100);
+                if (item.unit_price >= floor - 0.005) return null;
+                const descPct = ((tablePrice - item.unit_price) / tablePrice) * 100;
+                return (
+                  <p className="text-[11px] text-amber-600 mt-1 font-medium leading-tight">
+                    Desconto {descPct.toFixed(1)}% &gt; teto {maxDiscountPct.toFixed(0)}% · tabela {formatCurrency(tablePrice)}, mín {formatCurrency(floor)}
+                  </p>
+                );
+              })()}
             </div>
           )}
 

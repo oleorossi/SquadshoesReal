@@ -14,6 +14,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import SaleOrderItemForm from './SaleOrderItemForm';
 import { OrderStatusStepper } from '@/components/ui/order-status-stepper';
 import { useQuery } from '@tanstack/react-query';
+import { fetchClientPriceList, type PriceLookup } from '@/lib/mobile/clientContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
@@ -392,6 +393,20 @@ export default function SaleOrderFormPanel({
   }, [selectedClientId, commercialDefaults, setForm]);
 
   // Credit exposure: sum of open AR for selected client
+  // Tabela de preço do cliente + teto de desconto — pra auto-aplicar o preço no
+  // item e avisar quando o vendedor furar o desconto máximo. Reusa o lookup do
+  // mobile (price_list_items via clients.price_list_id). Sem tabela → lookup
+  // vazio → cai no sale_price da ficha (comportamento atual inalterado).
+  const { data: clientPricing } = useQuery({
+    queryKey: ['client_pricing_pv', selectedClientId],
+    enabled: !!selectedClientId,
+    queryFn: async () => {
+      const lookup = await fetchClientPriceList(selectedClientId);
+      const { data: c } = await supabase.from('clients').select('max_discount_pct').eq('id', selectedClientId).maybeSingle();
+      return { lookup, maxDiscountPct: Number((c as { max_discount_pct?: number } | null)?.max_discount_pct) || 0 };
+    },
+  });
+
   const { data: creditExposure } = useQuery({
     queryKey: ['client_credit_exposure', selectedClientId],
     enabled: !!(selectedClientId && selectedClient?.credit_limit && selectedClient.credit_limit > 0),
@@ -1439,6 +1454,8 @@ export default function SaleOrderFormPanel({
                 references={references}
                 canRemove={items.length > 1}
                 isAdmin={isAdmin}
+                priceLookup={clientPricing?.lookup}
+                maxDiscountPct={clientPricing?.maxDiscountPct ?? 0}
                 onUpdate={updateItem}
                 onRemove={removeItem}
                 onCopyGradeFromPrevious={(i) => {
