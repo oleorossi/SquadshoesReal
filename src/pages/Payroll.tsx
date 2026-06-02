@@ -89,6 +89,10 @@ export default function Payroll() {
   }, [runs]);
 
   async function calculateAll() {
+    if (!periodRange.from || !periodRange.to) {
+      toast.error('Selecione um mês válido para calcular a folha.');
+      return;
+    }
     setCalcRunning(true);
     try {
       const monthDays = getMonthDays(period);
@@ -207,7 +211,7 @@ export default function Payroll() {
           {' '}após 18h / fim de semana / feriado = <span className="font-semibold text-foreground">1,5×</span>
         </div>
         <div className="flex items-center gap-2">
-          <Input type="month" value={period} onChange={e => { if (/^\d{4}-(0[1-9]|1[0-2])$/.test(e.target.value)) setPeriod(e.target.value); }} className="w-40 h-9" />
+          <Input type="month" value={period} onChange={e => setPeriod(e.target.value)} className="w-40 h-9" />
           <Button size="sm" onClick={calculateAll} disabled={calcRunning}>
             {calcRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Calculator className="h-4 w-4 mr-2" />}
             Calcular folha
@@ -453,12 +457,18 @@ export default function Payroll() {
  * aprovar). HE/banco de horas foram aposentados — só adiantamento sobra.
  */
 function PayrollPendingAdvancesAlert({ period }: { period: string }) {
-  const periodStart = `${period}-01`;
-  const periodEnd = new Date(Number(period.split('-')[0]), Number(period.split('-')[1]), 0)
-    .toISOString().slice(0, 10);
+  // Período pode estar vazio/parcial enquanto o usuário edita o <input month>.
+  // Só monta datas e consulta quando for YYYY-MM válido — senão "2026-00-01"
+  // quebra a query e new Date(NaN).toISOString() lança RangeError.
+  const valid = /^\d{4}-(0[1-9]|1[0-2])$/.test(period);
+  const periodStart = valid ? `${period}-01` : '';
+  const periodEnd = valid
+    ? new Date(Number(period.split('-')[0]), Number(period.split('-')[1]), 0).toISOString().slice(0, 10)
+    : '';
 
   const { data } = useQuery({
     queryKey: ['payroll_pending_advances', period],
+    enabled: valid,
     queryFn: async () => {
       const { data } = await (supabase as any)
         .from('employee_advances')
