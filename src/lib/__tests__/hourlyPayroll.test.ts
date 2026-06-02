@@ -50,9 +50,24 @@ describe('splitDayMinutes', () => {
   });
 
   it('tolera batida assumida com * e minutos não-zero (12:37*, 18:00*)', () => {
-    // 08:00, 12:37*(=12:37), 13:00, 18:00*(=18:00) → manhã 4h37 + tarde 5h
+    // 08:00, 12:37*, 13:00, 18:00*: pausa de 23min em 12–14 → completa pra 1h.
+    // Trabalhado bruto 577min − 37min (top-up do almoço) = 540 = 9h.
     const r = splitDayMinutes(['08:00', '12:37*', '13:00', '18:00*'], WED, false);
-    expect(r.normal).toBe((757 - 480) + (1080 - 780)); // 277 + 300 = 577
+    expect(r.normal).toBe(540);
+    expect(r.premium).toBe(0);
+  });
+
+  it('almoço curto batido (Quesia: 13:00→13:05 = 5min) é completado pra 1h → 8h59', () => {
+    // pares (08:01→13:00)=299 + (13:05→18:00)=295 = 594; pausa em 12–14 = 5min
+    // → top-up 55min → 539 = 8h59.
+    const r = splitDayMinutes(['08:01', '13:00', '13:05', '18:00'], WED, false);
+    expect(r.normal).toBe(539);
+    expect(r.premium).toBe(0);
+  });
+
+  it('pausa LONGA batida (08/11/15/18 = saiu 4h no meio) usa a real, sem forçar 1h → 6h', () => {
+    const r = splitDayMinutes(['08:00', '11:00', '15:00', '18:00'], WED, false);
+    expect(r.normal).toBe(360); // 3h manhã + 3h tarde; pausa de 12–14 já > 1h
     expect(r.premium).toBe(0);
   });
 
