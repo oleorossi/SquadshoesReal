@@ -535,23 +535,26 @@ function TimesheetRecordsTab() {
     setPreview(null);
   };
 
-  // Bloqueio (decisão 2026-06-01): matrícula do arquivo que NÃO casa com nenhum
-  // funcionário cadastrado → avisa e lista antes de importar. Sem isto, as horas
-  // dessas matrículas somem da folha em silêncio (casamento é por matrícula).
+  // Aviso de matrícula não-casada (2026-06-02): o arquivo do relógio traz o
+  // cadastro INTEIRO (dezenas de matrículas, muitas ex-funcionários ou sem
+  // batida no período). NÃO bloquear o import por causa disso — antes o
+  // window.confirm floodava e impedia importar os ativos ("aparece importado
+  // mas não entra"). Agora importa SEMPRE; só AVISA (sem travar) sobre
+  // matrículas que TÊM horas e não casam com funcionário ativo — só essas
+  // perderiam horas na folha (as sem batida são irrelevantes).
   const handleImport = () => {
     if (!preview) return;
-    const unmatched = preview.employees.filter(e => !findBestEmployeeMatch(e.name, e.externalId));
-    if (unmatched.length > 0) {
-      const list = unmatched
-        .map(e => `• matrícula ${e.externalId || '?'} (${e.name}) — ${e.records.length} dia(s)`)
-        .join('\n');
-      const ok = window.confirm(
-        `⚠ ${unmatched.length} matrícula(s) do arquivo NÃO casam com nenhum funcionário cadastrado:\n\n${list}\n\n` +
-        `As horas dessas matrículas NÃO entram na folha até você cadastrá-las ` +
-        `(Funcionários → preencher a matrícula no campo de identificação do relógio).\n\n` +
-        `Cancelar para cadastrar agora, ou OK para importar assim mesmo.`,
+    const unmatchedWithHours = preview.employees.filter(e =>
+      !findBestEmployeeMatch(e.name, e.externalId) &&
+      Array.isArray(e.records) && e.records.some((r: any) => Array.isArray(r.punches) && r.punches.length > 0),
+    );
+    if (unmatchedWithHours.length > 0) {
+      const list = unmatchedWithHours.map(e => `${e.name || '?'} (matr. ${e.externalId || '?'})`).join(', ');
+      toast.warning(
+        `${unmatchedWithHours.length} matrícula(s) com horas não casam com funcionário ativo e NÃO entram na folha: ${list}. ` +
+        `Cadastre a matrícula em Funcionários e reimporte se for o caso.`,
+        { duration: 12000 },
       );
-      if (!ok) return;
     }
     doImport();
   };
