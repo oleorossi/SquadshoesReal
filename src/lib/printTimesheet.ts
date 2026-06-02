@@ -670,3 +670,198 @@ export function printCalendarReport(allData: EmployeeTimesheetData[], periodLabe
     ${html}
   `);
 }
+
+// ── Avaliação de Aderência à Jornada (esperado × batido) ──────────────
+// Relatório SEPARADO da folha por horas. Usa a JORNADA ESPERADA cadastrada do
+// funcionário como referência pra mostrar, dia a dia:
+//   · Faltas/atrasos  → desconto REAL = horas faltantes (esperado − trabalhado) × valor-hora
+//   · Horas extras    → horas ACIMA do esperado no dia × taxa de HE configurada
+//                       (overtimeHourlyRate, ou valor-hora × multiplicador; default 1,5×)
+//   · Líquido         → Valor HE − Desconto
+// Pedido do usuário (2026-06): avaliação funcionário a funcionário com horários não
+// batidos + quanto foi descontado, e dias/valor de hora extra; + resumo de todos.
+function evaluationDetail(emp: EmployeeTimesheetData) {
+  const vh = emp.hourlySalary || 0;
+  const otRate = (emp.overtimeHourlyRate != null && emp.overtimeHourlyRate > 0)
+    ? emp.overtimeHourlyRate
+    : vh * (emp.schedule.overtime_multiplier || 1.5);
+
+  const faltaDays = emp.days.map(d => {
+    const worked = d.workedMinutes || 0;
+    const expected = d.expectedMinutes || 0;
+    const deficit = expected > 0 ? Math.max(0, expected - worked) : 0;
+    return { date: d.date, dayOfWeek: d.dayOfWeek, punches: d.punches, isAbsent: d.isAbsent, expected, worked, deficit, desconto: (deficit / 60) * vh };
+  }).filter(d => d.deficit > 0);
+
+  const extraDays = emp.days.map(d => {
+    const worked = d.workedMinutes || 0;
+    const expected = d.expectedMinutes || 0;
+    const extra = d.overtimeMinutes || 0;
+    return { date: d.date, dayOfWeek: d.dayOfWeek, punches: d.punches, expected, worked, extra, valor: (extra / 60) * otRate };
+  }).filter(d => d.extra > 0);
+
+  const totalDeficitMin = faltaDays.reduce((s, d) => s + d.deficit, 0);
+  const totalDescontoVal = faltaDays.reduce((s, d) => s + d.desconto, 0);
+  const totalExtraMin = extraDays.reduce((s, d) => s + d.extra, 0);
+  const totalExtraVal = extraDays.reduce((s, d) => s + d.valor, 0);
+
+  return {
+    vh, otRate, faltaDays, extraDays,
+    totalDeficitMin, totalDescontoVal, totalExtraMin, totalExtraVal,
+    liquido: totalExtraVal - totalDescontoVal, hasSalary: vh > 0,
+  };
+}
+
+const EVAL_STYLE = `
+  <style>
+    .summary-card { border: 1.5px solid #000; border-radius: 4px; padding: 6px 10px; min-width: 100px; background: #f9fafb; }
+    .sc-label { font-size: 9px; text-transform: uppercase; color: #000; letter-spacing: 0.4px; font-weight: 800; }
+    .sc-value { font-size: 14px; font-weight: 800; font-family: 'SFMono-Regular', 'Courier New', monospace; color: #000; font-variant-numeric: tabular-nums; }
+    .emp-name { font-weight: 700; color: #000; }
+    .absent-row td { background: #fee2e2 !important; }
+    .overtime-row td { background: #fef3c7 !important; }
+    tr { page-break-inside: avoid; }
+    tbody tr:nth-child(even) td { background: #f3f4f6; }
+    @page { size: A4 portrait; margin: 10mm 8mm; }
+  </style>
+`;
+
+function evaluationEmployeeInnerHtml(emp: EmployeeTimesheetData, periodLabel: string): string {
+  const e = evaluationDetail(emp);
+  const formatMoney = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+
+  const faltaRows = e.faltaDays.length > 0 ? e.faltaDays.map(d => `
+    <tr class="absent-row">
+      <td class="mono">${new Date(d.date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+      <td>${DAYS_PT[d.dayOfWeek]}</td>
+      <td class="mono">${d.isAbsent && d.punches.length === 0 ? '— (falta)' : (d.punches.join(' · ') || '—')}</td>
+      <td class="text-right mono">${minutesToDisplay(d.expected)}</td>
+      <td class="text-right mono">${minutesToDisplay(d.worked)}</td>
+      <td class="text-right mono"><b style="color:#dc2626">${minutesToDisplay(d.deficit)}</b></td>
+      <td class="text-right mono" style="color:#dc2626">${e.hasSalary ? '-' + formatMoney(d.desconto) : 'N/D'}</td>
+    </tr>
+  `).join('') : `<tr><td colspan="7" style="text-align:center;color:#16a34a;font-weight:700">Sem faltas/atrasos no período ✓</td></tr>`;
+
+  const extraRows = e.extraDays.length > 0 ? e.extraDays.map(d => `
+    <tr class="overtime-row">
+      <td class="mono">${new Date(d.date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+      <td>${DAYS_PT[d.dayOfWeek]}</td>
+      <td class="mono">${d.punches.join(' · ') || '—'}</td>
+      <td class="text-right mono">${minutesToDisplay(d.expected)}</td>
+      <td class="text-right mono">${minutesToDisplay(d.worked)}</td>
+      <td class="text-right mono"><b style="color:#b45309">${minutesToDisplay(d.extra)}</b></td>
+      <td class="text-right mono" style="color:#16a34a">${e.hasSalary ? '+' + formatMoney(d.valor) : 'N/D'}</td>
+    </tr>
+  `).join('') : `<tr><td colspan="7" style="text-align:center;color:#666">Sem horas extras no período</td></tr>`;
+
+  return `
+    <h1>🧭 Avaliação de Jornada — ${escapeHtml(emp.name)}</h1>
+    <p class="subtitle">Período: ${escapeHtml(periodLabel)} · Esperado × Batido · Impresso em ${new Date().toLocaleString('pt-BR')}</p>
+
+    <div style="display:flex;gap:6px;margin:4px 0 8px;flex-wrap:wrap">
+      <div class="summary-card"><div class="sc-label">Faltou / Atrasou</div><div class="sc-value" style="color:#dc2626">${minutesToDisplay(e.totalDeficitMin)}</div></div>
+      <div class="summary-card"><div class="sc-label">Desconto</div><div class="sc-value" style="color:#dc2626">${e.hasSalary ? '-' + formatMoney(e.totalDescontoVal) : 'N/D'}</div></div>
+      <div class="summary-card"><div class="sc-label">Hora Extra</div><div class="sc-value" style="color:#b45309">${minutesToDisplay(e.totalExtraMin)}</div></div>
+      <div class="summary-card"><div class="sc-label">Valor HE</div><div class="sc-value" style="color:#16a34a">${e.hasSalary ? '+' + formatMoney(e.totalExtraVal) : 'N/D'}</div></div>
+      <div class="summary-card"><div class="sc-label">Líquido (HE − Desc.)</div><div class="sc-value" style="color:${e.liquido >= 0 ? '#16a34a' : '#dc2626'}">${e.hasSalary ? (e.liquido >= 0 ? '+' : '-') + formatMoney(Math.abs(e.liquido)) : 'N/D'}</div></div>
+    </div>
+
+    <h2>Faltas / Atrasos — horários não cumpridos e desconto</h2>
+    <table>
+      <thead><tr><th>Data</th><th>Dia</th><th>Batidas</th><th class="text-right">Esperado</th><th class="text-right">Trabalhado</th><th class="text-right">Faltou</th><th class="text-right">Desconto</th></tr></thead>
+      <tbody>${faltaRows}
+        <tr class="total-row"><td colspan="5">TOTAL</td><td class="text-right mono" style="color:#dc2626"><b>${minutesToDisplay(e.totalDeficitMin)}</b></td><td class="text-right mono" style="color:#dc2626"><b>${e.hasSalary ? '-' + formatMoney(e.totalDescontoVal) : 'N/D'}</b></td></tr>
+      </tbody>
+    </table>
+
+    <h2>Horas Extras — dias acima da jornada e valor</h2>
+    <table>
+      <thead><tr><th>Data</th><th>Dia</th><th>Batidas</th><th class="text-right">Esperado</th><th class="text-right">Trabalhado</th><th class="text-right">Extra</th><th class="text-right">Valor</th></tr></thead>
+      <tbody>${extraRows}
+        <tr class="total-row"><td colspan="5">TOTAL</td><td class="text-right mono" style="color:#b45309"><b>${minutesToDisplay(e.totalExtraMin)}</b></td><td class="text-right mono" style="color:#16a34a"><b>${e.hasSalary ? '+' + formatMoney(e.totalExtraVal) : 'N/D'}</b></td></tr>
+      </tbody>
+    </table>
+  `;
+}
+
+// Detalhado: uma página por funcionário (faltas + horas extras + líquido).
+export function printEmployeeEvaluationDetailed(employees: EmployeeTimesheetData[], periodLabel: string) {
+  const pages = employees.map((emp, idx) => `
+    ${idx > 0 ? '<div style="page-break-before:always"></div>' : ''}
+    ${evaluationEmployeeInnerHtml(emp, periodLabel)}
+  `).join('');
+  printHtml('Avaliação de Jornada — Detalhada', `${EVAL_STYLE}${pages}`);
+}
+
+// Resumo: uma linha por funcionário, pra visão geral.
+export function printEmployeeEvaluationSummary(employees: EmployeeTimesheetData[], periodLabel: string) {
+  const all = employees.map(emp => ({ name: emp.name, ...evaluationDetail(emp) }));
+  const formatMoney = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+
+  const rows = all.map(e => `
+    <tr>
+      <td class="emp-name">${escapeHtml(e.name)}</td>
+      <td class="text-center">${e.faltaDays.length || '—'}</td>
+      <td class="text-right mono">${e.totalDeficitMin > 0 ? `<b style="color:#dc2626">${minutesToDisplay(e.totalDeficitMin)}</b>` : '—'}</td>
+      <td class="text-right mono" style="color:#dc2626">${e.hasSalary ? (e.totalDescontoVal > 0 ? '-' + formatMoney(e.totalDescontoVal) : '—') : 'N/D'}</td>
+      <td class="text-center">${e.extraDays.length || '—'}</td>
+      <td class="text-right mono">${e.totalExtraMin > 0 ? `<b style="color:#b45309">${minutesToDisplay(e.totalExtraMin)}</b>` : '—'}</td>
+      <td class="text-right mono" style="color:#16a34a">${e.hasSalary ? (e.totalExtraVal > 0 ? '+' + formatMoney(e.totalExtraVal) : '—') : 'N/D'}</td>
+      <td class="text-right mono" style="color:${e.liquido >= 0 ? '#16a34a' : '#dc2626'};font-weight:700">${e.hasSalary ? (e.liquido >= 0 ? '+' : '-') + formatMoney(Math.abs(e.liquido)) : 'N/D'}</td>
+    </tr>
+  `).join('');
+
+  const totDef = all.reduce((s, e) => s + e.totalDeficitMin, 0);
+  const totDesc = all.reduce((s, e) => s + (e.hasSalary ? e.totalDescontoVal : 0), 0);
+  const totExtra = all.reduce((s, e) => s + e.totalExtraMin, 0);
+  const totExtraVal = all.reduce((s, e) => s + (e.hasSalary ? e.totalExtraVal : 0), 0);
+  const totLiquido = totExtraVal - totDesc;
+
+  const html = `
+    <h1>🧭 Avaliação de Jornada — Resumo Geral</h1>
+    <p class="subtitle">Período: ${escapeHtml(periodLabel)} · ${employees.length} funcionários · Esperado × Batido · Impresso em ${new Date().toLocaleString('pt-BR')}</p>
+
+    <div style="display:flex;gap:6px;margin:4px 0;flex-wrap:wrap">
+      <div class="summary-card"><div class="sc-label">Total Faltou</div><div class="sc-value" style="color:#dc2626">${minutesToDisplay(totDef)}</div></div>
+      <div class="summary-card"><div class="sc-label">Total Desconto</div><div class="sc-value" style="color:#dc2626">-${formatMoney(totDesc)}</div></div>
+      <div class="summary-card"><div class="sc-label">Total Hora Extra</div><div class="sc-value" style="color:#b45309">${minutesToDisplay(totExtra)}</div></div>
+      <div class="summary-card"><div class="sc-label">Total Valor HE</div><div class="sc-value" style="color:#16a34a">+${formatMoney(totExtraVal)}</div></div>
+      <div class="summary-card"><div class="sc-label">Líquido Geral</div><div class="sc-value" style="color:${totLiquido >= 0 ? '#16a34a' : '#dc2626'}">${totLiquido >= 0 ? '+' : '-'}${formatMoney(Math.abs(totLiquido))}</div></div>
+    </div>
+
+    <h2>Por Funcionário</h2>
+    <table>
+      <thead><tr>
+        <th>Funcionário</th>
+        <th class="text-center">Dias falta</th>
+        <th class="text-right">Faltou</th>
+        <th class="text-right">Desconto</th>
+        <th class="text-center">Dias HE</th>
+        <th class="text-right">Hora Extra</th>
+        <th class="text-right">Valor HE</th>
+        <th class="text-right">Líquido</th>
+      </tr></thead>
+      <tbody>${rows}
+        <tr class="total-row" style="font-size:12px">
+          <td><b>TOTAL</b></td>
+          <td></td>
+          <td class="text-right mono" style="color:#dc2626"><b>${minutesToDisplay(totDef)}</b></td>
+          <td class="text-right mono" style="color:#dc2626"><b>-${formatMoney(totDesc)}</b></td>
+          <td></td>
+          <td class="text-right mono" style="color:#b45309"><b>${minutesToDisplay(totExtra)}</b></td>
+          <td class="text-right mono" style="color:#16a34a"><b>+${formatMoney(totExtraVal)}</b></td>
+          <td class="text-right mono" style="color:${totLiquido >= 0 ? '#16a34a' : '#dc2626'};font-weight:700">${totLiquido >= 0 ? '+' : '-'}${formatMoney(Math.abs(totLiquido))}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div style="margin-top:16px;font-size:10px;color:#222;line-height:1.5">
+      <b>Como ler:</b> Avaliação de aderência à JORNADA ESPERADA (separada da folha por horas) ·
+      <b>Faltou</b> = esperado − trabalhado (atrasos + faltas) · <b>Desconto</b> = horas faltantes × valor-hora ·
+      <b>Hora Extra</b> = horas acima do esperado no dia · <b>Valor HE</b> = horas extras × taxa de HE configurada ·
+      <b>Líquido</b> = Valor HE − Desconto.
+    </div>
+  `;
+
+  printHtml('Avaliação de Jornada — Resumo', `${EVAL_STYLE}${html}`);
+}

@@ -29,7 +29,7 @@ import {
   WorkSchedule, Holiday, TimeRecord, ParsedEmployee, DaySummary,
 } from '@/hooks/useTimesheet';
 import { useEmployees, useUpdateEmployee } from '@/hooks/useEmployees';
-import { printAllEmployeesTimesheet, printConsolidatedHoursReport, printEmployeeTimesheet, printAllIndividualTimesheets, printCalendarReport, saveEmployeeTimesheetPdf, EmployeeTimesheetData } from '@/lib/printTimesheet';
+import { printAllEmployeesTimesheet, printConsolidatedHoursReport, printEmployeeTimesheet, printAllIndividualTimesheets, printCalendarReport, saveEmployeeTimesheetPdf, printEmployeeEvaluationDetailed, printEmployeeEvaluationSummary, EmployeeTimesheetData } from '@/lib/printTimesheet';
 import { printTimeMirror } from '@/lib/printTimeMirror';
 import { useBankHoursBalances } from '@/hooks/useRH';
 import { getBatchDateRange, resolveTimeControlFilters } from '@/lib/timeControlFilters';
@@ -811,6 +811,18 @@ function TimesheetRecordsTab() {
     printCalendarReport(allData, periodLabel);
   };
 
+  // Avaliação de aderência à jornada (esperado × batido): faltas/atrasos com
+  // desconto real + horas extras acima do esperado. Detalhado (1 pág/func) e resumo.
+  const handlePrintEvaluationDetailed = () => {
+    const allData = employeeNames.map(n => buildPrintData(n));
+    printEmployeeEvaluationDetailed(allData, periodLabel);
+  };
+
+  const handlePrintEvaluationSummary = () => {
+    const allData = employeeNames.map(n => buildPrintData(n));
+    printEmployeeEvaluationSummary(allData, periodLabel);
+  };
+
   const statusIcon = (status: DaySummary['status']) => {
     switch (status) {
       case 'normal': return <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />;
@@ -852,6 +864,14 @@ function TimesheetRecordsTab() {
               <Button size="sm" variant="outline" className="gap-1.5" onClick={handlePrintAllIndividual}>
                 <Printer className="h-4 w-4" />
                 Imprimir todos os relatórios
+              </Button>
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={handlePrintEvaluationDetailed}>
+                <AlertTriangle className="h-4 w-4" />
+                Avaliação (detalhada)
+              </Button>
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={handlePrintEvaluationSummary}>
+                <DollarSign className="h-4 w-4" />
+                Avaliação (resumo)
               </Button>
             </>
           )}
