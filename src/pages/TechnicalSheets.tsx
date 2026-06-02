@@ -3349,21 +3349,36 @@ function PhotosByColorTab({ sheetId, form, groups, products }: {
     },
   });
 
-  const availableColors = useMemo(() => {
-    const colorSet = new Set<string>();
-    const groupNames = [form.lining_material].filter(Boolean);
+  // Cores DISPONÍVEIS EM ESTOQUE (decisão 2026-06-02): só cores de produtos com
+  // quantity>0 nos materiais do modelo (cabedal + forração). Antes listava a
+  // paleta INTEIRA da forração (incl. cores sem material) → confuso. Agora só
+  // aparece o que a fábrica realmente tem em estoque, e por adição sob demanda.
+  const stockColors = useMemo(() => {
+    const groupNames = [form.upper_material, form.lining_material].filter(Boolean) as string[];
     ((form as any).lining_accessories || []).forEach((c: any) => { if (c.material) groupNames.push(c.material); });
-
-    for (const gName of groupNames) {
-      const group = groups.find((g: any) => g.name === gName);
-      if (!group) continue;
-      products.filter((p: any) => p.group_id === group.id && p.active).forEach((p: any) => {
-        if (p.color?.trim()) p.color.split(',').forEach((c: string) => { const t = c.trim(); if (t) colorSet.add(t); });
+    const groupIds = new Set(groups.filter((g: any) => groupNames.includes(g.name)).map((g: any) => g.id));
+    const set = new Set<string>();
+    products
+      .filter((p: any) => p.active && Number(p.quantity) > 0 && groupIds.has(p.group_id))
+      .forEach((p: any) => {
+        if (p.color?.trim()) p.color.split(',').forEach((c: string) => { const t = c.trim(); if (t) set.add(t); });
       });
-    }
-    colorVariants.forEach((v: any) => { if (v.color?.trim()) colorSet.add(v.color.trim()); });
-    return Array.from(colorSet).sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  }, [form, groups, products, colorVariants]);
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [form, groups, products]);
+
+  // Cores já engajadas: com registro de variante (com/sem foto) + as adicionadas
+  // agora pelo usuário (ainda sem upload). Só estas viram slot de foto.
+  const [addedColors, setAddedColors] = useState<string[]>([]);
+  const shownColors = useMemo(() => {
+    const set = new Set<string>();
+    colorVariants.forEach((v: any) => { if (v.color?.trim()) set.add(v.color.trim()); });
+    addedColors.forEach(c => { if (c.trim()) set.add(c.trim()); });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [colorVariants, addedColors]);
+  const pickableColors = useMemo(
+    () => stockColors.filter(c => !shownColors.includes(c)),
+    [stockColors, shownColors],
+  );
 
   const [uploading, setUploading] = useState<string | null>(null);
 
@@ -3405,14 +3420,14 @@ function PhotosByColorTab({ sheetId, form, groups, products }: {
 
   if (isLoading) return <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
 
-  if (availableColors.length === 0) {
+  if (stockColors.length === 0 && shownColors.length === 0) {
     return (
       <Card className="border-dashed">
         <CardContent className="p-0">
           <EmptyState
             icon={ImagePlus}
-            title="Nenhuma cor disponível"
-            description='Configure os grupos de material em Forração na aba "Materiais & BOM" para que as cores apareçam aqui.'
+            title="Nenhuma cor em estoque"
+            description='As cores aparecem a partir dos produtos COM estoque (qtd > 0) nos materiais de cabedal/forração deste modelo. Dê entrada de estoque ou ajuste os materiais na aba "Materiais & BOM".'
             size="sm"
           />
         </CardContent>
@@ -3424,10 +3439,26 @@ function PhotosByColorTab({ sheetId, form, groups, products }: {
     <div className="space-y-4">
       <div>
         <h3 className="text-sm font-semibold flex items-center gap-2"><ImagePlus className="h-4 w-4 text-primary" /> Fotos por Cor</h3>
-        <p className="text-xs text-muted-foreground mt-1">Faça upload da foto do produto em cada cor. Estas fotos serão exibidas no pedido de venda ao selecionar a cor.</p>
+        <p className="text-xs text-muted-foreground mt-1">Adicione uma cor (disponível em estoque) e suba a foto do produto naquela cor. A foto aparece no pedido e na ficha do operador ao escolher a cor.</p>
       </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <Select value="" onValueChange={(c) => { if (c) setAddedColors(prev => (prev.includes(c) ? prev : [...prev, c])); }}>
+          <SelectTrigger className="h-9 w-72">
+            <SelectValue placeholder={pickableColors.length ? '+ Adicionar cor em estoque…' : 'Todas as cores em estoque já listadas'} />
+          </SelectTrigger>
+          <SelectContent>
+            {pickableColors.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <span className="text-xs text-muted-foreground">{stockColors.length} cor(es) em estoque</span>
+      </div>
+
+      {shownColors.length === 0 ? (
+        <p className="text-sm text-muted-foreground py-6 text-center">Selecione uma cor em estoque acima para subir a foto.</p>
+      ) : (
       <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
-        {availableColors.map(color => {
+        {shownColors.map(color => {
           const variant = colorVariants.find((v: any) => v.color === color);
           const hasImage = variant?.image_url;
           return (
@@ -3463,6 +3494,7 @@ function PhotosByColorTab({ sheetId, form, groups, products }: {
           );
         })}
       </div>
+      )}
     </div>
   );
 }
