@@ -1,5 +1,6 @@
 import { printHtml, writePrintWindow, openPrintWindow } from './printOrder';
 import { calculateWeeklyPeriod } from './weeklyTimeCalculation';
+import { calculateHourlyPayroll } from './hourlyPayroll';
 import { escapeHtml } from './htmlUtils';
 
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -563,45 +564,68 @@ export function printConsolidatedHoursReport(employees: EmployeeTimesheetData[],
   `);
 }
 
+/**
+ * Folha por HORA TRABALHADA aplicada ao Relatório Geral de Ponto (modelo único
+ * do RH, decisão 2026-06). Reaproveita a função canônica da folha
+ * (`calculateHourlyPayroll`) pra o cálculo ficar IDÊNTICO ao da folha: cada dia
+ * vira minutos normais (1,0×) e 1,5× (sáb/dom/feriado/após 18h, sem acumular),
+ * já com 1h de almoço descontada em dia longo. Valor = VH × horas (VH = salário
+ * ÷ 220, vindo em `emp.hourlySalary`). NÃO desconta adiantamento — isso é da
+ * folha; aqui mostramos o bruto por horas trabalhadas.
+ */
+function calcHoursWorkedPay(emp: EmployeeTimesheetData) {
+  const vh = emp.hourlySalary || 0;
+  const days = emp.days.map(d => ({
+    date: d.date,
+    dayOfWeek: d.dayOfWeek,
+    isHoliday: d.isHoliday,
+    punches: Array.isArray(d.punches) ? d.punches : [],
+  }));
+  // Passa salário = VH × 220 porque calculateHourlyPayroll divide por 220 de
+  // volta → hourly_rate = VH exato. advances = 0 (não é escopo do ponto).
+  const r = calculateHourlyPayroll(vh * 220, days, 0);
+  const absences = emp.days.filter(d => d.isAbsent).length;
+  return {
+    vh,
+    normalMin: r.normal_minutes,
+    premiumMin: r.premium_minutes,
+    workedMin: r.worked_minutes,
+    total: r.gross_value,
+    incompleteDays: r.incomplete_days,
+    absences,
+    hasSalary: vh > 0,
+  };
+}
+
 // ── General All-Employees Report ──────────────────────
 export function printAllEmployeesTimesheet(employees: EmployeeTimesheetData[], periodLabel: string) {
-  const allBalances = employees.map(emp => ({
-    name: emp.name,
-    ...calcEmployeeBalance(emp),
-    hourlySalary: emp.hourlySalary || 0,
-  }));
+  const all = employees.map(emp => ({ name: emp.name, ...calcHoursWorkedPay(emp) }));
 
   const formatMoney = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
-  const rows = allBalances.map(b => `
+  const rows = all.map(b => `
     <tr>
       <td class="emp-name">${escapeHtml(b.name)}</td>
-      <td class="text-right mono">${minutesToDisplay(b.totalWorked)}</td>
-      <td class="text-right mono" style="color:#111">${minutesToDisplay(b.totalExpected)}</td>
-      <td class="text-right mono">${b.totalRawOvertime > 0 ? `<span style="color:#b45309">${minutesToDisplay(b.totalRawOvertime)}</span>` : '—'}</td>
-      <td class="text-right mono">${b.deficitMinutes > 0 ? `<span style="color:#dc2626">${minutesToDisplay(b.deficitMinutes)}</span>` : '—'}</td>
-      <td class="text-right mono">${b.compensatedOvertime > 0 ? `<b style="color:#16a34a">${minutesToDisplay(b.compensatedOvertime)}</b>` : '—'}</td>
-      <td class="text-right mono">${b.remainingDeficit > 0 ? `<span style="color:#dc2626">${minutesToDisplay(b.remainingDeficit)}</span>` : '—'}</td>
+      <td class="text-right mono"><b>${minutesToDisplay(b.workedMin)}</b></td>
+      <td class="text-right mono">${b.normalMin > 0 ? minutesToDisplay(b.normalMin) : '—'}</td>
+      <td class="text-right mono">${b.premiumMin > 0 ? `<b style="color:#b45309">${minutesToDisplay(b.premiumMin)}</b>` : '—'}</td>
       <td class="text-center">${b.absences > 0 ? `<b style="color:#dc2626">${b.absences}</b>` : '—'}</td>
-      <td class="text-right mono">${b.totalOvertimeValue > 0 ? `<b style="color:#16a34a">${formatMoney(b.totalOvertimeValue)}</b>` : '—'}</td>
-      <td class="text-right mono">${b.remainingDeficit > 0 ? (b.hourlySalary > 0 ? `<span style="color:#dc2626">-${formatMoney(b.deficitValue)}</span>` : `<span style="color:#dc2626">N/D (sem salário)</span>`) : '—'}</td>
-      <td class="text-right mono" style="color:${b.totalOvertimeValue - b.deficitValue >= 0 ? '#16a34a' : '#dc2626'};font-weight:700">${b.hourlySalary > 0 ? (b.totalOvertimeValue - b.deficitValue >= 0 ? '' : '-') + formatMoney(Math.abs(b.totalOvertimeValue - b.deficitValue)) : 'N/D'}</td>
+      <td class="text-center">${b.incompleteDays > 0 ? `<b style="color:#b45309">${b.incompleteDays}</b>` : '—'}</td>
+      <td class="text-right mono">${b.hasSalary ? formatMoney(b.vh) : '<span style="color:#dc2626">N/D</span>'}</td>
+      <td class="text-right mono" style="color:${b.hasSalary ? '#16a34a' : '#999'};font-weight:700">${b.hasSalary ? formatMoney(b.total) : 'N/D (sem salário)'}</td>
     </tr>
   `).join('');
 
-  const totWorked = allBalances.reduce((s, b) => s + b.totalWorked, 0);
-  const totExpected = allBalances.reduce((s, b) => s + b.totalExpected, 0);
-  const totOTRaw = allBalances.reduce((s, b) => s + b.totalRawOvertime, 0);
-  const totDeficit = allBalances.reduce((s, b) => s + b.deficitMinutes, 0);
-  const totOTCompensated = allBalances.reduce((s, b) => s + b.compensatedOvertime, 0);
-  const totRemDeficit = allBalances.reduce((s, b) => s + b.remainingDeficit, 0);
-  const totAbsences = allBalances.reduce((s, b) => s + b.absences, 0);
-  const totOTValue = allBalances.reduce((s, b) => s + b.totalOvertimeValue, 0);
-  const totDeficitValue = allBalances.reduce((s, b) => s + b.deficitValue, 0);
+  const totWorked = all.reduce((s, b) => s + b.workedMin, 0);
+  const totNormal = all.reduce((s, b) => s + b.normalMin, 0);
+  const totPremium = all.reduce((s, b) => s + b.premiumMin, 0);
+  const totAbsences = all.reduce((s, b) => s + b.absences, 0);
+  const totIncomplete = all.reduce((s, b) => s + b.incompleteDays, 0);
+  const totPay = all.reduce((s, b) => s + (b.hasSalary ? b.total : 0), 0);
 
   const html = `
     <h1>📊 Relatório Geral de Ponto</h1>
-    <p class="subtitle">Período: ${escapeHtml(periodLabel)} · ${employees.length} funcionários · Impresso em ${new Date().toLocaleString('pt-BR')}</p>
+    <p class="subtitle">Período: ${escapeHtml(periodLabel)} · ${employees.length} funcionários · Pagamento por horas trabalhadas · Impresso em ${new Date().toLocaleString('pt-BR')}</p>
 
     <div style="display:flex;gap:6px;margin:4px 0;flex-wrap:wrap">
       <div class="summary-card">
@@ -609,24 +633,20 @@ export function printAllEmployeesTimesheet(employees: EmployeeTimesheetData[], p
         <div class="sc-value">${minutesToDisplay(totWorked)}</div>
       </div>
       <div class="summary-card">
-        <div class="sc-label">Total Esperado</div>
-        <div class="sc-value">${minutesToDisplay(totExpected)}</div>
+        <div class="sc-label">Horas Normais (1×)</div>
+        <div class="sc-value">${minutesToDisplay(totNormal)}</div>
       </div>
       <div class="summary-card">
-        <div class="sc-label">HE Brutas</div>
-        <div class="sc-value" style="color:#b45309">${minutesToDisplay(totOTRaw)}</div>
-      </div>
-      <div class="summary-card">
-        <div class="sc-label">HE Líquidas</div>
-        <div class="sc-value" style="color:#16a34a">${minutesToDisplay(totOTCompensated)}</div>
-      </div>
-      <div class="summary-card">
-        <div class="sc-label">Valor HE</div>
-        <div class="sc-value" style="color:#16a34a">${formatMoney(totOTValue)}</div>
+        <div class="sc-label">Horas 1,5×</div>
+        <div class="sc-value" style="color:#b45309">${minutesToDisplay(totPremium)}</div>
       </div>
       <div class="summary-card">
         <div class="sc-label">Faltas</div>
         <div class="sc-value" style="color:#dc2626">${totAbsences}</div>
+      </div>
+      <div class="summary-card">
+        <div class="sc-label">Total a Pagar</div>
+        <div class="sc-value" style="color:#16a34a">${formatMoney(totPay)}</div>
       </div>
     </div>
 
@@ -635,38 +655,33 @@ export function printAllEmployeesTimesheet(employees: EmployeeTimesheetData[], p
       <thead><tr>
         <th>Funcionário</th>
         <th class="text-right">Trab.</th>
-        <th class="text-right">Esper.</th>
-        <th class="text-right">HE Bruta</th>
-        <th class="text-right">Déficit</th>
-        <th class="text-right">HE Líquida</th>
-        <th class="text-right">Déf. Rest.</th>
+        <th class="text-right">Normais (1×)</th>
+        <th class="text-right">1,5×</th>
         <th class="text-center">Faltas</th>
-        <th class="text-right">Valor HE</th>
-        <th class="text-right">Desc.</th>
-        <th class="text-right">Total</th>
+        <th class="text-center">Incompl.</th>
+        <th class="text-right">Valor/h</th>
+        <th class="text-right">Total a Pagar</th>
       </tr></thead>
       <tbody>${rows}
         <tr class="total-row" style="font-size:12px">
           <td><b>TOTAL</b></td>
-          <td class="text-right mono">${minutesToDisplay(totWorked)}</td>
-          <td class="text-right mono">${minutesToDisplay(totExpected)}</td>
-          <td class="text-right mono" style="color:#b45309">${minutesToDisplay(totOTRaw)}</td>
-          <td class="text-right mono" style="color:#dc2626">${minutesToDisplay(totDeficit)}</td>
-          <td class="text-right mono" style="color:#16a34a"><b>${minutesToDisplay(totOTCompensated)}</b></td>
-          <td class="text-right mono">${minutesToDisplay(totRemDeficit)}</td>
+          <td class="text-right mono"><b>${minutesToDisplay(totWorked)}</b></td>
+          <td class="text-right mono">${minutesToDisplay(totNormal)}</td>
+          <td class="text-right mono" style="color:#b45309">${minutesToDisplay(totPremium)}</td>
           <td class="text-center" style="color:#dc2626"><b>${totAbsences}</b></td>
-          <td class="text-right mono" style="color:#16a34a"><b>${formatMoney(totOTValue)}</b></td>
-          <td class="text-right mono" style="color:#dc2626">${totDeficitValue > 0 ? `-${formatMoney(totDeficitValue)}` : '—'}</td>
-          <td class="text-right mono" style="color:${totOTValue - totDeficitValue >= 0 ? '#16a34a' : '#dc2626'};font-weight:700">${totOTValue - totDeficitValue >= 0 ? '' : '-'}${formatMoney(Math.abs(totOTValue - totDeficitValue))}</td>
+          <td class="text-center" style="color:#b45309"><b>${totIncomplete || '—'}</b></td>
+          <td class="text-right mono">—</td>
+          <td class="text-right mono" style="color:#16a34a;font-weight:700">${formatMoney(totPay)}</td>
         </tr>
       </tbody>
     </table>
 
     <div style="margin-top:16px;font-size:10px;color:#222;font-weight:700">
-      <b>Legenda:</b> HE Bruta = total de horas extras sem compensação · Déficit = atrasos + faltas ·
-      HE Líquida = HE após descontar déficit · Déf. Rest. = déficit não coberto pelas HE ·
-      Valor HE = valor a pagar pelas HE líquidas (multiplicadores aplicados) ·
-      Desc. = desconto referente ao déficit restante
+      <b>Legenda:</b> Pagamento por HORAS TRABALHADAS · Valor/h = salário ÷ 220 ·
+      Normais (1×) = horas em dia útil até as 18:00 · 1,5× = sábado, domingo, feriado ou após as 18:00 (não acumula) ·
+      Total a Pagar = Normais × Valor/h + 1,5× × Valor/h × 1,5 (bruto; adiantamento é descontado na folha) ·
+      Faltas = dias marcados como ausência (informativo — não reduz o pagamento) ·
+      Incompl. = dias com nº ímpar de batidas (RH conferir; foram contabilizados pelo intervalo da 1ª à última)
     </div>
   `;
 
