@@ -862,6 +862,26 @@ function TimesheetRecordsTab() {
         const unmatchedEmps = preview.employees.filter(emp => !employeeMatches[emp.name]);
         const matchedCount = Object.keys(employeeMatches).length;
         const totalRecords = preview.employees.reduce((s, e) => s + e.records.length, 0);
+        // Range REAL de batidas (ignora placeholders punches=[]) — pra avisar
+        // quando o arquivo do relógio termina antes do esperado. Causa nº1 de
+        // "importei mas não entrou": a exportação do relógio não incluiu os dias
+        // novos (o parser não trunca — confirmado; ele lê tudo que está no arquivo).
+        const punchDates = preview.employees
+          .flatMap(e => e.records)
+          .filter((r: any) => Array.isArray(r.punches) && r.punches.length > 0)
+          .map((r: any) => (r.dateStr as string) || '')
+          .filter(Boolean)
+          .sort();
+        const firstPunch = punchDates[0] || preview.startDate;
+        const lastPunch = punchDates[punchDates.length - 1] || preview.endDate;
+        const punchDayCount = new Set(punchDates).size;
+        const now = new Date();
+        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const gapToToday = Math.round(
+          (new Date(`${todayStr}T00:00:00`).getTime() - new Date(`${lastPunch}T00:00:00`).getTime()) / 86400000,
+        );
+        const staleFile = Number.isFinite(gapToToday) && gapToToday >= 3;
+        const fmtBR = (d: string) => (d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d.split('-').reverse().join('/') : '—');
         return (
           <Card className="border-primary/30">
             <CardHeader className="pb-2">
@@ -871,6 +891,26 @@ function TimesheetRecordsTab() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              {/* Banner de range REAL: a 1ª coisa que o usuário vê. Mostra de quando
+                  até quando o arquivo tem batida; se o último dia está 3+ dias atrás,
+                  alerta que a exportação do relógio provavelmente ficou desatualizada. */}
+              <div className={`rounded-md border p-3 ${staleFile ? 'border-amber-500/40 bg-amber-500/5' : 'border-border bg-muted/30'}`}>
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <Calendar className="h-4 w-4 shrink-0" />
+                  <span>Ponto de <strong>{fmtBR(firstPunch)}</strong> até <strong>{fmtBR(lastPunch)}</strong> · {punchDayCount} dia{punchDayCount === 1 ? '' : 's'} com batida</span>
+                </div>
+                {staleFile && (
+                  <div className="mt-2 flex items-start gap-2 text-xs text-amber-800 dark:text-amber-300">
+                    <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                    <span>
+                      O dia mais recente do arquivo é <strong>{fmtBR(lastPunch)}</strong> (~{gapToToday} dias atrás).
+                      Se você esperava dias mais novos, a exportação do relógio <strong>não os incluiu</strong> — refaça
+                      o download no relógio cobrindo o período correto e reimporte. O sistema só calcula a folha até
+                      o último dia com batida.
+                    </span>
+                  </div>
+                )}
+              </div>
               {/* R11 (audit): badges substituem texto inline pra dar peso visual
                   igual aos status de importações concluídas (ImportHistoryPanel).
                   Verde = OK, âmbar = pede ação, neutro = informativo. */}
