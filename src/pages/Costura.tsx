@@ -138,12 +138,19 @@ export default function Costura() {
       return true;
     });
     return filtered.sort((a, b) => {
-      const da = (a as any).planned_delivery;
-      const db = (b as any).planned_delivery;
-      if (!da && !db) return 0;
-      if (!da) return 1;
-      if (!db) return -1;
-      return da.localeCompare(db);
+      // Prioridade (2026-06-02): terminar o PEDIDO inteiro por PRAZO. Ordena pela
+      // entrega do PV (mais urgente primeiro; sem prazo por último), mantém as OPs
+      // do mesmo PV juntas, e dentro do PV pela data planejada da OP.
+      const dl = (o: any) => saleOrders?.find((s: any) => s.id === o.sale_order_id)?.delivery_deadline || '';
+      const da = dl(a), db = dl(b);
+      if (da !== db) { if (!da) return 1; if (!db) return -1; return da.localeCompare(db); }
+      const sa = String(a.sale_order_id || ''), sb = String(b.sale_order_id || '');
+      if (sa !== sb) return sa.localeCompare(sb);
+      const pa = (a as any).planned_delivery || '', pb = (b as any).planned_delivery || '';
+      if (!pa && !pb) return 0;
+      if (!pa) return 1;
+      if (!pb) return -1;
+      return pa.localeCompare(pb);
     });
   }, [orders, allStages, filterStatus, searchQuery, saleOrders]);
 
