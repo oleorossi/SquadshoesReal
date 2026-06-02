@@ -7,6 +7,7 @@
  * - Labels are linked to OPs: when OPs change, labels update automatically via realtime
  * - packaging_mode on sale_orders controls which label types are available:
  *   · individual_amarrado → individual thermal + box label (no master)
+ *   · individual_fitilho  → idem amarrado p/ etiqueta (muda só o que une as caixas)
  *   · individual_master   → individual thermal + master box label
  *   · colmeia             → ONLY master/external box label (NO individual)
  * - Print modes: per-OP (one at a time) or batch (all selected / by week)
@@ -149,8 +150,11 @@ function getAllowedLabelTypes(packagingMode: string): { thermal: boolean; boxLab
       // Individual + Master box
       return { thermal: true, boxLabel: false, masterBox: true, hangtag: true };
     case 'individual_amarrado':
+    case 'individual_fitilho':
     default:
-      // Individual box + tied bundle (no master)
+      // Individual box + tied bundle (no master). Amarrado e fitilho só diferem
+      // no QUE une as caixas individuais (corda vs. fitilho) — pro ponto de vista
+      // da etiqueta são idênticos: cada par leva etiqueta individual (térmica).
       return { thermal: true, boxLabel: true, masterBox: false, hangtag: true };
   }
 }
@@ -159,6 +163,7 @@ function getPackagingBadge(mode: string) {
   switch (mode) {
     case 'colmeia': return { label: 'Colméia', variant: 'destructive' as const };
     case 'individual_master': return { label: 'Individual + Master', variant: 'default' as const };
+    case 'individual_fitilho': return { label: 'Individual + Fitilho', variant: 'secondary' as const };
     default: return { label: 'Individual + Amarrado', variant: 'secondary' as const };
   }
 }
