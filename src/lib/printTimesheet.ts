@@ -1,6 +1,6 @@
 import { printHtml, writePrintWindow, openPrintWindow } from './printOrder';
 import { calculateWeeklyPeriod } from './weeklyTimeCalculation';
-import { calculateHourlyPayroll } from './hourlyPayroll';
+import { calculateHourlyPayroll, splitDayMinutes, PREMIUM_MULTIPLIER } from './hourlyPayroll';
 import { escapeHtml } from './htmlUtils';
 
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -94,120 +94,122 @@ function calcEmployeeBalance(emp: EmployeeTimesheetData) {
   };
 }
 
-function statusLabel(status: string): string {
-  switch (status) {
-    case 'normal': return '✓';
-    case 'overtime': return '⏰ HE';
-    case 'absent': return '✗ Falta';
-    case 'holiday': return '🏖️ Feriado';
-    case 'weekend': return '— Folga';
-    case 'incomplete': return '⚠️ Incompleto';
-    default: return '';
-  }
+/**
+ * Folha por HORA TRABALHADA aplicada aos relatórios de ponto (modelo único do
+ * RH, 2026-06). Quebra cada dia em minutos normais (1,0×) e 1,5× via o MESMO
+ * `splitDayMinutes` da folha (sáb/dom/feriado/após 18h = 1,5×, sem acumular; 1h
+ * de almoço descontada em dia longo). Valor = VH × horas (VH = salário ÷ 220,
+ * em `emp.hourlySalary`). Bruto — adiantamento é descontado na folha.
+ */
+function hoursWorkedDetail(emp: EmployeeTimesheetData) {
+  const vh = emp.hourlySalary || 0;
+  const days = emp.days.map(d => {
+    const punches = Array.isArray(d.punches) ? d.punches : [];
+    const sp = punches.length >= 2
+      ? splitDayMinutes(punches, d.dayOfWeek, d.isHoliday)
+      : { normal: 0, premium: 0, incomplete: punches.length === 1 };
+    return {
+      date: d.date,
+      dayOfWeek: d.dayOfWeek,
+      punches,
+      isHoliday: d.isHoliday,
+      isAbsent: d.isAbsent,
+      normalMin: sp.normal,
+      premiumMin: sp.premium,
+      dayWorkedMin: sp.normal + sp.premium,
+      incomplete: sp.incomplete,
+    };
+  });
+  const normalMin = days.reduce((s, d) => s + d.normalMin, 0);
+  const premiumMin = days.reduce((s, d) => s + d.premiumMin, 0);
+  const absences = emp.days.filter(d => d.isAbsent).length;
+  const incompleteDays = days.filter(d => d.incomplete).length;
+  const daysWorked = days.filter(d => d.dayWorkedMin > 0).length;
+  const normalValue = (normalMin / 60) * vh;
+  const premiumValue = (premiumMin / 60) * vh * PREMIUM_MULTIPLIER;
+  return {
+    vh, days, normalMin, premiumMin, workedMin: normalMin + premiumMin,
+    absences, incompleteDays, daysWorked,
+    normalValue, premiumValue, total: normalValue + premiumValue,
+    hasSalary: vh > 0,
+  };
 }
 
-// ── Individual Employee Report ──────────────────────
-export function printEmployeeTimesheet(emp: EmployeeTimesheetData, periodLabel: string) {
-  const bal = calcEmployeeBalance(emp);
+/** Status diário no modelo de horas trabalhadas (sem conceito de HE/déficit). */
+function statusLabelHW(d: { isAbsent: boolean; isHoliday: boolean; dayWorkedMin: number; incomplete: boolean; dayOfWeek: number }): string {
+  if (d.incomplete) return '⚠️ Incompleto';
+  if (d.dayWorkedMin > 0) return d.isHoliday ? '🏖️ Feriado (1,5×)' : (d.dayOfWeek === 0 || d.dayOfWeek === 6) ? '✓ 1,5×' : '✓';
+  if (d.isAbsent) return '✗ Falta';
+  if (d.isHoliday) return '🏖️ Feriado';
+  if (d.dayOfWeek === 0 || d.dayOfWeek === 6) return '— Folga';
+  return '—';
+}
 
-  const daysRows = emp.days.map(d => `
-    <tr class="${d.status === 'absent' ? 'absent-row' : d.status === 'overtime' ? 'overtime-row' : d.status === 'holiday' ? 'holiday-row' : ''}">
+/** Corpo HTML do relatório individual (horas trabalhadas). Compartilhado por
+ *  printEmployeeTimesheet, saveEmployeeTimesheetPdf e printAllIndividualTimesheets. */
+function employeeReportInnerHtml(emp: EmployeeTimesheetData, periodLabel: string): string {
+  const b = hoursWorkedDetail(emp);
+  const formatMoney = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+
+  const daysRows = b.days.map(d => `
+    <tr class="${d.isAbsent ? 'absent-row' : d.premiumMin > 0 ? 'overtime-row' : d.isHoliday ? 'holiday-row' : ''}">
       <td class="mono">${new Date(d.date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
       <td>${DAYS_PT[d.dayOfWeek]}</td>
       <td class="mono">${d.punches.join(' · ') || '—'}</td>
-      <td class="text-right mono">${minutesToDisplay(d.workedMinutes)}</td>
-      <td class="text-right mono" style="color:#111">${minutesToDisplay(d.expectedMinutes)}</td>
-      <td class="text-right mono">${d.overtimeMinutes > 0 ? `<b style="color:#b45309">${minutesToDisplay(d.overtimeMinutes)}</b>` : '—'}</td>
-      <td class="text-center">${statusLabel(d.status)}</td>
+      <td class="text-right mono">${d.normalMin > 0 ? minutesToDisplay(d.normalMin) : '—'}</td>
+      <td class="text-right mono">${d.premiumMin > 0 ? `<b style="color:#b45309">${minutesToDisplay(d.premiumMin)}</b>` : '—'}</td>
+      <td class="text-right mono"><b>${d.dayWorkedMin > 0 ? minutesToDisplay(d.dayWorkedMin) : '—'}</b></td>
+      <td class="text-center">${statusLabelHW(d)}</td>
     </tr>
   `).join('');
 
-  const overtimeDetailRows = bal.overtimeDays.map(d => `
-    <tr>
-      <td class="mono">${new Date(d.date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
-      <td>${DAYS_PT[d.dayOfWeek]}</td>
-      <td class="mono">${d.punches.join(' · ')}</td>
-      <td class="text-right mono"><b style="color:#b45309">${minutesToDisplay(d.overtime)}</b></td>
-      <td class="text-center">${d.isHoliday ? 'Feriado' : 'Normal'}</td>
-    </tr>
-  `).join('');
-
-  const formatMoney = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-
-  const html = `
+  return `
     <h1>📋 Relatório de Ponto — ${escapeHtml(emp.name)}</h1>
-    <p class="subtitle">Período: ${escapeHtml(periodLabel)} · Impresso em ${new Date().toLocaleString('pt-BR')}</p>
+    <p class="subtitle">Período: ${escapeHtml(periodLabel)} · Pagamento por horas trabalhadas · Impresso em ${new Date().toLocaleString('pt-BR')}</p>
 
     <h2>Resumo</h2>
     <div class="info-grid">
-      <div><span class="label">Horas Trabalhadas:</span> ${minutesToDisplay(bal.totalWorked)}</div>
-      <div><span class="label">Horas Esperadas:</span> ${minutesToDisplay(bal.totalExpected)}</div>
-      <div><span class="label">Horas Extras Brutas:</span> <b style="color:#b45309">${minutesToDisplay(bal.totalRawOvertime)}</b></div>
-      <div><span class="label">Déficit (atrasos + faltas):</span> <b style="color:#dc2626">${minutesToDisplay(bal.deficitMinutes)}</b></div>
-      <div><span class="label">HE após compensar déficit:</span> <b style="color:#16a34a">${minutesToDisplay(bal.compensatedOvertime)}</b></div>
-      <div><span class="label">Déficit restante:</span> ${bal.remainingDeficit > 0 ? `<b style="color:#dc2626">${minutesToDisplay(bal.remainingDeficit)}</b>` : '—'}</div>
-      <div><span class="label">Faltas (dias):</span> ${bal.absences}</div>
-      <div><span class="label">Feriados trabalhados:</span> ${bal.holidayWorked}</div>
+      <div><span class="label">Horas Trabalhadas:</span> <b>${minutesToDisplay(b.workedMin)}</b></div>
+      <div><span class="label">Horas Normais (1×):</span> ${minutesToDisplay(b.normalMin)}</div>
+      <div><span class="label">Horas 1,5×:</span> <b style="color:#b45309">${minutesToDisplay(b.premiumMin)}</b></div>
+      <div><span class="label">Dias trabalhados:</span> ${b.daysWorked}</div>
+      <div><span class="label">Faltas (dias):</span> ${b.absences}</div>
+      <div><span class="label">Dias incompletos:</span> ${b.incompleteDays > 0 ? `<b style="color:#b45309">${b.incompleteDays}</b>` : '—'}</div>
     </div>
 
-    ${emp.hourlySalary ? `
+    ${b.hasSalary ? `
     <h2>Valores</h2>
     <div class="info-grid">
-      <div><span class="label">Valor/hora:</span> ${formatMoney(emp.hourlySalary)}</div>
-      <div><span class="label">HE Normal (${emp.schedule.overtime_multiplier}x):</span> ${minutesToDisplay(bal.normalOvertimeMinutes)} = <b>${formatMoney(bal.normalOvertimeValue)}</b></div>
-      <div><span class="label">HE Feriado (${emp.schedule.holiday_multiplier}x):</span> ${minutesToDisplay(bal.holidayOvertimeMinutes)} = <b>${formatMoney(bal.holidayOvertimeValue)}</b></div>
-      <div><span class="label">Total HE a pagar:</span> <b style="color:#16a34a;font-size:14px">${formatMoney(bal.totalOvertimeValue)}</b></div>
-      ${bal.remainingDeficit > 0 ? `<div><span class="label">Desconto déficit (${minutesToDisplay(bal.remainingDeficit)}):</span> <b style="color:#dc2626">-${formatMoney(bal.deficitValue)}</b></div>` : ''}
-      <div><span class="label">Saldo Líquido:</span> <b style="color:${bal.totalOvertimeValue - bal.deficitValue >= 0 ? '#16a34a' : '#dc2626'};font-size:14px">${bal.totalOvertimeValue - bal.deficitValue >= 0 ? '+' : ''}${formatMoney(bal.totalOvertimeValue - bal.deficitValue)}</b></div>
+      <div><span class="label">Valor/hora:</span> ${formatMoney(b.vh)}</div>
+      <div><span class="label">Horas Normais (1×):</span> ${minutesToDisplay(b.normalMin)} = <b>${formatMoney(b.normalValue)}</b></div>
+      <div><span class="label">Horas 1,5×:</span> ${minutesToDisplay(b.premiumMin)} = <b>${formatMoney(b.premiumValue)}</b></div>
+      <div><span class="label">Total a Pagar:</span> <b style="color:#16a34a;font-size:14px">${formatMoney(b.total)}</b></div>
     </div>
+    <p style="font-size:10px;color:#555;margin-top:4px">Valor bruto por horas trabalhadas — adiantamentos são descontados na Folha.</p>
     ` : ''}
 
     <h2>Registro Diário</h2>
     <table>
       <thead><tr>
         <th>Data</th><th>Dia</th><th>Batidas</th>
-        <th class="text-right">Trabalhado</th><th class="text-right">Esperado</th>
-        <th class="text-right">HE</th><th class="text-center">Status</th>
+        <th class="text-right">Normais (1×)</th><th class="text-right">1,5×</th>
+        <th class="text-right">Total dia</th><th class="text-center">Status</th>
       </tr></thead>
       <tbody>${daysRows}
         <tr class="total-row">
           <td colspan="3">TOTAL</td>
-          <td class="text-right mono">${minutesToDisplay(bal.totalWorked)}</td>
-          <td class="text-right mono">${minutesToDisplay(bal.totalExpected)}</td>
-          <td class="text-right mono" style="color:#b45309">${minutesToDisplay(bal.totalRawOvertime)}</td>
+          <td class="text-right mono">${minutesToDisplay(b.normalMin)}</td>
+          <td class="text-right mono" style="color:#b45309">${minutesToDisplay(b.premiumMin)}</td>
+          <td class="text-right mono"><b>${minutesToDisplay(b.workedMin)}</b></td>
           <td></td>
         </tr>
       </tbody>
     </table>
-
-    ${bal.overtimeDays.length > 0 ? `
-    <h2>Detalhamento de Horas Extras</h2>
-    <table>
-      <thead><tr>
-        <th>Data</th><th>Dia</th><th>Batidas</th>
-        <th class="text-right">HE</th><th class="text-center">Tipo</th>
-      </tr></thead>
-      <tbody>${overtimeDetailRows}
-        <tr class="total-row">
-          <td colspan="3">TOTAL HE BRUTA</td>
-          <td class="text-right mono" style="color:#b45309">${minutesToDisplay(bal.totalRawOvertime)}</td>
-          <td></td>
-        </tr>
-        <tr class="total-row">
-          <td colspan="3">(-) Compensação déficit</td>
-          <td class="text-right mono" style="color:#dc2626">-${minutesToDisplay(Math.min(bal.deficitMinutes, bal.totalRawOvertime))}</td>
-          <td></td>
-        </tr>
-        <tr class="total-row" style="font-size:13px">
-          <td colspan="3"><b>= HE LÍQUIDA A PAGAR</b></td>
-          <td class="text-right mono" style="color:#16a34a"><b>${minutesToDisplay(bal.compensatedOvertime)}</b></td>
-          <td></td>
-        </tr>
-      </tbody>
-    </table>
-    ` : ''}
   `;
+}
 
+// ── Individual Employee Report ──────────────────────
+export function printEmployeeTimesheet(emp: EmployeeTimesheetData, periodLabel: string) {
   printHtml(`Ponto - ${emp.name}`, `
     <style>
       .absent-row td { background: #fecaca !important; color: #7f1d1d !important; font-weight: 700; }
@@ -217,116 +219,20 @@ export function printEmployeeTimesheet(emp: EmployeeTimesheetData, periodLabel: 
       tbody tr:nth-child(even).overtime-row td,
       tbody tr:nth-child(even).holiday-row td { background-image: linear-gradient(rgba(0,0,0,0.03), rgba(0,0,0,0.03)); }
     </style>
-    ${html}
+    ${employeeReportInnerHtml(emp, periodLabel)}
   `);
 }
 
 // ── Save Individual Employee Report as PDF ──────────
 export function saveEmployeeTimesheetPdf(emp: EmployeeTimesheetData, periodLabel: string) {
-  const bal = calcEmployeeBalance(emp);
-  const formatMoney = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-
-  const daysRows = emp.days.map(d => `
-    <tr class="${d.status === 'absent' ? 'absent-row' : d.status === 'overtime' ? 'overtime-row' : d.status === 'holiday' ? 'holiday-row' : ''}">
-      <td class="mono">${new Date(d.date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
-      <td>${DAYS_PT[d.dayOfWeek]}</td>
-      <td class="mono">${d.punches.join(' · ') || '—'}</td>
-      <td class="text-right mono">${minutesToDisplay(d.workedMinutes)}</td>
-      <td class="text-right mono" style="color:#111">${minutesToDisplay(d.expectedMinutes)}</td>
-      <td class="text-right mono">${d.overtimeMinutes > 0 ? `<b style="color:#b45309">${minutesToDisplay(d.overtimeMinutes)}</b>` : '—'}</td>
-      <td class="text-center">${statusLabel(d.status)}</td>
-    </tr>
-  `).join('');
-
-  const overtimeDetailRows = bal.overtimeDays.map(d => `
-    <tr>
-      <td class="mono">${new Date(d.date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
-      <td>${DAYS_PT[d.dayOfWeek]}</td>
-      <td class="mono">${d.punches.join(' · ')}</td>
-      <td class="text-right mono"><b style="color:#b45309">${minutesToDisplay(d.overtime)}</b></td>
-      <td class="text-center">${d.isHoliday ? 'Feriado' : 'Normal'}</td>
-    </tr>
-  `).join('');
-
   const html = `
     <style>
       .absent-row td { background: #fecaca !important; color: #7f1d1d !important; font-weight: 700; }
       .overtime-row td { background: #fde68a !important; color: #78350f !important; font-weight: 700; }
       .holiday-row td { background: #bfdbfe !important; color: #1e3a8a !important; font-weight: 700; }
     </style>
-    <h1>📋 Relatório de Ponto — ${escapeHtml(emp.name)}</h1>
-    <p class="subtitle">Período: ${escapeHtml(periodLabel)} · Gerado em ${new Date().toLocaleString('pt-BR')}</p>
-
-    <h2>Resumo</h2>
-    <div class="info-grid">
-      <div><span class="label">Horas Trabalhadas:</span> ${minutesToDisplay(bal.totalWorked)}</div>
-      <div><span class="label">Horas Esperadas:</span> ${minutesToDisplay(bal.totalExpected)}</div>
-      <div><span class="label">Horas Extras Brutas:</span> <b style="color:#b45309">${minutesToDisplay(bal.totalRawOvertime)}</b></div>
-      <div><span class="label">Déficit (atrasos + faltas):</span> <b style="color:#dc2626">${minutesToDisplay(bal.deficitMinutes)}</b></div>
-      <div><span class="label">HE após compensar déficit:</span> <b style="color:#16a34a">${minutesToDisplay(bal.compensatedOvertime)}</b></div>
-      <div><span class="label">Déficit restante:</span> ${bal.remainingDeficit > 0 ? `<b style="color:#dc2626">${minutesToDisplay(bal.remainingDeficit)}</b>` : '—'}</div>
-      <div><span class="label">Faltas (dias):</span> ${bal.absences}</div>
-      <div><span class="label">Feriados trabalhados:</span> ${bal.holidayWorked}</div>
-    </div>
-
-    ${emp.hourlySalary ? `
-    <h2>Valores</h2>
-    <div class="info-grid">
-      <div><span class="label">Valor/hora:</span> ${formatMoney(emp.hourlySalary)}</div>
-      <div><span class="label">HE Normal (${emp.schedule.overtime_multiplier}x):</span> ${minutesToDisplay(bal.normalOvertimeMinutes)} = <b>${formatMoney(bal.normalOvertimeValue)}</b></div>
-      <div><span class="label">HE Feriado (${emp.schedule.holiday_multiplier}x):</span> ${minutesToDisplay(bal.holidayOvertimeMinutes)} = <b>${formatMoney(bal.holidayOvertimeValue)}</b></div>
-      <div><span class="label">Total HE a pagar:</span> <b style="color:#16a34a;font-size:14px">${formatMoney(bal.totalOvertimeValue)}</b></div>
-      ${bal.remainingDeficit > 0 ? `<div><span class="label">Desconto déficit (${minutesToDisplay(bal.remainingDeficit)}):</span> <b style="color:#dc2626">-${formatMoney(bal.deficitValue)}</b></div>` : ''}
-      <div><span class="label">Saldo Líquido:</span> <b style="color:${bal.totalOvertimeValue - bal.deficitValue >= 0 ? '#16a34a' : '#dc2626'};font-size:14px">${bal.totalOvertimeValue - bal.deficitValue >= 0 ? '+' : ''}${formatMoney(bal.totalOvertimeValue - bal.deficitValue)}</b></div>
-    </div>
-    ` : ''}
-
-    <h2>Registro Diário</h2>
-    <table>
-      <thead><tr>
-        <th>Data</th><th>Dia</th><th>Batidas</th>
-        <th class="text-right">Trabalhado</th><th class="text-right">Esperado</th>
-        <th class="text-right">HE</th><th class="text-center">Status</th>
-      </tr></thead>
-      <tbody>${daysRows}
-        <tr class="total-row">
-          <td colspan="3">TOTAL</td>
-          <td class="text-right mono">${minutesToDisplay(bal.totalWorked)}</td>
-          <td class="text-right mono">${minutesToDisplay(bal.totalExpected)}</td>
-          <td class="text-right mono" style="color:#b45309">${minutesToDisplay(bal.totalRawOvertime)}</td>
-          <td></td>
-        </tr>
-      </tbody>
-    </table>
-
-    ${bal.overtimeDays.length > 0 ? `
-    <h2>Detalhamento de Horas Extras</h2>
-    <table>
-      <thead><tr>
-        <th>Data</th><th>Dia</th><th>Batidas</th>
-        <th class="text-right">HE</th><th class="text-center">Tipo</th>
-      </tr></thead>
-      <tbody>${overtimeDetailRows}
-        <tr class="total-row">
-          <td colspan="3">TOTAL HE BRUTA</td>
-          <td class="text-right mono" style="color:#b45309">${minutesToDisplay(bal.totalRawOvertime)}</td>
-          <td></td>
-        </tr>
-        <tr class="total-row">
-          <td colspan="3">(-) Compensação déficit</td>
-          <td class="text-right mono" style="color:#dc2626">-${minutesToDisplay(Math.min(bal.deficitMinutes, bal.totalRawOvertime))}</td>
-          <td></td>
-        </tr>
-        <tr class="total-row" style="font-size:13px">
-          <td colspan="3"><b>= HE LÍQUIDA A PAGAR</b></td>
-          <td class="text-right mono" style="color:#16a34a"><b>${minutesToDisplay(bal.compensatedOvertime)}</b></td>
-          <td></td>
-        </tr>
-      </tbody>
-    </table>
-    ` : ''}
+    ${employeeReportInnerHtml(emp, periodLabel)}
   `;
-
   const title = `Ponto - ${emp.name}`;
   const win = openPrintWindow(title);
   writePrintWindow(win, title, html);
@@ -334,95 +240,10 @@ export function saveEmployeeTimesheetPdf(emp: EmployeeTimesheetData, periodLabel
 
 // ── Print All Individual Reports (one per page) ──────
 export function printAllIndividualTimesheets(employees: EmployeeTimesheetData[], periodLabel: string) {
-  const pages = employees.map((emp, idx) => {
-    const bal = calcEmployeeBalance(emp);
-    const formatMoney = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-
-    const daysRows = emp.days.map(d => `
-      <tr class="${d.status === 'absent' ? 'absent-row' : d.status === 'overtime' ? 'overtime-row' : d.status === 'holiday' ? 'holiday-row' : ''}">
-        <td class="mono">${new Date(d.date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
-        <td>${DAYS_PT[d.dayOfWeek]}</td>
-        <td class="mono">${d.punches.join(' · ') || '—'}</td>
-        <td class="text-right mono">${minutesToDisplay(d.workedMinutes)}</td>
-        <td class="text-right mono" style="color:#111">${minutesToDisplay(d.expectedMinutes)}</td>
-        <td class="text-right mono">${d.overtimeMinutes > 0 ? `<b style="color:#b45309">${minutesToDisplay(d.overtimeMinutes)}</b>` : '—'}</td>
-        <td class="text-center">${statusLabel(d.status)}</td>
-      </tr>
-    `).join('');
-
-    const overtimeDetailRows = bal.overtimeDays.map(d => `
-      <tr>
-        <td class="mono">${new Date(d.date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
-        <td>${DAYS_PT[d.dayOfWeek]}</td>
-        <td class="mono">${d.punches.join(' · ')}</td>
-        <td class="text-right mono"><b style="color:#b45309">${minutesToDisplay(d.overtime)}</b></td>
-        <td class="text-center">${d.isHoliday ? 'Feriado' : 'Normal'}</td>
-      </tr>
-    `).join('');
-
-    return `
-      ${idx > 0 ? '<div style="page-break-before:always"></div>' : ''}
-      <h1>📋 Relatório de Ponto — ${escapeHtml(emp.name)}</h1>
-      <p class="subtitle">Período: ${escapeHtml(periodLabel)} · Impresso em ${new Date().toLocaleString('pt-BR')}</p>
-
-      <h2>Resumo</h2>
-      <div class="info-grid">
-        <div><span class="label">Horas Trabalhadas:</span> ${minutesToDisplay(bal.totalWorked)}</div>
-        <div><span class="label">Horas Esperadas:</span> ${minutesToDisplay(bal.totalExpected)}</div>
-        <div><span class="label">Horas Extras:</span> <b style="color:#b45309">${minutesToDisplay(bal.totalRawOvertime)}</b></div>
-        <div><span class="label">Déficit:</span> ${bal.deficitMinutes > 0 ? `<b style="color:#dc2626">${minutesToDisplay(bal.deficitMinutes)}</b>` : '—'}</div>
-        <div><span class="label">Faltas (dias):</span> ${bal.absences}</div>
-        <div><span class="label">Feriados trabalhados:</span> ${bal.holidayWorked}</div>
-      </div>
-
-      ${emp.hourlySalary ? `
-      <h2>Valores</h2>
-      <div class="info-grid">
-        <div><span class="label">Valor/hora:</span> ${formatMoney(emp.hourlySalary)}</div>
-        <div><span class="label">HE Normal (${emp.schedule.overtime_multiplier}x):</span> ${minutesToDisplay(bal.normalOvertimeMinutes)} = <b>${formatMoney(bal.normalOvertimeValue)}</b></div>
-        <div><span class="label">HE Feriado (${emp.schedule.holiday_multiplier}x):</span> ${minutesToDisplay(bal.holidayOvertimeMinutes)} = <b>${formatMoney(bal.holidayOvertimeValue)}</b></div>
-        <div><span class="label">Total HE a pagar:</span> <b style="color:#16a34a;font-size:14px">${formatMoney(bal.totalOvertimeValue)}</b></div>
-        ${bal.remainingDeficit > 0 ? `<div><span class="label">Desconto déficit:</span> <b style="color:#dc2626">-${formatMoney(bal.deficitValue)}</b></div>` : ''}
-        <div><span class="label">Total Líquido:</span> <b style="color:${bal.totalOvertimeValue - bal.deficitValue >= 0 ? '#16a34a' : '#dc2626'};font-size:14px">${bal.totalOvertimeValue - bal.deficitValue >= 0 ? '+' : ''}${formatMoney(bal.totalOvertimeValue - bal.deficitValue)}</b></div>
-      </div>
-      ` : ''}
-
-      <h2>Registro Diário</h2>
-      <table>
-        <thead><tr>
-          <th>Data</th><th>Dia</th><th>Batidas</th>
-          <th class="text-right">Trabalhado</th><th class="text-right">Esperado</th>
-          <th class="text-right">HE</th><th class="text-center">Status</th>
-        </tr></thead>
-        <tbody>${daysRows}
-          <tr class="total-row">
-            <td colspan="3">TOTAL</td>
-            <td class="text-right mono">${minutesToDisplay(bal.totalWorked)}</td>
-            <td class="text-right mono">${minutesToDisplay(bal.totalExpected)}</td>
-            <td class="text-right mono" style="color:#b45309">${minutesToDisplay(bal.totalRawOvertime)}</td>
-            <td></td>
-          </tr>
-        </tbody>
-      </table>
-
-      ${bal.overtimeDays.length > 0 ? `
-      <h2>Detalhamento de Horas Extras</h2>
-      <table>
-        <thead><tr>
-          <th>Data</th><th>Dia</th><th>Batidas</th>
-          <th class="text-right">HE</th><th class="text-center">Tipo</th>
-        </tr></thead>
-        <tbody>${overtimeDetailRows}
-          <tr class="total-row">
-            <td colspan="3">TOTAL HE</td>
-            <td class="text-right mono" style="color:#b45309">${minutesToDisplay(bal.totalRawOvertime)}</td>
-            <td></td>
-          </tr>
-        </tbody>
-      </table>
-      ` : ''}
-    `;
-  });
+  const pages = employees.map((emp, idx) => `
+    ${idx > 0 ? '<div style="page-break-before:always"></div>' : ''}
+    ${employeeReportInnerHtml(emp, periodLabel)}
+  `);
 
   printHtml(`Relatórios Individuais de Ponto`, `
     <style>
@@ -441,70 +262,43 @@ export function printAllIndividualTimesheets(employees: EmployeeTimesheetData[],
 // User pediu 22/05/2026: "quantidade esperada x quantidade trabalhada x
 // quantidade de hora extra por funcionário".
 export function printConsolidatedHoursReport(employees: EmployeeTimesheetData[], periodLabel: string) {
-  const allBalances = employees.map(emp => ({
-    name: emp.name,
-    ...calcEmployeeBalance(emp),
-  }));
+  const all = employees.map(emp => ({ name: emp.name, ...hoursWorkedDetail(emp) }));
 
-  const rows = allBalances.map(b => {
-    const balance = b.totalWorked - b.totalExpected; // saldo simples (positivo = trabalhou mais)
-    const adherencePct = b.totalExpected > 0
-      ? Math.round((b.totalWorked / b.totalExpected) * 100)
-      : 100;
-    const adherenceColor =
-      adherencePct >= 95 ? '#16a34a' :
-      adherencePct >= 80 ? '#b45309' :
-      '#dc2626';
-    return `
-      <tr>
-        <td class="emp-name">${escapeHtml(b.name)}</td>
-        <td class="text-right mono">${minutesToDisplay(b.totalExpected)}</td>
-        <td class="text-right mono"><b>${minutesToDisplay(b.totalWorked)}</b></td>
-        <td class="text-right mono">${b.totalRawOvertime > 0 ? `<b style="color:#16a34a">${minutesToDisplay(b.totalRawOvertime)}</b>` : '—'}</td>
-        <td class="text-right mono">${b.deficitMinutes > 0 ? `<span style="color:#dc2626">${minutesToDisplay(b.deficitMinutes)}</span>` : '—'}</td>
-        <td class="text-right mono" style="color:${balance >= 0 ? '#16a34a' : '#dc2626'};font-weight:700">${balance >= 0 ? '+' : ''}${minutesToDisplay(balance)}</td>
-        <td class="text-center">${b.absences > 0 ? `<b style="color:#dc2626">${b.absences}</b>` : '—'}</td>
-        <td class="text-center" style="color:${adherenceColor};font-weight:700">${adherencePct}%</td>
-      </tr>
-    `;
-  }).join('');
+  const rows = all.map(b => `
+    <tr>
+      <td class="emp-name">${escapeHtml(b.name)}</td>
+      <td class="text-right mono"><b>${minutesToDisplay(b.workedMin)}</b></td>
+      <td class="text-right mono">${b.normalMin > 0 ? minutesToDisplay(b.normalMin) : '—'}</td>
+      <td class="text-right mono">${b.premiumMin > 0 ? `<b style="color:#b45309">${minutesToDisplay(b.premiumMin)}</b>` : '—'}</td>
+      <td class="text-center">${b.daysWorked}</td>
+      <td class="text-center">${b.absences > 0 ? `<b style="color:#dc2626">${b.absences}</b>` : '—'}</td>
+      <td class="text-center">${b.incompleteDays > 0 ? `<b style="color:#b45309">${b.incompleteDays}</b>` : '—'}</td>
+    </tr>
+  `).join('');
 
-  const totExpected = allBalances.reduce((s, b) => s + b.totalExpected, 0);
-  const totWorked = allBalances.reduce((s, b) => s + b.totalWorked, 0);
-  const totOT = allBalances.reduce((s, b) => s + b.totalRawOvertime, 0);
-  const totDeficit = allBalances.reduce((s, b) => s + b.deficitMinutes, 0);
-  const totAbsences = allBalances.reduce((s, b) => s + b.absences, 0);
-  const overallBalance = totWorked - totExpected;
-  const overallAdherence = totExpected > 0 ? Math.round((totWorked / totExpected) * 100) : 100;
+  const totWorked = all.reduce((s, b) => s + b.workedMin, 0);
+  const totNormal = all.reduce((s, b) => s + b.normalMin, 0);
+  const totPremium = all.reduce((s, b) => s + b.premiumMin, 0);
+  const totDaysWorked = all.reduce((s, b) => s + b.daysWorked, 0);
+  const totAbsences = all.reduce((s, b) => s + b.absences, 0);
+  const totIncomplete = all.reduce((s, b) => s + b.incompleteDays, 0);
 
   const html = `
     <h1>📊 Relatório Consolidado de Horas</h1>
-    <p class="subtitle">Período: ${escapeHtml(periodLabel)} · ${employees.length} funcionários · Impresso em ${new Date().toLocaleString('pt-BR')}</p>
+    <p class="subtitle">Período: ${escapeHtml(periodLabel)} · ${employees.length} funcionários · Horas trabalhadas · Impresso em ${new Date().toLocaleString('pt-BR')}</p>
 
     <div style="display:flex;gap:6px;margin:6px 0;flex-wrap:wrap">
       <div class="summary-card">
-        <div class="sc-label">Horas Esperadas</div>
-        <div class="sc-value">${minutesToDisplay(totExpected)}</div>
+        <div class="sc-label">Total Trabalhado</div>
+        <div class="sc-value">${minutesToDisplay(totWorked)}</div>
       </div>
       <div class="summary-card">
-        <div class="sc-label">Horas Trabalhadas</div>
-        <div class="sc-value" style="color:#000">${minutesToDisplay(totWorked)}</div>
+        <div class="sc-label">Horas Normais (1×)</div>
+        <div class="sc-value">${minutesToDisplay(totNormal)}</div>
       </div>
       <div class="summary-card">
-        <div class="sc-label">Hora Extra</div>
-        <div class="sc-value" style="color:#16a34a">${minutesToDisplay(totOT)}</div>
-      </div>
-      <div class="summary-card">
-        <div class="sc-label">Déficit</div>
-        <div class="sc-value" style="color:#dc2626">${minutesToDisplay(totDeficit)}</div>
-      </div>
-      <div class="summary-card">
-        <div class="sc-label">Saldo</div>
-        <div class="sc-value" style="color:${overallBalance >= 0 ? '#16a34a' : '#dc2626'}">${overallBalance >= 0 ? '+' : ''}${minutesToDisplay(overallBalance)}</div>
-      </div>
-      <div class="summary-card">
-        <div class="sc-label">Aderência Geral</div>
-        <div class="sc-value">${overallAdherence}%</div>
+        <div class="sc-label">Horas 1,5×</div>
+        <div class="sc-value" style="color:#b45309">${minutesToDisplay(totPremium)}</div>
       </div>
       <div class="summary-card">
         <div class="sc-label">Faltas</div>
@@ -516,36 +310,34 @@ export function printConsolidatedHoursReport(employees: EmployeeTimesheetData[],
     <table>
       <thead><tr>
         <th>Funcionário</th>
-        <th class="text-right">Esperado</th>
         <th class="text-right">Trabalhado</th>
-        <th class="text-right">Hora Extra</th>
-        <th class="text-right">Déficit</th>
-        <th class="text-right">Saldo</th>
+        <th class="text-right">Normais (1×)</th>
+        <th class="text-right">1,5×</th>
+        <th class="text-center">Dias trab.</th>
         <th class="text-center">Faltas</th>
-        <th class="text-center">Aderência</th>
+        <th class="text-center">Incompl.</th>
       </tr></thead>
       <tbody>${rows}
         <tr class="total-row" style="font-size:12px">
           <td><b>TOTAL</b></td>
-          <td class="text-right mono"><b>${minutesToDisplay(totExpected)}</b></td>
           <td class="text-right mono"><b>${minutesToDisplay(totWorked)}</b></td>
-          <td class="text-right mono" style="color:#16a34a"><b>${minutesToDisplay(totOT)}</b></td>
-          <td class="text-right mono" style="color:#dc2626"><b>${minutesToDisplay(totDeficit)}</b></td>
-          <td class="text-right mono" style="color:${overallBalance >= 0 ? '#16a34a' : '#dc2626'};font-weight:700">${overallBalance >= 0 ? '+' : ''}${minutesToDisplay(overallBalance)}</td>
+          <td class="text-right mono">${minutesToDisplay(totNormal)}</td>
+          <td class="text-right mono" style="color:#b45309">${minutesToDisplay(totPremium)}</td>
+          <td class="text-center"><b>${totDaysWorked}</b></td>
           <td class="text-center" style="color:#dc2626"><b>${totAbsences}</b></td>
-          <td class="text-center"><b>${overallAdherence}%</b></td>
+          <td class="text-center" style="color:#b45309"><b>${totIncomplete || '—'}</b></td>
         </tr>
       </tbody>
     </table>
 
     <div style="margin-top:16px;font-size:10px;color:#222;line-height:1.5">
       <b>Como ler:</b>
-      <b>Esperado</b> = horas contratuais do período (calculado a partir do horário individual de cada funcionário) ·
-      <b>Trabalhado</b> = soma das batidas confirmadas (dias incompletos não entram) ·
-      <b>Hora Extra</b> = excedente trabalhado acima do esperado (regra CLT semanal) ·
-      <b>Déficit</b> = atrasos + faltas ·
-      <b>Saldo</b> = Trabalhado − Esperado (positivo = a favor do funcionário) ·
-      <b>Aderência</b> = Trabalhado ÷ Esperado · ≥95% verde, 80-94% âmbar, &lt;80% vermelho.
+      <b>Trabalhado</b> = soma das horas batidas (após descontar 1h de almoço em dia longo) ·
+      <b>Normais (1×)</b> = horas em dia útil até as 18:00 ·
+      <b>1,5×</b> = sábado, domingo, feriado ou após as 18:00 (não acumula) ·
+      <b>Dias trab.</b> = dias com alguma hora batida ·
+      <b>Faltas</b> = dias marcados como ausência ·
+      <b>Incompl.</b> = dias com nº ímpar de batidas (RH conferir).
     </div>
   `;
 
