@@ -1182,7 +1182,7 @@ export function useImportTimeRecords() {
         }
       }
 
-      return { batchId, inserted: insertedCount, skipped, archivedFilePath };
+      return { batchId, inserted: insertedCount, skipped, archivedFilePath, endDate };
     },
     onSuccess: (result) => {
       // Fix 22/05/2026: invalidação completa pra que TODAS as views que
@@ -1204,12 +1204,25 @@ export function useImportTimeRecords() {
       qc.invalidateQueries({ queryKey: ['bank_hours_per_sector'] });
       qc.invalidateQueries({ queryKey: ['punch_clock_day_calc'] });
       qc.invalidateQueries({ queryKey: ['punch_clock_week_calc'] });
-      if (result.skipped > 0) {
+      const ate = result.endDate && /^\d{4}-\d{2}-\d{2}$/.test(result.endDate)
+        ? result.endDate.split('-').reverse().join('/')
+        : null;
+      if (result.inserted === 0) {
+        // Caso clássico de "importei mas não entrou": o arquivo só tem dias que
+        // JÁ estavam no sistema. Aviso alto explicando que não há nada novo e
+        // que a exportação do relógio provavelmente não incluiu os dias recentes.
+        toast.warning(
+          `Nenhum registro NOVO. ${result.skipped > 0 ? `As ${result.skipped} batidas do arquivo` : 'O arquivo'}` +
+          `${ate ? ` (vai até ${ate})` : ''} já estavam no sistema. Se você esperava dias mais recentes, a ` +
+          `exportação do relógio não os incluiu — gere um download novo cobrindo até hoje, ou lance manualmente na aba Lançamento.`,
+          { duration: 14000 },
+        );
+      } else if (result.skipped > 0) {
         toast.success(
-          `${result.inserted} registros importados. ${result.skipped} já existiam e foram ignorados.${result.archivedFilePath ? ' Arquivo arquivado.' : ''}`
+          `${result.inserted} registro(s) novo(s)${ate ? ` (até ${ate})` : ''}. ${result.skipped} já existiam e foram ignorados.${result.archivedFilePath ? ' Arquivo arquivado.' : ''}`
         );
       } else {
-        toast.success(`${result.inserted} registros importados!${result.archivedFilePath ? ' Arquivo arquivado.' : ''}`);
+        toast.success(`${result.inserted} registro(s) importado(s)${ate ? ` (até ${ate})` : ''}!${result.archivedFilePath ? ' Arquivo arquivado.' : ''}`);
       }
     },
     onError: (e: Error) => toast.error(e.message),
