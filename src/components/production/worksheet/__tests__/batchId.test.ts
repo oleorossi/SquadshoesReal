@@ -31,8 +31,10 @@ describe('generateBatchId', () => {
   });
 
   it('differs by date', () => {
-    const a = generateBatchId('Aviamento', ['OP-001'], new Date('2026-05-22'));
-    const b = generateBatchId('Aviamento', ['OP-001'], new Date('2026-05-23'));
+    // Hora local explícita: 'YYYY-MM-DD' puro é parseado como UTC-meia-noite e,
+    // em fusos negativos (Brasil UTC-3), recua um dia no toYYMMDD local → '260521'.
+    const a = generateBatchId('Aviamento', ['OP-001'], new Date('2026-05-22T12:00:00'));
+    const b = generateBatchId('Aviamento', ['OP-001'], new Date('2026-05-23T12:00:00'));
     expect(a).not.toBe(b);
     expect(a).toContain('260522');
     expect(b).toContain('260523');
