@@ -226,9 +226,11 @@ export default function SaleOrderForm() {
     })).sort((a, b) => (a.r + a.c).localeCompare(b.r + b.c)),
   );
   const originalItemsSigRef = useRef<string | null>(null);
+  const originalDeadlineRef = useRef<string | null>(null);
   useEffect(() => {
     if (isEdit && originalItemsSigRef.current === null && items.some(i => i.reference_id)) {
       originalItemsSigRef.current = itemsPurchaseSig(items);
+      originalDeadlineRef.current = form.delivery_deadline || '';
     }
   }, [isEdit, items]);
   const [capacityResult, setCapacityResult] = useState<CapacityCheckResult | null>(null);
@@ -664,11 +666,16 @@ export default function SaleOrderForm() {
       }
     }
 
-    // Bug fix (2026-06-02): em EDIÇÃO, só re-checa estoque/solado (prompt de
-    // "gerar Ordem de Compra?") se os itens mudaram em algo que afeta compra
-    // (ref/qtd/cor/grade/tiras). Se mudou só data/obs/cliente/etc., pula direto
-    // pro check de capacidade — não reabre OC à toa.
+    // Bug fix (2026-06-02): em EDIÇÃO, não re-perguntar sobre compra/capacidade
+    // quando nada relevante mudou. Itens de compra inalterados (ref/qtd/cor/grade/
+    // tiras) → não re-checa estoque/solado (prompt "gerar Ordem de Compra?"). Se a
+    // data de faturamento também não mudou → salva direto (pula a capacidade tb).
+    // Só itens OU data mudando é que volta a checar. Na dúvida, checa (seguro).
     if (isEdit && originalItemsSigRef.current !== null && itemsPurchaseSig(items) === originalItemsSigRef.current) {
+      if (originalDeadlineRef.current !== null && (f.delivery_deadline || '') === originalDeadlineRef.current) {
+        doSubmit();
+        return;
+      }
       await runCapacityCheck(validItems);
       return;
     }
