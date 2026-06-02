@@ -1,5 +1,4 @@
 import { printHtml, writePrintWindow, openPrintWindow } from './printOrder';
-import { calculateWeeklyPeriod } from './weeklyTimeCalculation';
 import { calculateHourlyPayroll, splitDayMinutes, PREMIUM_MULTIPLIER } from './hourlyPayroll';
 import { escapeHtml } from './htmlUtils';
 
@@ -34,64 +33,6 @@ export interface EmployeeTimesheetData {
   hourlySalary?: number;
   /** Per-employee overtime hourly rate (R$/hr). Overrides hourlySalary * multiplier when set. */
   overtimeHourlyRate?: number | null;
-}
-
-function calcEmployeeBalance(emp: EmployeeTimesheetData) {
-  
-  // Build a minimal schedule for the calculation
-  const schedule = {
-    tolerance_minutes: 10,
-    weekly_hours: 44,
-    ...emp.schedule,
-  };
-  
-  const period = calculateWeeklyPeriod(emp.days, schedule);
-  
-  const totalWorked = period.totalWorkedMinutes;
-  const totalExpected = period.totalExpectedMinutes;
-  const absences = period.totalAbsences;
-  const holidayWorked = emp.days.filter(d => d.isHoliday && d.workedMinutes > 0);
-
-  // Weekly-based overtime
-  const totalRawOvertime = period.totalOvertimeMinutes;
-  const deficitMinutes = period.totalDeficitMinutes;
-  const compensatedOvertime = Math.max(0, totalRawOvertime - deficitMinutes);
-  const remainingDeficit = Math.max(0, deficitMinutes - totalRawOvertime);
-
-  // Overtime days detail (for display purposes)
-  const overtimeDays = emp.days.filter(d => d.overtimeMinutes > 0).map(d => ({
-    date: d.date,
-    dayOfWeek: d.dayOfWeek,
-    punches: d.punches,
-    overtime: d.overtimeMinutes,
-    isHoliday: d.isHoliday,
-  }));
-
-  // Holiday overtime (double rate) — capped to compensated total
-  const holidayOvertimeFull = holidayWorked.reduce((s, d) => s + d.workedMinutes, 0);
-  const holidayOvertimeMinutes = Math.min(compensatedOvertime, holidayOvertimeFull);
-  const normalOvertimeMinutes = Math.max(0, compensatedOvertime - holidayOvertimeMinutes);
-
-  // Value calculation — use per-employee rate when configured
-  const hourlyRate = emp.hourlySalary || 0;
-  const hasCustomRate = emp.overtimeHourlyRate != null && emp.overtimeHourlyRate > 0;
-  const effectiveOTRate = hasCustomRate
-    ? emp.overtimeHourlyRate!
-    : hourlyRate * emp.schedule.overtime_multiplier;
-  const effectiveHolidayRate = hasCustomRate
-    ? emp.overtimeHourlyRate! * (emp.schedule.holiday_multiplier / emp.schedule.overtime_multiplier)
-    : hourlyRate * emp.schedule.holiday_multiplier;
-  const normalOvertimeValue = (normalOvertimeMinutes / 60) * effectiveOTRate;
-  const holidayOvertimeValue = (holidayOvertimeMinutes / 60) * effectiveHolidayRate;
-  const totalOvertimeValue = normalOvertimeValue + holidayOvertimeValue;
-  const deficitValue = (remainingDeficit / 60) * hourlyRate;
-
-  return {
-    totalWorked, totalExpected, totalRawOvertime, absences, deficitMinutes,
-    compensatedOvertime, remainingDeficit, overtimeDays, holidayOvertimeMinutes,
-    normalOvertimeMinutes, normalOvertimeValue, holidayOvertimeValue, totalOvertimeValue,
-    deficitValue, holidayWorked: holidayWorked.length,
-  };
 }
 
 /**
@@ -496,7 +437,7 @@ export function printIndividualCalendarReport(emp: EmployeeTimesheetData, period
   if (emp.days.length === 0) return;
 
   const allDates = emp.days.map(d => d.date).sort();
-  const balance = calcEmployeeBalance(emp);
+  const b = hoursWorkedDetail(emp);
 
   // chunk into weeks of 7
   const weeks: string[][] = [];
@@ -504,7 +445,7 @@ export function printIndividualCalendarReport(emp: EmployeeTimesheetData, period
     weeks.push(allDates.slice(i, i + 7));
   }
 
-  const dayMap = new Map(emp.days.map(d => [d.date, d]));
+  const dayMap = new Map(b.days.map(d => [d.date, d]));
 
   const sections = weeks.map((weekDates, wi) => {
     const headerCells = weekDates.map(d => {
@@ -520,26 +461,26 @@ export function printIndividualCalendarReport(emp: EmployeeTimesheetData, period
       if (!day) return '<td style="text-align:center;color:#000;font-weight:700;font-size:13px;vertical-align:top;padding:6px">—</td>';
       const dt = new Date(d + 'T12:00:00');
       const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
-      const bgColor = day.status === 'absent' ? '#fecaca'
-        : day.status === 'overtime' ? '#fde68a'
-        : day.status === 'holiday' ? '#bfdbfe'
+      const bgColor = day.isAbsent ? '#fecaca'
+        : day.premiumMin > 0 ? '#fde68a'
+        : day.isHoliday ? '#bfdbfe'
         : isWeekend ? '#e5e7eb' : '';
       const punchesStr = day.punches.length > 0
         ? day.punches.map(p => `<div style="font-family:'Courier New',monospace;font-size:14px;font-weight:800;color:#000">${p}</div>`).join('')
         : '<span style="color:#000;font-weight:700;font-size:13px">—</span>';
-      const workedStr = day.workedMinutes > 0
-        ? `<div style="font-size:12px;color:#000;font-weight:700;margin-top:3px;font-family:'Courier New',monospace;border-top:1.5px solid #000;padding-top:3px">Trab: ${minutesToDisplay(day.workedMinutes)}</div>`
+      const workedStr = day.dayWorkedMin > 0
+        ? `<div style="font-size:12px;color:#000;font-weight:700;margin-top:3px;font-family:'Courier New',monospace;border-top:1.5px solid #000;padding-top:3px">Trab: ${minutesToDisplay(day.dayWorkedMin)}</div>`
         : '';
-      const expectedStr = day.expectedMinutes > 0
-        ? `<div style="font-size:11px;color:#1f2937;font-weight:600;font-family:'Courier New',monospace">Esp: ${minutesToDisplay(day.expectedMinutes)}</div>`
+      const premiumStr = day.premiumMin > 0
+        ? `<div style="font-size:12px;color:#7c2d12;font-weight:800;font-family:'Courier New',monospace">1,5×: ${minutesToDisplay(day.premiumMin)}</div>`
         : '';
-      const overtimeStr = day.overtimeMinutes > 0
-        ? `<div style="font-size:12px;color:#7c2d12;font-weight:800;font-family:'Courier New',monospace">+${minutesToDisplay(day.overtimeMinutes)}</div>`
+      const incompleteStr = day.incomplete
+        ? `<div style="font-size:10px;color:#b45309;font-weight:800;font-family:'Courier New',monospace">⚠ incompleto</div>`
         : '';
-      const statusLabel = day.status === 'absent' ? '<div style="font-size:11px;color:#7f1d1d;font-weight:800">FALTA</div>'
+      const statusLabel = day.isAbsent ? '<div style="font-size:11px;color:#7f1d1d;font-weight:800">FALTA</div>'
         : day.isHoliday ? '<div style="font-size:11px;color:#1e3a8a;font-weight:800">FERIADO</div>'
         : '';
-      return `<td style="text-align:center;vertical-align:top;padding:5px 4px;${bgColor ? `background:${bgColor};` : ''}">${statusLabel}${punchesStr}${workedStr}${expectedStr}${overtimeStr}</td>`;
+      return `<td style="text-align:center;vertical-align:top;padding:5px 4px;${bgColor ? `background:${bgColor};` : ''}">${statusLabel}${punchesStr}${workedStr}${premiumStr}${incompleteStr}</td>`;
     }).join('');
 
     return `
@@ -555,14 +496,14 @@ export function printIndividualCalendarReport(emp: EmployeeTimesheetData, period
     <h1 style="font-size:18px;margin-bottom:2px;color:#000;font-weight:900">📅 Calendário Individual — ${escapeHtml(emp.name)}</h1>
     <p class="subtitle" style="margin-bottom:4px;font-size:12px;color:#000;font-weight:600">Período: ${escapeHtml(periodLabel)} · ${allDates.length} dias · Impresso em ${new Date().toLocaleString('pt-BR')}</p>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 6px">
-      <div class="summary-card"><div class="sc-label">Trabalhado</div><div class="sc-value">${minutesToDisplay(balance.totalWorked)}</div></div>
-      <div class="summary-card"><div class="sc-label">Esperado</div><div class="sc-value">${minutesToDisplay(balance.totalExpected)}</div></div>
-      <div class="summary-card"><div class="sc-label">HE Líquida</div><div class="sc-value" style="color:#14532d">${minutesToDisplay(balance.compensatedOvertime)}</div></div>
-      <div class="summary-card"><div class="sc-label">Faltas</div><div class="sc-value" style="color:#7f1d1d">${balance.absences}</div></div>
+      <div class="summary-card"><div class="sc-label">Trabalhado</div><div class="sc-value">${minutesToDisplay(b.workedMin)}</div></div>
+      <div class="summary-card"><div class="sc-label">Normais (1×)</div><div class="sc-value">${minutesToDisplay(b.normalMin)}</div></div>
+      <div class="summary-card"><div class="sc-label">Horas 1,5×</div><div class="sc-value" style="color:#7c2d12">${minutesToDisplay(b.premiumMin)}</div></div>
+      <div class="summary-card"><div class="sc-label">Faltas</div><div class="sc-value" style="color:#7f1d1d">${b.absences}</div></div>
     </div>
     ${sections}
     <div style="margin-top:5px;font-size:11px;color:#000;font-weight:700">
-      <b>Legenda:</b> 🟡 HE · 🔴 Falta · 🔵 Feriado · Cinza = fim de semana
+      <b>Legenda:</b> 🟡 1,5× · 🔴 Falta · 🔵 Feriado · Cinza = fim de semana
     </div>
   `;
 
@@ -591,10 +532,10 @@ export function printCalendarReport(allData: EmployeeTimesheetData[], periodLabe
   const allDates = [...allDatesSet].sort();
 
   // Build a lookup: employee -> date -> day data
-  const empMap = new Map<string, Map<string, EmployeeTimesheetData['days'][0]>>();
+  const empMap = new Map<string, Map<string, ReturnType<typeof hoursWorkedDetail>['days'][number]>>();
   allData.forEach(emp => {
-    const dateMap = new Map<string, EmployeeTimesheetData['days'][0]>();
-    emp.days.forEach(d => dateMap.set(d.date, d));
+    const dateMap = new Map<string, ReturnType<typeof hoursWorkedDetail>['days'][number]>();
+    hoursWorkedDetail(emp).days.forEach(d => dateMap.set(d.date, d));
     empMap.set(emp.name, dateMap);
   });
 
@@ -623,20 +564,20 @@ export function printCalendarReport(allData: EmployeeTimesheetData[], periodLabe
         if (!day) return '<td style="text-align:center;color:#ccc;font-size:10px">—</td>';
         const dt = new Date(d + 'T12:00:00');
         const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
-        const bgColor = day.status === 'absent' ? '#fef2f2'
-          : day.status === 'overtime' ? '#fffbeb'
-          : day.status === 'holiday' ? '#eff6ff'
+        const bgColor = day.isAbsent ? '#fef2f2'
+          : day.premiumMin > 0 ? '#fffbeb'
+          : day.isHoliday ? '#eff6ff'
           : isWeekend ? '#f8f8f8' : '';
         const punchesStr = day.punches.length > 0
           ? day.punches.map(p => `<span style="font-family:'Courier New',monospace;font-size:10px">${p}</span>`).join('<br/>')
           : '<span style="color:#ccc;font-size:10px">—</span>';
-        const workedStr = day.workedMinutes > 0
-          ? `<div style="font-size:9px;color:#555;margin-top:2px;font-family:'Courier New',monospace">${minutesToDisplay(day.workedMinutes)}</div>`
+        const workedStr = day.dayWorkedMin > 0
+          ? `<div style="font-size:9px;color:#555;margin-top:2px;font-family:'Courier New',monospace">${minutesToDisplay(day.dayWorkedMin)}</div>`
           : '';
-        const overtimeStr = day.overtimeMinutes > 0
-          ? `<div style="font-size:9px;color:#b45309;font-weight:700;font-family:'Courier New',monospace">+${minutesToDisplay(day.overtimeMinutes)}</div>`
+        const premiumStr = day.premiumMin > 0
+          ? `<div style="font-size:9px;color:#b45309;font-weight:700;font-family:'Courier New',monospace">1,5×: ${minutesToDisplay(day.premiumMin)}</div>`
           : '';
-        return `<td style="text-align:center;vertical-align:top;padding:3px 4px;${bgColor ? `background:${bgColor};` : ''}">${punchesStr}${workedStr}${overtimeStr}</td>`;
+        return `<td style="text-align:center;vertical-align:top;padding:3px 4px;${bgColor ? `background:${bgColor};` : ''}">${punchesStr}${workedStr}${premiumStr}</td>`;
       }).join('');
       return `<tr><td style="font-weight:600;font-size:11px;white-space:nowrap;padding:4px 8px">${escapeHtml(name)}</td>${cells}</tr>`;
     }).join('');
@@ -655,7 +596,7 @@ export function printCalendarReport(allData: EmployeeTimesheetData[], periodLabe
     <p class="subtitle" style="margin-bottom:4px">Período: ${escapeHtml(periodLabel)} · ${sortedNames.length} funcionários · ${allDates.length} dias · Impresso em ${new Date().toLocaleString('pt-BR')}</p>
     ${sections}
     <div style="margin-top:4px;font-size:9px;color:#666">
-      <b>Legenda:</b> 🟡 HE · 🔴 Falta · 🔵 Feriado · Cinza = fim de semana
+      <b>Legenda:</b> 🟡 1,5× · 🔴 Falta · 🔵 Feriado · Cinza = fim de semana
     </div>
   `;
 
