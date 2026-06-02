@@ -1101,6 +1101,36 @@ export async function buildThermalLabelsPdf(
     return s + '…';
   };
 
+  // Pré-carrega as fotos de produto como PNG data URL — jsPDF precisa dos bytes
+  // embutidos, não de URL remota. O bucket reference-images tem CORS aberto, então
+  // a normalização via canvas não "tainta" o canvas. Falha de carga = etiqueta sem
+  // foto (degrada suave, nunca quebra o PDF inteiro). Downscale p/ não inflar o PDF.
+  const imageCache = new Map<string, { dataUrl: string; w: number; h: number }>();
+  const uniqueImgUrls = [...new Set(labels.map(l => l.imageUrl).filter(Boolean))] as string[];
+  await Promise.all(uniqueImgUrls.map(async (url) => {
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const im = new Image();
+        im.crossOrigin = 'anonymous';
+        im.onload = () => resolve(im);
+        im.onerror = () => reject(new Error('img load failed'));
+        im.src = url;
+      });
+      const maxDim = 260;
+      const natW = img.naturalWidth || 200;
+      const natH = img.naturalHeight || 200;
+      const s = Math.min(1, maxDim / Math.max(natW, natH));
+      const cw = Math.max(1, Math.round(natW * s));
+      const ch = Math.max(1, Math.round(natH * s));
+      const canvas = document.createElement('canvas');
+      canvas.width = cw; canvas.height = ch;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.drawImage(img, 0, 0, cw, ch);
+      imageCache.set(url, { dataUrl: canvas.toDataURL('image/png'), w: cw, h: ch });
+    } catch { /* sem foto pra essa URL — segue sem */ }
+  }));
+
   for (let i = 0; i < labels.length; i++) {
     const l = labels[i];
     if (i > 0) doc.addPage([W, H], W >= H ? 'landscape' : 'portrait');
@@ -1143,7 +1173,13 @@ export async function buildThermalLabelsPdf(
     const barcodeW = Math.min(W * 0.32, 32);
     const barcodeX = W - padX - barcodeW;
 
-    const infoX = sizeBoxX + sizeBoxW + 1.2;
+    // Coluna da foto do produto — entre o nº e as infos, só quando a imagem
+    // carregou. Espelha o layout da etiqueta HTML ([nº][foto][info][barcode]).
+    const imgData = l.imageUrl ? imageCache.get(l.imageUrl) : undefined;
+    const imgFrameW = imgData ? Math.min(W * 0.14, 13) : 0;
+    const imgFrameX = sizeBoxX + sizeBoxW + (imgData ? 1.0 : 0);
+
+    const infoX = imgFrameX + imgFrameW + 1.2;
     const infoW = barcodeX - infoX - 1.2;
 
     // Size box
@@ -1160,6 +1196,17 @@ export async function buildThermalLabelsPdf(
       const sizeText = (l.size || '—').slice(0, 6);
       doc.text(sizeText, sizeBoxX + sizeBoxW / 2, sizeBoxY + bodyH * 0.62, { align: 'center', baseline: 'middle' });
       doc.setTextColor(0, 0, 0);
+    }
+
+    // Foto do produto (contain dentro do frame, preserva proporção)
+    if (imgData) {
+      const ar = imgData.w / (imgData.h || 1);
+      let drawW = imgFrameW;
+      let drawH = imgFrameW / ar;
+      if (drawH > bodyH) { drawH = bodyH; drawW = bodyH * ar; }
+      const ix = imgFrameX + (imgFrameW - drawW) / 2;
+      const iy = bodyTop + (bodyH - drawH) / 2;
+      try { doc.addImage(imgData.dataUrl, 'PNG', ix, iy, drawW, drawH, undefined, 'FAST'); } catch { /* ignora foto que falhar */ }
     }
 
     // Info column (ref name, color, material, pedido)

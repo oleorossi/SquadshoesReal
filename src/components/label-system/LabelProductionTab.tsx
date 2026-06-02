@@ -809,14 +809,33 @@ export function LabelProductionTab() {
     }
     setIsGenerating(true);
     try {
+      const logoUrl = new URL(logoImg, window.location.origin).href;
       const uniqueRefIds = [...new Set(thermalGroups.map(g => g.referenceId))];
       const [refDataMap, materialMap] = await Promise.all([
-        supabase.from('technical_sheets').select('id, code, shoe_category').in('id', uniqueRefIds)
+        supabase.from('technical_sheets').select('id, image_url, images, code, shoe_category').in('id', uniqueRefIds)
           .then(({ data }) => { const map = new Map<string, any>(); for (const r of data || []) map.set(r.id, r); return map; }),
         Promise.all(uniqueRefIds.map(async id => [id, await fetchMainMaterial(id).catch(() => '')] as const)).then(entries => new Map(entries)),
       ]);
+      // Resolve a foto do produto (mesmo fallback de 5 níveis da térmica HTML).
+      // O PDF não embutia foto — usuário imprimia via PDF e recebia etiqueta sem
+      // foto do produto. Aqui pré-resolvemos as URLs; buildThermalLabelsPdf baixa
+      // e embute os bytes.
+      const imageRequests = new Map<string, { referenceId: string; colorName: string }>();
+      for (const group of thermalGroups) {
+        const colorName = group.colors[0] || '';
+        imageRequests.set(`${group.referenceId}|${colorName}`, { referenceId: group.referenceId, colorName });
+        for (const order of group.orders) {
+          const orderColor = order.color || colorName;
+          imageRequests.set(`${group.referenceId}|${orderColor}`, { referenceId: group.referenceId, colorName: orderColor });
+        }
+      }
+      const imageResults = await Promise.all([...imageRequests.entries()].map(async ([key, { referenceId, colorName }]) => {
+        const url = await resolveProductImage({ referenceId, colorName, fallbackUrl: logoUrl }).catch(() => logoUrl);
+        return [key, url] as const;
+      }));
+      const imageMap = new Map(imageResults);
 
-      const labels: { refCode: string; refName: string; mainMaterial: string; color: string; size: string; barcode: string; shoeCategory?: string; clientOrderNumber?: string; qty?: number; strapsLabel?: string; }[] = [];
+      const labels: { refCode: string; refName: string; mainMaterial: string; color: string; size: string; barcode: string; shoeCategory?: string; clientOrderNumber?: string; qty?: number; strapsLabel?: string; imageUrl?: string; }[] = [];
       for (const group of thermalGroups) {
         const mainMaterial = materialMap.get(group.referenceId) || '';
         const refData = refDataMap.get(group.referenceId);
@@ -832,6 +851,7 @@ export function LabelProductionTab() {
                 shoeCategory: refData?.shoe_category || '',
                 clientOrderNumber: group.clientOrderNumber || '',
                 strapsLabel: getEffectiveStrapsLabel(group),
+                imageUrl: imageMap.get(`${group.referenceId}|${colorName}`) || logoUrl,
               });
             }
           }
@@ -848,6 +868,7 @@ export function LabelProductionTab() {
                 clientOrderNumber: group.clientOrderNumber || '',
                 qty: pairsInOneFicha,
                 strapsLabel: getEffectiveStrapsLabel(group),
+                imageUrl: imageMap.get(`${group.referenceId}|${orderColor}`) || imageMap.get(`${group.referenceId}|${group.colors[0] || ''}`) || logoUrl,
               });
             }
           }
