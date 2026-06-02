@@ -188,6 +188,10 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
   const { density, isVisible } = useTableView();
   const dCls = densityClasses(density);
   const isCompact = density === 'compact';
+  // Issues de config (largura faltando, conversion_rate zerado, preço zerado)
+  // — uma query global (cache compartilhado via React Query entre as várias
+  // instâncias de ProductRows); map em memória pra lookup O(1) por produto na linha.
+  const { byProduct: configIssuesByProduct } = useMaterialsConfigIssuesByProduct();
   return (
     <>
       <ImageZoomDialog src={zoomImg?.src || ''} alt={zoomImg?.alt || ''} open={!!zoomImg} onOpenChange={(o) => { if (!o) setZoomImg(null); }} />
@@ -471,9 +475,6 @@ type SubGroup = {
 export function ProductTable({ products, onEdit, onDelete, externalSort }: ProductTableProps) {
   const { data: groups = [] } = useGroups();
   const { density, isVisible, visibleCount } = useTableView();
-  // Issues de config (largura faltando, conversion_rate zerado, preço zerado)
-  // — uma query global; map em memória pra lookup O(1) por produto na linha.
-  const { byProduct: configIssuesByProduct } = useMaterialsConfigIssuesByProduct();
   // Material column always shown; +1 for it.
   const colCount = visibleCount + 1;
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
