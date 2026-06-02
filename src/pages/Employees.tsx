@@ -17,30 +17,25 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { BulkActionsBar } from '@/components/ui/bulk-actions-bar';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { confirmAndBulkDelete } from '@/lib/bulkConfirm';
-import { SeveranceSimulator } from '@/components/hr/SeveranceSimulator';
 import {
   useEmployees, useAddEmployee, useUpdateEmployee, useDeleteEmployee,
   useEmployeeAdvances, useAddAdvance, useDeleteAdvance,
   Employee, EmployeeAdvance,
 } from '@/hooks/useEmployees';
-import { useWorkSchedules } from '@/hooks/useTimesheet';
-import { useBenefitsConfig } from '@/hooks/useRH';
+import { MONTHLY_HOURS_DIVISOR } from '@/lib/hourlyPayroll';
 import { toast } from 'sonner';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { normalizeForSearch } from '@/lib/searchUtils';
 
+// Folha por hora: o que importa do cadastro é nome, matrícula, salário-referência
+// (220h/mês) e contato/PIX. HE/escala/mensalista-diarista foram aposentados (as
+// colunas ainda existem no banco, só não são mais editadas aqui).
 const emptyEmployee = {
-  name: '', cpf: '', external_id: '', role: '', department: '', salary: 0, overtime_hourly_rate: null as number | null,
-  hourly_rate: null as number | null, overtime_multiplier: 1.20,
-  payment_type: 'mensalista' as 'mensalista' | 'diarista', daily_rate: null as number | null,
-  work_schedule_id: null as string | null, phone: '', whatsapp: '', pix_key: '', pix_type: '', notes: '', active: true, admission_date: new Date().toISOString().split('T')[0], termination_date: null as string | null,
-  // Multiplicadores POR funcionário (regime contrato — cada contrato pode ter regra própria).
-  // Default 0 = hora simples (sem adicional). 50/100/20 = padrão CLT se quiser usar.
-  overtime_50_pct: 0,
-  overtime_100_pct: 0,
-  night_bonus_pct: 0,
+  name: '', cpf: '', external_id: '', role: '', department: '', salary: 0,
+  phone: '', whatsapp: '', pix_key: '', pix_type: '', notes: '', active: true,
+  admission_date: new Date().toISOString().split('T')[0], termination_date: null as string | null,
 };
 
 const emptyAdvance = {
@@ -58,9 +53,6 @@ const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', curren
 export default function Employees() {
   const { data: employees = [], isLoading, isError } = useEmployees();
   const { data: advances = [] } = useEmployeeAdvances(null);
-  const { data: schedules = [] } = useWorkSchedules();
-  const { data: benefitsConfig } = useBenefitsConfig();
-  const monthlyHours = benefitsConfig?.monthly_hours || 220;
   const addEmployee = useAddEmployee();
   const updateEmployee = useUpdateEmployee();
   const deleteEmployee = useDeleteEmployee();
@@ -257,29 +249,22 @@ export default function Employees() {
                     <TableHead>Cargo / Depto</TableHead>
                     <TableHead>Admissão</TableHead>
                     <TableHead className="text-right">Salário</TableHead>
-                    <TableHead className="text-right">R$/hr (CLT)</TableHead>
-                    <TableHead className="text-right">Taxa HE</TableHead>
-                    <TableHead>Escala</TableHead>
+                    <TableHead className="text-right">Valor-hora</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Contato</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredEmployees.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={10} className="p-0">
+                      <TableCell colSpan={9} className="p-0">
                         <EmptyState icon={Users2} title="Nenhum funcionário encontrado" description="Ajuste os filtros ou cadastre um novo funcionário." />
                       </TableCell>
                     </TableRow>
                   )}
                   {filteredEmployees.map(e => {
-                    const hourlyCLT = e.salary > 0 ? e.salary / monthlyHours : null;
-                    const schedule = schedules.find(s => s.id === e.work_schedule_id);
-                    const defaultSchedule = schedules.find(s => s.is_default);
-                    const effectiveSchedule = schedule || defaultSchedule;
-                    const computedOTRate = hourlyCLT && effectiveSchedule
-                      ? hourlyCLT * effectiveSchedule.overtime_multiplier
-                      : null;
+                    const valorHora = e.salary > 0 ? e.salary / MONTHLY_HOURS_DIVISOR : null;
                     return (
                     <TableRow
                       key={e.id}
@@ -314,21 +299,7 @@ export default function Employees() {
                       </TableCell>
                       <TableCell className="font-mono text-sm text-right">{fmt(e.salary)}</TableCell>
                       <TableCell className="font-mono text-sm text-right text-muted-foreground">
-                        {hourlyCLT != null ? fmt(hourlyCLT) : '—'}
-                      </TableCell>
-                      <TableCell className="font-mono text-sm text-right">
-                        {e.overtime_hourly_rate != null && e.overtime_hourly_rate > 0 ? (
-                          <span className="text-amber-700 dark:text-amber-400 font-semibold">{fmt(e.overtime_hourly_rate)}</span>
-                        ) : computedOTRate != null ? (
-                          <span className="text-muted-foreground text-xs" title={`Auto: salário/220 × ${effectiveSchedule?.overtime_multiplier}x`}>{fmt(computedOTRate)}</span>
-                        ) : <span className="text-muted-foreground text-xs">—</span>}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {schedule
-                          ? <Badge variant="secondary" className="text-xs gap-1">{schedule.name}</Badge>
-                          : defaultSchedule
-                          ? <span className="text-xs text-muted-foreground" title="Usando escala padrão">{defaultSchedule.name}</span>
-                          : <span className="text-xs text-muted-foreground">—</span>}
+                        {valorHora != null ? `${fmt(valorHora)}/h` : '—'}
                       </TableCell>
                       <TableCell>
                         {e.active
@@ -483,13 +454,6 @@ export default function Employees() {
               </p>
             </div>
 
-            {/* Simulador de indenização — só renderiza quando termination_date preenchida.
-                Mostra breakdown CLT (saldo, 13º, férias, aviso, multa FGTS) + total. */}
-            <SeveranceSimulator
-              salary={form.salary}
-              admissionDate={form.admission_date}
-              terminationDate={(form as any).termination_date}
-            />
             <div className="col-span-2">
               <Label>Salário (R$)</Label>
               <CurrencyInput value={form.salary} onChange={v => setForm(f => ({ ...f, salary: v }))} />

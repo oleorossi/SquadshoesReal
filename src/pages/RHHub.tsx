@@ -36,7 +36,7 @@ const TAB_HEADERS: Record<Tab, { section: string; title: string; description: st
   funcionarios: { section: 'RH · COLABORADORES', title: 'Funcionários',    description: 'Gestão de equipe e adiantamentos' },
   ponto:        { section: 'RH · PONTO',         title: 'Controle de Ponto', description: 'Importação e lançamento de batidas' },
   folha:        { section: 'RH · FOLHA',         title: 'Folha por hora',   description: 'Pagamento por hora trabalhada e adiantamentos' },
-  relatorios:   { section: 'RH · RELATÓRIOS',    title: 'Relatórios',       description: 'Custo, produtividade e quadro' },
+  relatorios:   { section: 'RH · RELATÓRIOS',    title: 'Relatórios',       description: 'Relógio de ponto e pagamento por horas' },
 };
 
 // URLs/estado legados que apontavam pra abas aposentadas → folha/relatórios.
