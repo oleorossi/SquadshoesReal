@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import {
-  useWorkSchedules, useTimeRecords, useImportBatches,
+  useWorkSchedules, useTimeRecords,
   WorkSchedule, TimeRecord,
 } from '@/hooks/useTimesheet';
 import { useEmployees } from '@/hooks/useEmployees';
@@ -15,7 +15,6 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { Clipboard as ClipboardEdit, Plus, Trash as Trash2, FloppyDisk as Save, CaretLeft as ChevronLeft, CaretRight as ChevronRight, User, Users as Users2, X, Clock } from '@phosphor-icons/react';
-import { getBatchDateRange } from '@/lib/timeControlFilters';
 
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const DAYS_FULL = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
@@ -60,30 +59,21 @@ function timeToMinutes(t: string): number {
 export default function ManualEntryTab() {
   const queryClient = useQueryClient();
   const { data: schedules = [] } = useWorkSchedules();
-  const { data: batches = [] } = useImportBatches();
   const { data: employees = [] } = useEmployees();
 
-  const [selectedBatch, setSelectedBatch] = useState<string>('__latest__');
   const [filterEmployee, setFilterEmployee] = useState<string>('__all__');
   const [weekStart, setWeekStart] = useState<Date>(() => getMonday(new Date()));
   const [cellDialog, setCellDialog] = useState<CellDialogState | null>(null);
   const [newPunch, setNewPunch] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const activeBatchId = selectedBatch === '__latest__' ? batches[0] : selectedBatch;
-  const batchRange = activeBatchId ? getBatchDateRange(activeBatchId) : null;
-
   const weekDates = useMemo(() => Array.from({ length: 6 }, (_, i) => toDateStr(addDays(weekStart, i))), [weekStart]);
   const weekEnd = weekDates[5];
 
-  const startDate = batchRange ? batchRange.startDate : weekDates[0];
-  const endDate = batchRange ? batchRange.endDate : weekEnd;
-
-  const { data: records = [], isLoading } = useTimeRecords(
-    activeBatchId || undefined,
-    startDate,
-    endDate,
-  );
+  // Carrega por SEMANA VISÍVEL (sem filtro de batch): a grade mostra TODO
+  // registro do intervalo — importado OU lançado manualmente — pra o que você
+  // salva aparecer na hora, independente do batch de origem.
+  const { data: records = [], isLoading } = useTimeRecords(undefined, weekDates[0], weekEnd);
 
   const defaultSchedule: WorkSchedule = schedules.find(s => s.is_default) || schedules[0] || {
     id: '', name: 'Default', entry_time: '08:00', lunch_start: '12:00', lunch_end: '13:00',
@@ -146,6 +136,20 @@ export default function ManualEntryTab() {
     setCellDialog(d => d ? { ...d, punches: updated } : d);
   };
 
+  // Preenche entrada+saída padrão (padrão Squad: 2 batidas/dia, almoço inferido)
+  // ciente do dia da semana: Dom = sem expediente; Sáb usa horários de sábado.
+  const fillStandardDay = () => {
+    if (!cellDialog) return;
+    const dow = new Date(cellDialog.dateStr + 'T12:00:00').getDay();
+    if (dow === 0) {
+      toast.info('Domingo não tem expediente padrão. Adicione manualmente se houve trabalho.');
+      return;
+    }
+    const entry = (dow === 6 ? defaultSchedule.saturday_entry : defaultSchedule.entry_time) || '08:00';
+    const exit = (dow === 6 ? defaultSchedule.saturday_exit : defaultSchedule.exit_time) || '17:48';
+    setCellDialog(d => d ? { ...d, punches: [`${entry}*`, `${exit}*`] } : d);
+  };
+
   const saveCell = async () => {
     if (!cellDialog) return;
     setSaving(true);
@@ -158,16 +162,18 @@ export default function ManualEntryTab() {
           .eq('id', existingRecord.id);
         if (error) throw error;
       } else {
-        const batchId = activeBatchId || `manual_${new Date().toISOString().slice(0, 10)}`;
+        // external_id + depto do cadastro (quando casar por nome) → a folha
+        // casa de forma robusta por matrícula, não só por nome.
+        const reg = employees.find(e => e.name === employeeName);
         const { error } = await supabase
           .from('time_records')
           .insert({
             employee_name: employeeName,
-            employee_external_id: null,
-            department: '',
+            employee_external_id: (reg as any)?.external_id ?? null,
+            department: (reg as any)?.department ?? '',
             record_date: dateStr,
             punches,
-            import_batch: batchId,
+            import_batch: `manual_${dateStr}`,
           });
         if (error) throw error;
       }
@@ -209,18 +215,6 @@ export default function ManualEntryTab() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-3 items-end">
-            <div className="space-y-1.5 min-w-[200px]">
-              <Label className="text-xs">Importação</Label>
-              <Select value={selectedBatch} onValueChange={setSelectedBatch}>
-                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__latest__">Última importação</SelectItem>
-                  {batches.map(b => (
-                    <SelectItem key={b} value={b}>{b}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
             <div className="space-y-1.5 min-w-[200px]">
               <Label className="text-xs">Funcionário</Label>
               <Select value={filterEmployee} onValueChange={setFilterEmployee}>
@@ -418,6 +412,12 @@ export default function ManualEntryTab() {
                   </div>
                 )}
               </div>
+
+              {/* Quick-fill: entrada/saída padrão num clique (acelera o lançamento
+                  de muitos dias; o usuário revisa e ajusta antes de salvar). */}
+              <Button variant="outline" size="sm" onClick={fillStandardDay} className="w-full gap-1.5">
+                <Clock className="h-3.5 w-3.5" /> Preencher entrada/saída padrão
+              </Button>
 
               {/* Add punch */}
               <div className="space-y-1.5">
