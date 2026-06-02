@@ -1,5 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import {
+  fetchConsumptionContext,
+  fetchTechnicalSheetsForConsumption,
+  computeConsumptionForItems,
+  type ConsumptionItem,
+  type MaterialConsumptionRow,
+} from '@/lib/orderConsumption';
 
 export type ConsumptionComponent =
   | 'Solado'
@@ -7,9 +13,13 @@ export type ConsumptionComponent =
   | 'Forração'
   | 'Palmilha'
   | 'Fachete'
+  | 'Tiras'
+  | 'Químicos'
+  | 'Embalagem'
   | 'Componente Direto'
   | 'BOM'
-  | 'Forração (alternativa)';
+  | 'Forração (alternativa)'
+  | 'Outros';
 
 export interface ConsumptionRow {
   component: ConsumptionComponent;
@@ -32,21 +42,65 @@ export interface BulkOrderConsumptionInput {
   quantity: number;
   color: string | null;
   size?: number | null;
+  /** Grade BASE (por 1 ficha fechada) — necessária pro consumo por numeração.
+   *  Sem ela, o motor cai no consumo médio escalar (menos preciso). */
+  grade?: Record<string, number> | null;
+  fichas?: number | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  strap_colors?: any[] | null;
 }
 
+/** Mapa componentType (canônico) → component (taxonomia da ficha do operador). */
+const COMPONENT_TYPE_TO_BULK: Record<string, ConsumptionComponent> = {
+  Cabedal: 'Cabedal',
+  Forração: 'Forração',
+  Palmilha: 'Palmilha',
+  Solado: 'Solado',
+  Tiras: 'Tiras',
+  Químicos: 'Químicos',
+  Embalagem: 'Embalagem',
+  Outros: 'Outros',
+};
+
 /**
- * Hook bulk pra fichas de operador: busca consumo de N OPs em paralelo
- * (deduplicadas por (ref, cor, qtd)). Retorna mapa pra lookup rápido.
+ * Adapta uma linha do motor canônico (`MaterialConsumptionRow`) para o shape
+ * que as fichas do operador consomem (`ConsumptionRow`). A QUANTIDADE
+ * (`required`) é o `totalQuantity` cru do motor — paridade exata com o modal.
  *
- * Diferente de `useOrderConsumption` (single, com validation completa),
- * este hook é otimizado pra **renderizar** consumo previsto em fichas
- * impressas — formato simples, sem validation, com dedup automática.
+ * `product_id` é uma chave sintética estável (componentType+grupo+cor+unidade)
+ * só pra agregação/React key — as fichas não usam o id real do produto.
+ * Disponibilidade não é calculada aqui (a ficha mostra só o consumo previsto).
+ */
+export const toBulkConsumptionRow = (r: MaterialConsumptionRow): ConsumptionRow => ({
+  component: COMPONENT_TYPE_TO_BULK[r.componentType] ?? 'Outros',
+  product_id: `${r.componentType}::${r.groupName}::${r.color}::${r.productUnit}`,
+  product_name: r.groupName || r.materialName,
+  color: r.color,
+  consumption_per_unit: 0,
+  required: r.totalQuantity,
+  available: 0,
+  stock_ok: false,
+  debit_mode: 'soft',
+  unit: r.productUnit,
+  category: r.groupName,
+  source: r.widthMissing ? 'width_missing' : 'canonical',
+});
+
+/**
+ * Hook bulk pra fichas de operador: calcula consumo de N OPs (deduplicadas por
+ * (ref, cor, qtd)) e retorna mapa pra lookup rápido.
  *
- * Padrão de manufacturing traveler de mercado (Craftybase, ERPNext, Tulip):
- * mostrar "vai consumir X dm² de couro" pra cada ficha.
+ * RELIGADO (2026-06-02) ao motor CANÔNICO `@/lib/orderConsumption` — o MESMO
+ * que alimenta o modal "Consumo de Materiais" do PV. Antes usava o RPC SQL
+ * `calculate_order_consumption`, caminho divergente que produzia nomes/
+ * quantidades desalinhados na ficha. Agora 1 OP = 1 item e o resultado bate
+ * com o modal por construção (ver `src/lib/__tests__/orderConsumption.test.ts`).
+ *
+ * O RPC SQL continua existindo pra custeio/MRP (agregação de compra) — só a
+ * UI da ficha deixou de usá-lo.
  */
 export const useBulkOrderConsumption = (inputs: BulkOrderConsumptionInput[]) => {
-  // Dedup determinístico
+  // Dedup determinístico por (ref, cor, qtd) — mesmo contrato de bulkConsumptionKey.
   const uniqueInputs = Array.from(
     new Map(
       inputs
@@ -62,7 +116,7 @@ export const useBulkOrderConsumption = (inputs: BulkOrderConsumptionInput[]) => 
     queryKey: [
       'bulk-order-consumption',
       uniqueInputs
-        .map(i => `${i.reference_id}::${i.color}::${i.quantity}`)
+        .map(i => `${i.reference_id}::${i.color}::${i.quantity}::${JSON.stringify(i.grade ?? null)}`)
         .sort()
         .join('|'),
     ],
@@ -70,38 +124,33 @@ export const useBulkOrderConsumption = (inputs: BulkOrderConsumptionInput[]) => 
     staleTime: 60 * 1000,
     queryFn: async (): Promise<Map<string, ConsumptionRow[]>> => {
       const byKey = new Map<string, ConsumptionRow[]>();
-      await Promise.all(
-        uniqueInputs.map(async input => {
-          const key = bulkConsumptionKey(
-            input.reference_id,
-            input.color,
-            input.quantity,
-          );
-          try {
-            const { data, error } = await supabase.rpc(
-              'calculate_order_consumption',
-              {
-                p_reference_id: input.reference_id,
-                p_order_quantity: input.quantity,
-                p_color: input.color ?? '',
-                p_size: input.size ?? null,
-                p_material_variant_id: null,
-              },
-            );
-            if (error) {
-              console.warn(
-                `[useBulkOrderConsumption] RPC error for ${key}: ${error.message}`,
-              );
-              byKey.set(key, []);
-              return;
-            }
-            byKey.set(key, ((data as unknown) as ConsumptionRow[]) ?? []);
-          } catch (e) {
-            console.warn(`[useBulkOrderConsumption] exception for ${key}:`, e);
-            byKey.set(key, []);
-          }
-        }),
-      );
+
+      const refIds = [...new Set(uniqueInputs.map(i => i.reference_id).filter(Boolean))];
+      // Contexto + fichas técnicas em batch (1 par de fetches pra todas as OPs).
+      const [ctx, sheetMap] = await Promise.all([
+        fetchConsumptionContext(refIds),
+        fetchTechnicalSheetsForConsumption(refIds),
+      ]);
+
+      for (const input of uniqueInputs) {
+        const key = bulkConsumptionKey(input.reference_id, input.color, input.quantity);
+        try {
+          const item: ConsumptionItem = {
+            reference_id: input.reference_id,
+            color: input.color,
+            quantity: input.quantity,
+            grade: input.grade ?? null,
+            fichas: input.fichas ?? null,
+            strap_colors: input.strap_colors ?? null,
+            technical_sheets: sheetMap.get(input.reference_id) ?? null,
+          };
+          const rows = computeConsumptionForItems([item], ctx);
+          byKey.set(key, rows.map(toBulkConsumptionRow));
+        } catch (e) {
+          console.warn(`[useBulkOrderConsumption] erro ao calcular ${key}:`, e);
+          byKey.set(key, []);
+        }
+      }
       return byKey;
     },
   });
@@ -116,18 +165,26 @@ export const bulkConsumptionKey = (
 /**
  * Filtra componentes relevantes a um setor. Padrão de mercado: cada
  * estação só vê o que ela consome ou processa — não polui a ficha.
+ *
+ * Roteia a taxonomia canônica do motor (Cabedal/Forração/Palmilha/Solado/
+ * Tiras/Químicos/Embalagem/Outros) + fallback por nome do material.
  */
 export const filterConsumptionForSector = (
   rows: ConsumptionRow[],
   sector: string,
 ): ConsumptionRow[] => {
-  const byName = (regex: RegExp) => (r: ConsumptionRow) =>
+  // ⚠ byName recebe (row, regex) e RETORNA boolean. Antes era currificado
+  // (`byName(regex)` devolvia uma função) e os call sites usavam `... || byName(/x/)`
+  // sem aplicar a `r` — uma função é sempre truthy, então o filtro era um NO-OP
+  // (devolvia TODAS as linhas em todo setor). Com o motor canônico alimentando
+  // `component`/`product_name` corretos, o filtro passa a de fato segmentar.
+  const byName = (r: ConsumptionRow, regex: RegExp) =>
     regex.test((r.product_name || '').toLowerCase()) ||
     regex.test((r.category || '').toLowerCase());
 
   switch (sector) {
     case 'Corte Palmilha':
-      return rows.filter(r => r.component === 'Palmilha' || byName(/palmilha|eva|forma/));
+      return rows.filter(r => r.component === 'Palmilha' || byName(r, /palmilha|eva|forma/));
     case 'Corte Forração':
       return rows.filter(r => r.component === 'Forração' || r.component === 'Fachete');
     case 'Corte Cabedal':
@@ -136,33 +193,36 @@ export const filterConsumptionForSector = (
       return rows.filter(r =>
         r.component === 'Cabedal' ||
         r.component === 'Forração' ||
-        byName(/linha|fio/),
+        byName(r, /linha|fio/),
       );
     case 'Aviamento':
       return rows.filter(r =>
+        r.component === 'Tiras' ||
+        r.component === 'Outros' ||
         r.component === 'Componente Direto' ||
         r.component === 'BOM' ||
         r.component === 'Forração (alternativa)' ||
-        byName(/fivela|ilhos|tira|presilha|botão|rebite|tachas/),
+        byName(r, /fivela|ilho|tira|presilha|botão|rebite|tacha|elástic|elastic|aviamento/),
       );
     case 'Silk':
-      return rows.filter(r => byName(/tinta|silk|estampa|emulsão|sublimação/));
+      return rows.filter(r => byName(r, /tinta|silk|estampa|emulsão|sublimação/));
     case 'Colagem':
       return rows.filter(r =>
-        r.component === 'Solado' || byName(/cola|adesivo|cimento|primer/),
+        r.component === 'Solado' || r.component === 'Químicos' || byName(r, /cola|adesivo|cimento|primer/),
       );
     case 'Montagem':
       return rows.filter(r =>
         r.component === 'Solado' ||
         r.component === 'Palmilha' ||
-        byName(/cola|adesivo/),
+        r.component === 'Químicos' ||
+        byName(r, /cola|adesivo/),
       );
     case 'Solagem':
-      return rows.filter(r => r.component === 'Solado' || byName(/cola|adesivo|primer/));
+      return rows.filter(r => r.component === 'Solado' || r.component === 'Químicos' || byName(r, /cola|adesivo|primer/));
     case 'Acabamento':
-      return rows.filter(r => byName(/caixa|sacola|tag|etiqueta|papel\s+seda/));
+      return rows.filter(r => r.component === 'Embalagem' || byName(r, /caixa|sacola|tag|etiqueta|papel\s+seda/));
     case 'Expedição':
-      return rows.filter(r => byName(/caixa|sacola|fita|etiqueta|romaneio/));
+      return rows.filter(r => r.component === 'Embalagem' || byName(r, /caixa|sacola|fita|etiqueta|romaneio/));
     default:
       return rows;
   }

@@ -512,6 +512,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       quantity: Number(o.total_pairs ?? o.quantity ?? 0),
       color: o.color ?? null,
       size: null as number | null,
+      // grade BASE (por ficha) + tiras da OP → consumo por numeração fiel ao
+      // modal. `o.grid` é a grade base; o motor escala pelo total (quantity).
+      grade: (o.grid ?? null) as Record<string, number> | null,
+      strap_colors: Array.isArray(o.strap_colors) ? o.strap_colors : null,
     })).filter(i => i.reference_id && i.quantity > 0),
     [orders],
   );

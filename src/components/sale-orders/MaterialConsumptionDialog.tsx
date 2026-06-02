@@ -7,15 +7,11 @@ import { CircleNotch as Loader2, Package, FileText, ArrowsDownUp as ArrowUpDown,
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { supabase } from '@/integrations/supabase/client';
 import {
-  calculateGradeBasedDm2,
-  calculateConsumptionWithUnit,
-  isLinearWidthMissing,
-  convertDm2ToLinearMeters,
-  convertDm2ToPlates,
-  getPreferredComponentSheet as getPreferredComponentSheetFromCandidates,
-  normalizeText,
-} from '@/lib/materialConsumption';
-import { calculateStrapConsumptionCm, resolveOrderStraps } from '@/lib/strapConsumption';
+  fetchConsumptionContext,
+  computeConsumptionForItems,
+  type ConsumptionItem,
+  type MaterialConsumptionRow,
+} from '@/lib/orderConsumption';
 
 type Props = {
   open: boolean;
@@ -24,19 +20,9 @@ type Props = {
   orderNumber: string;
 };
 
-type ConsumptionRow = {
-  componentType: string;
-  groupName: string;
-  materialName: string;
-  productUnit: string;
-  color: string;
-  totalQuantity: number;
-  widthMissing?: boolean;
-  /** Breakdown agregado por numeração (somado entre items do PV que casam
-   *  na chave grupo+cor+unidade). Usado pra Solado mostrar totais reais
-   *  por Nº (ex: "Nº 34: 30 · Nº 35: 60") em vez da grade base de 1 ficha.
-   *  Pedido user 2026-05-27. */
-  sizeBreakdown?: Record<string, number>;
+/** Linha do modal = consumo canônico (motor em @/lib/orderConsumption) +
+ *  disponibilidade em estoque anotada localmente (verde/vermelho). */
+type ConsumptionRow = MaterialConsumptionRow & {
   /** Disponibilidade em estoque no momento da consulta (não-solado): soma do
    *  estoque dos produtos do grupo que casam na cor. Verde se cobre o consumo. */
   available?: number;
@@ -46,65 +32,6 @@ type ConsumptionRow = {
 };
 
 const COMPONENT_ORDER = ['Cabedal', 'Forração', 'Palmilha', 'Solado', 'Tiras', 'Químicos', 'Embalagem', 'Outros'] as const;
-
-const classifyBomMaterial = (groupName: string, productName: string, category: string): string => {
-  const normalized = `${groupName} ${productName} ${category}`.toLowerCase();
-  if (normalized.includes('cabedal') || normalized.includes('napa') || normalized.includes('velvet') || normalized.includes('couro')) return 'Cabedal';
-  if (normalized.includes('solado')) return 'Solado';
-  if (normalized.includes('palmilha') || normalized.includes('placa')) return 'Palmilha';
-  if (normalized.includes('forração') || normalized.includes('forracao') || normalized.includes('forro')) return 'Forração';
-  if (normalized.includes('tira')) return 'Tiras';
-  if (normalized.includes('cola') || normalized.includes('adesivo')) return 'Químicos';
-  if (normalized.includes('embalagem') || normalized.includes('caixa')) return 'Embalagem';
-  return 'Outros';
-};
-
-/** Calculate plate area in dm² from group dimensions (stored in mm by default) */
-const calcGroupPlateAreaDm2 = (group: any): number => {
-  if (!group?.dimensions_length || !group?.dimensions_width) return 0;
-  const unit = (group.dimensions_unit || 'mm').toLowerCase();
-  let l = Number(group.dimensions_length);
-  let w = Number(group.dimensions_width);
-  if (unit === 'cm') { l *= 10; w *= 10; }
-  if (unit === 'm') { l *= 1000; w *= 1000; }
-  return (l * w) / 10000;
-};
-
-const addConsumptionRow = (map: Map<string, ConsumptionRow>, row: ConsumptionRow) => {
-  const totalQuantity = Number(row.totalQuantity) || 0;
-  const groupName = row.groupName?.trim();
-  if (!groupName || totalQuantity <= 0) return;
-
-  const productUnit = row.productUnit?.trim() || 'un';
-  const color = row.color?.trim() || '—';
-  const materialName = row.materialName?.trim() || groupName;
-  const key = `${row.componentType}||${groupName}||${color}||${productUnit}`;
-  const existing = map.get(key);
-
-  if (existing) {
-    existing.totalQuantity += totalQuantity;
-    if (row.widthMissing) existing.widthMissing = true;
-    // Soma breakdown por numeração quando ambos têm (Solado).
-    if (row.sizeBreakdown) {
-      existing.sizeBreakdown = existing.sizeBreakdown || {};
-      for (const [size, qty] of Object.entries(row.sizeBreakdown)) {
-        existing.sizeBreakdown[size] = (existing.sizeBreakdown[size] || 0) + qty;
-      }
-    }
-    return;
-  }
-
-  map.set(key, {
-    componentType: row.componentType,
-    groupName,
-    materialName,
-    productUnit,
-    color,
-    totalQuantity,
-    widthMissing: row.widthMissing,
-    sizeBreakdown: row.sizeBreakdown,
-  });
-};
 
 /**
  * Solado em matriz numeração × cor (igual à visão da OC), com cada célula
@@ -296,418 +223,15 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
 
       const refIds = [...new Set(items.map((item) => item.reference_id).filter(Boolean))];
 
-        const [{ data: materials, error: materialsError }, { data: allProducts }, { data: productGroups }, { data: componentSheets }, { data: sheetStrapData }, { data: soleColorMappings }, { data: palmilhaColorMappings }, { data: liningColorMappings }] = await Promise.all([
-        supabase
-          .from('sheet_materials')
-          .select('sheet_id, product_id, group_id, quantity_per_unit, color, products(name, unit, category), product_groups(name)')
-          .in('sheet_id', refIds),
-        supabase
-          .from('products')
-          .select('id, name, color, group_id, quantity, reserved_stock, stock_grade, sole_classification')
-          .eq('active', true),
-        supabase
-          .from('product_groups')
-          .select('id, name, dimensions_length, dimensions_width, dimensions_unit'),
-        supabase
-          .from('component_sheets')
-          .select('product_id, dimensions_width, dimensions_length, dimensions_unit, yield_per_size, yield_per_sole, waste_pct, products!inner(group_id, name, color, unit)'),
-        supabase
-          .from('technical_sheets')
-          .select('id, strap_colors')
-          .in('id', refIds),
-          (supabase as any).from('technical_sheet_sole_colors').select('sheet_id, product_color, sole_product_id').in('sheet_id', refIds),
-          (supabase as any).from('technical_sheet_palmilha_colors').select('sheet_id, cabedal_color, palmilha_color, palmilha_product_id').in('sheet_id', refIds),
-          (supabase as any).from('technical_sheet_lining_colors').select('sheet_id, cabedal_color, lining_color').in('sheet_id', refIds),
-      ]);
+      const ctx = await fetchConsumptionContext(refIds);
 
-      if (materialsError) throw materialsError;
-
-       // Build sole and palmilha color mapping: (sheet_id, color) -> product_id
-      const soleColorMap = new Map<string, string>();
-      for (const m of (soleColorMappings || []) as any[]) {
-        if (m.sole_product_id) soleColorMap.set(`${m.sheet_id}::${m.product_color}`, m.sole_product_id);
-      }
-       const palmilhaColorMap = new Map<string, { color: string, productId: string | null }>();
-       for (const m of (palmilhaColorMappings || []) as any[]) {
-         palmilhaColorMap.set(`${m.sheet_id}::${(m.cabedal_color || '').toLowerCase()}`, { color: m.palmilha_color, productId: m.palmilha_product_id });
-       }
-       const palmilhaDefaultMap = new Map<string, { color: string, productId: string | null }>();
-       for (const m of (palmilhaColorMappings || []) as any[]) {
-         if (m.cabedal_color === '__DEFAULT__') palmilhaDefaultMap.set(m.sheet_id, { color: m.palmilha_color, productId: m.palmilha_product_id });
-       }
-
-       const liningColorMap = new Map<string, string>();
-       for (const m of (liningColorMappings || []) as any[]) {
-         liningColorMap.set(`${m.sheet_id}::${(m.cabedal_color || '').toLowerCase()}`, m.lining_color);
-       }
-       const liningDefaultMap = new Map<string, string>();
-       for (const m of (liningColorMappings || []) as any[]) {
-         if (m.cabedal_color === '__DEFAULT__') liningDefaultMap.set(m.sheet_id, m.lining_color);
-       }
-
-      // Build map of reference_id -> sheet strap_colors
-      const sheetStrapsMap = new Map<string, any[]>();
-      for (const s of (sheetStrapData || [])) {
-        if (Array.isArray(s.strap_colors)) sheetStrapsMap.set(s.id, s.strap_colors as any[]);
-      }
-
-      const getComponentSheetsForGroup = (groupName: string) => {
-        const normalizedGroup = normalizeText(groupName);
-        return (componentSheets || []).filter((cs: any) => {
-          const prod = cs.products as any;
-          if (!prod?.group_id) return false;
-          const group = (productGroups || []).find((g: any) => g.id === prod.group_id);
-          return normalizeText(group?.name) === normalizedGroup;
-        });
-      };
-
-      const getPreferredGroupSheet = (
-        groupName: string,
-        {
-          color,
-          mode = 'any',
-          preferYield = false,
-        }: { color?: string; mode?: 'any' | 'linear' | 'plate'; preferYield?: boolean } = {},
-      ) => getPreferredComponentSheetFromCandidates(getComponentSheetsForGroup(groupName), { color, mode, preferYield });
-
-      // Helper: check if a group (by name) contains a product matching the color
-      const groupHasColor = (groupName: string, color: string): boolean => {
-        if (!groupName || !color || color === '—') return false;
-        const normalizedColor = color.toLowerCase().trim();
-        const group = (productGroups || []).find((g: any) => g.name === groupName);
-        if (!group) return false;
-
-        return (allProducts || []).some((p: any) => {
-          if (p.group_id !== group.id) return false;
-          const pName = (p.name || '').toLowerCase();
-          const pColor = (p.color || '').toLowerCase();
-
-          // Exact match on color field or product name
-          if (pColor === normalizedColor || pName === normalizedColor) return true;
-          // Extract color after delimiter (e.g. "NAPA SOFT: BEGE" → "bege")
-          const afterDelimiter = pName.includes(':') ? pName.split(':').pop()?.trim() : pName.includes('-') ? pName.split('-').pop()?.trim() : '';
-          if (afterDelimiter && afterDelimiter === normalizedColor) return true;
-          // Fuzzy: only if both strings are long enough to avoid false positives
-          if (pColor.length > 3 && normalizedColor.length > 3) {
-            if (normalizedColor.includes(pColor) || pColor.includes(normalizedColor)) return true;
-          }
-          return false;
-        });
-      };
-
-      // Count products per group for fallback ranking
-      const countGroupProducts = (groupName: string): number => {
-        const group = (productGroups || []).find((g: any) => g.name === groupName);
-        if (!group) return 0;
-        return (allProducts || []).filter((p: any) => p.group_id === group.id).length;
-      };
-
-      const resolveOption = (
-        mainGroup: string, mainConsumption: number,
-        alternatives: any[], orderColor: string
-      ): { group: string; consumption: number } | null => {
-        // Try main first
-        if (mainGroup && mainConsumption > 0) {
-          if (!orderColor || orderColor === '—' || groupHasColor(mainGroup, orderColor)) {
-            return { group: mainGroup, consumption: mainConsumption };
-          }
-        }
-        // Try alternatives
-        for (const alt of alternatives) {
-          const altGroup = alt.material?.trim();
-          const altConsumption = Number(alt.consumption) || 0;
-          if (altGroup && altConsumption > 0 && groupHasColor(altGroup, orderColor)) {
-            return { group: altGroup, consumption: altConsumption };
-          }
-        }
-        // Fallback: pick the group with the most product variants (most likely to carry the color)
-        const candidates = [
-          ...(mainGroup && mainConsumption > 0 ? [{ group: mainGroup, consumption: mainConsumption }] : []),
-          ...alternatives.filter((a: any) => a.material?.trim() && (Number(a.consumption) || 0) > 0).map((a: any) => ({ group: a.material.trim(), consumption: Number(a.consumption) })),
-        ];
-        if (candidates.length === 0) return null;
-        candidates.sort((a, b) => countGroupProducts(b.group) - countGroupProducts(a.group));
-        return candidates[0];
-      };
-
-      const consumptionMap = new Map<string, ConsumptionRow>();
-
-      for (const item of items) {
-        const orderColor = item.color || '—';
-        const itemQuantity = Number(item.quantity) || 0;
-        const sheet = item.technical_sheets as any;
-
-        // Cabedal: resolve which option matches the order color
-        const allCabedalAccessories = Array.isArray(sheet?.components_accessories)
-          ? (sheet.components_accessories as any[]).filter((e: any) => e.material && !e.id)
-          : [];
-        const upperAlts = allCabedalAccessories.filter((e: any) => !e.mandatory);
-        const mandatoryCabedalMaterials = allCabedalAccessories.filter((e: any) => e.mandatory === true);
-        const upperMatch = resolveOption(
-          sheet?.upper_material || '', Number(sheet?.upper_consumption) || 0,
-          upperAlts, orderColor
-        );
-        if (upperMatch) {
-          const upperSheet = getPreferredGroupSheet(upperMatch.group, { color: orderColor, mode: 'linear', preferYield: true });
-          const isPrincipal = upperMatch.group === (sheet?.upper_material || '');
-          const altRecord = isPrincipal ? null : upperAlts.find((a: any) => a.material === upperMatch.group);
-          const overridePerSize = isPrincipal
-            ? (sheet?.upper_consumption_per_size && Object.keys(sheet.upper_consumption_per_size).length > 0 ? sheet.upper_consumption_per_size : null)
-            : (altRecord?.consumption_per_size && Object.keys(altRecord.consumption_per_size).length > 0 ? altRecord.consumption_per_size : null);
-          const { total: upperTotal } = calculateConsumptionWithUnit(item, upperMatch.consumption, upperSheet, 'metro', overridePerSize);
-          addConsumptionRow(consumptionMap, {
-            componentType: 'Cabedal',
-            groupName: upperMatch.group,
-            materialName: 'Cabedal',
-            productUnit: 'metro',
-            color: orderColor,
-            totalQuantity: upperTotal,
-            widthMissing: isLinearWidthMissing(upperSheet, 'm'),
-          });
-        }
-
-        // Materiais mandatórios do cabedal — sempre consumidos, independente da cor
-        for (const mandMat of mandatoryCabedalMaterials) {
-          const mandConsumption = Number(mandMat.consumption) || 0;
-          if (!mandMat.material || mandConsumption <= 0) continue;
-          const mandSheet = getPreferredGroupSheet(mandMat.material, { color: orderColor, mode: 'linear', preferYield: true });
-          const mandOverride = (mandMat.consumption_per_size && Object.keys(mandMat.consumption_per_size).length > 0)
-            ? mandMat.consumption_per_size
-            : null;
-          const { total: mandTotal } = calculateConsumptionWithUnit(item, mandConsumption, mandSheet, 'metro', mandOverride);
-          addConsumptionRow(consumptionMap, {
-            componentType: 'Cabedal',
-            groupName: mandMat.material,
-            materialName: 'Material Fixo',
-            productUnit: 'metro',
-            color: orderColor,
-            totalQuantity: mandTotal,
-            widthMissing: isLinearWidthMissing(mandSheet, 'm'),
-          });
-        }
-
-        // Forro: resolve which option matches the order color
-        const liningAlts = Array.isArray(sheet?.lining_accessories) ? sheet.lining_accessories as any[] : [];
-        const liningMatch = resolveOption(
-          sheet?.lining_material || '', Number(sheet?.lining_consumption) || 0,
-          liningAlts, orderColor
-        );
-         if (liningMatch) {
-           const mappedLiningColor = liningColorMap.get(`${item.reference_id}::${orderColor.toLowerCase()}`) || liningDefaultMap.get(item.reference_id) || orderColor;
-           const liningSheet = getPreferredGroupSheet(liningMatch.group, { color: mappedLiningColor, mode: 'linear', preferYield: true });
-           const soleProductId = soleColorMap.get(`${item.reference_id}::${orderColor}`) || null;
-           const { total: liningTotal } = calculateConsumptionWithUnit(item, liningMatch.consumption, liningSheet, 'metro', undefined, soleProductId, sheet?.sole_drives_consumption);
-           addConsumptionRow(consumptionMap, {
-             componentType: 'Forração',
-             groupName: liningMatch.group,
-             materialName: 'Forração',
-             productUnit: 'metro',
-             color: mappedLiningColor,
-             totalQuantity: liningTotal,
-             widthMissing: isLinearWidthMissing(liningSheet, 'm'),
-           });
-         }
-
-         // Palmilha = PLACA (base) + FORRAÇÃO (napa do forro). Pulada INTEIRA quando
-         // a palmilha é pronta (insole_ready_made ou solado classificado
-         // palmilha_pronta) — espelha o ramo SQL calculate_order_consumption*:
-         // pronta = não debita nada (nem placa, nem forração).
-         const soleProductIdForInsole = soleColorMap.get(`${item.reference_id}::${orderColor}`) || null;
-         const insoleSoleProd = soleProductIdForInsole ? (allProducts || []).find(p => p.id === soleProductIdForInsole) : null;
-         const isPalmilhaPronta = (sheet?.insole_ready_made === true)
-           || ((insoleSoleProd as any)?.sole_classification === 'palmilha_pronta');
-
-         if (!isPalmilhaPronta) {
-           const palmMapping = palmilhaColorMap.get(`${item.reference_id}::${orderColor.toLowerCase()}`) || palmilhaDefaultMap.get(item.reference_id);
-           const insoleGroupName = sheet?.insole_material || '';
-           const insoleGroup = (productGroups || []).find((g: any) => g.name === insoleGroupName);
-           const palmColor = palmMapping?.color || '—';
-           const palmProductId = palmMapping?.productId;
-
-           // PLACA (base): produto específico (unidade) ou material convertido a placas
-           if (palmProductId) {
-             const prod = (allProducts || []).find(p => p.id === palmProductId);
-             addConsumptionRow(consumptionMap, {
-               componentType: 'Palmilha',
-               groupName: insoleGroupName,
-               materialName: prod?.name || 'Palmilha',
-               productUnit: 'par',
-               color: prod?.color || palmColor,
-               totalQuantity: itemQuantity,
-             });
-           } else {
-             const insoleSheet = getPreferredGroupSheet(insoleGroupName, { mode: 'plate', preferYield: true });
-             const insoleDm2 = calculateGradeBasedDm2(item, Number(sheet?.insole_consumption) || 0, insoleSheet, undefined, soleProductIdForInsole, sheet?.sole_drives_consumption);
-             const groupPlateArea = calcGroupPlateAreaDm2(insoleGroup);
-             const insolePlates = groupPlateArea > 0 ? (insoleDm2 / groupPlateArea) : convertDm2ToPlates(insoleDm2, insoleSheet);
-
-             addConsumptionRow(consumptionMap, {
-               componentType: 'Palmilha',
-               groupName: insoleGroupName,
-               materialName: 'Palmilha',
-               productUnit: 'placa',
-               color: palmColor,
-               totalQuantity: insolePlates,
-             });
-           }
-
-           // FORRAÇÃO da palmilha: napa do forro (lining_material) que cobre a placa.
-           // Linha linear ADICIONAL (mesma napa do Forro do cabedal). Só quando há
-           // forro (insole_has_lining) e área de forração da palmilha > 0.
-           const insoleLiningCons = Number(sheet?.insole_lining_consumption) || 0;
-           const liningGroupForPalm = sheet?.lining_material || '';
-           if (insoleLiningCons > 0 && liningGroupForPalm && sheet?.insole_has_lining !== false) {
-             const mappedLiningColor = liningColorMap.get(`${item.reference_id}::${orderColor.toLowerCase()}`) || liningDefaultMap.get(item.reference_id) || orderColor;
-             const forrSheet = getPreferredGroupSheet(liningGroupForPalm, { color: mappedLiningColor, mode: 'linear', preferYield: true });
-             const { total: forrTotal } = calculateConsumptionWithUnit(item, insoleLiningCons, forrSheet, 'metro', undefined, soleProductIdForInsole, sheet?.sole_drives_consumption);
-             addConsumptionRow(consumptionMap, {
-               componentType: 'Palmilha',
-               groupName: liningGroupForPalm,
-               materialName: 'Forração Palmilha',
-               productUnit: 'metro',
-               color: mappedLiningColor,
-               totalQuantity: forrTotal,
-               widthMissing: isLinearWidthMissing(forrSheet, 'm'),
-             });
-           }
-         }
-
-        // Solado: resolver cor real via technical_sheet_sole_colors (mapeamento
-        // por cor do cabedal → produto-solado específico). Match case/acento-
-        // insensitive — antes "Caramelo" vs "CARAMELO" não casava e a cor
-        // saía "—" mesmo com mapeamento cadastrado.
-        const orderColorNorm = (orderColor || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
-        let soleProductIdResolved: string | null = null;
-        for (const [k, v] of soleColorMap.entries()) {
-          const [skId, skColor] = k.split('::');
-          if (skId !== item.reference_id) continue;
-          const kNorm = (skColor || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
-          if (kNorm === orderColorNorm) { soleProductIdResolved = v; break; }
-        }
-        const soleProduct = soleProductIdResolved
-          ? (allProducts || []).find(p => p.id === soleProductIdResolved)
-          : null;
-        const soleColor = soleProduct?.color || orderColor || sheet?.sole_color || '—';
-
-        // Breakdown de numerações escalado pro TOTAL real do item (PR 2026-05-27).
-        // Antes mostrava grade base de 1 ficha (Nº 34: 1, ...), agora multiplica
-        // pelo número de fichas pra exibir totais reais segmentados por cor de
-        // solado. Quando múltiplos items casam em (sole+cor), addConsumptionRow
-        // agrega o breakdown.
-        const grade = (item as any).grade as Record<string, number> | null | undefined;
-        const scaledBreakdown: Record<string, number> = {};
-        if (grade && typeof grade === 'object') {
-          // Mantém numerações conjugadas (ex: "33/34", "39/40") — só descarta meta
-          // (_size_from/_size_to). Antes filtrava só dígitos puros e SUMIA com as
-          // conjugadas, deixando a matriz vazia pra solados conjugados (ex: 238).
-          const isSize = (k: string) => !k.startsWith('_');
-          const baseSum = Object.entries(grade).reduce((s, [k, v]) => isSize(k) ? s + (Number(v) || 0) : s, 0);
-          const multiplier = baseSum > 0 ? itemQuantity / baseSum : 0;
-          for (const [size, qty] of Object.entries(grade)) {
-            if (!isSize(size)) continue;
-            const scaled = Math.round((Number(qty) || 0) * multiplier);
-            if (scaled > 0) scaledBreakdown[size] = scaled;
-          }
-        }
-
-        addConsumptionRow(consumptionMap, {
-          componentType: 'Solado',
-          groupName: soleProduct?.name || sheet?.sole_material || '',
-          // materialName usado só como fallback se sizeBreakdown vier vazio.
-          materialName: 'Solado',
-          productUnit: 'par',
-          color: soleColor,
-          totalQuantity: (Number(sheet?.sole_consumption) || 0) * itemQuantity,
-          sizeBreakdown: Object.keys(scaledBreakdown).length > 0 ? scaledBreakdown : undefined,
-        });
-
-        const itemStraps = Array.isArray(item.strap_colors) ? (item.strap_colors as any[]) : [];
-        const sheetStraps: any[] = sheetStrapsMap.get(item.reference_id) || [];
-        const resolvedStraps = resolveOrderStraps(itemStraps, sheetStraps);
-        for (const strap of resolvedStraps) {
-          const strapConsumptionCm = calculateStrapConsumptionCm(strap, {
-            grade: (item as any).grade || {},
-            quantity: itemQuantity,
-            fichas: (item as any).fichas,
-          });
-
-          addConsumptionRow(consumptionMap, {
-            componentType: 'Tiras',
-            groupName: strap.group_name || strap.label || 'Tira',
-            materialName: strap.label || strap.group_name || 'Tira',
-            productUnit: 'metro',
-            color: strap.color || orderColor,
-            totalQuantity: strapConsumptionCm / 100,
-          });
-        }
-
-        const specGroupsWithConsumption = new Map<string, number>();
-        if (upperMatch?.group) specGroupsWithConsumption.set(upperMatch.group.toLowerCase(), upperMatch.consumption);
-        if (liningMatch?.group) specGroupsWithConsumption.set(liningMatch.group.toLowerCase(), liningMatch.consumption);
-        if (sheet?.insole_material && (Number(sheet?.insole_consumption) || 0) > 0) specGroupsWithConsumption.set(String(sheet.insole_material).toLowerCase(), Number(sheet.insole_consumption));
-        if (sheet?.sole_material && (Number(sheet?.sole_consumption) || 0) > 0) specGroupsWithConsumption.set(String(sheet.sole_material).toLowerCase(), Number(sheet.sole_consumption));
-
-        const itemMaterials = (materials || []).filter((material) => material.sheet_id === item.reference_id);
-        for (const material of itemMaterials) {
-          const product = material.products as any;
-          const group = material.product_groups as any;
-          if (!product) continue;
-
-          const groupName = group?.name || product.category || product.name || 'Outros';
-          const groupKey = groupName.toLowerCase();
-          const specHasGroup = specGroupsWithConsumption.has(groupKey);
-          if (specHasGroup) {
-            const bomType = classifyBomMaterial(groupName, product.name || '', product.category || '');
-            const isUpperGroup = upperMatch?.group?.toLowerCase() === groupKey;
-            const isLiningGroup = liningMatch?.group?.toLowerCase() === groupKey;
-            const isInsoleGroup = sheet?.insole_material?.toLowerCase() === groupKey;
-            const isSoleGroup = sheet?.sole_material?.toLowerCase() === groupKey;
-            const shouldSkip = (isUpperGroup && bomType === 'Cabedal') ||
-                               (isLiningGroup && bomType === 'Forração') ||
-                               (isInsoleGroup && (bomType === 'Palmilha' || product.category?.toLowerCase().includes('palmilha'))) ||
-                               (isSoleGroup && bomType === 'Solado');
-            if (shouldSkip) continue;
-          }
-
-          let productUnit = product.unit || 'un';
-          const unitLc = productUnit.toLowerCase();
-          const isLinearUnit = ['m', 'metro', 'mt', 'meters', 'metros', 'cm'].includes(unitLc);
-          const rawQty = (Number(material.quantity_per_unit) || 0) * itemQuantity;
-          let totalQty = rawQty;
-          let widthMissing = false;
-
-          // Materiais de ÁREA cortados de bobina (napa/couro): têm ficha de componente
-          // e quantity_per_unit está em dm²/par. Converter para metros lineares pela
-          // largura — antes era multiplicado direto e aparecia ~100× inflado (ex: napa
-          // 5.7 dm²/par × 720 = 4104 "m" em vez de ~30 m). Tiras/itens sem ficha (qty
-          // já em metro/unidade) passam direto. Bug reportado no PV-00116 (2026-05-30).
-          const cs = (componentSheets || []).find((c: any) => c.product_id === material.product_id) || null;
-          if (isLinearUnit && cs) {
-            if (!isLinearWidthMissing(cs as any, productUnit)) {
-              totalQty = convertDm2ToLinearMeters(rawQty, cs as any);
-              productUnit = 'metro';
-            } else {
-              // tem ficha de área mas sem largura → não dá pra converter; marca aviso
-              widthMissing = true;
-              totalQty = unitLc === 'cm' ? rawQty / 100 : rawQty;
-              productUnit = unitLc === 'cm' ? 'metro' : productUnit;
-            }
-          } else if (unitLc === 'cm') {
-            totalQty = rawQty / 100;
-            productUnit = 'metro';
-          }
-
-          addConsumptionRow(consumptionMap, {
-            componentType: classifyBomMaterial(groupName, product.name || '', product.category || ''),
-            groupName,
-            materialName: product.name || groupName,
-            productUnit,
-            color: material.color || '—',
-            totalQuantity: totalQty,
-            widthMissing,
-          });
-        }
-      }
+      // Motor CANÔNICO (mesmo de @/lib/orderConsumption usado pela ficha do
+      // operador, por OP). Aqui calculamos por PEDIDO: agrega todos os itens do
+      // PV. Só o consumo previsto — a disponibilidade é anotada logo abaixo.
+      const rows = computeConsumptionForItems(
+        items as unknown as ConsumptionItem[],
+        ctx,
+      ) as ConsumptionRow[];
 
       // ── Disponibilidade em estoque (no momento da consulta) ──────────────
       // Não-solado: soma o estoque dos produtos do grupo que casam na cor.
@@ -724,8 +248,8 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
         return false;
       };
       const groupAvailable = (groupName: string, color: string): number => {
-        const group = (productGroups || []).find((g: any) => normTxt(g.name) === normTxt(groupName));
-        return (allProducts || []).filter((p: any) => {
+        const group = (ctx.productGroups || []).find((g: any) => normTxt(g.name) === normTxt(groupName));
+        return (ctx.allProducts || []).filter((p: any) => {
           // membro do grupo; só cai no match por nome quando o grupo não existe
           // (evita puxar produto de OUTRO grupo que só compartilha o nome)
           const ok = group ? p.group_id === group.id : normTxt(p.name) === normTxt(groupName);
@@ -738,8 +262,8 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
         }, 0);
       };
       const soleStockGrade = (groupName: string, color: string): Record<string, number> => {
-        const prod = (allProducts || []).find((p: any) => normTxt(p.name) === normTxt(groupName) && colorMatchesProduct(p, color))
-          || (allProducts || []).find((p: any) => normTxt(p.name) === normTxt(groupName));
+        const prod = (ctx.allProducts || []).find((p: any) => normTxt(p.name) === normTxt(groupName) && colorMatchesProduct(p, color))
+          || (ctx.allProducts || []).find((p: any) => normTxt(p.name) === normTxt(groupName));
         const out: Record<string, number> = {};
         const g = prod?.stock_grade;
         if (g && typeof g === 'object') {
@@ -751,12 +275,12 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
         }
         return out;
       };
-      for (const row of consumptionMap.values()) {
+      for (const row of rows) {
         if (row.componentType === 'Solado') row.soleSizeStock = soleStockGrade(row.groupName, row.color);
         else row.available = groupAvailable(row.groupName, row.color);
       }
 
-      const sortedRows = Array.from(consumptionMap.values()).sort((a, b) => {
+      const sortedRows = [...rows].sort((a, b) => {
         const typeDiff = COMPONENT_ORDER.indexOf(a.componentType as (typeof COMPONENT_ORDER)[number]) - COMPONENT_ORDER.indexOf(b.componentType as (typeof COMPONENT_ORDER)[number]);
         if (typeDiff !== 0) return typeDiff;
         const groupDiff = a.groupName.localeCompare(b.groupName, 'pt-BR');
