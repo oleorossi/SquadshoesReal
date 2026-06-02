@@ -45,7 +45,7 @@ export default function CoverageCalendar() {
     >
       <div className="p-4 space-y-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <Input type="month" value={period} onChange={e => setPeriod(e.target.value)} className="w-40 h-9" />
+          <Input type="month" value={period} onChange={e => { if (/^\d{4}-(0[1-9]|1[0-2])$/.test(e.target.value)) setPeriod(e.target.value); }} className="w-40 h-9" />
           <div className="text-xs text-muted-foreground flex items-center gap-4">
             {isLoading ? (
               <span className="flex items-center gap-1"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando…</span>

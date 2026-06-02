@@ -29,6 +29,9 @@ const fmtHoras = (min: number) => {
 
 function getMonthDays(period: string): { date: string; dow: number }[] {
   const [y, m] = period.split('-').map(Number);
+  // Guard: período inválido (ex.: "2026-00" do input de mês) → não gera datas
+  // tortas como "2026-00-01" que quebravam as queries.
+  if (!y || !m || m < 1 || m > 12) return [];
   const last = new Date(y, m, 0).getDate();
   const out: { date: string; dow: number }[] = [];
   for (let d = 1; d <= last; d++) {
@@ -204,7 +207,7 @@ export default function Payroll() {
           {' '}após 18h / fim de semana / feriado = <span className="font-semibold text-foreground">1,5×</span>
         </div>
         <div className="flex items-center gap-2">
-          <Input type="month" value={period} onChange={e => setPeriod(e.target.value)} className="w-40 h-9" />
+          <Input type="month" value={period} onChange={e => { if (/^\d{4}-(0[1-9]|1[0-2])$/.test(e.target.value)) setPeriod(e.target.value); }} className="w-40 h-9" />
           <Button size="sm" onClick={calculateAll} disabled={calcRunning}>
             {calcRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Calculator className="h-4 w-4 mr-2" />}
             Calcular folha

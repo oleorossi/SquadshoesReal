@@ -852,9 +852,13 @@ export function useTimeRecords(batch?: string, startDate?: string, endDate?: str
  * hoje vazia); um dia coberto = dia com ao menos uma batida.
  */
 export function useTimesheetCoverage(from?: string, to?: string) {
+  // Guard (2026-06-02): só consulta com datas VÁLIDAS (YYYY-MM-DD, mês 01-12).
+  // O <input type="month"> às vezes emite "2026-00" → "2026-00-01" quebrava a
+  // query com "date/time field value out of range".
+  const validISO = (d?: string) => !!d && /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(d);
   return useQuery({
     queryKey: ['timesheet_coverage', from, to],
-    enabled: !!(from && to),
+    enabled: validISO(from) && validISO(to),
     queryFn: async () => {
       const covered = new Set<string>();
       const PAGE = 1000;
