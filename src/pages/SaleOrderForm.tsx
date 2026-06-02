@@ -211,6 +211,26 @@ export default function SaleOrderForm() {
   const [soleDialogOpen, setSoleDialogOpen] = useState(false);
   const [materialResult, setMaterialResult] = useState<MaterialAvailabilityResult | null>(null);
   const [materialDialogOpen, setMaterialDialogOpen] = useState(false);
+
+  // Bug fix (2026-06-02): só re-checar estoque/solado (que abre "gerar Ordem de
+  // Compra?") quando os itens que afetam COMPRA mudarem. Assinatura dos itens do
+  // pedido carregado em edição, comparada no submit. Sem isto, qualquer edição
+  // (data, obs, cliente) reabria o prompt de OC porque a falta de estoque persiste.
+  const itemsPurchaseSig = (its: SaleOrderItemFormData[]) => JSON.stringify(
+    its.filter(i => i.reference_id).map(i => ({
+      r: i.reference_id,
+      q: i.quantity,
+      c: (i.color || '').trim().toUpperCase(),
+      g: (i as any).grade || {},
+      s: Array.isArray((i as any).strap_colors) ? (i as any).strap_colors.map((x: any) => x?.color || '') : [],
+    })).sort((a, b) => (a.r + a.c).localeCompare(b.r + b.c)),
+  );
+  const originalItemsSigRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (isEdit && originalItemsSigRef.current === null && items.some(i => i.reference_id)) {
+      originalItemsSigRef.current = itemsPurchaseSig(items);
+    }
+  }, [isEdit, items]);
   const [capacityResult, setCapacityResult] = useState<CapacityCheckResult | null>(null);
   const [capacityDialogOpen, setCapacityDialogOpen] = useState(false);
   const [minBillingDialogOpen, setMinBillingDialogOpen] = useState(false);
@@ -642,6 +662,15 @@ export default function SaleOrderForm() {
           description: err?.message ?? 'Você pode prosseguir, mas o sistema não verificou a disponibilidade da capacidade dos setores.',
         });
       }
+    }
+
+    // Bug fix (2026-06-02): em EDIÇÃO, só re-checa estoque/solado (prompt de
+    // "gerar Ordem de Compra?") se os itens mudaram em algo que afeta compra
+    // (ref/qtd/cor/grade/tiras). Se mudou só data/obs/cliente/etc., pula direto
+    // pro check de capacidade — não reabre OC à toa.
+    if (isEdit && originalItemsSigRef.current !== null && itemsPurchaseSig(items) === originalItemsSigRef.current) {
+      await runCapacityCheck(validItems);
+      return;
     }
 
     // Check stock availability for all items in parallel
