@@ -30,6 +30,7 @@ import {
 } from '@/hooks/useTimesheet';
 import { useEmployees, useUpdateEmployee } from '@/hooks/useEmployees';
 import { printAllEmployeesTimesheet, printConsolidatedHoursReport, printEmployeeTimesheet, printAllIndividualTimesheets, printCalendarReport, saveEmployeeTimesheetPdf, printEmployeeEvaluationDetailed, printEmployeeEvaluationSummary, EmployeeTimesheetData } from '@/lib/printTimesheet';
+import { expectedDayMinutes } from '@/lib/salaryPayroll';
 import { printTimeMirror } from '@/lib/printTimeMirror';
 import { useBankHoursBalances } from '@/hooks/useRH';
 import { getBatchDateRange, resolveTimeControlFilters } from '@/lib/timeControlFilters';
@@ -746,6 +747,7 @@ function TimesheetRecordsTab() {
       schedule: { overtime_multiplier: sched.overtime_multiplier, holiday_multiplier: sched.holiday_multiplier, minimum_overtime_minutes: sched.minimum_overtime_minutes || 0 },
       hourlySalary: emp?.salary ? emp.salary / 220 : 0,
       overtimeHourlyRate: emp?.overtime_hourly_rate ?? null,
+      expectedDayMin: expectedDayMinutes(sched),
     };
   };
 

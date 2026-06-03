@@ -30,6 +30,29 @@ export const SALARY_DAY_DIVISOR = 30;
 /** Atraso/saída-cedo e HE usam valor-hora = salário ÷ 220. */
 export const SALARY_HOUR_DIVISOR = 220;
 
+// ─── Jornada da escala (FONTE ÚNICA) ─────────────────────────────────────────
+// Usada pela folha (Payroll) E pela Avaliação de Jornada (printTimesheet) pra
+// garantir que "esperado" seja idêntico nos dois — evita o atraso descontar
+// valores diferentes entre folha e relatório.
+const WORKS_DOW = ['works_sunday', 'works_monday', 'works_tuesday', 'works_wednesday', 'works_thursday', 'works_friday', 'works_saturday'] as const;
+
+/** "08:30" → 510 minutos. Tolerante a nulos/vazios. */
+export function timeToMin(t: string): number {
+  const [h, m] = String(t || '0:0').split(':').map(Number);
+  return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+}
+
+/** Escala trabalha neste dia da semana? (0=dom … 6=sáb) */
+export function worksOnDow(sch: any, dow: number): boolean {
+  return !!(sch && sch[WORKS_DOW[dow]]);
+}
+
+/** Jornada esperada do dia (min): saída − entrada − almoço. Ex.: 08–18 c/ 12–13 = 540 (9h). */
+export function expectedDayMinutes(sch: any): number {
+  if (!sch) return 0;
+  return Math.max(0, timeToMin(sch.exit_time) - timeToMin(sch.entry_time) - (timeToMin(sch.lunch_end) - timeToMin(sch.lunch_start)));
+}
+
 export interface SalaryDayInput {
   date: string;          // YYYY-MM-DD
   dayOfWeek: number;     // 0=domingo … 6=sábado

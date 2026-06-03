@@ -60,14 +60,15 @@ export interface PendingCount {
 // Hooks
 // ─────────────────────────────────────────────────────────────────────────────
 
-const PROBLEM_STATUSES: DayStatus[] = ['inconsistent', 'irregular', 'partial'];
+// Pendência = batida ímpar/errada (inconsistent/irregular/partial) OU FALTA em dia
+// útil (absent — A5: antes a falta sumia da aba, justamente o item que mais precisa
+// de triagem). Dias normais de 2 batidas com almoço inferido (1h) NÃO entram: é o
+// padrão Squad e a folha lê o ponto cru e infere 1h — completar não muda o pagamento
+// (M6: eram ~82% de ruído que esvaziava a tela).
+const PROBLEM_STATUSES: DayStatus[] = ['inconsistent', 'irregular', 'partial', 'absent'];
 
 const isPendingRow = (r: TimePending): boolean => {
-  if (PROBLEM_STATUSES.includes(r.day_summary?.status)) return true;
-  // 2 batidas em dia útil viraram 'normal'/'overtime'/'absent' com almoço
-  // inferido (mig 20260524200000). RH ainda precisa revisar pra validar se
-  // o intervalo presumido (1h) bate com o que aconteceu — listar como pendência.
-  return (r.day_summary as { partial_reason?: string })?.partial_reason === 'almoco_inferido';
+  return PROBLEM_STATUSES.includes(r.day_summary?.status);
 };
 
 /**

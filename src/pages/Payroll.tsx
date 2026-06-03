@@ -13,7 +13,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useHolidays, useTimesheetCoverage, useWorkSchedules } from '@/hooks/useTimesheet';
 import { usePayrollRuns, useUpsertPayrollRun, useUpdatePayrollStatus } from '@/hooks/useRH';
-import { calculateSalaryPayroll, type SalaryDayInput } from '@/lib/salaryPayroll';
+import { calculateSalaryPayroll, type SalaryDayInput, worksOnDow, expectedDayMinutes } from '@/lib/salaryPayroll';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -26,18 +26,6 @@ const fmtHoras = (min: number) => {
   const m = Math.max(0, Math.round(Number(min) || 0));
   return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`;
 };
-
-function timeToMin(t: string): number {
-  const [h, m] = String(t || '0:0').split(':').map(Number);
-  return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
-}
-const WORKS_DOW = ['works_sunday', 'works_monday', 'works_tuesday', 'works_wednesday', 'works_thursday', 'works_friday', 'works_saturday'];
-function worksOnDow(sch: any, dow: number): boolean { return !!(sch && sch[WORKS_DOW[dow]]); }
-/** Jornada esperada do dia (min): saída − entrada − almoço. Ex.: 08–18 c/ 12–13 = 540 (9h). */
-function expectedDayMinutes(sch: any): number {
-  if (!sch) return 0;
-  return Math.max(0, timeToMin(sch.exit_time) - timeToMin(sch.entry_time) - (timeToMin(sch.lunch_end) - timeToMin(sch.lunch_start)));
-}
 
 function getMonthDays(period: string): { date: string; dow: number }[] {
   const [y, m] = period.split('-').map(Number);

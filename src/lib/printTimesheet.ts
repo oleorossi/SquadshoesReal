@@ -1,5 +1,6 @@
 import { printHtml, writePrintWindow, openPrintWindow } from './printOrder';
 import { calculateHourlyPayroll, splitDayMinutes, PREMIUM_MULTIPLIER } from './hourlyPayroll';
+import { SALARY_DAY_DIVISOR, SALARY_HOUR_DIVISOR } from './salaryPayroll';
 import { escapeHtml } from './htmlUtils';
 
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -33,6 +34,13 @@ export interface EmployeeTimesheetData {
   hourlySalary?: number;
   /** Per-employee overtime hourly rate (R$/hr). Overrides hourlySalary * multiplier when set. */
   overtimeHourlyRate?: number | null;
+  /**
+   * Jornada esperada por dia útil (min) vinda da ESCALA — saída − entrada − almoço
+   * (ex.: 540 = 9h). É o MESMO "esperado" que a folha usa (expectedDayMinutes), pra
+   * a Avaliação de Jornada descontar atraso igual à folha. Cai em `expectedMinutes`
+   * do dia quando ausente (compat. com chamadas que não preenchem).
+   */
+  expectedDayMin?: number;
 }
 
 /**
@@ -624,25 +632,60 @@ export function printCalendarReport(allData: EmployeeTimesheetData[], periodLabe
 //   · Líquido         → Valor HE − Desconto
 // Pedido do usuário (2026-06): avaliação funcionário a funcionário com horários não
 // batidos + quanto foi descontado, e dias/valor de hora extra; + resumo de todos.
-function evaluationDetail(emp: EmployeeTimesheetData) {
-  const vh = emp.hourlySalary || 0;
-  const otRate = (emp.overtimeHourlyRate != null && emp.overtimeHourlyRate > 0)
-    ? emp.overtimeHourlyRate
-    : vh * (emp.schedule.overtime_multiplier || 1.5);
+/**
+ * Avaliação de Jornada (esperado × batido) usando EXATAMENTE o motor da folha
+ * (salário − descontos): mesmo `splitDayMinutes`, mesma jornada esperada da escala
+ * (`emp.expectedDayMin`, ex.: 540 = 9h) e mesmas regras de desconto/HE. Assim a
+ * Avaliação reconcilia com a Folha centavo a centavo.
+ *   - FALTA (dia útil sem trabalho)               → −1 dia = salário ÷ 30 (valor-dia).
+ *   - ATRASO / saída cedo (trabalhou < esperado)  → −(esperado − trabalhado) × valor-hora.
+ *   - HE (após 18h / fim de semana / feriado)     → +horas × valor-hora × 1,5.
+ *   - Batida ÍMPAR (inconsistente)                → fica PENDENTE: não desconta nem paga.
+ *
+ * Antes (bug A4): HE vinha de `d.overtimeMinutes` (sempre 0 nos relatórios), a falta
+ * era cobrada como `déficit × valor-hora` (≠ folha) e a batida ímpar virava falta de
+ * dia inteiro. O esperado também vinha do resumo (528) em vez da escala (540).
+ */
+export function evaluationDetail(emp: EmployeeTimesheetData) {
+  const vh = emp.hourlySalary || 0;                                 // valor-hora = salário ÷ 220
+  const valorDia = vh * (SALARY_HOUR_DIVISOR / SALARY_DAY_DIVISOR);  // = salário ÷ 30
+  const schedExpected = emp.expectedDayMin && emp.expectedDayMin > 0 ? emp.expectedDayMin : null;
 
-  const faltaDays = emp.days.map(d => {
-    const worked = d.workedMinutes || 0;
-    const expected = d.expectedMinutes || 0;
-    const deficit = expected > 0 ? Math.max(0, expected - worked) : 0;
-    return { date: d.date, dayOfWeek: d.dayOfWeek, punches: d.punches, isAbsent: d.isAbsent, expected, worked, deficit, desconto: (deficit / 60) * vh };
-  }).filter(d => d.deficit > 0);
+  const faltaDays: { date: string; dayOfWeek: number; punches: string[]; isAbsent: boolean; expected: number; worked: number; deficit: number; desconto: number }[] = [];
+  const extraDays: { date: string; dayOfWeek: number; punches: string[]; expected: number; worked: number; extra: number; valor: number }[] = [];
+  let pendingDays = 0;
 
-  const extraDays = emp.days.map(d => {
-    const worked = d.workedMinutes || 0;
-    const expected = d.expectedMinutes || 0;
-    const extra = d.overtimeMinutes || 0;
-    return { date: d.date, dayOfWeek: d.dayOfWeek, punches: d.punches, expected, worked, extra, valor: (extra / 60) * otRate };
-  }).filter(d => d.extra > 0);
+  for (const d of emp.days) {
+    const punches = Array.isArray(d.punches) ? d.punches : [];
+    const sp = punches.length >= 2
+      ? splitDayMinutes(punches, d.dayOfWeek, d.isHoliday)
+      : { normal: 0, premium: 0, incomplete: punches.length === 1 };
+    if (sp.incomplete) { pendingDays++; continue; }                 // ímpar → pendente
+
+    const isWorkday = (d.expectedMinutes || 0) > 0;                 // dia de escala (esperado>0)
+    const expected = schedExpected ?? (d.expectedMinutes || 0);     // folha usa a escala (540)
+
+    if (isWorkday) {
+      if (sp.normal === 0 && sp.premium === 0) {
+        // FALTA: dia útil sem trabalho → desconta o dia inteiro (valor-dia)
+        faltaDays.push({ date: d.date, dayOfWeek: d.dayOfWeek, punches, isAbsent: true, expected, worked: 0, deficit: expected, desconto: valorDia });
+      } else {
+        const deficit = Math.max(0, expected - sp.normal);          // atraso/saída cedo só sobre horas normais
+        if (deficit > 0) {
+          faltaDays.push({ date: d.date, dayOfWeek: d.dayOfWeek, punches, isAbsent: false, expected, worked: sp.normal, deficit, desconto: (deficit / 60) * vh });
+        }
+        if (sp.premium > 0) {
+          extraDays.push({ date: d.date, dayOfWeek: d.dayOfWeek, punches, expected, worked: sp.normal + sp.premium, extra: sp.premium, valor: (sp.premium / 60) * vh * PREMIUM_MULTIPLIER });
+        }
+      }
+    } else {
+      // folga/feriado trabalhado → tudo 1,5×
+      const worked = sp.normal + sp.premium;
+      if (worked > 0) {
+        extraDays.push({ date: d.date, dayOfWeek: d.dayOfWeek, punches, expected: 0, worked, extra: worked, valor: (worked / 60) * vh * PREMIUM_MULTIPLIER });
+      }
+    }
+  }
 
   const totalDeficitMin = faltaDays.reduce((s, d) => s + d.deficit, 0);
   const totalDescontoVal = faltaDays.reduce((s, d) => s + d.desconto, 0);
@@ -650,7 +693,7 @@ function evaluationDetail(emp: EmployeeTimesheetData) {
   const totalExtraVal = extraDays.reduce((s, d) => s + d.valor, 0);
 
   return {
-    vh, otRate, faltaDays, extraDays,
+    vh, valorDia, faltaDays, extraDays, pendingDays,
     totalDeficitMin, totalDescontoVal, totalExtraMin, totalExtraVal,
     liquido: totalExtraVal - totalDescontoVal, hasSalary: vh > 0,
   };
@@ -708,7 +751,9 @@ function evaluationEmployeeInnerHtml(emp: EmployeeTimesheetData, periodLabel: st
       <div class="summary-card"><div class="sc-label">Hora Extra</div><div class="sc-value" style="color:#b45309">${minutesToDisplay(e.totalExtraMin)}</div></div>
       <div class="summary-card"><div class="sc-label">Valor HE</div><div class="sc-value" style="color:#16a34a">${e.hasSalary ? '+' + formatMoney(e.totalExtraVal) : 'N/D'}</div></div>
       <div class="summary-card"><div class="sc-label">Líquido (HE − Desc.)</div><div class="sc-value" style="color:${e.liquido >= 0 ? '#16a34a' : '#dc2626'}">${e.hasSalary ? (e.liquido >= 0 ? '+' : '-') + formatMoney(Math.abs(e.liquido)) : 'N/D'}</div></div>
+      ${e.pendingDays > 0 ? `<div class="summary-card" style="background:#fef3c7"><div class="sc-label">Pendentes (ímpar)</div><div class="sc-value" style="color:#b45309">${e.pendingDays}</div></div>` : ''}
     </div>
+    ${e.pendingDays > 0 ? `<p style="font-size:10px;color:#b45309;margin:0 0 8px">⚠ ${e.pendingDays} dia(s) com nº ímpar de batidas ficaram FORA do cálculo (não descontam nem pagam) — resolver na aba "Pendências de Ponto" antes de fechar.</p>` : ''}
 
     <h2>Faltas / Atrasos — horários não cumpridos e desconto</h2>
     <table>
@@ -752,9 +797,11 @@ export function printEmployeeEvaluationSummary(employees: EmployeeTimesheetData[
       <td class="text-right mono">${e.totalExtraMin > 0 ? `<b style="color:#b45309">${minutesToDisplay(e.totalExtraMin)}</b>` : '—'}</td>
       <td class="text-right mono" style="color:#16a34a">${e.hasSalary ? (e.totalExtraVal > 0 ? '+' + formatMoney(e.totalExtraVal) : '—') : 'N/D'}</td>
       <td class="text-right mono" style="color:${e.liquido >= 0 ? '#16a34a' : '#dc2626'};font-weight:700">${e.hasSalary ? (e.liquido >= 0 ? '+' : '-') + formatMoney(Math.abs(e.liquido)) : 'N/D'}</td>
+      <td class="text-center mono">${e.pendingDays > 0 ? `<b style="color:#b45309">${e.pendingDays}</b>` : '—'}</td>
     </tr>
   `).join('');
 
+  const totPend = all.reduce((s, e) => s + e.pendingDays, 0);
   const totDef = all.reduce((s, e) => s + e.totalDeficitMin, 0);
   const totDesc = all.reduce((s, e) => s + (e.hasSalary ? e.totalDescontoVal : 0), 0);
   const totExtra = all.reduce((s, e) => s + e.totalExtraMin, 0);
@@ -784,6 +831,7 @@ export function printEmployeeEvaluationSummary(employees: EmployeeTimesheetData[
         <th class="text-right">Hora Extra</th>
         <th class="text-right">Valor HE</th>
         <th class="text-right">Líquido</th>
+        <th class="text-center">Pend.</th>
       </tr></thead>
       <tbody>${rows}
         <tr class="total-row" style="font-size:12px">
@@ -795,15 +843,16 @@ export function printEmployeeEvaluationSummary(employees: EmployeeTimesheetData[
           <td class="text-right mono" style="color:#b45309"><b>${minutesToDisplay(totExtra)}</b></td>
           <td class="text-right mono" style="color:#16a34a"><b>+${formatMoney(totExtraVal)}</b></td>
           <td class="text-right mono" style="color:${totLiquido >= 0 ? '#16a34a' : '#dc2626'};font-weight:700">${totLiquido >= 0 ? '+' : '-'}${formatMoney(Math.abs(totLiquido))}</td>
+          <td class="text-center mono">${totPend > 0 ? `<b style="color:#b45309">${totPend}</b>` : '—'}</td>
         </tr>
       </tbody>
     </table>
 
     <div style="margin-top:16px;font-size:10px;color:#222;line-height:1.5">
-      <b>Como ler:</b> Avaliação de aderência à JORNADA ESPERADA (separada da folha por horas) ·
-      <b>Faltou</b> = esperado − trabalhado (atrasos + faltas) · <b>Desconto</b> = horas faltantes × valor-hora ·
-      <b>Hora Extra</b> = horas acima do esperado no dia · <b>Valor HE</b> = horas extras × taxa de HE configurada ·
-      <b>Líquido</b> = Valor HE − Desconto.
+      <b>Como ler:</b> Mesma conta da FOLHA (salário − descontos) aplicada à jornada ·
+      <b>Falta</b> (dia útil sem trabalho) = −1 dia (salário ÷ 30) · <b>Atraso/saída cedo</b> = (esperado − trabalhado) × valor-hora (salário ÷ 220) ·
+      <b>Hora Extra</b> (após 18h / fim de semana / feriado) = horas × valor-hora × 1,5 ·
+      <b>Líquido</b> = Valor HE − Desconto · <b>Pend.</b> = dias com batida ímpar fora do cálculo (resolver em Pendências de Ponto).
     </div>
   `;
 
