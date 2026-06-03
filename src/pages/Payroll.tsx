@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -86,6 +86,16 @@ function periodLabel(from: string, to: string): string {
   return `${dm(from)}–${dm(to)}/${to.slice(0, 4)}`;
 }
 
+/** Atrasa `value` em `ms` — usado pra não refazer as queries a cada tecla na data. */
+function useDebouncedValue<T>(value: T, ms: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), ms);
+    return () => clearTimeout(id);
+  }, [value, ms]);
+  return debounced;
+}
+
 const STATUS_BADGES = {
   rascunho: { label: 'Rascunho', variant: 'secondary' as const },
   aprovado: { label: 'Aprovado', variant: 'default' as const },
@@ -101,15 +111,15 @@ export default function Payroll() {
   const [detailRun, setDetailRun] = useState<string | null>(null);
   const [approveRun, setApproveRun] = useState<string | null>(null);
 
-  const periodRange = range;
-  // Chave de armazenamento (compat mês: "YYYY-MM") + rótulo + nº de dias (base proporcional).
-  const period = useMemo(() => rangeToPeriod(range.from, range.to), [range.from, range.to]);
-  const periodTitle = useMemo(() => periodLabel(range.from, range.to), [range.from, range.to]);
-  const periodDays = useMemo(() => daysBetween(range.from, range.to), [range.from, range.to]);
-  // Mês CHEIO sempre vale o salário (30 avos), não os dias corridos — senão um mês de
-  // 31 dias pagaria 31/30. A proporção por dias só vale pra período PARCIAL (quinzena).
-  const isFullMonth = useMemo(() => /^\d{4}-\d{2}$/.test(period), [period]);
-  const baseDays = isFullMonth ? undefined : periodDays;
+  // Intervalo APLICADO (debounced 450ms): enquanto o usuário digita a data, as queries,
+  // o título e os avisos só recarregam DEPOIS que ele para de digitar — senão a página
+  // "atualiza" a cada tecla (e a cada ano intermediário: 2 → 20 → 202 → 2026). A
+  // digitação (range) e o CÁLCULO no clique continuam imediatos.
+  const appliedFrom = useDebouncedValue(range.from, 450);
+  const appliedTo = useDebouncedValue(range.to, 450);
+  const appliedPeriod = useMemo(() => rangeToPeriod(appliedFrom, appliedTo), [appliedFrom, appliedTo]);
+  const periodTitle = useMemo(() => periodLabel(appliedFrom, appliedTo), [appliedFrom, appliedTo]);
+  const periodDays = useMemo(() => daysBetween(range.from, range.to), [range.from, range.to]); // hint imediato (sem query)
   // Atalhos de quinzena ancorados no mês do "de".
   const applyPreset = (preset: '1q' | '2q' | 'mes') => {
     const ym = (range.from || `${defaultPeriod}-01`).slice(0, 7);
@@ -121,7 +131,7 @@ export default function Payroll() {
   const { data: employees = [] } = useEmployees();
   const { data: schedules = [] } = useWorkSchedules();
   const defaultSchedule = useMemo(() => (schedules as any[]).find(s => s.is_default) || (schedules as any[])[0] || null, [schedules]);
-  const { data: runs = [], isLoading } = usePayrollRuns(period);
+  const { data: runs = [], isLoading } = usePayrollRuns(appliedPeriod);
   const { data: holidaysList = [] } = useHolidays();
   const upsertRun = useUpsertPayrollRun();
   const updateStatus = useUpdatePayrollStatus();
@@ -134,8 +144,8 @@ export default function Payroll() {
     [holidaysList],
   );
 
-  // Cobertura: até onde o ponto foi importado neste mês (dias com batida).
-  const { data: coverage } = useTimesheetCoverage(periodRange.from, periodRange.to);
+  // Cobertura: até onde o ponto foi importado neste período (debounced, igual às queries).
+  const { data: coverage } = useTimesheetCoverage(appliedFrom, appliedTo);
 
   const employeeMap = useMemo(() => new Map(employees.map(e => [e.id, e])), [employees]);
 
@@ -149,27 +159,32 @@ export default function Payroll() {
   }, [runs]);
 
   async function calculateAll() {
-    if (!periodRange.from || !periodRange.to) {
-      toast.error('Selecione um mês válido para calcular a folha.');
+    // Usa o intervalo IMEDIATO (o que está nos inputs agora), não o debounced.
+    const cFrom = range.from, cTo = range.to;
+    if (!cFrom || !cTo || cFrom > cTo) {
+      toast.error('Selecione um intervalo de datas válido para calcular a folha.');
       return;
     }
+    const cPeriod = rangeToPeriod(cFrom, cTo);
+    // Mês cheio paga salário (30 avos); período parcial (quinzena) = proporcional aos dias.
+    const cBaseDays = /^\d{4}-\d{2}$/.test(cPeriod) ? undefined : daysBetween(cFrom, cTo);
     setCalcRunning(true);
     try {
-      const monthDays = getDaysInRange(range.from, range.to);
+      const monthDays = getDaysInRange(cFrom, cTo);
       // Clamp à cobertura: só conta dias já importados (≤ última data com batida).
       // Dias após isso NÃO entram — senão contaria 0h e subpagaria quem ainda não
       // teve o ponto baixado. A folha fica "parcial" até importar o resto.
       const maxCov = coverage?.maxCovered || null;
       const coveredDays = maxCov ? monthDays.filter(d => d.date <= maxCov) : monthDays;
-      const clamped = !!(maxCov && periodRange.to && maxCov < periodRange.to);
+      const clamped = !!(maxCov && maxCov < cTo);
 
       // Batidas do período. time_records não tem FK pra employees — casa por
       // matrícula (employee_external_id) ou nome.
       const { data: timeRecords, error } = await supabase
         .from('time_records')
         .select('employee_external_id, employee_name, record_date, punches')
-        .gte('record_date', periodRange.from!)
-        .lte('record_date', periodRange.to!);
+        .gte('record_date', cFrom)
+        .lte('record_date', cTo);
       if (error) throw error;
 
       const byExternalId = new Map<string, Map<string, string[]>>();
@@ -200,8 +215,8 @@ export default function Payroll() {
       const { data: advances } = await supabase
         .from('employee_advances')
         .select('employee_id, amount, advance_date, status, payroll_run_id')
-        .gte('advance_date', periodRange.from!)
-        .lte('advance_date', periodRange.to!)
+        .gte('advance_date', cFrom)
+        .lte('advance_date', cTo)
         .or('payroll_run_id.is.null,status.eq.pending');
       const advancesByEmp = new Map<string, number>();
       for (const a of (advances || []) as any[]) {
@@ -247,13 +262,13 @@ export default function Payroll() {
           advancesByEmp.get(emp.id) || 0,
           undefined,        // dayDivisor (padrão 30)
           undefined,        // hourDivisor (padrão 220)
-          baseDays,         // base proporcional (quinzena); mês cheio = salário (undefined)
+          cBaseDays,        // base proporcional (quinzena); mês cheio = salário (undefined)
         );
         if (result.pending_days > 0) withIncomplete++;
 
         await upsertRun.mutateAsync({
           employee_id: emp.id,
-          period,
+          period: cPeriod,
           base_salary: Number(emp.salary) || 0,
           hourly_rate: result.valor_hora,
           worked_minutes: result.worked_minutes,
@@ -332,7 +347,7 @@ export default function Payroll() {
           <span>Nenhuma batida importada para {periodTitle}. Importe o arquivo do relógio (aba Ponto) antes de calcular.</span>
         </div>
       )}
-      {coverage && coverage.maxCovered && periodRange.to && coverage.maxCovered < periodRange.to && (
+      {coverage && coverage.maxCovered && appliedTo && coverage.maxCovered < appliedTo && (
         <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-800 flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           <span>
@@ -342,7 +357,7 @@ export default function Payroll() {
         </div>
       )}
 
-      <PayrollPendingAdvancesAlert from={range.from} to={range.to} />
+      <PayrollPendingAdvancesAlert from={appliedFrom} to={appliedTo} />
 
       <StatGrid>
         <StatCard label="Funcionários" value={runs.length} hint="na folha do período" />
