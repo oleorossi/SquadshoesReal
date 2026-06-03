@@ -62,6 +62,27 @@ function dowName(dow: number): string {
   return ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'][dow - 1] || '—';
 }
 
+/**
+ * Interpreta as batidas em 3 checkpoints (Entrada / Almoço / Saída) por janela de
+ * horário, pra mostrar de relance o que o funcionário bateu e o que faltou:
+ *   - Entrada → batida de manhã (< 11:00)
+ *   - Almoço  → batidas na janela 11:00–15:00 (2 = saiu e voltou, 1 = parcial, 0 = não bateu)
+ *   - Saída   → batida da tarde/fim (≥ 15:00)
+ */
+function punchCheckpoints(punches: string[]): { entrada: boolean; lunch: number; saida: boolean } {
+  const toMin = (t: string) => {
+    const c = String(t).replace(/[^\d:]/g, '');
+    const [h, m] = c.split(':').map(Number);
+    return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+  };
+  const mins = punches.map(toMin);
+  return {
+    entrada: mins.some((m) => m < 11 * 60),
+    lunch: mins.filter((m) => m >= 11 * 60 && m < 15 * 60).length,
+    saida: mins.some((m) => m >= 15 * 60),
+  };
+}
+
 export default function TimePendingsPage() {
   const { data: pendings = [], isLoading } = useTimePendings({ onlyProblems: true });
   const { data: cutoff } = useBankHoursCutoff();
@@ -362,6 +383,24 @@ export default function TimePendingsPage() {
                         ) : (
                           p.punches.join(' · ')
                         )}
+                        {(() => {
+                          const ck = punchCheckpoints(p.punches);
+                          const mk = (ok: boolean) => (
+                            <span className={ok ? 'text-emerald-600' : 'text-red-600'}>{ok ? '✓' : '✗'}</span>
+                          );
+                          const lunchMk = ck.lunch >= 2
+                            ? <span className="text-emerald-600">✓</span>
+                            : ck.lunch === 1
+                              ? <span className="text-amber-600">½</span>
+                              : <span className="text-red-600">✗</span>;
+                          return (
+                            <div className="mt-1 font-sans text-[10px] text-muted-foreground flex items-center gap-1 whitespace-nowrap">
+                              <span>Entrada {mk(ck.entrada)}</span><span className="opacity-50">·</span>
+                              <span>Almoço {lunchMk}</span><span className="opacity-50">·</span>
+                              <span>Saída {mk(ck.saida)}</span>
+                            </div>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell className="text-xs font-mono tabular-nums cursor-pointer" onClick={() => setEditing(p)}>
                         {s && s.source !== 'none' && s.suggested.length === 4 ? (
