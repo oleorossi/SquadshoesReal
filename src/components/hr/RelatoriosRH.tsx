@@ -54,11 +54,12 @@ interface EmpRow {
  *   1. RELÓGIO DE PONTO — horas trabalhadas por funcionário (resumo + detalhe/dia).
  *   2. PAGAMENTO POR HORAS — quanto pagar a cada um pelas horas (valor-hora × horas).
  *
- * Ambos usam o MESMO motor da Folha (`hourlyPayroll`) e o MESMO fluxo de dados
- * (match matrícula→nome, dias cobertos, feriado dia-inteiro 1,5×) → números
- * idênticos à aba Folha por construção. Os relatórios antigos (custo total, horas
- * extras, previstas×trabalhadas, produtividade, absenteísmo, headcount, turnover)
- * foram removidos: eram do modelo antigo (jornada esperada/HE/banco) e confundiam.
+ * ⚠ ATENÇÃO (auditoria A1, 2026-06-03): estes números são por HORA TRABALHADA
+ * (`hourlyPayroll`) e NÃO são a folha oficial. Desde 2026-06-03 a FOLHA paga por
+ * SALÁRIO CHEIO − DESCONTOS (faltas/atrasos) em `src/lib/salaryPayroll.ts` (aba
+ * Folha). Portanto o "pagamento por horas" aqui DIVERGE do líquido da folha — o
+ * valor oficial é a aba Folha. Pendência: migrar estes relatórios pro motor da
+ * folha (calculateSalaryPayroll) ou remover a coluna de pagamento.
  */
 export default function RelatoriosRH() {
   const today = new Date();
@@ -161,7 +162,7 @@ export default function RelatoriosRH() {
   const Header = (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <p className="text-sm text-muted-foreground">
-        Horas trabalhadas e quanto pagar por elas — mesma conta da Folha (valor-hora = salário ÷ {MONTHLY_HOURS_DIVISOR};
+        Horas trabalhadas e <strong>estimativa</strong> de pagamento por hora (valor-hora = salário ÷ {MONTHLY_HOURS_DIVISOR};
         após 18h / fim de semana / feriado = 1,5×).
       </p>
       <Input type="month" value={period} onChange={e => setPeriod(e.target.value)} className="w-40 h-9" />
@@ -190,6 +191,13 @@ export default function RelatoriosRH() {
   return (
     <div className="space-y-4">
       {Header}
+      <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2">
+        <AlertTriangle className="h-4 w-4 shrink-0" />
+        <span>
+          <strong>Estimativa por horas trabalhadas</strong> — NÃO é a folha oficial. O pagamento é por{' '}
+          <strong>salário cheio − descontos</strong> (faltas/atrasos); o valor a pagar está na aba <strong>Folha</strong>.
+        </span>
+      </div>
       {CoverageBanner}
 
       <Tabs value={tab} onValueChange={setTab} className="w-full">

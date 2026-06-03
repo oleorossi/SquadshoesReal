@@ -126,7 +126,7 @@ function employeeReportInnerHtml(emp: EmployeeTimesheetData, periodLabel: string
       <div><span class="label">Horas 1,5×:</span> ${minutesToDisplay(b.premiumMin)} = <b>${formatMoney(b.premiumValue)}</b></div>
       <div><span class="label">Total a Pagar:</span> <b style="color:#16a34a;font-size:14px">${formatMoney(b.total)}</b></div>
     </div>
-    <p style="font-size:10px;color:#555;margin-top:4px">Valor bruto por horas trabalhadas — adiantamentos são descontados na Folha.</p>
+    <p style="font-size:10px;color:#b45309;margin-top:4px"><b>⚠ Estimativa por horas trabalhadas — NÃO é a folha oficial.</b> A folha paga por salário cheio − descontos (faltas/atrasos); o valor a pagar oficial está na aba Folha.</p>
     ` : ''}
 
     <h2>Registro Diário</h2>
@@ -409,7 +409,10 @@ export function printAllEmployeesTimesheet(employees: EmployeeTimesheetData[], p
       </tbody>
     </table>
 
-    <div style="margin-top:16px;font-size:10px;color:#222;font-weight:700">
+    <div style="margin-top:6px;font-size:11px;color:#b45309;font-weight:800;border:1.5px solid #b45309;padding:5px 8px;border-radius:4px">
+      ⚠ ESTIMATIVA por horas trabalhadas — NÃO é a folha oficial. A folha paga por SALÁRIO CHEIO − DESCONTOS (faltas/atrasos); o valor a pagar oficial está na aba Folha.
+    </div>
+    <div style="margin-top:8px;font-size:10px;color:#222;font-weight:700">
       <b>Legenda:</b> Pagamento por HORAS TRABALHADAS · Valor/h = salário ÷ 220 ·
       Normais (1×) = horas em dia útil até as 18:00 · 1,5× = sábado, domingo, feriado ou após as 18:00 (não acumula) ·
       Total a Pagar = Normais × Valor/h + 1,5× × Valor/h × 1,5 (bruto; adiantamento é descontado na folha) ·

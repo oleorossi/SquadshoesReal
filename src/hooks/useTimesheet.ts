@@ -866,13 +866,19 @@ export function useTimesheetCoverage(from?: string, to?: string) {
       while (true) {
         const { data, error } = await supabase
           .from('time_records')
-          .select('record_date')
+          .select('record_date, punches')
           .gte('record_date', from!)
           .lte('record_date', to!)
           .range(offset, offset + PAGE - 1);
         if (error) throw error;
         if (!data || data.length === 0) break;
-        for (const r of data) covered.add((r as { record_date: string }).record_date);
+        // M2: só conta o dia como COBERTO se tem batida real. O importador grava
+        // linhas com punches=[] pra todo dia do período — contá-las fazia o
+        // maxCovered avançar até o fim do mês sem ponto, desligando o aviso
+        // "Parcial" e a proteção anti-subpagamento da folha.
+        for (const r of data as { record_date: string; punches: unknown }[]) {
+          if (Array.isArray(r.punches) && r.punches.length > 0) covered.add(r.record_date);
+        }
         if (data.length < PAGE) break;
         offset += PAGE;
       }

@@ -128,15 +128,22 @@ export default function Payroll() {
       if (error) throw error;
 
       const byExternalId = new Map<string, Map<string, string[]>>();
+      const byExtIdName = new Map<string, Map<string, string[]>>(); // chave `${extId}|${nome}`
       const byName = new Map<string, Map<string, string[]>>();
+      const extIdNames = new Map<string, Set<string>>(); // extId → nomes distintos (detecta matrícula compartilhada)
       for (const r of (timeRecords || []) as any[]) {
         const punches: string[] = Array.isArray(r.punches) ? r.punches : [];
+        const nameKey = (r.employee_name || '').toLowerCase().trim();
         if (r.employee_external_id) {
           const k = String(r.employee_external_id);
           if (!byExternalId.has(k)) byExternalId.set(k, new Map());
           byExternalId.get(k)!.set(r.record_date, punches);
+          if (!extIdNames.has(k)) extIdNames.set(k, new Set());
+          if (nameKey) extIdNames.get(k)!.add(nameKey);
+          const kn = `${k}|${nameKey}`;
+          if (!byExtIdName.has(kn)) byExtIdName.set(kn, new Map());
+          byExtIdName.get(kn)!.set(r.record_date, punches);
         }
-        const nameKey = (r.employee_name || '').toLowerCase().trim();
         if (nameKey) {
           if (!byName.has(nameKey)) byName.set(nameKey, new Map());
           byName.get(nameKey)!.set(r.record_date, punches);
@@ -158,11 +165,19 @@ export default function Payroll() {
 
       let calculated = 0;
       let withIncomplete = 0;
+      let sharedMatricula = 0;
       for (const emp of employees.filter(e => e.active)) {
-        // Match: matrícula (external_id) → nome.
+        // Match das batidas por MATRÍCULA + NOME. Se a matrícula é compartilhada por
+        // mais de um nome (ex.: ext_id 1 = "valdilene" + "Dona Val"), pega SÓ as
+        // batidas com o nome DESTE funcionário — senão herdaria o ponto do outro.
+        // Matrícula única → casa pela matrícula (robusto a divergência de grafia).
         const extKey = (emp as any).external_id ? String((emp as any).external_id) : '';
-        const empPunches = (extKey && byExternalId.get(extKey))
-          || byName.get(emp.name.toLowerCase().trim())
+        const nameKey = emp.name.toLowerCase().trim();
+        const extShared = !!extKey && (extIdNames.get(extKey)?.size || 0) > 1;
+        if (extShared) sharedMatricula++;
+        const empPunches = (extKey ? byExtIdName.get(`${extKey}|${nameKey}`) : null)
+          || (!extShared && extKey ? byExternalId.get(extKey) : null)
+          || byName.get(nameKey)
           || new Map<string, string[]>();
 
         // Escala do funcionário (própria ou a padrão — ex.: Dona Val não tem própria).
@@ -218,7 +233,8 @@ export default function Payroll() {
       toast.success(
         `Folha calculada: ${calculated} funcionário(s).` +
         (clamped ? ` Parcial: ponto importado só até ${maxCov!.split('-').reverse().join('/')}.` : '') +
-        (withIncomplete > 0 ? ` ${withIncomplete} com batida incompleta — confira no Ponto.` : ''),
+        (withIncomplete > 0 ? ` ${withIncomplete} com batida incompleta — confira no Ponto.` : '') +
+        (sharedMatricula > 0 ? ` ⚠ ${sharedMatricula} com matrícula compartilhada — confira o cadastro (pode haver ponto de 2 pessoas na mesma matrícula).` : ''),
       );
     } catch (err: any) {
       toast.error(`Erro ao calcular folha: ${err.message}`);
