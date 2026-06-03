@@ -75,14 +75,17 @@ function timeToMin(t: string): number {
  *
  * Batidas:
  * - **4+ pares** (ex.: 08:00,12:00,13:00,18:00) → soma os pares reais.
- * - **2 batidas ou nº ímpar** (faltou bater) → span do 1º ao último (não perde a tarde).
+ * - **2 batidas** (entrada+saída) → span do 1º ao último (não perde a tarde).
+ * - **nº ÍMPAR** (pulou uma batida) → INCONSISTENTE: 0h + `incomplete`. Não é mais
+ *   "chutado" pelo intervalo (inflava/deflava a folha); fica de fora do cálculo até
+ *   ser resolvido manualmente na aba Pendências de Ponto (decisão do usuário 2026-06).
  *
  * Almoço (decisão 2026-06-02): é **1h dentro de 12:00–14:00**. Em dia longo (>6h)
  * que cruza o meio-dia, garante **no mínimo 1h** de almoço — se a pessoa bateu uma
  * pausa MENOR que 1h nessa janela (ou não bateu), desconta o que faltar pra 1h; se
  * bateu pausa MAIOR (ex.: saiu 2h), respeita a real. O desconto sai da hora normal
- * (12–14 é período normal); o que sobrar sai do 1,5×. Dia ímpar fica `incomplete`
- * pra RH conferir, mas É contabilizado. Meia-noite tratada de forma defensiva.
+ * (12–14 é período normal); o que sobrar sai do 1,5×. Meia-noite tratada de forma
+ * defensiva.
  */
 export function splitDayMinutes(
   punches: string[],
@@ -91,9 +94,14 @@ export function splitDayMinutes(
 ): { normal: number; premium: number; incomplete: boolean } {
   const n = punches.length;
   if (n < 2) return { normal: 0, premium: 0, incomplete: n === 1 };
+  // Nº ÍMPAR de batidas = pulou uma batida → dia INCONSISTENTE. Não dá pra saber as
+  // horas com segurança; retorna 0h + incomplete pra ficar de fora da folha e ser
+  // resolvido manualmente na aba Pendências (antes "chutava" pelo span 1º→último, o
+  // que gerava valor errado). Decisão do usuário 2026-06.
+  if (n % 2 !== 0) return { normal: 0, premium: 0, incomplete: true };
   const allPremium = isHoliday || dayOfWeek === 0 || dayOfWeek === 6;
 
-  // Intervalos trabalhados: pares reais (4+) ou span do 1º ao último (2/ímpar).
+  // Intervalos trabalhados: pares reais (4+) ou span do 1º ao último (2 batidas).
   let intervals: [number, number][];
   if (n >= 4 && n % 2 === 0) {
     intervals = [];

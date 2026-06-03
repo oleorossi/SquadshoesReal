@@ -3,7 +3,8 @@ import { splitDayMinutes, calculateHourlyPayroll, type HourlyDayInput } from '..
 
 // Folha por hora trabalhada (refocus 2026-06-01). Trava a regra:
 // VH = salário/220; 1,5× após 18h / sáb / dom / feriado; não acumula;
-// almoço não-batido (2 batidas ou nº ímpar, dia >6h) deduz 1h padrão.
+// almoço não-batido (2 batidas, dia >6h) deduz 1h padrão;
+// nº ÍMPAR de batidas = INCONSISTENTE → 0h (fica de fora; resolver no Pendências).
 const WED = 3, SAT = 6, SUN = 0;
 
 describe('splitDayMinutes', () => {
@@ -12,9 +13,9 @@ describe('splitDayMinutes', () => {
     expect(r).toEqual({ normal: 540, premium: 0, incomplete: false });
   });
 
-  it('esqueceu o 12:00 (ímpar 08/13/18): conta a tarde e deduz 1h almoço → 9h, marca incompleto', () => {
+  it('nº ímpar (08/13/18 = pulou batida): INCONSISTENTE → 0h, marca incompleto (resolve no Pendências)', () => {
     const r = splitDayMinutes(['08:00', '13:00', '18:00'], WED, false);
-    expect(r.normal).toBe(540); // não os 5h truncados de antes
+    expect(r.normal).toBe(0); // não "chuta" mais pelo intervalo
     expect(r.premium).toBe(0);
     expect(r.incomplete).toBe(true);
   });
@@ -44,9 +45,9 @@ describe('splitDayMinutes', () => {
     expect(splitDayMinutes(['08:00', '12:00', '13:00', '18:00'], SUN, false)).toEqual({ normal: 0, premium: 540, incomplete: false });
   });
 
-  it('feriado ímpar: deduz do premium quando não há normal → 9h premium, incompleto', () => {
+  it('feriado ímpar (pulou batida): INCONSISTENTE → 0h, incompleto (mesmo em feriado)', () => {
     const r = splitDayMinutes(['08:00', '13:00', '18:00'], WED, true);
-    expect(r).toEqual({ normal: 0, premium: 540, incomplete: true });
+    expect(r).toEqual({ normal: 0, premium: 0, incomplete: true });
   });
 
   it('tolera batida assumida com * e minutos não-zero (12:37*, 18:00*)', () => {
@@ -109,9 +110,10 @@ describe('calculateHourlyPayroll', () => {
     expect(r.net_value).toBe(40);
   });
 
-  it('conta dias incompletos (batida faltando) pra alerta', () => {
+  it('dia com batida ímpar NÃO entra no cálculo, só conta pro alerta (resolve no Pendências)', () => {
     const r = calculateHourlyPayroll(2200, [day('2026-06-03', WED, ['08:00', '13:00', '18:00'])], 0);
     expect(r.incomplete_days).toBe(1);
-    expect(r.normal_minutes).toBe(540); // ainda contabiliza
+    expect(r.normal_minutes).toBe(0); // ímpar fica de fora; antes contava 540
+    expect(r.gross_value).toBe(0);
   });
 });
