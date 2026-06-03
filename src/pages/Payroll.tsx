@@ -11,9 +11,9 @@ import {
 import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Calculator, CheckCircle as CheckCircle2, Receipt, Warning as AlertTriangle, Wallet, Clock } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
 import { useEmployees } from '@/hooks/useEmployees';
-import { useHolidays, useTimesheetCoverage } from '@/hooks/useTimesheet';
+import { useHolidays, useTimesheetCoverage, useWorkSchedules } from '@/hooks/useTimesheet';
 import { usePayrollRuns, useUpsertPayrollRun, useUpdatePayrollStatus } from '@/hooks/useRH';
-import { calculateHourlyPayroll, MONTHLY_HOURS_DIVISOR, type HourlyDayInput } from '@/lib/hourlyPayroll';
+import { calculateSalaryPayroll, type SalaryDayInput } from '@/lib/salaryPayroll';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -26,6 +26,18 @@ const fmtHoras = (min: number) => {
   const m = Math.max(0, Math.round(Number(min) || 0));
   return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`;
 };
+
+function timeToMin(t: string): number {
+  const [h, m] = String(t || '0:0').split(':').map(Number);
+  return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+}
+const WORKS_DOW = ['works_sunday', 'works_monday', 'works_tuesday', 'works_wednesday', 'works_thursday', 'works_friday', 'works_saturday'];
+function worksOnDow(sch: any, dow: number): boolean { return !!(sch && sch[WORKS_DOW[dow]]); }
+/** Jornada esperada do dia (min): saída − entrada − almoço. Ex.: 08–18 c/ 12–13 = 540 (9h). */
+function expectedDayMinutes(sch: any): number {
+  if (!sch) return 0;
+  return Math.max(0, timeToMin(sch.exit_time) - timeToMin(sch.entry_time) - (timeToMin(sch.lunch_end) - timeToMin(sch.lunch_start)));
+}
 
 function getMonthDays(period: string): { date: string; dow: number }[] {
   const [y, m] = period.split('-').map(Number);
@@ -57,6 +69,8 @@ export default function Payroll() {
   const [approveRun, setApproveRun] = useState<string | null>(null);
 
   const { data: employees = [] } = useEmployees();
+  const { data: schedules = [] } = useWorkSchedules();
+  const defaultSchedule = useMemo(() => (schedules as any[]).find(s => s.is_default) || (schedules as any[])[0] || null, [schedules]);
   const { data: runs = [], isLoading } = usePayrollRuns(period);
   const { data: holidaysList = [] } = useHolidays();
   const upsertRun = useUpsertPayrollRun();
@@ -81,11 +95,12 @@ export default function Payroll() {
   const employeeMap = useMemo(() => new Map(employees.map(e => [e.id, e])), [employees]);
 
   const totals = useMemo(() => {
-    const bruto = runs.reduce((s, r) => s + (r.total_proventos || 0), 0);
+    const proventos = runs.reduce((s, r) => s + (r.total_proventos || 0), 0);
+    const descontos = runs.reduce((s, r) => s + ((r.absence_discount || 0) + (r.deductions_amount || 0)), 0);
     const advances = runs.reduce((s, r) => s + (r.advances_total || 0), 0);
     const liquido = runs.reduce((s, r) => s + (r.total_liquido || 0), 0);
     const advancesCount = runs.filter(r => (r.advances_total || 0) > 0).length;
-    return { bruto, advances, liquido, advancesCount };
+    return { proventos, descontos, advances, liquido, advancesCount };
   }, [runs]);
 
   async function calculateAll() {
@@ -150,34 +165,52 @@ export default function Payroll() {
           || byName.get(emp.name.toLowerCase().trim())
           || new Map<string, string[]>();
 
-        const days: HourlyDayInput[] = coveredDays.map(d => ({
-          date: d.date,
-          dayOfWeek: d.dow,
-          isHoliday: holidaysSet.has(d.date),
-          punches: empPunches.get(d.date) || [],
-        }));
+        // Escala do funcionário (própria ou a padrão — ex.: Dona Val não tem própria).
+        const sch = (emp.work_schedule_id && (schedules as any[]).find(s => s.id === emp.work_schedule_id)) || defaultSchedule;
 
-        const result = calculateHourlyPayroll(
+        const days: SalaryDayInput[] = coveredDays.map(d => {
+          const isHoliday = holidaysSet.has(d.date);
+          const isWorkday = worksOnDow(sch, d.dow) && !isHoliday;
+          return {
+            date: d.date,
+            dayOfWeek: d.dow,
+            isHoliday,
+            isWorkday,
+            expectedMinutes: isWorkday ? expectedDayMinutes(sch) : 0,
+            punches: empPunches.get(d.date) || [],
+          };
+        });
+
+        const result = calculateSalaryPayroll(
           Number(emp.salary) || 0,
           days,
           advancesByEmp.get(emp.id) || 0,
         );
-        if (result.incomplete_days > 0) withIncomplete++;
+        if (result.pending_days > 0) withIncomplete++;
 
         await upsertRun.mutateAsync({
           employee_id: emp.id,
           period,
           base_salary: Number(emp.salary) || 0,
-          hourly_rate: result.hourly_rate,
+          hourly_rate: result.valor_hora,
           worked_minutes: result.worked_minutes,
           normal_minutes: result.normal_minutes,
           premium_minutes: result.premium_minutes,
-          normal_value: result.normal_value,
-          premium_value: result.premium_value,
+          normal_value: 0,
+          premium_value: result.he_value,
+          expected_minutes: result.expected_minutes,
+          business_days: result.workdays,
+          business_days_worked: result.worked_days,
+          absent_days: result.falta_days,
+          absence_discount: result.falta_desconto,
+          deductions_amount: result.atraso_desconto,
+          overtime_amount: result.he_value,
           advances_total: result.advances_total,
-          total_proventos: result.gross_value,
-          total_descontos: result.advances_total,
+          total_proventos: result.total_proventos,
+          total_descontos: result.total_descontos,
           total_liquido: result.net_value,
+          net_salary: result.net_value,
+          notes: result.pending_days > 0 ? `${result.pending_days} dia(s) pendente(s) — resolver no Pendências` : null,
           status: 'rascunho',
         });
         calculated++;
@@ -207,8 +240,8 @@ export default function Payroll() {
     <div className="space-y-4 page-enter">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="text-xs text-muted-foreground">
-          Pagamento por <span className="font-semibold text-foreground">hora trabalhada</span> · valor-hora = salário ÷ {MONTHLY_HOURS_DIVISOR} ·
-          {' '}após 18h / fim de semana / feriado = <span className="font-semibold text-foreground">1,5×</span>
+          <span className="font-semibold text-foreground">Salário cheio − descontos</span> · falta = salário÷30 · atraso/saída cedo = min × (salário÷220) ·
+          {' '}hora extra após 18h / fim de semana / feriado = <span className="font-semibold text-foreground">1,5×</span>
         </div>
         <div className="flex items-center gap-2">
           <Input type="month" value={period} onChange={e => setPeriod(e.target.value)} className="w-40 h-9" />
@@ -239,7 +272,8 @@ export default function Payroll() {
 
       <StatGrid>
         <StatCard label="Funcionários" value={runs.length} hint="na folha do período" />
-        <StatCard label="Total bruto" value={fmt(totals.bruto)} tone="success" />
+        <StatCard label="Proventos" value={fmt(totals.proventos)} hint="salário + horas extras" tone="success" />
+        <StatCard label="Descontos" value={fmt(totals.descontos)} hint="faltas + atrasos" tone="warning" />
         <StatCard
           label="Adiantamentos"
           value={fmt(totals.advances)}
@@ -255,11 +289,11 @@ export default function Payroll() {
           <TableHeader>
             <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
               <TableHead>Funcionário</TableHead>
-              <TableHead className="text-right">Valor-hora</TableHead>
-              <TableHead className="text-right">Horas normais</TableHead>
-              <TableHead className="text-right">Horas 1,5×</TableHead>
-              <TableHead className="text-right">Bruto</TableHead>
-              <TableHead className="text-right">Adiantamentos</TableHead>
+              <TableHead className="text-right">Salário</TableHead>
+              <TableHead className="text-right">Faltas</TableHead>
+              <TableHead className="text-right">Atrasos</TableHead>
+              <TableHead className="text-right">Hora extra</TableHead>
+              <TableHead className="text-right">Adiant.</TableHead>
               <TableHead className="text-right">Líquido</TableHead>
               <TableHead>Status</TableHead>
               <TableHead></TableHead>
@@ -288,14 +322,22 @@ export default function Payroll() {
                       {hasAdvance && <Wallet className="h-3.5 w-3.5 text-amber-600" aria-label="Possui adiantamento" />}
                     </div>
                   </TableCell>
-                  <TableCell className="text-right font-mono text-muted-foreground tabular-nums">{fmt(r.hourly_rate)}</TableCell>
-                  <TableCell className="text-right font-mono tabular-nums">{fmtHoras(r.normal_minutes)}</TableCell>
+                  <TableCell className="text-right font-mono text-muted-foreground tabular-nums">{fmt(r.base_salary)}</TableCell>
                   <TableCell className="text-right font-mono tabular-nums">
-                    {r.premium_minutes > 0
-                      ? <span className="text-amber-600 font-semibold">{fmtHoras(r.premium_minutes)}</span>
+                    {(r.absent_days || 0) > 0
+                      ? <span className="text-red-600 font-semibold">{r.absent_days}d · −{fmt(r.absence_discount)}</span>
                       : <span className="text-muted-foreground">—</span>}
                   </TableCell>
-                  <TableCell className="text-right font-mono tabular-nums">{fmt(r.total_proventos)}</TableCell>
+                  <TableCell className="text-right font-mono tabular-nums">
+                    {(r.deductions_amount || 0) > 0
+                      ? <span className="text-red-600">−{fmt(r.deductions_amount)}</span>
+                      : <span className="text-muted-foreground">—</span>}
+                  </TableCell>
+                  <TableCell className="text-right font-mono tabular-nums">
+                    {(r.overtime_amount || 0) > 0
+                      ? <span className="text-emerald-600 font-semibold">+{fmt(r.overtime_amount)}</span>
+                      : <span className="text-muted-foreground">—</span>}
+                  </TableCell>
                   <TableCell className={`text-right font-mono tabular-nums ${hasAdvance ? 'text-amber-700 font-semibold' : 'text-muted-foreground'}`}>
                     {hasAdvance ? `− ${fmt(r.advances_total)}` : fmt(0)}
                   </TableCell>
@@ -355,7 +397,7 @@ export default function Payroll() {
                       </p>
                       <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 space-y-1">
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Bruto (horas trabalhadas):</span>
+                          <span className="text-muted-foreground">Bruto (salário + HE):</span>
                           <span className="font-mono tabular-nums">{fmt(r.total_proventos)}</span>
                         </div>
                         <div className="flex justify-between text-amber-700">
@@ -388,16 +430,18 @@ export default function Payroll() {
       {/* Detalhe do holerite */}
       <Dialog open={!!detailRun} onOpenChange={(o) => !o && setDetailRun(null)}>
         <DialogContent className="max-w-xl">
-          <DialogHeader><DialogTitle>Holerite — por hora trabalhada</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Holerite — salário − descontos</DialogTitle></DialogHeader>
           {(() => {
             const r = runs.find(x => x.id === detailRun);
             if (!r) return null;
             const emp = employeeMap.get(r.employee_id);
             const lines = [
-              { label: `Horas normais (${fmtHoras(r.normal_minutes)} × ${fmt(r.hourly_rate)})`, value: r.normal_value, type: 'p' as const },
-              { label: `Horas 1,5× (${fmtHoras(r.premium_minutes)} × ${fmt(r.hourly_rate)} × 1,5)`, value: r.premium_value, type: 'p' as const },
-              { label: 'Adiantamentos do mês', value: r.advances_total, type: 'd' as const, highlight: true },
-            ].filter(l => l.value > 0);
+              { label: 'Salário base', value: r.base_salary, type: 'p' as const },
+              { label: `Horas extras 1,5× (${fmtHoras(r.premium_minutes)})`, value: r.overtime_amount || 0, type: 'p' as const },
+              { label: `Faltas (${r.absent_days || 0} dia(s) × ${fmt((r.base_salary || 0) / 30)})`, value: r.absence_discount || 0, type: 'd' as const, highlight: (r.absent_days || 0) > 0 },
+              { label: 'Atrasos / saídas cedo', value: r.deductions_amount || 0, type: 'd' as const },
+              { label: 'Adiantamentos do mês', value: r.advances_total || 0, type: 'd' as const, highlight: true },
+            ].filter(l => l.value > 0 || l.label === 'Salário base');
 
             return (
               <div className="space-y-3">
@@ -435,7 +479,7 @@ export default function Payroll() {
                     <p className="font-bold text-emerald-600">{fmt(r.total_proventos)}</p>
                   </div>
                   <div>
-                    <p className="text-muted-foreground">Adiantamentos</p>
+                    <p className="text-muted-foreground">Descontos</p>
                     <p className="font-bold text-destructive">{fmt(r.total_descontos)}</p>
                   </div>
                   <div className="text-right">
