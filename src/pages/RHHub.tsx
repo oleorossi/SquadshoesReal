@@ -35,7 +35,7 @@ const tabs: { value: Tab; label: string; icon: typeof LayoutDashboard }[] = [
 const TAB_HEADERS: Record<Tab, { section: string; title: string; description: string }> = {
   funcionarios: { section: 'RH · COLABORADORES', title: 'Funcionários',    description: 'Gestão de equipe e adiantamentos' },
   ponto:        { section: 'RH · PONTO',         title: 'Controle de Ponto', description: 'Importação e lançamento de batidas' },
-  folha:        { section: 'RH · FOLHA',         title: 'Folha por hora',   description: 'Pagamento por hora trabalhada e adiantamentos' },
+  folha:        { section: 'RH · FOLHA',         title: 'Folha salarial',   description: 'Pagamento por período (quinzena/mês) — salário proporcional menos descontos' },
   relatorios:   { section: 'RH · RELATÓRIOS',    title: 'Relatórios',       description: 'Relógio de ponto e pagamento por horas' },
 };
 

@@ -65,9 +65,11 @@ export interface SalaryDayInput {
 }
 
 export interface SalaryPayrollResult {
-  base_salary: number;
+  base_salary: number;     // salário MENSAL cheio (referência p/ valor-dia/valor-hora)
   valor_dia: number;       // salário ÷ 30
   valor_hora: number;      // salário ÷ 220
+  period_days: number;     // nº de dias corridos do período (30 = mês cheio)
+  period_base: number;     // R$ base proporcional do período = valor-dia × period_days
   expected_minutes: number;
   worked_minutes: number;  // soma das horas batidas em dias VÁLIDOS (não pendentes)
   normal_minutes: number;
@@ -96,11 +98,22 @@ export function calculateSalaryPayroll(
   advancesTotal: number,
   dayDivisor: number = SALARY_DAY_DIVISOR,
   hourDivisor: number = SALARY_HOUR_DIVISOR,
+  /**
+   * Dias CORRIDOS do período pago (quinzena/intervalo). Quando informado, a base de
+   * proventos vira PROPORCIONAL: valor-dia × periodDays (ex.: quinzena 01–15 = 15 dias
+   * = metade do salário). Omitido/≤0 ⇒ mês cheio (base = salário). valor-dia e
+   * valor-hora continuam sobre o salário MENSAL (faltas/atrasos não mudam de escala).
+   */
+  periodDays?: number,
 ): SalaryPayrollResult {
   const sal = Number(salary) || 0;
   const valorDia = dayDivisor > 0 ? sal / dayDivisor : 0;
   const valorHora = hourDivisor > 0 ? sal / hourDivisor : 0;
   const valorMin = valorHora / 60;
+  // Base de proventos do período: proporcional aos dias quando periodDays vier
+  // (paga-se por quinzena); senão, mês cheio.
+  const periodDaysEff = periodDays != null && periodDays > 0 ? periodDays : dayDivisor;
+  const periodBase = periodDays != null && periodDays > 0 ? valorDia * periodDays : sal;
 
   let expectedMin = 0;
   let workedMin = 0;
@@ -159,12 +172,14 @@ export function calculateSalaryPayroll(
   const atrasoDesconto = (atrasoMin / 60) * valorHora;
   const heValue = (heMin / 60) * valorHora * PREMIUM_MULTIPLIER;
   const adv = Number(advancesTotal) || 0;
-  const gross = sal - faltaDesconto - atrasoDesconto + heValue;
+  const gross = periodBase - faltaDesconto - atrasoDesconto + heValue;
 
   return {
     base_salary: round2(sal),
     valor_dia: round2(valorDia),
     valor_hora: Number(valorHora.toFixed(4)),
+    period_days: periodDaysEff,
+    period_base: round2(periodBase),
     expected_minutes: expectedMin,
     worked_minutes: workedMin,
     normal_minutes: normalMin,
@@ -180,7 +195,7 @@ export function calculateSalaryPayroll(
     pending_days: pendingDays,
     advances_total: round2(adv),
     total_descontos: round2(faltaDesconto + atrasoDesconto + adv),
-    total_proventos: round2(sal + heValue),
+    total_proventos: round2(periodBase + heValue),
     gross_value: round2(gross),
     net_value: round2(gross - adv),
   };
