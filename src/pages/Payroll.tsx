@@ -106,6 +106,10 @@ export default function Payroll() {
   const period = useMemo(() => rangeToPeriod(range.from, range.to), [range.from, range.to]);
   const periodTitle = useMemo(() => periodLabel(range.from, range.to), [range.from, range.to]);
   const periodDays = useMemo(() => daysBetween(range.from, range.to), [range.from, range.to]);
+  // Mês CHEIO sempre vale o salário (30 avos), não os dias corridos — senão um mês de
+  // 31 dias pagaria 31/30. A proporção por dias só vale pra período PARCIAL (quinzena).
+  const isFullMonth = useMemo(() => /^\d{4}-\d{2}$/.test(period), [period]);
+  const baseDays = isFullMonth ? undefined : periodDays;
   // Atalhos de quinzena ancorados no mês do "de".
   const applyPreset = (preset: '1q' | '2q' | 'mes') => {
     const ym = (range.from || `${defaultPeriod}-01`).slice(0, 7);
@@ -243,7 +247,7 @@ export default function Payroll() {
           advancesByEmp.get(emp.id) || 0,
           undefined,        // dayDivisor (padrão 30)
           undefined,        // hourDivisor (padrão 220)
-          periodDays,       // base proporcional aos dias do período (quinzena)
+          baseDays,         // base proporcional (quinzena); mês cheio = salário (undefined)
         );
         if (result.pending_days > 0) withIncomplete++;
 
