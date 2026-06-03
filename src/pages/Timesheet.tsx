@@ -592,7 +592,7 @@ function TimesheetRecordsTab() {
     }
   }, [employeeNames.length, employeeGroups, selectedEmployee]);
 
-  // Use the same dateRange logic as OverviewTab and ReportsPanel for consistency
+  // Use the same dateRange logic as OverviewTab (via timeControlFilters) for consistency
   const batchDateRange = useMemo(() => {
     // If resolved filters provide a date range (from batch or manual), use it directly
     if (resolvedFilters.dateRange) {
