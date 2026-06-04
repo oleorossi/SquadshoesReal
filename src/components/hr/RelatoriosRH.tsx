@@ -209,7 +209,7 @@ export default function RelatoriosRH() {
         const folha = (from: string, to: string, periodDays?: number) => computePeriodFolha({
           salary: Number(emp.salary) || 0, from, to,
           schedule: sch, holidaysSet, punchesByDate: empPunches,
-          periodDays, maxCoveredDate: maxCov,
+          periodDays, monthDays: monthDays.length, maxCoveredDate: maxCov,
           advancesTotal: empAdvances.filter(a => a.advance_date >= from && a.advance_date <= to).reduce((s, a) => s + a.amount, 0),
         });
         const result = folha(monthFrom, monthTo);              // mês cheio (base = salário)

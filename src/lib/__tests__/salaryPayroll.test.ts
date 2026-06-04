@@ -95,21 +95,30 @@ describe('calculateSalaryPayroll', () => {
   });
 });
 
-describe('calculateSalaryPayroll — base proporcional por quinzena (periodDays)', () => {
-  it('quinzena de 15 dias = metade do salário (salário ÷ 30 × 15)', () => {
-    const r = calculateSalaryPayroll(3000, [], 0, 30, 220, 15);
+describe('calculateSalaryPayroll — base proporcional por quinzena (periodDays + monthDays)', () => {
+  it('mês de 31: 1ª quinzena (15 dias) = salário × 15/31', () => {
+    const r = calculateSalaryPayroll(3000, [], 0, 30, 220, 15, 31);
     expect(r.base_salary).toBe(3000);        // salário mensal cheio (referência)
-    expect(r.valor_dia).toBeCloseTo(100, 2);  // 3000/30
+    expect(r.valor_dia).toBeCloseTo(100, 2);  // 3000/30 (faltas seguem ÷30)
     expect(r.period_days).toBe(15);
-    expect(r.period_base).toBeCloseTo(1500, 2);
-    expect(r.gross_value).toBeCloseTo(1500, 2);
-    expect(r.total_proventos).toBeCloseTo(1500, 2);
+    expect(r.period_base).toBeCloseTo(45000 / 31, 2);  // 1451,61
+    expect(r.gross_value).toBeCloseTo(45000 / 31, 2);
   });
 
-  it('2ª quinzena de 16 dias = 16/30 do salário', () => {
-    const r = calculateSalaryPayroll(3000, [], 0, 30, 220, 16);
-    expect(r.period_base).toBeCloseTo(1600, 2);
-    expect(r.gross_value).toBeCloseTo(1600, 2);
+  it('mês de 31: 2ª quinzena (16 dias) = salário × 16/31', () => {
+    const r = calculateSalaryPayroll(3000, [], 0, 30, 220, 16, 31);
+    expect(r.period_base).toBeCloseTo(48000 / 31, 2);  // 1548,39
+  });
+
+  it('INVARIANTE: 1ª + 2ª quinzena somam o salário EXATO (sem dia a mais)', () => {
+    const q1 = calculateSalaryPayroll(3000, [], 0, 30, 220, 15, 31);
+    const q2 = calculateSalaryPayroll(3000, [], 0, 30, 220, 16, 31);
+    expect(q1.period_base + q2.period_base).toBeCloseTo(3000, 2);  // antes dava 3100 (31/30)
+  });
+
+  it('mês de 30: 1ª quinzena (15 dias) = metade (1500) — sem mudança', () => {
+    const r = calculateSalaryPayroll(3000, [], 0, 30, 220, 15, 30);
+    expect(r.period_base).toBeCloseTo(1500, 2);
   });
 
   it('sem periodDays = mês cheio (base = salário)', () => {
@@ -119,13 +128,18 @@ describe('calculateSalaryPayroll — base proporcional por quinzena (periodDays)
     expect(r.gross_value).toBeCloseTo(3000, 2);
   });
 
-  it('falta numa quinzena desconta 1 valor-dia sobre a base proporcional', () => {
-    // 1 dia útil sem batida (falta) dentro de uma quinzena de 15 dias
-    const r = calculateSalaryPayroll(3000, [work('2026-05-04', MON, [])], 0, 30, 220, 15);
+  it('falta numa quinzena desconta valor-dia (salário/30) sobre a base proporcional', () => {
+    // 1 dia útil sem batida (falta) numa 1ª quinzena de 15 dias num mês de 31
+    const r = calculateSalaryPayroll(3000, [work('2026-05-04', MON, [])], 0, 30, 220, 15, 31);
     expect(r.falta_days).toBe(1);
-    expect(r.falta_desconto).toBeCloseTo(100, 2);     // valor-dia = 3000/30
+    expect(r.falta_desconto).toBeCloseTo(100, 2);          // valor-dia = 3000/30 (inalterado)
+    expect(r.period_base).toBeCloseTo(45000 / 31, 2);      // 1451,61
+    expect(r.gross_value).toBeCloseTo(45000 / 31 - 100, 2); // 1351,61
+  });
+
+  it('legado: sem monthDays, cai no ÷30 (salário/30 × dias)', () => {
+    const r = calculateSalaryPayroll(3000, [], 0, 30, 220, 15);
     expect(r.period_base).toBeCloseTo(1500, 2);
-    expect(r.gross_value).toBeCloseTo(1400, 2);        // 1500 − 100
   });
 });
 

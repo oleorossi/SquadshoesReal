@@ -71,7 +71,7 @@ export interface SalaryPayrollResult {
   valor_dia: number;       // salário ÷ 30
   valor_hora: number;      // salário ÷ 220
   period_days: number;     // nº de dias corridos do período (30 = mês cheio)
-  period_base: number;     // R$ base proporcional do período = valor-dia × period_days
+  period_base: number;     // R$ base proporcional do período (com monthDays: salário × period_days ÷ dias_do_mês)
   expected_minutes: number;
   worked_minutes: number;  // soma das horas batidas em dias VÁLIDOS (não pendentes)
   normal_minutes: number;
@@ -107,15 +107,25 @@ export function calculateSalaryPayroll(
    * valor-hora continuam sobre o salário MENSAL (faltas/atrasos não mudam de escala).
    */
   periodDays?: number,
+  /**
+   * Dias CORRIDOS do MÊS (28–31). Com periodDays, a base proporcional da quinzena usa
+   * periodDays/monthDays — assim 1ª (15/mês) + 2ª ((mês−15)/mês) = salário EXATO (sem
+   * pagar "1 dia a mais" num mês de 31). Sem monthDays, cai no legado (÷30).
+   */
+  monthDays?: number,
 ): SalaryPayrollResult {
   const sal = Number(salary) || 0;
   const valorDia = dayDivisor > 0 ? sal / dayDivisor : 0;
   const valorHora = hourDivisor > 0 ? sal / hourDivisor : 0;
   const valorMin = valorHora / 60;
-  // Base de proventos do período: proporcional aos dias quando periodDays vier
-  // (paga-se por quinzena); senão, mês cheio.
-  const periodDaysEff = periodDays != null && periodDays > 0 ? periodDays : dayDivisor;
-  const periodBase = periodDays != null && periodDays > 0 ? valorDia * periodDays : sal;
+  // Base de proventos do período: proporcional aos dias quando periodDays vier (paga-se
+  // por quinzena). Com monthDays, prorateia por periodDays/monthDays (as 2 quinzenas
+  // somam o salário EXATO, sem dia a mais); sem ele, legado valor-dia×periodDays.
+  const prorate = periodDays != null && periodDays > 0;
+  const periodDaysEff = prorate ? periodDays : dayDivisor;
+  const periodBase = prorate
+    ? (monthDays != null && monthDays > 0 ? (sal * periodDays) / monthDays : valorDia * periodDays)
+    : sal;
 
   let expectedMin = 0;        // esperado total dos dias úteis (inclui faltas) — só p/ relatório
   let expectedPresentMin = 0; // esperado dos dias PRESENTES (falta excluída) — base do líquido
@@ -234,6 +244,7 @@ export interface PeriodFolhaInput {
   punchesByDate: Map<string, string[]>;   // data (YYYY-MM-DD) → batidas
   advancesTotal?: number;
   periodDays?: number;                    // base proporcional (quinzena); undefined = mês cheio
+  monthDays?: number;                     // dias do mês (28–31) → prorateia 1ª+2ª = salário exato
   maxCoveredDate?: string | null;         // clamp: ignora dias após a última data importada
 }
 
@@ -250,5 +261,5 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
       punches: inp.punchesByDate.get(d.date) || [],
     };
   });
-  return calculateSalaryPayroll(inp.salary, days, inp.advancesTotal || 0, undefined, undefined, inp.periodDays);
+  return calculateSalaryPayroll(inp.salary, days, inp.advancesTotal || 0, undefined, undefined, inp.periodDays, inp.monthDays);
 }

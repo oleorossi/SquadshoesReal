@@ -168,6 +168,9 @@ export default function Payroll() {
     const cPeriod = rangeToPeriod(cFrom, cTo);
     // Mês cheio paga salário (30 avos); período parcial (quinzena) = proporcional aos dias.
     const cBaseDays = /^\d{4}-\d{2}$/.test(cPeriod) ? undefined : daysBetween(cFrom, cTo);
+    // Dias do mês p/ a base proporcional da quinzena: 1ª(15) + 2ª(mês−15) = salário EXATO
+    // (sem pagar 1 dia a mais num mês de 31). Mês cheio ignora (cBaseDays undefined).
+    const cMonthDays = daysBetween(`${cFrom.slice(0, 7)}-01`, lastDayOfMonth(cFrom.slice(0, 7)));
     setCalcRunning(true);
     try {
       // Clamp à cobertura: dias após a última data importada NÃO entram (evita contar
@@ -250,6 +253,7 @@ export default function Payroll() {
           punchesByDate: empPunches,
           advancesTotal: advancesByEmp.get(emp.id) || 0,
           periodDays: cBaseDays,   // mês cheio = salário (undefined); quinzena = proporcional
+          monthDays: cMonthDays,   // 1ª+2ª quinzena somam o salário exato (sem dia a mais)
           maxCoveredDate: maxCov,
         });
         if (result.pending_days > 0) withIncomplete++;
@@ -512,14 +516,14 @@ export default function Payroll() {
             const r = runs.find(x => x.id === detailRun);
             if (!r) return null;
             const emp = employeeMap.get(r.employee_id);
-            // Base PAGA no período (proporcional): proventos − HE = valor-dia × dias.
+            // Base PAGA no período (proporcional aos dias do mês): proventos − HE.
             const pr = periodToRange(r.period);
             const pdays = daysBetween(pr.from, pr.to);
             const periodBase = (r.total_proventos || 0) - (r.overtime_amount || 0);
-            const isFullMonth = pdays === 0 || pdays === 30;
+            const isFullMonth = /^\d{4}-\d{2}$/.test(r.period); // período "YYYY-MM" = mês cheio
             const lines = [
               {
-                label: isFullMonth ? 'Salário base' : `Salário do período (${pdays} dia(s) × ${fmt((r.base_salary || 0) / 30)})`,
+                label: isFullMonth ? 'Salário base' : `Salário do período (${pdays} dia(s) proporcional)`,
                 value: periodBase, type: 'p' as const, always: true,
               },
               { label: `Horas extras 1,5× (${fmtHoras(r.premium_minutes)})`, value: r.overtime_amount || 0, type: 'p' as const },
