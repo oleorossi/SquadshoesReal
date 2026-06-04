@@ -21,7 +21,7 @@ import { splitDayMinutes, MONTHLY_HOURS_DIVISOR } from '@/lib/hourlyPayroll';
 import { computePeriodFolha, expectedDayMinutes, type SalaryPayrollResult } from '@/lib/salaryPayroll';
 import {
   printEmployeeTimesheet, printConsolidatedHoursReport,
-  printEmployeeEvaluationDetailed,
+  printEmployeeEvaluationDetailed, printFolhaComparativo,
   printCalendarReport, printIndividualCalendarReport,
   type EmployeeTimesheetData,
 } from '@/lib/printTimesheet';
@@ -50,12 +50,31 @@ const fmtBRL = (v: number) => (Number(v) || 0).toLocaleString('pt-BR', { style: 
 const fmtBR = (d?: string) => (d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d.split('-').reverse().join('/') : '—');
 const cleanPunch = (p: string) => String(p).replace(/\*$/, '');
 
+type SitTone = 'green' | 'amber' | 'red';
+/** Flag de qualidade do ponto (Situação) — o que conferir antes de pagar. */
+function computeSituacao(r: SalaryPayrollResult, matchedDays: number, maxCov: string | null, monthTo: string): { txt: string; tone: SitTone } {
+  if (r.workdays === 0) return { txt: 'Sem escala / sem dias úteis', tone: 'red' };
+  if (matchedDays === 0) return { txt: 'Sem ponto importado', tone: 'red' };
+  if (matchedDays <= 5) return { txt: `Ponto faltando — só ${matchedDays} dia(s) batido(s)`, tone: 'red' };
+  if (r.falta_days >= 10) return { txt: `Muitas faltas (${r.falta_days}) — conferir ponto`, tone: 'red' };
+  if (r.pending_days >= 3) return { txt: `${r.pending_days} batidas ímpares — resolver em Pendências`, tone: 'amber' };
+  if (maxCov && monthTo && maxCov < monthTo) return { txt: `Ponto só até ${fmtBR(maxCov)} — parcial`, tone: 'amber' };
+  if (r.pending_days > 0) return { txt: `${r.pending_days} pendência(s) de batida`, tone: 'amber' };
+  if (r.falta_days > 0) return { txt: `${r.falta_days} falta(s) no período`, tone: 'amber' };
+  return { txt: 'OK', tone: 'green' };
+}
+
 interface EmpRow {
   id: string;
+  ext?: string;
   name: string;
   role?: string;
   days: { date: string; dow: number; isHoliday: boolean; punches: string[]; normal: number; premium: number }[];
-  result: SalaryPayrollResult;
+  result: SalaryPayrollResult;   // mês cheio (base = salário)
+  q1: SalaryPayrollResult;       // 1ª quinzena (01–15, base ×15/30)
+  q2: SalaryPayrollResult;       // 2ª quinzena (16–fim, base ×(fim−15)/30)
+  matchedDays: number;           // dias com ponto importado no mês
+  sit: { txt: string; tone: SitTone };
 }
 
 /**
@@ -137,6 +156,10 @@ export default function RelatoriosRH() {
     // Clamp à cobertura: só conta até o último dia com ponto importado.
     const maxCov = coverage?.maxCovered || null;
     const coveredDays = maxCov ? monthDays.filter(d => d.date <= maxCov) : monthDays;
+    // Limites do mês + quinzenas (1ª = 01–15, 2ª = 16–fim).
+    const monthFrom = monthDays[0]?.date || '';
+    const monthTo = monthDays[monthDays.length - 1]?.date || '';
+    const q2Days = Math.max(0, monthDays.length - 15);
 
     return employees
       .filter(e => e.active)
@@ -154,19 +177,27 @@ export default function RelatoriosRH() {
           return { date: d.date, dow: d.dow, isHoliday: holidaysSet.has(d.date), punches, normal, premium };
         });
 
-        // PAGAMENTO = mesmo motor da Folha (HE líquida do período, esperado da escala).
+        // FOLHA em 3 períodos — MESMO motor (HE líquida do período), base PROPORCIONAL
+        // na quinzena; clamp à cobertura pra não inventar falta em dia sem ponto importado.
         const sch = ((emp as { work_schedule_id?: string }).work_schedule_id && (schedules as any[]).find(s => s.id === (emp as any).work_schedule_id)) || defaultSchedule;
-        const result = computePeriodFolha({
-          salary: Number(emp.salary) || 0,
-          from: coveredDays[0]?.date || '',
-          to: coveredDays[coveredDays.length - 1]?.date || '',
+        const folha = (from: string, to: string, periodDays?: number) => computePeriodFolha({
+          salary: Number(emp.salary) || 0, from, to,
           schedule: sch, holidaysSet, punchesByDate: empPunches,
+          periodDays, maxCoveredDate: maxCov,
         });
+        const result = folha(monthFrom, monthTo);              // mês cheio (base = salário)
+        const q1 = folha(`${period}-01`, `${period}-15`, 15);  // 1ª quinzena (15/30)
+        const q2 = folha(`${period}-16`, monthTo, q2Days);     // 2ª quinzena ((fim−15)/30)
+        const matchedDays = Array.from(empPunches.keys()).filter(d => d >= monthFrom && d <= monthTo).length;
+        const sit = computeSituacao(result, matchedDays, maxCov, monthTo);
 
-        return { id: emp.id, name: emp.name, role: (emp as { role?: string }).role, days, result };
+        return {
+          id: emp.id, ext: extKey || undefined, name: emp.name,
+          role: (emp as { role?: string }).role, days, result, q1, q2, matchedDays, sit,
+        };
       })
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
-  }, [employees, timeRecords, monthDays, coverage, holidaysSet, schedules, defaultSchedule]);
+  }, [employees, timeRecords, monthDays, period, coverage, holidaysSet, schedules, defaultSchedule]);
 
   // Linhas visíveis conforme o escopo (Todos ou 1 funcionário).
   const visibleRows = useMemo(() => (scope === ALL ? rows : rows.filter(r => r.id === scope)), [rows, scope]);
@@ -181,6 +212,9 @@ export default function RelatoriosRH() {
     atrasoDesc: visibleRows.reduce((s, r) => s + r.result.atraso_desconto, 0),
     heVal: visibleRows.reduce((s, r) => s + r.result.he_value, 0),
     pagar: visibleRows.reduce((s, r) => s + r.result.gross_value, 0),
+    liqMes: visibleRows.reduce((s, r) => s + r.result.net_value, 0),
+    liqQ1: visibleRows.reduce((s, r) => s + r.q1.net_value, 0),
+    liqQ2: visibleRows.reduce((s, r) => s + r.q2.net_value, 0),
   }), [visibleRows]);
 
   const toggle = (id: string) =>
@@ -249,9 +283,17 @@ export default function RelatoriosRH() {
       if (scope === ALL) printConsolidatedHoursReport(allData, periodLabel);
       else if (scopedRow) printEmployeeTimesheet(buildPrintData(scopedRow), periodLabel);
     } else if (tab === 'pagamento') {
-      // Demonstrativo individual completo (folha + faltas/atrasos com desconto + HE +
-      // jornada). Todos = 1 página por funcionário; individual = só ele.
-      printEmployeeEvaluationDetailed(scope === ALL ? allData : (scopedRow ? [buildPrintData(scopedRow)] : []), periodLabel);
+      if (scope === ALL) {
+        // Folha comparativa: Mês × 1ª × 2ª quinzena + Situação (1 tabela, paisagem).
+        printFolhaComparativo(
+          visibleRows.map(r => ({ ext: r.ext, name: r.name, salary: r.result.base_salary, mes: r.result.net_value, q1: r.q1.net_value, q2: r.q2.net_value, sit: r.sit })),
+          periodLabel,
+          { lastDay: monthDays.length, totals: { salarios: totals.salarioBase, mes: totals.liqMes, q1: totals.liqQ1, q2: totals.liqQ2 } },
+        );
+      } else if (scopedRow) {
+        // Demonstrativo individual completo (folha + faltas/atrasos + HE + jornada).
+        printEmployeeEvaluationDetailed([buildPrintData(scopedRow)], periodLabel);
+      }
     } else if (tab === 'calendario') {
       if (scope === ALL) printCalendarReport(allData, periodLabel);
       else if (scopedRow) printIndividualCalendarReport(buildPrintData(scopedRow), periodLabel);
@@ -263,7 +305,7 @@ export default function RelatoriosRH() {
   const espelhoNeedsEmployee = tab === 'espelho' && scope === ALL;
   const printDisabled = visibleRows.length === 0 || espelhoNeedsEmployee;
   const printLabel = tab === 'ponto' ? 'Imprimir horas'
-    : tab === 'pagamento' ? (scope === ALL ? 'Imprimir demonstrativos' : 'Imprimir demonstrativo')
+    : tab === 'pagamento' ? (scope === ALL ? 'Imprimir folha (comparativo)' : 'Imprimir demonstrativo')
     : tab === 'calendario' ? 'Imprimir calendário'
     : 'Imprimir espelho';
 
@@ -422,55 +464,96 @@ export default function RelatoriosRH() {
           {isLoading ? (
             <div className="py-12 text-center text-muted-foreground text-sm">Carregando…</div>
           ) : visibleRows.length === 0 ? Empty : (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <DollarSign className="h-4 w-4" /> Pagamento pela conta da Folha (salário − descontos)
-                </CardTitle>
-                <p className="text-xs text-muted-foreground">
-                  O botão <strong>Imprimir</strong> gera o <strong>demonstrativo individual completo</strong> (folha + faltas/atrasos com
-                  desconto + horas extras + jornada dia a dia), 1 página por funcionário. Selecione um funcionário no topo para só ele.
-                </p>
-              </CardHeader>
-              <CardContent className="p-0">
-                <div className="overflow-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Funcionário</TableHead>
-                        <TableHead className="text-right">Salário</TableHead>
-                        <TableHead className="text-right">Faltas</TableHead>
-                        <TableHead className="text-right">Atrasos</TableHead>
-                        <TableHead className="text-right">HE líq.</TableHead>
-                        <TableHead className="text-right">Líquido</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {visibleRows.map(r => (
-                        <TableRow key={r.id}>
-                          <TableCell className="font-medium">{r.name}</TableCell>
-                          <TableCell className="text-right tabular-nums text-muted-foreground">{fmtBRL(r.result.base_salary)}</TableCell>
-                          <TableCell className="text-right tabular-nums text-destructive">{r.result.falta_desconto > 0 ? '-' + fmtBRL(r.result.falta_desconto) : '—'}</TableCell>
-                          <TableCell className="text-right tabular-nums text-destructive">{r.result.atraso_desconto > 0 ? '-' + fmtBRL(r.result.atraso_desconto) : '—'}</TableCell>
-                          <TableCell className="text-right tabular-nums text-emerald-700 dark:text-emerald-400">{r.result.he_value > 0 ? '+' + fmtBRL(r.result.he_value) : '—'}</TableCell>
-                          <TableCell className="text-right tabular-nums font-semibold">{fmtBRL(r.result.gross_value)}</TableCell>
+            <div className="space-y-3">
+              {/* KPIs do período */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                {[
+                  { label: 'Funcionários', value: String(visibleRows.length) },
+                  { label: 'Salários', value: fmtBRL(totals.salarioBase) },
+                  { label: 'Líquido Mês', value: fmtBRL(totals.liqMes), accent: true },
+                  { label: 'Líq. 1ª quinz', value: fmtBRL(totals.liqQ1) },
+                  { label: 'Líq. 2ª quinz', value: fmtBRL(totals.liqQ2) },
+                ].map(k => (
+                  <div key={k.label} className={`rounded-md border p-2.5 ${k.accent ? 'border-primary/30 bg-primary/5' : 'border-border bg-muted/30'}`}>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">{k.label}</p>
+                    <p className={`tabular-nums font-bold ${k.accent ? 'text-base text-primary' : 'text-sm'}`}>{k.value}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Aviso antes de pagar */}
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span>
+                  <strong>Antes de pagar:</strong> hora extra conta só no <strong>excedente</strong> — quem não bateu a meta de horas do período
+                  NÃO tem HE; fim de semana / após-18h abatem o déficit; falta = −1 dia. Os valores refletem o ponto <strong>como foi importado</strong> —
+                  confira a coluna <strong>Situação</strong> e corrija o ponto antes de pagar.
+                </span>
+              </div>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <DollarSign className="h-4 w-4" /> Folha {periodLabel} — Mês × 1ª × 2ª quinzena (líquido por funcionário)
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    Mesmo motor da Folha (HE líquida). Base da quinzena é <strong>proporcional aos dias</strong> (1ª = 15/30, 2ª = {monthDays.length - 15}/30).
+                    <strong> Imprimir</strong>: Todos → esta tabela; um funcionário selecionado → o demonstrativo individual completo.
+                  </p>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="overflow-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-16">Matríc.</TableHead>
+                          <TableHead>Funcionário</TableHead>
+                          <TableHead className="text-right">Salário</TableHead>
+                          <TableHead className="text-right">Mês (01–{monthDays.length})</TableHead>
+                          <TableHead className="text-right">1ª quinz (01–15)</TableHead>
+                          <TableHead className="text-right">2ª quinz (16–{monthDays.length})</TableHead>
+                          <TableHead>Situação</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                    <tfoot>
-                      <TableRow className="border-t-2 font-semibold bg-muted/30">
-                        <TableCell>Total ({visibleRows.length})</TableCell>
-                        <TableCell className="text-right tabular-nums text-muted-foreground">{fmtBRL(totals.salarioBase)}</TableCell>
-                        <TableCell className="text-right tabular-nums text-destructive">{totals.faltaDesc > 0 ? '-' + fmtBRL(totals.faltaDesc) : '—'}</TableCell>
-                        <TableCell className="text-right tabular-nums text-destructive">{totals.atrasoDesc > 0 ? '-' + fmtBRL(totals.atrasoDesc) : '—'}</TableCell>
-                        <TableCell className="text-right tabular-nums text-emerald-700 dark:text-emerald-400">{totals.heVal > 0 ? '+' + fmtBRL(totals.heVal) : '—'}</TableCell>
-                        <TableCell className="text-right tabular-nums text-emerald-700 dark:text-emerald-400">{fmtBRL(totals.pagar)}</TableCell>
-                      </TableRow>
-                    </tfoot>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
+                      </TableHeader>
+                      <TableBody>
+                        {visibleRows.map(r => (
+                          <TableRow key={r.id}>
+                            <TableCell className="tabular-nums text-xs text-muted-foreground">{r.ext || '—'}</TableCell>
+                            <TableCell className="font-medium">{r.name}</TableCell>
+                            <TableCell className="text-right tabular-nums text-muted-foreground">{fmtBRL(r.result.base_salary)}</TableCell>
+                            <TableCell className="text-right tabular-nums font-semibold">{fmtBRL(r.result.net_value)}</TableCell>
+                            <TableCell className="text-right tabular-nums">{fmtBRL(r.q1.net_value)}</TableCell>
+                            <TableCell className="text-right tabular-nums">{fmtBRL(r.q2.net_value)}</TableCell>
+                            <TableCell>
+                              <Badge className={`font-normal ${r.sit.tone === 'green' ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20' : r.sit.tone === 'red' ? 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20' : 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20'}`}>
+                                {r.sit.txt}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                      <tfoot>
+                        <TableRow className="border-t-2 font-semibold bg-muted/30">
+                          <TableCell />
+                          <TableCell>Total ({visibleRows.length})</TableCell>
+                          <TableCell className="text-right tabular-nums text-muted-foreground">{fmtBRL(totals.salarioBase)}</TableCell>
+                          <TableCell className="text-right tabular-nums">{fmtBRL(totals.liqMes)}</TableCell>
+                          <TableCell className="text-right tabular-nums">{fmtBRL(totals.liqQ1)}</TableCell>
+                          <TableCell className="text-right tabular-nums">{fmtBRL(totals.liqQ2)}</TableCell>
+                          <TableCell />
+                        </TableRow>
+                      </tfoot>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                <strong>Nota:</strong> 1ª + 2ª quinzena somam mais que o mês porque a base é proporcional aos dias
+                (1ª = 15/30, 2ª = {monthDays.length - 15}/30 ⇒ {monthDays.length}/30); o mês cheio paga 30/30 (salário).
+                O detalhe dia a dia de cada funcionário sai no <strong>demonstrativo individual</strong> (selecione um funcionário e clique Imprimir).
+              </p>
+            </div>
           )}
         </TabsContent>
 

@@ -927,3 +927,79 @@ export function printEmployeeEvaluationSummary(employees: EmployeeTimesheetData[
 
   printHtml('Avaliação de Jornada — Resumo', `${EVAL_STYLE}${html}`);
 }
+
+// ── FOLHA COMPARATIVA: Mês × 1ª × 2ª quinzena, líquido por funcionário (paisagem) ──
+// Mesma ideia do relatório de auditoria de maio, mas com o cálculo CORRETO (motor da
+// folha — HE líquida do período, base da quinzena proporcional aos dias).
+export function printFolhaComparativo(
+  rows: { ext?: string; name: string; salary: number; mes: number; q1: number; q2: number; sit: { txt: string; tone: 'green' | 'amber' | 'red' } }[],
+  periodLabel: string,
+  opts: { lastDay: number; totals: { salarios: number; mes: number; q1: number; q2: number } },
+): void {
+  const money = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0);
+  const sitColor: Record<string, string> = { green: '#1E7D32', amber: '#B45309', red: '#C0392B' };
+  const STYLE = `<style>
+    @page { size: A4 landscape; margin: 10mm 10mm; }
+    body { font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif; color: #111; margin: 0; }
+    h1 { font-size: 17px; margin: 0 0 2px; color: #1F2A44; }
+    .sub { font-size: 9px; color: #555; font-style: italic; margin: 0 0 8px; }
+    .warn { border: 0.8px solid #B45309; background: #FFFBEB; border-radius: 4px; padding: 7px 10px; font-size: 9.5px; line-height: 1.4; margin: 0 0 8px; }
+    table { width: 100%; border-collapse: collapse; }
+    .kpi td { border: 0.5px solid #D0D0D0; padding: 5px 8px; font-size: 10px; text-align: center; }
+    .kpi .h { background: #1F2A44; color: #fff; font-weight: 700; }
+    .kpi .v { background: #E8EDF5; color: #1F2A44; font-weight: 800; font-size: 12px; }
+    .cmp { margin-top: 10px; }
+    .cmp th { background: #1F2A44; color: #fff; font-size: 9px; font-weight: 700; padding: 5px 7px; text-align: left; }
+    .cmp th.r { text-align: right; }
+    .cmp td { border: 0.4px solid #D0D0D0; padding: 4px 7px; font-size: 9.5px; }
+    .cmp tbody tr:nth-child(even) td { background: #FAFAFA; }
+    .r { text-align: right; font-variant-numeric: tabular-nums; }
+    .mono { font-family: 'SFMono-Regular','Courier New',monospace; }
+    .tot td { background: #E8EDF5; font-weight: 800; border-top: 1px solid #1F2A44; }
+    .note { margin-top: 8px; font-size: 8.5px; color: #555; font-style: italic; line-height: 1.4; }
+    tr { page-break-inside: avoid; }
+  </style>`;
+
+  const kpi = `<table class="kpi"><tr>
+    <td class="h">Funcionários</td><td class="h">Salários</td><td class="h">LÍQUIDO Mês</td><td class="h">LÍQUIDO 1ª quinz</td><td class="h">LÍQUIDO 2ª quinz</td>
+  </tr><tr>
+    <td class="v">${rows.length}</td><td class="v">${money(opts.totals.salarios)}</td><td class="v">${money(opts.totals.mes)}</td><td class="v">${money(opts.totals.q1)}</td><td class="v">${money(opts.totals.q2)}</td>
+  </tr></table>`;
+
+  const body = rows.map(r => `
+    <tr>
+      <td class="mono">${escapeHtml(r.ext || '—')}</td>
+      <td>${escapeHtml(r.name)}</td>
+      <td class="r mono">${money(r.salary)}</td>
+      <td class="r mono"><b>${money(r.mes)}</b></td>
+      <td class="r mono">${money(r.q1)}</td>
+      <td class="r mono">${money(r.q2)}</td>
+      <td style="color:${sitColor[r.sit.tone]};font-size:8.5px">${escapeHtml(r.sit.txt)}</td>
+    </tr>`).join('');
+
+  const html = `${STYLE}
+    <h1>FOLHA ${escapeHtml(periodLabel)} — Comparativo (Mês × Quinzenas)</h1>
+    <p class="sub">Líquido por funcionário · motor da folha (hora extra só no excedente, base da quinzena proporcional aos dias) · Impresso em ${new Date().toLocaleString('pt-BR')}</p>
+    <div class="warn"><b>Leia antes de pagar:</b> hora extra conta SÓ no excedente — quem não bateu a meta de horas do período NÃO tem HE; fim de semana / após-18h abatem o déficit; falta = −1 dia. Os valores refletem o ponto <b>como foi importado</b> — confira a coluna <b>Situação</b> e corrija o ponto antes de pagar.</div>
+    ${kpi}
+    <table class="cmp">
+      <thead><tr>
+        <th>Matríc.</th><th>Funcionário</th><th class="r">Salário</th>
+        <th class="r">Mês (01–${opts.lastDay})</th><th class="r">1ª quinz (01–15)</th><th class="r">2ª quinz (16–${opts.lastDay})</th><th>Situação</th>
+      </tr></thead>
+      <tbody>${body}
+        <tr class="tot">
+          <td></td><td>TOTAL (${rows.length})</td>
+          <td class="r mono">${money(opts.totals.salarios)}</td>
+          <td class="r mono">${money(opts.totals.mes)}</td>
+          <td class="r mono">${money(opts.totals.q1)}</td>
+          <td class="r mono">${money(opts.totals.q2)}</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="note">Nota: 1ª + 2ª quinzena somam mais que o mês porque a base é proporcional aos dias (1ª = 15/30, 2ª = ${opts.lastDay - 15}/30 ⇒ ${opts.lastDay}/30); o mês cheio paga 30/30 (salário). O detalhe dia a dia de cada funcionário sai no Demonstrativo Individual (selecione o funcionário e imprima).</p>
+  `;
+
+  printHtml('Folha — Comparativo', html);
+}
