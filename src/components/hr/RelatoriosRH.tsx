@@ -21,7 +21,7 @@ import { splitDayMinutes, MONTHLY_HOURS_DIVISOR } from '@/lib/hourlyPayroll';
 import { computePeriodFolha, expectedDayMinutes, type SalaryPayrollResult } from '@/lib/salaryPayroll';
 import {
   printEmployeeTimesheet, printConsolidatedHoursReport,
-  printEmployeeEvaluationDetailed, printEmployeeEvaluationSummary,
+  printEmployeeEvaluationDetailed,
   printCalendarReport, printIndividualCalendarReport,
   type EmployeeTimesheetData,
 } from '@/lib/printTimesheet';
@@ -249,8 +249,9 @@ export default function RelatoriosRH() {
       if (scope === ALL) printConsolidatedHoursReport(allData, periodLabel);
       else if (scopedRow) printEmployeeTimesheet(buildPrintData(scopedRow), periodLabel);
     } else if (tab === 'pagamento') {
-      if (scope === ALL) printEmployeeEvaluationSummary(allData, periodLabel);
-      else if (scopedRow) printEmployeeEvaluationDetailed([buildPrintData(scopedRow)], periodLabel);
+      // Demonstrativo individual completo (folha + faltas/atrasos com desconto + HE +
+      // jornada). Todos = 1 página por funcionário; individual = só ele.
+      printEmployeeEvaluationDetailed(scope === ALL ? allData : (scopedRow ? [buildPrintData(scopedRow)] : []), periodLabel);
     } else if (tab === 'calendario') {
       if (scope === ALL) printCalendarReport(allData, periodLabel);
       else if (scopedRow) printIndividualCalendarReport(buildPrintData(scopedRow), periodLabel);
@@ -262,7 +263,7 @@ export default function RelatoriosRH() {
   const espelhoNeedsEmployee = tab === 'espelho' && scope === ALL;
   const printDisabled = visibleRows.length === 0 || espelhoNeedsEmployee;
   const printLabel = tab === 'ponto' ? 'Imprimir horas'
-    : tab === 'pagamento' ? 'Imprimir pagamento'
+    : tab === 'pagamento' ? (scope === ALL ? 'Imprimir demonstrativos' : 'Imprimir demonstrativo')
     : tab === 'calendario' ? 'Imprimir calendário'
     : 'Imprimir espelho';
 
@@ -426,6 +427,10 @@ export default function RelatoriosRH() {
                 <CardTitle className="text-sm flex items-center gap-2">
                   <DollarSign className="h-4 w-4" /> Pagamento pela conta da Folha (salário − descontos)
                 </CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  O botão <strong>Imprimir</strong> gera o <strong>demonstrativo individual completo</strong> (folha + faltas/atrasos com
+                  desconto + horas extras + jornada dia a dia), 1 página por funcionário. Selecione um funcionário no topo para só ele.
+                </p>
               </CardHeader>
               <CardContent className="p-0">
                 <div className="overflow-auto">
