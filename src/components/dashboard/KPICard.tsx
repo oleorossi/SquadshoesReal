@@ -1,6 +1,7 @@
 import { cn } from '@/lib/utils';
 import { ArrowUpRight, ArrowDownRight } from '@phosphor-icons/react';
 import { useState } from 'react';
+import { StatNumber } from '@/components/ui/stat-number';
 
 interface KpiCardProps {
   title: string;
@@ -73,10 +74,8 @@ const variantConfig: Record<string, {
         </div>
       </div>
 
-      {/* Value — Anton (display) com tabular-nums, escala editorial */}
-      <div className={cn('display text-[34px] tabular-nums', cfg.valueColor)}>
-        {value}
-      </div>
+      {/* Value — Anton adaptativo (proporção centralizada via <StatNumber>) */}
+      <StatNumber value={value} className={cfg.valueColor} />
 
        {/* Subtitle / trend */}
        {(displaySubtitle || trendLabel) && (

@@ -1,5 +1,6 @@
 import { Icon as LucideIcon } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { StatNumber } from '@/components/ui/stat-number';
 
 interface StatsCardProps {
   title: string;
@@ -31,16 +32,16 @@ export function StatsCard({ title, value, icon: Icon, subtitle, variant = 'defau
     )}
     style={{ boxShadow: 'var(--shadow-card)' }}
     >
-      <div className="flex items-start justify-between">
-        <div className="space-y-1">
-          <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">{title}</p>
-          <p className="display text-2xl tabular-nums font-mono tracking-tight">{value}</p>
+      <div className="flex items-start justify-between gap-2">
+        <div className="space-y-1 min-w-0">
+          <p className="eyebrow leading-snug break-words" title={title}>{title}</p>
+          <StatNumber value={value} />
           {subtitle && (
             <p className="text-xs text-muted-foreground">{subtitle}</p>
           )}
         </div>
-        <div className={cn('rounded-xl p-2.5', iconVariantStyles[variant])}>
-          <Icon className="h-5 w-5" />
+        <div className={cn('shrink-0 h-8 w-8 rounded-lg flex items-center justify-center', iconVariantStyles[variant])}>
+          <Icon className="h-4 w-4" />
         </div>
       </div>
     </div>

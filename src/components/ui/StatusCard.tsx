@@ -1,5 +1,6 @@
 import { Icon as LucideIcon } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { StatNumber } from './stat-number';
 
 interface StatusCardProps {
   title: string;
@@ -22,13 +23,13 @@ export function StatusCard({ title, value, icon: Icon, trend, type = 'info' }: S
       'p-5 rounded-2xl border shadow-sm transition-all hover:shadow-md',
       typeStyles[type]
     )}>
-      <div className="flex justify-between items-start">
-        <div>
-          <p className="text-xs font-black uppercase tracking-widest opacity-70">{title}</p>
-          <h3 className="text-2xl font-black mt-1 font-mono tracking-tighter">{value}</h3>
+      <div className="flex justify-between items-start gap-2">
+        <div className="min-w-0">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] opacity-70">{title}</p>
+          <div className="mt-1"><StatNumber value={value} className="text-current" /></div>
         </div>
-        <div className="p-2 bg-background/50 rounded-lg backdrop-blur-sm">
-          <Icon className="h-5 w-5" />
+        <div className="shrink-0 h-8 w-8 rounded-lg bg-background/50 backdrop-blur-sm flex items-center justify-center">
+          <Icon className="h-4 w-4" />
         </div>
       </div>
       {trend && (
