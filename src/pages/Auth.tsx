@@ -8,6 +8,9 @@ import { CircleNotch as Loader2, ArrowRight } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import logoImg from '@/assets/logo-squad-shoes.jpg';
 
+const MODULES = ['Produção', 'Estoque', 'Financeiro', 'Qualidade'];
+const EYEBROW = 'text-[10px] font-semibold uppercase tracking-[0.16em]';
+
 export default function Auth() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -17,7 +20,6 @@ export default function Auth() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
@@ -31,59 +33,75 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen flex">
-      {/* Left panel — branding (handoff Novidade: preto editorial + acento vermelho Squad) */}
-      <div className="hidden lg:flex lg:w-[45%] relative overflow-hidden items-center justify-center bg-sidebar">
-        {/* slash decorativo no topo */}
-        <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-primary to-transparent z-20" />
-        {/* Decorative circles */}
-        <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] rounded-full bg-card/5" />
-        <div className="absolute bottom-[-15%] left-[-8%] w-[400px] h-[400px] rounded-full bg-card/5" />
-        <div className="absolute top-[40%] left-[20%] w-[200px] h-[200px] rounded-full bg-card/5" />
+    <div className="min-h-screen flex bg-background">
+      {/* ───────────── Esquerda — painel de marca editorial ───────────── */}
+      <div className="hidden lg:flex lg:w-[48%] relative overflow-hidden bg-sidebar text-white flex-col justify-between p-12 xl:p-16">
+        {/* fio vermelho no topo */}
+        <div className="absolute top-0 inset-x-0 h-1 bg-primary z-20" />
+        {/* textura dot-grid */}
+        <div
+          className="absolute inset-0"
+          style={{ backgroundImage: 'radial-gradient(hsl(0 0% 100% / 0.06) 1px, transparent 1px)', backgroundSize: '24px 24px' }}
+        />
+        {/* glow vermelho */}
+        <div
+          className="absolute -top-1/4 -right-1/3 w-[640px] h-[640px] rounded-full pointer-events-none"
+          style={{ background: 'radial-gradient(circle, hsl(var(--primary) / 0.20), transparent 62%)' }}
+        />
 
-        <div className="relative z-10 text-center px-12 space-y-8">
-          <div className="mx-auto w-28 h-28 rounded-2xl overflow-hidden ring-4 ring-white/20 bg-card"
-            style={{ boxShadow: '0 20px 40px -10px rgba(0,0,0,0.3)' }}>
+        {/* topo — logo + eyebrow */}
+        <div className="relative z-10 flex items-center gap-3">
+          <div className="w-11 h-11 rounded-lg overflow-hidden bg-card ring-1 ring-white/15">
             <img src={logoImg} alt="Squad Shoes" className="h-full w-full object-contain" />
           </div>
-          <div>
-            <h1 className="text-4xl font-extrabold text-white tracking-tight">Squad Shoes</h1>
-            <p className="text-white/70 text-lg mt-3 font-medium max-w-md mx-auto leading-relaxed">
-              Sistema de Gestão Industrial completo para sua fábrica de calçados.
-            </p>
-          </div>
-          <div className="flex items-center justify-center gap-6 text-white/50 text-xs font-medium">
-            <span>Produção</span>
-            <div className="w-1 h-1 rounded-full bg-card/30" />
-            <span>Estoque</span>
-            <div className="w-1 h-1 rounded-full bg-card/30" />
-            <span>Financeiro</span>
-            <div className="w-1 h-1 rounded-full bg-card/30" />
-            <span>Qualidade</span>
-          </div>
+          <span className={`${EYEBROW} text-white/45`}>Gestão Industrial</span>
+        </div>
+
+        {/* centro — wordmark Anton */}
+        <div className="relative z-10">
+          <h1 className="display text-white" style={{ fontSize: 'clamp(3.5rem, 7vw, 5.5rem)', lineHeight: 0.84 }}>
+            Squad<br /><span className="text-primary">Shoes</span>
+          </h1>
+          <p className="mt-7 text-white/55 text-[15px] leading-relaxed max-w-sm">
+            Sistema de gestão industrial completo para a sua fábrica de calçados — produção, estoque,
+            financeiro e qualidade num só lugar.
+          </p>
+        </div>
+
+        {/* base — módulos numerados */}
+        <div className="relative z-10 grid grid-cols-2 gap-x-10 gap-y-4 max-w-md">
+          {MODULES.map((m, i) => (
+            <div key={m} className="flex items-baseline gap-3 border-t border-white/10 pt-2.5">
+              <span className="mono text-primary text-xs">{String(i + 1).padStart(2, '0')}</span>
+              <span className="text-white/85 text-sm font-medium tracking-wide">{m}</span>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* Right panel — form */}
-      <div className="flex-1 flex items-center justify-center px-6 py-12 bg-background">
-        <div className="w-full max-w-sm space-y-8">
-          {/* Mobile logo */}
-          <div className="lg:hidden text-center space-y-3">
-            <div className="mx-auto w-16 h-16 rounded-xl overflow-hidden ring-2 ring-primary/20 bg-card"
-              style={{ boxShadow: '0 8px 20px -6px rgba(0,0,0,0.15)' }}>
+      {/* ───────────── Direita — formulário ───────────── */}
+      <div className="flex-1 flex items-center justify-center px-6 py-12 relative">
+        <span className="mono hidden lg:block absolute top-6 right-7 text-[11px] text-muted-foreground/50">v.2026</span>
+
+        <div className="w-full max-w-sm space-y-9">
+          {/* logo mobile */}
+          <div className="lg:hidden flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl overflow-hidden ring-1 ring-primary/20 bg-card">
               <img src={logoImg} alt="Squad Shoes" className="h-full w-full object-contain" />
             </div>
-            <h1 className="text-2xl font-extrabold text-foreground">Squad Shoes</h1>
+            <span className="display text-foreground text-2xl">Squad Shoes</span>
           </div>
 
-          <div className="space-y-2">
-            <h2 className="text-xl font-bold tracking-tight text-foreground tracking-tight">Bem-vindo de volta</h2>
-            <p className="text-muted-foreground text-sm">Entre na sua conta para acessar o sistema</p>
+          <div className="space-y-3">
+            <span className={`${EYEBROW} text-primary block`}>Acesso ao sistema</span>
+            <h2 className="text-3xl font-bold tracking-tight text-foreground">Bem-vindo de volta</h2>
+            <div className="h-0.5 w-10 bg-primary" />
+            <p className="text-muted-foreground text-sm">Entre na sua conta para continuar.</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-sm font-semibold">E-mail</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="email" className={`${EYEBROW} text-muted-foreground`}>E-mail</Label>
               <Input
                 id="email"
                 type="email"
@@ -91,29 +109,38 @@ export default function Auth() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="h-11 bg-muted/50"
+                autoFocus
+                className="h-11"
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="password" className="text-sm font-semibold">Senha</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="password" className={`${EYEBROW} text-muted-foreground`}>Senha</Label>
               <Input
                 id="password"
                 type="password"
-                placeholder="Sua senha"
+                placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={6}
-                className="h-11 bg-muted/50"
+                className="h-11"
               />
             </div>
-            <Button type="submit" className="w-full h-11 font-bold text-sm gap-2" disabled={loading}>
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Entrar <ArrowRight className="h-4 w-4" /></>}
+            <Button
+              type="submit"
+              disabled={loading}
+              className="group w-full h-12 font-bold text-sm gap-2 mt-1 transition-transform hover:-translate-y-0.5"
+            >
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <>Entrar <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" /></>
+              )}
             </Button>
           </form>
 
-          <p className="text-center text-xs text-muted-foreground">
-            Squad Shoes &copy; {new Date().getFullYear()} — Gestão Industrial
+          <p className="mono text-[11px] text-muted-foreground/70">
+            Squad Shoes © {new Date().getFullYear()} — Gestão Industrial
           </p>
         </div>
       </div>
