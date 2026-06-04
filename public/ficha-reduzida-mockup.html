@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ficha de Operador — Versão Reduzida (exemplo: placa de palmilha)</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Anton&family=Fira+Sans:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500;600;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#e9e7e2;font-family:'Fira Sans',sans-serif;color:#000;padding:28px;display:flex;flex-direction:column;align-items:center;gap:26px}
+.cap{font-family:'Fira Code',monospace;font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.14em;align-self:flex-start;max-width:210mm;margin:0 auto}
+/* A4 reduzida */
+.ficha{width:210mm;background:#fff;padding:12mm 12mm 10mm;box-shadow:0 4px 18px rgba(0,0,0,.18)}
+.eyebrow{font-size:10px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:#000;font-family:'Fira Code',monospace}
+.head{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2.5px solid #000;padding-bottom:8px}
+.head h1{font-family:'Anton',Impact,sans-serif;text-transform:uppercase;font-size:40px;line-height:.9;letter-spacing:.01em;margin-top:3px}
+.meta{display:flex;gap:18px;text-align:right}
+.meta .m{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#000}
+.meta .m b{display:block;font-family:'Fira Code',monospace;font-size:18px;letter-spacing:0;font-weight:700;margin-top:2px}
+
+.body{display:flex;gap:14px;margin-top:12px}
+.photo{width:62mm;height:62mm;border:1.5px solid #000;flex-shrink:0;display:grid;place-items:center;position:relative;background:#fff}
+.photo .tag{position:absolute;top:0;left:0;background:#fff;border-right:1.5px solid #000;border-bottom:1.5px solid #000;font-family:'Fira Code',monospace;font-size:8px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;padding:2px 5px}
+.photo svg{width:74%;height:74%;opacity:.9}
+
+.grade{flex:1;min-width:0;display:flex;flex-direction:column}
+.lbl{font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;font-family:'Fira Code',monospace;border-bottom:1px solid #000;padding-bottom:3px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:baseline}
+.lbl small{font-weight:400;color:#444;letter-spacing:.05em}
+table.g{width:100%;border-collapse:collapse;table-layout:fixed}
+table.g th,table.g td{border:1px solid #000;text-align:center;padding:3px 0}
+table.g th{font-family:'Fira Code',monospace;font-size:12px;font-weight:700;background:#000;color:#fff}
+table.g td{font-family:'Anton',Impact,sans-serif;font-size:26px;line-height:1}
+table.g td.z{color:#bbb;font-family:'Fira Sans';font-size:14px}
+.gtot{margin-top:auto;padding-top:8px;display:flex;align-items:baseline;justify-content:flex-end;gap:8px;border-top:2px solid #000;margin-top:10px}
+.gtot .t{font-size:11px;text-transform:uppercase;letter-spacing:.14em;font-weight:700}
+.gtot .n{font-family:'Anton',Impact,sans-serif;font-size:38px;line-height:.8}
+.gtot .u{font-family:'Fira Code',monospace;font-size:12px;letter-spacing:.1em}
+
+.colors{margin-top:14px}
+.crow{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid #000}
+.crow:first-of-type{border-top:1.5px solid #000}
+.sw{width:16px;height:16px;border:1.5px solid #000;flex-shrink:0}
+.cname{font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:.02em;flex:1}
+.cgrade{font-family:'Fira Code',monospace;font-size:11px;color:#555;letter-spacing:.05em}
+.cqty{font-family:'Anton',Impact,sans-serif;font-size:30px;line-height:.8}
+.cqty small{font-family:'Fira Code',monospace;font-size:11px;color:#555;margin-left:4px}
+.crow.tot{border-top:2.5px solid #000;margin-top:2px}
+.crow.tot .cname{font-weight:800}
+.crow.tot .cqty{font-size:38px}
+
+.assina{display:flex;gap:36px;margin-top:18px}
+.assina div{flex:1;border-top:1.5px solid #000;padding-top:4px;font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:#000;text-align:center}
+</style></head>
+<body>
+  <div class="cap">Ficha de operador — versão REDUZIDA · exemplo: placa de palmilha · só foto + grade + quantidades</div>
+
+  <!-- ════ VARIANTE A — POR COR ════ -->
+  <div class="ficha">
+    <div class="head">
+      <div><span class="eyebrow">Corte Palmilha · Ficha reduzida</span><h1>Placa de Palmilha</h1></div>
+      <div class="meta">
+        <div class="m">Lote<b>3/8</b></div>
+        <div class="m">OPs<b>04</b></div>
+        <div class="m">Solado<b>EVA 8mm</b></div>
+      </div>
+    </div>
+
+    <div class="body">
+      <div class="photo"><span class="tag">Ref.</span>
+        <svg viewBox="0 0 100 100" fill="none" stroke="#000" stroke-width="2.5"><path d="M30 18 C20 18 16 30 18 44 C20 60 24 78 34 84 C44 90 58 88 64 78 C70 68 70 52 66 40 C62 26 50 18 30 18 Z"/><path d="M24 40 C34 36 52 36 62 42" stroke-width="1.5"/><ellipse cx="42" cy="30" rx="9" ry="5" stroke-width="1.5"/></svg>
+      </div>
+      <div class="grade">
+        <span class="lbl">Grade · Numeração <small>pares por número</small></span>
+        <table class="g">
+          <tr><th>33</th><th>34</th><th>35</th><th>36</th><th>37</th><th>38</th><th>39</th><th>40</th></tr>
+          <tr><td class="z">0</td><td>6</td><td>10</td><td>14</td><td>16</td><td>12</td><td>8</td><td>6</td></tr>
+        </table>
+        <div class="gtot"><span class="t">Total da grade</span><span class="n">72</span><span class="u">pares</span></div>
+      </div>
+    </div>
+
+    <div class="colors">
+      <span class="lbl">Quantidades por cor</span>
+      <div class="crow"><span class="sw" style="background:#1a1a1a"></span><span class="cname">Preto</span><span class="cgrade">34·4 35·6 36·8 37·9 38·7 39·4 40·2</span><span class="cqty">40</span></div>
+      <div class="crow"><span class="sw" style="background:#8a5a2b"></span><span class="cname">Caramelo</span><span class="cgrade">34·2 35·4 36·6 37·7 38·5 39·4 40·4</span><span class="cqty">32</span></div>
+      <div class="crow tot"><span class="sw" style="background:#fff"></span><span class="cname">Total</span><span class="cgrade"></span><span class="cqty">72<small>pares</small></span></div>
+    </div>
+
+    <div class="assina"><div>Operador</div><div>Conferência</div></div>
+  </div>
+
+  <!-- ════ VARIANTE B — TOTAL (sem cor) ════ -->
+  <div class="ficha">
+    <div class="head">
+      <div><span class="eyebrow">Corte Palmilha · Ficha reduzida</span><h1>Placa de Palmilha</h1></div>
+      <div class="meta">
+        <div class="m">Lote<b>3/8</b></div>
+        <div class="m">OPs<b>04</b></div>
+        <div class="m">Solado<b>EVA 8mm</b></div>
+      </div>
+    </div>
+
+    <div class="body">
+      <div class="photo"><span class="tag">Ref.</span>
+        <svg viewBox="0 0 100 100" fill="none" stroke="#000" stroke-width="2.5"><path d="M30 18 C20 18 16 30 18 44 C20 60 24 78 34 84 C44 90 58 88 64 78 C70 68 70 52 66 40 C62 26 50 18 30 18 Z"/><path d="M24 40 C34 36 52 36 62 42" stroke-width="1.5"/><ellipse cx="42" cy="30" rx="9" ry="5" stroke-width="1.5"/></svg>
+      </div>
+      <div class="grade">
+        <span class="lbl">Grade · Numeração <small>pares por número</small></span>
+        <table class="g">
+          <tr><th>33</th><th>34</th><th>35</th><th>36</th><th>37</th><th>38</th><th>39</th><th>40</th></tr>
+          <tr><td class="z">0</td><td>6</td><td>10</td><td>14</td><td>16</td><td>12</td><td>8</td><td>6</td></tr>
+        </table>
+        <div class="gtot"><span class="t">Total da grade</span><span class="n">72</span><span class="u">pares</span></div>
+      </div>
+    </div>
+
+    <div class="colors">
+      <span class="lbl">Quantidade total <small>(grupo sem separação por cor)</small></span>
+      <div class="crow tot"><span class="sw" style="background:#fff"></span><span class="cname">Total a cortar</span><span class="cgrade">72 pares · 6 fichas de 12</span><span class="cqty">72<small>pares</small></span></div>
+    </div>
+
+    <div class="assina"><div>Operador</div><div>Conferência</div></div>
+  </div>
+</body></html>
