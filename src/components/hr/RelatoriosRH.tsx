@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Clock, CurrencyDollar as DollarSign, CaretRight, CaretDown,
   Warning as AlertTriangle, Users as Users2, Printer,
-  CalendarBlank as Calendar, IdentificationCard,
+  CalendarBlank as Calendar, IdentificationCard, DownloadSimple,
 } from '@phosphor-icons/react';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useHolidays, useTimesheetCoverage, useWorkSchedules, calculateDaySummary, type DaySummary } from '@/hooks/useTimesheet';
@@ -26,6 +26,7 @@ import {
   type EmployeeTimesheetData,
 } from '@/lib/printTimesheet';
 import { printTimeMirror } from '@/lib/printTimeMirror';
+import { exportFolhaExcel } from '@/lib/exportFolhaExcel';
 import { usePersistedState } from '@/hooks/usePersistedState';
 
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -330,6 +331,19 @@ export default function RelatoriosRH() {
     }
   };
 
+  // Baixa o .xlsx com Resumo + Detalhe dia a dia (respeita o escopo: 1 funcionário ou todos).
+  const handleExport = () => {
+    if (visibleRows.length === 0) return;
+    exportFolhaExcel(
+      visibleRows.map(r => ({
+        ext: r.ext, name: r.name, data: buildPrintData(r),
+        mes: r.result, q1: r.q1, q2: r.q2, advMes: r.advMes, sit: r.sit.txt,
+      })),
+      periodLabel,
+      `Folha_${period}.xlsx`,
+    );
+  };
+
   const espelhoNeedsEmployee = tab === 'espelho' && scope === ALL;
   const printDisabled = visibleRows.length === 0 || espelhoNeedsEmployee;
   const printLabel = tab === 'ponto' ? 'Imprimir horas'
@@ -350,7 +364,10 @@ export default function RelatoriosRH() {
           {rows.map(r => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
         </SelectContent>
       </Select>
-      <Button size="sm" className="h-9 gap-1.5 ml-auto" onClick={handlePrint} disabled={printDisabled}>
+      <Button size="sm" variant="outline" className="h-9 gap-1.5 ml-auto" onClick={handleExport} disabled={visibleRows.length === 0}>
+        <DownloadSimple className="h-4 w-4" /> Exportar Excel
+      </Button>
+      <Button size="sm" className="h-9 gap-1.5" onClick={handlePrint} disabled={printDisabled}>
         <Printer className="h-4 w-4" /> {printLabel}
       </Button>
     </div>
