@@ -74,6 +74,7 @@ interface EmpRow {
   q1: SalaryPayrollResult;       // 1ª quinzena (01–15, base ×15/30)
   q2: SalaryPayrollResult;       // 2ª quinzena (16–fim, base ×(fim−15)/30)
   matchedDays: number;           // dias com ponto importado no mês
+  advMes: number;                // adiantamentos pendentes do mês (R$)
   sit: { txt: string; tone: SitTone };
 }
 
@@ -136,6 +137,24 @@ export default function RelatoriosRH() {
     },
   });
 
+  // Adiantamentos pendentes do período (único desconto além de faltas/atrasos) — mesma
+  // regra da Folha: vales já amarrados a outra folha (payroll_run_id) não entram de novo.
+  const { data: advancesList = [] } = useQuery({
+    queryKey: ['rh-report-advances', periodRange.from, periodRange.to],
+    enabled: !!(periodRange.from && periodRange.to),
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('employee_advances')
+        .select('employee_id, amount, advance_date, status, payroll_run_id')
+        .gte('advance_date', periodRange.from!)
+        .lte('advance_date', periodRange.to!)
+        .or('payroll_run_id.is.null,status.eq.pending');
+      if (error) throw error;
+      return (data || []) as { employee_id: string; amount: number; advance_date: string }[];
+    },
+  });
+
   const rows: EmpRow[] = useMemo(() => {
     // Mapas batida → dia, por matrícula e por nome (mesmo casamento da Folha).
     const byExternalId = new Map<string, Map<string, string[]>>();
@@ -160,6 +179,12 @@ export default function RelatoriosRH() {
     const monthFrom = monthDays[0]?.date || '';
     const monthTo = monthDays[monthDays.length - 1]?.date || '';
     const q2Days = Math.max(0, monthDays.length - 15);
+    // Adiantamentos do período por funcionário (descontados do líquido, como na Folha).
+    const advByEmp = new Map<string, { advance_date: string; amount: number }[]>();
+    for (const a of advancesList) {
+      if (!advByEmp.has(a.employee_id)) advByEmp.set(a.employee_id, []);
+      advByEmp.get(a.employee_id)!.push({ advance_date: a.advance_date, amount: Number(a.amount) || 0 });
+    }
 
     return employees
       .filter(e => e.active)
@@ -180,24 +205,27 @@ export default function RelatoriosRH() {
         // FOLHA em 3 períodos — MESMO motor (HE líquida do período), base PROPORCIONAL
         // na quinzena; clamp à cobertura pra não inventar falta em dia sem ponto importado.
         const sch = ((emp as { work_schedule_id?: string }).work_schedule_id && (schedules as any[]).find(s => s.id === (emp as any).work_schedule_id)) || defaultSchedule;
+        const empAdvances = advByEmp.get(emp.id) || [];
         const folha = (from: string, to: string, periodDays?: number) => computePeriodFolha({
           salary: Number(emp.salary) || 0, from, to,
           schedule: sch, holidaysSet, punchesByDate: empPunches,
           periodDays, maxCoveredDate: maxCov,
+          advancesTotal: empAdvances.filter(a => a.advance_date >= from && a.advance_date <= to).reduce((s, a) => s + a.amount, 0),
         });
         const result = folha(monthFrom, monthTo);              // mês cheio (base = salário)
         const q1 = folha(`${period}-01`, `${period}-15`, 15);  // 1ª quinzena (15/30)
         const q2 = folha(`${period}-16`, monthTo, q2Days);     // 2ª quinzena ((fim−15)/30)
         const matchedDays = Array.from(empPunches.keys()).filter(d => d >= monthFrom && d <= monthTo).length;
+        const advMes = empAdvances.reduce((s, a) => s + a.amount, 0);
         const sit = computeSituacao(result, matchedDays, maxCov, monthTo);
 
         return {
           id: emp.id, ext: extKey || undefined, name: emp.name,
-          role: (emp as { role?: string }).role, days, result, q1, q2, matchedDays, sit,
+          role: (emp as { role?: string }).role, days, result, q1, q2, matchedDays, advMes, sit,
         };
       })
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
-  }, [employees, timeRecords, monthDays, period, coverage, holidaysSet, schedules, defaultSchedule]);
+  }, [employees, timeRecords, advancesList, monthDays, period, coverage, holidaysSet, schedules, defaultSchedule]);
 
   // Linhas visíveis conforme o escopo (Todos ou 1 funcionário).
   const visibleRows = useMemo(() => (scope === ALL ? rows : rows.filter(r => r.id === scope)), [rows, scope]);
@@ -291,8 +319,8 @@ export default function RelatoriosRH() {
           { lastDay: monthDays.length, totals: { salarios: totals.salarioBase, mes: totals.liqMes, q1: totals.liqQ1, q2: totals.liqQ2 } },
         );
       } else if (scopedRow) {
-        // Demonstrativo individual completo (folha + faltas/atrasos + HE + jornada).
-        printEmployeeEvaluationDetailed([buildPrintData(scopedRow)], periodLabel);
+        // Demonstrativo individual completo (folha + faltas/atrasos + HE + jornada + adiantamentos).
+        printEmployeeEvaluationDetailed([buildPrintData(scopedRow)], periodLabel, [scopedRow.advMes]);
       }
     } else if (tab === 'calendario') {
       if (scope === ALL) printCalendarReport(allData, periodLabel);
@@ -497,7 +525,8 @@ export default function RelatoriosRH() {
                     <DollarSign className="h-4 w-4" /> Folha {periodLabel} — Mês × 1ª × 2ª quinzena (líquido por funcionário)
                   </CardTitle>
                   <p className="text-xs text-muted-foreground">
-                    Mesmo motor da Folha (HE líquida). Base da quinzena é <strong>proporcional aos dias</strong> (1ª = 15/30, 2ª = {monthDays.length - 15}/30).
+                    Mesmo motor da Folha (HE líquida), <strong>líquido já com adiantamentos pendentes descontados</strong>. Base da quinzena é
+                    <strong> proporcional aos dias</strong> (1ª = 15/30, 2ª = {monthDays.length - 15}/30).
                     <strong> Imprimir</strong>: Todos → esta tabela; um funcionário selecionado → o demonstrativo individual completo.
                   </p>
                 </CardHeader>

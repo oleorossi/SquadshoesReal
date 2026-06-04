@@ -732,7 +732,7 @@ const EVAL_STYLE = `
   </style>
 `;
 
-function evaluationEmployeeInnerHtml(emp: EmployeeTimesheetData, periodLabel: string): string {
+function evaluationEmployeeInnerHtml(emp: EmployeeTimesheetData, periodLabel: string, advance = 0): string {
   const e = evaluationDetail(emp);
   const formatMoney = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
   const fmtDate = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR');
@@ -750,7 +750,8 @@ function evaluationEmployeeInnerHtml(emp: EmployeeTimesheetData, periodLabel: st
       <tr><td class="lbl neg">(−) Faltas — ${e.faltaCount} dia(s) × valor-dia</td><td class="amt neg">${e.faltaDesconto > 0 ? '− ' + formatMoney(e.faltaDesconto) : '—'}</td></tr>
       <tr><td class="lbl neg">(−) Atrasos (líq.) — ${e.atrasoMin > 0 ? minutesToDisplay(e.atrasoMin) : '0:00'}</td><td class="amt neg">${e.atrasoDesconto > 0 ? '− ' + formatMoney(e.atrasoDesconto) : '—'}</td></tr>
       <tr><td class="lbl pos">(+) Hora extra (líq. ×1,5) — ${e.heMin > 0 ? minutesToDisplay(e.heMin) : '0:00'}</td><td class="amt pos">${e.heValue > 0 ? '+ ' + formatMoney(e.heValue) : '—'}</td></tr>
-      <tr class="net"><td>= Líquido a pagar</td><td class="amt">${formatMoney(liquido)}</td></tr>
+      ${advance > 0 ? `<tr><td class="lbl neg">(−) Adiantamentos (vales do mês)</td><td class="amt neg">− ${formatMoney(advance)}</td></tr>` : ''}
+      <tr class="net"><td>= Líquido a pagar</td><td class="amt">${formatMoney(liquido - advance)}</td></tr>
     </table>
     <p class="note">Valor-dia = salário ÷ 30 = ${formatMoney(e.valorDia)} · Valor-hora = salário ÷ 220 = ${formatMoney(e.vh)} · Hora extra a 1,5×.
       Valores <b>líquidos do período</b> (mesma conta da Folha): fim de semana / após-18h abatem o déficit antes de virar HE; falta = −1 dia.</p>
@@ -844,10 +845,10 @@ function evaluationEmployeeInnerHtml(emp: EmployeeTimesheetData, periodLabel: st
 }
 
 // Detalhado: uma página por funcionário (faltas + horas extras + líquido).
-export function printEmployeeEvaluationDetailed(employees: EmployeeTimesheetData[], periodLabel: string) {
+export function printEmployeeEvaluationDetailed(employees: EmployeeTimesheetData[], periodLabel: string, advances: number[] = []) {
   const pages = employees.map((emp, idx) => `
     ${idx > 0 ? '<div style="page-break-before:always"></div>' : ''}
-    ${evaluationEmployeeInnerHtml(emp, periodLabel)}
+    ${evaluationEmployeeInnerHtml(emp, periodLabel, advances[idx] || 0)}
   `).join('');
   printHtml('Demonstrativo Individual', `${EVAL_STYLE}${pages}`);
 }
