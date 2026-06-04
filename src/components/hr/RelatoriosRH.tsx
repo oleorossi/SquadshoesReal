@@ -12,11 +12,9 @@ import {
   Warning as AlertTriangle, Users as Users2,
 } from '@phosphor-icons/react';
 import { useEmployees } from '@/hooks/useEmployees';
-import { useHolidays, useTimesheetCoverage } from '@/hooks/useTimesheet';
-import {
-  splitDayMinutes, calculateHourlyPayroll, MONTHLY_HOURS_DIVISOR,
-  type HourlyDayInput, type HourlyPayrollResult,
-} from '@/lib/hourlyPayroll';
+import { useHolidays, useTimesheetCoverage, useWorkSchedules } from '@/hooks/useTimesheet';
+import { splitDayMinutes, MONTHLY_HOURS_DIVISOR } from '@/lib/hourlyPayroll';
+import { computePeriodFolha, type SalaryPayrollResult } from '@/lib/salaryPayroll';
 import { usePersistedState } from '@/hooks/usePersistedState';
 
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -44,22 +42,18 @@ interface EmpRow {
   name: string;
   role?: string;
   days: { date: string; dow: number; isHoliday: boolean; punches: string[]; normal: number; premium: number }[];
-  result: HourlyPayrollResult;
+  result: SalaryPayrollResult;
 }
 
 /**
- * Relatórios de RH — modelo ÚNICO de folha por hora (decisão 2026-06-02).
- *
- * Só DUAS coisas, porque é só o que o RH precisa:
+ * Relatórios de RH:
  *   1. RELÓGIO DE PONTO — horas trabalhadas por funcionário (resumo + detalhe/dia).
- *   2. PAGAMENTO POR HORAS — quanto pagar a cada um pelas horas (valor-hora × horas).
+ *   2. PAGAMENTO — o MESMO cálculo da aba Folha (salário − descontos, hora extra
+ *      LÍQUIDA do período) via `computePeriodFolha`. Alinhado à folha em 2026-06-04
+ *      (antes era por hora trabalhada, com `hourlyPayroll`, e divergia do líquido).
  *
- * ⚠ ATENÇÃO (auditoria A1, 2026-06-03): estes números são por HORA TRABALHADA
- * (`hourlyPayroll`) e NÃO são a folha oficial. Desde 2026-06-03 a FOLHA paga por
- * SALÁRIO CHEIO − DESCONTOS (faltas/atrasos) em `src/lib/salaryPayroll.ts` (aba
- * Folha). Portanto o "pagamento por horas" aqui DIVERGE do líquido da folha — o
- * valor oficial é a aba Folha. Pendência: migrar estes relatórios pro motor da
- * folha (calculateSalaryPayroll) ou remover a coluna de pagamento.
+ * O Espelho de Ponto e o Banco de Horas seguem no regime legal CLT/528
+ * (`calculateDaySummary`) — caminho separado, não tocado aqui.
  */
 export default function RelatoriosRH() {
   const today = new Date();
@@ -69,6 +63,8 @@ export default function RelatoriosRH() {
 
   const { data: employees = [] } = useEmployees();
   const { data: holidaysList = [] } = useHolidays();
+  const { data: schedules = [] } = useWorkSchedules();
+  const defaultSchedule = useMemo(() => (schedules as any[]).find(s => s.is_default) || (schedules as any[])[0] || null, [schedules]);
 
   const holidaysSet = useMemo(
     () => new Set((holidaysList as { holiday_date: string; optional?: boolean }[])
@@ -134,19 +130,28 @@ export default function RelatoriosRH() {
           return { date: d.date, dow: d.dow, isHoliday: holidaysSet.has(d.date), punches, normal, premium };
         });
 
-        const hourlyInput: HourlyDayInput[] = days.map(d => ({
-          date: d.date, dayOfWeek: d.dow, isHoliday: d.isHoliday, punches: d.punches,
-        }));
-        const result = calculateHourlyPayroll(Number(emp.salary) || 0, hourlyInput, 0);
+        // PAGAMENTO = mesmo motor da Folha (HE líquida do período, esperado da escala).
+        const sch = ((emp as { work_schedule_id?: string }).work_schedule_id && (schedules as any[]).find(s => s.id === (emp as any).work_schedule_id)) || defaultSchedule;
+        const result = computePeriodFolha({
+          salary: Number(emp.salary) || 0,
+          from: coveredDays[0]?.date || '',
+          to: coveredDays[coveredDays.length - 1]?.date || '',
+          schedule: sch, holidaysSet, punchesByDate: empPunches,
+        });
 
         return { id: emp.id, name: emp.name, role: (emp as { role?: string }).role, days, result };
       })
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
-  }, [employees, timeRecords, monthDays, coverage, holidaysSet]);
+  }, [employees, timeRecords, monthDays, coverage, holidaysSet, schedules, defaultSchedule]);
 
   const totals = useMemo(() => ({
     normalMin: rows.reduce((s, r) => s + r.result.normal_minutes, 0),
     premiumMin: rows.reduce((s, r) => s + r.result.premium_minutes, 0),
+    heMin: rows.reduce((s, r) => s + r.result.he_minutes, 0),
+    salarioBase: rows.reduce((s, r) => s + r.result.base_salary, 0),
+    faltaDesc: rows.reduce((s, r) => s + r.result.falta_desconto, 0),
+    atrasoDesc: rows.reduce((s, r) => s + r.result.atraso_desconto, 0),
+    heVal: rows.reduce((s, r) => s + r.result.he_value, 0),
     pagar: rows.reduce((s, r) => s + r.result.gross_value, 0),
   }), [rows]);
 
@@ -162,8 +167,8 @@ export default function RelatoriosRH() {
   const Header = (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <p className="text-sm text-muted-foreground">
-        Horas trabalhadas e <strong>estimativa</strong> de pagamento por hora (valor-hora = salário ÷ {MONTHLY_HOURS_DIVISOR};
-        após 18h / fim de semana / feriado = 1,5×).
+        Horas trabalhadas (Relógio de Ponto) e <strong>pagamento pela mesma conta da Folha</strong> — salário − descontos,
+        hora extra LÍQUIDA do período (valor-hora = salário ÷ {MONTHLY_HOURS_DIVISOR}).
       </p>
       <Input type="month" value={period} onChange={e => setPeriod(e.target.value)} className="w-40 h-9" />
     </div>
@@ -191,11 +196,11 @@ export default function RelatoriosRH() {
   return (
     <div className="space-y-4">
       {Header}
-      <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2">
-        <AlertTriangle className="h-4 w-4 shrink-0" />
+      <div className="rounded-md border border-emerald-500/40 bg-emerald-500/5 p-3 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+        <DollarSign className="h-4 w-4 shrink-0" />
         <span>
-          <strong>Estimativa por horas trabalhadas</strong> — NÃO é a folha oficial. O pagamento é por{' '}
-          <strong>salário cheio − descontos</strong> (faltas/atrasos); o valor a pagar está na aba <strong>Folha</strong>.
+          <strong>Pagamento alinhado à Folha</strong> — salário − descontos, hora extra só no excedente do período.
+          O Espelho de Ponto e o Banco de Horas seguem no regime legal CLT (44h/semana).
         </span>
       </div>
       {CoverageBanner}
@@ -203,7 +208,7 @@ export default function RelatoriosRH() {
       <Tabs value={tab} onValueChange={setTab} className="w-full">
         <HubTabsList tabs={[
           { value: 'ponto', label: 'Relógio de Ponto', icon: Clock },
-          { value: 'pagamento', label: 'Pagamento por Horas', icon: DollarSign },
+          { value: 'pagamento', label: 'Pagamento (folha)', icon: DollarSign },
         ]} />
 
         {/* ── RELÓGIO DE PONTO: resumo por funcionário + detalhe por dia ── */}
@@ -240,13 +245,13 @@ export default function RelatoriosRH() {
                             </TableCell>
                             <TableCell className="font-medium">
                               {r.name}
-                              {r.result.incomplete_days > 0 && (
+                              {r.result.pending_days > 0 && (
                                 <Badge className="ml-2 bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20 font-normal gap-1">
-                                  <AlertTriangle className="h-3 w-3" />{r.result.incomplete_days} incompleto(s)
+                                  <AlertTriangle className="h-3 w-3" />{r.result.pending_days} incompleto(s)
                                 </Badge>
                               )}
                             </TableCell>
-                            <TableCell className="text-right tabular-nums">{r.result.days_worked}</TableCell>
+                            <TableCell className="text-right tabular-nums">{r.result.worked_days}</TableCell>
                             <TableCell className="text-right tabular-nums">{fmtH(r.result.normal_minutes)}</TableCell>
                             <TableCell className="text-right tabular-nums text-amber-700 dark:text-amber-400">
                               {r.result.premium_minutes > 0 ? fmtH(r.result.premium_minutes) : '—'}
@@ -315,21 +320,21 @@ export default function RelatoriosRH() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Funcionário</TableHead>
-                        <TableHead className="text-right">Horas normais</TableHead>
-                        <TableHead className="text-right">Horas 1,5×</TableHead>
-                        <TableHead className="text-right">Valor-hora</TableHead>
-                        <TableHead className="text-right">Total a pagar</TableHead>
+                        <TableHead className="text-right">Salário</TableHead>
+                        <TableHead className="text-right">Faltas</TableHead>
+                        <TableHead className="text-right">Atrasos</TableHead>
+                        <TableHead className="text-right">HE líq.</TableHead>
+                        <TableHead className="text-right">Líquido</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {rows.map(r => (
                         <TableRow key={r.id}>
                           <TableCell className="font-medium">{r.name}</TableCell>
-                          <TableCell className="text-right tabular-nums">{fmtH(r.result.normal_minutes)}</TableCell>
-                          <TableCell className="text-right tabular-nums text-amber-700 dark:text-amber-400">
-                            {r.result.premium_minutes > 0 ? fmtH(r.result.premium_minutes) : '—'}
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums">{fmtBRL(r.result.hourly_rate)}</TableCell>
+                          <TableCell className="text-right tabular-nums text-muted-foreground">{fmtBRL(r.result.base_salary)}</TableCell>
+                          <TableCell className="text-right tabular-nums text-destructive">{r.result.falta_desconto > 0 ? '-' + fmtBRL(r.result.falta_desconto) : '—'}</TableCell>
+                          <TableCell className="text-right tabular-nums text-destructive">{r.result.atraso_desconto > 0 ? '-' + fmtBRL(r.result.atraso_desconto) : '—'}</TableCell>
+                          <TableCell className="text-right tabular-nums text-emerald-700 dark:text-emerald-400">{r.result.he_value > 0 ? '+' + fmtBRL(r.result.he_value) : '—'}</TableCell>
                           <TableCell className="text-right tabular-nums font-semibold">{fmtBRL(r.result.gross_value)}</TableCell>
                         </TableRow>
                       ))}
@@ -337,9 +342,10 @@ export default function RelatoriosRH() {
                     <tfoot>
                       <TableRow className="border-t-2 font-semibold bg-muted/30">
                         <TableCell>Total ({rows.length})</TableCell>
-                        <TableCell className="text-right tabular-nums">{fmtH(totals.normalMin)}</TableCell>
-                        <TableCell className="text-right tabular-nums text-amber-700 dark:text-amber-400">{fmtH(totals.premiumMin)}</TableCell>
-                        <TableCell />
+                        <TableCell className="text-right tabular-nums text-muted-foreground">{fmtBRL(totals.salarioBase)}</TableCell>
+                        <TableCell className="text-right tabular-nums text-destructive">{totals.faltaDesc > 0 ? '-' + fmtBRL(totals.faltaDesc) : '—'}</TableCell>
+                        <TableCell className="text-right tabular-nums text-destructive">{totals.atrasoDesc > 0 ? '-' + fmtBRL(totals.atrasoDesc) : '—'}</TableCell>
+                        <TableCell className="text-right tabular-nums text-emerald-700 dark:text-emerald-400">{totals.heVal > 0 ? '+' + fmtBRL(totals.heVal) : '—'}</TableCell>
                         <TableCell className="text-right tabular-nums text-emerald-700 dark:text-emerald-400">{fmtBRL(totals.pagar)}</TableCell>
                       </TableRow>
                     </tfoot>
