@@ -99,6 +99,33 @@ export default function SolesCadastroTab({ sole }: Props) {
     },
   });
 
+  // Replica name + gradeRange pras siblings (produtos do mesmo group_id em
+  // cores diferentes). Quando o usuário edita o nome ou o range de numeração
+  // de UMA cor, faz sentido espelhar nas outras — é o mesmo modelo de solado.
+  // sku/color NÃO são replicados (são por-variante).
+  const replicateToSiblings = async (patch: { name?: string; gradeRange?: { from: number; to: number } }) => {
+    if (!groupId) return { count: 0 };
+    const { data: siblings } = await supabase
+      .from('products')
+      .select('id, stock_grade')
+      .eq('group_id', groupId)
+      .neq('id', sole.id);
+
+    let count = 0;
+    for (const sib of (siblings || [])) {
+      const updates: any = {};
+      if (patch.name !== undefined) updates.name = patch.name;
+      if (patch.gradeRange) {
+        const grade = { ...((sib as any).stock_grade || {}), _size_from: patch.gradeRange.from, _size_to: patch.gradeRange.to };
+        updates.stock_grade = grade;
+      }
+      if (Object.keys(updates).length === 0) continue;
+      const { error } = await supabase.from('products').update(updates).eq('id', (sib as any).id);
+      if (!error) count++;
+    }
+    return { count };
+  };
+
   const update = useMutation({
     mutationFn: async (patch: { name: string; sku: string | null; color: string | null; gradeRange?: { from: number; to: number } }) => {
       // 1. Atualiza o produto selecionado (todos os campos)
