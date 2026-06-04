@@ -20,6 +20,17 @@ export interface WorkSchedule {
   tolerance_minutes: number;
   minimum_overtime_minutes: number;
   is_default: boolean;
+  // Dias da semana em que a escala trabalha. Lidos por worksOnDow/expectedDayMinutes
+  // (salaryPayroll). Vêm do banco via select('*'); declarados aqui pra travar a
+  // dependência no compilador — se virar select de colunas explícitas e esquecerem
+  // destes, worksOnDow passaria a dar false p/ todo dia (folha trataria tudo como folga).
+  works_sunday: boolean;
+  works_monday: boolean;
+  works_tuesday: boolean;
+  works_wednesday: boolean;
+  works_thursday: boolean;
+  works_friday: boolean;
+  works_saturday: boolean;
   created_at: string;
   updated_at: string;
 }

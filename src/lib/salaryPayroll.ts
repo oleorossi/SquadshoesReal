@@ -215,9 +215,12 @@ export function getDaysInRange(from: string, to: string): { date: string; dow: n
   const [ty, tm, td] = to.split('-').map(Number);
   if (!fy || !fm || !fd || !ty || !tm || !td) return [];
   const out: { date: string; dow: number }[] = [];
-  for (const dt = new Date(fy, fm - 1, fd); dt <= new Date(ty, tm - 1, td); dt.setDate(dt.getDate() + 1)) {
-    const y = dt.getFullYear(), m = dt.getMonth() + 1, d = dt.getDate();
-    out.push({ date: `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`, dow: dt.getDay() });
+  // Itera em UTC (não horário local): com setDate(+1) em fuso com horário de verão,
+  // a virada (spring-forward) faz um dia ser PULADO da lista. UTC não tem DST.
+  for (let t = Date.UTC(fy, fm - 1, fd); t <= Date.UTC(ty, tm - 1, td); t += 86400000) {
+    const dt = new Date(t);
+    const y = dt.getUTCFullYear(), m = dt.getUTCMonth() + 1, d = dt.getUTCDate();
+    out.push({ date: `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`, dow: dt.getUTCDay() });
   }
   return out;
 }

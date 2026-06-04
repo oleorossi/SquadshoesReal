@@ -134,30 +134,26 @@ export function calculateWeeklyPeriod(
       ? expectedMinutes - workedMinutes
       : 0;
 
-    // Redistribute weekly overtime back to individual days for display.
-    // Walk through the week accumulating worked vs expected;
-    // once the cumulative worked exceeds the weekly expected, the excess is overtime.
-    // Use the same delta formula as the weekly total (no tolerance subtracted from amount)
-    // so that the sum of day.overtimeMinutes equals weeklyOvertime.
+    // Redistribui a HE semanal pelos dias (só pra exibição do breakdown diário).
+    // Reparte PROPORCIONALMENTE ao excedente de cada dia (max(0, trabalhado − esperado)),
+    // garantindo a invariante Σ(day.overtimeMinutes) === weeklyOvertime. O resto do
+    // arredondamento vai pro dia de maior excedente.
+    //   (Antes: acúmulo guloso comparava prevExcess contra cumExpected que já incluía o dia
+    //    corrente → a soma dos dias estourava o total semanal e até um dia de DÉFICIT podia
+    //    receber HE. Bug corrigido em 2026-06-04.)
+    for (const day of wkDays) day.overtimeMinutes = 0;
     if (weeklyOvertime > 0) {
-      let cumWorked = 0;
-      let cumExpected = 0;
-      for (const day of wkDays) {
-        cumExpected += day.expectedMinutes;
-        const prevCumWorked = cumWorked;
-        cumWorked += day.workedMinutes;
-        if (cumWorked > cumExpected + tolerance) {
-          // This day contributes to overtime — use full delta (no tolerance subtraction)
-          const prevExcess = Math.max(0, prevCumWorked - cumExpected);
-          const currentExcess = cumWorked - cumExpected;
-          day.overtimeMinutes = Math.max(0, currentExcess - prevExcess);
-        } else {
-          day.overtimeMinutes = 0;
+      const surplus = wkDays.map(d => Math.max(0, d.workedMinutes - d.expectedMinutes));
+      const totalSurplus = surplus.reduce((s, v) => s + v, 0);
+      if (totalSurplus > 0) {
+        let assigned = 0, maxIdx = 0;
+        for (let i = 0; i < wkDays.length; i++) {
+          wkDays[i].overtimeMinutes = Math.round((weeklyOvertime * surplus[i]) / totalSurplus);
+          assigned += wkDays[i].overtimeMinutes;
+          if (surplus[i] > surplus[maxIdx]) maxIdx = i;
         }
-      }
-    } else {
-      for (const day of wkDays) {
-        day.overtimeMinutes = 0;
+        // Acerta o resíduo do arredondamento no dia de maior excedente (soma exata).
+        wkDays[maxIdx].overtimeMinutes = Math.max(0, wkDays[maxIdx].overtimeMinutes + (weeklyOvertime - assigned));
       }
     }
 
