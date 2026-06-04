@@ -197,6 +197,24 @@ const printStyles = `
       break-inside: avoid !important;
       page-break-inside: avoid !important;
     }
+    /* "Branco à toa" fix (2026-06): um .keep-together GRANDE que contém conteúdo
+       JÁ quebrável — tabela com linhas, OU keep-together aninhado (ex.: TallyBox
+       em chunks dentro de um wrapper col-span-2 keep-together) — NÃO deve pular
+       inteiro pra próxima página deixando vão branco embaixo. Deixa o bloco FLUIR
+       e quebrar nas fronteiras atômicas internas (linha / chunk), enchendo a
+       página. Os filhos atômicos seguem inteiros (tr/chunk têm avoid próprio) e
+       o 1º filho (cabeçalho) fica colado no conteúdo (break-after: avoid) pra não
+       orfanar. Usa :has() (suportado no print do Chrome ≥105). */
+    .print-area .keep-together:has(table),
+    .print-area .keep-together:has(.keep-together) {
+      break-inside: auto !important;
+      page-break-inside: auto !important;
+    }
+    .print-area .keep-together:has(table) > :first-child,
+    .print-area .keep-together:has(.keep-together) > :first-child {
+      break-after: avoid !important;
+      page-break-after: avoid !important;
+    }
     thead { display: table-header-group; }
     tfoot { display: table-footer-group; }
 
