@@ -12,58 +12,71 @@ function emp(days: Partial<EmployeeTimesheetData['days'][number]>[]): EmployeeTi
     schedule: { overtime_multiplier: 1.5, holiday_multiplier: 2 },
     hourlySalary: VH,
     expectedDayMin: 540, // jornada 08–18 c/ 1h almoço (igual à folha)
-    days: days.map((d) => ({
-      date: '2026-05-01', dayOfWeek: 1, punches: [], workedMinutes: 0,
+    days: days.map((d, i) => ({
+      date: `2026-05-${String((i % 28) + 1).padStart(2, '0')}`, dayOfWeek: 1, punches: [], workedMinutes: 0,
       expectedMinutes: 540, overtimeMinutes: 0, isHoliday: false, isAbsent: false, status: 'normal',
       ...d,
     })),
   };
 }
 
-describe('evaluationDetail — reconcilia com a folha (salário − descontos)', () => {
-  it('FALTA em dia útil desconta 1 dia (salário ÷ 30), não déficit × valor-hora', () => {
-    const e = evaluationDetail(emp([{ dayOfWeek: 1, punches: [], isAbsent: true, expectedMinutes: 540 }]));
-    expect(e.faltaDays).toHaveLength(1);
-    expect(e.faltaDays[0].deficit).toBe(540);
-    expect(e.faltaDays[0].desconto).toBeCloseTo(VDIA, 5); // 73,33 — NÃO (540/60)*10=90
+describe('evaluationDetail — LÍQUIDO do período (mesma conta da folha)', () => {
+  it('FALTA em dia útil desconta 1 dia (salário ÷ 30), sem HE/atraso', () => {
+    const e = evaluationDetail(emp([{ dayOfWeek: 1, punches: [], expectedMinutes: 540 }]));
+    expect(e.faltaCount).toBe(1);
+    expect(e.faltaDesconto).toBeCloseTo(VDIA, 5); // 73,33 — NÃO (540/60)*10
+    expect(e.heMin).toBe(0);
+    expect(e.atrasoMin).toBe(0);
   });
 
-  it('ATRASO (chegou 08:35, saiu 17:18) = déficit 77min × valor-hora', () => {
-    // span 08:35→17:18 = 523min; >6h ⇒ −1h almoço ⇒ 463 normais; déficit 540−463 = 77
+  it('ATRASO (chegou 08:35, saiu 17:18) = déficit 77min × valor-hora, sem HE', () => {
+    // span 08:35→17:18 = 523min; >6h ⇒ −1h almoço ⇒ 463 trab.; déficit 540−463 = 77
     const e = evaluationDetail(emp([{ dayOfWeek: 1, punches: ['08:35', '17:18'], expectedMinutes: 540 }]));
-    expect(e.faltaDays).toHaveLength(1);
-    expect(e.faltaDays[0].deficit).toBe(77);
-    expect(e.faltaDays[0].desconto).toBeCloseTo((77 / 60) * VH, 5);
-    expect(e.extraDays).toHaveLength(0);
+    expect(e.atrasoMin).toBe(77);
+    expect(e.atrasoDesconto).toBeCloseTo((77 / 60) * VH, 5);
+    expect(e.heMin).toBe(0);
   });
 
-  it('Domingo trabalhado = HE 1,5× sobre tudo (sem desconto)', () => {
+  it('Domingo trabalhado (sem mais nada) = HE 1,5× sobre tudo', () => {
     const e = evaluationDetail(emp([{ dayOfWeek: 0, punches: ['08:00', '12:00'], expectedMinutes: 0 }]));
-    expect(e.faltaDays).toHaveLength(0);
-    expect(e.extraDays).toHaveLength(1);
-    expect(e.extraDays[0].extra).toBe(240); // 4h
-    expect(e.extraDays[0].valor).toBeCloseTo((240 / 60) * VH * 1.5, 5); // 60
+    expect(e.atrasoMin).toBe(0);
+    expect(e.heMin).toBe(240); // 4h
+    expect(e.heValue).toBeCloseTo((240 / 60) * VH * 1.5, 5); // 60
   });
 
-  it('Após as 18h em dia útil vira HE 1,5× (e zera o déficit das horas normais)', () => {
-    // 08:00→19:00 = 660 span; −1h almoço = 600; 540 normais (até 18h) + 60 premium (18–19h)
+  it('Após as 18h num dia útil (cumprindo a meta) = HE 1,5× só o excedente', () => {
+    // 08:00→19:00 = 660 span; −1h almoço = 600; meta 540 ⇒ saldo +60
     const e = evaluationDetail(emp([{ dayOfWeek: 1, punches: ['08:00', '19:00'], expectedMinutes: 540 }]));
-    expect(e.faltaDays).toHaveLength(0);           // cumpriu as 9h normais
-    expect(e.extraDays).toHaveLength(1);
-    expect(e.extraDays[0].extra).toBe(60);
-    expect(e.extraDays[0].valor).toBeCloseTo((60 / 60) * VH * 1.5, 5); // 15
+    expect(e.atrasoMin).toBe(0);
+    expect(e.heMin).toBe(60);
+    expect(e.heValue).toBeCloseTo((60 / 60) * VH * 1.5, 5); // 15
+  });
+
+  it('DEVENDO no total + domingo trabalhado: domingo ABATE o déficit, HE = 0', () => {
+    // Seg 08–12 (240, deve 300). Dom 2h (120). Líquido (240+120)−540 = −180 ⇒ atraso 180, HE 0.
+    const e = evaluationDetail(emp([
+      { dayOfWeek: 1, punches: ['08:00', '12:00'], expectedMinutes: 540 },
+      { dayOfWeek: 0, punches: ['14:00', '16:00'], expectedMinutes: 0 },
+    ]));
+    expect(e.heMin).toBe(0);
+    expect(e.heValue).toBe(0);
+    expect(e.atrasoMin).toBe(180);
+    expect(e.atrasoDesconto).toBeCloseTo((180 / 60) * VH, 5); // 30
   });
 
   it('Batida ÍMPAR fica PENDENTE — não desconta nem paga', () => {
     const e = evaluationDetail(emp([{ dayOfWeek: 1, punches: ['08:00'], expectedMinutes: 540 }]));
     expect(e.pendingDays).toBe(1);
-    expect(e.faltaDays).toHaveLength(0);
-    expect(e.extraDays).toHaveLength(0);
+    expect(e.faltaCount).toBe(0);
+    expect(e.atrasoMin).toBe(0);
+    expect(e.heMin).toBe(0);
   });
 
   it('Dia cheio 08–18 exato = sem desconto e sem HE', () => {
-    const e = evaluationDetail(emp([{ dayOfWeek: 1, punches: ['08:00', '18:00'], expectedMinutes: 540 }]));
-    expect(e.faltaDays).toHaveLength(0);
-    expect(e.extraDays).toHaveLength(0);
+    const e = evaluationDetail(emp([{ dayOfWeek: 1, punches: ['08:00', '12:00', '13:00', '18:00'], expectedMinutes: 540 }]));
+    expect(e.atrasoMin).toBe(0);
+    expect(e.heMin).toBe(0);
+    expect(e.dayRows).toHaveLength(1);
+    expect(e.dayRows[0].kind).toBe('ok');
   });
 });
