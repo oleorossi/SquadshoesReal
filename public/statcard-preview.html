@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>StatCard — antes × depois</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Anton&family=Fira+Sans:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500;600;700&display=swap');
+:root{--paper:#FAFAF7;--card:#fff;--ink:#0A0A0A;--red:#D9264E;--green:#0A7B2C;--amber:#B45309;--border:#E7E2DA;--muted:#6B655F;--display:'Anton',Impact,sans-serif;--sans:'Fira Sans',sans-serif;--mono:'Fira Code',monospace}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:var(--sans);background:var(--paper);color:var(--ink);padding:36px 40px;font-size:13px}
+h1{font-family:var(--display);text-transform:uppercase;font-size:30px;margin-bottom:4px}
+.sub{color:var(--muted);margin-bottom:24px;font-size:13px}
+.lab{font-family:var(--sans);font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:22px 0 10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px}
+.narrow{max-width:480px}
+/* ── StatCard (markup/classes reais) ── */
+.card{background:var(--card);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.rule{height:2px;background:var(--ink)}
+.body{padding:16px;display:flex;flex-direction:column;gap:8px}
+.top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.eyebrow{font-family:var(--sans);font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);line-height:1.3}
+.ic{flex-shrink:0;height:28px;width:28px;display:grid;place-items:center;background:#F1ECE4;color:var(--muted);border-radius:6px;font-size:14px}
+.valrow{display:flex;align-items:baseline;gap:6px;min-width:0}
+/* NOVO: número em Anton 38px */
+.num{font-family:var(--display);font-size:38px;line-height:.9;letter-spacing:-.01em;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.num.red{color:var(--red)}.num.green{color:var(--green)}.num.amber{color:var(--amber)}
+.unit{font-size:14px;color:var(--muted);font-weight:600;flex-shrink:0;margin-bottom:2px}
+.delta{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600}
+.delta.up{color:var(--green)}.delta.dn{color:var(--red)}
+.dlab{color:var(--muted);font-weight:400}
+/* ANTES: número mono 26px */
+.num-old{font-family:var(--mono);font-size:26px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+</style></head>
+<body>
+  <h1>StatCard — depois (Anton) × antes (mono)</h1>
+  <p class="sub">Mesmo markup/classes do componente real. Grid fluido (auto-fit, min 140px) — testa empacotamento e truncamento de valores longos.</p>
+
+  <div class="lab">▸ Depois — número em Anton 38px (a maquete aprovada)</div>
+  <div class="grid">
+    <div class="card"><div class="rule"></div><div class="body">
+      <div class="top"><span class="eyebrow">Pares hoje</span><span class="ic">▣</span></div>
+      <div class="valrow"><span class="num">1.284</span></div>
+      <div class="delta up">▲ +8,2% <span class="dlab">vs ontem</span></div></div></div>
+    <div class="card"><div class="rule"></div><div class="body">
+      <div class="top"><span class="eyebrow">PVs abertos</span><span class="ic">▤</span></div>
+      <div class="valrow"><span class="num">37</span></div>
+      <div class="delta up">▲ +5 <span class="dlab">esta semana</span></div></div></div>
+    <div class="card"><div class="rule"></div><div class="body">
+      <div class="top"><span class="eyebrow">Faturamento mês</span><span class="ic">＄</span></div>
+      <div class="valrow"><span class="num green">R$ 412k</span></div>
+      <div class="delta up">▲ +12,4% <span class="dlab">vs maio</span></div></div></div>
+    <div class="card"><div class="rule"></div><div class="body">
+      <div class="top"><span class="eyebrow">Margem média</span><span class="ic">％</span></div>
+      <div class="valrow"><span class="num amber">28,4</span><span class="unit">%</span></div>
+      <div class="delta dn">▼ -1,1pp <span class="dlab">vs maio</span></div></div></div>
+    <div class="card"><div class="rule"></div><div class="body">
+      <div class="top"><span class="eyebrow">A receber</span></div>
+      <div class="valrow"><span class="num green">R$ 318.420</span></div>
+      <div class="delta"><span class="dlab">agregado</span></div></div></div>
+    <div class="card"><div class="rule"></div><div class="body">
+      <div class="top"><span class="eyebrow">A pagar (saldo longo)</span></div>
+      <div class="valrow"><span class="num red">R$ 1.284.560</span></div>
+      <div class="delta"><span class="dlab">teste truncamento</span></div></div></div>
+  </div>
+
+  <div class="lab">▸ Antes — número em Fira Code mono 26px (o atual)</div>
+  <div class="grid narrow">
+    <div class="card"><div class="rule"></div><div class="body">
+      <div class="top"><span class="eyebrow">Pares hoje</span></div>
+      <div class="valrow"><span class="num-old">1.284</span></div>
+      <div class="delta up">▲ +8,2%</div></div></div>
+    <div class="card"><div class="rule"></div><div class="body">
+      <div class="top"><span class="eyebrow">Faturamento</span></div>
+      <div class="valrow"><span class="num-old" style="color:var(--green)">R$ 412k</span></div>
+      <div class="delta up">▲ +12,4%</div></div></div>
+  </div>
+
+  <script>
+    // Replica adaptiveNumberFontSize (Anton, charRatio 0.45) — encolhe pra caber.
+    function adaptiveNum(text, maxW, base, min){
+      base = base || 38; min = min || 18;
+      const len = String(text).trim().length;
+      if(!len) return base;
+      if(len*base*0.45 <= maxW) return base;
+      return Math.max(min, Math.floor(((maxW/len)/0.45)*2)/2);
+    }
+    function applyAll(){
+      document.querySelectorAll('.valrow').forEach(function(row){
+        const num = row.querySelector('.num'); if(!num) return; // pula os .num-old (antes)
+        const unit = row.querySelector('.unit');
+        const avail = Math.max(56, row.clientWidth - (unit ? 32 : 2));
+        num.style.fontSize = adaptiveNum(num.textContent, avail) + 'px';
+      });
+    }
+    applyAll(); window.addEventListener('resize', applyAll);
+    if (document.fonts) document.fonts.ready.then(applyAll);
+  </script>
+</body></html>
