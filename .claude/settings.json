@@ -25,9 +25,13 @@
   },
   "permissions": {
     "allow": [
+      "Bash",
       "Read(*)",
+      "Read(**/*.json)",
       "Edit(*)",
+      "Edit(**/*.json)",
       "Write(*)",
+      "Write(**/*.json)",
       "NotebookEdit(*)",
       "WebFetch(*)",
       "WebSearch(*)",
