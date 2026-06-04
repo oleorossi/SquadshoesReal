@@ -3,14 +3,16 @@
  *
  * Substitui o padrão antigo `<Card><p className="text-2xl font-bold">`.
  * Visual editorial: rule preta no topo, eyebrow ALL-CAPS, número em
- * Fira Code tabular, delta opcional com tom semântico.
+ * ANTON (display condensed — identidade Industrial Editorial Pro), delta
+ * opcional com tom semântico.
  *
  * Chrome 100% via design tokens (bg-card, border-border, text-foreground,
  * text-muted-foreground). `tone` colore só o número.
  */
-import { ReactNode, ComponentType } from 'react';
+import { ReactNode, ComponentType, useLayoutEffect, useRef, useState } from 'react';
 import { TrendUp, TrendDown } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { adaptiveNumberFontSize } from '@/lib/adaptiveFontSize';
 
 type Tone = 'default' | 'primary' | 'success' | 'warning' | 'destructive';
 
@@ -50,6 +52,24 @@ export function StatCard({
   label, value, unit, hint, delta, deltaTone = 'neutral', deltaLabel,
   icon: Icon, tone = 'default', onClick, className,
 }: StatCardProps) {
+  // Número em Anton que ENCOLHE pra caber (sem truncar) — diretriz adaptiveFontSize
+  // do sistema: KPI de largura fixa + valor dinâmico (ex.: R$ 1.234.567,89). Valor
+  // curto fica grandão (38px); valor longo reduz até caber, sempre completo.
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [fontPx, setFontPx] = useState(38);
+  const valueStr = typeof value === 'string' || typeof value === 'number' ? String(value) : null;
+  useLayoutEffect(() => {
+    if (valueStr == null) { setFontPx(38); return; }
+    const el = rowRef.current;
+    if (!el) return;
+    const calc = () => setFontPx(adaptiveNumberFontSize(valueStr, {
+      maxWidthPx: Math.max(56, el.clientWidth - (unit ? 32 : 2)), baseFontPx: 38, minFontPx: 18,
+    }));
+    calc();
+    const ro = new ResizeObserver(calc);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [valueStr, unit]);
   return (
     <div
       onClick={onClick}
@@ -71,11 +91,15 @@ export function StatCard({
             </span>
           )}
         </div>
-        <div className="flex items-baseline gap-1.5 min-w-0">
-          <span className={cn('mono text-2xl md:text-[26px] font-bold leading-none truncate', TONE_VALUE[tone])} title={typeof value === 'string' ? value : undefined}>
+        <div ref={rowRef} className="flex items-baseline gap-1.5 min-w-0">
+          <span
+            className={cn('font-display leading-[0.9] tracking-tight tabular-nums truncate', TONE_VALUE[tone])}
+            style={{ fontSize: fontPx }}
+            title={typeof value === 'string' ? value : undefined}
+          >
             {value}
           </span>
-          {unit && <span className="text-xs text-muted-foreground font-medium shrink-0">{unit}</span>}
+          {unit && <span className="text-sm text-muted-foreground font-semibold shrink-0 mb-0.5">{unit}</span>}
         </div>
         {(delta || hint) && (
           <div className="flex items-center gap-2 text-xs">
