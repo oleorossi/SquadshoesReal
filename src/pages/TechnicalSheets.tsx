@@ -2458,25 +2458,31 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                    </div>
                  )}
               {(() => {
-                // Resolves the measurement unit for a product group.
-                // Priority (BOM UOM rule — dimension UOM beats stock UOM):
-                //   1) unit cached at selection time (extra.material_unit)
-                //   2) group.consumption_unit (canonical industrial UoM)
-                //   3) group.dimensions_unit (fallback dimensional UoM)
-                //   4) first active product in the group that has a unit
-                //   5) any product in the group with a unit
+                // Resolve a unidade de CONSUMO de um grupo (pra label da grade).
+                // Prioridade (consumo NÃO é dimensão da peça):
+                //   1) group.consumption_unit  — UoM canônica de consumo, quando cadastrada
+                //   2) product.unit (variante ativa do grupo) — unidade de estoque real
+                //   3) storedUnit (cache salvo na ficha)
+                //   4) group.dimensions_unit — ÚLTIMO recurso; é dimensão física (largura
+                //      de bobina, espessura, diâmetro), NÃO unidade de consumo. Antes
+                //      estava em #2 e quebrava grupos como "Ilhós 51" (dimensions_unit=mm
+                //      por causa do diâmetro físico) cujos produtos vendem por 'un'.
+                //   5) 'un' default
                 const getUnitForGroupName = (groupName: string, storedUnit?: string): string => {
-                  // UoM canónica do grupo tem prioridade sobre cache antigo (storedUnit)
-                  // para corrigir fichas onde foi cacheado o unit errado da variante.
                   if (!groupName?.trim()) return storedUnit?.trim() || 'un';
                   const g: any = (groups || []).find((x: any) => (x.name || '').trim() === groupName.trim());
-                  const groupUnit = ((g?.consumption_unit || g?.dimensions_unit) || '').toString().trim();
-                  if (groupUnit) return groupUnit;
+                  const consumption = ((g?.consumption_unit) || '').toString().trim();
+                  if (consumption) return consumption;
+                  if (g) {
+                    const prod = (products || []).find((p: any) => p.group_id === g.id && p.active && (p.unit || '').trim())
+                      || (products || []).find((p: any) => p.group_id === g.id && (p.unit || '').trim());
+                    const prodUnit = (prod?.unit || '').toString().trim();
+                    if (prodUnit) return prodUnit;
+                  }
                   if (storedUnit?.trim()) return storedUnit.trim();
-                  if (!g) return 'un';
-                  const prod = (products || []).find((p: any) => p.group_id === g.id && p.active && (p.unit || '').trim())
-                    || (products || []).find((p: any) => p.group_id === g.id && (p.unit || '').trim());
-                  return (prod?.unit || '').toString().trim() || 'un';
+                  const dimsFallback = ((g?.dimensions_unit) || '').toString().trim();
+                  if (dimsFallback) return dimsFallback;
+                  return 'un';
                 };
                 // Tamanhos numéricos individuais (35, 36, 37...) e a versão
                 // com conjugações aplicadas (substitui 23,24 → "23/24" quando
@@ -4816,21 +4822,30 @@ function SoleProductSelect({ label, value, onChange }: { label: string; value: s
   );
 }
 
-/* ===== Direct Component Select (products from "Componentes" group) ===== */
+/* ===== Direct Component Select =====
+   Lista TODOS os produtos ativos do estoque (não filtra por grupo). Mudado em
+   2026-06-04: antes filtrava pelo grupo literal "Componentes" e só achava o
+   que estivesse cadastrado nele (1 item no caso do user). O usuário cadastra
+   ilhós, fivelas, elásticos, ABS em grupos próprios (ex: "Ilhós 51") —
+   trancar pelo nome do grupo escondia 99% do estoque. */
 function DirectComponentSelect({ label, value, onChange }: { label: string; value: string; onChange: (productId: string, productName: string, unitPrice: number, unit: string) => void }) {
   const { data: products = [] } = useQuery({
-    queryKey: ['products_componentes_group'],
+    queryKey: ['products_direct_components_all'],
     queryFn: async () => {
-      // Find the group named "Componentes"
-      const { data: groups } = await supabase.from('product_groups').select('id').ilike('name', 'componentes').limit(1);
-      if (!groups || groups.length === 0) return [];
-      const groupId = groups[0].id;
-      // BUG ANTIGO: select não incluía 'unit' — bottom callback assumia
-      // sempre 'un'. Resultado: elástico em metro era cadastrado como
-      // unidade no BOM, inflando custos por 100×.
-      const { data, error } = await supabase.from('products').select('id, name, sku, unit_price, unit, color').eq('group_id', groupId).eq('active', true).order('name');
+      // Trazemos tudo que está ativo. Solados/cabedais/forrações/palmilhas/tiras
+      // têm os próprios seletores em outras seções, mas alguns usuários cadastram
+      // acessórios na mesma categoria, então NÃO filtramos por category aqui —
+      // a busca por nome já cobre.
+      const { data, error } = await supabase
+        .from('products')
+        .select('id, name, sku, unit_price, unit, color, group_id, product_groups!products_group_id_fkey(name)')
+        .eq('active', true)
+        .order('name');
       if (error) throw error;
-      return data || [];
+      return (data || []).map((p: any) => ({
+        ...p,
+        groupName: (p.product_groups?.name || '').toString(),
+      }));
     },
   });
   const [open, setOpen] = useState(false);
@@ -4839,7 +4854,12 @@ function DirectComponentSelect({ label, value, onChange }: { label: string; valu
   const filtered = useMemo(() => {
     if (!search.trim()) return products;
     const q = search.toLowerCase();
-    return products.filter((p: any) => normalizeForSearch(p.name).includes(q) || normalizeForSearch(p.sku).includes(q) || normalizeForSearch(p.color).includes(q));
+    return products.filter((p: any) =>
+      normalizeForSearch(p.name).includes(q)
+      || normalizeForSearch(p.sku).includes(q)
+      || normalizeForSearch(p.color).includes(q)
+      || normalizeForSearch(p.groupName).includes(q)
+    );
   }, [products, search]);
 
   const selected = products.find((p: any) => p.id === value);
@@ -4856,10 +4876,10 @@ function DirectComponentSelect({ label, value, onChange }: { label: string; valu
         </PopoverTrigger>
         <PopoverContent className="w-[350px] p-0" align="start">
           <Command shouldFilter={false}>
-            <CommandInput placeholder="Buscar componente..." value={search} onValueChange={setSearch} />
+            <CommandInput placeholder="Buscar por nome, SKU, cor ou grupo..." value={search} onValueChange={setSearch} />
             <CommandList>
-              <CommandEmpty>Nenhum componente encontrado. Verifique se existe um grupo "Componentes" com produtos.</CommandEmpty>
-              <CommandGroup heading={`Componentes (${filtered.length})`}>
+              <CommandEmpty>Nenhum item encontrado no estoque ativo.</CommandEmpty>
+              <CommandGroup heading={`Itens em estoque (${filtered.length})`}>
                 {filtered.map((p: any) => (
                   <CommandItem key={p.id} value={p.id} onSelect={() => { onChange(p.id, p.name, Number(p.unit_price || 0), (p.unit || 'un').toString().trim() || 'un'); setOpen(false); setSearch(''); }}>
                     <Check className={cn("mr-2 h-4 w-4", value === p.id ? "opacity-100" : "opacity-0")} />
@@ -4868,7 +4888,9 @@ function DirectComponentSelect({ label, value, onChange }: { label: string; valu
                         {p.name} {p.color ? `(${p.color})` : ''}
                         <span className="text-xs text-muted-foreground font-mono ml-1">[{p.unit || 'un'}]</span>
                       </span>
-                      {p.sku && <span className="text-xs text-muted-foreground font-mono">{p.sku}</span>}
+                      <span className="text-xs text-muted-foreground font-mono">
+                        {p.groupName ? `${p.groupName}` : ''}{p.groupName && p.sku ? ' · ' : ''}{p.sku || ''}
+                      </span>
                     </div>
                   </CommandItem>
                 ))}
