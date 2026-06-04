@@ -30,7 +30,7 @@ import {
 } from '@/hooks/useTimesheet';
 import { useEmployees, useUpdateEmployee } from '@/hooks/useEmployees';
 import { printAllEmployeesTimesheet, printConsolidatedHoursReport, printEmployeeTimesheet, printAllIndividualTimesheets, printCalendarReport, saveEmployeeTimesheetPdf, printEmployeeEvaluationDetailed, printEmployeeEvaluationSummary, EmployeeTimesheetData } from '@/lib/printTimesheet';
-import { expectedDayMinutes } from '@/lib/salaryPayroll';
+import { expectedDayMinutes, computePeriodFolha } from '@/lib/salaryPayroll';
 import { printTimeMirror } from '@/lib/printTimeMirror';
 import { useBankHoursBalances } from '@/hooks/useRH';
 import { getBatchDateRange, resolveTimeControlFilters } from '@/lib/timeControlFilters';
@@ -681,32 +681,56 @@ function TimesheetRecordsTab() {
     if (selectedEmployee !== '__all__') return [];
     return employeeNames.map(name => {
       const dayData = calcSummariesForEmployee(name);
-      const period = calculateWeeklyPeriod(dayData, defaultSchedule);
+      const f = folhaForEmployee(name, dayData);   // ALINHADO À FOLHA (HE líquida)
       return {
         name,
-        worked: period.totalWorkedMinutes,
-        expected: period.totalExpectedMinutes,
-        overtime: period.totalOvertimeMinutes,
-        absent: period.totalAbsences,
-        incomplete: period.totalIncomplete,
+        worked: f.worked_minutes,
+        expected: f.expected_minutes,
+        overtime: f.he_minutes,      // hora extra LÍQUIDA do período
+        absent: f.falta_days,
+        incomplete: f.pending_days,
         days: dayData.length,
       };
     });
-  }, [selectedEmployee, employeeNames, employeeGroups, defaultSchedule, holidays, batchDateRange, employees]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEmployee, employeeNames, employeeGroups, defaultSchedule, holidays, holidayDates, schedules, batchDateRange, employees]);
 
-  // Individual employee period (weekly-based)
+  // Individual employee period (weekly-based) — usado só pro Espelho/banco (regime legal).
   const periodSummary = useMemo(() => calculateWeeklyPeriod(summaries, defaultSchedule), [summaries, defaultSchedule]);
 
-  const totalWorked = periodSummary.totalWorkedMinutes;
-  const totalExpected = periodSummary.totalExpectedMinutes;
-  const totalOvertime = periodSummary.totalOvertimeMinutes;
-  const absences = periodSummary.totalAbsences;
+  // Folha líquida do período de UM funcionário (a MESMA conta da aba Folha): monta os dias
+  // da escala (esperado/feriado) + batidas e calcula HE líquida / atraso / falta.
+  const folhaForEmployee = (empName: string, dayData: { date: string; punches?: string[] }[]) => {
+    const emp = findBestEmployeeMatch(empName);
+    const salary = Number(emp?.salary) || 0;
+    const sch = (emp?.work_schedule_id && schedules.find(s => s.id === emp.work_schedule_id)) || defaultSchedule;
+    const punchesByDate = new Map<string, string[]>(dayData.map(d => [d.date, Array.isArray(d.punches) ? d.punches : []]));
+    return computePeriodFolha({
+      salary, from: dayData[0]?.date || '', to: dayData[dayData.length - 1]?.date || '',
+      schedule: sch, holidaysSet: holidayDates, punchesByDate,
+    });
+  };
+
+  // ALINHADO À FOLHA: os números de PAGAMENTO da tela (trabalhadas, esperadas, hora extra,
+  // atraso, faltas) vêm do MESMO motor da folha (computePeriodFolha — HE líquida do período,
+  // esperado da escala), não mais do regime semanal 528. O Espelho/banco seguem no caminho legal.
+  const folhaInd = useMemo(() => {
+    if (!selectedEmployee || selectedEmployee === '__all__' || summaries.length === 0) return null;
+    return folhaForEmployee(selectedEmployee, summaries);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEmployee, summaries, holidayDates, schedules, employees, defaultSchedule]);
+
+  const totalWorked = folhaInd?.worked_minutes ?? 0;
+  const totalExpected = folhaInd?.expected_minutes ?? 0;
+  const compensatedOvertime = folhaInd?.he_minutes ?? 0;   // hora extra LÍQUIDA do período
+  const remainingDeficit = folhaInd?.atraso_minutes ?? 0;  // atraso/déficit LÍQUIDO
+  const totalOvertime = compensatedOvertime;               // não há "bruta" no modelo líquido
+  const faltasFolha = folhaInd?.falta_days ?? 0;
+  const heValueFolha = folhaInd?.he_value ?? 0;
+  const atrasoDescontoFolha = folhaInd?.atraso_desconto ?? 0;
+  const absences = faltasFolha;
   const holidayWorked = periodSummary.totalHolidaysWorked;
 
-  // Deficit/compensation: deficit offsets OT before applying multiplier (mirrors printTimesheet logic)
-  const deficitMinutes = periodSummary.totalDeficitMinutes;
-  const compensatedOvertime = Math.max(0, totalOvertime - deficitMinutes);
-  const remainingDeficit = Math.max(0, deficitMinutes - totalOvertime);
   const overtimeDays = summaries.filter(d => d.overtimeMinutes > 0);
   const deficitDays = summaries.filter(d => d.expectedMinutes > 0 && d.workedMinutes > 0 && d.workedMinutes < d.expectedMinutes);
   const absentDays = summaries.filter(d => d.isAbsent);
@@ -1275,20 +1299,18 @@ function TimesheetRecordsTab() {
           <StatGrid>
             <StatCard label="Trabalhadas" value={minutesToDisplay(totalWorked)} />
             <StatCard label="Esperadas" value={minutesToDisplay(totalExpected)} />
-            <StatCard label="HE Brutas" value={minutesToDisplay(totalOvertime)} tone="warning" />
-            <StatCard label="Déficit" value={minutesToDisplay(deficitMinutes)} tone="destructive" />
-            <StatCard label="HE Líquida" value={minutesToDisplay(compensatedOvertime)} tone="success" />
-            <StatCard label="Déf. Restante" value={remainingDeficit > 0 ? minutesToDisplay(remainingDeficit) : '—'} tone="destructive" />
+            <StatCard label="Hora Extra" value={compensatedOvertime > 0 ? minutesToDisplay(compensatedOvertime) : '—'} tone="success" />
+            <StatCard label="Atraso" value={remainingDeficit > 0 ? minutesToDisplay(remainingDeficit) : '—'} tone="destructive" />
             <StatCard label="Faltas" value={absences} tone="destructive" />
             <StatCard label="Feriados Trab." value={holidayWorked} tone="primary" />
           </StatGrid>
 
           {/* Overtime value calculation */}
-          {getHourlySalary(selectedEmployee) > 0 && (compensatedOvertime > 0 || remainingDeficit > 0) && (
+          {getHourlySalary(selectedEmployee) > 0 && (compensatedOvertime > 0 || remainingDeficit > 0 || faltasFolha > 0) && (
             <Card className="border-green-500/20 bg-green-50/30 dark:bg-green-950/10">
               <CardContent className="p-4">
                 <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
-                  <DollarSign className="h-4 w-4 text-green-600" /> Cálculo de Hora Extra
+                  <DollarSign className="h-4 w-4 text-green-600" /> Cálculo de Hora Extra / Atraso (folha)
                 </h4>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
                   <div>
@@ -1296,21 +1318,19 @@ function TimesheetRecordsTab() {
                     <p className="font-mono tabular-nums font-medium">{formatCurrency(getHourlySalary(selectedEmployee))}</p>
                   </div>
                   <div>
-                    <span className="text-muted-foreground text-xs">HE ({minutesToDisplay(compensatedOvertime)})</span>
-                    <p className="font-mono tabular-nums font-medium">{formatCurrency(getOvertimeRate(selectedEmployee))}/hr</p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground text-xs">Valor HE</span>
-                    <p className="font-mono tabular-nums font-bold text-green-600">
-                      {formatCurrency((compensatedOvertime / 60) * getOvertimeRate(selectedEmployee))}
-                    </p>
+                    <span className="text-muted-foreground text-xs">Hora extra ({minutesToDisplay(compensatedOvertime)})</span>
+                    <p className="font-mono tabular-nums font-bold text-green-600">{compensatedOvertime > 0 ? formatCurrency(heValueFolha) : '—'}</p>
                   </div>
                   {remainingDeficit > 0 && (
                     <div>
-                      <span className="text-muted-foreground text-xs">Desconto Déficit</span>
-                      <p className="font-mono tabular-nums font-bold text-destructive">
-                        -{formatCurrency((remainingDeficit / 60) * getHourlySalary(selectedEmployee))}
-                      </p>
+                      <span className="text-muted-foreground text-xs">Atraso ({minutesToDisplay(remainingDeficit)})</span>
+                      <p className="font-mono tabular-nums font-bold text-destructive">-{formatCurrency(atrasoDescontoFolha)}</p>
+                    </div>
+                  )}
+                  {faltasFolha > 0 && (
+                    <div>
+                      <span className="text-muted-foreground text-xs">Faltas ({faltasFolha})</span>
+                      <p className="font-mono tabular-nums font-bold text-destructive">-{formatCurrency(folhaInd?.falta_desconto ?? 0)}</p>
                     </div>
                   )}
                 </div>
@@ -1437,9 +1457,9 @@ function TimesheetRecordsTab() {
 
           {selectedEmployee && selectedEmployee !== '__all__' && summaries.length > 0 && (() => {
             const hourlySalary = getHourlySalary(selectedEmployee);
-            const overtimeHourlyRate = getOvertimeRate(selectedEmployee);
-            const overtimeValue = compensatedOvertime > 0 ? (compensatedOvertime / 60) * overtimeHourlyRate : 0;
-            const deficitValue = remainingDeficit > 0 ? (remainingDeficit / 60) * hourlySalary : 0;
+            // ALINHADO À FOLHA: valores líquidos do período (HE só no excedente).
+            const overtimeValue = heValueFolha;
+            const deficitValue = atrasoDescontoFolha + (folhaInd?.falta_desconto ?? 0);
             const netValue = overtimeValue - deficitValue;
 
             return (
@@ -1477,12 +1497,12 @@ function TimesheetRecordsTab() {
                           <p className="font-mono tabular-nums font-medium">{formatCurrency(hourlySalary)}</p>
                         </div>
                         <div>
-                          <span className="text-muted-foreground text-xs">HE a receber ({formatCurrency(overtimeHourlyRate)}/hr)</span>
-                          <p className="font-mono tabular-nums font-bold text-green-600">{formatCurrency(overtimeValue)}</p>
+                          <span className="text-muted-foreground text-xs">Hora extra líq. ({minutesToDisplay(compensatedOvertime)})</span>
+                          <p className="font-mono tabular-nums font-bold text-green-600">{overtimeValue > 0 ? formatCurrency(overtimeValue) : '—'}</p>
                         </div>
-                        {remainingDeficit > 0 && (
+                        {deficitValue > 0 && (
                           <div>
-                            <span className="text-muted-foreground text-xs">Desconto por déficit</span>
+                            <span className="text-muted-foreground text-xs">Descontos (atraso + faltas)</span>
                             <p className="font-mono tabular-nums font-bold text-destructive">-{formatCurrency(deficitValue)}</p>
                           </div>
                         )}
