@@ -29,10 +29,7 @@ import {
   WorkSchedule, Holiday, TimeRecord, ParsedEmployee, DaySummary,
 } from '@/hooks/useTimesheet';
 import { useEmployees, useUpdateEmployee } from '@/hooks/useEmployees';
-import { printAllEmployeesTimesheet, printConsolidatedHoursReport, printEmployeeTimesheet, printAllIndividualTimesheets, printCalendarReport, saveEmployeeTimesheetPdf, printEmployeeEvaluationDetailed, printEmployeeEvaluationSummary, EmployeeTimesheetData } from '@/lib/printTimesheet';
-import { expectedDayMinutes, computePeriodFolha } from '@/lib/salaryPayroll';
-import { printTimeMirror } from '@/lib/printTimeMirror';
-import { useBankHoursBalances } from '@/hooks/useRH';
+import { computePeriodFolha } from '@/lib/salaryPayroll';
 import { getBatchDateRange, resolveTimeControlFilters } from '@/lib/timeControlFilters';
 import { calculateWeeklyPeriod } from '@/lib/weeklyTimeCalculation';
 import { findEmployeeMatch, resolveEmployeeName } from '@/lib/employeeMatching';
@@ -394,7 +391,6 @@ function TimesheetRecordsTab() {
   const { data: schedules = [] } = useWorkSchedules();
   const { data: holidays = [] } = useHolidays();
   const { data: employees = [] } = useEmployees();
-  const { data: bankBalances = [] } = useBankHoursBalances();
   const importRecords = useImportTimeRecords();
   const updateEmployee = useUpdateEmployee();
   const deleteBatch = useDeleteBatch();
@@ -406,6 +402,7 @@ function TimesheetRecordsTab() {
   const [preview, setPreview] = useState<{ employees: ParsedEmployee[]; startDate: string; endDate: string; rawFile?: File } | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<string>('');
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
+  const [, setRhSearchParams] = useSearchParams(); // navegar Ponto → Relatórios
   // Employee matching: parsed name → registered employee name
   const [employeeMatches, setEmployeeMatches] = useState<Record<string, string>>({});
 
@@ -748,107 +745,11 @@ function TimesheetRecordsTab() {
     return emp.salary / 220; // CLT: 220h/mês
   };
 
-  // Returns the employee's schedule (individual or fallback to default)
-  const getEmpSchedule = (empName: string) => {
-    const emp = findBestEmployeeMatch(empName);
-    return (emp?.work_schedule_id && schedules.find(s => s.id === emp.work_schedule_id)) || defaultSchedule;
-  };
-
-  // Returns the effective overtime R$/hr for an employee (custom rate or derived from their schedule)
-  const getOvertimeRate = (empName: string) => {
-    const emp = findBestEmployeeMatch(empName);
-    if (!emp) return 0;
-    if (emp.overtime_hourly_rate != null && emp.overtime_hourly_rate > 0) return emp.overtime_hourly_rate;
-    const sched = getEmpSchedule(empName);
-    return (emp.salary / 220) * sched.overtime_multiplier;
-  };
-
-  const buildPrintData = (empName: string): EmployeeTimesheetData => {
-    const emp = findBestEmployeeMatch(empName);
-    const sched = getEmpSchedule(empName);
-    return {
-      name: empName,
-      days: calcSummariesForEmployee(empName),
-      schedule: { overtime_multiplier: sched.overtime_multiplier, holiday_multiplier: sched.holiday_multiplier, minimum_overtime_minutes: sched.minimum_overtime_minutes || 0 },
-      hourlySalary: emp?.salary ? emp.salary / 220 : 0,
-      overtimeHourlyRate: emp?.overtime_hourly_rate ?? null,
-      expectedDayMin: expectedDayMinutes(sched),
-    };
-  };
-
-  const handlePrintIndividual = () => {
-    if (!selectedEmployee || selectedEmployee === '__all__') return;
-    printEmployeeTimesheet(buildPrintData(selectedEmployee), periodLabel);
-  };
-
-  const handlePrintTimeMirror = () => {
-    if (!selectedEmployee || selectedEmployee === '__all__') return;
-    const emp = findBestEmployeeMatch(selectedEmployee);
-    const data = buildPrintData(selectedEmployee);
-    const balance = bankBalances.find(b => b.employee_id === emp?.id);
-    const days = data.days.map(d => ({
-      date: d.date,
-      dayOfWeek: d.dayOfWeek,
-      punches: d.punches,
-      workedMinutes: d.workedMinutes,
-      expectedMinutes: d.expectedMinutes,
-      overtimeMinutes: d.overtimeMinutes,
-      status: d.status,
-      notes: d.isHoliday ? 'FERIADO' : '',
-    }));
-    printTimeMirror({
-      employee: {
-        name: emp?.name || selectedEmployee,
-        external_id: (emp as any)?.external_id,
-        role: emp?.role,
-        department: emp?.department,
-        cpf: (emp as any)?.cpf,
-        pis: (emp as any)?.pis,
-        admission_date: emp?.admission_date,
-      },
-      company: {
-        name: (typeof window !== 'undefined' && (window as any).COMPANY_NAME) || 'Empresa',
-      },
-      period: periodLabel.includes('-') ? periodLabel : new Date().toISOString().slice(0, 7),
-      days,
-      bankHoursBalance: balance?.balance_min,
-    });
-  };
-
-  const handlePrintAll = () => {
-    const allData = employeeNames.map(n => buildPrintData(n));
-    printAllEmployeesTimesheet(allData, periodLabel);
-  };
-
-  // Fix 22/05/2026: relatório consolidado simples (sem custos).
-  // User pediu visão direta "Esperado × Trabalhado × HE por funcionário"
-  // que existia escondido — agora é botão de primeira camada.
-  const handlePrintConsolidated = () => {
-    const allData = employeeNames.map(n => buildPrintData(n));
-    printConsolidatedHoursReport(allData, periodLabel);
-  };
-
-  const handlePrintAllIndividual = () => {
-    const allData = employeeNames.map(n => buildPrintData(n));
-    printAllIndividualTimesheets(allData, periodLabel);
-  };
-
-  const handlePrintCalendar = () => {
-    const allData = employeeNames.map(n => buildPrintData(n));
-    printCalendarReport(allData, periodLabel);
-  };
-
-  // Avaliação de aderência à jornada (esperado × batido): faltas/atrasos com
-  // desconto real + horas extras acima do esperado. Detalhado (1 pág/func) e resumo.
-  const handlePrintEvaluationDetailed = () => {
-    const allData = employeeNames.map(n => buildPrintData(n));
-    printEmployeeEvaluationDetailed(allData, periodLabel);
-  };
-
-  const handlePrintEvaluationSummary = () => {
-    const allData = employeeNames.map(n => buildPrintData(n));
-    printEmployeeEvaluationSummary(allData, periodLabel);
-  };
+  // ── Impressão de relatórios de ponto migrou para RH → Relatórios ──
+  // (src/components/hr/RelatoriosRH.tsx — 4 visões: Horas, Pagamento, Calendário,
+  // Espelho, com seletor Todos↔funcionário). Aquele componente monta o
+  // EmployeeTimesheetData e chama as funções de impressão. Esta tela ficou só com
+  // Importar + revisão na tela + Pendências. Unificado em 2026-06-04.
 
   const statusIcon = (status: DaySummary['status']) => {
     switch (status) {
@@ -883,24 +784,13 @@ function TimesheetRecordsTab() {
             Importar Arquivo
           </Button>
           {employeeNames.length > 0 && (
-            <>
-              <Button size="sm" variant="outline" className="gap-1.5" onClick={handlePrintConsolidated}>
-                <DollarSign className="h-4 w-4" />
-                Relatório Consolidado
-              </Button>
-              <Button size="sm" variant="outline" className="gap-1.5" onClick={handlePrintAllIndividual}>
-                <Printer className="h-4 w-4" />
-                Imprimir todos os relatórios
-              </Button>
-              <Button size="sm" variant="outline" className="gap-1.5" onClick={handlePrintEvaluationDetailed}>
-                <AlertTriangle className="h-4 w-4" />
-                Avaliação (detalhada)
-              </Button>
-              <Button size="sm" variant="outline" className="gap-1.5" onClick={handlePrintEvaluationSummary}>
-                <DollarSign className="h-4 w-4" />
-                Avaliação (resumo)
-              </Button>
-            </>
+            <Button
+              size="sm" variant="outline" className="gap-1.5"
+              onClick={() => setRhSearchParams(p => { const n = new URLSearchParams(p); n.set('tab', 'relatorios'); return n; }, { replace: true })}
+            >
+              <FileText className="h-4 w-4" />
+              Relatórios e impressão
+            </Button>
           )}
         </div>
       </div>
@@ -1214,32 +1104,10 @@ function TimesheetRecordsTab() {
             <FileText className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
           </div>
           <span className="text-xs text-muted-foreground">{employeeNames.length} funcionários</span>
-          {selectedEmployee === '__all__' && (
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" className="gap-1.5" onClick={handlePrintAll}>
-                <Printer className="h-3.5 w-3.5" /> Imprimir Relatório Geral
-              </Button>
-              <Button size="sm" variant="outline" className="gap-1.5" onClick={handlePrintCalendar}>
-                <Calendar className="h-3.5 w-3.5" /> Calendário
-              </Button>
-            </div>
-          )}
           {selectedEmployee && selectedEmployee !== '__all__' && (
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setReportDialogOpen(true)}>
-                <Users2 className="h-3.5 w-3.5" /> Resumo Individual
-              </Button>
-              {/* Botão único "Calendário Individual" (18/05/2026) — consolida
-                  os antigos 3 botões (Calendário, Gerar PDF, Espelho assinar).
-                  Usa printTimeMirror que tem TUDO: dados do funcionário (CPF/PIS/
-                  admissão), tabela dia-a-dia com batidas, totais agregados e
-                  bloco de assinatura empregado+empregador conforme Portaria MTE
-                  1.510/2009. Pra salvar como PDF, basta usar "Salvar como PDF"
-                  no diálogo de impressão do navegador. */}
-              <Button size="sm" variant="default" className="gap-1.5" onClick={handlePrintTimeMirror}>
-                <Calendar className="h-3.5 w-3.5" /> Calendário Individual
-              </Button>
-            </div>
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setReportDialogOpen(true)}>
+              <Users2 className="h-3.5 w-3.5" /> Resumo Individual
+            </Button>
           )}
         </div>
       )}
@@ -1608,14 +1476,14 @@ function TimesheetRecordsTab() {
                   </div>
                 )}
 
-                {/* Save PDF button */}
+                {/* Impressão/PDF migrou para RH → Relatórios (visão Horas/Pagamento
+                    por funcionário). Este diálogo é só a revisão rápida na tela. */}
                 <div className="flex justify-end pt-2 border-t">
-                  <Button size="sm" className="gap-1.5" onClick={() => {
-                    if (!selectedEmployee || selectedEmployee === '__all__') return;
-                    const data = buildPrintData(selectedEmployee);
-                    saveEmployeeTimesheetPdf(data, periodLabel);
-                  }}>
-                    <FileSpreadsheet className="h-3.5 w-3.5" /> Salvar
+                  <Button
+                    size="sm" variant="outline" className="gap-1.5"
+                    onClick={() => { setReportDialogOpen(false); setRhSearchParams(p => { const n = new URLSearchParams(p); n.set('tab', 'relatorios'); return n; }, { replace: true }); }}
+                  >
+                    <FileText className="h-3.5 w-3.5" /> Imprimir em Relatórios
                   </Button>
                 </div>
               </div>
