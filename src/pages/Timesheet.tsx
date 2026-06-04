@@ -676,6 +676,20 @@ function TimesheetRecordsTab() {
     return calcSummariesForEmployee(selectedEmployee);
   }, [selectedEmployee, employeeGroups, defaultSchedule, holidays, batchDateRange, employees]);
 
+  // Folha líquida do período de UM funcionário (a MESMA conta da aba Folha): monta os dias
+  // da escala (esperado/feriado) + batidas e calcula HE líquida / atraso / falta.
+  // DEFINIDA AQUI (antes de allEmployeeSummaries/folhaInd que a usam) — senão dá TDZ.
+  const folhaForEmployee = (empName: string, dayData: { date: string; punches?: string[] }[]) => {
+    const emp = findBestEmployeeMatch(empName);
+    const salary = Number(emp?.salary) || 0;
+    const sch = (emp?.work_schedule_id && schedules.find(s => s.id === emp.work_schedule_id)) || defaultSchedule;
+    const punchesByDate = new Map<string, string[]>(dayData.map(d => [d.date, Array.isArray(d.punches) ? d.punches : []]));
+    return computePeriodFolha({
+      salary, from: dayData[0]?.date || '', to: dayData[dayData.length - 1]?.date || '',
+      schedule: sch, holidaysSet: holidayDates, punchesByDate,
+    });
+  };
+
   // All employees summary (weekly-based)
   const allEmployeeSummaries = useMemo(() => {
     if (selectedEmployee !== '__all__') return [];
@@ -697,19 +711,6 @@ function TimesheetRecordsTab() {
 
   // Individual employee period (weekly-based) — usado só pro Espelho/banco (regime legal).
   const periodSummary = useMemo(() => calculateWeeklyPeriod(summaries, defaultSchedule), [summaries, defaultSchedule]);
-
-  // Folha líquida do período de UM funcionário (a MESMA conta da aba Folha): monta os dias
-  // da escala (esperado/feriado) + batidas e calcula HE líquida / atraso / falta.
-  const folhaForEmployee = (empName: string, dayData: { date: string; punches?: string[] }[]) => {
-    const emp = findBestEmployeeMatch(empName);
-    const salary = Number(emp?.salary) || 0;
-    const sch = (emp?.work_schedule_id && schedules.find(s => s.id === emp.work_schedule_id)) || defaultSchedule;
-    const punchesByDate = new Map<string, string[]>(dayData.map(d => [d.date, Array.isArray(d.punches) ? d.punches : []]));
-    return computePeriodFolha({
-      salary, from: dayData[0]?.date || '', to: dayData[dayData.length - 1]?.date || '',
-      schedule: sch, holidaysSet: holidayDates, punchesByDate,
-    });
-  };
 
   // ALINHADO À FOLHA: os números de PAGAMENTO da tela (trabalhadas, esperadas, hora extra,
   // atraso, faltas) vêm do MESMO motor da folha (computePeriodFolha — HE líquida do período,
