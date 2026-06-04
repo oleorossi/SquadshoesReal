@@ -76,10 +76,16 @@ function hoursWorkedDetail(emp: EmployeeTimesheetData) {
   const daysWorked = days.filter(d => d.dayWorkedMin > 0).length;
   const normalValue = (normalMin / 60) * vh;
   const premiumValue = (premiumMin / 60) * vh * PREMIUM_MULTIPLIER;
+  // PAGAMENTO alinhado à FOLHA (HE líquida do período, descontos). As horas acima
+  // (normalMin/premiumMin) seguem cruas pro display; o pagamento vem da folha.
+  const ev = evaluationDetail(emp);
   return {
     vh, days, normalMin, premiumMin, workedMin: normalMin + premiumMin,
     absences, incompleteDays, daysWorked,
     normalValue, premiumValue, total: normalValue + premiumValue,
+    // folha:
+    folhaHeMin: ev.heMin, folhaHeValue: ev.heValue, folhaAtrasoMin: ev.atrasoMin, folhaAtraso: ev.atrasoDesconto,
+    folhaFaltaCount: ev.faltaCount, folhaFalta: ev.faltaDesconto, folhaLiquido: ev.liquido, folhaTotalDesc: ev.totalDesconto,
     hasSalary: vh > 0,
   };
 }
@@ -114,7 +120,7 @@ function employeeReportInnerHtml(emp: EmployeeTimesheetData, periodLabel: string
 
   return `
     <h1>📋 Relatório de Ponto — ${escapeHtml(emp.name)}</h1>
-    <p class="subtitle">Período: ${escapeHtml(periodLabel)} · Pagamento por horas trabalhadas · Impresso em ${new Date().toLocaleString('pt-BR')}</p>
+    <p class="subtitle">Período: ${escapeHtml(periodLabel)} · Horas trabalhadas + pagamento (folha) · Impresso em ${new Date().toLocaleString('pt-BR')}</p>
 
     <h2>Resumo</h2>
     <div class="info-grid">
@@ -127,14 +133,15 @@ function employeeReportInnerHtml(emp: EmployeeTimesheetData, periodLabel: string
     </div>
 
     ${b.hasSalary ? `
-    <h2>Valores</h2>
+    <h2>Pagamento (folha)</h2>
     <div class="info-grid">
       <div><span class="label">Valor/hora:</span> ${formatMoney(b.vh)}</div>
-      <div><span class="label">Horas Normais (1×):</span> ${minutesToDisplay(b.normalMin)} = <b>${formatMoney(b.normalValue)}</b></div>
-      <div><span class="label">Horas 1,5×:</span> ${minutesToDisplay(b.premiumMin)} = <b>${formatMoney(b.premiumValue)}</b></div>
-      <div><span class="label">Total a Pagar:</span> <b style="color:#16a34a;font-size:14px">${formatMoney(b.total)}</b></div>
+      <div><span class="label">Hora extra líq.:</span> ${b.folhaHeMin > 0 ? minutesToDisplay(b.folhaHeMin) + ' = ' : ''}<b style="color:#16a34a">${b.folhaHeValue > 0 ? '+' + formatMoney(b.folhaHeValue) : '—'}</b></div>
+      <div><span class="label">Atraso:</span> ${b.folhaAtrasoMin > 0 ? minutesToDisplay(b.folhaAtrasoMin) + ' = ' : ''}<b style="color:#dc2626">${b.folhaAtraso > 0 ? '-' + formatMoney(b.folhaAtraso) : '—'}</b></div>
+      <div><span class="label">Faltas:</span> <b style="color:#dc2626">${b.folhaFaltaCount > 0 ? b.folhaFaltaCount + ' = -' + formatMoney(b.folhaFalta) : '—'}</b></div>
+      <div><span class="label">Líquido (HE − Desc.):</span> <b style="color:${b.folhaLiquido >= 0 ? '#16a34a' : '#dc2626'};font-size:14px">${(b.folhaLiquido >= 0 ? '+' : '-') + formatMoney(Math.abs(b.folhaLiquido))}</b></div>
     </div>
-    <p style="font-size:10px;color:#b45309;margin-top:4px"><b>⚠ Estimativa por horas trabalhadas — NÃO é a folha oficial.</b> A folha paga por salário cheio − descontos (faltas/atrasos); o valor a pagar oficial está na aba Folha.</p>
+    <p style="font-size:10px;color:#222;margin-top:4px">Pagamento pela mesma conta da Folha (salário − descontos, hora extra só no excedente do período). Hora extra/atraso/falta acima são o ajuste líquido; o total a receber está na aba <b>Folha</b>.</p>
     ` : ''}
 
     <h2>Registro Diário</h2>
@@ -326,6 +333,7 @@ function calcHoursWorkedPay(emp: EmployeeTimesheetData) {
   // volta → hourly_rate = VH exato. advances = 0 (não é escopo do ponto).
   const r = calculateHourlyPayroll(vh * 220, days, 0);
   const absences = emp.days.filter(d => d.isAbsent).length;
+  const ev = evaluationDetail(emp);   // PAGAMENTO pela folha (HE líquida, descontos)
   return {
     vh,
     normalMin: r.normal_minutes,
@@ -334,6 +342,8 @@ function calcHoursWorkedPay(emp: EmployeeTimesheetData) {
     total: r.gross_value,
     incompleteDays: r.incomplete_days,
     absences,
+    folhaHeMin: ev.heMin, folhaHeValue: ev.heValue, folhaAtraso: ev.atrasoDesconto,
+    folhaFaltaCount: ev.faltaCount, folhaFalta: ev.faltaDesconto, folhaLiquido: ev.liquido,
     hasSalary: vh > 0,
   };
 }
@@ -353,7 +363,7 @@ export function printAllEmployeesTimesheet(employees: EmployeeTimesheetData[], p
       <td class="text-center">${b.absences > 0 ? `<b style="color:#dc2626">${b.absences}</b>` : '—'}</td>
       <td class="text-center">${b.incompleteDays > 0 ? `<b style="color:#b45309">${b.incompleteDays}</b>` : '—'}</td>
       <td class="text-right mono">${b.hasSalary ? formatMoney(b.vh) : '<span style="color:#dc2626">N/D</span>'}</td>
-      <td class="text-right mono" style="color:${b.hasSalary ? '#16a34a' : '#999'};font-weight:700">${b.hasSalary ? formatMoney(b.total) : 'N/D (sem salário)'}</td>
+      <td class="text-right mono" style="color:${b.hasSalary ? (b.folhaLiquido >= 0 ? '#16a34a' : '#dc2626') : '#999'};font-weight:700">${b.hasSalary ? (b.folhaLiquido >= 0 ? '+' : '-') + formatMoney(Math.abs(b.folhaLiquido)) : 'N/D (sem salário)'}</td>
     </tr>
   `).join('');
 
@@ -362,11 +372,11 @@ export function printAllEmployeesTimesheet(employees: EmployeeTimesheetData[], p
   const totPremium = all.reduce((s, b) => s + b.premiumMin, 0);
   const totAbsences = all.reduce((s, b) => s + b.absences, 0);
   const totIncomplete = all.reduce((s, b) => s + b.incompleteDays, 0);
-  const totPay = all.reduce((s, b) => s + (b.hasSalary ? b.total : 0), 0);
+  const totPay = all.reduce((s, b) => s + (b.hasSalary ? b.folhaLiquido : 0), 0);
 
   const html = `
     <h1>📊 Relatório Geral de Ponto</h1>
-    <p class="subtitle">Período: ${escapeHtml(periodLabel)} · ${employees.length} funcionários · Pagamento por horas trabalhadas · Impresso em ${new Date().toLocaleString('pt-BR')}</p>
+    <p class="subtitle">Período: ${escapeHtml(periodLabel)} · ${employees.length} funcionários · Horas trabalhadas + pagamento (folha) · Impresso em ${new Date().toLocaleString('pt-BR')}</p>
 
     <div style="display:flex;gap:6px;margin:4px 0;flex-wrap:wrap">
       <div class="summary-card">
@@ -386,8 +396,8 @@ export function printAllEmployeesTimesheet(employees: EmployeeTimesheetData[], p
         <div class="sc-value" style="color:#dc2626">${totAbsences}</div>
       </div>
       <div class="summary-card">
-        <div class="sc-label">Total a Pagar</div>
-        <div class="sc-value" style="color:#16a34a">${formatMoney(totPay)}</div>
+        <div class="sc-label">Líquido folha (HE−Desc.)</div>
+        <div class="sc-value" style="color:${totPay >= 0 ? '#16a34a' : '#dc2626'}">${(totPay >= 0 ? '+' : '-') + formatMoney(Math.abs(totPay))}</div>
       </div>
     </div>
 
@@ -401,7 +411,7 @@ export function printAllEmployeesTimesheet(employees: EmployeeTimesheetData[], p
         <th class="text-center">Faltas</th>
         <th class="text-center">Incompl.</th>
         <th class="text-right">Valor/h</th>
-        <th class="text-right">Total a Pagar</th>
+        <th class="text-right">Líquido (HE−Desc.)</th>
       </tr></thead>
       <tbody>${rows}
         <tr class="total-row" style="font-size:12px">
@@ -412,20 +422,19 @@ export function printAllEmployeesTimesheet(employees: EmployeeTimesheetData[], p
           <td class="text-center" style="color:#dc2626"><b>${totAbsences}</b></td>
           <td class="text-center" style="color:#b45309"><b>${totIncomplete || '—'}</b></td>
           <td class="text-right mono">—</td>
-          <td class="text-right mono" style="color:#16a34a;font-weight:700">${formatMoney(totPay)}</td>
+          <td class="text-right mono" style="color:${totPay >= 0 ? '#16a34a' : '#dc2626'};font-weight:700">${(totPay >= 0 ? '+' : '-') + formatMoney(Math.abs(totPay))}</td>
         </tr>
       </tbody>
     </table>
 
-    <div style="margin-top:6px;font-size:11px;color:#b45309;font-weight:800;border:1.5px solid #b45309;padding:5px 8px;border-radius:4px">
-      ⚠ ESTIMATIVA por horas trabalhadas — NÃO é a folha oficial. A folha paga por SALÁRIO CHEIO − DESCONTOS (faltas/atrasos); o valor a pagar oficial está na aba Folha.
+    <div style="margin-top:6px;font-size:11px;color:#222;border:1px solid #ccc;padding:5px 8px;border-radius:4px">
+      <b>Pagamento pela mesma conta da Folha</b> (salário − descontos, hora extra só no excedente do período). A coluna "Líquido (HE−Desc.)" é o ajuste de hora extra menos faltas/atrasos; o valor TOTAL a receber (salário do período − descontos + HE) está na aba <b>Folha</b>. Espelho/Banco seguem o regime legal CLT.
     </div>
-    <div style="margin-top:8px;font-size:10px;color:#222;font-weight:700">
-      <b>Legenda:</b> Pagamento por HORAS TRABALHADAS · Valor/h = salário ÷ 220 ·
-      Normais (1×) = horas em dia útil até as 18:00 · 1,5× = sábado, domingo, feriado ou após as 18:00 (não acumula) ·
-      Total a Pagar = Normais × Valor/h + 1,5× × Valor/h × 1,5 (bruto; adiantamento é descontado na folha) ·
-      Faltas = dias marcados como ausência (informativo — não reduz o pagamento) ·
-      Incompl. = dias com nº ímpar de batidas (RH conferir; foram contabilizados pelo intervalo da 1ª à última)
+    <div style="margin-top:8px;font-size:10px;color:#222">
+      <b>Legenda:</b> Colunas de HORAS (Trab./Normais/1,5×) = quanto cada um bateu (Valor/h = salário ÷ 220) ·
+      Normais (1×) = horas em dia útil até as 18:00 · 1,5× = sábado, domingo, feriado ou após as 18:00 ·
+      <b>Líquido (HE−Desc.)</b> = conta da FOLHA: hora extra só no excedente do período (fds/após-18h abatem o déficit antes) menos faltas (salário÷30) e atrasos (× valor-hora) ·
+      Incompl. = dias com nº ímpar de batidas (RH conferir).
     </div>
   `;
 
