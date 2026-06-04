@@ -13,7 +13,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useHolidays, useTimesheetCoverage, useWorkSchedules } from '@/hooks/useTimesheet';
 import { usePayrollRuns, useUpsertPayrollRun, useUpdatePayrollStatus } from '@/hooks/useRH';
-import { calculateSalaryPayroll, type SalaryDayInput, worksOnDow, expectedDayMinutes } from '@/lib/salaryPayroll';
+import { computePeriodFolha } from '@/lib/salaryPayroll';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -170,12 +170,9 @@ export default function Payroll() {
     const cBaseDays = /^\d{4}-\d{2}$/.test(cPeriod) ? undefined : daysBetween(cFrom, cTo);
     setCalcRunning(true);
     try {
-      const monthDays = getDaysInRange(cFrom, cTo);
-      // Clamp à cobertura: só conta dias já importados (≤ última data com batida).
-      // Dias após isso NÃO entram — senão contaria 0h e subpagaria quem ainda não
-      // teve o ponto baixado. A folha fica "parcial" até importar o resto.
+      // Clamp à cobertura: dias após a última data importada NÃO entram (evita contar
+      // como falta quem ainda não teve o ponto baixado). Folha fica "parcial" até importar.
       const maxCov = coverage?.maxCovered || null;
-      const coveredDays = maxCov ? monthDays.filter(d => d.date <= maxCov) : monthDays;
       const clamped = !!(maxCov && maxCov < cTo);
 
       // Batidas do período. time_records não tem FK pra employees — casa por
@@ -243,27 +240,18 @@ export default function Payroll() {
         // Escala do funcionário (própria ou a padrão — ex.: Dona Val não tem própria).
         const sch = (emp.work_schedule_id && (schedules as any[]).find(s => s.id === emp.work_schedule_id)) || defaultSchedule;
 
-        const days: SalaryDayInput[] = coveredDays.map(d => {
-          const isHoliday = holidaysSet.has(d.date);
-          const isWorkday = worksOnDow(sch, d.dow) && !isHoliday;
-          return {
-            date: d.date,
-            dayOfWeek: d.dow,
-            isHoliday,
-            isWorkday,
-            expectedMinutes: isWorkday ? expectedDayMinutes(sch) : 0,
-            punches: empPunches.get(d.date) || [],
-          };
+        // MESMO motor da tela do Ponto (computePeriodFolha): monta os dias da escala +
+        // batidas e calcula a folha líquida, com clamp pela cobertura.
+        const result = computePeriodFolha({
+          salary: Number(emp.salary) || 0,
+          from: cFrom, to: cTo,
+          schedule: sch,
+          holidaysSet,
+          punchesByDate: empPunches,
+          advancesTotal: advancesByEmp.get(emp.id) || 0,
+          periodDays: cBaseDays,   // mês cheio = salário (undefined); quinzena = proporcional
+          maxCoveredDate: maxCov,
         });
-
-        const result = calculateSalaryPayroll(
-          Number(emp.salary) || 0,
-          days,
-          advancesByEmp.get(emp.id) || 0,
-          undefined,        // dayDivisor (padrão 30)
-          undefined,        // hourDivisor (padrão 220)
-          cBaseDays,        // base proporcional (quinzena); mês cheio = salário (undefined)
-        );
         if (result.pending_days > 0) withIncomplete++;
 
         await upsertRun.mutateAsync({

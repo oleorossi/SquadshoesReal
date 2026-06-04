@@ -202,3 +202,50 @@ export function calculateSalaryPayroll(
     net_value: round2(gross - adv),
   };
 }
+
+// ─── Helper de período (FONTE ÚNICA) ─────────────────────────────────────────
+// Monta os dias da escala (esperado/feriado/batidas) e calcula a folha. Usado pela
+// FOLHA (Payroll) E pela tela do PONTO (Timesheet), pra os dois mostrarem a MESMA conta
+// (HE líquida do período, esperado da escala). O Espelho/Banco continuam no caminho legal.
+
+/** Dias corridos no intervalo [from, to] inclusive → [{date, dow}]. */
+export function getDaysInRange(from: string, to: string): { date: string; dow: number }[] {
+  if (!from || !to || from > to) return [];
+  const [fy, fm, fd] = from.split('-').map(Number);
+  const [ty, tm, td] = to.split('-').map(Number);
+  if (!fy || !fm || !fd || !ty || !tm || !td) return [];
+  const out: { date: string; dow: number }[] = [];
+  for (const dt = new Date(fy, fm - 1, fd); dt <= new Date(ty, tm - 1, td); dt.setDate(dt.getDate() + 1)) {
+    const y = dt.getFullYear(), m = dt.getMonth() + 1, d = dt.getDate();
+    out.push({ date: `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`, dow: dt.getDay() });
+  }
+  return out;
+}
+
+export interface PeriodFolhaInput {
+  salary: number;
+  from: string;
+  to: string;
+  schedule: any;                          // work_schedule (entry/exit/lunch/works_*)
+  holidaysSet: Set<string>;               // feriados obrigatórios (dia inteiro 1,5×)
+  punchesByDate: Map<string, string[]>;   // data (YYYY-MM-DD) → batidas
+  advancesTotal?: number;
+  periodDays?: number;                    // base proporcional (quinzena); undefined = mês cheio
+  maxCoveredDate?: string | null;         // clamp: ignora dias após a última data importada
+}
+
+/** Monta os SalaryDayInput do período (escala/feriados/batidas) e calcula a folha líquida. */
+export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
+  let dates = getDaysInRange(inp.from, inp.to);
+  if (inp.maxCoveredDate) dates = dates.filter(d => d.date <= inp.maxCoveredDate!);
+  const days: SalaryDayInput[] = dates.map(d => {
+    const isHoliday = inp.holidaysSet.has(d.date);
+    const isWorkday = worksOnDow(inp.schedule, d.dow) && !isHoliday;
+    return {
+      date: d.date, dayOfWeek: d.dow, isHoliday, isWorkday,
+      expectedMinutes: isWorkday ? expectedDayMinutes(inp.schedule) : 0,
+      punches: inp.punchesByDate.get(d.date) || [],
+    };
+  });
+  return calculateSalaryPayroll(inp.salary, days, inp.advancesTotal || 0, undefined, undefined, inp.periodDays);
+}

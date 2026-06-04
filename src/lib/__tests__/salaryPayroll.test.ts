@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateSalaryPayroll, type SalaryDayInput } from '../salaryPayroll';
+import { calculateSalaryPayroll, computePeriodFolha, getDaysInRange, type SalaryDayInput } from '../salaryPayroll';
 
 // Folha SALÁRIO CHEIO − DESCONTOS (decisão 2026-06-03). Trava a regra:
 //   valor-dia = salário/30 ; valor-hora = salário/220
@@ -170,3 +170,47 @@ describe('calculateSalaryPayroll — LÍQUIDO do período (HE só no excedente, 
     expect(r.he_minutes).toBe(0);
   });
 })
+
+const SCHED = {
+  entry_time: '08:00:00', exit_time: '18:00:00', lunch_start: '12:00:00', lunch_end: '13:00:00',
+  works_sunday: false, works_monday: true, works_tuesday: true, works_wednesday: true,
+  works_thursday: true, works_friday: true, works_saturday: false,
+};
+const NO_HOL = new Set<string>();
+const full = ['08:00', '12:00', '13:00', '18:00'];
+
+describe('computePeriodFolha — helper de período (escala + feriados + batidas)', () => {
+  it('getDaysInRange conta os dias corridos', () => {
+    expect(getDaysInRange('2026-05-04', '2026-05-08')).toHaveLength(5);
+    expect(getDaysInRange('2026-05-04', '2026-05-04')).toHaveLength(1);
+    expect(getDaysInRange('2026-05-08', '2026-05-04')).toHaveLength(0); // from > to
+  });
+
+  it('semana perfeita (seg–sex 08–18) = salário cheio, sem desconto/HE', () => {
+    const punches = new Map<string, string[]>();
+    for (const d of ['2026-05-04', '2026-05-05', '2026-05-06', '2026-05-07', '2026-05-08']) punches.set(d, full);
+    const r = computePeriodFolha({ salary: 2200, from: '2026-05-04', to: '2026-05-08', schedule: SCHED, holidaysSet: NO_HOL, punchesByDate: punches });
+    expect(r.workdays).toBe(5);
+    expect(r.falta_days).toBe(0);
+    expect(r.atraso_minutes).toBe(0);
+    expect(r.he_minutes).toBe(0);
+    expect(r.gross_value).toBeCloseTo(2200, 2);
+  });
+
+  it('feriado obrigatório não vira falta; trabalho nele = HE', () => {
+    const punches = new Map<string, string[]>([['2026-05-01', ['08:00', '12:00']]]);
+    const r = computePeriodFolha({ salary: 2200, from: '2026-05-01', to: '2026-05-01', schedule: SCHED, holidaysSet: new Set(['2026-05-01']), punchesByDate: punches });
+    expect(r.falta_days).toBe(0);
+    expect(r.he_minutes).toBe(240); // 4h no feriado
+  });
+
+  it('maxCoveredDate (clamp) ignora dias não importados — não viram falta', () => {
+    const punches = new Map<string, string[]>();
+    for (const d of ['2026-05-04', '2026-05-05', '2026-05-06']) punches.set(d, full);
+    const r = computePeriodFolha({ salary: 2200, from: '2026-05-04', to: '2026-05-08', schedule: SCHED, holidaysSet: NO_HOL, punchesByDate: punches, maxCoveredDate: '2026-05-06' });
+    expect(r.workdays).toBe(3);
+    expect(r.falta_days).toBe(0);
+    const r2 = computePeriodFolha({ salary: 2200, from: '2026-05-04', to: '2026-05-08', schedule: SCHED, holidaysSet: NO_HOL, punchesByDate: punches });
+    expect(r2.falta_days).toBe(2); // sem clamp, qui/sex viram falta
+  });
+});
