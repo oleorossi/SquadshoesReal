@@ -9,9 +9,11 @@
  * Regras (confirmadas pelo usuário):
  *   - valor-dia  = salário ÷ 30      (desconto de 1 falta = 1 dia)
  *   - valor-hora = salário ÷ 220     (desconto de atraso/saída-cedo e cálculo da HE)
- *   - Falta (dia útil sem trabalho)        → − valor-dia
- *   - Atraso + saída cedo (trabalhou < esperado) → − (esperado − trabalhado) × valor-hora
- *   - Hora extra (após 18h / fim de semana / feriado) → + horas × valor-hora × 1,5
+ *   - Falta (dia útil sem trabalho)        → − valor-dia (à parte, fora da conta de horas)
+ *   - LÍQUIDO do período (decisão 2026-06-03): soma TUDO que trabalhou (dias presentes +
+ *     fim de semana/feriado) vs o esperado dos dias presentes. Sobrou → hora extra
+ *     × valor-hora × 1,5. Faltou → atraso × valor-hora. Hora extra SÓ quando passa da
+ *     meta; trabalhar fds/após-18h sem bater a meta NÃO vira HE, só abate o que deve.
  *   - Falta NÃO tira o DSR (desconta só o dia).
  *   - Dia com nº ÍMPAR de batidas = INCONSISTENTE → fica PENDENTE: não desconta nem
  *     paga, conta só pra alerta (resolver na aba Pendências de Ponto antes de fechar).
@@ -115,15 +117,14 @@ export function calculateSalaryPayroll(
   const periodDaysEff = periodDays != null && periodDays > 0 ? periodDays : dayDivisor;
   const periodBase = periodDays != null && periodDays > 0 ? valorDia * periodDays : sal;
 
-  let expectedMin = 0;
-  let workedMin = 0;
+  let expectedMin = 0;        // esperado total dos dias úteis (inclui faltas) — só p/ relatório
+  let expectedPresentMin = 0; // esperado dos dias PRESENTES (falta excluída) — base do líquido
+  let workedMin = 0;          // TUDO trabalhado (dias úteis presentes + fim de semana/feriado)
   let normalMin = 0;
   let premiumMin = 0;
   let workdays = 0;
   let workedDays = 0;
   let faltaDays = 0;
-  let atrasoMin = 0;
-  let heMin = 0;
   let pendingDays = 0;
 
   for (const d of days) {
@@ -144,7 +145,7 @@ export function calculateSalaryPayroll(
       expectedMin += d.expectedMinutes;
       workdays++;
       if (worked === 0) {
-        // Falta: dia útil sem trabalho → desconta 1 valor-dia.
+        // Falta: dia útil sem trabalho → desconta 1 valor-dia (fora da conta de horas).
         faltaDays++;
         continue;
       }
@@ -152,21 +153,22 @@ export function calculateSalaryPayroll(
       workedMin += worked;
       normalMin += sp.normal;
       premiumMin += sp.premium;
-      // Atraso + saída cedo: o que faltou pra cumprir a jornada (parte normal).
-      const deficit = Math.max(0, d.expectedMinutes - sp.normal);
-      if (deficit > 0) atrasoMin += deficit;
-      // Após as 18:00 num dia útil → hora extra a 1,5×.
-      if (sp.premium > 0) heMin += sp.premium;
-    } else {
-      // Dia NÃO útil (fim de semana/feriado) — tudo trabalhado é hora extra 1,5×.
-      if (worked > 0) {
-        workedMin += worked;
-        normalMin += sp.normal;
-        premiumMin += sp.premium;
-        heMin += worked; // splitDayMinutes já marcou tudo como premium em fds/feriado
-      }
+      expectedPresentMin += d.expectedMinutes;
+    } else if (worked > 0) {
+      // Dia NÃO útil (fim de semana/feriado) trabalhado: conta como trabalho e ABATE o
+      // déficit (vira hora extra só se, no fim, o total passar do esperado).
+      workedMin += worked;
+      normalMin += sp.normal;
+      premiumMin += sp.premium;
     }
   }
+
+  // LÍQUIDO do período (decisão 2026-06-03): hora extra SÓ no excedente. Se o total
+  // trabalhado (já com fds/após-18h) passou do esperado dos dias presentes → o que passou
+  // é HE 1,5×; se ficou devendo → atraso. Quem não cumpriu a meta NÃO tem hora extra.
+  const balance = workedMin - expectedPresentMin;
+  const atrasoMin = balance < 0 ? -balance : 0;
+  const heMin = balance > 0 ? balance : 0;
 
   const faltaDesconto = faltaDays * valorDia;
   const atrasoDesconto = (atrasoMin / 60) * valorHora;

@@ -128,3 +128,45 @@ describe('calculateSalaryPayroll — base proporcional por quinzena (periodDays)
     expect(r.gross_value).toBeCloseTo(1400, 2);        // 1500 − 100
   });
 });
+
+describe('calculateSalaryPayroll — LÍQUIDO do período (HE só no excedente, fds abate)', () => {
+  it('devendo no total + domingo trabalhado: domingo ABATE o déficit, HE = 0', () => {
+    // Seg: trabalhou só 08–12 (4h, esperado 9h ⇒ deve 5h). Dom: trabalhou 2h.
+    // Líquido: (240 + 120) − 540 = −180 ⇒ atraso 180min; SEM hora extra.
+    const r = calculateSalaryPayroll(2200, [
+      work('2026-05-04', MON, ['08:00', '12:00']),
+      weekend('2026-05-10', SUN, ['14:00', '16:00']),
+    ], 0);
+    expect(r.he_minutes).toBe(0);
+    expect(r.he_value).toBe(0);
+    expect(r.atraso_minutes).toBe(180);
+    expect(r.atraso_desconto).toBeCloseTo(30, 2); // 3h × (2200/220)=10
+  });
+
+  it('cumpriu a meta + sábado extra: o EXCEDENTE vira hora extra 1,5×', () => {
+    const week = [
+      work('2026-05-04', 1, ['08:00', '12:00', '13:00', '18:00']),
+      work('2026-05-05', 2, ['08:00', '12:00', '13:00', '18:00']),
+      work('2026-05-06', 3, ['08:00', '12:00', '13:00', '18:00']),
+      work('2026-05-07', 4, ['08:00', '12:00', '13:00', '18:00']),
+      work('2026-05-08', 5, ['08:00', '12:00', '13:00', '18:00']),
+      weekend('2026-05-09', 6, ['08:00', '12:00']), // sábado +4h
+    ];
+    const r = calculateSalaryPayroll(2200, week, 0);
+    expect(r.atraso_minutes).toBe(0);
+    expect(r.he_minutes).toBe(240);           // só o excedente (o sábado)
+    expect(r.he_value).toBeCloseTo(60, 2);    // 4h × 10 × 1,5
+  });
+
+  it('atraso num dia + saída tarde noutro se COMPENSAM no líquido', () => {
+    // Seg 10:00–18:00 = 8h span − 1h almoço = 420 trab. (deve 120). Ter 08–20 c/ almoço =
+    // 540 normal + 120 após-18h = 660 (sobra 120). Líquido: (420+660) − 1080 = 0 ⇒
+    // o dia longo compensa o dia curto: nem atraso nem hora extra.
+    const r = calculateSalaryPayroll(2200, [
+      work('2026-05-04', 1, ['10:00', '18:00']),
+      work('2026-05-05', 2, ['08:00', '12:00', '13:00', '20:00']),
+    ], 0);
+    expect(r.atraso_minutes).toBe(0);
+    expect(r.he_minutes).toBe(0);
+  });
+})
