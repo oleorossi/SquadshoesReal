@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Printer, ArrowLeft, Stack as Layers } from '@phosphor-icons/react';
 import OperatorWorkSheet from '@/components/production/OperatorWorkSheet';
 import { PalmilhaWorkSheet, type PalmilhaGroup } from '@/components/production/PalmilhaWorkSheet';
+import { ReducedWorkSheet } from '@/components/production/ReducedWorkSheet';
 import { SilkMontageWorkSheet, type SoleSilkGroup, type SilkColorGroup, type GroupedSector } from '@/components/production/SilkMontageWorkSheet';
 import type { SectorAlert } from '@/components/production/worksheet/SectorAlerts';
 import { SolagemWorkSheet, type SoleColorBand } from '@/components/production/SolagemWorkSheet';
@@ -501,6 +502,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     () => new Set(initialSectors ?? SECTORS),
   );
 
+  // Layout da ficha: false = completa (padrão), true = reduzida (só foto + grade + qty).
+  const [reduced, setReduced] = useState(false);
   const includesSector = (s: typeof SECTORS[number]): boolean => activeSectors.has(s);
   const renderAllSectors = activeSectors.size === SECTORS.length;
 
@@ -1863,6 +1866,16 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             >
               Limpar
             </button>
+            <div className="flex items-center rounded-full border border-border overflow-hidden text-xs">
+              <button type="button" onClick={() => setReduced(false)} aria-pressed={!reduced}
+                className={`px-3 py-1 transition-colors ${!reduced ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}>
+                Completa
+              </button>
+              <button type="button" onClick={() => setReduced(true)} aria-pressed={reduced}
+                className={`px-3 py-1 transition-colors ${reduced ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}>
+                Reduzida
+              </button>
+            </div>
             <Button onClick={() => window.print()} className="gap-2" disabled={activeSectors.size === 0 || sheetCount === 0}>
               <Printer className="h-4 w-4" /> Imprimir
             </Button>
@@ -1901,18 +1914,39 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             distintas, conteúdo flui naturalmente. Blocos atômicos
             (.keep-together) evitam quebra no meio de uma seção. */}
         {includesSector('Corte Palmilha') && palmilhaGroups.length > 0 && (
-          <div className="page-break">
-            <SectorRegion sectorLabel="Corte Palmilha">
-              <PalmilhaWorkSheet
-                groups={palmilhaGroups.map(g => ({
-                  ...g,
-                  consumption: consumptionForOpNumbers(g.opNumbers),
-                }))}
-                allSizes={palmilhaAllSizes}
-                date={today}
-              />
-            </SectorRegion>
-          </div>
+          reduced ? (
+            palmilhaGroups.map((g, i) => (
+              <div key={`palmilha-red-${g.soleName}-${i}`} className="page-break">
+                <ReducedWorkSheet
+                  sectorLabel="Corte Palmilha"
+                  title={g.soleName || 'Placa de Palmilha'}
+                  meta={[
+                    ...(g.lotInfo ? [{ label: 'Lote', value: `${g.lotInfo.number}/${g.lotInfo.total}` }] : []),
+                    ...(g.fichas ? [{ label: 'Fichas', value: String(g.fichas) }] : []),
+                    ...(g.opNumbers && g.opNumbers.length ? [{ label: 'OPs', value: String(g.opNumbers.length) }] : []),
+                  ]}
+                  imageUrl={g.refs?.[0]?.image_url}
+                  grade={g.grade}
+                  allSizes={palmilhaAllSizes}
+                  totalPairs={g.totalPairs}
+                  totalNote={g.fichas && g.baseGradeSum ? `${g.fichas} ficha(s) de ${g.baseGradeSum}` : undefined}
+                />
+              </div>
+            ))
+          ) : (
+            <div className="page-break">
+              <SectorRegion sectorLabel="Corte Palmilha">
+                <PalmilhaWorkSheet
+                  groups={palmilhaGroups.map(g => ({
+                    ...g,
+                    consumption: consumptionForOpNumbers(g.opNumbers),
+                  }))}
+                  allSizes={palmilhaAllSizes}
+                  date={today}
+                />
+              </SectorRegion>
+            </div>
+          )
         )}
 
         {/* ── Sole+Color sectors (Silk, Corte Forração, Corte Cabedal, Costura, Aviamento, Montagem) ── */}
