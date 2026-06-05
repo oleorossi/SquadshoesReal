@@ -13,7 +13,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useHolidays, useTimesheetCoverage, useWorkSchedules } from '@/hooks/useTimesheet';
 import { usePayrollRuns, useUpsertPayrollRun, useUpdatePayrollStatus } from '@/hooks/useRH';
-import { computePeriodFolha } from '@/lib/salaryPayroll';
+import { computePeriodFolha, getDaysInRange } from '@/lib/salaryPayroll';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -36,21 +36,9 @@ function lastDayOfMonth(ym: string): string {
   return `${ym}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`;
 }
 
-/** Dias CORRIDOS no intervalo [from, to] inclusive → [{date, dow}]. Cobre quinzena/mês/range livre. */
-function getDaysInRange(from: string, to: string): { date: string; dow: number }[] {
-  if (!from || !to || from > to) return [];
-  const [fy, fm, fd] = from.split('-').map(Number);
-  const [ty, tm, td] = to.split('-').map(Number);
-  if (!fy || !fm || !fd || !ty || !tm || !td) return [];
-  const out: { date: string; dow: number }[] = [];
-  for (const dt = new Date(fy, fm - 1, fd); dt <= new Date(ty, tm - 1, td); dt.setDate(dt.getDate() + 1)) {
-    const y = dt.getFullYear(), m = dt.getMonth() + 1, d = dt.getDate();
-    out.push({ date: `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`, dow: dt.getDay() });
-  }
-  return out;
-}
-
-/** Nº de dias corridos no intervalo (base proporcional da quinzena). */
+/** Nº de dias corridos no intervalo (base proporcional da quinzena).
+ *  Usa a getDaysInRange CANÔNICA (UTC) de salaryPayroll.ts — antes havia uma
+ *  cópia local em horário local (fonte dupla de verdade). */
 function daysBetween(from: string, to: string): number {
   return getDaysInRange(from, to).length;
 }

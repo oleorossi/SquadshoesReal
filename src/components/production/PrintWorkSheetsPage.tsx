@@ -1178,8 +1178,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         if (group.baseGradeSum === 0) group.baseGradeSum = baseSum;
         else if (group.baseGradeSum !== baseSum) group.mixedGrades = true;
       }
-      for (const [size, qty] of Object.entries(baseGrid)) {
-        const scaled = Math.round((Number(qty) || 0) * multiplier);
+      // Largest-remainder (Hamilton) por OP: a grade escalada soma EXATO
+      // orderTotal. Math.round por tamanho deixava a soma off por ±N (operador
+      // via "Total 26" mas a grade somava 24).
+      const scaledGrade = scaleGradeWithLargestRemainder(baseGrid, multiplier, orderTotal);
+      for (const [size, scaled] of Object.entries(scaledGrade)) {
         if (scaled > 0) { group.grade[size] = (group.grade[size] || 0) + scaled; sizeSet.add(size); }
       }
       group.totalPairs = Object.values(group.grade).reduce((s, v) => s + v, 0);
@@ -1397,13 +1400,27 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       if (baseSum > 0) {
         if (cg.baseGradeSum === 0) cg.baseGradeSum = baseSum;
         else if (cg.baseGradeSum !== baseSum) cg.mixedGrades = true;
+        else {
+          // Mesma SOMA, mas distribuição por tamanho diferente da 1ª OP (cujo
+          // baseGrid fica congelado em 1359). "Por Ficha (Np)" mostraria a grade
+          // errada → marca mixedGrades p/ a worksheet omitir essa linha.
+          const keys = new Set([...Object.keys(cg.baseGrid), ...Object.keys(baseGrid)]);
+          for (const k of keys) {
+            if ((Number(cg.baseGrid[k]) || 0) !== (Number((baseGrid as Record<string, number>)[k]) || 0)) {
+              cg.mixedGrades = true;
+              break;
+            }
+          }
+        }
       }
       // Knife mapping da ficha técnica desta OP (P/M/G/...). NULL se não
       // cadastrado — neste caso o knifeGrid recebe a numeração literal como
       // chave (fallback transparente, comportamento idêntico a combinedGrid).
       const knifeRanges = knifeRangesByRef.get(sheetId) || null;
-      for (const [size, qty] of Object.entries(baseGrid)) {
-        const scaled = Math.round((Number(qty) || 0) * multiplier);
+      // Largest-remainder por OP: combinedGrid soma EXATO orderTotal (Math.round
+      // por tamanho deixava a soma off por ±N).
+      const scaledGrade = scaleGradeWithLargestRemainder(baseGrid, multiplier, orderTotal);
+      for (const [size, scaled] of Object.entries(scaledGrade)) {
         if (scaled > 0) {
           cg.combinedGrid[size] = (cg.combinedGrid[size] ?? 0) + scaled;
           // knifeGrid: agrupa por faca quando há cadastro; senão usa size literal.
