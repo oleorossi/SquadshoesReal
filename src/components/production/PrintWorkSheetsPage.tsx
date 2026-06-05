@@ -168,6 +168,23 @@ const printStyles = `
       page-break-after: auto;
       break-after: auto;
     }
+    /* Ficha REDUZIDA: NÃO força 1 por página. Fichas pequenas FLUEM e empacotam
+       VÁRIAS por A4 — no lugar do branco já começa a próxima. Cada ficha fica
+       INTEIRA (break-inside: avoid) e tem um traço pontilhado de corte entre elas.
+       Só quebra de página quando a próxima não cabe mais no resto da folha. */
+    .reduced-card {
+      break-inside: avoid !important;
+      page-break-inside: avoid !important;
+      break-after: auto !important;
+      page-break-after: auto !important;
+      border-bottom: 1.5px dashed #999 !important;
+      padding-bottom: 7mm !important;
+      margin-bottom: 7mm !important;
+    }
+    .reduced-card:last-child {
+      border-bottom: none !important;
+      margin-bottom: 0 !important;
+    }
     /* Filho direto do .page-break = container raiz da ficha. SEM flex/height
        forçados — conteúdo flui livremente em múltiplas A4 se necessário.
        Fix 21/05/2026 v5: força display: block no root em print. Worksheets
@@ -1916,7 +1933,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         {includesSector('Corte Palmilha') && palmilhaGroups.length > 0 && (
           reduced ? (
             palmilhaGroups.map((g, i) => (
-              <div key={`palmilha-red-${g.soleName}-${i}`} className="page-break">
+              <div key={`palmilha-red-${g.soleName}-${i}`} className="reduced-card">
                 <ReducedWorkSheet
                   sectorLabel="Corte Palmilha"
                   title={g.soleName || 'Placa de Palmilha'}
@@ -2068,7 +2085,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             const img = group.colorGroups.flatMap(cg => cg.alternateVariants || []).find(v => v.image_url)?.image_url || null;
             const colors = group.colorGroups.map(cg => ({ name: cg.color, qty: cg.totalPairs, grade: cg.combinedGrid }));
             return (
-              <div key={key} className="page-break">
+              <div key={key} className="reduced-card">
                 <ReducedWorkSheet
                   sectorLabel={sectorName}
                   title={group.soleName}
@@ -2122,7 +2139,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         {includesSector('Solagem') && solagemData && solagemData.bands.length > 0 && (
           reduced ? (
             solagemData.bands.map((b, i) => (
-              <div key={`sol-red-${b.soleColor}-${i}`} className="page-break">
+              <div key={`sol-red-${b.soleColor}-${i}`} className="reduced-card">
                 <ReducedWorkSheet
                   sectorLabel="Solagem"
                   title={b.soleColor || 'Solagem'}
@@ -2173,7 +2190,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             const baseSum = Object.values(group.baseGrid || {}).reduce((s, v) => s + (Number(v) || 0), 0);
             const g = scaleGradeWithLargestRemainder(group.baseGrid, baseSum > 0 ? group.totalPairs / baseSum : 1, group.totalPairs);
             return (
-              <div key={`${sectorName.toLowerCase()}-red-${representative.reference_id}::${representative.color}`} className="page-break">
+              <div key={`${sectorName.toLowerCase()}-red-${representative.reference_id}::${representative.color}`} className="reduced-card">
                 <ReducedWorkSheet
                   sectorLabel={sectorName}
                   title={`${representative.reference_name || representative.reference_code || '—'}${representative.color ? ' · ' + representative.color : ''}`}
@@ -2264,7 +2281,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             const baseSum = Object.values(baseG).reduce((s, v) => s + (Number(v) || 0), 0);
             const g = scaleGradeWithLargestRemainder(baseG, baseSum > 0 ? tot / baseSum : 1, tot);
             return (
-              <div key={`acab-red-${order.id}`} className="page-break">
+              <div key={`acab-red-${order.id}`} className="reduced-card">
                 <ReducedWorkSheet
                   sectorLabel="Acabamento"
                   title={`${order.reference_name || order.reference_code || '—'}${order.color ? ' · ' + order.color : ''}`}
