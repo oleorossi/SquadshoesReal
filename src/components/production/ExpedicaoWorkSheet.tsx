@@ -275,7 +275,7 @@ export const ExpedicaoWorkSheet = ({ group, date }: Props) => {
                 <td className="py-1 px-1 text-[11px] text-black" style={{ borderRight: '1px solid #000' }}>
                   <span className="font-bold uppercase">{o.reference_name || o.reference_code || '—'}</span>
                 </td>
-                <td className="py-1 px-1 text-[11px] text-black uppercase font-semibold" style={{ borderRight: '1px solid #000' }}>{o.color || '—'}</td>
+                <td className="py-1 px-1 text-[11px] uppercase" style={{ borderRight: '1px solid #000', color: '#C00000', fontWeight: 800 }}>{o.color || '—'}</td>
                 <td className="py-1 px-1 text-[10px] text-black" style={{ borderRight: '1px solid #000' }}>{o.sole_name || '—'}</td>
                 {allSizes.map(s => (
                   <td

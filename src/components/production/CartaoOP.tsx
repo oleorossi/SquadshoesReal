@@ -153,7 +153,7 @@ function ColorChipsRow({ swatches }: { swatches?: CartaoOPProps['swatches'] }) {
             <span
               style={{
                 fontFamily: 'Fira Code, monospace', fontSize: 9,
-                color: 'var(--p-ink-2)', letterSpacing: '0.06em',
+                color: 'var(--p-red)', fontWeight: 700, letterSpacing: '0.06em',
               }}
             >
               {s.name}
@@ -253,7 +253,8 @@ export function CartaoOP(props: CartaoOPProps) {
             </div>
             {(category || colorLabel) && (
               <div style={{ fontSize: 11.5, color: 'var(--p-mute)', marginTop: 4 }}>
-                {[category, colorLabel].filter(Boolean).join(' · ')}
+                {category}{category && colorLabel ? ' · ' : ''}
+                {colorLabel && <span style={{ color: 'var(--p-red)', fontWeight: 700 }}>{colorLabel}</span>}
               </div>
             )}
           </div>

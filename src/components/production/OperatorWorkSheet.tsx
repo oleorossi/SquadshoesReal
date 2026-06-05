@@ -396,8 +396,8 @@ const OperatorWorkSheet = ({
               <div className="flex items-center gap-1.5 mt-0.5">
                 <div className="w-3 h-3 shrink-0" style={{ backgroundColor: resolvedColorHex, border: '1px solid #000' }} />
                 <span
-                  className="text-black uppercase leading-none"
-                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.01em' }}
+                  className="uppercase leading-none"
+                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.01em', color: '#C00000', fontWeight: 800 }}
                 >
                   {resolvedColorName}
                 </span>
@@ -409,8 +409,8 @@ const OperatorWorkSheet = ({
               <div>
                 <span className="section-label block" style={{ color: '#000' }}>Solado</span>
                 <span
-                  className="text-black uppercase leading-none block mt-0.5"
-                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.01em' }}
+                  className="uppercase leading-none block mt-0.5"
+                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.01em', color: '#C00000', fontWeight: 800 }}
                 >
                   {resolvedSoleColor}
                 </span>
@@ -427,8 +427,8 @@ const OperatorWorkSheet = ({
               <div>
                 <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
                 <span
-                  className="text-black uppercase leading-none block mt-0.5"
-                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.01em' }}
+                  className="uppercase leading-none block mt-0.5"
+                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.01em', color: '#C00000', fontWeight: 800 }}
                 >
                   {resolvedInsoleColor}
                 </span>
@@ -493,7 +493,7 @@ const OperatorWorkSheet = ({
                 <tr key={s.id || i} style={{ borderBottom: '1px solid #000' }} className="bg-white">
                   <td className="px-2 py-1 font-mono font-bold text-black">{i + 1}</td>
                   <td className="px-2 py-1 font-bold text-black uppercase">{s.label || `TIRA ${i + 1}`}</td>
-                  <td className="px-2 py-1 text-black uppercase" style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '16px', letterSpacing: '-0.01em' }}>
+                  <td className="px-2 py-1 uppercase" style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '16px', letterSpacing: '-0.01em', color: '#C00000', fontWeight: 800 }}>
                     {s.color || '—'}
                   </td>
                   <td className="px-2 py-1 text-black">{s.group_name || '—'}</td>
@@ -726,8 +726,8 @@ const OperatorWorkSheet = ({
             <div className="bg-white p-2.5 space-y-1" style={{ border: '1.5px solid #000' }}>
               <span className="section-label block mb-1" style={{ color: '#000' }}>Cor de Forração</span>
               <span
-                className="text-black uppercase leading-none block"
-                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '36px', letterSpacing: '-0.025em' }}
+                className="uppercase leading-none block"
+                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '36px', letterSpacing: '-0.025em', color: '#C00000', fontWeight: 800 }}
               >
                 {resolvedInsoleColor}
               </span>
@@ -776,7 +776,7 @@ const OperatorWorkSheet = ({
               {hasStraps && (
                 <div className="border-t border-black pt-1.5 flex justify-between items-baseline">
                   <span className="section-label" style={{ color: '#000' }}>Cor das Tiras</span>
-                  <span className="font-bold text-black uppercase text-sm">{resolvedColorName}</span>
+                  <span className="uppercase text-sm" style={{ color: '#C00000', fontWeight: 800 }}>{resolvedColorName}</span>
                 </div>
               )}
               {/* Frente / Traseiro fillable fields */}
@@ -863,8 +863,8 @@ const OperatorWorkSheet = ({
                 <div>
                   <span className="section-label block" style={{ color: '#000' }}>Solado</span>
                   <span
-                    className="text-black uppercase leading-none block mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em' }}
+                    className="uppercase leading-none block mt-0.5"
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em', color: '#C00000', fontWeight: 800 }}
                   >
                     {resolvedSoleColor}
                   </span>
@@ -872,8 +872,8 @@ const OperatorWorkSheet = ({
                 <div>
                   <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
                   <span
-                    className="text-black uppercase leading-none block mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em' }}
+                    className="uppercase leading-none block mt-0.5"
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em', color: '#C00000', fontWeight: 800 }}
                   >
                     {resolvedInsoleColor}
                   </span>
@@ -912,8 +912,8 @@ const OperatorWorkSheet = ({
                 <div>
                   <span className="section-label block" style={{ color: '#000' }}>Solado</span>
                   <span
-                    className="text-black uppercase leading-none block mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em' }}
+                    className="uppercase leading-none block mt-0.5"
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em', color: '#C00000', fontWeight: 800 }}
                   >
                     {resolvedSoleColor}
                   </span>
@@ -921,8 +921,8 @@ const OperatorWorkSheet = ({
                 <div>
                   <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
                   <span
-                    className="text-black uppercase leading-none block mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em' }}
+                    className="uppercase leading-none block mt-0.5"
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em', color: '#C00000', fontWeight: 800 }}
                   >
                     {resolvedInsoleColor}
                   </span>
@@ -970,8 +970,8 @@ const OperatorWorkSheet = ({
                 <div>
                   <span className="section-label block" style={{ color: '#000' }}>Solado</span>
                   <span
-                    className="text-black uppercase leading-none block mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.02em' }}
+                    className="uppercase leading-none block mt-0.5"
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.02em', color: '#C00000', fontWeight: 800 }}
                   >
                     {resolvedSoleColor}
                   </span>
@@ -979,8 +979,8 @@ const OperatorWorkSheet = ({
                 <div>
                   <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
                   <span
-                    className="text-black uppercase leading-none block mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.02em' }}
+                    className="uppercase leading-none block mt-0.5"
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.02em', color: '#C00000', fontWeight: 800 }}
                   >
                     {resolvedInsoleColor}
                   </span>
@@ -1022,16 +1022,16 @@ const OperatorWorkSheet = ({
               <div className="border-t border-black pt-1.5 space-y-1 text-xs">
                 <div className="flex justify-between items-baseline">
                   <span className="section-label" style={{ color: '#000' }}>{hasStraps ? 'Tiras' : 'Cabedal'}</span>
-                  <span className="font-bold text-black uppercase">{resolvedColorName}</span>
+                  <span className="uppercase" style={{ color: '#C00000', fontWeight: 800 }}>{resolvedColorName}</span>
                 </div>
                 <div className="flex justify-between items-baseline">
                   <span className="section-label" style={{ color: '#000' }}>Solado</span>
-                  <span className="font-bold text-black uppercase">{resolvedSoleColor}</span>
+                  <span className="uppercase" style={{ color: '#C00000', fontWeight: 800 }}>{resolvedSoleColor}</span>
                 </div>
                 <div className="flex justify-between items-baseline">
                   <span className="section-label" style={{ color: '#000' }}>Palmilha</span>
                   <span className="font-bold text-black uppercase">
-                    {resolvedInsoleColor}{insoleReadyMade ? ' · pronta' : ''}
+                    <span style={{ color: '#C00000', fontWeight: 800 }}>{resolvedInsoleColor}</span>{insoleReadyMade ? ' · pronta' : ''}
                   </span>
                 </div>
                 {silk && (
@@ -1083,11 +1083,11 @@ const OperatorWorkSheet = ({
                 </div>
                 <div className="flex justify-between items-baseline">
                   <span className="section-label" style={{ color: '#000' }}>Cor</span>
-                  <span className="font-bold text-black uppercase">{resolvedColorName}</span>
+                  <span className="uppercase" style={{ color: '#C00000', fontWeight: 800 }}>{resolvedColorName}</span>
                 </div>
                 <div className="flex justify-between items-baseline">
                   <span className="section-label" style={{ color: '#000' }}>Solado</span>
-                  <span className="font-bold text-black uppercase">{resolvedSoleColor}</span>
+                  <span className="uppercase" style={{ color: '#C00000', fontWeight: 800 }}>{resolvedSoleColor}</span>
                 </div>
                 <div className="flex justify-between items-baseline border-t border-black pt-1.5 mt-1">
                   <span className="section-label" style={{ color: '#000' }}>Total</span>

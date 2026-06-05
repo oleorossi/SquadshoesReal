@@ -150,7 +150,7 @@ export function ReducedWorkSheet({
             {colors!.map((c, i) => (
               <div key={`${c.name}-${i}`} className="flex items-center" style={{ gap: 10, padding: '4px 0', borderTop: i === 0 ? '1.5px solid #000' : '1px solid #000' }}>
                 <span className="shrink-0" style={{ width: 14, height: 14, border: '1.5px solid #000', background: c.hex || '#fff' }} />
-                <span className="uppercase flex-1 min-w-0 truncate" style={{ fontSize: 13, fontWeight: 600, letterSpacing: '0.02em' }} title={c.name}>{c.name}</span>
+                <span className="uppercase flex-1 min-w-0 truncate" style={{ fontSize: 13, fontWeight: 800, letterSpacing: '0.02em', color: '#C00000' }} title={c.name}>{c.name}</span>
                 {c.grade && (
                   <span className="font-mono shrink-0" style={{ fontSize: 10, color: '#555', letterSpacing: '0.05em' }}>
                     {sizes.filter(s => (c.grade![s] || 0) > 0).map(s => `${s}·${c.grade![s]}`).join('  ')}

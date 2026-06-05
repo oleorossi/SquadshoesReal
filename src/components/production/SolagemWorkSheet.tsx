@@ -88,8 +88,8 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
           <div className="min-w-0 flex-1">
             <span className="section-label block" style={{ color: '#000' }}>Solado · Cor</span>
             <span
-              className="text-black uppercase leading-none block mt-0.5 truncate"
-              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em' }}
+              className="uppercase leading-none block mt-0.5 truncate"
+              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em', color: '#C00000', fontWeight: 800 }}
             >
               {band.soleColor}
             </span>
@@ -161,7 +161,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
                     {r.name || r.code || '—'}
                   </span>
                   {r.color && (
-                    <div className="font-mono font-semibold text-black" style={{ fontSize: '7px' }}>
+                    <div className="font-mono" style={{ fontSize: '7px', color: '#C00000', fontWeight: 800 }}>
                       {r.color}
                     </div>
                   )}

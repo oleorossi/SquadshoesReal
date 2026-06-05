@@ -183,8 +183,8 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
                       <div className="border-l border-black pl-3">
                         <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
                         <span
-                          className="text-black uppercase leading-none block mt-0.5"
-                          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.02em' }}
+                          className="uppercase leading-none block mt-0.5"
+                          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.02em', color: '#C00000', fontWeight: 800 }}
                         >
                           {group.insoleColor}
                         </span>
@@ -237,7 +237,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12 }:
                             {r.name || r.code || '—'}
                           </span>
                           {r.color && (
-                            <div className="font-mono font-semibold text-black" style={{ fontSize: '7px' }}>
+                            <div className="font-mono" style={{ fontSize: '7px', color: '#C00000', fontWeight: 800 }}>
                               {r.color}
                             </div>
                           )}

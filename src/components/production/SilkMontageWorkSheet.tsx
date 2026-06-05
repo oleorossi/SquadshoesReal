@@ -448,13 +448,13 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                       <>
                         <span className="section-label block" style={{ color: '#000' }}>Cor da Forração</span>
                         <span
-                          className="text-black uppercase leading-none block"
-                          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em' }}
+                          className="uppercase leading-none block"
+                          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em', color: '#C00000', fontWeight: 800 }}
                         >
                           {cg.liningColor}
                         </span>
                         <span className="font-mono text-[10px] text-black tracking-widest uppercase mt-0.5 block">
-                          (cabedal: {cg.color})
+                          (cabedal: <span style={{ color: '#C00000', fontWeight: 800 }}>{cg.color}</span>)
                         </span>
                       </>
                     ) : sector === 'Corte Forração' ? (
@@ -475,15 +475,15 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
                           </span>
                         </div>
                         <span className="font-mono text-[10px] text-black tracking-widest uppercase mt-1 block">
-                          Cabedal: {cg.color} · não cortar antes do cadastro
+                          Cabedal: <span style={{ color: '#C00000', fontWeight: 800 }}>{cg.color}</span> · não cortar antes do cadastro
                         </span>
                       </>
                     ) : (
                       <>
                         <span className="section-label block" style={{ color: '#000' }}>Cor</span>
                         <span
-                          className="text-black uppercase leading-none block"
-                          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em' }}
+                          className="uppercase leading-none block"
+                          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em', color: '#C00000', fontWeight: 800 }}
                         >
                           {cg.color}
                         </span>
