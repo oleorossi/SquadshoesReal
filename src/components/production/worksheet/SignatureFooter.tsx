@@ -5,6 +5,9 @@ interface Props {
   labels?: string[];
   /** Mostra campos Início/Fim em uma linha extra antes das assinaturas. */
   showTime?: boolean;
+  /** Versão enxuta (margens/altura reduzidas) — usada na ficha REDUZIDA pra
+   *  empacotar várias fichas por A4 sem branco à toa. Default false (inalterado). */
+  compact?: boolean;
 }
 
 /**
@@ -19,6 +22,7 @@ interface Props {
 export const SignatureFooter = ({
   labels = ['Operador(a)', 'Conferente', 'Supervisor(a)'],
   showTime = true,
+  compact = false,
 }: Props) => {
   return (
     // Fix 20/05/2026: era `mt-auto` mas combinado com flex flex-col dos
@@ -30,9 +34,9 @@ export const SignatureFooter = ({
     // (Silk/Aviamento com 5+ cores) o footer vazava sozinho pra próxima
     // página A4 — órfão. Agora, quando footer não cabe na pg atual, o
     // browser leva o bloco anterior junto pra próxima página.
-    <div className="mt-4 pt-2 text-black keep-together keep-with-previous">
+    <div className={`${compact ? 'mt-2 pt-1' : 'mt-4 pt-2'} text-black keep-together keep-with-previous`}>
       <div
-        className="w-full mb-2"
+        className={`w-full ${compact ? 'mb-1.5' : 'mb-2'}`}
         style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000', height: '3px' }}
       />
       {showTime && (
@@ -41,7 +45,7 @@ export const SignatureFooter = ({
         // lado a lado, A5 retrato, impressão 2-up) os 4 campos não
         // colapsam em uma só linha bagunçada — quebram pra 2 linhas de
         // 2 colunas (Início+Fim, Data+Turno).
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+        <div className={`grid grid-cols-2 sm:grid-cols-4 ${compact ? 'gap-2 mb-1.5' : 'gap-3 mb-3'}`}>
           {[
             { label: 'Início', value: '__ : __' },
             { label: 'Fim',    value: '__ : __' },
@@ -55,15 +59,15 @@ export const SignatureFooter = ({
               >
                 {item.label}
               </span>
-              <span className="font-mono text-sm text-black tracking-wider">{item.value}</span>
+              <span className={`font-mono ${compact ? 'text-xs' : 'text-sm'} text-black tracking-wider`}>{item.value}</span>
             </div>
           ))}
         </div>
       )}
-      <div className="flex flex-wrap items-end justify-between gap-4">
+      <div className={`flex flex-wrap items-end justify-between ${compact ? 'gap-3' : 'gap-4'}`}>
         {labels.map(label => (
           <div key={label} className="flex-1 min-w-[120px]">
-            <div className="border-t border-black pt-1 mt-4">
+            <div className={`border-t border-black pt-1 ${compact ? 'mt-2' : 'mt-4'}`}>
               <p
                 className="section-label"
                 style={{ color: '#000', fontFamily: "'Fira Sans', sans-serif" }}

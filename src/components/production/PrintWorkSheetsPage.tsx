@@ -178,8 +178,8 @@ const printStyles = `
       break-after: auto !important;
       page-break-after: auto !important;
       border-bottom: 1.5px dashed #999 !important;
-      padding-bottom: 7mm !important;
-      margin-bottom: 7mm !important;
+      padding-bottom: 5mm !important;
+      margin-bottom: 5mm !important;
     }
     .reduced-card:last-child {
       border-bottom: none !important;

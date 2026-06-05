@@ -53,25 +53,25 @@ export function ReducedWorkSheet({
 
   return (
     <div
-      className="w-[210mm] p-[10mm] print:w-full print:p-0 bg-white flex flex-col"
-      style={{ boxSizing: 'border-box', fontFamily: "'Fira Sans', sans-serif", color: '#000' }}
+      className="w-[210mm] p-[10mm] print:w-full print:p-0 flex flex-col"
+      style={{ boxSizing: 'border-box', fontFamily: "'Fira Sans', sans-serif", color: '#000', background: '#fff' }}
     >
       {/* ── Header ── */}
-      <div className="keep-together flex items-end justify-between" style={{ borderBottom: '2.5px solid #000', paddingBottom: 8 }}>
+      <div className="keep-together flex items-end justify-between" style={{ borderBottom: '2px solid #000', paddingBottom: 5 }}>
         <div className="min-w-0">
           <span className="font-mono uppercase block" style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.18em' }}>
             {sectorLabel} · Ficha reduzida
           </span>
-          <h1 className="uppercase truncate" style={{ ...DISPLAY, fontSize: 40, lineHeight: 0.9, letterSpacing: '0.01em', marginTop: 3 }} title={title}>
+          <h1 className="uppercase truncate" style={{ ...DISPLAY, fontSize: 28, lineHeight: 0.9, letterSpacing: '0.01em', marginTop: 2 }} title={title}>
             {title}
           </h1>
         </div>
         {meta && meta.length > 0 && (
-          <div className="flex shrink-0" style={{ gap: 18, textAlign: 'right' }}>
+          <div className="flex shrink-0" style={{ gap: 16, textAlign: 'right' }}>
             {meta.map(m => (
-              <div key={m.label} className="uppercase" style={{ fontSize: 10, letterSpacing: '0.1em' }}>
+              <div key={m.label} className="uppercase" style={{ fontSize: 9, letterSpacing: '0.1em' }}>
                 {m.label}
-                <b className="font-mono block" style={{ fontSize: 18, letterSpacing: 0, marginTop: 2, fontWeight: 700 }}>{m.value}</b>
+                <b className="font-mono block" style={{ fontSize: 15, letterSpacing: 0, marginTop: 1, fontWeight: 700 }}>{m.value}</b>
               </div>
             ))}
           </div>
@@ -79,10 +79,10 @@ export function ReducedWorkSheet({
       </div>
 
       {/* ── Foto + grade ── */}
-      <div className="keep-together flex" style={{ gap: 14, marginTop: 12 }}>
+      <div className="keep-together flex" style={{ gap: 12, marginTop: 8 }}>
         <div
-          className="shrink-0 relative bg-white flex items-center justify-center"
-          style={{ width: '62mm', height: '62mm', border: '1.5px solid #000' }}
+          className="shrink-0 relative flex items-center justify-center"
+          style={{ width: '34mm', height: '34mm', border: '1.5px solid #000', background: '#fff' }}
         >
           <span
             className="absolute font-mono uppercase"
@@ -108,7 +108,7 @@ export function ReducedWorkSheet({
             <thead>
               <tr>
                 {sizes.map(s => (
-                  <th key={s} className="font-mono" style={{ border: '1px solid #000', background: '#000', color: '#fff', fontSize: 12, fontWeight: 700, padding: '3px 0', textAlign: 'center' }}>{s}</th>
+                  <th key={s} className="font-mono" style={{ border: '1px solid #000', background: '#000', color: '#fff', fontSize: 11, fontWeight: 700, padding: '2px 0', textAlign: 'center' }}>{s}</th>
                 ))}
               </tr>
             </thead>
@@ -117,7 +117,7 @@ export function ReducedWorkSheet({
                 {sizes.map(s => {
                   const q = grade[s] || 0;
                   return (
-                    <td key={s} style={{ border: '1px solid #000', textAlign: 'center', padding: '3px 0', ...(q > 0 ? { ...DISPLAY, fontSize: 26, lineHeight: 1 } : { color: '#bbb', fontSize: 14 }) }}>
+                    <td key={s} style={{ border: '1px solid #000', textAlign: 'center', padding: '2px 0', ...(q > 0 ? { ...DISPLAY, fontSize: 20, lineHeight: 1 } : { color: '#bbb', fontSize: 12 }) }}>
                       {q > 0 ? q : 0}
                     </td>
                   );
@@ -125,16 +125,16 @@ export function ReducedWorkSheet({
               </tr>
             </tbody>
           </table>
-          <div className="flex items-baseline justify-end" style={{ gap: 8, borderTop: '2px solid #000', marginTop: 'auto', paddingTop: 8 }}>
+          <div className="flex items-baseline justify-end" style={{ gap: 8, borderTop: '2px solid #000', marginTop: 'auto', paddingTop: 5 }}>
             <span className="uppercase" style={{ fontSize: 11, letterSpacing: '0.14em', fontWeight: 700 }}>Total da grade</span>
-            <span style={{ ...DISPLAY, fontSize: 38, lineHeight: 0.8 }}>{fmtInt(totalPairs)}</span>
+            <span style={{ ...DISPLAY, fontSize: 26, lineHeight: 0.8 }}>{fmtInt(totalPairs)}</span>
             <span className="font-mono" style={{ fontSize: 12, letterSpacing: '0.1em' }}>pares</span>
           </div>
         </div>
       </div>
 
       {/* ── Quantidades: por cor OU total ── */}
-      <div className="keep-together" style={{ marginTop: 14 }}>
+      <div className="keep-together" style={{ marginTop: 8 }}>
         <span className="font-mono uppercase block" style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.16em', borderBottom: '1px solid #000', paddingBottom: 3 }}>
           {byColor ? 'Quantidades por cor' : 'Quantidade total'}
           {!byColor && totalNote && <span style={{ fontWeight: 400, color: '#444', letterSpacing: '0.05em' }}> · {totalNote}</span>}
@@ -143,35 +143,35 @@ export function ReducedWorkSheet({
         {byColor ? (
           <>
             {colors!.map((c, i) => (
-              <div key={`${c.name}-${i}`} className="flex items-center" style={{ gap: 10, padding: '7px 0', borderTop: i === 0 ? '1.5px solid #000' : '1px solid #000' }}>
-                <span className="shrink-0" style={{ width: 16, height: 16, border: '1.5px solid #000', background: c.hex || '#fff' }} />
-                <span className="uppercase flex-1 min-w-0 truncate" style={{ fontSize: 14, fontWeight: 600, letterSpacing: '0.02em' }} title={c.name}>{c.name}</span>
+              <div key={`${c.name}-${i}`} className="flex items-center" style={{ gap: 10, padding: '4px 0', borderTop: i === 0 ? '1.5px solid #000' : '1px solid #000' }}>
+                <span className="shrink-0" style={{ width: 14, height: 14, border: '1.5px solid #000', background: c.hex || '#fff' }} />
+                <span className="uppercase flex-1 min-w-0 truncate" style={{ fontSize: 13, fontWeight: 600, letterSpacing: '0.02em' }} title={c.name}>{c.name}</span>
                 {c.grade && (
-                  <span className="font-mono shrink-0" style={{ fontSize: 11, color: '#555', letterSpacing: '0.05em' }}>
+                  <span className="font-mono shrink-0" style={{ fontSize: 10, color: '#555', letterSpacing: '0.05em' }}>
                     {sizes.filter(s => (c.grade![s] || 0) > 0).map(s => `${s}·${c.grade![s]}`).join('  ')}
                   </span>
                 )}
-                <span className="shrink-0" style={{ ...DISPLAY, fontSize: 30, lineHeight: 0.8 }}>{fmtInt(c.qty)}</span>
+                <span className="shrink-0" style={{ ...DISPLAY, fontSize: 22, lineHeight: 0.8 }}>{fmtInt(c.qty)}</span>
               </div>
             ))}
-            <div className="flex items-center" style={{ gap: 10, borderTop: '2.5px solid #000', marginTop: 2, paddingTop: 7 }}>
-              <span className="shrink-0" style={{ width: 16, height: 16, border: '1.5px solid #000', background: '#fff' }} />
-              <span className="uppercase flex-1" style={{ fontSize: 14, fontWeight: 800, letterSpacing: '0.02em' }}>Total</span>
-              <span style={{ ...DISPLAY, fontSize: 38, lineHeight: 0.8 }}>{fmtInt(totalPairs)}</span>
+            <div className="flex items-center" style={{ gap: 10, borderTop: '2.5px solid #000', marginTop: 2, paddingTop: 5 }}>
+              <span className="shrink-0" style={{ width: 14, height: 14, border: '1.5px solid #000', background: '#fff' }} />
+              <span className="uppercase flex-1" style={{ fontSize: 13, fontWeight: 800, letterSpacing: '0.02em' }}>Total</span>
+              <span style={{ ...DISPLAY, fontSize: 26, lineHeight: 0.8 }}>{fmtInt(totalPairs)}</span>
               <span className="font-mono shrink-0" style={{ fontSize: 11, color: '#555', marginLeft: 4 }}>pares</span>
             </div>
           </>
         ) : (
-          <div className="flex items-center" style={{ gap: 10, borderTop: '2.5px solid #000', paddingTop: 8 }}>
-            <span className="shrink-0" style={{ width: 16, height: 16, border: '1.5px solid #000', background: '#fff' }} />
-            <span className="uppercase flex-1" style={{ fontSize: 14, fontWeight: 800, letterSpacing: '0.02em' }}>Total a cortar</span>
-            <span style={{ ...DISPLAY, fontSize: 38, lineHeight: 0.8 }}>{fmtInt(totalPairs)}</span>
+          <div className="flex items-center" style={{ gap: 10, borderTop: '2.5px solid #000', paddingTop: 5 }}>
+            <span className="shrink-0" style={{ width: 14, height: 14, border: '1.5px solid #000', background: '#fff' }} />
+            <span className="uppercase flex-1" style={{ fontSize: 13, fontWeight: 800, letterSpacing: '0.02em' }}>Total a cortar</span>
+            <span style={{ ...DISPLAY, fontSize: 26, lineHeight: 0.8 }}>{fmtInt(totalPairs)}</span>
             <span className="font-mono shrink-0" style={{ fontSize: 11, color: '#555', marginLeft: 4 }}>pares</span>
           </div>
         )}
       </div>
 
-      <SignatureFooter />
+      <SignatureFooter compact />
     </div>
   );
 }
