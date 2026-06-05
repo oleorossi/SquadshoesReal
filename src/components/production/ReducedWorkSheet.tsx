@@ -59,12 +59,17 @@ export function ReducedWorkSheet({
       {/* ── Header ── */}
       <div className="keep-together flex items-end justify-between" style={{ borderBottom: '2px solid #000', paddingBottom: 5 }}>
         <div className="min-w-0">
-          <span className="font-mono uppercase block" style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.18em' }}>
-            {sectorLabel} · Ficha reduzida
+          <span className="font-mono uppercase block" style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.18em', color: '#555' }}>
+            Ficha reduzida
           </span>
-          <h1 className="uppercase truncate" style={{ ...DISPLAY, fontSize: 28, lineHeight: 0.9, letterSpacing: '0.01em', marginTop: 2 }} title={title}>
-            {title}
+          {/* SETOR em foco (headline Anton). O produto/solado vira subtítulo —
+             antes o solado ("SOLADO INFANTIL") roubava o destaque do setor. */}
+          <h1 className="uppercase truncate" style={{ ...DISPLAY, fontSize: 30, lineHeight: 0.9, letterSpacing: '0.01em', marginTop: 1 }} title={sectorLabel}>
+            {sectorLabel}
           </h1>
+          <span className="uppercase truncate block" style={{ fontSize: 15, fontWeight: 600, letterSpacing: '0.02em', marginTop: 2 }} title={title}>
+            {title}
+          </span>
         </div>
         {meta && meta.length > 0 && (
           <div className="flex shrink-0" style={{ gap: 16, textAlign: 'right' }}>
