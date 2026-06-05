@@ -454,6 +454,27 @@ export default function SaleOrderForm() {
           `(MOD/largura faltando), pode estar otimista.`,
           { duration: 7000 },
         );
+      } else if (Number(cost.total_cost) > 0) {
+        // #4 guardrail: margem ≥ 0 e custo COMPLETO, mas abaixo do PISO da ficha
+        // (technical_sheets.safety_margin_pct; a ficha tem id === reference_id do
+        // item). Avisa (não bloqueia) — antes só alertava prejuízo (<0%).
+        const refIds = items.map(i => i.reference_id).filter((x): x is string => !!x);
+        if (refIds.length > 0) {
+          const { data: sheets } = await supabase
+            .from('technical_sheets')
+            .select('safety_margin_pct')
+            .in('id', refIds);
+          const floors = (sheets || [])
+            .map(s => Number((s as { safety_margin_pct: number | null }).safety_margin_pct) || 0)
+            .filter(v => v > 0);
+          const floor = floors.length ? Math.min(...floors) : 0;
+          if (floor > 0 && Number(cost.margin_pct) < floor) {
+            toast.warning(
+              `Margem ${Number(cost.margin_pct).toFixed(1)}% abaixo do piso da ficha (${floor.toFixed(0)}%).`,
+              { duration: 8000 },
+            );
+          }
+        }
       }
     } catch {
       /* custeio falhou — não atrapalha o salvamento, que já foi persistido */
