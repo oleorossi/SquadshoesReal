@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
+import { flushSync } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { Printer, ArrowLeft, Stack as Layers } from '@phosphor-icons/react';
+import { Printer, ArrowLeft, Stack as Layers, Rows } from '@phosphor-icons/react';
 import OperatorWorkSheet from '@/components/production/OperatorWorkSheet';
 import { PalmilhaWorkSheet, type PalmilhaGroup } from '@/components/production/PalmilhaWorkSheet';
 import { ReducedWorkSheet } from '@/components/production/ReducedWorkSheet';
@@ -516,6 +517,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   };
   const markAllSectors = () => setActiveSectors(new Set(SECTORS));
   const clearSectors = () => setActiveSectors(new Set());
+  // Imprime com o layout escolhido. flushSync força o re-render (ficha completa OU
+  // reduzida) ANTES do window.print(), pra o diálogo já pegar o DOM certo.
+  const printWith = (asReduced: boolean) => {
+    flushSync(() => setReduced(asReduced));
+    window.print();
+  };
 
   const referenceIds = useMemo(() => [...new Set(orders.map(o => o.reference_id).filter(Boolean))], [orders]);
 
@@ -1866,18 +1873,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             >
               Limpar
             </button>
-            <div className="flex items-center rounded-full border border-border overflow-hidden text-xs">
-              <button type="button" onClick={() => setReduced(false)} aria-pressed={!reduced}
-                className={`px-3 py-1 transition-colors ${!reduced ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}>
-                Completa
-              </button>
-              <button type="button" onClick={() => setReduced(true)} aria-pressed={reduced}
-                className={`px-3 py-1 transition-colors ${reduced ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}>
-                Reduzida
-              </button>
-            </div>
-            <Button onClick={() => window.print()} className="gap-2" disabled={activeSectors.size === 0 || sheetCount === 0}>
+            <Button onClick={() => printWith(false)} className="gap-2" disabled={activeSectors.size === 0 || sheetCount === 0}>
               <Printer className="h-4 w-4" /> Imprimir
+            </Button>
+            <Button variant="outline" onClick={() => printWith(true)} className="gap-2" disabled={activeSectors.size === 0 || sheetCount === 0} title="Mesma seleção, mas as fichas de operador saem na versão reduzida (foto + grade + quantidades)">
+              <Rows className="h-4 w-4" /> Relatório simplificado
             </Button>
           </div>
         </div>
@@ -2057,11 +2057,37 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             })),
           });
 
+          // Ficha REDUZIDA do SoleSilk: 1 por solado, POR COR (cada cor = total +
+          // mini-grade por número), grade agregada = soma das cores.
+          const reducedSilkNode = (group: SoleSilkGroup, sectorName: GroupedSector, key: string) => {
+            const grade: Record<string, number> = {};
+            for (const cg of group.colorGroups) {
+              for (const [size, qty] of Object.entries(cg.combinedGrid)) grade[size] = (grade[size] || 0) + qty;
+            }
+            const sizes = Object.keys(grade).sort((a, b) => (Number(a) || 0) - (Number(b) || 0));
+            const img = group.colorGroups.flatMap(cg => cg.alternateVariants || []).find(v => v.image_url)?.image_url || null;
+            const colors = group.colorGroups.map(cg => ({ name: cg.color, qty: cg.totalPairs, grade: cg.combinedGrid }));
+            return (
+              <div key={key} className="page-break">
+                <ReducedWorkSheet
+                  sectorLabel={sectorName}
+                  title={group.soleName}
+                  imageUrl={img}
+                  grade={grade}
+                  allSizes={sizes}
+                  totalPairs={group.totalPairs}
+                  colors={colors}
+                />
+              </div>
+            );
+          };
+
           return sectorsToRender.flatMap(sectorName => {
             if (CUTTING_AGGREGATE_BY_COLOR.includes(sectorName)) {
               const merged = mergeColorsAcrossSoles(sectorName);
               if (!merged) return [];
               const enriched = withConsumption(merged);
+              if (reduced) return [reducedSilkNode(enriched, sectorName, `${sectorName}-red-todos`)];
               return [
                 <div key={`${sectorName}-todos-solados`} className="page-break">
                   <SectorRegion sectorLabel={sectorName}>
@@ -2075,34 +2101,54 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
               .map(group => ({ group, filtered: filterGroupForSector(group, sectorName) }))
               .filter(x => x.filtered !== null)
               .map(({ filtered }) => (
-                <div key={`${sectorName}-${filtered!.soleName}`} className="page-break">
-                  <SectorRegion sectorLabel={`${sectorName} · ${filtered!.soleName}`}>
-                    <SilkMontageWorkSheet
-                      group={withConsumption(filtered!)}
-                      sector={sectorName}
-                      date={today}
-                    />
-                  </SectorRegion>
-                </div>
+                reduced
+                  ? reducedSilkNode(filtered!, sectorName, `${sectorName}-red-${filtered!.soleName}`)
+                  : (
+                    <div key={`${sectorName}-${filtered!.soleName}`} className="page-break">
+                      <SectorRegion sectorLabel={`${sectorName} · ${filtered!.soleName}`}>
+                        <SilkMontageWorkSheet
+                          group={withConsumption(filtered!)}
+                          sector={sectorName}
+                          date={today}
+                        />
+                      </SectorRegion>
+                    </div>
+                  )
               ));
           });
         })()}
 
         {/* ── Solagem ── */}
         {includesSector('Solagem') && solagemData && solagemData.bands.length > 0 && (
-          <div className="page-break">
-            <SectorRegion sectorLabel="Solagem">
-              <SolagemWorkSheet
-                bands={solagemData.bands.map(b => ({
-                  ...b,
-                  consumption: consumptionForOpNumbers(b.opNumbers),
-                }))}
-                allSizes={solagemData.allSizes}
-                date={today}
-                grandTotal={solagemData.grandTotal}
-              />
-            </SectorRegion>
-          </div>
+          reduced ? (
+            solagemData.bands.map((b, i) => (
+              <div key={`sol-red-${b.soleColor}-${i}`} className="page-break">
+                <ReducedWorkSheet
+                  sectorLabel="Solagem"
+                  title={b.soleColor || 'Solagem'}
+                  imageUrl={b.refs?.[0]?.image_url}
+                  grade={b.grade}
+                  allSizes={solagemData.allSizes}
+                  totalPairs={b.totalPairs}
+                  totalNote={b.baseGradeSum ? `${Math.round(b.totalPairs / b.baseGradeSum)} ficha(s) de ${b.baseGradeSum}` : undefined}
+                />
+              </div>
+            ))
+          ) : (
+            <div className="page-break">
+              <SectorRegion sectorLabel="Solagem">
+                <SolagemWorkSheet
+                  bands={solagemData.bands.map(b => ({
+                    ...b,
+                    consumption: consumptionForOpNumbers(b.opNumbers),
+                  }))}
+                  allSizes={solagemData.allSizes}
+                  date={today}
+                  grandTotal={solagemData.grandTotal}
+                />
+              </SectorRegion>
+            </div>
+          )
         )}
 
         {/* ── Setores agrupados por Ref + Cor: Colagem, Silk, Montagem ──
@@ -2123,6 +2169,22 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             : null;
           const tsImage = tsImageByRef.get(representative.reference_id) || null;
           const resolvedImageUrl = exactVariant?.image_url || pretoVariant?.image_url || tsImage;
+          if (reduced) {
+            const baseSum = Object.values(group.baseGrid || {}).reduce((s, v) => s + (Number(v) || 0), 0);
+            const g = scaleGradeWithLargestRemainder(group.baseGrid, baseSum > 0 ? group.totalPairs / baseSum : 1, group.totalPairs);
+            return (
+              <div key={`${sectorName.toLowerCase()}-red-${representative.reference_id}::${representative.color}`} className="page-break">
+                <ReducedWorkSheet
+                  sectorLabel={sectorName}
+                  title={`${representative.reference_name || representative.reference_code || '—'}${representative.color ? ' · ' + representative.color : ''}`}
+                  imageUrl={resolvedImageUrl}
+                  grade={g}
+                  allSizes={Object.keys(g).sort((a, b) => (Number(a) || 0) - (Number(b) || 0))}
+                  totalPairs={group.totalPairs}
+                />
+              </div>
+            );
+          }
           const syntheticOrder = {
             ...representative,
             // Sobrescreve variant.variant_image_url pra getProductImage usar
@@ -2196,6 +2258,24 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             : null;
           const tsImage = tsImageByRef.get(order.reference_id) || null;
           const resolvedImageUrl = exactVariant?.image_url || pretoVariant?.image_url || tsImage;
+          if (reduced) {
+            const tot = Number((order as any).total_pairs) || 0;
+            const baseG = ((order as any).grid || {}) as Record<string, number>;
+            const baseSum = Object.values(baseG).reduce((s, v) => s + (Number(v) || 0), 0);
+            const g = scaleGradeWithLargestRemainder(baseG, baseSum > 0 ? tot / baseSum : 1, tot);
+            return (
+              <div key={`acab-red-${order.id}`} className="page-break">
+                <ReducedWorkSheet
+                  sectorLabel="Acabamento"
+                  title={`${order.reference_name || order.reference_code || '—'}${order.color ? ' · ' + order.color : ''}`}
+                  imageUrl={resolvedImageUrl}
+                  grade={g}
+                  allSizes={Object.keys(g).sort((a, b) => (Number(a) || 0) - (Number(b) || 0))}
+                  totalPairs={tot}
+                />
+              </div>
+            );
+          }
           const syntheticOrder = {
             ...order,
             variant: {
