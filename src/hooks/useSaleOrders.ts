@@ -324,11 +324,16 @@ export async function syncFinancialRecords(saleOrderId: string) {
     // Create financial entry for revenue tracking. Receita BRUTA (total) — desconto
     // factoring vai como despesa financeira separada abaixo. Convenção contábil:
     // DRE precisa ver receita bruta + (-) despesas financeiras pra calcular margem.
+    // Só considera lançamentos ATIVOS — um 'estornado'/'cancelado' de um cancelamento
+    // anterior NÃO pode ser reativado/reescrito ao re-faturar (preserva trilha de
+    // auditoria). Alinha com o índice único parcial financial_entries_sale_order_unique
+    // (que também exclui esses status). Sem entry ativa → cria nova; com → atualiza.
     const { data: existingEntry, error: feErr } = await supabase
       .from('financial_entries')
       .select('id')
       .eq('reference_id', saleOrderId)
-      .eq('reference_type', 'sale_order');
+      .eq('reference_type', 'sale_order')
+      .not('status', 'in', '(cancelado,cancelled,estornado)');
     must('Buscar financial_entries existentes', feErr);
 
     if (!existingEntry || existingEntry.length === 0) {
@@ -347,7 +352,8 @@ export async function syncFinancialRecords(saleOrderId: string) {
       const { error } = await supabase.from('financial_entries')
         .update({ amount: total, description: `Faturamento - ${so.client_name} - ${so.order_number || ''}` })
         .eq('reference_id', saleOrderId)
-        .eq('reference_type', 'sale_order');
+        .eq('reference_type', 'sale_order')
+        .not('status', 'in', '(cancelado,cancelled,estornado)');
       must('Atualizar financial_entry de faturamento', error);
     }
 

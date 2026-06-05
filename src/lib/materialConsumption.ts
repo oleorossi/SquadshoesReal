@@ -294,8 +294,20 @@ export const calculateConsumptionWithUnit = (
     // CRITICAL: fallbackConsumption is in dm²/par — convert it to match the
     // sheet's unit so sizes missing from yield_per_size use the same unit.
     // convertFallbackToLinear always returns meters; multiply by 100 for cm sheets.
-    const linearFallbackMeters = convertFallbackToLinear(fallbackConsumption, componentSheet);
-    const linearFallback = sheetUnit === 'cm' ? linearFallbackMeters * 100 : linearFallbackMeters;
+    let linearFallback: number;
+    if (getLinearWidthMm(componentSheet) <= 0) {
+      // Ficha linear SEM largura: não dá pra converter o fallback dm²→linear.
+      // Antes ele entrava como dm² tratado como metros (~100× errado nos tamanhos
+      // ausentes do yield). Como os yields JÁ estão em unidade linear, usa a média
+      // deles como fallback (mesma unidade) p/ tamanhos sem yield.
+      const ys = Object.entries(resolvedYield)
+        .filter(([k, v]) => k !== 'unit' && Number(v) > 0)
+        .map(([, v]) => Number(v));
+      linearFallback = ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : 0;
+    } else {
+      const linearFallbackMeters = convertFallbackToLinear(fallbackConsumption, componentSheet);
+      linearFallback = sheetUnit === 'cm' ? linearFallbackMeters * 100 : linearFallbackMeters;
+    }
     const rawTotal = calculateGradeBasedDm2(item, linearFallback, componentSheet, overridePerSize, soleProductId, useGradeMultipliers);
 
     const wastePct = Number(componentSheet?.waste_pct) || 0;

@@ -573,6 +573,24 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     }
   }, [item.reference_id, selectedRef?.id, selectedRef?.strap_colors, priceLookup]);
 
+  // Reaplica o preço da TABELA do cliente quando a COR muda (mesma ref).
+  // O effect acima só preenche quando unit_price===0, então não cobria a troca
+  // de cor — e cores podem ter preço diferente na tabela (price_list_items por
+  // ref+cor). Só sobrescreve quando a tabela TEM preço específico pra essa cor
+  // (tablePrice>0); sem tabela, mantém o preço atual (não clobra preço manual).
+  const lastPricedColor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selectedRef || !priceLookup) return;
+    const color = item.color || '';
+    if (lastPricedColor.current === color) return;
+    lastPricedColor.current = color;
+    const tablePrice = resolvePrice(priceLookup, selectedRef.id, color);
+    if (tablePrice > 0) {
+      const { index: idx, onUpdate: update } = latestRef.current;
+      update(idx, 'unit_price', tablePrice);
+    }
+  }, [item.color, selectedRef?.id, priceLookup]);
+
   useEffect(() => {
     if (isFirstRender.current) {
       isFirstRender.current = false;

@@ -616,10 +616,13 @@ export function computeConsumptionForItems(
           totalQty = convertDm2ToLinearMeters(rawQty, cs as any);
           productUnit = 'metro';
         } else {
-          // tem ficha de área mas sem largura → não dá pra converter; marca aviso
+          // tem ficha de área mas sem largura → NÃO dá pra converter dm²→metro.
+          // Mantém o valor em dm² (regra canônica do CLAUDE.md) e marca aviso; a
+          // UI deixa a linha neutra (não compara com estoque). Antes fazia dm²/100
+          // (cm) ou mantinha dm² rotulando como 'metro' — número até ~100× errado.
           widthMissing = true;
-          totalQty = unitLc === 'cm' ? rawQty / 100 : rawQty;
-          productUnit = unitLc === 'cm' ? 'metro' : productUnit;
+          totalQty = rawQty;
+          productUnit = 'dm2';
         }
       } else if (unitLc === 'cm') {
         totalQty = rawQty / 100;
