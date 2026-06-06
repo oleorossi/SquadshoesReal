@@ -798,27 +798,49 @@ export default function SaleOrderForm() {
         }
       }
 
+      // TIRAS são tratadas EXCLUSIVAMENTE pelo StrapShortageDialog (pós-save, escolha
+      // Artesanal/Comprar). Remove tiras deste caminho antigo pra NÃO gerar OC DUPLICADA.
+      // Exclui: (a) product_id nulo = tira de cor nova sem produto (check_stock_availability
+      // agora emite a falta, mas quem resolve é o dialog de tiras); (b) produtos cujo grupo
+      // é de tira — identificado pelos group_ids das strap_colors dos itens (autoritativo) +
+      // regex de nome de grupo como reforço.
+      const strapGroupIds = new Set<string>();
+      for (const it of validItems) {
+        const straps = Array.isArray((it as any).strap_colors) ? (it as any).strap_colors : [];
+        for (const s of straps) if (s?.group_id) strapGroupIds.add(String(s.group_id));
+      }
+      const STRAP_GROUP_RE = /tira|el[aá]stic|tran[çc]/i;
+
+      let materialShortages = rawShortages.filter((s) => s.product_id != null);
       if (rawShortages.length > 0) {
-        // Enriquece solados: substitui cor do sapato pela cor real cadastrada
-        // do solado. check_stock_availability não retorna cor do solado, então
-        // o frontend vinha passando itemColor (cor do sapato) — bug histórico
-        // que deixava OCs de solado com color/grade desalinhados.
-        const productIds = [...new Set(rawShortages.map(s => s.product_id))];
+        // Enriquece solados: substitui cor do sapato pela cor real cadastrada do solado
+        // (check_stock_availability não retorna cor do solado). E identifica tiras pra excluir.
+        const productIds = [...new Set(rawShortages.map((s) => s.product_id).filter(Boolean))];
         const { data: prodMeta } = await supabase
           .from('products')
-          .select('id, category, color')
+          .select('id, category, color, group_id, product_groups(name)')
           .in('id', productIds);
+        const strapProductIds = new Set(
+          (prodMeta || [])
+            .filter((p: any) =>
+              strapGroupIds.has(String(p.group_id)) || STRAP_GROUP_RE.test(p.product_groups?.name || ''))
+            .map((p: any) => p.id as string)
+        );
+        materialShortages = materialShortages.filter((s) => !strapProductIds.has(s.product_id));
+
         const soleColor = new Map(
           (prodMeta || [])
             .filter((p: any) => p.category === 'Solado' && p.color)
             .map((p: any) => [p.id, p.color as string])
         );
-        for (const s of rawShortages) {
+        for (const s of materialShortages) {
           const realColor = soleColor.get(s.product_id);
           if (realColor) s.color = realColor;
         }
+      }
 
-        const enriched = await enrichMaterialShortages(rawShortages);
+      if (materialShortages.length > 0) {
+        const enriched = await enrichMaterialShortages(materialShortages);
         if (enriched.shortages.length > 0) {
           setMaterialResult(enriched);
           setMaterialDialogOpen(true);
