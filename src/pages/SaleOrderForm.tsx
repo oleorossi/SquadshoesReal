@@ -30,6 +30,8 @@ import { createOutsourceOrdersForOverloads } from '@/lib/outsourceOrders';
 import { computeMinBillingForNewOrder, fetchMinBillingDate, isBeforeMinDate, toISOWeek, type MinBillingResult } from '@/lib/minBillingDate';
 import { MinBillingDateSuggestionDialog } from '@/components/sale-orders/MinBillingDateSuggestionDialog';
 import { OverrideOutsourceCosturaDialog } from '@/components/sale-orders/OverrideOutsourceCosturaDialog';
+import { StrapShortageDialog } from '@/components/sale-orders/StrapShortageDialog';
+import { detectStrapShortagesForSaleOrder } from '@/lib/strapShortages';
 import { monthWeekToISODate, isoToMonthWeek } from '@/lib/billingWeek';
 
 const emptyForm: SaleOrderFormData = {
@@ -245,6 +247,12 @@ export default function SaleOrderForm() {
   const [outsourceCosturaOpen, setOutsourceCosturaOpen] = useState(false);
   const [outsourceCosturaPvId, setOutsourceCosturaPvId] = useState<string | null>(null);
   const [outsourceCosturaPendingNav, setOutsourceCosturaPendingNav] = useState<boolean>(false);
+  // Dialog de tira em falta (Artesanal vs Comprar Pronto). Aparece SEMPRE
+  // que o PV é salvo e há tira com shortage > 0 ou item sem cor preenchida.
+  const [strapShortageOpen, setStrapShortageOpen] = useState(false);
+  const [strapShortagePvId, setStrapShortagePvId] = useState<string | null>(null);
+  const [strapShortagePvNumber, setStrapShortagePvNumber] = useState<string | null>(null);
+  const [strapShortagePendingNav, setStrapShortagePendingNav] = useState<boolean>(false);
   // Live min billing date for the persistent red badge in the form panel.
   // Edit mode → server compute_min_billing_date(id). New mode → frontend
   // computeMinBillingForNewOrder over current items. Recomputed with debounce.
@@ -502,13 +510,29 @@ export default function SaleOrderForm() {
     if (statusOverride) orderData.status = statusOverride;
     const resolvedClientId = (f as any).client_id || selectedClientId || null;
 
-    // Override admin: ao terminar de salvar, abre dialog pra terceirizar
-    // a Costura das OPs criadas. Se NÃO é override, navega direto pra /sales.
+    // Post-save: dois popups em sequência (se aplicáveis).
+    //   1) Tiras com shortage → dialog Artesanal vs Comprar Pronto (sempre que houver)
+    //   2) Override admin → dialog de terceirização da Costura
+    // Quando há ambos, o de TIRAS abre primeiro (mais comum + atende ao
+    // pedido específico do user pra cor nova). Override entra depois.
     const isOverride = !!(f as any).manual_billing_override;
-    const handlePostSave = (pvId: string | undefined) => {
+    const handlePostSave = async (pvId: string | undefined) => {
       void checkMarginAfterSave(pvId);
-      if (isOverride && pvId) {
-        // Segura a navegação: dialog abre, user confirma/pula, então redireciona.
+      if (!pvId) { navigate('/sales'); return; }
+      try {
+        const report = await detectStrapShortagesForSaleOrder(pvId);
+        const hasStrap = report.shortages.length > 0 || report.incomplete.length > 0;
+        if (hasStrap) {
+          setStrapShortagePvId(pvId);
+          setStrapShortagePvNumber(orderData.order_number || null);
+          setStrapShortagePendingNav(true);
+          setStrapShortageOpen(true);
+          return; // navegação acontece após o user fechar o dialog
+        }
+      } catch {
+        // Detecção é best-effort — se falhar, não bloqueia o save.
+      }
+      if (isOverride) {
         setOutsourceCosturaPvId(pvId);
         setOutsourceCosturaPendingNav(true);
         setOutsourceCosturaOpen(true);
@@ -1154,6 +1178,27 @@ export default function SaleOrderForm() {
           if (outsourceCosturaPendingNav) {
             setOutsourceCosturaPendingNav(false);
             navigate('/sales');
+          }
+        }}
+      />
+
+      <StrapShortageDialog
+        open={strapShortageOpen}
+        saleOrderId={strapShortagePvId}
+        saleOrderNumber={strapShortagePvNumber}
+        onClose={() => {
+          setStrapShortageOpen(false);
+          if (strapShortagePendingNav) {
+            setStrapShortagePendingNav(false);
+            // Após tira, se override admin estiver ativo, abre a próxima etapa.
+            const f = formLatestRef.current;
+            if ((f as any).manual_billing_override && strapShortagePvId) {
+              setOutsourceCosturaPvId(strapShortagePvId);
+              setOutsourceCosturaPendingNav(true);
+              setOutsourceCosturaOpen(true);
+            } else {
+              navigate('/sales');
+            }
           }
         }}
       />
