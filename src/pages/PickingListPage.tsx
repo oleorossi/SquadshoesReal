@@ -10,6 +10,7 @@ import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -71,11 +72,17 @@ export default function PickingListPage() {
   const [selectedWeek, setSelectedWeek] = useState<string>(currentISOWeekCode());
   const [pvInput, setPvInput] = useState('');
   const [opInput, setOpInput] = useState('');
+  // Seleção "pedido a pedido": PVs escolhidos na checklist.
+  const [selectedPvIds, setSelectedPvIds] = useState<Set<string>>(new Set());
+  const [pvSearch, setPvSearch] = useState('');
 
   const [rows, setRows] = useState<ConsumptionRow[]>([]);
   const [soleBreakdown, setSoleBreakdown] = useState<SoleBreakdownResult>({ rows: [], allSizes: [], grandTotal: 0 });
   const [reportTitle, setReportTitle] = useState('');
   const [reportOrderCount, setReportOrderCount] = useState(0);
+  // Números dos pedidos (PV ou OP) que compõem o relatório atual — exibidos no
+  // cabeçalho (tela + impressão).
+  const [reportOrderNumbers, setReportOrderNumbers] = useState<string[]>([]);
   const [isCalculating, setIsCalculating] = useState(false);
 
   const [pickedKeys, setPickedKeys] = usePersistedState<string[]>('picking_bom_checked_v1', []);
@@ -135,12 +142,13 @@ export default function PickingListPage() {
 
   // ── Calculation trigger ──────────────────────────────────────────────────
 
-  const runCalculation = useCallback(async (orderIds: string[], title: string) => {
+  const runCalculation = useCallback(async (orderIds: string[], title: string, orderNumbers: string[] = []) => {
     if (orderIds.length === 0) {
       setRows([]);
       setSoleBreakdown({ rows: [], allSizes: [], grandTotal: 0 });
       setReportTitle(title);
       setReportOrderCount(0);
+      setReportOrderNumbers(orderNumbers);
       return;
     }
     setIsCalculating(true);
@@ -153,6 +161,7 @@ export default function PickingListPage() {
       setSoleBreakdown(soleResult);
       setReportTitle(title);
       setReportOrderCount(orderIds.length);
+      setReportOrderNumbers(orderNumbers);
     } catch (err: any) {
       toast.error('Erro ao calcular consumo', { description: err?.message });
       setRows([]);
@@ -202,7 +211,7 @@ export default function PickingListPage() {
         if (cancelled) return;
         const opIds = (ops || []).map((o: any) => o.id);
         const title = `Onda ${group.code} · ${fmtBR(group.monday)}–${fmtBR(group.sunday)} (${soNumbers.length} PVs)`;
-        await runCalculation(opIds, title);
+        await runCalculation(opIds, title, soNumbers);
       } catch (err: any) {
         if (!cancelled) {
           toast.error('Erro ao buscar OPs da semana', { description: err?.message });
@@ -233,8 +242,8 @@ export default function PickingListPage() {
         .in('sale_order_id', soIds)
         .not('status', 'in', '("Cancelada","cancelada","Finalizado","finalizado","Cancelado","cancelado")');
       const opIds = (ops || []).map((o: any) => o.id);
-      const pvList = (sos || []).map((so: any) => so.order_number).join(', ');
-      await runCalculation(opIds, `PVs: ${pvList}`);
+      const pvNumbers = (sos || []).map((so: any) => so.order_number).filter(Boolean);
+      await runCalculation(opIds, `PVs: ${pvNumbers.join(', ')}`, pvNumbers);
     } catch (err: any) {
       toast.error('Erro ao buscar PVs', { description: err?.message });
       setIsCalculating(false);
@@ -253,13 +262,50 @@ export default function PickingListPage() {
         .select('id, order_number')
         .in('order_number', numbers);
       const opIds = (ops || []).map((o: any) => o.id);
-      const opList = (ops || []).map((o: any) => o.order_number).join(', ');
-      await runCalculation(opIds, `OPs: ${opList}`);
+      const opNumbers = (ops || []).map((o: any) => o.order_number).filter(Boolean);
+      await runCalculation(opIds, `OPs: ${opNumbers.join(', ')}`, opNumbers);
     } catch (err: any) {
       toast.error('Erro ao buscar OPs', { description: err?.message });
       setIsCalculating(false);
     }
   }, [opInput, runCalculation]);
+
+  // ── Pedido a pedido: checklist de PVs ativos ──────────────────────────────
+
+  const filteredActivePvs = useMemo(() => {
+    const q = pvSearch.trim().toLowerCase();
+    if (!q) return activeSaleOrders;
+    return activeSaleOrders.filter(so => (so.order_number || '').toLowerCase().includes(q));
+  }, [activeSaleOrders, pvSearch]);
+
+  const togglePv = useCallback((id: string) => {
+    setSelectedPvIds(prev => {
+      const s = new Set(prev);
+      if (s.has(id)) s.delete(id); else s.add(id);
+      return s;
+    });
+  }, []);
+
+  const handleGenerateSelectedPvs = useCallback(async () => {
+    const soIds = Array.from(selectedPvIds);
+    if (soIds.length === 0) return;
+    setIsCalculating(true);
+    try {
+      const { data: ops } = await supabase
+        .from('orders')
+        .select('id')
+        .in('sale_order_id', soIds)
+        .not('status', 'in', '("Cancelada","cancelada","Finalizado","finalizado","Cancelado","cancelado")');
+      const opIds = (ops || []).map((o: any) => o.id);
+      const soNumbers = activeSaleOrders
+        .filter(so => selectedPvIds.has(so.id))
+        .map(so => so.order_number || so.id);
+      await runCalculation(opIds, `Pedido a pedido (${soNumbers.length} PVs)`, soNumbers);
+    } catch (err: any) {
+      toast.error('Erro ao gerar separação', { description: err?.message });
+      setIsCalculating(false);
+    }
+  }, [selectedPvIds, activeSaleOrders, runCalculation]);
 
   // ── Derived ──────────────────────────────────────────────────────────────
 
@@ -371,6 +417,7 @@ export default function PickingListPage() {
       </head><body>
       <h1>📦 Lista de Separação — ${reportTitle}</h1>
       <p class="sub">${totalItems} item(ns) · ${reportOrderCount} OP(s) · Gerado em ${new Date().toLocaleString('pt-BR')}</p>
+      ${reportOrderNumbers.length > 0 ? `<p class="sub" style="margin-top:-6px"><strong>${filterMode === 'op' ? 'OPs' : 'Pedidos'} (${reportOrderNumbers.length}):</strong> ${reportOrderNumbers.map(escapeHtml).join(', ')}</p>` : ''}
       <div style="margin-bottom:12px">${totalsHtml}</div>
       ${soleMatrixHtml}
       <h2 style="font-size:13px;margin:18px 0 6px;text-transform:uppercase;letter-spacing:.5px">📋 Demais materiais</h2>
@@ -388,7 +435,7 @@ export default function PickingListPage() {
 
     const w = window.open('', '_blank');
     if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 300); }
-  }, [rows, pickedSet, totalsByUnit, reportTitle, totalItems, reportOrderCount, soleBreakdown]);
+  }, [rows, pickedSet, totalsByUnit, reportTitle, totalItems, reportOrderCount, reportOrderNumbers, filterMode, soleBreakdown]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -429,7 +476,7 @@ export default function PickingListPage() {
                 <Calendar className="h-3.5 w-3.5" /> Onda Semanal
               </TabsTrigger>
               <TabsTrigger value="pv" className="gap-1.5 text-xs h-7">
-                <FileText className="h-3.5 w-3.5" /> Por PV
+                <FileText className="h-3.5 w-3.5" /> Pedido a Pedido
               </TabsTrigger>
               <TabsTrigger value="op" className="gap-1.5 text-xs h-7">
                 <Hash className="h-3.5 w-3.5" /> Por OP
@@ -464,17 +511,68 @@ export default function PickingListPage() {
           )}
 
           {filterMode === 'pv' && (
-            <div className="flex items-start gap-2">
-              <Textarea
-                placeholder="Cole os números dos PVs (um por linha ou separados por vírgula)&#10;Ex: PV-2026-001, PV-2026-002"
-                value={pvInput}
-                onChange={e => setPvInput(e.target.value)}
-                className="min-h-20 text-sm font-mono resize-none"
-              />
-              <Button onClick={handleSearchByPV} disabled={!pvInput.trim() || isCalculating} className="shrink-0">
-                <Search className="h-4 w-4 mr-1" />
-                Buscar
-              </Button>
+            <div className="space-y-2">
+              {/* Seleção pedido a pedido: marque os PVs e gere a separação */}
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar PV pelo número..."
+                    value={pvSearch}
+                    onChange={e => setPvSearch(e.target.value)}
+                    className="h-8 pl-8 text-sm"
+                  />
+                </div>
+                <Button size="sm" variant="ghost" className="h-8 text-xs"
+                  onClick={() => setSelectedPvIds(new Set(filteredActivePvs.map(s => s.id)))}
+                  disabled={filteredActivePvs.length === 0}>
+                  Selecionar todos
+                </Button>
+                <Button size="sm" variant="ghost" className="h-8 text-xs"
+                  onClick={() => setSelectedPvIds(new Set())} disabled={selectedPvIds.size === 0}>
+                  Limpar
+                </Button>
+                <Button size="sm" className="h-8 gap-1.5"
+                  onClick={handleGenerateSelectedPvs} disabled={selectedPvIds.size === 0 || isCalculating}>
+                  <CheckCircle2 className="h-4 w-4" />
+                  Gerar separação ({selectedPvIds.size})
+                </Button>
+              </div>
+              <div className="max-h-56 overflow-y-auto rounded-md border divide-y">
+                {filteredActivePvs.length === 0 ? (
+                  <p className="text-xs text-muted-foreground p-3 text-center">Nenhum PV ativo encontrado</p>
+                ) : filteredActivePvs.map(so => {
+                  const checked = selectedPvIds.has(so.id);
+                  return (
+                    <button key={so.id} type="button" onClick={() => togglePv(so.id)}
+                      className={cn('w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left transition-colors hover:bg-muted/40', checked && 'bg-primary/5')}>
+                      {checked
+                        ? <CheckSquare className="h-4 w-4 text-primary shrink-0" weight="fill" />
+                        : <Square className="h-4 w-4 text-muted-foreground shrink-0" />}
+                      <span className="font-medium font-mono">{so.order_number || so.id.slice(0, 8)}</span>
+                      <span className="text-xs text-muted-foreground ml-auto">
+                        {so.delivery_deadline ? fmtBR(new Date(`${so.delivery_deadline}T00:00:00`)) : '—'}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              {/* Alternativa: colar números (útil pra PVs já faturados/fora da lista) */}
+              <details className="text-xs">
+                <summary className="cursor-pointer text-muted-foreground select-none">ou cole os números dos PVs</summary>
+                <div className="flex items-start gap-2 mt-2">
+                  <Textarea
+                    placeholder="PV-2026-001, PV-2026-002"
+                    value={pvInput}
+                    onChange={e => setPvInput(e.target.value)}
+                    className="min-h-16 text-sm font-mono resize-none"
+                  />
+                  <Button onClick={handleSearchByPV} disabled={!pvInput.trim() || isCalculating} className="shrink-0" size="sm">
+                    <Search className="h-4 w-4 mr-1" />
+                    Buscar
+                  </Button>
+                </div>
+              </details>
             </div>
           )}
 
@@ -500,6 +598,22 @@ export default function PickingListPage() {
           <Loader2 className="h-5 w-5 animate-spin" />
           Calculando consumo de materiais...
         </div>
+      )}
+
+      {/* Cabeçalho: pedidos que compõem este relatório */}
+      {!isCalculating && reportOrderNumbers.length > 0 && (
+        <Panel bodyClassName="py-2.5">
+          <div className="flex items-start gap-2 flex-wrap">
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground shrink-0 mt-1">
+              {filterMode === 'op' ? 'OPs' : 'Pedidos'} neste relatório ({reportOrderNumbers.length}):
+            </span>
+            <div className="flex flex-wrap gap-1">
+              {reportOrderNumbers.map(n => (
+                <Badge key={n} variant="outline" className="text-xs font-mono">{n}</Badge>
+              ))}
+            </div>
+          </div>
+        </Panel>
       )}
 
       {/* KPIs — kit editorial (StatCard) derivado de dados reais */}
