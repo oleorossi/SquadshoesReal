@@ -208,7 +208,7 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
   const [{ data: materials, error: materialsError }, { data: allProducts }, { data: productGroups }, { data: componentSheets }, { data: sheetStrapData }, { data: soleColorMappings }, { data: palmilhaColorMappings }, { data: liningColorMappings }, { data: sheetSoleGroups }] = await Promise.all([
     supabase
       .from('sheet_materials')
-      .select('sheet_id, product_id, group_id, quantity_per_unit, color, products(name, unit, category), product_groups!products_group_id_fkey(name)')
+      .select('sheet_id, product_id, group_id, quantity_per_unit, color, products(name, unit, category), product_groups!sheet_materials_group_id_fkey(name)')
       .in('sheet_id', unique),
     supabase
       .from('products')
