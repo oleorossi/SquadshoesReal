@@ -25,8 +25,12 @@ export function useCreateBomVersion() {
       sheetId, versionNumber, description, snapshot, materialsSnapshot, operationsSnapshot, createdBy
     }: {
       sheetId: string; versionNumber: string; description: string;
-      snapshot: any; materialsSnapshot: any; operationsSnapshot: any; createdBy: string;
+      snapshot: any; materialsSnapshot: any; operationsSnapshot: any; createdBy?: string;
     }) => {
+      // Autoria real: usa o usuário logado (e-mail > id) — antes gravava string
+      // vazia, deixando a governança da ficha cega ("quem criou esta versão?").
+      const { data: { user } } = await supabase.auth.getUser();
+      const author = (createdBy && createdBy.trim()) || user?.email || user?.id || 'desconhecido';
       const { data, error } = await supabase
         .from('bom_versions')
         .insert({
@@ -37,7 +41,7 @@ export function useCreateBomVersion() {
           materials_snapshot: materialsSnapshot,
           operations_snapshot: operationsSnapshot,
           status: 'draft',
-          created_by: createdBy,
+          created_by: author,
         } as any)
         .select()
         .single();
@@ -57,8 +61,11 @@ export function useUpdateBomVersionStatus() {
   return useMutation({
     mutationFn: async ({ id, status, approvedBy }: { id: string; status: string; approvedBy?: string }) => {
       const updateData: any = { status };
-      if (status === 'approved' && approvedBy) {
-        updateData.approved_by = approvedBy;
+      if (status === 'approved') {
+        // Registra QUEM aprovou (usuário logado; e-mail > id) — antes só gravava
+        // se approvedBy viesse preenchido, mas o caller passava '' → aprovação anônima.
+        const { data: { user } } = await supabase.auth.getUser();
+        updateData.approved_by = (approvedBy && approvedBy.trim()) || user?.email || user?.id || 'desconhecido';
         updateData.approved_at = new Date().toISOString();
       }
       // Predecessor-status guard: prevent out-of-order or concurrent transitions.

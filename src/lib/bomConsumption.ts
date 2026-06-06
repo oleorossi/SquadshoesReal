@@ -87,13 +87,13 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   ] = await Promise.all([
     supabase
       .from('technical_sheets')
-      .select('id, upper_material, upper_consumption, upper_consumption_per_size, lining_material, lining_consumption, insole_material, insole_consumption, sole_material, sole_consumption, sole_color, sole_group_id, lining_accessories, components_accessories, strap_colors, sole_drives_consumption')
+      .select('id, upper_material, upper_consumption, upper_consumption_per_size, lining_material, lining_consumption, insole_material, insole_consumption, insole_ready_made, insole_has_lining, insole_lining_consumption, sole_material, sole_consumption, sole_color, sole_group_id, lining_accessories, components_accessories, strap_colors, sole_drives_consumption')
       .in('id', refIds),
     supabase
       .from('sheet_materials')
       .select('sheet_id, product_id, group_id, quantity_per_unit, color, products(name, unit, category), product_groups(name)')
       .in('sheet_id', refIds),
-    supabase.from('products').select('id, name, color, group_id').eq('active', true),
+    supabase.from('products').select('id, name, color, group_id, sole_classification').eq('active', true),
     supabase.from('product_groups').select('id, name, dimensions_length, dimensions_width, dimensions_unit'),
     supabase
       .from('component_sheets')
@@ -245,23 +245,33 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       });
     }
 
-    // Palmilha
+    // Palmilha — PULADA INTEIRA quando é palmilha pronta (solado já vem forrado
+    // de fábrica): a grade não cobra placa. Mesma regra do orderConsumption.ts
+    // (motor canônico). Antes o BOM contava placa mesmo na palmilha pronta,
+    // inflando consumo/compra (MRP)/custo.
     const soleProductIdForInsole = soleColorMap.get(`${order.reference_id}::${orderColor}`) || null;
-    const insoleGroupName = sheet?.insole_material || '';
-    const insoleGroup = (productGroups || []).find((g: any) => g.name === insoleGroupName);
-    const insoleSheet = getPreferredGroupSheet(insoleGroupName, { mode: 'plate', preferYield: true });
-    const insoleDm2 = calculateGradeBasedDm2(item, Number(sheet?.insole_consumption) || 0, insoleSheet, undefined, soleProductIdForInsole, sheet?.sole_drives_consumption);
-    const groupPlateArea = calcGroupPlateAreaDm2(insoleGroup);
-    // Aplica waste_pct também no caminho que usa dimensões do grupo, para
-    // manter paridade com convertDm2ToPlates() (fallback).
-    const insoleWastePct = Number(insoleSheet?.waste_pct) || 0;
-    const insolePlates = groupPlateArea > 0
-      ? (insoleDm2 / groupPlateArea) * (1 + insoleWastePct / 100)
-      : convertDm2ToPlates(insoleDm2, insoleSheet);
-    addConsumptionRow(consumptionMap, {
-      componentType: 'Palmilha', groupName: insoleGroupName, materialName: 'Palmilha',
-      productUnit: 'placa', color: '—', totalQuantity: insolePlates,
-    });
+    const insoleSoleProd = soleProductIdForInsole
+      ? (allProducts || []).find((p: any) => p.id === soleProductIdForInsole)
+      : null;
+    const isPalmilhaPronta = (sheet?.insole_ready_made === true)
+      || ((insoleSoleProd as any)?.sole_classification === 'palmilha_pronta');
+    if (!isPalmilhaPronta) {
+      const insoleGroupName = sheet?.insole_material || '';
+      const insoleGroup = (productGroups || []).find((g: any) => g.name === insoleGroupName);
+      const insoleSheet = getPreferredGroupSheet(insoleGroupName, { mode: 'plate', preferYield: true });
+      const insoleDm2 = calculateGradeBasedDm2(item, Number(sheet?.insole_consumption) || 0, insoleSheet, undefined, soleProductIdForInsole, sheet?.sole_drives_consumption);
+      const groupPlateArea = calcGroupPlateAreaDm2(insoleGroup);
+      // Aplica waste_pct também no caminho que usa dimensões do grupo, para
+      // manter paridade com convertDm2ToPlates() (fallback).
+      const insoleWastePct = Number(insoleSheet?.waste_pct) || 0;
+      const insolePlates = groupPlateArea > 0
+        ? (insoleDm2 / groupPlateArea) * (1 + insoleWastePct / 100)
+        : convertDm2ToPlates(insoleDm2, insoleSheet);
+      addConsumptionRow(consumptionMap, {
+        componentType: 'Palmilha', groupName: insoleGroupName, materialName: 'Palmilha',
+        productUnit: 'placa', color: '—', totalQuantity: insolePlates,
+      });
+    }
 
     // Solado
     const soleColor = (() => {
