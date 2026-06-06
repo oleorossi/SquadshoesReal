@@ -1,5 +1,6 @@
 import { SignedImage } from '@/components/ui/signed-image';
 import { SignatureFooter } from './worksheet/SignatureFooter';
+import { filterConsumptionForSector, formatConsumptionLine, type ConsumptionRow } from '@/hooks/useBulkOrderConsumption';
 
 /**
  * ReducedWorkSheet — ficha de operador REDUZIDA (aprovada em 2026-06-04).
@@ -43,13 +44,24 @@ export interface ReducedWorkSheetProps {
   colors?: ReducedColor[];
   /** Nota da variante total (ex.: "6 fichas de 12"). */
   totalNote?: string;
+  /** Consumo de materiais por par (filtra pelo setor). Exibido em formato compacto
+   *  no rodapé da ficha — espelha o card de Consumo da ficha tradicional. */
+  consumption?: ConsumptionRow[];
+  /** Nome do setor pra filtrar consumo (ex.: "Corte Forração", "Aviamento"). */
+  consumptionSector?: string;
 }
 
 export function ReducedWorkSheet({
   sectorLabel, title, meta, imageUrl, grade, allSizes, totalPairs, colors, totalNote,
+  consumption, consumptionSector,
 }: ReducedWorkSheetProps) {
   const sizes = allSizes;
   const byColor = !!(colors && colors.length > 0);
+  // Consumo filtrado pelo setor — só itens RELEVANTES pra esse passo (ex.:
+  // Aviamento vê fivelas/elásticos; Corte Forração vê só forração).
+  const sectorConsumption = consumption && consumption.length > 0
+    ? (consumptionSector ? filterConsumptionForSector(consumption, consumptionSector) : consumption)
+    : [];
 
   return (
     <div
@@ -223,6 +235,27 @@ export function ReducedWorkSheet({
         )}
       </div>
 
+      {/* Consumo de materiais COMPACTO — só os itens relevantes pro setor.
+          Espelha o card de Consumo do worksheet tradicional, mas numa linha
+          enxuta: "Couro Marrom · 3.2 dm²/par · 460 dm² total". Operador valida
+          a quantidade entregue contra essa estimativa antes de cortar. */}
+      {sectorConsumption.length > 0 && (
+        <div className="keep-together" style={{ marginTop: 8 }}>
+          <span className="font-mono uppercase block" style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.16em', borderBottom: '1px solid #000', paddingBottom: 2 }}>
+            Consumo previsto
+          </span>
+          <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+            {sectorConsumption.map((r, i) => (
+              <li key={`${r.product_id}-${i}`} style={{ fontSize: 10, padding: '2px 0', borderBottom: i < sectorConsumption.length - 1 ? '1px dashed #999' : 'none', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                <span className="truncate" style={{ fontWeight: 600 }}>
+                  {r.product_name}{r.color ? <span style={{ color: '#555', fontWeight: 400 }}> · {r.color}</span> : null}
+                </span>
+                <span className="font-mono shrink-0" style={{ color: '#333' }}>{formatConsumptionLine(r)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <SignatureFooter compact />
     </div>
   );

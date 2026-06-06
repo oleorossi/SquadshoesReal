@@ -1964,6 +1964,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   allSizes={palmilhaAllSizes}
                   totalPairs={g.totalPairs}
                   totalNote={g.fichas && g.baseGradeSum ? `${g.fichas} ficha(s) de ${g.baseGradeSum}` : undefined}
+                  consumption={consumptionForOpNumbers(g.opNumbers)}
+                  consumptionSector="Corte Palmilha"
                 />
               </div>
             ))
@@ -2101,6 +2103,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             const sizes = Object.keys(grade).sort((a, b) => (Number(a) || 0) - (Number(b) || 0));
             const img = group.colorGroups.flatMap(cg => cg.alternateVariants || []).find(v => v.image_url)?.image_url || null;
             const colors = group.colorGroups.map(cg => ({ name: cg.color, qty: cg.totalPairs, grade: cg.combinedGrid }));
+            // Agrega OPs do grupo inteiro pra puxar o consumo filtrado pelo setor.
+            const allOpNumbers = group.colorGroups.flatMap(cg => cg.opNumbers);
             return (
               <div key={key} className="reduced-card">
                 <ReducedWorkSheet
@@ -2111,6 +2115,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   allSizes={sizes}
                   totalPairs={group.totalPairs}
                   colors={colors}
+                  consumption={consumptionForOpNumbers(allOpNumbers)}
+                  consumptionSector={sectorName}
                 />
               </div>
             );
@@ -2165,6 +2171,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   allSizes={solagemData.allSizes}
                   totalPairs={b.totalPairs}
                   totalNote={b.baseGradeSum ? `${Math.round(b.totalPairs / b.baseGradeSum)} ficha(s) de ${b.baseGradeSum}` : undefined}
+                  consumption={consumptionForOpNumbers(b.opNumbers)}
+                  consumptionSector="Solagem"
                 />
               </div>
             ))
@@ -2215,6 +2223,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   grade={g}
                   allSizes={Object.keys(g).sort((a, b) => (Number(a) || 0) - (Number(b) || 0))}
                   totalPairs={group.totalPairs}
+                  consumption={consumptionForOpNumbers(group.opNumbers)}
+                  consumptionSector={sectorName}
                 />
               </div>
             );
@@ -2306,6 +2316,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   grade={g}
                   allSizes={Object.keys(g).sort((a, b) => (Number(a) || 0) - (Number(b) || 0))}
                   totalPairs={tot}
+                  consumption={consumptionForOpNumbers([(order as any).op_number].filter(Boolean))}
+                  consumptionSector="Acabamento"
                 />
               </div>
             );
