@@ -244,6 +244,13 @@ export function MinBillingDateSuggestionDialog({
                     </li>
                   )}
                 </ul>
+                <p className="text-[11px] text-muted-foreground leading-snug pt-1">
+                  Faltas já <strong>líquidas</strong> do que está em estoque e reservado. A compra
+                  não precisa sair agora: cada material entra na <strong>Agenda Semanal</strong>
+                  {' '}(Compras → Plano → <em>Por Semana</em>) na semana de compra calculada
+                  {' '}(início da produção − lead time do fornecedor), pra chegar pouco antes do
+                  ciclo começar — sem capital parado.
+                </p>
               </div>
             )}
           </div>
