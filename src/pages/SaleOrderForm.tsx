@@ -29,6 +29,7 @@ import { SectorOverloadDialog } from '@/components/sale-orders/SectorOverloadDia
 import { createOutsourceOrdersForOverloads } from '@/lib/outsourceOrders';
 import { computeMinBillingForNewOrder, fetchMinBillingDate, isBeforeMinDate, toISOWeek, type MinBillingResult } from '@/lib/minBillingDate';
 import { MinBillingDateSuggestionDialog } from '@/components/sale-orders/MinBillingDateSuggestionDialog';
+import { OverrideOutsourceCosturaDialog } from '@/components/sale-orders/OverrideOutsourceCosturaDialog';
 import { monthWeekToISODate, isoToMonthWeek } from '@/lib/billingWeek';
 
 const emptyForm: SaleOrderFormData = {
@@ -238,6 +239,12 @@ export default function SaleOrderForm() {
   const [minBillingDialogOpen, setMinBillingDialogOpen] = useState(false);
   const [minBillingSuggestion, setMinBillingSuggestion] = useState<MinBillingResult | null>(null);
   const [computingMinBilling, setComputingMinBilling] = useState(false);
+  // Dialog de terceirização da costura: abre após save quando o PV foi
+  // salvo com manual_billing_override=true. saleOrderId fica setado pra
+  // o dialog buscar as OPs criadas e disparar a RPC.
+  const [outsourceCosturaOpen, setOutsourceCosturaOpen] = useState(false);
+  const [outsourceCosturaPvId, setOutsourceCosturaPvId] = useState<string | null>(null);
+  const [outsourceCosturaPendingNav, setOutsourceCosturaPendingNav] = useState<boolean>(false);
   // Live min billing date for the persistent red badge in the form panel.
   // Edit mode → server compute_min_billing_date(id). New mode → frontend
   // computeMinBillingForNewOrder over current items. Recomputed with debounce.
@@ -495,6 +502,21 @@ export default function SaleOrderForm() {
     if (statusOverride) orderData.status = statusOverride;
     const resolvedClientId = (f as any).client_id || selectedClientId || null;
 
+    // Override admin: ao terminar de salvar, abre dialog pra terceirizar
+    // a Costura das OPs criadas. Se NÃO é override, navega direto pra /sales.
+    const isOverride = !!(f as any).manual_billing_override;
+    const handlePostSave = (pvId: string | undefined) => {
+      void checkMarginAfterSave(pvId);
+      if (isOverride && pvId) {
+        // Segura a navegação: dialog abre, user confirma/pula, então redireciona.
+        setOutsourceCosturaPvId(pvId);
+        setOutsourceCosturaPendingNav(true);
+        setOutsourceCosturaOpen(true);
+      } else {
+        navigate('/sales');
+      }
+    };
+
     if (isEdit) {
       updateOrder.mutate({
         id: id!,
@@ -506,7 +528,7 @@ export default function SaleOrderForm() {
         packaging_product_id: packagingProductId || null,
         packaging_quantity: packagingQuantity,
       } as any, {
-        onSuccess: () => { void checkMarginAfterSave(id!); navigate('/sales'); },
+        onSuccess: () => handlePostSave(id!),
       });
     } else {
       createOrder.mutate({
@@ -518,7 +540,7 @@ export default function SaleOrderForm() {
         packaging_product_id: packagingProductId || null,
         packaging_quantity: packagingQuantity,
       } as any, {
-        onSuccess: (created: { id?: string } | undefined) => { void checkMarginAfterSave(created?.id); navigate('/sales'); },
+        onSuccess: (created: { id?: string } | undefined) => handlePostSave(created?.id),
       });
     }
   };
@@ -1122,6 +1144,18 @@ export default function SaleOrderForm() {
         onPickManual={handleMinBillingManual}
         isAdmin={isAdmin}
         userPickedDateISO={form.delivery_deadline || null}
+      />
+
+      <OverrideOutsourceCosturaDialog
+        open={outsourceCosturaOpen}
+        saleOrderId={outsourceCosturaPvId}
+        onClose={() => {
+          setOutsourceCosturaOpen(false);
+          if (outsourceCosturaPendingNav) {
+            setOutsourceCosturaPendingNav(false);
+            navigate('/sales');
+          }
+        }}
       />
 
       <CancelOpsAndEditDialog
