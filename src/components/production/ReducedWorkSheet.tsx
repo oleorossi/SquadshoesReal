@@ -147,24 +147,71 @@ export function ReducedWorkSheet({
 
         {byColor ? (
           <>
-            {colors!.map((c, i) => (
-              <div key={`${c.name}-${i}`} className="flex items-center" style={{ gap: 10, padding: '4px 0', borderTop: i === 0 ? '1.5px solid #000' : '1px solid #000' }}>
-                <span className="shrink-0" style={{ width: 14, height: 14, border: '1.5px solid #000', background: c.hex || '#fff' }} />
-                <span className="uppercase flex-1 min-w-0 truncate" style={{ fontSize: 13, fontWeight: 800, letterSpacing: '0.02em', color: '#C00000' }} title={c.name}>{c.name}</span>
-                {c.grade && (
-                  <span className="font-mono shrink-0" style={{ fontSize: 10, color: '#555', letterSpacing: '0.05em' }}>
-                    {sizes.filter(s => (c.grade![s] || 0) > 0).map(s => `${s}·${c.grade![s]}`).join('  ')}
-                  </span>
-                )}
-                <span className="shrink-0" style={{ ...DISPLAY, fontSize: 22, lineHeight: 0.8 }}>{fmtInt(c.qty)}</span>
-              </div>
-            ))}
-            <div className="flex items-center" style={{ gap: 10, borderTop: '2.5px solid #000', marginTop: 2, paddingTop: 5 }}>
-              <span className="shrink-0" style={{ width: 14, height: 14, border: '1.5px solid #000', background: '#fff' }} />
-              <span className="uppercase flex-1" style={{ fontSize: 13, fontWeight: 800, letterSpacing: '0.02em' }}>Total</span>
-              <span style={{ ...DISPLAY, fontSize: 26, lineHeight: 0.8 }}>{fmtInt(totalPairs)}</span>
-              <span className="font-mono shrink-0" style={{ fontSize: 11, color: '#555', marginLeft: 4 }}>pares</span>
-            </div>
+            {/* Layout em tabela alinhada com a grade do topo — cada cor é
+                uma linha com mini-colunas idênticas em largura à header. Antes
+                era texto inline ("25·8 26·8 27·8...") que comprimia tudo no
+                limite direito e ficava ilegível no chão de fábrica. Agora é
+                column-aligned: bater o olho na coluna 27 e ver imediatamente
+                quanto cada cor consome desse número. */}
+            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', marginTop: 4 }}>
+              <colgroup>
+                {/* swatch + nome ficam num bloco fixo à esquerda; sizes preenchem o meio; total à direita. */}
+                <col style={{ width: '38mm' }} />
+                {sizes.map(s => <col key={s} />)}
+                <col style={{ width: '18mm' }} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th style={{ border: '1px solid #000', background: '#000', color: '#fff', fontSize: 9, fontWeight: 700, padding: '2px 4px', textAlign: 'left', letterSpacing: '0.1em' }}>COR</th>
+                  {sizes.map(s => (
+                    <th key={s} className="font-mono" style={{ border: '1px solid #000', background: '#000', color: '#fff', fontSize: 10, fontWeight: 700, padding: '2px 0', textAlign: 'center' }}>{s}</th>
+                  ))}
+                  <th className="font-mono" style={{ border: '1px solid #000', background: '#000', color: '#fff', fontSize: 9, fontWeight: 700, padding: '2px 4px', textAlign: 'center', letterSpacing: '0.1em' }}>TOTAL</th>
+                </tr>
+              </thead>
+              <tbody>
+                {colors!.map((c, i) => (
+                  <tr key={`${c.name}-${i}`}>
+                    <td style={{ border: '1px solid #000', padding: '3px 4px', verticalAlign: 'middle' }}>
+                      <div className="flex items-center" style={{ gap: 6 }}>
+                        <span className="shrink-0" style={{ width: 11, height: 11, border: '1.5px solid #000', background: c.hex || '#fff' }} />
+                        <span className="uppercase truncate" style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.02em', color: '#C00000' }} title={c.name}>{c.name}</span>
+                      </div>
+                    </td>
+                    {sizes.map(s => {
+                      const q = c.grade?.[s] || 0;
+                      return (
+                        <td key={s} style={{ border: '1px solid #000', textAlign: 'center', padding: '2px 0', ...(q > 0 ? { ...DISPLAY, fontSize: 16, lineHeight: 1 } : { color: '#ccc', fontSize: 10 }) }}>
+                          {q > 0 ? q : '–'}
+                        </td>
+                      );
+                    })}
+                    <td style={{ border: '1px solid #000', textAlign: 'center', padding: '2px 4px', ...DISPLAY, fontSize: 18, lineHeight: 1 }}>{fmtInt(c.qty)}</td>
+                  </tr>
+                ))}
+                <tr>
+                  <td style={{ border: '1.5px solid #000', borderTop: '2.5px solid #000', padding: '3px 4px', verticalAlign: 'middle' }}>
+                    <div className="flex items-center" style={{ gap: 6 }}>
+                      <span className="shrink-0" style={{ width: 11, height: 11, border: '1.5px solid #000', background: '#fff' }} />
+                      <span className="uppercase" style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.02em' }}>Total</span>
+                    </div>
+                  </td>
+                  {sizes.map(s => {
+                    // Soma vertical: total daquele número somando todas as cores.
+                    // Bate com grade[s] do topo (que já é o total agregado).
+                    const colSum = colors!.reduce((acc, c) => acc + (c.grade?.[s] || 0), 0);
+                    const fallback = grade[s] || 0;
+                    const q = colSum > 0 ? colSum : fallback;
+                    return (
+                      <td key={s} style={{ border: '1.5px solid #000', borderTop: '2.5px solid #000', textAlign: 'center', padding: '2px 0', ...(q > 0 ? { ...DISPLAY, fontSize: 16, lineHeight: 1 } : { color: '#ccc', fontSize: 10 }) }}>
+                        {q > 0 ? q : '–'}
+                      </td>
+                    );
+                  })}
+                  <td style={{ border: '1.5px solid #000', borderTop: '2.5px solid #000', textAlign: 'center', padding: '2px 4px', ...DISPLAY, fontSize: 20, lineHeight: 1 }}>{fmtInt(totalPairs)}</td>
+                </tr>
+              </tbody>
+            </table>
           </>
         ) : (
           <div className="flex items-center" style={{ gap: 10, borderTop: '2.5px solid #000', paddingTop: 5 }}>
