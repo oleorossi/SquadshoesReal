@@ -113,7 +113,8 @@ export const TECHNICAL_SHEET_CONSUMPTION_COLUMNS = `
   sole_color,
   sole_group_id,
   lining_accessories,
-  components_accessories
+  components_accessories,
+  direct_components
 `;
 
 /** Classifica um material de BOM (sheet_materials) num componentType. */
@@ -637,6 +638,34 @@ export function computeConsumptionForItems(
       });
     }
 
+    // Componentes Diretos (technical_sheets.direct_components) — itens cadastrados
+    // direto na ficha (ex: BINÓCULO 6MM com qty=8/par) que NÃO vivem no BOM
+    // (sheet_materials). Antes de 2026-06-06 esse caminho era ignorado pelo
+    // motor — direct_components só era lido em calculate_order_consumption SQL,
+    // gerando inconsistência: ficha pedia 8 binóculos/par e o modal/ficha de
+    // operador mostrava só o que vinha do BOM (qty=1 em outras refs).
+    const directComponents = Array.isArray(sheet?.direct_components) ? sheet.direct_components : [];
+    const directProductIds = new Set<string>();
+    for (const dc of directComponents) {
+      const pid = (dc as any)?.product_id;
+      const qtyPerPair = Number((dc as any)?.quantity) || 0;
+      if (!pid || qtyPerPair <= 0) continue;
+      const prod = (allProducts || []).find((p: any) => p.id === pid);
+      if (!prod) continue;
+      directProductIds.add(pid);
+      const groupName = (productGroups || []).find((g: any) => g.id === prod.group_id)?.name
+        || prod.category || (dc as any)?.product_name || prod.name || 'Componente';
+      const totalQty = qtyPerPair * itemQuantity;
+      addConsumptionRow(consumptionMap, {
+        componentType: classifyBomMaterial(groupName, prod.name || '', prod.category || ''),
+        groupName,
+        materialName: prod.name || (dc as any)?.product_name || 'Componente',
+        productUnit: prod.unit || (dc as any)?.unit || 'un',
+        color: prod.color || '—',
+        totalQuantity: totalQty,
+      });
+    }
+
     const specGroupsWithConsumption = new Map<string, number>();
     if (upperMatch?.group) specGroupsWithConsumption.set(upperMatch.group.toLowerCase(), upperMatch.consumption);
     if (liningMatch?.group) specGroupsWithConsumption.set(liningMatch.group.toLowerCase(), liningMatch.consumption);
@@ -652,6 +681,13 @@ export function computeConsumptionForItems(
       const groupName = group?.name || product.category || product.name || 'Outros';
       const groupKey = groupName.toLowerCase();
       const specHasGroup = specGroupsWithConsumption.has(groupKey);
+
+      // Skip se já foi adicionado por direct_components (mesmo product_id).
+      // Antes, BINÓCULO 6MM cadastrado em direct_components do S-039 ficava
+      // somando com BINÓCULO 6MM do BOM da DS12, gerando duplicação. Direct
+      // tem prioridade — BOM é fallback pra materiais não declarados direto.
+      if (directProductIds.has(material.product_id)) continue;
+
       if (specHasGroup) {
         const bomType = classifyBomMaterial(groupName, product.name || '', product.category || '');
         const isUpperGroup = upperMatch?.group?.toLowerCase() === groupKey;
@@ -663,6 +699,21 @@ export function computeConsumptionForItems(
                            (isInsoleGroup && (bomType === 'Palmilha' || product.category?.toLowerCase().includes('palmilha'))) ||
                            (isSoleGroup && bomType === 'Solado');
         if (shouldSkip) continue;
+      }
+
+      // Dedup adicional pra Palmilha duplicada: se o produto é categoria Palmilha
+      // OU o classifyBom retorna Palmilha, E o caminho do insole spec já
+      // adicionou a placa (palmProductId em palmilhaColorMap), SKIPA o BOM —
+      // senão a mesma placa aparece em 2 linhas (PLACA(S) + DM²).
+      const bomTypeForDedup = classifyBomMaterial(groupName, product.name || '', product.category || '');
+      if (bomTypeForDedup === 'Palmilha') {
+        const palmMap = palmilhaColorMap.get(`${item.reference_id}::${orderColor.toLowerCase()}`) || palmilhaDefaultMap.get(item.reference_id);
+        if (palmMap?.productId && palmMap.productId === material.product_id) continue;
+        // Caminho legacy (sem mapping explícito) — sheet.insole_material aponta
+        // pro mesmo grupo: skipa pra evitar PLACA + DM² duplicada.
+        if (!palmMap?.productId && sheet?.insole_material && groupKey === String(sheet.insole_material).toLowerCase()) {
+          continue;
+        }
       }
 
       let productUnit = product.unit || 'un';
