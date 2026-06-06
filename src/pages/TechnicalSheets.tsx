@@ -4838,7 +4838,7 @@ function DirectComponentSelect({ label, value, onChange }: { label: string; valu
       // a busca por nome já cobre.
       const { data, error } = await supabase
         .from('products')
-        .select('id, name, sku, unit_price, unit, color, group_id, product_groups!products_group_id_fkey(name)')
+        .select('id, name, sku, unit_price, unit, color, group_id, product_groups(name)')
         .eq('active', true)
         .order('name');
       if (error) throw error;
