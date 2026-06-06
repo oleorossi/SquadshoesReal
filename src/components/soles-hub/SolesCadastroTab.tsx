@@ -205,6 +205,139 @@ export default function SolesCadastroTab({ sole }: Props) {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // === Fornecedor + Lead Time ============================================
+  // Estado local do form de fornecedor (sincronizado com sole no mount).
+  const [supplierForm, setSupplierForm] = useState({
+    supplier_id: (sole.supplier_id as string | null) || null,
+    lead_time_days: Number((sole as any).lead_time_days) || 0,
+  });
+
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ['suppliers_for_sole_select'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('suppliers')
+        .select('id, name, lead_time_days')
+        .order('name');
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const updateSupplier = useMutation({
+    mutationFn: async (payload: { supplier_id: string | null; lead_time_days: number }) => {
+      // Aplica em TODAS as variantes do grupo — fornecedor é compartilhado.
+      const target = groupId ? supabase.from('products').update(payload as any).eq('group_id', groupId)
+                              : supabase.from('products').update(payload as any).eq('id', sole.id);
+      const { error } = await target;
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['soles_hub_products'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+      toast.success('Fornecedor & lead time atualizados');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  // === Fachete: material group + dm²/par por numeração ===================
+  // Grupos de material disponíveis pra escolher como fachete (forração, sintéticos, etc.).
+  const { data: materialGroups = [] } = useQuery({
+    queryKey: ['material_groups_for_fachete'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('product_groups')
+        .select('id, name')
+        .order('name');
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 5 * 60 * 1000,
+    enabled: isFachetado,
+  });
+
+  // sole_technical_specs (consumo dm²/par por tamanho deste solado)
+  const { data: soleSpecs = [] } = useQuery({
+    queryKey: ['sole_technical_specs', sole.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('sole_technical_specs')
+        .select('size, fachete_lining_consumption_dm2')
+        .eq('sole_id', sole.id);
+      if (error) throw error;
+      return (data || []) as Array<{ size: number; fachete_lining_consumption_dm2: number | null }>;
+    },
+    enabled: isFachetado,
+  });
+  const facheteDm2BySize = useMemo<Record<number, number>>(() => {
+    const map: Record<number, number> = {};
+    for (const r of soleSpecs) {
+      map[r.size] = Number(r.fachete_lining_consumption_dm2 || 0);
+    }
+    return map;
+  }, [soleSpecs]);
+
+  // Estado local pra editar fachete (material + qts por tamanho)
+  const [facheteForm, setFacheteForm] = useState<{
+    material_group_id: string | null;
+    bySize: Record<number, number>;
+  }>({ material_group_id: ((sole as any).fachete_material_group_id as string | null) || null, bySize: {} });
+  // Sync facheteForm.bySize quando soleSpecs carrega
+  useMemo(() => {
+    setFacheteForm(prev => ({ ...prev, bySize: { ...facheteDm2BySize } }));
+  }, [facheteDm2BySize]);
+
+  const updateFacheteMaterial = useMutation({
+    mutationFn: async (groupIdSel: string | null) => {
+      // Aplica em TODAS as variantes do solado (compartilhado).
+      const target = groupId
+        ? supabase.from('products').update({ fachete_material_group_id: groupIdSel } as any).eq('group_id', groupId)
+        : supabase.from('products').update({ fachete_material_group_id: groupIdSel } as any).eq('id', sole.id);
+      const { error } = await target;
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['soles_hub_products'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+      toast.success('Material do fachete atualizado');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const updateFacheteDm2 = useMutation({
+    mutationFn: async (rows: Array<{ size: number; dm2: number }>) => {
+      // UPSERT em sole_technical_specs: 1 linha por (sole_id, size). Mantém
+      // lining_consumption_dm2/insole_consumption_dm2 existentes (não tocamos
+      // outras colunas no UPDATE).
+      for (const r of rows) {
+        const { data: existing } = await supabase
+          .from('sole_technical_specs')
+          .select('id')
+          .eq('sole_id', sole.id)
+          .eq('size', r.size)
+          .maybeSingle();
+        if (existing) {
+          const { error } = await supabase
+            .from('sole_technical_specs')
+            .update({ fachete_lining_consumption_dm2: r.dm2 } as any)
+            .eq('id', (existing as any).id);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase
+            .from('sole_technical_specs')
+            .insert({ sole_id: sole.id, size: r.size, fachete_lining_consumption_dm2: r.dm2 } as any);
+          if (error) throw error;
+        }
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sole_technical_specs', sole.id] });
+      toast.success('Consumo de fachete por numeração salvo');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   // Atualiza sole_classification em TODAS as variantes do grupo (mantém consistência).
   // Se virar palmilha_pronta e ainda não existir regra default de coligação, cria.
   const updateClassification = useMutation({
@@ -515,13 +648,169 @@ export default function SolesCadastroTab({ sole }: Props) {
             </Label>
           </div>
           {isFachetado && (
-            <div className="rounded-md border border-violet-300/60 bg-violet-50/30 dark:bg-violet-950/10 px-3 py-2">
-              <p className="text-xs text-violet-900 dark:text-violet-200">
-                Configure o consumo de fachete por numeração em <strong>Consumos → Forração/Palmilha</strong>.
-                Na ficha técnica vai aparecer só o <em>material</em> do fachete.
+            <div className="rounded-md border border-violet-300/60 bg-violet-50/30 dark:bg-violet-950/10 p-3 space-y-3">
+              <p className="text-xs text-violet-900 dark:text-violet-200 leading-relaxed">
+                <strong>Salto fachetado ativado.</strong> Preencha aqui o material que reveste o
+                fachete e quanto consome por par em <span className="font-mono">dm²</span> por
+                numeração — esses dois campos viram débito de estoque automático quando o PV
+                gerar a OP.
               </p>
+
+              {/* Material do fachete */}
+              <div>
+                <Label className="text-xs uppercase tracking-wider font-bold text-violet-700 dark:text-violet-300">
+                  Material do fachete
+                </Label>
+                <Select
+                  value={facheteForm.material_group_id || ''}
+                  onValueChange={(v) => {
+                    const next = v || null;
+                    setFacheteForm(prev => ({ ...prev, material_group_id: next }));
+                    updateFacheteMaterial.mutate(next);
+                  }}
+                >
+                  <SelectTrigger className="mt-1 h-9">
+                    <SelectValue placeholder="Selecionar grupo de material..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {materialGroups.map((g: any) => (
+                      <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Quando vazio, o sistema cai no <em>lining_material</em> da ficha técnica.
+                </p>
+              </div>
+
+              {/* Grid dm²/par por numeração */}
+              <div>
+                <div className="flex items-end justify-between gap-2 mb-1">
+                  <Label className="text-xs uppercase tracking-wider font-bold text-violet-700 dark:text-violet-300">
+                    Consumo por par <span className="text-violet-600/70 font-mono">(dm²)</span>
+                  </Label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    disabled={updateFacheteDm2.isPending}
+                    onClick={() => {
+                      // Pega o primeiro valor > 0 e replica pra todos vazios.
+                      const first = baseSizes.map(s => facheteForm.bySize[s] || 0).find(v => v > 0);
+                      if (!first || first <= 0) {
+                        toast.info('Preencha um valor primeiro pra replicar.');
+                        return;
+                      }
+                      const nextBySize: Record<number, number> = { ...facheteForm.bySize };
+                      for (const s of baseSizes) {
+                        if (!nextBySize[s] || nextBySize[s] === 0) nextBySize[s] = first;
+                      }
+                      setFacheteForm(prev => ({ ...prev, bySize: nextBySize }));
+                    }}
+                  >
+                    Replicar 1º valor
+                  </Button>
+                </div>
+                <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-1.5">
+                  {baseSizes.map(s => (
+                    <div key={s} className="text-center">
+                      <div className="text-[10px] font-mono font-bold text-violet-700 dark:text-violet-300 mb-0.5">{s}</div>
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        value={(facheteForm.bySize[s] ?? '').toString()}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(',', '.');
+                          const n = Number(raw);
+                          setFacheteForm(prev => ({
+                            ...prev,
+                            bySize: { ...prev.bySize, [s]: Number.isFinite(n) ? n : 0 },
+                          }));
+                        }}
+                        className="h-8 text-xs text-right font-mono px-1.5"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2 flex justify-end">
+                  <Button
+                    size="sm"
+                    className="h-8 text-xs gap-1.5 bg-violet-600 hover:bg-violet-700 text-white"
+                    disabled={updateFacheteDm2.isPending}
+                    onClick={() => {
+                      const rows = baseSizes
+                        .map(s => ({ size: s, dm2: Number(facheteForm.bySize[s] || 0) }))
+                        .filter(r => r.dm2 > 0);
+                      if (rows.length === 0) {
+                        toast.error('Preencha o consumo de pelo menos uma numeração.');
+                        return;
+                      }
+                      updateFacheteDm2.mutate(rows);
+                    }}
+                  >
+                    <Save className="h-3.5 w-3.5" /> Salvar consumo do fachete
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* CARD: Fornecedor & Lead Time — compartilhado entre cores do grupo */}
+      <Card>
+        <CardHeader className="pb-3 flex flex-row items-center gap-2">
+          <Layers className="h-4 w-4 text-primary" />
+          <CardTitle className="text-sm">Fornecedor & Lead Time</CardTitle>
+          {supplierForm.supplier_id && supplierForm.lead_time_days > 0
+            ? <StatusBadge filled label="Configurado" />
+            : <StatusBadge filled={false} label="Pendente" />}
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            O lead time entra no <strong>cronograma reverso</strong> do MRP: data-limite de
+            compra = entrega do cliente − produção − este lead time. Sem isso, o sistema
+            assume 7 dias por default e pode pedir compra cedo demais.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr] gap-3">
+            <div>
+              <Label className="text-xs uppercase tracking-wider font-bold text-muted-foreground">Fornecedor</Label>
+              <Select
+                value={supplierForm.supplier_id || ''}
+                onValueChange={(v) => {
+                  const sup = (suppliers as any[]).find((s: any) => s.id === v);
+                  const inferred = Number(sup?.lead_time_days) || supplierForm.lead_time_days || 0;
+                  const next = { supplier_id: v || null, lead_time_days: inferred };
+                  setSupplierForm(next);
+                  updateSupplier.mutate(next);
+                }}
+              >
+                <SelectTrigger className="mt-1 h-9">
+                  <SelectValue placeholder="Selecionar fornecedor..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {(suppliers as any[]).map((s: any) => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-wider font-bold text-muted-foreground">
+                Lead time <span className="font-mono">(dias úteis)</span>
+              </Label>
+              <Input
+                type="number"
+                min={0}
+                step={1}
+                value={supplierForm.lead_time_days}
+                onChange={(e) => setSupplierForm(prev => ({ ...prev, lead_time_days: Number(e.target.value) || 0 }))}
+                onBlur={() => updateSupplier.mutate(supplierForm)}
+                className="mt-1 h-9 font-mono text-right"
+              />
+            </div>
+          </div>
         </CardContent>
       </Card>
 
