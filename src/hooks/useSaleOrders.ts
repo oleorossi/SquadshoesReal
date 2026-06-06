@@ -2325,6 +2325,10 @@ export function useUpdateSaleOrder() {
       qc.invalidateQueries({ queryKey: ['products'] });
       qc.invalidateQueries({ queryKey: ['stock_movements'] });
       qc.invalidateQueries({ queryKey: ['purchase_orders'] });
+      // Editar o PV muda a demanda do MRP — invalida as necessidades/sugestões.
+      qc.invalidateQueries({ queryKey: ['mrp-needs'] });
+      qc.invalidateQueries({ queryKey: ['material-needs-report'] });
+      qc.invalidateQueries({ queryKey: ['mrp_suggestions'] });
       qc.invalidateQueries({ queryKey: ['accounts_receivable'] });
       qc.invalidateQueries({ queryKey: ['financial_entries'] });
       qc.invalidateQueries({ queryKey: ['material_reservations'] });
