@@ -93,6 +93,10 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
   const [soleGroupId, setSoleGroupId] = useState<string | null>(null);
   const [soleClassification, setSoleClassification] = useState<'tradicional' | 'palmilha_pronta' | 'conjugado' | null>(null);
   const [isFachetado, setIsFachetado] = useState<boolean>(false);
+  // Solado de palmilha pronta vem forrado do fornecedor — palmilha conta como
+  // UN, não dm². A grade não cobra "placa" nem "forração da palmilha", só
+  // a forração do CABEDAL (e fachete se aplicável).
+  const isPalmilhaPronta = soleClassification === 'palmilha_pronta';
   const [shoeCategory, setShoeCategory] = useState<string | null>(null);
   // Passo 3 (Materiais padrão) é opcional — escondemos por default pra não
   // competir visualmente com o Passo 4 (onde o consumo de verdade é definido).
@@ -467,7 +471,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
       if (!spec || spec.lining_consumption_dm2 === null || spec.lining_consumption_dm2 <= 0) {
         missingLining.push(s);
       }
-      if (!spec || spec.insole_consumption_dm2 === null || spec.insole_consumption_dm2 <= 0) {
+      if (!isPalmilhaPronta && (!spec || spec.insole_consumption_dm2 === null || spec.insole_consumption_dm2 <= 0)) {
         missingInsole.push(s);
       }
       if (isFachetado && (!spec || spec.fachete_lining_consumption_dm2 === null || spec.fachete_lining_consumption_dm2 <= 0)) {
@@ -937,9 +941,16 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                 </Badge>
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Define quantos <strong>dm²/par</strong> são consumidos de Forração / Palmilha por tamanho.
+                Define quantos <strong>dm²/par</strong> são consumidos de
+                {isPalmilhaPronta ? ' Forração do cabedal' : ' Forração / Palmilha'} por tamanho.
                 <strong className="text-foreground"> Vale pra QUALQUER material</strong> que o PV escolher
                 (couro, lona, sintético, etc.) — independe da seleção do Passo 3.
+                {isPalmilhaPronta && (
+                  <span className="block mt-1 text-[11px] text-violet-700 dark:text-violet-300">
+                    <strong>Palmilha pronta</strong>: o solado vem forrado de fábrica. Não há cobrança
+                    de placa nem de forração da palmilha — só do cabedal.
+                  </span>
+                )}
               </p>
             </div>
           </div>
@@ -948,7 +959,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
               <div>
                 {/* Título consolidado no banner acima — aqui só sublabel com dica */}
                 <CardDescription className="text-xs">
-                  Preencha forração, palmilha {isFachetado && '+ fachete'} por tamanho. Conjugadas (🔗) aparecem como UMA
+                  Preencha {isPalmilhaPronta ? 'forração' : 'forração, palmilha'} {isFachetado && '+ fachete'} por tamanho. Conjugadas (🔗) aparecem como UMA
                   linha. Tamanhos sem valor caem na <span className="text-amber-700 dark:text-amber-400 font-semibold">média escalar</span>.
                 </CardDescription>
               </div>
@@ -972,8 +983,10 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                       });
                     };
                     replicate('lining_consumption_dm2');
-                    replicate('insole_consumption_dm2');
-                    replicate('insole_lining_consumption_dm2');
+                    if (!isPalmilhaPronta) {
+                      replicate('insole_consumption_dm2');
+                      replicate('insole_lining_consumption_dm2');
+                    }
                     if (isFachetado) replicate('fachete_lining_consumption_dm2');
                     toast.success('Valor do primeiro tamanho replicado para todas as numerações.');
                   }}
@@ -1008,22 +1021,26 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                         </Button>
                       </div>
                     </TableHead>
-                    <TableHead>
-                      <div className="flex items-center justify-between">
-                        <span>Palmilha · Placa (dm²/par)</span>
-                        <Button variant="ghost" size="icon" className="h-6 w-6" title="Replicar primeiro valor para tamanhos vazios" onClick={() => fillRemaining("insole_consumption_dm2")}>
-                          <RefreshCw className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </TableHead>
-                    <TableHead>
-                      <div className="flex items-center justify-between">
-                        <span title="Área da napa que forra a palmilha (usa a napa da Forração)">Palmilha · Forração (dm²/par)</span>
-                        <Button variant="ghost" size="icon" className="h-6 w-6" title="Replicar primeiro valor para tamanhos vazios" onClick={() => fillRemaining("insole_lining_consumption_dm2")}>
-                          <RefreshCw className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </TableHead>
+                    {!isPalmilhaPronta && (
+                      <TableHead>
+                        <div className="flex items-center justify-between">
+                          <span>Palmilha · Placa (dm²/par)</span>
+                          <Button variant="ghost" size="icon" className="h-6 w-6" title="Replicar primeiro valor para tamanhos vazios" onClick={() => fillRemaining("insole_consumption_dm2")}>
+                            <RefreshCw className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </TableHead>
+                    )}
+                    {!isPalmilhaPronta && (
+                      <TableHead>
+                        <div className="flex items-center justify-between">
+                          <span title="Área da napa que forra a palmilha (usa a napa da Forração)">Palmilha · Forração (dm²/par)</span>
+                          <Button variant="ghost" size="icon" className="h-6 w-6" title="Replicar primeiro valor para tamanhos vazios" onClick={() => fillRemaining("insole_lining_consumption_dm2")}>
+                            <RefreshCw className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </TableHead>
+                    )}
                     {isFachetado && (
                       <TableHead className="bg-amber-500/5">
                         <div className="flex items-center justify-between">
@@ -1074,26 +1091,30 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                           placeholder="0.00"
                         />
                       </TableCell>
-                      <TableCell className="p-1.5">
-                        <Input
-                          type="text"
-                          inputMode="decimal"
-                          className="h-8 text-right font-mono"
-                          value={getRowValue(row, "insole_consumption_dm2")?.toString() ?? ""}
-                          onChange={(e) => handleRowInputChange(row, "insole_consumption_dm2", e.target.value)}
-                          placeholder="0.00"
-                        />
-                      </TableCell>
-                      <TableCell className="p-1.5">
-                        <Input
-                          type="text"
-                          inputMode="decimal"
-                          className="h-8 text-right font-mono"
-                          value={getRowValue(row, "insole_lining_consumption_dm2")?.toString() ?? ""}
-                          onChange={(e) => handleRowInputChange(row, "insole_lining_consumption_dm2", e.target.value)}
-                          placeholder="0.00"
-                        />
-                      </TableCell>
+                      {!isPalmilhaPronta && (
+                        <TableCell className="p-1.5">
+                          <Input
+                            type="text"
+                            inputMode="decimal"
+                            className="h-8 text-right font-mono"
+                            value={getRowValue(row, "insole_consumption_dm2")?.toString() ?? ""}
+                            onChange={(e) => handleRowInputChange(row, "insole_consumption_dm2", e.target.value)}
+                            placeholder="0.00"
+                          />
+                        </TableCell>
+                      )}
+                      {!isPalmilhaPronta && (
+                        <TableCell className="p-1.5">
+                          <Input
+                            type="text"
+                            inputMode="decimal"
+                            className="h-8 text-right font-mono"
+                            value={getRowValue(row, "insole_lining_consumption_dm2")?.toString() ?? ""}
+                            onChange={(e) => handleRowInputChange(row, "insole_lining_consumption_dm2", e.target.value)}
+                            placeholder="0.00"
+                          />
+                        </TableCell>
+                      )}
                       {isFachetado && (
                         <TableCell className="bg-amber-500/5 p-1.5">
                           <Input
