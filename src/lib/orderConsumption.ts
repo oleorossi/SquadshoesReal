@@ -83,6 +83,10 @@ export type ConsumptionContext = {
   liningColorMap: Map<string, string>;
   liningDefaultMap: Map<string, string>;
   sheetStrapsMap: Map<string, any[]>;
+  /** sheet_id → sole_group_id (do solado vinculado à ficha). */
+  sheetSoleGroupMap: Map<string, string>;
+  /** sole_group_id → conjugações ativas (regras cabedal→cor-do-solado). */
+  soleConjugationsByGroup: Map<string, Array<{ cabedal_color: string; palmilha_color: string; is_default: boolean }>>;
 };
 
 /**
@@ -201,10 +205,10 @@ export async function fetchTechnicalSheetsForConsumption(
 export async function fetchConsumptionContext(refIds: string[]): Promise<ConsumptionContext> {
   const unique = [...new Set(refIds.filter(Boolean))];
 
-  const [{ data: materials, error: materialsError }, { data: allProducts }, { data: productGroups }, { data: componentSheets }, { data: sheetStrapData }, { data: soleColorMappings }, { data: palmilhaColorMappings }, { data: liningColorMappings }] = await Promise.all([
+  const [{ data: materials, error: materialsError }, { data: allProducts }, { data: productGroups }, { data: componentSheets }, { data: sheetStrapData }, { data: soleColorMappings }, { data: palmilhaColorMappings }, { data: liningColorMappings }, { data: sheetSoleGroups }] = await Promise.all([
     supabase
       .from('sheet_materials')
-      .select('sheet_id, product_id, group_id, quantity_per_unit, color, products(name, unit, category), product_groups(name)')
+      .select('sheet_id, product_id, group_id, quantity_per_unit, color, products(name, unit, category), product_groups!products_group_id_fkey(name)')
       .in('sheet_id', unique),
     supabase
       .from('products')
@@ -223,6 +227,7 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
     (supabase as any).from('technical_sheet_sole_colors').select('sheet_id, product_color, sole_product_id').in('sheet_id', unique),
     (supabase as any).from('technical_sheet_palmilha_colors').select('sheet_id, cabedal_color, palmilha_color, palmilha_product_id').in('sheet_id', unique),
     (supabase as any).from('technical_sheet_lining_colors').select('sheet_id, cabedal_color, lining_color').in('sheet_id', unique),
+    supabase.from('technical_sheets').select('id, sole_group_id').in('id', unique),
   ]);
 
   if (materialsError) throw materialsError;
@@ -256,6 +261,32 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
     if (Array.isArray((s as any).strap_colors)) sheetStrapsMap.set((s as any).id, (s as any).strap_colors as any[]);
   }
 
+  // sheet_id → sole_group_id (pra resolver coligação)
+  const sheetSoleGroupMap = new Map<string, string>();
+  for (const s of (sheetSoleGroups || []) as any[]) {
+    if (s.id && s.sole_group_id) sheetSoleGroupMap.set(s.id, s.sole_group_id);
+  }
+
+  // Coligações cabedal → cor-do-solado por sole_group_id (regra independente
+  // da sole_classification — mesmo fix do resolve_sole_color SQL).
+  const soleConjugationsByGroup = new Map<
+    string,
+    Array<{ cabedal_color: string; palmilha_color: string; is_default: boolean }>
+  >();
+  const soleGroupIds = Array.from(new Set(sheetSoleGroupMap.values()));
+  if (soleGroupIds.length > 0) {
+    const { data: conjugations } = await (supabase as any)
+      .from('sole_color_conjugations')
+      .select('sole_group_id, cabedal_color, palmilha_color, is_default, active')
+      .in('sole_group_id', soleGroupIds)
+      .eq('active', true);
+    for (const c of (conjugations || []) as any[]) {
+      const arr = soleConjugationsByGroup.get(c.sole_group_id) || [];
+      arr.push({ cabedal_color: c.cabedal_color, palmilha_color: c.palmilha_color, is_default: !!c.is_default });
+      soleConjugationsByGroup.set(c.sole_group_id, arr);
+    }
+  }
+
   return {
     materials: materials || [],
     allProducts: allProducts || [],
@@ -267,6 +298,8 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
     liningColorMap,
     liningDefaultMap,
     sheetStrapsMap,
+    sheetSoleGroupMap,
+    soleConjugationsByGroup,
   };
 }
 
@@ -292,7 +325,34 @@ export function computeConsumptionForItems(
     liningColorMap,
     liningDefaultMap,
     sheetStrapsMap,
+    sheetSoleGroupMap,
+    soleConjugationsByGroup,
   } = ctx;
+
+  // Resolve produto-solado por (sheet_id, cor cabedal) usando primeiro o
+  // mapping explícito (technical_sheet_sole_colors) e depois as coligações
+  // (sole_color_conjugations) — espelha o resolve_sole_color do backend.
+  const resolveSoleProductId = (refId: string, cabedalColor: string): string | null => {
+    const direct = soleColorMap.get(`${refId}::${cabedalColor}`);
+    if (direct) return direct;
+    const soleGroupId = sheetSoleGroupMap.get(refId);
+    if (!soleGroupId) return null;
+    const rules = soleConjugationsByGroup.get(soleGroupId) || [];
+    const upper = (cabedalColor || '').toUpperCase().trim();
+    let targetColor: string | null = null;
+    const exact = rules.find(r => (r.cabedal_color || '').toUpperCase().trim() === upper);
+    if (exact) targetColor = exact.palmilha_color;
+    if (!targetColor) {
+      const def = rules.find(r => r.is_default);
+      if (def) targetColor = def.palmilha_color;
+    }
+    if (!targetColor) return null;
+    const targetUpper = targetColor.toUpperCase().trim();
+    const p = (allProducts || []).find((x: any) =>
+      x.group_id === soleGroupId && ((x.color || '').toUpperCase().trim() === targetUpper)
+    );
+    return p?.id || null;
+  };
 
   const getComponentSheetsForGroup = (groupName: string) => {
     const normalizedGroup = normalizeText(groupName);
@@ -435,7 +495,7 @@ export function computeConsumptionForItems(
     if (liningMatch) {
       const mappedLiningColor = liningColorMap.get(`${item.reference_id}::${orderColor.toLowerCase()}`) || liningDefaultMap.get(item.reference_id) || orderColor;
       const liningSheet = getPreferredGroupSheet(liningMatch.group, { color: mappedLiningColor, mode: 'linear', preferYield: true });
-      const soleProductId = soleColorMap.get(`${item.reference_id}::${orderColor}`) || null;
+      const soleProductId = resolveSoleProductId(item.reference_id, orderColor);
       const { total: liningTotal } = calculateConsumptionWithUnit(item, liningMatch.consumption, liningSheet, 'metro', undefined, soleProductId, sheet?.sole_drives_consumption);
       addConsumptionRow(consumptionMap, {
         componentType: 'Forração',
@@ -451,7 +511,7 @@ export function computeConsumptionForItems(
     // Palmilha = PLACA (base) + FORRAÇÃO (napa do forro). Pulada INTEIRA quando
     // a palmilha é pronta (insole_ready_made ou solado classificado
     // palmilha_pronta) — espelha o ramo SQL: pronta = não debita nada.
-    const soleProductIdForInsole = soleColorMap.get(`${item.reference_id}::${orderColor}`) || null;
+    const soleProductIdForInsole = resolveSoleProductId(item.reference_id, orderColor);
     const insoleSoleProd = soleProductIdForInsole ? (allProducts || []).find((p: any) => p.id === soleProductIdForInsole) : null;
     const isPalmilhaPronta = (sheet?.insole_ready_made === true)
       || ((insoleSoleProd as any)?.sole_classification === 'palmilha_pronta');
@@ -512,7 +572,9 @@ export function computeConsumptionForItems(
     }
 
     // Solado: resolver cor real via technical_sheet_sole_colors (match case/acento-
-    // insensitive — "Caramelo" vs "CARAMELO" precisa casar).
+    // insensitive — "Caramelo" vs "CARAMELO" precisa casar). Fallback pra
+    // sole_color_conjugations (resolveSoleProductId) quando não há mapping
+    // explícito — espelha o resolve_sole_color do backend.
     const orderColorNorm = (orderColor || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
     let soleProductIdResolved: string | null = null;
     for (const [k, v] of soleColorMap.entries()) {
@@ -520,6 +582,9 @@ export function computeConsumptionForItems(
       if (skId !== item.reference_id) continue;
       const kNorm = (skColor || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
       if (kNorm === orderColorNorm) { soleProductIdResolved = v; break; }
+    }
+    if (!soleProductIdResolved) {
+      soleProductIdResolved = resolveSoleProductId(item.reference_id, orderColor);
     }
     const soleProduct = soleProductIdResolved
       ? (allProducts || []).find((p: any) => p.id === soleProductIdResolved)
