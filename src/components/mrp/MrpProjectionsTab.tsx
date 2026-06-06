@@ -8,6 +8,8 @@ import { Progress } from '@/components/ui/progress';
 import { Warning as AlertTriangle, TrendDown as TrendingDown, TrendUp as TrendingUp, Calendar, Package } from '@phosphor-icons/react';
 import { useProducts } from '@/hooks/useProducts';
 import { useGroups, type ProductGroup } from '@/hooks/useGroups';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 
 const HORIZONS = [
   { key: '7', label: '7 Dias', days: 7 },
@@ -39,6 +41,26 @@ export default function MrpProjectionsTab() {
   const [horizon, setHorizon] = useState('7');
   const [groupFilter, setGroupFilter] = useState('all');
 
+  // Consumo histórico REAL + estoque disponível (líquido de reserva) vêm do RPC
+  // get_purchase_projection (mesma fonte de PurchaseProjectionContent). Antes a aba
+  // chutava consumo = min_stock/30, gerando projeção de ruído.
+  const { data: projRows } = useQuery({
+    queryKey: ['purchase_projection_for_mrp'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_purchase_projection', { p_days: 30 });
+      if (error) throw error;
+      return (data || []) as Array<{ product_id: string; avg_daily_consumption: number; available_stock: number }>;
+    },
+    staleTime: 60 * 1000,
+  });
+  const projByProduct = useMemo(() => {
+    const m = new Map<string, { avgDaily: number; available: number }>();
+    for (const r of (projRows || [])) {
+      m.set(r.product_id, { avgDaily: Number(r.avg_daily_consumption) || 0, available: Number(r.available_stock) || 0 });
+    }
+    return m;
+  }, [projRows]);
+
   const days = HORIZONS.find(h => h.key === horizon)?.days ?? 7;
 
   // Build supplier map by group
@@ -59,17 +81,19 @@ export default function MrpProjectionsTab() {
       const groupInfo = p.group_id ? groupMap.get(p.group_id) : null;
       const groupName = groupInfo?.name || 'Sem Grupo';
 
-      // Estimate daily consumption based on historical or min_stock heuristic
-      // If min_stock set, assume consumption = min_stock / 30 (monthly safety)
-      const dailyConsumption = p.min_stock > 0
-        ? Math.max(p.min_stock / 30, 0.1)
-        : 0;
+      // Consumo diário REAL (histórico de stock_movements via RPC); fallback p/ a
+      // heurística min_stock/30 só quando o produto não tem histórico de consumo.
+      const proj = projByProduct.get(p.id);
+      const dailyConsumption = (proj?.avgDaily || 0) > 0
+        ? proj!.avgDaily
+        : (p.min_stock > 0 ? Math.max(p.min_stock / 30, 0.1) : 0);
 
       if (dailyConsumption <= 0) continue;
 
-      // Estoque DISPONÍVEL = bruto − reservado (ATP). Antes usava p.quantity bruto,
-      // mascarando faltas quando havia material reservado a outras OPs.
-      const availableStock = Math.max(0, (p.quantity || 0) - ((p as any).reserved_stock || 0));
+      // Estoque DISPONÍVEL = bruto − reservado (ATP). Usa o do RPC quando houver.
+      const availableStock = proj
+        ? Math.max(0, proj.available)
+        : Math.max(0, (p.quantity || 0) - ((p as any).reserved_stock || 0));
       const projectedStock = Math.max(0, availableStock - (dailyConsumption * days));
       const shortage = Math.max(0, p.min_stock - projectedStock);
       const daysUntilStockout = dailyConsumption > 0
@@ -99,7 +123,7 @@ export default function MrpProjectionsTab() {
     }
 
     return result.sort((a, b) => a.daysUntilStockout - b.daysUntilStockout);
-  }, [products, groupMap, days]);
+  }, [products, groupMap, days, projByProduct]);
 
   // Group projections by purchase group
   const groupedProjections = useMemo(() => {
