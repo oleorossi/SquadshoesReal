@@ -36,6 +36,13 @@ interface Props {
   onConfirmMin: () => void;
   /** Quando o usuário escolhe uma data diferente — a validação de override é feita pelo caller. */
   onPickManual: (newISO: string) => void;
+  /** Usuário tem permissão de admin? Controla a aparição do botão azul de override
+   *  imediato e bloqueia tentativa de antecipar pra data < mínima pra não-admins. */
+  isAdmin?: boolean;
+  /** Data originalmente digitada pelo user no form (ISO). Quando ela é anterior à
+   *  mínima e o user é admin, mostramos um BOTÃO AZUL pra confirmar override
+   *  direto, sem precisar re-selecionar mês/semana. */
+  userPickedDateISO?: string | null;
 }
 
 /**
@@ -53,7 +60,16 @@ export function MinBillingDateSuggestionDialog({
   materialShortfalls = [],
   onConfirmMin,
   onPickManual,
+  isAdmin = false,
+  userPickedDateISO = null,
 }: Props) {
+  // Botão azul de override só faz sentido quando:
+  //   1. user já tinha digitado uma data
+  //   2. essa data é ANTERIOR ao mínimo (caso contrário, "Confirmar mínima" basta)
+  //   3. user é admin (não-admins não têm permissão de antedar)
+  const canQuickOverride = !!(
+    isAdmin && userPickedDateISO && minDateISO && userPickedDateISO < minDateISO
+  );
   const [editing, setEditing] = useState(false);
   // Em vez de date picker (calendar), usa Mês + Semana — espelha o form principal
   // pra manter coerência com a forma como o sistema raciocina sobre faturamento.
@@ -276,7 +292,7 @@ export function MinBillingDateSuggestionDialog({
           </div>
         )}
 
-        <DialogFooter className="gap-2 sm:gap-2">
+        <DialogFooter className="gap-2 sm:gap-2 flex-wrap">
           {editing ? (
             <>
               <Button variant="ghost" onClick={() => setEditing(false)}>
@@ -285,6 +301,14 @@ export function MinBillingDateSuggestionDialog({
               <Button
                 onClick={() => {
                   if (!computedManualDate) return;
+                  // Bloqueio pra não-admin: data manual NÃO pode ser anterior à mínima.
+                  // Admin pode antedar (cai no fluxo de override com motivo).
+                  if (!isAdmin && computedManualDate < minDateISO) {
+                    // Toast inline pra não bloquear o submit handler; user precisa
+                    // escolher uma semana ≥ mínima ou clicar em "Confirmar semana mínima".
+                    alert('Apenas administradores podem faturar antes da semana mínima calculada.');
+                    return;
+                  }
                   onPickManual(computedManualDate);
                 }}
                 disabled={!computedManualDate}
@@ -302,6 +326,16 @@ export function MinBillingDateSuggestionDialog({
                 <CheckCircle2 className="h-4 w-4" />
                 Confirmar semana mínima
               </Button>
+              {canQuickOverride && (
+                <Button
+                  onClick={() => onPickManual(userPickedDateISO as string)}
+                  className="gap-2 bg-blue-600 hover:bg-blue-700 text-white border-blue-700 sm:ml-auto"
+                  title={`Override administrativo: salva com a data ${formatBR(userPickedDateISO as string)} mesmo antes do mínimo viável`}
+                >
+                  <AlertTriangle className="h-4 w-4" />
+                  Salvar mesmo assim ({formatBR(userPickedDateISO as string)})
+                </Button>
+              )}
             </>
           )}
         </DialogFooter>

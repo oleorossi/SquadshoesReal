@@ -1120,6 +1120,8 @@ export default function SaleOrderForm() {
         materialShortfalls={minBillingSuggestion?.materialShortfalls}
         onConfirmMin={handleMinBillingConfirm}
         onPickManual={handleMinBillingManual}
+        isAdmin={isAdmin}
+        userPickedDateISO={form.delivery_deadline || null}
       />
 
       <CancelOpsAndEditDialog
