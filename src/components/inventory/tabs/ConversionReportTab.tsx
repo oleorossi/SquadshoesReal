@@ -120,7 +120,7 @@ export function ConversionReportTab() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('products')
-        .select('id, name, sku, category, unit, purchase_unit, production_unit, consumption_unit, conversion_rate, dimensions_width, dimensions_length, dimensions_unit, yield_per_meter, yield_unit, quantity, unit_price, product_groups(name)')
+        .select('id, name, sku, category, unit, purchase_unit, production_unit, consumption_unit, conversion_rate, dimensions_width, dimensions_length, dimensions_unit, yield_per_meter, yield_unit, quantity, unit_price, product_groups!products_group_id_fkey(name)')
         .eq('active', true)
         .order('name');
       if (error) throw error;

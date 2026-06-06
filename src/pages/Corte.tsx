@@ -212,7 +212,7 @@ export default function Corte() {
 
       const { data: allMaterials } = await supabase
         .from('sheet_materials')
-        .select('*, products(name, category, unit, color, product_groups(name, is_bom_color_source))')
+        .select('*, products(name, category, unit, color, product_groups!products_group_id_fkey(name, is_bom_color_source))')
         .in('sheet_id', refIds);
 
       const materialsByRef = new Map<string, typeof allMaterials>();
@@ -948,7 +948,7 @@ if (totalPairsAll !== palmTotal) {
               const reportRefIds = [...new Set(ordersForReport.map(o => o.reference_id).filter(Boolean))];
               const { data: allReportMats } = await supabase
                 .from('sheet_materials')
-                .select('*, products(name, category, unit, color, product_groups(name, is_bom_color_source))')
+                .select('*, products(name, category, unit, color, product_groups!products_group_id_fkey(name, is_bom_color_source))')
                 .in('sheet_id', reportRefIds);
               const reportMatsByRef = new Map<string, typeof allReportMats>();
               for (const mat of allReportMats || []) {
@@ -1175,7 +1175,7 @@ if (totalPairsAll !== palmTotal) {
 
                 const { data: materials } = await supabase
                   .from('sheet_materials')
-                  .select('*, products(name, category, unit, color, product_groups(name, is_bom_color_source))')
+                  .select('*, products(name, category, unit, color, product_groups!products_group_id_fkey(name, is_bom_color_source))')
                   .eq('sheet_id', order.reference_id);
                 if (!materials) continue;
 

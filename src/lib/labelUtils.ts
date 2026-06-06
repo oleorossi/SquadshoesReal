@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 export async function fetchMainMaterial(referenceId: string): Promise<string> {
   const { data: materials } = await supabase
     .from('reference_materials')
-    .select('*, products(name, category, group_id, product_groups(name))')
+    .select('*, products(name, category, group_id, product_groups!products_group_id_fkey(name))')
     .eq('reference_id', referenceId);
   const cabedal = materials?.find((m: any) => m.products?.category === 'Cabedal');
   const main = cabedal || materials?.[0];

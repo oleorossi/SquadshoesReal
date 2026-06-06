@@ -50,7 +50,7 @@ export function useProducts() {
             // lê product.product_groups?.consumption_unit ao adicionar material
             // ao BOM. Sem ele cai pro fallback product.unit (estoque, ex: 'un'/
             // 'rolo'), gerando consumo na unidade errada.
-            .select('*, product_groups(name, consumption_unit)')
+            .select('*, product_groups!products_group_id_fkey(name, consumption_unit)')
             .order('updated_at', { ascending: false })
             .range(i * PAGE, (i + 1) * PAGE - 1),
         ));

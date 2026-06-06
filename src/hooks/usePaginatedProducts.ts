@@ -32,7 +32,7 @@ export function usePaginatedProducts(params: PaginatedProductsParams = {}) {
         // consumption_unit incluído (2026-05-31) pelo mesmo motivo de useProducts:
         // callers podem ler product.product_groups?.consumption_unit (UoM canônica
         // de BOM) pra preencher consumo no estoque/ficha.
-        supabase.from('products').select('*, product_groups(name, consumption_unit)'),
+        supabase.from('products').select('*, product_groups!products_group_id_fkey(name, consumption_unit)'),
         supabase.rpc('get_in_production_stock' as any),
       ]);
 

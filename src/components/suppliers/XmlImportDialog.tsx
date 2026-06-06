@@ -57,7 +57,7 @@ export default function XmlImportDialog({ open, onOpenChange, suppliers, onSuppl
     for (let from = 0; ; from += pageSize) {
       const { data, error } = await supabase
         .from('products')
-        .select('id, name, sku, quantity, unit_price, unit, group_id, supplier_id, conversion_rate, product_groups(package_weight_kg)')
+        .select('id, name, sku, quantity, unit_price, unit, group_id, supplier_id, conversion_rate, product_groups!products_group_id_fkey(package_weight_kg)')
         .order('id', { ascending: true })
         .range(from, from + pageSize - 1);
 

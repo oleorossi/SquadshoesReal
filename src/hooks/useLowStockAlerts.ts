@@ -42,7 +42,7 @@ export function useLowStockAlerts() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('products')
-        .select('id, name, sku, category, unit, group_id, quantity, min_stock, stock_grade, min_stock_grade, product_groups(name)')
+        .select('id, name, sku, category, unit, group_id, quantity, min_stock, stock_grade, min_stock_grade, product_groups!products_group_id_fkey(name)')
         .or('min_stock.gt.0,min_stock_grade.not.is.null')
         .limit(5000);
       if (error) throw error;
