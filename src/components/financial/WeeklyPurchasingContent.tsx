@@ -3,7 +3,7 @@ import { useOrders } from '@/hooks/useOrders';
 import { useComponentSheets } from '@/hooks/useComponentSheets';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { generateWeeklyPurchasingPlan, WeeklyOrder, SheetMaterial } from '@/lib/weeklyPurchasingPlan';
+import { generateWeeklyPurchasingPlan, WeeklyOrder, SheetMaterial, buyByKey } from '@/lib/weeklyPurchasingPlan';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -28,10 +28,39 @@ function useAllSheetMaterials() {
   });
 }
 
+/**
+ * Data-limite de compra (just-in-time) por OP×material, vinda da view
+ * `purchase_projection_timeline` (cronograma reverso: entrega do cliente − setores em
+ * paralelo − buffer material − lead time do fornecedor). É a âncora robusta de QUANDO
+ * comprar — o motor usa o planned_start da OP só como fallback (preenchido em ~49%).
+ * Quando há mais de uma linha por OP×material, fica a data MAIS CEDO (conservador).
+ */
+function useBuyByDates() {
+  return useQuery({
+    queryKey: ['weekly_buyby_dates'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('purchase_projection_timeline' as any)
+        .select('order_id, material_id, data_limite_compra');
+      if (error) throw error;
+      const map = new Map<string, string>();
+      for (const r of (data || []) as any[]) {
+        if (!r.order_id || !r.material_id || !r.data_limite_compra) continue;
+        const k = buyByKey(r.order_id, r.material_id);
+        const prev = map.get(k);
+        if (!prev || r.data_limite_compra < prev) map.set(k, r.data_limite_compra);
+      }
+      return map;
+    },
+    staleTime: 60 * 1000,
+  });
+}
+
 export default function WeeklyPurchasingContent() {
   const { data: orders, isLoading: loadingOrders } = useOrders();
   const { data: componentSheets, isLoading: loadingCS } = useComponentSheets();
   const { data: allSheetMaterials, isLoading: loadingSM } = useAllSheetMaterials();
+  const { data: buyByDates } = useBuyByDates();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('active');
   const [viewMode, setViewMode] = useState<'matrix' | 'weekly'>('weekly');
@@ -61,8 +90,10 @@ export default function WeeklyPurchasingContent() {
 
     // A5 (auditoria): passa as fichas de componente (largura + perda) p/ converter
     // material de área dm²→unidade física pela largura da ficha (antes inflava ~137×).
-    return generateWeeklyPurchasingPlan(filteredOrders, allSheetMaterials, (componentSheets as any) || []);
-  }, [orders, allSheetMaterials, componentSheets, statusFilter]);
+    // buyByDates: âncora JIT (data-limite de compra reverse-scheduled da view) — define
+    // a SEMANA de compra; planned_start vira só fallback.
+    return generateWeeklyPurchasingPlan(filteredOrders, allSheetMaterials, (componentSheets as any) || [], buyByDates || new Map());
+  }, [orders, allSheetMaterials, componentSheets, statusFilter, buyByDates]);
 
   const filteredPlan = useMemo(() => {
     if (!result) return [];

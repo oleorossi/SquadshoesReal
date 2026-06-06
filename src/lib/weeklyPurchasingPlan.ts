@@ -1,5 +1,13 @@
- import { startOfWeek, format, parseISO, addDays, isTuesday, nextTuesday } from 'date-fns';
+ import { format, parseISO, addDays, isTuesday, nextTuesday, isBefore, startOfDay } from 'date-fns';
 import { convertDm2ToLinearMeters, convertDm2ToPlates, isLinearWidthMissing, type ComponentSheetCandidate } from './materialConsumption';
+
+/**
+ * Chave do mapa de datas-limite de compra (view purchase_projection_timeline).
+ * Compartilhada entre o motor e a tela pra casar OP×material.
+ */
+export function buyByKey(orderId: string, productId: string): string {
+  return `${orderId}::${productId}`;
+}
 
 export interface WeeklyOrder {
   id: string;
@@ -102,7 +110,11 @@ function calculateRequiredAmount(
 export function generateWeeklyPurchasingPlan(
   orders: WeeklyOrder[],
   sheetMaterials: SheetMaterial[],
-  componentSheets: Array<ComponentSheetCandidate & { product_id: string }> = []
+  componentSheets: Array<ComponentSheetCandidate & { product_id: string }> = [],
+  // Datas-limite de compra (ISO) por OP×material vindas da view
+  // purchase_projection_timeline (cronograma reverso = entrega − setores − buffer −
+  // lead do fornecedor). Quando presente, é a âncora de QUANDO comprar. Use buyByKey().
+  buyByDates: Map<string, string> = new Map()
 ): WeeklyPlanResult {
   const weeklyDemands: Record<string, Record<string, number>> = {};
 
@@ -126,10 +138,11 @@ export function generateWeeklyPurchasingPlan(
     }
   }
 
+  const today = startOfDay(new Date());
+
   for (const order of orders) {
-    const dateStr = order.planned_start || order.planned_delivery || order.created_at;
-    if (!dateStr) continue;
-    const prodDate = parseISO(dateStr);
+    const prodDateStr = order.planned_start || order.planned_delivery || order.created_at;
+    const fallbackProdDate = prodDateStr ? parseISO(prodDateStr) : null;
 
     const materials = materialsBySheet.get(order.reference_id) || [];
     for (const mat of materials) {
@@ -138,14 +151,26 @@ export function generateWeeklyPurchasingPlan(
       // A5: a perda + a largura vêm da ficha de COMPONENTE do produto (não da reference_id).
       const cs = csByProduct.get(mat.product_id) || null;
       const requiredAmount = calculateRequiredAmount(mat, order, cs);
+      if (requiredAmount <= 0) continue;
 
-      // Buffer de lead time: a COMPRA precisa ocorrer ANTES da produção pra chegar
-      // a tempo. Desloca a semana de compra pra trás pelo lead time do fornecedor
-      // (por material, pois cada material tem o seu). Antes a demanda caía na semana
-      // da produção, fazendo o sistema comprar tarde demais.
-      const leadDays = mat.products.supplier_lead_time_days ?? mat.products.lead_time_days ?? 0;
-      const buyDate = leadDays > 0 ? addDays(prodDate, -leadDays) : prodDate;
-      const targetTuesday = isTuesday(buyDate) ? buyDate : nextTuesday(buyDate);
+      // QUANDO comprar (just-in-time) — chegar pouco antes da produção, sem ficar parado:
+      //   1ª escolha: data-limite reverse-scheduled da view purchase_projection_timeline
+      //     (entrega cliente − cronograma de setores em paralelo − buffer material − lead
+      //      time do fornecedor). Robusta: ancora no delivery_deadline do PV.
+      //   Fallback: data de produção da OP (planned_start, só ~49% preenchido) − lead time
+      //     do material. Antes a demanda caía na semana da PRODUÇÃO (comprava tarde) ou em
+      //     created_at (passado) quando planned_start faltava — timing furado em ~metade.
+      const vkey = buyByKey(order.id, mat.product_id);
+      let buyDate: Date | null = buyByDates.has(vkey) ? parseISO(buyByDates.get(vkey)!) : null;
+      if (!buyDate && fallbackProdDate) {
+        const leadDays = mat.products.supplier_lead_time_days ?? mat.products.lead_time_days ?? 0;
+        buyDate = leadDays > 0 ? addDays(fallbackProdDate, -leadDays) : fallbackProdDate;
+      }
+      if (!buyDate) continue;
+
+      // Compra já vencida (data no passado) → próxima terça acionável: comprar agora.
+      const effectiveBuyDate = isBefore(buyDate, today) ? today : buyDate;
+      const targetTuesday = isTuesday(effectiveBuyDate) ? effectiveBuyDate : nextTuesday(effectiveBuyDate);
       const weekKey = format(targetTuesday, 'dd/MM/yyyy');
 
       if (!weeklyDemands[weekKey]) weeklyDemands[weekKey] = {};
