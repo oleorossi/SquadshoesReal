@@ -89,6 +89,11 @@ export function useUpdatePurchaseOrder() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['purchase_orders'] });
+      // MRP depende de POs abertas (qty em trânsito) — invalida pra não mostrar
+      // sugestão velha após mudar/cancelar OC.
+      qc.invalidateQueries({ queryKey: ['mrp-needs'] });
+      qc.invalidateQueries({ queryKey: ['material-needs-report'] });
+      qc.invalidateQueries({ queryKey: ['mrp_suggestions'] });
       toast.success('Ordem de compra atualizada!');
     },
     onError: (e: Error) => toast.error(e.message),
@@ -166,6 +171,9 @@ export function useDeletePurchaseOrder() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['purchase_orders'] });
       qc.invalidateQueries({ queryKey: ['accounts_payable'] });
+      qc.invalidateQueries({ queryKey: ['mrp-needs'] });
+      qc.invalidateQueries({ queryKey: ['material-needs-report'] });
+      qc.invalidateQueries({ queryKey: ['mrp_suggestions'] });
       toast.success('Ordem de compra cancelada!');
     },
     onError: (e: Error) => toast.error(e.message),
@@ -312,6 +320,9 @@ export function useCreatePurchaseOrder() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['purchase_orders'] });
+      qc.invalidateQueries({ queryKey: ['mrp-needs'] });
+      qc.invalidateQueries({ queryKey: ['material-needs-report'] });
+      qc.invalidateQueries({ queryKey: ['mrp_suggestions'] });
       toast.success('Ordem de compra criada!');
     },
     onError: (e: Error) => toast.error(e.message),

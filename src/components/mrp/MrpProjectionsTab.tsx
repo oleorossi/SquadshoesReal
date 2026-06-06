@@ -67,10 +67,13 @@ export default function MrpProjectionsTab() {
 
       if (dailyConsumption <= 0) continue;
 
-      const projectedStock = Math.max(0, p.quantity - (dailyConsumption * days));
+      // Estoque DISPONÍVEL = bruto − reservado (ATP). Antes usava p.quantity bruto,
+      // mascarando faltas quando havia material reservado a outras OPs.
+      const availableStock = Math.max(0, (p.quantity || 0) - ((p as any).reserved_stock || 0));
+      const projectedStock = Math.max(0, availableStock - (dailyConsumption * days));
       const shortage = Math.max(0, p.min_stock - projectedStock);
       const daysUntilStockout = dailyConsumption > 0
-        ? Math.floor(p.quantity / dailyConsumption)
+        ? Math.floor(availableStock / dailyConsumption)
         : 999;
 
       let status: 'ok' | 'warning' | 'critical' = 'ok';
@@ -85,7 +88,7 @@ export default function MrpProjectionsTab() {
         groupId: p.group_id,
         groupName,
         supplierName: (p as any).supplier_name || groupName,
-        currentStock: p.quantity,
+        currentStock: availableStock,
         minStock: p.min_stock || 0,
         dailyConsumption,
         projectedStock,

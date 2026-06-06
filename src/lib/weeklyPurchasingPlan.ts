@@ -23,6 +23,10 @@ export interface SheetMaterial {
     unit: string;
     quantity: number;
     min_stock?: number;
+    reserved_stock?: number;
+    safety_stock?: number;
+    supplier_lead_time_days?: number;
+    lead_time_days?: number;
     unit_price: number;
     is_artisanal?: boolean;
   } | null;
@@ -125,13 +129,7 @@ export function generateWeeklyPurchasingPlan(
   for (const order of orders) {
     const dateStr = order.planned_start || order.planned_delivery || order.created_at;
     if (!dateStr) continue;
-
-     const date = parseISO(dateStr);
-     // Se a data já for terça-feira, usamos ela, caso contrário pegamos a próxima terça
-     const targetTuesday = isTuesday(date) ? date : nextTuesday(date);
-     const weekKey = format(targetTuesday, 'dd/MM/yyyy');
-
-    if (!weeklyDemands[weekKey]) weeklyDemands[weekKey] = {};
+    const prodDate = parseISO(dateStr);
 
     const materials = materialsBySheet.get(order.reference_id) || [];
     for (const mat of materials) {
@@ -141,6 +139,16 @@ export function generateWeeklyPurchasingPlan(
       const cs = csByProduct.get(mat.product_id) || null;
       const requiredAmount = calculateRequiredAmount(mat, order, cs);
 
+      // Buffer de lead time: a COMPRA precisa ocorrer ANTES da produção pra chegar
+      // a tempo. Desloca a semana de compra pra trás pelo lead time do fornecedor
+      // (por material, pois cada material tem o seu). Antes a demanda caía na semana
+      // da produção, fazendo o sistema comprar tarde demais.
+      const leadDays = mat.products.supplier_lead_time_days ?? mat.products.lead_time_days ?? 0;
+      const buyDate = leadDays > 0 ? addDays(prodDate, -leadDays) : prodDate;
+      const targetTuesday = isTuesday(buyDate) ? buyDate : nextTuesday(buyDate);
+      const weekKey = format(targetTuesday, 'dd/MM/yyyy');
+
+      if (!weeklyDemands[weekKey]) weeklyDemands[weekKey] = {};
       if (!weeklyDemands[weekKey][mat.product_id]) {
         weeklyDemands[weekKey][mat.product_id] = 0;
       }
@@ -165,8 +173,10 @@ export function generateWeeklyPurchasingPlan(
       unitPrice: prod!.unit_price || 0,
       currentStock: prod!.quantity || 0,
       minStock: prod!.min_stock || 0,
-      // O estoque virtual inicial já desconta o estoque mínimo para garantir segurança
-      virtualStock: (prod!.quantity || 0) - (prod!.min_stock || 0),
+      // Estoque virtual inicial = bruto − mínimo − reservado − segurança (ATP).
+      // Antes só descontava o mínimo (e min_stock nem era buscado da query),
+      // inflando o disponível e fazendo o plano sub-comprar.
+      virtualStock: Math.max(0, (prod!.quantity || 0) - (prod!.min_stock || 0) - (prod!.reserved_stock || 0) - (prod!.safety_stock || 0)),
       weeklyPurchases: {},
       totalToBuy: 0,
       estimatedCost: 0,

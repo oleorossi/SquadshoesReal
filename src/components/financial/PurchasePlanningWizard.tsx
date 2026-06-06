@@ -148,6 +148,7 @@ export default function PurchasePlanningWizard() {
             unit_price,
             reserved_stock,
             safety_stock,
+            min_order_quantity,
             category,
             group_id,
             supplier_id,
@@ -580,14 +581,19 @@ export default function PurchasePlanningWizard() {
           .filter(item => item.product_id) // Only include items with a valid product_id
           .map(item => {
           const deficit = Math.max(0, item.total_needed - item.current_stock);
+          // Respeita o lote mínimo de compra (min_order_quantity): arredonda pro
+          // próximo múltiplo. Antes pedia o déficit cru (fracionava papelão/bobina).
+          const moq = Number(productsMap.get(item.product_id!)?.min_order_quantity) || 0;
+          let qty = Math.ceil(deficit);
+          if (moq > 1) qty = Math.ceil(qty / moq) * moq;
           return {
             purchase_order_id: po.id,
             product_id: item.product_id!,
             current_stock: item.current_stock,
             min_stock: 0,
             max_stock: 0,
-            suggested_quantity: Math.ceil(deficit),
-            quantity: Math.ceil(deficit),
+            suggested_quantity: qty,
+            quantity: qty,
             unit_price: item.unit_price,
             unit: item.unit,
           };

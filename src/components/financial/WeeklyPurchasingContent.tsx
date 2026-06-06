@@ -20,7 +20,7 @@ function useAllSheetMaterials() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('sheet_materials')
-        .select('sheet_id, product_id, quantity_per_unit, consumption_per_size, products(id, name, sku, unit, quantity, unit_price, is_artisanal)');
+        .select('sheet_id, product_id, quantity_per_unit, consumption_per_size, products(id, name, sku, unit, quantity, min_stock, reserved_stock, safety_stock, supplier_lead_time_days, lead_time_days, unit_price, is_artisanal)');
       if (error) throw error;
       return data as unknown as SheetMaterial[];
     },
