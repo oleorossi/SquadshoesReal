@@ -1152,8 +1152,8 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                 <tr className="border-b bg-muted/50">
                   <th className="text-center py-2">TAM</th>
                   <th className="text-right py-2 px-4">Forração (dm²)</th>
-                  <th className="text-right py-2 px-4">Palmilha · Placa (dm²)</th>
-                  <th className="text-right py-2 px-4">Palmilha · Forração (dm²)</th>
+                  {!isPalmilhaPronta && <th className="text-right py-2 px-4">Palmilha · Placa (dm²)</th>}
+                  {!isPalmilhaPronta && <th className="text-right py-2 px-4">Palmilha · Forração (dm²)</th>}
                   {isFachetado && <th className="text-right py-2 px-4">Fachete (dm²)</th>}
                 </tr>
               </thead>
@@ -1164,12 +1164,16 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                     <td className="text-right py-2 px-4 font-mono">
                       {spec.lining_consumption_dm2 !== null ? safeToFixed(spec.lining_consumption_dm2, 2) : "-"}
                     </td>
-                    <td className="text-right py-2 px-4 font-mono">
-                      {spec.insole_consumption_dm2 !== null ? safeToFixed(spec.insole_consumption_dm2, 2) : "-"}
-                    </td>
-                    <td className="text-right py-2 px-4 font-mono">
-                      {spec.insole_lining_consumption_dm2 != null ? safeToFixed(spec.insole_lining_consumption_dm2, 2) : "-"}
-                    </td>
+                    {!isPalmilhaPronta && (
+                      <td className="text-right py-2 px-4 font-mono">
+                        {spec.insole_consumption_dm2 !== null ? safeToFixed(spec.insole_consumption_dm2, 2) : "-"}
+                      </td>
+                    )}
+                    {!isPalmilhaPronta && (
+                      <td className="text-right py-2 px-4 font-mono">
+                        {spec.insole_lining_consumption_dm2 != null ? safeToFixed(spec.insole_lining_consumption_dm2, 2) : "-"}
+                      </td>
+                    )}
                     {isFachetado && (
                       <td className="text-right py-2 px-4 font-mono">
                         {spec.fachete_lining_consumption_dm2 != null ? safeToFixed(spec.fachete_lining_consumption_dm2, 2) : "-"}

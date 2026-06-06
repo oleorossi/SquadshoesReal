@@ -525,21 +525,23 @@ export default function SolesCadastroTab({ sole }: Props) {
         </CardContent>
       </Card>
 
-      {/* 4 — COLIGAÇÕES DE COR (só pra 'palmilha_pronta') */}
+      {/* Coligação de Cor removida da UI em 2026-06-06 pra palmilha_pronta:
+          a palmilha vem PRONTA do fornecedor (já paireada com o cabedal pelo
+          próprio fornecedor), então não faz sentido o user cadastrar regras
+          cabedal→palmilha aqui. O default "* → palmilha padrão" é criado
+          automaticamente quando o solado é marcado palmilha_pronta (linha 209),
+          e a ficha do operador continua mostrando a palmilha pra conferência. */}
       {classification === 'palmilha_pronta' && (
-        <Card>
-          <CardHeader className="pb-3 flex flex-row items-center gap-2">
-            <Palette className="h-4 w-4 text-primary" />
-            <CardTitle className="text-sm">4. Coligações de cor</CardTitle>
-            <span className="text-xs text-muted-foreground">cabedal → palmilha</span>
-            {!groupId && <StatusBadge filled={false} label="Falta grupo" />}
+        <Card className="border-violet-200 dark:border-violet-800 bg-violet-50/40 dark:bg-violet-950/20">
+          <CardHeader className="pb-2 flex flex-row items-center gap-2">
+            <Palette className="h-4 w-4 text-violet-600" />
+            <CardTitle className="text-sm text-violet-900 dark:text-violet-200">Palmilha pronta · sem coligação manual</CardTitle>
           </CardHeader>
-          <CardContent>
-            {groupId ? (
-              <SoleColorConjugationsEditor soleGroupId={groupId} />
-            ) : (
-              <GroupBindingFallback soleId={sole.id} />
-            )}
+          <CardContent className="text-xs text-violet-800 dark:text-violet-300 space-y-1.5">
+            <p>Esse solado já chega forrado do fornecedor. Não é preciso configurar regra de cor cabedal → palmilha aqui — a parelha vem decidida pelo fornecedor.</p>
+            <p className="text-violet-700/80 dark:text-violet-400/80">
+              <strong>Ficha do operador</strong>: a palmilha continua sendo listada como item de conferência (cor + numeração) pra o operador validar antes da montagem.
+            </p>
           </CardContent>
         </Card>
       )}
