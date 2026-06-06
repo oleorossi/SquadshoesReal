@@ -237,6 +237,25 @@ export default function WeeklyPurchasingContent() {
         </Card>
       </div>
 
+      {/* Explicador JIT */}
+      <Card className="bg-muted/20 border-primary/20">
+        <CardContent className="p-4 text-xs text-muted-foreground space-y-1">
+          <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <CalendarDays className="h-4 w-4 text-primary" /> Compra just-in-time
+          </p>
+          <p>
+            • A semana de cada material é a <strong>data-limite de compra</strong>: prazo de entrega do
+            cliente − cronograma de produção (setores) − lead time do fornecedor. Compre nela pra o
+            material chegar <strong>pouco antes</strong> do ciclo começar — <strong>nem antes</strong> (capital
+            parado) <strong>nem depois</strong> (atraso na produção).
+          </p>
+          <p>
+            • A quantidade já é <strong>líquida</strong>: abate o que está em estoque, reservado e a margem de
+            segurança. Materiais com prazo vencido caem na <strong>próxima terça</strong> (comprar já).
+          </p>
+        </CardContent>
+      </Card>
+
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
         <Input
