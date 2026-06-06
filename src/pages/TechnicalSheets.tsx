@@ -4740,9 +4740,12 @@ function SoleProductSelect({ label, value, onChange }: { label: string; value: s
       // como "SALTINHO BLOCO" cujo nome não contém 'solado'. Filtra direto pela
       // categoria do produto pra cobrir todos os saltos/solados, independente
       // do nome do grupo.
+      // Qualificador explícito do FK (products_group_id_fkey) evita
+      // "more than one relationship was found" se o schema cache do
+      // PostgREST estiver stale ou alguma FK secundária for adicionada.
       const { data, error } = await supabase
         .from('products')
-        .select('id, name, sku, color, group_id, unit_price, quantity, product_groups(id, name)')
+        .select('id, name, sku, color, group_id, unit_price, quantity, product_groups!products_group_id_fkey(id, name)')
         .ilike('category', '%solado%')
         .eq('active', true)
         .order('name');
