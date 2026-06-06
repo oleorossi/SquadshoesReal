@@ -340,7 +340,14 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   const normalizeGroupValue = (value?: string | null) => value?.trim().toLowerCase() || '';
 
   const uniqueSortedColors = (colors: string[]) => {
-    return Array.from(new Set(colors.map(color => color.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    // Normaliza pra UPPER antes do Set — o trigger DB normalize_product_color
+    // UPPER tudo no products.color, mas algumas fontes (nome derivado via
+    // getDerivedProductColor, lining_accessories antigas, group.colors CSV)
+    // ainda chegam com casing original. Set por string distingue case,
+    // então "PRETO" e "Preto" passavam como cores diferentes na BT01.
+    return Array.from(new Set(
+      colors.map(color => color.trim().toUpperCase()).filter(Boolean)
+    )).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   };
 
   const getDerivedProductColor = (product: any) => {
